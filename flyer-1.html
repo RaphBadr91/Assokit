@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Assokit · Dépliant · Couverture</title>
+<style>
+@page { size: A4 portrait; margin: 0; }
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+html, body {
+  width: 210mm; height: 297mm;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  background: #FAF8F5;
+  color: #0F172A;
+  overflow: hidden;
+  position: relative;
+  font-weight: 400;
+}
+
+/* ===== Backgrounds décoratifs ===== */
+.bg-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 0;
+}
+.bg-blob-1 {
+  width: 380px; height: 380px;
+  top: -120px; right: -100px;
+  background: radial-gradient(circle, #A7F3D0 0%, #6EE7B7 60%, transparent 100%);
+  opacity: 0.45;
+}
+.bg-blob-2 {
+  width: 320px; height: 320px;
+  bottom: -120px; left: -120px;
+  background: radial-gradient(circle, #DBEAFE 0%, #93C5FD 60%, transparent 100%);
+  opacity: 0.35;
+}
+.bg-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(16,185,129,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16,185,129,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse at center, black 25%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 25%, transparent 75%);
+  z-index: 0;
+}
+.sparkle {
+  position: absolute;
+  opacity: 0.5;
+  z-index: 0;
+}
+
+/* ===== Layout ===== */
+.wrap {
+  position: relative; z-index: 1;
+  padding: 28mm 22mm 22mm;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* HEADER */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22mm;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand img {
+  width: 42px; height: 42px; border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(16,185,129,0.20);
+}
+.brand-text {
+  font-size: 22pt; font-weight: 800;
+  color: #0F172A;
+  letter-spacing: -0.025em;
+}
+.brand-text em {
+  color: #10B981; font-style: normal;
+}
+.eyebrow-text {
+  font-size: 8.5pt; font-weight: 600;
+  color: #6b7280;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* HERO CENTRE — façon Apple */
+.center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  margin-top: -10mm;
+}
+
+.eyebrow-pill {
+  align-self: center;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 16px 7px 12px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(167,243,208,0.5);
+  border-radius: 999px;
+  font-size: 9pt; font-weight: 600;
+  color: #065F46;
+  box-shadow: 0 4px 14px rgba(16,185,129,0.10);
+  margin-bottom: 14mm;
+}
+.eyebrow-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: linear-gradient(135deg, #10B981, #6EE7B7);
+  box-shadow: 0 0 0 3px rgba(16,185,129,0.18);
+}
+.eyebrow-pill strong {
+  background: linear-gradient(135deg, #10B981, #6366F1);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+}
+
+.h-mega {
+  font-size: 52pt;
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  color: #0F172A;
+  margin-bottom: 10mm;
+}
+.h-mega .line1 { color: #0F172A; }
+.h-mega .line2 {
+  background: linear-gradient(135deg, #10B981 0%, #047857 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: block;
+}
+.h-mega .line3 { color: #064E3B; display: block; }
+
+.sub-claim {
+  font-size: 16pt;
+  font-weight: 600;
+  color: #1E293B;
+  line-height: 1.4;
+  margin-bottom: 6mm;
+  letter-spacing: -0.01em;
+}
+
+.tri-verb {
+  font-size: 13pt;
+  font-weight: 600;
+  color: #10B981;
+  letter-spacing: 0.05em;
+  margin-bottom: 14mm;
+}
+.tri-verb span { padding: 0 6px; }
+.tri-verb span::after { content: " ·"; color: #94A3B8; margin-left: 6px; }
+.tri-verb span:last-child::after { content: ""; }
+
+.modules-line {
+  font-size: 11pt;
+  color: #475569;
+  font-weight: 500;
+  line-height: 1.6;
+  max-width: 150mm;
+  margin: 0 auto;
+}
+.modules-line strong { color: #064E3B; font-weight: 700; }
+
+.motto {
+  font-size: 10pt;
+  color: #6b7280;
+  font-weight: 500;
+  margin-top: 10mm;
+  font-style: italic;
+}
+.motto em { color: #10B981; font-style: normal; font-weight: 600; }
+
+/* FOOTER CTA AVEC QR CODE */
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: linear-gradient(135deg, #064E3B 0%, #065F46 55%, #047857 100%);
+  border-radius: 22px;
+  padding: 18px 22px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(6,78,59,0.25);
+}
+.footer::before {
+  content: ""; position: absolute;
+  top: -50%; right: -10%; width: 50%; height: 200%;
+  background: radial-gradient(circle, rgba(167,243,208,0.22) 0%, transparent 70%);
+  pointer-events: none;
+}
+.qr {
+  width: 80px; height: 80px;
+  background: #fff; border-radius: 12px;
+  padding: 6px; flex-shrink: 0;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  position: relative; z-index: 1;
+}
+.qr img { width: 100%; height: 100%; display: block; }
+.footer-text { flex: 1; position: relative; z-index: 1; }
+.footer-eyebrow {
+  display: inline-block;
+  padding: 3px 11px;
+  background: rgba(167,243,208,0.20);
+  color: #A7F3D0;
+  font-size: 7.5pt; font-weight: 800;
+  letter-spacing: 0.10em;
+  border-radius: 999px;
+  margin-bottom: 4px;
+}
+.footer-title {
+  font-size: 15pt; font-weight: 800; color: #fff;
+  letter-spacing: -0.015em; line-height: 1.2;
+  margin-bottom: 3px;
+}
+.footer-sub {
+  font-size: 9.5pt; color: #D1FAE5; font-weight: 500;
+  margin-bottom: 6px;
+}
+.footer-url {
+  font-size: 10pt; color: #6EE7B7; font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.footer-url strong { color: #fff; font-weight: 800; }
+.footer-tel {
+  position: absolute;
+  bottom: 14px; right: 22px;
+  font-size: 9.5pt; color: rgba(255,255,255,0.92);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  z-index: 1;
+}
+</style>
+</head>
+<body>
+
+<div class="bg-blob bg-blob-1"></div>
+<div class="bg-blob bg-blob-2"></div>
+<div class="bg-grid"></div>
+
+<svg class="sparkle" style="top:18%;right:14%;width:18px;height:18px;" viewBox="0 0 24 24"><path d="M12 0L13.5 8L22 9.5L13.5 11L12 19L10.5 11L2 9.5L10.5 8L12 0Z" fill="#10B981"/></svg>
+<svg class="sparkle" style="top:36%;left:10%;width:14px;height:14px;" viewBox="0 0 24 24"><path d="M12 0L13.5 8L22 9.5L13.5 11L12 19L10.5 11L2 9.5L10.5 8L12 0Z" fill="#6366F1"/></svg>
+<svg class="sparkle" style="bottom:32%;right:18%;width:12px;height:12px;" viewBox="0 0 24 24"><path d="M12 0L13.5 8L22 9.5L13.5 11L12 19L10.5 11L2 9.5L10.5 8L12 0Z" fill="#F59E0B"/></svg>
+<svg class="sparkle" style="top:60%;left:18%;width:11px;height:11px;" viewBox="0 0 24 24"><path d="M12 0L13.5 8L22 9.5L13.5 11L12 19L10.5 11L2 9.5L10.5 8L12 0Z" fill="#10B981"/></svg>
+
+<div class="wrap">
+
+  <div class="header">
+    <div class="brand">
+      <img src="/assets/logo-assokit.png" alt="">
+      <div class="brand-text">Asso<em>kit</em></div>
+    </div>
+    <div class="eyebrow-text">Gestion intelligente pour associations &amp; TPE</div>
+  </div>
+
+  <div class="center">
+
+    <div class="eyebrow-pill">
+      <span class="eyebrow-dot"></span>
+      Le logiciel de gestion moderne avec <strong>IA intégrée</strong>
+    </div>
+
+    <h1 class="h-mega">
+      <span class="line1">Toute votre gestion.</span>
+      <span class="line2">Un seul espace.</span>
+      <span class="line3">Zéro complexité.</span>
+    </h1>
+
+    <div class="tri-verb">
+      <span>Centralisez</span><span>Automatisez</span><span>Avancez</span>
+    </div>
+
+    <p class="modules-line">
+      Adhérents · Clients · Devis · Factures · Relances · Projets · Emails · <strong>Bilans IA</strong>.<br>
+      Tout au même endroit.
+    </p>
+
+    <p class="motto">
+      Simple à prendre en main. Puissant au quotidien. <em>Humain quand il le faut.</em>
+    </p>
+
+  </div>
+
+  <div class="footer">
+    <div class="qr">
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https%3A%2F%2Fassokit.fr%2Fcontact&margin=0" alt="QR code Assokit">
+    </div>
+    <div class="footer-text">
+      <span class="footer-eyebrow">ESSAYEZ GRATUITEMENT</span>
+      <div class="footer-title">14 jours d'essai · Sans carte bancaire</div>
+      <div class="footer-sub">Sans engagement · Scannez le QR code →</div>
+      <div class="footer-url">www.<strong>assokit.fr</strong></div>
+    </div>
+    <div class="footer-tel">📞 +33 7 56 89 73 36</div>
+  </div>
+
+</div>
+</body>
+</html>

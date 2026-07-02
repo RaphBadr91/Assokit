@@ -1,0 +1,35 @@
+# =====================================
+# Sécurité du dossier admin-blog
+# =====================================
+
+# Force HTTPS (si pas déjà fait au niveau global)
+RewriteEngine On
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Bloque l'accès direct aux fichiers .sql, .md, .sample.php
+<FilesMatch "\.(sql|md|sample\.php|log)$">
+    Require all denied
+</FilesMatch>
+
+# Bloque l'accès au fichier config.php (très important)
+<Files "config.php">
+    Require all denied
+</Files>
+
+# Désactive le listing du répertoire
+Options -Indexes
+
+# Headers sécurité
+<IfModule mod_headers.c>
+    Header set X-Frame-Options "DENY"
+    Header set X-Content-Type-Options "nosniff"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Cache assets statiques
+<FilesMatch "\.(css|js|svg)$">
+    <IfModule mod_headers.c>
+        Header set Cache-Control "public, max-age=86400"
+    </IfModule>
+</FilesMatch>

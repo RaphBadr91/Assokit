@@ -1,0 +1,317 @@
+/* ============================================================
+   ASSOKIT — Dark Mode Fixes (dual scope)
+   - @media (prefers-color-scheme: dark) → si OS dark + data-theme absent
+   - :root[data-theme="dark"] → forçage manuel via Paramètres > Apparence
+   - :root[data-theme="light"] → forçage clair (override OS dark)
+   ============================================================ */
+
+/* === MIXIN : sélecteur dual === */
+/* On duplique chaque bloc 2 fois : auto (@media) + forced ([data-theme="dark"]) */
+
+/* Forçage CLAIR : si user a choisi light, on force tout en clair (override OS) */
+:root[data-theme="light"] body,
+:root[data-theme="light"] .gr-form,
+:root[data-theme="light"] .gr-card,
+:root[data-theme="light"] .pa-form-card {
+  background: #fff !important;
+  color: #111827 !important;
+}
+
+/* ============================================================
+   BLOCS DARK : auto + forcé
+   ============================================================ */
+
+/* ---- 1. NOTIFICATIONS LUES ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .notif-item,
+  :root:not([data-theme="light"]) .notification-item {
+    background: #1f2937 !important; border-color: #374151 !important; color: #e5e7eb !important;
+  }
+  :root:not([data-theme="light"]) .notif-item.is-read,
+  :root:not([data-theme="light"]) .notification-item.is-read {
+    background: #111827 !important; opacity: 0.75;
+  }
+}
+:root[data-theme="dark"] .notif-item, :root[data-theme="dark"] .notification-item {
+  background: #1f2937 !important; border-color: #374151 !important; color: #e5e7eb !important;
+}
+:root[data-theme="dark"] .notif-item.is-read, :root[data-theme="dark"] .notification-item.is-read {
+  background: #111827 !important; opacity: 0.75;
+}
+
+/* ---- 2. BOUTONS submit ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) button[type="submit"]:not(.btn-secondary):not(.btn-ghost):not(.btn-cancel):not(.gr-btn-danger),
+  :root:not([data-theme="light"]) .btn-primary, :root:not([data-theme="light"]) .pa-btn-primary {
+    background: #10B981 !important; color: #fff !important; border: 1px solid #10B981 !important;
+  }
+}
+:root[data-theme="dark"] button[type="submit"]:not(.btn-secondary):not(.gr-btn-danger),
+:root[data-theme="dark"] .btn-primary, :root[data-theme="dark"] .pa-btn-primary {
+  background: #10B981 !important; color: #fff !important; border: 1px solid #10B981 !important;
+}
+
+/* ---- 3. INPUTS / TEXTAREAS / SELECTS ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) textarea,
+  :root:not([data-theme="light"]) input[type="text"], :root:not([data-theme="light"]) input[type="email"],
+  :root:not([data-theme="light"]) input[type="number"], :root:not([data-theme="light"]) input[type="tel"],
+  :root:not([data-theme="light"]) input[type="url"], :root:not([data-theme="local"]) input[type="password"],
+  :root:not([data-theme="light"]) input[type="search"], :root:not([data-theme="light"]) input[type="date"],
+  :root:not([data-theme="light"]) input[type="time"], :root:not([data-theme="light"]) select {
+    background: #1f2937 !important; color: #f3f4f6 !important; border: 1px solid #374151 !important;
+  }
+}
+:root[data-theme="dark"] textarea, :root[data-theme="dark"] input[type="text"],
+:root[data-theme="dark"] input[type="email"], :root[data-theme="dark"] input[type="number"],
+:root[data-theme="dark"] input[type="tel"], :root[data-theme="dark"] input[type="url"],
+:root[data-theme="dark"] input[type="password"], :root[data-theme="dark"] input[type="search"],
+:root[data-theme="dark"] input[type="date"], :root[data-theme="dark"] input[type="time"],
+:root[data-theme="dark"] select {
+  background: #1f2937 !important; color: #f3f4f6 !important; border: 1px solid #374151 !important;
+}
+:root[data-theme="dark"] label, :root[data-theme="dark"] .pa-fld label {
+  color: #d1d5db !important;
+}
+
+/* ---- 4. CARDS FORMULAIRES (.gr-form, .pa-form-card, etc.) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .gr-form, :root:not([data-theme="light"]) .pa-form-card,
+  :root:not([data-theme="light"]) .form-card, :root:not([data-theme="light"]) .ak-card,
+  :root:not([data-theme="light"]) .pa-form, :root:not([data-theme="light"]) .ad-form,
+  :root:not([data-theme="light"]) .ev-form, :root:not([data-theme="light"]) .ag-form {
+    background: #1f2937 !important; border-color: #374151 !important; color: #f3f4f6 !important;
+  }
+}
+:root[data-theme="dark"] .gr-form, :root[data-theme="dark"] .pa-form-card,
+:root[data-theme="dark"] .form-card, :root[data-theme="dark"] .ak-card,
+:root[data-theme="dark"] .pa-form, :root[data-theme="dark"] .ad-form,
+:root[data-theme="dark"] .ev-form, :root[data-theme="dark"] .ag-form {
+  background: #1f2937 !important; border-color: #374151 !important; color: #f3f4f6 !important;
+}
+
+/* ---- 5. CARDS DÉTAIL (.gr-card, .gr-detail-block) — FIX BUG B ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .gr-card, :root:not([data-theme="light"]) .gr-detail-block,
+  :root:not([data-theme="light"]) .gr-detail-hero, :root:not([data-theme="light"]) .pp-card,
+  :root:not([data-theme="light"]) .cs-card, :root:not([data-theme="light"]) .ov2-card {
+    background: #1f2937 !important; border-color: #374151 !important; color: #f3f4f6 !important;
+  }
+  :root:not([data-theme="light"]) .gr-card h1, :root:not([data-theme="light"]) .gr-card h2,
+  :root:not([data-theme="light"]) .gr-card h3, :root:not([data-theme="light"]) .gr-card p,
+  :root:not([data-theme="light"]) .gr-card li, :root:not([data-theme="light"]) .gr-card span,
+  :root:not([data-theme="light"]) .gr-card strong, :root:not([data-theme="light"]) .gr-card div {
+    color: #f3f4f6 !important;
+  }
+}
+:root[data-theme="dark"] .gr-card, :root[data-theme="dark"] .gr-detail-block,
+:root[data-theme="dark"] .gr-detail-hero, :root[data-theme="dark"] .pp-card,
+:root[data-theme="dark"] .cs-card, :root[data-theme="dark"] .ov2-card {
+  background: #1f2937 !important; border-color: #374151 !important; color: #f3f4f6 !important;
+}
+:root[data-theme="dark"] .gr-card h1, :root[data-theme="dark"] .gr-card h2,
+:root[data-theme="dark"] .gr-card h3, :root[data-theme="dark"] .gr-card p,
+:root[data-theme="dark"] .gr-card li, :root[data-theme="dark"] .gr-card span,
+:root[data-theme="dark"] .gr-card strong, :root[data-theme="dark"] .gr-card div {
+  color: #f3f4f6 !important;
+}
+
+/* ---- 6. TITRES SECTIONS .gr-section (vert pastel) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .gr-section {
+    color: #6EE7B7 !important; border-bottom-color: rgba(110,231,183,0.2) !important;
+  }
+}
+:root[data-theme="dark"] .gr-section {
+  color: #6EE7B7 !important; border-bottom-color: rgba(110,231,183,0.2) !important;
+}
+
+/* ---- 7. PARAMÈTRES — page .pa-* en dark ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pa-wrap, :root:not([data-theme="light"]) .pa-content {
+    background: transparent !important;
+  }
+  :root:not([data-theme="light"]) .pa-title, :root:not([data-theme="light"]) .pa-form-h2 { color: #f3f4f6 !important; }
+  :root:not([data-theme="light"]) .pa-sub, :root:not([data-theme="light"]) .pa-form-sub { color: #9ca3af !important; }
+  :root:not([data-theme="light"]) .pa-tab { color: #9ca3af !important; }
+  :root:not([data-theme="light"]) .pa-tab:hover { background: rgba(16,185,129,0.12) !important; color: #6EE7B7 !important; }
+  :root:not([data-theme="light"]) .pa-tab.is-active { background: rgba(16,185,129,0.18) !important; color: #6EE7B7 !important; }
+  :root:not([data-theme="light"]) .pa-theme-card { background: #1f2937 !important; border-color: #374151 !important; }
+  :root:not([data-theme="light"]) .pa-theme-name, :root:not([data-theme="light"]) .pa-info-value { color: #f3f4f6 !important; }
+  :root:not([data-theme="light"]) .pa-theme-desc, :root:not([data-theme="light"]) .pa-info-label { color: #9ca3af !important; }
+}
+:root[data-theme="dark"] .pa-title, :root[data-theme="dark"] .pa-form-h2 { color: #f3f4f6 !important; }
+:root[data-theme="dark"] .pa-sub, :root[data-theme="dark"] .pa-form-sub { color: #9ca3af !important; }
+:root[data-theme="dark"] .pa-tab { color: #9ca3af !important; }
+:root[data-theme="dark"] .pa-tab:hover { background: rgba(16,185,129,0.12) !important; color: #6EE7B7 !important; }
+:root[data-theme="dark"] .pa-tab.is-active { background: rgba(16,185,129,0.18) !important; color: #6EE7B7 !important; }
+:root[data-theme="dark"] .pa-theme-card { background: #1f2937 !important; border-color: #374151 !important; }
+:root[data-theme="dark"] .pa-theme-name, :root[data-theme="dark"] .pa-info-value { color: #f3f4f6 !important; }
+:root[data-theme="dark"] .pa-theme-desc, :root[data-theme="dark"] .pa-info-label { color: #9ca3af !important; }
+:root[data-theme="dark"] body { background: #0f172a !important; color: #f3f4f6 !important; }
+
+
+/* ============================================================
+   === FIX 16/05 : Logo Assokit + barre de recherche dark ===
+   ============================================================ */
+
+/* 1. LOGO SIDEBAR "Assokit" — texte noir/invisible en dark */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .sb-logo,
+  :root:not([data-theme="light"]) .sb-logo span,
+  :root:not([data-theme="light"]) .sb-mobile-title {
+    color: #f3f4f6 !important;
+  }
+  :root:not([data-theme="light"]) .sb-org-name {
+    color: #f3f4f6 !important;
+  }
+  :root:not([data-theme="light"]) .sb-org-role {
+    color: #9ca3af !important;
+  }
+}
+:root[data-theme="dark"] .sb-logo,
+:root[data-theme="dark"] .sb-logo span,
+:root[data-theme="dark"] .sb-mobile-title {
+  color: #f3f4f6 !important;
+}
+:root[data-theme="dark"] .sb-org-name { color: #f3f4f6 !important; }
+:root[data-theme="dark"] .sb-org-role { color: #9ca3af !important; }
+
+/* 2. BARRE DE RECHERCHE dashboard — noir total au lieu de gris foncé */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dash-search-wrap {
+    background: #1f2937 !important;
+    border-color: #374151 !important;
+  }
+  :root:not([data-theme="light"]) .dash-search-wrap input,
+  :root:not([data-theme="light"]) #dash-search-input {
+    background: transparent !important;
+    color: #f3f4f6 !important;
+  }
+  :root:not([data-theme="light"]) .dash-search-wrap input::placeholder {
+    color: #9ca3af !important;
+    opacity: 1 !important;
+  }
+  :root:not([data-theme="light"]) .dash-search-icon {
+    color: #9ca3af !important;
+  }
+}
+:root[data-theme="dark"] .dash-search-wrap {
+  background: #1f2937 !important;
+  border-color: #374151 !important;
+}
+:root[data-theme="dark"] .dash-search-wrap input,
+:root[data-theme="dark"] #dash-search-input {
+  background: transparent !important;
+  color: #f3f4f6 !important;
+}
+:root[data-theme="dark"] .dash-search-wrap input::placeholder {
+  color: #9ca3af !important;
+  opacity: 1 !important;
+}
+:root[data-theme="dark"] .dash-search-icon { color: #9ca3af !important; }
+
+
+/* ============================================================
+   === FIX BOOSTER : sb-logo encore invisible — spécificité max ===
+   ============================================================ */
+
+/* Force avec spécificité html body :root[data-theme="dark"] */
+html body :root[data-theme="dark"] .sb-logo,
+html body :root[data-theme="dark"] .sb-logo > span,
+html body :root[data-theme="dark"] a.sb-logo,
+html body :root[data-theme="dark"] a.sb-logo span:not(.sb-logo-mark) {
+  color: #f3f4f6 !important;
+}
+
+/* Variante sans html body au cas où */
+:root[data-theme="dark"] a.sb-logo,
+:root[data-theme="dark"] a.sb-logo > span:not(.sb-logo-mark) {
+  color: #f3f4f6 !important;
+}
+
+/* Le span "Assokit" est le 2e enfant (après sb-logo-mark) */
+:root[data-theme="dark"] .sb-logo > span + span,
+:root[data-theme="dark"] a.sb-logo > span + span {
+  color: #f3f4f6 !important;
+}
+
+/* Auto via @media — version booster */
+@media (prefers-color-scheme: dark) {
+  html body :root:not([data-theme="light"]) a.sb-logo,
+  html body :root:not([data-theme="light"]) a.sb-logo > span:not(.sb-logo-mark),
+  html body :root:not([data-theme="light"]) .sb-logo > span + span {
+    color: #f3f4f6 !important;
+  }
+}
+
+
+/* ============================================================
+   === SOLUTION DIRECTE : couleur texte body globale en dark ===
+   Cible TOUS les textes héritant du body en mode sombre
+   ============================================================ */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body { color: #f3f4f6 !important; }
+  :root:not([data-theme="light"]) body * { color: inherit; }
+  /* Logo Assokit + textes de la sidebar */
+  :root:not([data-theme="light"]) .sb-logo,
+  :root:not([data-theme="light"]) .sb-logo > span,
+  :root:not([data-theme="light"]) .sb-org-name,
+  :root:not([data-theme="light"]) .sb-mobile-title { color: #f3f4f6 !important; }
+  /* Textes "à remplir" / "sans MAJ récente" dans dashboard "AUJOURD'HUI" */
+  :root:not([data-theme="light"]) .dash-today-row strong,
+  :root:not([data-theme="light"]) .dash-today-title,
+  :root:not([data-theme="light"]) .dash-today-text,
+  :root:not([data-theme="light"]) .dash-today-item strong,
+  :root:not([data-theme="light"]) .dash-today-item h3,
+  :root:not([data-theme="light"]) .dash-today-item .title { color: #f3f4f6 !important; }
+}
+
+:root[data-theme="dark"] body { color: #f3f4f6 !important; }
+:root[data-theme="dark"] .sb-logo,
+:root[data-theme="dark"] .sb-logo > span,
+:root[data-theme="dark"] .sb-org-name,
+:root[data-theme="dark"] .sb-mobile-title { color: #f3f4f6 !important; }
+:root[data-theme="dark"] .dash-today-row strong,
+:root[data-theme="dark"] .dash-today-title,
+:root[data-theme="dark"] .dash-today-text,
+:root[data-theme="dark"] .dash-today-item strong,
+:root[data-theme="dark"] .dash-today-item h3,
+:root[data-theme="dark"] .dash-today-item .title { color: #f3f4f6 !important; }
+
+
+/* ============================================================
+   === ROOT FIX : redéfinir les --ink-X en mode dark ===
+   La cause racine : body { color: var(--ink-1) } et --ink-1 = #0A0A0B même en dark
+   ============================================================ */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink:    #f3f4f6 !important;
+    --ink-1:  #f3f4f6 !important;
+    --ink-2:  #e5e7eb !important;
+    --ink-3:  #d1d5db !important;
+    --ink-4:  #9ca3af !important;
+    --ink-5:  #6b7280 !important;
+    --bg:     #0f172a !important;
+    --bg-2:   #0f172a !important;
+    --bg-3:   #1f2937 !important;
+    --border: rgba(255,255,255,0.10) !important;
+    --border-strong: rgba(255,255,255,0.18) !important;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ink:    #f3f4f6 !important;
+  --ink-1:  #f3f4f6 !important;
+  --ink-2:  #e5e7eb !important;
+  --ink-3:  #d1d5db !important;
+  --ink-4:  #9ca3af !important;
+  --ink-5:  #6b7280 !important;
+  --bg:     #0f172a !important;
+  --bg-2:   #0f172a !important;
+  --bg-3:   #1f2937 !important;
+  --border: rgba(255,255,255,0.10) !important;
+  --border-strong: rgba(255,255,255,0.18) !important;
+}

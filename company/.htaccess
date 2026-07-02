@@ -1,0 +1,9 @@
+<FilesMatch "\.(php|php3|php4|php5|phtml|pl|py|cgi|sh|jsp|asp)$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "\.(jpg|jpeg|png|gif|svg|webp)$">
+    Require all granted
+</FilesMatch>
+
+Options -Indexes

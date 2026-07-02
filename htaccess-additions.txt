@@ -1,0 +1,42 @@
+# ===========================================================
+# ROUTES À AJOUTER DANS TON .htaccess ACTUEL
+# ===========================================================
+# Copie ces blocs dans ton .htaccess existant, à la fin de la
+# section correspondante (avant ton dernier RewriteRule général).
+# ===========================================================
+
+
+# ------- SECTION 1 : SUPER ADMIN -------
+# Ajouter ces lignes dans la section "super-admin" de ton .htaccess
+
+RewriteRule ^super-admin/nouvelle-asso/?$         super-admin-nouvelle-asso.php [L,QSA]
+RewriteRule ^super-admin/logs/?$                  super-admin-logs.php [L,QSA]
+RewriteRule ^super-admin/super-admins/?$          super-admin-super-admins.php [L,QSA]
+RewriteRule ^super-admin/associations/?$          super-admin-associations.php [L,QSA]
+RewriteRule ^super-admin/projets/?$               super-admin-projets.php [L,QSA]
+RewriteRule ^super-admin/abonnements/?$           super-admin-abonnements.php [L,QSA]
+
+# NOUVELLES routes du Pack Fondateur ULTIME
+RewriteRule ^super-admin/stats/?$                 super-admin-stats.php [L,QSA]
+RewriteRule ^super-admin/notifications/?$         super-admin-notifications.php [L,QSA]
+
+# NOUVELLES routes du Pack 2 Support
+RewriteRule ^super-admin/support/?$               super-admin-support.php [L,QSA]
+RewriteRule ^super-admin/support/([0-9]+)/?$      super-admin-support-ticket.php?id=$1 [L,QSA]
+
+
+# ------- SECTION 2 : ROUTES ASSO -------
+# Ajouter ces lignes dans la section "routes asso" de ton .htaccess
+
+# NOUVELLES routes du Pack 2 Support (côté asso)
+RewriteRule ^support/?$                           support.php [L,QSA]
+RewriteRule ^support/nouveau/?$                   support-nouveau.php [L,QSA]
+RewriteRule ^support/ticket/([0-9]+)/?$           support-ticket.php?id=$1 [L,QSA]
+
+
+# ===========================================================
+# FIN DES AJOUTS
+# ===========================================================
+# Tu n'as PAS besoin de supprimer quoi que ce soit.
+# Juste ajouter ces lignes dans les bonnes sections.
+# ===========================================================

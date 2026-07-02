@@ -1,0 +1,40 @@
+# Copyright (C) 2025 All in One SEO Team
+# This file is distributed under the same license as the AIOSEO - IndexNow plugin.
+msgid ""
+msgstr ""
+"Project-Id-Version: AIOSEO - IndexNow 1.0.12\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/aioseo-index-now\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2025-06-24T16:01:22+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: aioseo-index-now\n"
+
+#. Plugin Name of the plugin
+#: aioseo-index-now.php
+msgid "AIOSEO - IndexNow"
+msgstr ""
+
+#. Plugin URI of the plugin
+#. Author URI of the plugin
+#: aioseo-index-now.php
+msgid "https://aioseo.com"
+msgstr ""
+
+#. Description of the plugin
+#: aioseo-index-now.php
+msgid "Adds IndexNow support to AIOSEO."
+msgstr ""
+
+#. Author of the plugin
+#: aioseo-index-now.php
+msgid "All in One SEO Team"
+msgstr ""
+
+#: app/IndexNow.php:171
+msgid "Plugin is missing required dependencies. Please contact support for more information."
+msgstr ""

@@ -1,0 +1,2 @@
+# Bloque tout accès direct aux fichiers du dossier includes/
+Require all denied

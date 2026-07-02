@@ -1,0 +1,108 @@
+# Copyright (C) 2025 All in One SEO Team
+# This file is distributed under the same license as the AIOSEO - Image SEO plugin.
+msgid ""
+msgstr ""
+"Project-Id-Version: AIOSEO - Image SEO 1.1.20\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/aioseo-image-seo\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2025-06-24T16:01:22+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: aioseo-image-seo\n"
+
+#. Plugin Name of the plugin
+#: aioseo-image-seo.php
+msgid "AIOSEO - Image SEO"
+msgstr ""
+
+#. Plugin URI of the plugin
+#. Author URI of the plugin
+#: aioseo-image-seo.php
+msgid "https://aioseo.com"
+msgstr ""
+
+#. Description of the plugin
+#: aioseo-image-seo.php
+msgid "Adds Image SEO support to All in One SEO."
+msgstr ""
+
+#. Author of the plugin
+#: aioseo-image-seo.php
+msgid "All in One SEO Team"
+msgstr ""
+
+#: app/Image/Image.php:452
+msgid "Autogenerate image attributes"
+msgstr ""
+
+#: app/ImageSeo.php:135
+msgid "Plugin is missing required dependencies. Please contact support for more information."
+msgstr ""
+
+#: app/Utils/Tags.php:192
+msgid "Image Title"
+msgstr ""
+
+#: app/Utils/Tags.php:193
+msgid "Your image title."
+msgstr ""
+
+#: app/Utils/Tags.php:197
+msgid "Image SEO Title"
+msgstr ""
+
+#: app/Utils/Tags.php:198
+msgid "Your image SEO title. This is the title you manually enter in the SEO settings."
+msgstr ""
+
+#: app/Utils/Tags.php:202
+msgid "Image SEO Description"
+msgstr ""
+
+#: app/Utils/Tags.php:203
+msgid "Your image SEO description. This is the meta description you enter in the SEO settings."
+msgstr ""
+
+#: app/Utils/Tags.php:207
+msgid "Post SEO Title"
+msgstr ""
+
+#: app/Utils/Tags.php:208
+msgid "The SEO title set for the page/post."
+msgstr ""
+
+#: app/Utils/Tags.php:212
+msgid "Post SEO Description"
+msgstr ""
+
+#: app/Utils/Tags.php:213
+msgid "The SEO description set for the page/post."
+msgstr ""
+
+#: app/Utils/Tags.php:217
+msgid "Post Publication Day"
+msgstr ""
+
+#: app/Utils/Tags.php:218
+msgid "The day of the month when the post/page, where the image is embedded, was published, formatted based on your locale."
+msgstr ""
+
+#: app/Utils/Tags.php:223
+msgid "Post Publication Month"
+msgstr ""
+
+#: app/Utils/Tags.php:224
+msgid "The month when the post/page, where the image is embedded, was published, formatted based on your locale."
+msgstr ""
+
+#: app/Utils/Tags.php:229
+msgid "Post Publication Year"
+msgstr ""
+
+#: app/Utils/Tags.php:230
+msgid "The year when the post/page, where the image is embedded, was published, formatted based on your locale."
+msgstr ""

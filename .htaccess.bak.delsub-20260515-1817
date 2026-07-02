@@ -1,0 +1,490 @@
+# ASSOKIT — Configuration du serveur Apache (v18 - mai 2026)
+# ============================================================
+# Version complete incluant :
+#   - Routes existantes (projet, adherent, canal, admin...)
+#   - Routes Super Admin (V16 / V16.1)
+#   - Routes Fondateur ULTIME (stats, notifications)
+#   - Routes Pack 2 Support (tickets asso + cockpit)
+#   - Routes Communication (gerees par la regle generique)
+#   - Pack #4 Cotisations (mai 2026)
+#   - Pack #5 Vue publique projet (mai 2026)
+# ============================================================
+
+# Fichier par défaut quand on tape juste le domaine
+DirectoryIndex index.html index.php
+
+# Active le moteur de réécriture
+RewriteEngine On
+
+# ============================================================
+# 1. FORCER LE HTTPS
+# ============================================================
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ============================================================
+# 2. URLS PROPRES POUR LES RESSOURCES AVEC ID
+# ============================================================
+
+# /projet/1               → /projet.php?id=1
+# /projet/1/messages      → /projet.php?id=1&tab=messages
+RewriteRule ^projet/(\d+)/?$                 projet.php?id=$1 [L,QSA]
+RewriteRule ^projet/(\d+)/([a-z]+)/?$        projet.php?id=$1&tab=$2 [L,QSA]
+
+# /adherent/3             → /adherent.php?id=3
+RewriteRule ^adherent/(\d+)/?$               adherent.php?id=$1 [L,QSA]
+
+# /nouveau-projet/1       → /nouveau-projet.php?folder=1
+RewriteRule ^nouveau-projet/(\d+)/?$         nouveau-projet.php?folder=$1 [L,QSA]
+
+# /nouveau-projet (sans ID) → nouveau-projet.php (dossier choisi via dropdown)
+RewriteRule ^nouveau-projet/?$               nouveau-projet.php [L,QSA]
+
+# /nouveau-dossier → nouveau-dossier.php
+RewriteRule ^nouveau-dossier/?$              nouveau-dossier.php [L,QSA]
+
+# /modifier-projet/42     → /modifier-projet.php?id=42
+RewriteRule ^modifier-projet/(\d+)/?$        modifier-projet.php?id=$1 [L,QSA]
+
+# /evenement/42           → /evenement.php?id=42
+RewriteRule ^evenement/(\d+)/?$              evenement.php?id=$1 [L,QSA]
+
+# /nouveau-evenement/42   → /nouveau-evenement.php?project=42
+RewriteRule ^nouveau-evenement/(\d+)/?$      nouveau-evenement.php?project=$1 [L,QSA]
+
+# /google-callback        → /google-callback.php (OAuth Google)
+RewriteRule ^google-callback/?$              google-callback.php [L,QSA]
+
+# /google-connect         → /google-connect.php (démarre OAuth Google)
+RewriteRule ^google-connect/?$               google-connect.php [L,QSA]
+
+# /canal/pole-video       → /canal.php?slug=pole-video
+# /canal/pole-video/parametres → /canal.php?slug=pole-video&action=parametres
+RewriteRule ^canal/([a-z0-9-]+)/?$           canal.php?slug=$1 [L,QSA]
+RewriteRule ^canal/([a-z0-9-]+)/([a-z]+)/?$  canal.php?slug=$1&action=$2 [L,QSA]
+
+# /admin-modifier-utilisateur/42 → /admin-modifier-utilisateur.php?id=42
+RewriteRule ^admin-modifier-utilisateur/(\d+)/?$   admin-modifier-utilisateur.php?id=$1 [L,QSA]
+
+RewriteRule ^supprimer-adherent/(\d+)/?$     supprimer-adherent.php?id=$1 [L,QSA]
+RewriteRule ^adherents-corbeille/?$          adherents-corbeille.php [L,QSA]
+RewriteRule ^definir-mot-de-passe/([a-f0-9]{64})/?$   definir-mot-de-passe.php?token=$1 [L,QSA]
+RewriteRule ^mot-de-passe-oublie/?$                    mot-de-passe-oublie.php [L,QSA]
+
+# ============================================================
+# Pack #4 Cotisations & Pack #5 Vue publique projet (mai 2026)
+# ============================================================
+
+# /cotisation/12 → /cotisation-detail.php?id=12
+RewriteRule ^cotisation/(\d+)/?$             cotisation-detail.php?id=$1 [L,QSA]
+
+# /projet-public/<token> → /projet-public.php?t=<token>
+RewriteRule ^projet-public/([a-f0-9]{32,64})/?$  projet-public.php?t=$1 [L,QSA]
+# Pack #6 Subventions
+RewriteRule ^fondateur-pricing/?$  fondateur-pricing.php [L,QSA]
+RewriteRule ^subvention/(\d+)/?$             subvention-detail.php?id=$1 [L,QSA]
+
+# Pack #8 Assemblées
+RewriteRule ^assemblee/(\d+)/?$              assemblee-detail.php?id=$1 [L,QSA]
+RewriteRule ^ag-public/([a-f0-9]{32,64})/?$   ag-public.php?t=$1 [L,QSA]
+# Pack #9 Émargement
+RewriteRule ^emargement/(\d+)/?$              emargement-detail.php?id=$1 [L,QSA]
+RewriteRule ^emarger/([a-f0-9]{32,64})/?$      emarger.php?t=$1 [L,QSA]
+
+
+# ============================================================
+#  Page D'accueil 
+# ============================================================
+
+RewriteRule ^signup/?$                       signup.php [L,QSA]
+RewriteRule ^mentions-legales/?$             mentions-legales.php [L,QSA]
+RewriteRule ^politique-confidentialite/?$    politique-confidentialite.php [L,QSA]
+RewriteRule ^cgu/?$                          cgu.php [L,QSA]
+
+# Routes Pack #5B Factures
+RewriteRule ^super-admin-facture-generate/?$       super-admin-facture-generate.php [L,QSA]
+RewriteRule ^super-admin-factures/?$               super-admin-factures.php [L,QSA]
+RewriteRule ^super-admin-facture-edit/?$           super-admin-facture-edit.php [L,QSA]
+RewriteRule ^super-admin-facture-edit-save/?$      super-admin-facture-edit-save.php [L,QSA]
+RewriteRule ^super-admin-facture-delete/?$         super-admin-facture-delete.php [L,QSA]
+RewriteRule ^mon-asso-tags/?$                    mon-asso-tags.php [L,QSA]
+RewriteRule ^mon-asso-facture-duplicate/?$       mon-asso-facture-duplicate.php [L,QSA]
+RewriteRule ^mon-asso-devis-duplicate/?$         mon-asso-devis-duplicate.php [L,QSA]
+RewriteRule ^mon-asso-export/?$                  mon-asso-export.php [L,QSA]
+
+
+
+# Routes Sous-pack 2 — Email + Page publique
+RewriteRule ^facture/([a-f0-9-]{36})/?$  facture-public.php?uuid=$1 [L,QSA]
+RewriteRule ^facture-paid/?$             facture-paid.php [L,QSA]
+RewriteRule ^mon-asso-facture-send/?$    mon-asso-facture-send.php [L,QSA]
+RewriteRule ^mon-asso-logo/?$  mon-asso-logo.php [L,QSA]
+RewriteRule ^mon-asso-notification-respond/?$  mon-asso-notification-respond.php [L,QSA]
+RewriteRule ^mon-asso-factures-parametres/?$   mon-asso-factures-parametres.php [L,QSA]
+RewriteRule ^cron_asso_invoice_dunning_check/?$  cron_asso_invoice_dunning_check.php [L,QSA]
+RewriteRule ^cron_asso_invoice_dunning_send/?$   cron_asso_invoice_dunning_send.php [L,QSA]
+
+
+# Désactive MultiViews (préserve POST)
+Options -MultiViews
+
+# Routes Sous-pack 1
+RewriteRule ^mon-asso-factures/?$            mon-asso-factures.php [L,QSA]
+RewriteRule ^mon-asso-facture-new/?$         mon-asso-facture-new.php [L,QSA]
+RewriteRule ^mon-asso-facture-edit/?$        mon-asso-facture-edit.php [L,QSA]
+RewriteRule ^mon-asso-facture-save/?$        mon-asso-facture-save.php [L,QSA]
+RewriteRule ^mon-asso-clients/?$             mon-asso-clients.php [L,QSA]
+RewriteRule ^mon-asso-client-detail/?$       mon-asso-client-detail.php [L,QSA]
+
+RewriteRule ^mon-asso-devis/?$            mon-asso-devis.php [L,QSA]
+RewriteRule ^mon-asso-devis-new/?$        mon-asso-devis-new.php [L,QSA]
+RewriteRule ^mon-asso-devis-edit/?$       mon-asso-devis-edit.php [L,QSA]
+RewriteRule ^mon-asso-devis-save/?$       mon-asso-devis-save.php [L,QSA]
+RewriteRule ^mon-asso-devis-send/?$       mon-asso-devis-send.php [L,QSA]
+RewriteRule ^mon-asso-devis-convert/?$    mon-asso-devis-convert.php [L,QSA]
+RewriteRule ^mon-asso-stats/?$    mon-asso-stats.php [L,QSA]
+RewriteRule ^mon-asso-plan/?$ mon-asso-plan.php [L,QSA]
+RewriteRule ^admin-plans/?$ admin-plans.php [L,QSA]
+RewriteRule ^admin-subscriptions/?$ admin-subscriptions.php [L,QSA]
+
+# Page publique signature
+RewriteRule ^devis/([a-f0-9-]{36})/?$     devis-public.php?uuid=$1 [L,QSA]
+RewriteRule ^devis-sign/?$                devis-sign.php [L,QSA]
+
+# Validation IndexNow (clé hex 32 chars à la racine)
+RewriteRule ^([a-f0-9]{32})\.txt$ indexnow-key.php?key=$1 [L,QSA]
+
+
+# Assemblee
+
+
+
+# ============================================================
+# --- Route FONDATEUR ---
+# ============================================================
+
+# Routes Fondateur (nouvelles URLs propres)
+   RewriteRule ^fondateur-plans/?$ fondateur-plans.php [L,QSA]
+   RewriteRule ^fondateur-create-organization/?$ fondateur-create-organization.php [L,QSA]
+   RewriteRule ^fondateur-domains/?$ fondateur-domains.php [L,QSA]
+   RewriteRule ^fondateur-stripe-config/?$ fondateur-stripe-config.php [L,QSA]
+   
+   # Redirections 301 anciennes URLs (SEO + bookmarks)
+   RewriteRule ^admin-plans/?$ /fondateur-plans [R=301,L]
+   RewriteRule ^admin-create-organization/?$ /fondateur-create-organization [R=301,L]
+   RewriteRule ^admin-domains/?$ /fondateur-domains [R=301,L]
+   RewriteRule ^admin-stripe-config/?$ /fondateur-stripe-config [R=301,L]
+   
+   
+   # Fix démo : ancien lien dashboard /admin-tickets → /support
+RewriteRule ^admin-tickets/?$ /support [R=301,L]
+RewriteRule ^admin-tickets\.php/?$ /support [R=301,L]
+   
+   
+
+# ============================================================
+# --- URLs propres pour les pages publiques ---
+# ============================================================
+
+# /sitemap.xml → sitemap.xml.php
+RewriteRule ^sitemap\.xml$ sitemap.xml.php [L]
+# Sitemaps
+RewriteRule ^sitemap\.xml$        sitemap.xml.php       [L]
+RewriteRule ^sitemap-pages\.xml$  sitemap-pages.xml.php [L]
+RewriteRule ^sitemap-blog\.xml$   sitemap-blog.xml.php  [L]
+
+# /blog/{slug}  → blog-article.php?slug={slug}
+RewriteRule ^blog/([a-z0-9-]+)/?$ blog-article.php?slug=$1 [L,QSA]
+
+# /blog → blog.php
+RewriteRule ^blog/?$ blog.php [L,QSA]
+
+# Pages publiques propres (sans .php)
+RewriteRule ^fonctionnalites/?$ fonctionnalites.php [L,QSA]
+RewriteRule ^tarifs/?$ tarifs.php [L,QSA]
+RewriteRule ^a-propos/?$ a-propos.php [L,QSA]
+RewriteRule ^contact/?$ contact.php [L,QSA]
+RewriteRule ^contact-send/?$ contact-send.php [L,QSA]
+RewriteRule ^mentions-legales/?$ mentions-legales.php [L,QSA]
+RewriteRule ^cgu/?$ cgu.php [L,QSA]
+RewriteRule ^confidentialite/?$ confidentialite.php [L,QSA]
+RewriteRule ^cookies/?$ cookies.php [L,QSA]
+
+# Redirections 301 .php → URL propre (SEO + cohérence)
+# Existait déjà en lignes 214-215 du htaccess actuel pour le dashboard.
+# Compléter avec ces redirections publiques :
+RewriteCond %{THE_REQUEST} \s/+(fonctionnalites|tarifs|a-propos|contact|mentions-legales|cgu|confidentialite|cookies|blog)\.php[\s?] [NC]
+RewriteRule ^ /%1 [R=301,L]
+
+RewriteRule ^mon-asso-plan/?$ mon-asso-plan.php [L,QSA]
+RewriteRule ^admin-plans/?$ admin-plans.php [L,QSA]
+RewriteRule ^admin-subscriptions/?$ admin-subscriptions.php [L,QSA]
+RewriteRule ^diffusion-email/?$ diffusion-email.php [L,QSA]
+
+RewriteRule ^dev-test-plans/?$ dev-test-plans.php [L,QSA]
+RewriteRule ^mon-asso-plan/?$ mon-asso-plan.php [L,QSA]
+
+# ============================================================
+#  STRIPE
+# ============================================================
+
+RewriteRule ^admin-stripe-config/?$ admin-stripe-config.php [L,QSA]
+# Pages paiement
+RewriteRule ^mon-asso-paiement/?$ mon-asso-paiement.php [L,QSA]
+RewriteRule ^mon-asso-paiement-success/?$ mon-asso-paiement-success.php [L,QSA]
+
+# Endpoints Stripe
+RewriteRule ^stripe-create-payment-intent/?$ stripe-create-payment-intent.php [L,QSA]
+RewriteRule ^stripe-webhook/?$ stripe-webhook.php [L,QSA]
+
+# Pages dashboard abonnement
+RewriteRule ^mon-asso-factures/?$ mon-asso-factures.php [L,QSA]
+RewriteRule ^mon-asso-annuler-abonnement/?$ mon-asso-annuler-abonnement.php [L,QSA]
+
+# Page admin création compte
+RewriteRule ^admin-create-organization/?$ admin-create-organization.php [L,QSA]
+
+# ============================================================
+
+RewriteRule ^admin-domains/?$ admin-domains.php [L,QSA]
+
+# ============================================================
+#  Archives
+# ============================================================
+
+# Archives
+RewriteRule ^supprimer-dossier/(\d+)/?$   supprimer-dossier.php?id=$1 [L,QSA]
+RewriteRule ^archives/?$                   archives.php [L,QSA]
+RewriteRule ^archives-restaurer/?$         archives-restaurer.php [L,QSA]
+RewriteRule ^supprimer-projet/(\d+)/?$    supprimer-projet.php?id=$1 [L,QSA]
+
+
+
+# ============================================================
+#  Today AI Refresh
+# ============================================================
+
+RewriteRule ^today-ai-refresh/?$    today-ai-refresh.php [L,QSA]
+
+# ============================================================
+#  Pack #5 — Synchro calendrier (iCal feed via token)
+# ============================================================
+
+RewriteRule ^ical/([a-f0-9]{32,64})\.ics$  ical-feed.php?t=$1 [L,QSA]
+
+# ============================================================
+#  Guide On Boarding 
+# ============================================================
+
+RewriteRule ^guide-onboarding-done/?$    guide-onboarding-done.php [L,QSA]
+
+# ============================================================
+# 2.1 ROUTES SUPER ADMIN (V16 / V16.1 / ULTIME - avril 2026)
+# ============================================================
+# /super-admin                   → /super-admin.php              (dashboard)
+# /super-admin/nouvelle-asso     → /super-admin-nouvelle-asso.php
+# /super-admin/logs              → /super-admin-logs.php
+# /super-admin/super-admins      → /super-admin-super-admins.php
+# /super-admin/associations      → /super-admin-associations.php
+# /super-admin/projets           → /super-admin-projets.php
+# /super-admin/abonnements       → /super-admin-abonnements.php
+# /super-admin/stats             → /super-admin-stats.php        (Fondateur uniquement)
+# /super-admin/notifications     → /super-admin-notifications.php (Fondateur uniquement)
+# /super-admin/support           → /super-admin-support.php       (Pack 2)
+# /super-admin/support/42        → /super-admin-support-ticket.php?id=42 (Pack 2)
+# ============================================================
+
+# Routes avec segments (doivent etre AVANT la regle generique plus bas)
+RewriteRule ^super-admin/nouvelle-asso/?$         super-admin-nouvelle-asso.php [L,QSA]
+RewriteRule ^super-admin/logs/?$                  super-admin-logs.php [L,QSA]
+RewriteRule ^super-admin/super-admins/?$          super-admin-super-admins.php [L,QSA]
+# Pack #5A — Facturation asso (DOIT être avant la regle generique associations)
+RewriteRule ^super-admin/associations/facturation/save/?$   super-admin-association-facturation-save.php [L,QSA]
+RewriteRule ^super-admin/associations/facturation/?$        test-meta.php [L,QSA]
+RewriteRule ^super-admin/associations/?$          super-admin-associations.php [L,QSA]
+RewriteRule ^mon-asso/facturation/?$              mon-asso-facturation.php [L,QSA]
+RewriteRule ^super-admin/projets/?$               super-admin-projets.php [L,QSA]
+RewriteRule ^super-admin/abonnements/?$           super-admin-abonnements.php [L,QSA]
+RewriteRule ^super-admin/stats/?$                 super-admin-stats.php [L,QSA]
+RewriteRule ^super-admin/notifications/?$         super-admin-notifications.php [L,QSA]
+
+# Incarnation
+RewriteRule ^super-admin/incarner/?$                  super-admin-impersonate.php [L,QSA]
+RewriteRule ^super-admin/incarner-stop/?$             super-admin-stop-impersonation.php [L,QSA]
+RewriteRule ^super-admin/logs-incarnation/?$          super-admin-impersonation-logs.php [L,QSA]
+
+# Sécurité : bloquer l'accès direct au helper et à la bannière
+<Files "impersonation-helpers.php">
+    Require all denied
+</Files>
+
+<Files "impersonation-banner.php">
+    Require all denied
+</Files>
+
+
+# Pack 2 Support — cote cockpit
+RewriteRule ^super-admin/support/?$               super-admin-support.php [L,QSA]
+RewriteRule ^super-admin/support/(\d+)/?$         super-admin-support-ticket.php?id=$1 [L,QSA]
+
+# Pour les futures versions (V16.2 gestion asso, V16.3 incarnation) :
+# RewriteRule ^super-admin/asso/(\d+)/?$          super-admin-asso.php?id=$1 [L,QSA]
+# RewriteRule ^super-admin/impersonate/?$         super-admin-impersonate.php [L,QSA]
+
+# ============================================================
+# 2.2 ROUTES COMMUNICATION (V15 - avril 2026)
+# ============================================================
+# /communication                     → /communication.php
+# /communication-generer             → /communication-generer.php (avec ?type=X)
+# /communication-template-save       → /communication-template-save.php (POST AJAX)
+# Ces URLs simples sont gerees par la regle generique plus bas,
+# mais on les explicite pour la clarte et les futures versions.
+# ============================================================
+
+# Pour la V2 (template avec ID) :
+# RewriteRule ^communication-template/(\d+)/?$   communication-template.php?id=$1 [L,QSA]
+
+# ============================================================
+# 2.3 ROUTES PACK 2 SUPPORT - COTE ASSO (avril 2026)
+# ============================================================
+# /support                   → /support.php              (liste tickets asso)
+# /support/nouveau           → /support-nouveau.php      (creer ticket)
+# /support/ticket/42         → /support-ticket.php?id=42 (fiche + fil conversation)
+# ============================================================
+
+RewriteRule ^support/?$                           support.php [L,QSA]
+RewriteRule ^support/nouveau/?$                   support-nouveau.php [L,QSA]
+RewriteRule ^support/ticket/(\d+)/?$              support-ticket.php?id=$1 [L,QSA]
+
+# ========== Pack #5-ZERO — Paramètres société ==========
+RewriteRule ^fondateur-cockpit/societe/?$              super-admin-parametres-societe.php [L,QSA]
+RewriteRule ^fondateur-cockpit/societe/save/?$         super-admin-parametres-societe-save.php [L,QSA]
+
+# ============================================================
+# 2.4 ROUTES ADHÉRENTS - Ajout / Export / Import CSV
+# ============================================================
+RewriteRule ^nouveau-adherent/?$         nouveau-adherent.php [L,QSA]
+RewriteRule ^adherents-export/?$         adherents-export.php [L,QSA]
+RewriteRule ^adherents-import/?$         adherents-import.php [L,QSA]
+RewriteRule ^modifier-adherent/(\d+)/?$      modifier-adherent.php?id=$1 [L,QSA]
+
+# ============================================================
+# 3. URLS PROPRES (sans .php) POUR LES PAGES SIMPLES
+# ============================================================
+RewriteCond %{THE_REQUEST} \s/+(.+?)\.php[\s?] [NC]
+RewriteRule ^ /%1 [R=301,L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.+?)/?$ $1.php [L]
+
+# ========== Niveau 2 sécurité SA ==========
+
+# Login / logout dédiés au cockpit Fondateur
+RewriteRule ^super-admin-login/?$              super-admin-login.php [L,QSA]
+RewriteRule ^super-admin-logout/?$             super-admin-logout.php [L,QSA]
+
+# Logs d'accès (Fondateur only)
+RewriteRule ^fondateur-cockpit/access-logs/?$  super-admin-access-logs.php [L,QSA]
+
+# URL discrète alias vers le dashboard SA
+RewriteRule ^fondateur-cockpit/?$              super-admin.php [L,QSA]
+RewriteRule ^fondateur-cockpit/(.+)$           super-admin/$1 [L,QSA]
+
+# Pack #5B — Factures PDF
+RewriteRule ^super-admin/factures/generate/?$   super-admin-facture-generate.php [L,QSA]
+RewriteRule ^super-admin/factures/?$            super-admin-factures.php [L,QSA]
+
+
+
+# ============================================================
+# Pack #3 — CRON automations (ajouté le 24/04/2026)
+# ============================================================
+RewriteRule ^admin-cron/?$                  admin-cron.php [L,QSA]
+RewriteRule ^admin-cron-detail/?$           admin-cron-detail.php [L,QSA]
+RewriteRule ^admin-cron-run-manual/?$       admin-cron-run-manual.php [L,QSA]
+
+# ========== Cockpit CRON login (sécurité réauth 15 min) ==========
+RewriteRule ^admin-cron-login/?$             admin-cron-login.php [L,QSA]
+RewriteRule ^admin-cron-logout/?$            admin-cron-logout.php [L,QSA]
+
+# Sécurité : bloquer l'accès direct aux fichiers internes CRON
+<Files "cron-includes.php">
+    Require all denied
+</Files>
+<Files "cron-email-templates.php">
+    Require all denied
+</Files>
+<Files "cron-job-impayes.php">
+    Require all denied
+</Files>
+<Files "cron-job-essai.php">
+    Require all denied
+</Files>
+<Files "cron-job-renouvellements.php">
+    Require all denied
+</Files>
+
+# ============================================================
+
+# ============================================================
+# 4. PROTÉGER LES FICHIERS SENSIBLES
+# ============================================================
+<Files "config.php">
+    Require all denied
+</Files>
+
+<Files "ai-helper.php">
+    Require all denied
+</Files>
+
+<Files "google-helper.php">
+    Require all denied
+</Files>
+
+<Files "resend-helper.php">
+    Require all denied
+</Files>
+
+<Files "sms-helper.php">
+    Require all denied
+</Files>
+
+<Files "sa-permissions.php">
+    Require all denied
+</Files>
+
+<Files "support-helper.php">
+    Require all denied
+</Files>
+
+<Files "includes-cotisations.php">
+    Require all denied
+</Files>
+
+<FilesMatch "\.(sql|md|log|env|bak|swp|txt)$">
+    Require all denied
+</FilesMatch>
+
+<Files ".htaccess">
+    Require all denied
+</Files>
+
+
+
+# ============================================================
+# 5. SÉCURITÉ DE BASE
+# ============================================================
+Options -Indexes
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/webp "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+
+
+</IfModule>

@@ -1,0 +1,122 @@
+# ============================================================
+# ASSOKIT - robots.txt
+# Logiciel de gestion d'association loi 1901 et TPE
+# https://assokit.fr
+# ============================================================
+
+# === RÈGLES POUR TOUS LES BOTS ===
+User-agent: *
+
+# Pages privées (zone connectée)
+Disallow: /dashboard
+Disallow: /mon-asso-*
+Disallow: /admin-*
+Disallow: /super-admin/
+Disallow: /super-admin
+Disallow: /fondateur-*
+Disallow: /projet/
+Disallow: /projets
+Disallow: /nouveau-projet
+Disallow: /modifier-projet
+Disallow: /supprimer-projet
+Disallow: /action-projet
+Disallow: /nouveau-dossier
+Disallow: /supprimer-dossier
+Disallow: /archives
+
+# Endpoints techniques
+Disallow: /api/
+Disallow: /cron/
+Disallow: /webhooks/
+Disallow: /stripe-*
+Disallow: /webhook-*
+
+# Fichiers techniques
+Disallow: /vendor/
+Disallow: /config.php
+Disallow: /*.log$
+Disallow: /*.bak$
+Disallow: /*.sql$
+Disallow: /tmp/
+
+# Recherche & paramètres URL bruyants
+Disallow: /*?*utm_*
+Disallow: /*?*fbclid*
+Disallow: /*?*gclid*
+Disallow: /*?*ref=*
+
+# Pages d'authentification
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /logout
+
+# === AUTORISATIONS EXPLICITES (RECOMMANDÉ) ===
+Allow: /
+Allow: /plans
+Allow: /inscription
+Allow: /login
+Allow: /contact
+Allow: /fonctionnalites
+Allow: /pour-associations
+Allow: /pour-tpe
+Allow: /mentions-legales
+Allow: /cgu
+Allow: /cgv
+Allow: /politique-confidentialite
+Allow: /rgpd
+Allow: /cookies
+Allow: /asso/
+Allow: /assets/
+
+# === RÈGLES SPÉCIFIQUES BOTS ===
+
+# Google : politesse standard
+User-agent: Googlebot
+Crawl-delay: 1
+Disallow: /dashboard
+Disallow: /mon-asso-*
+Disallow: /admin-*
+Disallow: /super-admin/
+Disallow: /fondateur-*
+
+# Bing : politesse standard
+User-agent: Bingbot
+Crawl-delay: 1
+Disallow: /dashboard
+Disallow: /mon-asso-*
+Disallow: /admin-*
+
+# Bots agressifs : on ralentit
+User-agent: AhrefsBot
+Crawl-delay: 10
+
+User-agent: SemrushBot
+Crawl-delay: 10
+
+User-agent: MJ12bot
+Crawl-delay: 10
+
+# Bots IA scrapers (à toi de décider — par défaut on autorise pour visibilité)
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+# === SITEMAPS ===
+Sitemap: https://assokit.fr/sitemap.xml
+
+# === HOST CANONIQUE (Yandex) ===
+Host: assokit.fr

@@ -1,0 +1,444 @@
+<?php
+/**
+ * communication.php — Hub du module Communication (V2/V3)
+ * =========================================================
+ * Modifs V2/V3 :
+ *   - Onglet DIFFUSER : liste des broadcasts + bouton Nouveau
+ *   - Onglet EVENEMENTS : liste des events + bouton Nouveau
+ *   - Onglet AFFICHES : reporte en V5 (bloc "Bientot")
+ */
+
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes-layout.php';
+require_login();
+require_capability('access_marketing');
+
+$user_id = (int) $_SESSION['user_id'];
+$org_id  = (int) $_SESSION['org_id'];
+$tab     = $_GET['tab'] ?? 'rediger';
+if (!in_array($tab, ['rediger', 'diffuser', 'evenements', 'affiches', 'bibliotheque'], true)) {
+    $tab = 'rediger';
+}
+
+// --- Flash message ---
+$flash = $_SESSION['flash_communication'] ?? null;
+unset($_SESSION['flash_communication']);
+
+// --- Stats rapides ---
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM communication_campaigns WHERE org_id = ? AND status = 'sent'");
+$stmt->execute([$org_id]);
+$nb_sent = (int) $stmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM communication_saved_templates WHERE org_id = ?");
+$stmt->execute([$org_id]);
+$nb_templates = (int) $stmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM communication_campaigns WHERE org_id = ? AND ai_generated = 1");
+$stmt->execute([$org_id]);
+$nb_ai = (int) $stmt->fetchColumn();
+
+// Stats V2 diffusion
+$nb_broadcasts = 0;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM communication_broadcasts WHERE org_id = ? AND status = 'sent'");
+    $stmt->execute([$org_id]);
+    $nb_broadcasts = (int) $stmt->fetchColumn();
+} catch (Throwable $e) {}
+
+// Stats V3 events
+$nb_events_upcoming = 0;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM communication_events WHERE org_id = ? AND status = 'published' AND start_date >= NOW()");
+    $stmt->execute([$org_id]);
+    $nb_events_upcoming = (int) $stmt->fetchColumn();
+} catch (Throwable $e) {}
+
+// --- Catalogue des types de documents generables ---
+$catalog = [
+    'ag' => [
+        'label' => 'Vie associative',
+        'icon'  => '🏛️',
+        'desc'  => 'Documents officiels lies a la gouvernance',
+        'items' => [
+            'convocation_ag_ordinaire' => ['title' => 'Convocation AG ordinaire', 'desc' => 'Lettre formelle conforme loi 1901 avec ordre du jour'],
+            'convocation_ag_extra'     => ['title' => 'Convocation AG extraordinaire', 'desc' => 'Modification statuts, dissolution, fusion...'],
+            'pv_ag'                    => ['title' => 'Proces-verbal d\'AG', 'desc' => 'PV structure a partir de vos notes'],
+            'rapport_moral'            => ['title' => 'Rapport moral du president', 'desc' => 'Bilan annuel de la gouvernance'],
+            'convocation_ca'           => ['title' => 'Convocation CA / Bureau', 'desc' => 'Conseil d\'administration ou bureau'],
+        ],
+    ],
+    'dons' => [
+        'label' => 'Dons & donateurs',
+        'icon'  => '💰',
+        'desc'  => 'Collecte de dons et relation donateurs',
+        'items' => [
+            'appel_dons'            => ['title' => 'Appel a dons', 'desc' => 'Campagne de financement participatif'],
+            'remerciement_donateur' => ['title' => 'Remerciement donateur', 'desc' => 'Lettre chaleureuse + recu fiscal'],
+        ],
+    ],
+    'adherents' => [
+        'label' => 'Adherents & Benevoles',
+        'icon'  => '👥',
+        'desc'  => 'Communication avec votre communaute',
+        'items' => [
+            'appel_benevoles'        => ['title' => 'Appel a benevoles', 'desc' => 'Cible par competence ou dispo'],
+            'relance_cotisation'     => ['title' => 'Relance cotisation', 'desc' => '3 tons : douce, ferme, ultime'],
+            'accueil_nouveau_membre' => ['title' => 'Accueil nouveau membre', 'desc' => 'Email bienvenue + onboarding'],
+            'attestation_benevolat'  => ['title' => 'Attestation de benevolat', 'desc' => 'Pour valorisation fiscale'],
+            'newsletter_mensuelle'   => ['title' => 'Newsletter mensuelle', 'desc' => 'Actualite de l\'asso'],
+        ],
+    ],
+    'reseaux_sociaux' => [
+        'label' => 'Reseaux sociaux',
+        'icon'  => '📣',
+        'desc'  => 'Posts optimises pour chaque plateforme',
+        'items' => [
+            'post_facebook'       => ['title' => 'Post Facebook', 'desc' => '3 variantes : emotion, info, CTA'],
+            'post_instagram'      => ['title' => 'Post Instagram', 'desc' => 'Caption + hashtags optimises'],
+            'post_linkedin'       => ['title' => 'Post LinkedIn', 'desc' => 'Ton professionnel'],
+            'serie_multi_reseaux' => ['title' => 'Serie multi-plateformes', 'desc' => '1 sujet → 3 posts adaptes'],
+            'story_instagram'     => ['title' => 'Story Instagram', 'desc' => 'Scenario en plusieurs slides'],
+        ],
+    ],
+    'rapport' => [
+        'label' => 'Rapports annuels',
+        'icon'  => '📊',
+        'desc'  => 'Syntheses pour AG et financeurs',
+        'items' => [
+            'rapport_activite'  => ['title' => '✨ Rapport d\'activite annuel', 'desc' => 'Depuis vos projets et evenements'],
+            'rapport_financier' => ['title' => '✨ Rapport financier simplifie', 'desc' => 'Depuis vos factures HT/TVA/TTC'],
+            'bilan_projet'      => ['title' => 'Bilan de projet', 'desc' => 'Synthese fin de projet pour financeur'],
+        ],
+    ],
+    'courriers' => [
+        'label' => 'Courriers officiels',
+        'icon'  => '✉️',
+        'desc'  => 'Correspondance institutionnelle et presse',
+        'items' => [
+            'courrier_mairie'        => ['title' => 'Courrier Mairie', 'desc' => 'Demande salle, soutien, RDV...'],
+            'communique_presse'      => ['title' => 'Communique de presse', 'desc' => 'Structure pro avec accroche'],
+            'invitation_presse'      => ['title' => 'Invitation presse', 'desc' => 'Evenement ou conf de presse'],
+            'partenariat_entreprise' => ['title' => 'Demande de partenariat', 'desc' => 'Mecenat ou sponsoring'],
+        ],
+    ],
+];
+
+render_head('Communication');
+render_sidebar('communication');
+?>
+
+<div class="main">
+
+  <?php if ($flash): ?>
+    <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom:18px;">
+      <span><?= $flash['type'] === 'success' ? '✅' : '⚠️' ?></span>
+      <div><?= h($flash['message']) ?></div>
+    </div>
+  <?php endif; ?>
+
+  <div class="main-head">
+    <div>
+      <h1 class="page-title">Communication</h1>
+      <div class="page-sub">Rédigez, diffusez et invitez — avec l'aide de l'IA</div>
+    </div>
+    <div class="comm-stats">
+      <div class="comm-stat"><span class="comm-stat-n"><?= $nb_ai ?></span><span class="comm-stat-l">Générés IA</span></div>
+      <div class="comm-stat"><span class="comm-stat-n"><?= $nb_broadcasts ?></span><span class="comm-stat-l">Envois</span></div>
+      <div class="comm-stat"><span class="comm-stat-n"><?= $nb_events_upcoming ?></span><span class="comm-stat-l">Événements</span></div>
+      <div class="comm-stat"><span class="comm-stat-n"><?= $nb_templates ?></span><span class="comm-stat-l">Biblio</span></div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <a href="/communication?tab=rediger" class="tab <?= $tab === 'rediger' ? 'active' : '' ?>">📝 Rédiger</a>
+    <a href="/communication?tab=diffuser" class="tab <?= $tab === 'diffuser' ? 'active' : '' ?>">📧 Diffuser<?php if ($nb_broadcasts > 0): ?> <span class="tab-badge"><?= $nb_broadcasts ?></span><?php endif; ?></a>
+    <a href="/communication?tab=evenements" class="tab <?= $tab === 'evenements' ? 'active' : '' ?>">🎪 Événements<?php if ($nb_events_upcoming > 0): ?> <span class="tab-badge"><?= $nb_events_upcoming ?></span><?php endif; ?></a>
+    <a href="/communication?tab=affiches" class="tab <?= $tab === 'affiches' ? 'active' : '' ?>">🖼️ Affiches <span class="tab-badge">V5</span></a>
+    <a href="/communication?tab=bibliotheque" class="tab <?= $tab === 'bibliotheque' ? 'active' : '' ?>">📚 Bibliothèque <?php if ($nb_templates > 0): ?><span class="tab-badge"><?= $nb_templates ?></span><?php endif; ?></a>
+  </div>
+
+  <?php if ($tab === 'rediger'): ?>
+
+    <?php foreach ($catalog as $cat_key => $cat): ?>
+      <section class="comm-section">
+        <div class="comm-section-head">
+          <h2 class="comm-section-title"><span class="comm-section-icon"><?= $cat['icon'] ?></span><?= h($cat['label']) ?></h2>
+          <div class="comm-section-desc"><?= h($cat['desc']) ?></div>
+        </div>
+        <div class="comm-grid">
+          <?php foreach ($cat['items'] as $type_key => $item): ?>
+            <a href="/communication-generer?type=<?= urlencode($type_key) ?>" class="comm-card">
+              <div class="comm-card-title"><?= h($item['title']) ?></div>
+              <div class="comm-card-desc"><?= h($item['desc']) ?></div>
+              <div class="comm-card-cta">Générer →</div>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      </section>
+    <?php endforeach; ?>
+
+  <?php elseif ($tab === 'diffuser'): ?>
+
+    <!-- ======= ONGLET DIFFUSER ======= -->
+    <div class="main-head" style="margin-bottom: 18px;">
+      <div>
+        <h2 style="font-size: 18px; font-weight: 500; margin: 0;">📧 Vos diffusions</h2>
+        <div class="page-sub">Envoyez des messages à vos adhérents par email</div>
+      </div>
+      <div>
+        <a href="/communication-diffuser-nouveau" class="btn btn-primary">+ Nouvelle diffusion</a>
+      </div>
+    </div>
+
+    <?php
+    $broadcasts = [];
+    try {
+        $stmt = $pdo->prepare("
+            SELECT b.*, u.first_name, u.last_name
+            FROM communication_broadcasts b
+            LEFT JOIN users u ON b.created_by_user_id = u.id
+            WHERE b.org_id = ?
+            ORDER BY b.created_at DESC
+            LIMIT 50
+        ");
+        $stmt->execute([$org_id]);
+        $broadcasts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {}
+    ?>
+
+    <?php if (empty($broadcasts)): ?>
+      <div class="empty-state" style="padding:48px 20px">
+        <div style="font-size:48px;opacity:.35;margin-bottom:10px">📧</div>
+        <div style="font-size:16px;color:var(--ink);font-weight:500;margin-bottom:6px">Aucune diffusion pour l'instant</div>
+        <div style="max-width:460px;margin:0 auto 18px;line-height:1.55; color:var(--ink-3);">
+          Envoyez une newsletter, une annonce ou un appel à vos adhérents en quelques clics.
+        </div>
+        <a href="/communication-diffuser-nouveau" class="btn btn-primary">+ Créer la première diffusion</a>
+      </div>
+    <?php else: ?>
+      <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
+        <?php foreach ($broadcasts as $b): ?>
+          <div style="display:grid; grid-template-columns: 1fr auto auto; gap:14px; padding:14px 18px; border-bottom:1px solid var(--border); align-items:center;">
+            <div style="min-width:0;">
+              <div style="font-size:14px; font-weight:500; margin-bottom:3px; letter-spacing:-0.01em;"><?= h($b['subject']) ?></div>
+              <div style="font-size:12px; color:var(--ink-3);">
+                <?= h($b['first_name'] . ' ' . $b['last_name']) ?>
+                · <?= $b['sent_at'] ? 'envoyé ' . date('d/m/Y H:i', strtotime($b['sent_at'])) : 'brouillon' ?>
+              </div>
+            </div>
+            <div style="font-size:12px; color:var(--ink-3); text-align:right;">
+              <?php if ($b['status'] === 'sent'): ?>
+                <strong style="color:var(--acc);"><?= (int)$b['nb_sent'] ?></strong> envoyé<?= $b['nb_sent'] > 1 ? 's' : '' ?>
+                <?php if ($b['nb_failed'] > 0): ?>
+                  <br><span style="color:#EF4444;"><?= (int)$b['nb_failed'] ?> échec<?= $b['nb_failed'] > 1 ? 's' : '' ?></span>
+                <?php endif; ?>
+              <?php else: ?>
+                <span style="background:var(--bg-3); padding:2px 7px; border-radius:999px; font-size:11px;">
+                  <?= match($b['status']) { 'draft' => 'Brouillon', 'sending' => 'En cours', 'failed' => 'Échec', default => h($b['status']) } ?>
+                </span>
+              <?php endif; ?>
+            </div>
+            <div>
+              <a href="/communication-diffusion?id=<?= (int)$b['id'] ?>" class="btn btn-ghost" style="padding:5px 12px; font-size:12px;">Voir →</a>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+
+  <?php elseif ($tab === 'evenements'): ?>
+
+    <!-- ======= ONGLET EVENEMENTS ======= -->
+    <div class="main-head" style="margin-bottom: 18px;">
+      <div>
+        <h2 style="font-size: 18px; font-weight: 500; margin: 0;">🎪 Vos événements</h2>
+        <div class="page-sub">Organisez et diffusez vos événements avec système de RSVP</div>
+      </div>
+      <div>
+        <a href="/communication-evenement-nouveau" class="btn btn-primary">+ Nouvel événement</a>
+      </div>
+    </div>
+
+    <?php
+    $events = [];
+    try {
+        $stmt = $pdo->prepare("
+            SELECT e.*,
+                   u.first_name, u.last_name,
+                   (SELECT COUNT(*) FROM communication_event_rsvps WHERE event_id = e.id AND response = 'yes') AS nb_yes,
+                   (SELECT COUNT(*) FROM communication_event_rsvps WHERE event_id = e.id AND response = 'maybe') AS nb_maybe,
+                   (SELECT COUNT(*) FROM communication_event_rsvps WHERE event_id = e.id AND response = 'no') AS nb_no
+            FROM communication_events e
+            LEFT JOIN users u ON e.created_by_user_id = u.id
+            WHERE e.org_id = ?
+            ORDER BY
+                CASE WHEN e.start_date >= NOW() THEN 0 ELSE 1 END,
+                e.start_date ASC
+            LIMIT 50
+        ");
+        $stmt->execute([$org_id]);
+        $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {}
+    ?>
+
+    <?php if (empty($events)): ?>
+      <div class="empty-state" style="padding:48px 20px">
+        <div style="font-size:48px;opacity:.35;margin-bottom:10px">🎪</div>
+        <div style="font-size:16px;color:var(--ink);font-weight:500;margin-bottom:6px">Aucun événement pour l'instant</div>
+        <div style="max-width:460px;margin:0 auto 18px;line-height:1.55; color:var(--ink-3);">
+          Créez un événement avec un lien public partageable. Vos invités pourront confirmer leur venue (Oui / Non / Peut-être).
+        </div>
+        <a href="/communication-evenement-nouveau" class="btn btn-primary">+ Créer le premier événement</a>
+      </div>
+    <?php else: ?>
+      <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:12px;">
+        <?php foreach ($events as $e):
+          $is_past = strtotime($e['start_date']) < time();
+        ?>
+          <a href="/communication-evenement?id=<?= (int)$e['id'] ?>"
+             style="display:block; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:18px; text-decoration:none; color:inherit; transition:border-color 0.15s; <?= $is_past ? 'opacity:0.65;' : '' ?>"
+             onmouseover="this.style.borderColor='var(--acc)'"
+             onmouseout="this.style.borderColor='var(--border)'">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
+              <div style="font-size:11px; font-weight:500; color:var(--acc); letter-spacing:0.03em; text-transform:uppercase;">
+                <?= date('d M Y', strtotime($e['start_date'])) ?> · <?= date('H:i', strtotime($e['start_date'])) ?>
+              </div>
+              <?php if ($is_past): ?>
+                <span style="font-size:10px; background:var(--bg-3); color:var(--ink-3); padding:2px 7px; border-radius:999px;">Passé</span>
+              <?php elseif ($e['status'] === 'cancelled'): ?>
+                <span style="font-size:10px; background:#FEE2E2; color:#991B1B; padding:2px 7px; border-radius:999px;">Annulé</span>
+              <?php endif; ?>
+            </div>
+            <div style="font-size:15px; font-weight:500; letter-spacing:-0.01em; margin-bottom:6px;">
+              <?= h($e['title']) ?>
+            </div>
+            <?php if ($e['location']): ?>
+              <div style="font-size:12px; color:var(--ink-3); margin-bottom:10px;">
+                📍 <?= h($e['location']) ?>
+              </div>
+            <?php endif; ?>
+            <?php if ($e['rsvp_enabled']): ?>
+              <div style="display:flex; gap:8px; padding-top:10px; border-top:1px solid var(--border); font-size:12px;">
+                <span style="color:var(--acc);">✓ <?= (int)$e['nb_yes'] ?></span>
+                <span style="color:var(--ink-3);">? <?= (int)$e['nb_maybe'] ?></span>
+                <span style="color:var(--ink-4);">✕ <?= (int)$e['nb_no'] ?></span>
+              </div>
+            <?php endif; ?>
+          </a>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+
+  <?php elseif ($tab === 'affiches'): ?>
+
+    <!-- ======= ONGLET AFFICHES (V5) ======= -->
+    <div class="comm-coming">
+      <div class="comm-coming-icon">🖼️</div>
+      <h2 class="comm-coming-title">Génération d'affiches — Bientôt (V5)</h2>
+      <p class="comm-coming-sub">Créez des visuels professionnels pour vos événements en quelques secondes.</p>
+    </div>
+    <div class="comm-grid">
+      <div class="comm-preview">
+        <div class="comm-preview-icon">🎨</div>
+        <h3 class="comm-preview-title">Templates pré-conçus</h3>
+        <p class="comm-preview-desc">Banque de modèles par type d'événement : concert, conférence, AG, vernissage, atelier...</p>
+      </div>
+      <div class="comm-preview">
+        <div class="comm-preview-icon">✨</div>
+        <h3 class="comm-preview-title">IA générative</h3>
+        <p class="comm-preview-desc">Génération d'images d'illustration par IA à partir d'un prompt descriptif de votre événement.</p>
+      </div>
+      <div class="comm-preview">
+        <div class="comm-preview-icon">📐</div>
+        <h3 class="comm-preview-title">Multi-formats</h3>
+        <p class="comm-preview-desc">Export PDF A4/A3 pour affichage, PNG carré pour réseaux sociaux, story verticale Instagram.</p>
+      </div>
+      <div class="comm-preview">
+        <div class="comm-preview-icon">🔗</div>
+        <h3 class="comm-preview-title">QR Code intégré</h3>
+        <p class="comm-preview-desc">QR code automatique vers la page RSVP publique de votre événement pour inscription rapide.</p>
+      </div>
+    </div>
+
+  <?php elseif ($tab === 'bibliotheque'): ?>
+
+    <?php
+    $stmt = $pdo->prepare("
+      SELECT t.*, u.first_name, u.last_name
+      FROM communication_saved_templates t
+      LEFT JOIN users u ON t.created_by = u.id
+      WHERE t.org_id = ?
+      ORDER BY t.is_favorite DESC, t.updated_at DESC
+    ");
+    $stmt->execute([$org_id]);
+    $tpls = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    ?>
+
+    <?php if (empty($tpls)): ?>
+      <div class="empty-state" style="padding:60px 20px">
+        <div style="font-size:56px;opacity:.35;margin-bottom:10px">📚</div>
+        <div style="font-size:17px;color:var(--ink);font-weight:500;margin-bottom:6px">Votre bibliothèque est vide</div>
+        <div style="max-width:460px;margin:0 auto 18px;line-height:1.55">
+          Quand vous générez un document qui vous plaît, cliquez sur <strong>« Sauvegarder »</strong> pour le réutiliser plus tard.
+        </div>
+        <a href="/communication?tab=rediger" class="btn btn-primary">Générer un premier document →</a>
+      </div>
+    <?php else: ?>
+      <div class="comm-lib">
+        <?php foreach ($tpls as $t): ?>
+          <div class="comm-lib-row">
+            <div class="comm-lib-main">
+              <div class="comm-lib-title"><?php if ($t['is_favorite']): ?>⭐ <?php endif; ?><?= h($t['title']) ?></div>
+              <div class="comm-lib-meta">
+                <span class="comm-lib-cat"><?= h($t['category']) ?></span>
+                par <?= h(trim(($t['first_name'] ?? '') . ' ' . ($t['last_name'] ?? ''))) ?>
+                · <?= (int) $t['usage_count'] ?> utilisations
+              </div>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+
+  <?php endif; ?>
+
+</div>
+
+<style>
+.comm-stats { display: flex; gap: 8px; flex-wrap: wrap; }
+.comm-stat { display: flex; flex-direction: column; align-items: center; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 14px; min-width: 72px; }
+.comm-stat-n { font-size: 20px; font-weight: 600; color: var(--ink); line-height: 1.1; }
+.comm-stat-l { font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+.comm-section { margin-bottom: 36px; }
+.comm-section-head { margin-bottom: 14px; }
+.comm-section-title { font-size: 16px; font-weight: 600; margin: 0 0 3px; display: inline-flex; align-items: center; gap: 9px; letter-spacing: -0.01em; }
+.comm-section-icon { font-size: 20px; }
+.comm-section-desc { font-size: 12.5px; color: var(--ink-3); }
+
+.comm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 10px; }
+
+.comm-card { display: flex; flex-direction: column; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; color: var(--ink); }
+.comm-card:hover { border-color: var(--acc); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,0.05); }
+.comm-card-title { font-size: 14px; font-weight: 500; color: var(--ink); margin-bottom: 5px; }
+.comm-card-desc  { font-size: 12.5px; color: var(--ink-3); line-height: 1.45; flex: 1; margin-bottom: 10px; }
+.comm-card-cta   { font-size: 12.5px; color: var(--acc); font-weight: 500; }
+
+.comm-coming { text-align: center; padding: 42px 20px; background: var(--bg); border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); margin-bottom: 24px; }
+.comm-coming-icon { font-size: 52px; margin-bottom: 10px; }
+.comm-coming-title { font-size: 20px; font-weight: 500; margin: 0 0 4px; letter-spacing: -0.02em; }
+.comm-coming-sub { font-size: 13.5px; color: var(--ink-3); margin: 0; }
+
+.comm-preview { padding: 18px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.comm-preview-icon { font-size: 26px; margin-bottom: 8px; }
+.comm-preview-title { font-size: 14px; font-weight: 500; margin: 0 0 6px; color: var(--ink); }
+.comm-preview-desc  { font-size: 12.5px; color: var(--ink-3); margin: 0; line-height: 1.5; }
+
+.comm-lib { display: flex; flex-direction: column; gap: 6px; }
+.comm-lib-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
+.comm-lib-title { font-size: 14px; font-weight: 500; color: var(--ink); margin-bottom: 2px; }
+.comm-lib-meta  { font-size: 12px; color: var(--ink-3); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.comm-lib-cat   { background: var(--bg-3); padding: 1px 7px; border-radius: 5px; font-size: 11px; }
+</style>
+
+<?php render_foot(); ?>

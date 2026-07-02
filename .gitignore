@@ -1,0 +1,55 @@
+# =============================================================
+#  .gitignore - Assokit (webroot O2switch)
+#  NE JAMAIS committer de secrets, ni les fichiers volumineux
+#  / non specifiques (WordPress core, uploads, dependances).
+# =============================================================
+
+# ---- SECRETS (CRITIQUE - ne jamais committer) ----
+config.php
+admin-blog/config.php
+*.env
+.env
+.env.*
+# On committe uniquement les modeles :
+!config.sample.php
+!admin-blog/config.sample.php
+
+# ---- Logs & backups ----
+error_log
+*.log
+private_backups/
+/home/pura7044/private_backups/
+
+# ---- Dependances ----
+vendor/
+node_modules/
+composer.lock
+
+# ---- WordPress : coeur & contenu genere (volumineux / non specifique) ----
+wp-admin/
+wp-includes/
+# wp-content/uploads : peut contenir des donnees clients (RGPD)
+wp-content/uploads/
+wp-content/cache/
+wp-content/upgrade/
+wp-content/backup*/
+# wp-load.php, wp-config.php, wp-settings.php, etc. :
+wp-*.php
+xmlrpc.php
+
+# ---- Uploads / medias utilisateurs de l'app custom ----
+uploads/
+assets/uploads/
+
+# ---- Fichiers systeme / editeur ----
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# ---- Divers ----
+*.bak
+*.tmp
+sitemap-*.xml.gz

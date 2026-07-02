@@ -1,0 +1,681 @@
+# Copyright (C) 2025 All in One SEO Team
+# This file is distributed under the same license as the AIOSEO - Local Business plugin.
+msgid ""
+msgstr ""
+"Project-Id-Version: AIOSEO - Local Business 1.3.11\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/aioseo-local-business\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2025-10-31T12:13:29+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: aioseo-local-business\n"
+
+#. Plugin Name of the plugin
+#: aioseo-local-business.php
+msgid "AIOSEO - Local Business"
+msgstr ""
+
+#. Plugin URI of the plugin
+#. Author URI of the plugin
+#: aioseo-local-business.php
+msgid "https://aioseo.com"
+msgstr ""
+
+#. Description of the plugin
+#: aioseo-local-business.php
+msgid "Adds Local Business support to All in One SEO."
+msgstr ""
+
+#. Author of the plugin
+#: aioseo-local-business.php
+msgid "All in One SEO Team"
+msgstr ""
+
+#. Translators: 1 - The plugin short name ("AIOSEO").
+#: app/Admin/Admin.php:39
+#, php-format
+msgid "%1$s Local Business"
+msgstr ""
+
+#: app/Admin/Location.php:76
+msgid "Location"
+msgstr ""
+
+#: app/Admin/Location.php:92
+msgid "Locations"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/Location.php:155
+#, php-format
+msgctxt "Post Type"
+msgid "%1$s Archives"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/Location.php:157
+#, php-format
+msgctxt "Post Type"
+msgid "%1$s Attributes"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/Location.php:159
+#, php-format
+msgctxt "Post Type"
+msgid "Parent %1$s:"
+msgstr ""
+
+#. Translators: 1 - Plural post type name.
+#: app/Admin/Location.php:161
+#, php-format
+msgctxt "Post Type"
+msgid "All %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/Location.php:163
+#: app/Admin/Location.php:165
+#, php-format
+msgctxt "Post Type"
+msgid "Add New %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/Location.php:167
+#, php-format
+msgctxt "Post Type"
+msgid "New %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/Location.php:169
+#, php-format
+msgctxt "Post Type"
+msgid "Edit %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/Location.php:171
+#, php-format
+msgctxt "Post Type"
+msgid "Update %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular or plural post type name.
+#: app/Admin/Location.php:173
+#: app/Admin/Location.php:175
+#, php-format
+msgctxt "Post Type"
+msgid "View %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/Location.php:177
+#, php-format
+msgctxt "Post Type"
+msgid "Search %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/Location.php:179
+#, php-format
+msgctxt "Post Type"
+msgid "Insert into %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/Location.php:181
+#, php-format
+msgctxt "Post Type"
+msgid "Uploaded to this %1$s"
+msgstr ""
+
+#. Translators: 1 - Plural post type name.
+#: app/Admin/Location.php:183
+#, php-format
+msgctxt "Post Type"
+msgid "%1$s list"
+msgstr ""
+
+#. Translators: 1 - Plural post type name.
+#: app/Admin/Location.php:185
+#, php-format
+msgctxt "Post Type"
+msgid "%1$s list navigation"
+msgstr ""
+
+#. Translators: 1 - Plural post type name.
+#: app/Admin/Location.php:187
+#, php-format
+msgctxt "Post Type"
+msgid "Filter %1$s list"
+msgstr ""
+
+#. Translators: 1 - The plugin name ("All in One SEO").
+#: app/Admin/Location.php:194
+#, php-format
+msgid "%1$s uses these locations to generate Local Business schema markup."
+msgstr ""
+
+#: app/Admin/LocationCategory.php:85
+msgid "Location Category"
+msgstr ""
+
+#: app/Admin/LocationCategory.php:96
+msgid "Location Categories"
+msgstr ""
+
+#. Translators: 1 - Plural post type name.
+#: app/Admin/LocationCategory.php:131
+#, php-format
+msgctxt "Taxonomy"
+msgid "All %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/LocationCategory.php:133
+#, php-format
+msgctxt "Taxonomy"
+msgid "Parent %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/LocationCategory.php:135
+#, php-format
+msgctxt "Taxonomy"
+msgid "Parent %1$s:"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/LocationCategory.php:137
+#, php-format
+msgctxt "Taxonomy"
+msgid "Add New %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/LocationCategory.php:139
+#, php-format
+msgctxt "Taxonomy"
+msgid "Edit %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular post type name.
+#: app/Admin/LocationCategory.php:141
+#, php-format
+msgctxt "Taxonomy"
+msgid "Update %1$s"
+msgstr ""
+
+#. Translators: 1 - Singular or plural post type name.
+#: app/Admin/LocationCategory.php:143
+#: app/Admin/LocationCategory.php:145
+#, php-format
+msgctxt "Taxonomy"
+msgid "View %1$s"
+msgstr ""
+
+#. Translators: 1 - Plural post type name.
+#: app/Admin/LocationCategory.php:147
+#, php-format
+msgctxt "Taxonomy"
+msgid "Search %1$s"
+msgstr ""
+
+#. Translators: 1 - Plural post type name.
+#: app/Admin/LocationCategory.php:149
+#, php-format
+msgctxt "Taxonomy"
+msgid "No %1$s"
+msgstr ""
+
+#. Translators: 1 - Plural post type name.
+#: app/Admin/LocationCategory.php:151
+#, php-format
+msgctxt "Taxonomy"
+msgid "%1$s list navigation"
+msgstr ""
+
+#. Translators: 1 - Plural post type name.
+#: app/Admin/LocationCategory.php:153
+#, php-format
+msgctxt "Taxonomy"
+msgid "Filter %1$s list"
+msgstr ""
+
+#: app/Blocks/BusinessInfo.php:45
+#: app/Locations/Locations.php:150
+#: app/Shortcodes/Shortcodes.php:62
+#: app/Widgets/BusinessInfo.php:44
+msgid "Address:"
+msgstr ""
+
+#: app/Blocks/BusinessInfo.php:49
+#: app/Locations/Locations.php:154
+#: app/Shortcodes/Shortcodes.php:63
+#: app/Widgets/BusinessInfo.php:45
+msgid "VAT ID:"
+msgstr ""
+
+#: app/Blocks/BusinessInfo.php:53
+#: app/Locations/Locations.php:155
+#: app/Shortcodes/Shortcodes.php:64
+#: app/Widgets/BusinessInfo.php:46
+msgid "Tax ID:"
+msgstr ""
+
+#: app/Blocks/BusinessInfo.php:57
+#: app/Locations/Locations.php:152
+#: app/Shortcodes/Shortcodes.php:65
+#: app/Widgets/BusinessInfo.php:47
+msgid "Phone:"
+msgstr ""
+
+#: app/Blocks/BusinessInfo.php:61
+#: app/Locations/Locations.php:153
+#: app/Shortcodes/Shortcodes.php:66
+#: app/Widgets/BusinessInfo.php:48
+msgid "Fax:"
+msgstr ""
+
+#: app/Blocks/BusinessInfo.php:65
+#: app/Locations/Locations.php:151
+#: app/Shortcodes/Shortcodes.php:67
+#: app/Widgets/BusinessInfo.php:49
+msgid "Email:"
+msgstr ""
+
+#. Translators: 1 - Local Business Post Type Label.
+#: app/Blocks/BusinessInfo.php:138
+#: app/Blocks/Map.php:94
+#, php-format
+msgid "Please fill in your Business Info for this %1$s."
+msgstr ""
+
+#: app/Blocks/Map.php:61
+#: app/Shortcodes/Shortcodes.php:146
+#: app/Widgets/Map.php:38
+msgid "Our location:"
+msgstr ""
+
+#: app/Blocks/OpeningHours.php:81
+#: app/Shortcodes/Shortcodes.php:119
+#: app/Widgets/OpeningHours.php:43
+msgid "Our Opening Hours:"
+msgstr ""
+
+#. Translators: 1 - Local Business Post Type Label.
+#: app/Blocks/OpeningHours.php:114
+#, php-format
+msgid "Please fill in your Opening Hours for this %1$s."
+msgstr ""
+
+#: app/Import/Notifications.php:63
+msgid "Re-Enter Business Type in Local Business"
+msgstr ""
+
+#. Translators: 1 - The country.
+#: app/Import/Notifications.php:66
+#, php-format
+msgid ""
+"For technical reasons, we were unable to migrate the business type you entered for your Local Business schema markup.\n"
+"\t\t\t\tPlease enter it (%1$s) again by using the dropdown menu."
+msgstr ""
+
+#: app/Import/Notifications.php:70
+#: app/Import/Notifications.php:94
+#: app/Import/Notifications.php:118
+#: app/Import/Notifications.php:142
+#: app/Import/Notifications.php:172
+msgid "Fix Now"
+msgstr ""
+
+#: app/Import/Notifications.php:72
+#: app/Import/Notifications.php:96
+#: app/Import/Notifications.php:120
+#: app/Import/Notifications.php:144
+#: app/Import/Notifications.php:174
+msgid "Remind Me Later"
+msgstr ""
+
+#: app/Import/Notifications.php:87
+msgid "Re-Enter Country in Local Business"
+msgstr ""
+
+#. Translators: 1 - The country.
+#: app/Import/Notifications.php:90
+#, php-format
+msgid ""
+"For technical reasons, we were unable to migrate the country you entered for your Local Business schema markup.\n"
+"\t\t\t\tPlease enter it (%1$s) again by using the dropdown menu."
+msgstr ""
+
+#: app/Import/Notifications.php:111
+msgid "Invalid Phone Number for Local SEO"
+msgstr ""
+
+#. Translators: 1 - The phone number.
+#: app/Import/Notifications.php:114
+#, php-format
+msgid ""
+"The phone number that you previously entered for your Local Business schema markup is invalid.\n"
+"\t\t\t\t\tAs it needs to be internationally formatted, please enter it (%1$s) again with the country code, e.g. +1 (555) 555-1234."
+msgstr ""
+
+#: app/Import/Notifications.php:135
+msgid "Invalid Fax Number for Local SEO"
+msgstr ""
+
+#. Translators: 1 - The fax number.
+#: app/Import/Notifications.php:138
+#, php-format
+msgid ""
+"The fax number that you previously entered for your Local Business schema markup is invalid.\n"
+"\t\t\t\t\tAs it needs to be internationally formatted, please enter it (%1$s) again with the country code, e.g. +1 (555) 555-1234."
+msgstr ""
+
+#: app/Import/Notifications.php:165
+msgid "Invalid Currencies for Local SEO"
+msgstr ""
+
+#. Translators: 1 - The phone number.
+#: app/Import/Notifications.php:168
+#, php-format
+msgid ""
+"One or more currencies that you previously entered for your Local Business schema markup are invalid.\n"
+"\t\t\t\t\tPlease select these again using our dropdown menu.</br>%1$s"
+msgstr ""
+
+#: app/LocalBusiness.php:330
+msgid "Plugin is missing required dependencies. Please contact support for more information."
+msgstr ""
+
+#. Translators: 1 - The post type plural label.
+#: app/Locations/Locations.php:189
+#: app/Locations/Locations.php:279
+#, php-format
+msgid "No %1$s found"
+msgstr ""
+
+#: app/Locations/Locations.php:235
+msgid "Your Opening Hours settings are disabled. Please enable them to use the Opening Hours block."
+msgstr ""
+
+#: app/Main/Search.php:193
+msgid "Local Business - Enhanced Search"
+msgstr ""
+
+#. Translators: 1 - Opening link tag, 2 - Closing link tag.
+#: app/Main/Search.php:196
+#, php-format
+msgid "Enhanced Search cannot be enabled on your website because there is a search query conflict. To learn more about this, %1$sclick here%2$s."
+msgstr ""
+
+#: app/Utils/Tags.php:74
+msgid "Address Line 1"
+msgstr ""
+
+#: app/Utils/Tags.php:75
+msgid "Your Address Line 1"
+msgstr ""
+
+#: app/Utils/Tags.php:80
+msgid "Address Line 2"
+msgstr ""
+
+#: app/Utils/Tags.php:81
+msgid "Your Address Line 2"
+msgstr ""
+
+#: app/Utils/Tags.php:86
+msgid "Zip Code"
+msgstr ""
+
+#: app/Utils/Tags.php:87
+msgid "Your Zip Code"
+msgstr ""
+
+#: app/Utils/Tags.php:92
+msgid "City"
+msgstr ""
+
+#: app/Utils/Tags.php:93
+msgid "Your City"
+msgstr ""
+
+#: app/Utils/Tags.php:98
+msgid "State"
+msgstr ""
+
+#: app/Utils/Tags.php:99
+msgid "Your State"
+msgstr ""
+
+#: app/Utils/Tags.php:104
+msgid "Country"
+msgstr ""
+
+#: app/Utils/Tags.php:105
+msgid "Your Country"
+msgstr ""
+
+#: app/Views/BusinessInfo.php:99
+msgid "Chamber ID:"
+msgstr ""
+
+#: app/Views/OpeningHours.php:40
+#: app/Widgets/OpeningHours.php:224
+msgid "Sunday"
+msgstr ""
+
+#: app/Views/OpeningHours.php:41
+#: app/Widgets/OpeningHours.php:188
+msgid "Monday"
+msgstr ""
+
+#: app/Views/OpeningHours.php:42
+#: app/Widgets/OpeningHours.php:194
+msgid "Tuesday"
+msgstr ""
+
+#: app/Views/OpeningHours.php:43
+#: app/Widgets/OpeningHours.php:200
+msgid "Wednesday"
+msgstr ""
+
+#: app/Views/OpeningHours.php:44
+#: app/Widgets/OpeningHours.php:206
+msgid "Thursday"
+msgstr ""
+
+#: app/Views/OpeningHours.php:45
+#: app/Widgets/OpeningHours.php:212
+msgid "Friday"
+msgstr ""
+
+#: app/Views/OpeningHours.php:46
+#: app/Widgets/OpeningHours.php:218
+msgid "Saturday"
+msgstr ""
+
+#: app/Views/OpeningHours.php:70
+msgid "closed"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:59
+msgid "Display a location information."
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:68
+msgid "AIOSEO Local - Business Info"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:143
+#: app/Widgets/Locations.php:119
+#: app/Widgets/Map.php:116
+#: app/Widgets/OpeningHours.php:136
+msgid "Title:"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:156
+#: app/Widgets/Map.php:129
+#: app/Widgets/OpeningHours.php:149
+msgid "Location:"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:166
+#: app/Widgets/Map.php:139
+#: app/Widgets/OpeningHours.php:159
+msgid "Select your location"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:171
+#: app/Widgets/Map.php:144
+#: app/Widgets/OpeningHours.php:164
+msgid "No locations available"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:180
+msgid "Show labels"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:186
+#: app/Widgets/OpeningHours.php:179
+msgid "Show icons"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:190
+msgid "Business Info:"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:195
+msgid "Business name"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:201
+#: app/Widgets/BusinessInfo.php:244
+msgid "Address"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:207
+msgid "Phone Number"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:213
+msgid "Fax Number"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:219
+msgid "Show Country Code"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:225
+msgid "Email address"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:231
+msgid "Show VAT ID"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:237
+msgid "Show Tax ID"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:240
+msgid "Labels:"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:245
+msgid "Vat ID"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:246
+msgid "Tax ID"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:247
+msgid "Phone"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:248
+msgid "Fax"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:249
+msgid "Email"
+msgstr ""
+
+#: app/Widgets/BusinessInfo.php:267
+#: app/Widgets/OpeningHours.php:241
+msgid "After widget text:"
+msgstr ""
+
+#: app/Widgets/Locations.php:42
+msgid "Display a list of locations by category."
+msgstr ""
+
+#: app/Widgets/Locations.php:51
+msgid "AIOSEO Local - Locations by Category"
+msgstr ""
+
+#: app/Widgets/Locations.php:131
+msgid "Category:"
+msgstr ""
+
+#: app/Widgets/Locations.php:138
+msgid "Select a category"
+msgstr ""
+
+#: app/Widgets/Locations.php:145
+msgid "No categories available"
+msgstr ""
+
+#: app/Widgets/Map.php:47
+msgid "Display a location map."
+msgstr ""
+
+#: app/Widgets/Map.php:56
+msgid "AIOSEO Local - Map"
+msgstr ""
+
+#: app/Widgets/Map.php:153
+msgid "Show label"
+msgstr ""
+
+#: app/Widgets/Map.php:159
+msgid "Show icon"
+msgstr ""
+
+#: app/Widgets/Map.php:164
+msgid "Width"
+msgstr ""
+
+#: app/Widgets/Map.php:176
+msgid "Height"
+msgstr ""
+
+#: app/Widgets/Map.php:188
+#: app/Widgets/OpeningHours.php:229
+msgid "Label"
+msgstr ""
+
+#: app/Widgets/OpeningHours.php:53
+msgid "Display opening hours of a location."
+msgstr ""
+
+#: app/Widgets/OpeningHours.php:62
+msgid "AIOSEO Local - Opening Hours"
+msgstr ""
+
+#: app/Widgets/OpeningHours.php:173
+msgid "Show title"
+msgstr ""
+
+#: app/Widgets/OpeningHours.php:183
+msgid "Opening Hours"
+msgstr ""

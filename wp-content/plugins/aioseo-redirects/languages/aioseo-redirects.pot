@@ -1,0 +1,128 @@
+# Copyright (C) 2025 All in One SEO Team
+# This file is distributed under the same license as the AIOSEO - Redirects plugin.
+msgid ""
+msgstr ""
+"Project-Id-Version: AIOSEO - Redirects 1.4.11\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/aioseo-redirects\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2025-06-24T16:01:22+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: aioseo-redirects\n"
+
+#. Plugin Name of the plugin
+#: aioseo-redirects.php
+msgid "AIOSEO - Redirects"
+msgstr ""
+
+#. Plugin URI of the plugin
+#. Author URI of the plugin
+#: aioseo-redirects.php
+msgid "https://aioseo.com"
+msgstr ""
+
+#. Description of the plugin
+#: aioseo-redirects.php
+msgid "Adds redirection support to AIOSEO."
+msgstr ""
+
+#. Author of the plugin
+#: aioseo-redirects.php
+msgid "All in One SEO Team"
+msgstr ""
+
+#. Translators: 1 - HTTP status code expected, 2 - HTTP status code received.
+#: app/Api/Redirects.php:586
+#, php-format
+msgid "Response code was not the same. Expected %1$s and received %2$s."
+msgstr ""
+
+#. Translators: 1 - URL expected, 2 - URL found.
+#: app/Api/Redirects.php:639
+#, php-format
+msgid "Target url was not the same. Expected %1$s and found %2$s"
+msgstr ""
+
+#: app/Api/Redirects.php:645
+msgid "Redirect failed for the url."
+msgstr ""
+
+#. Translators: 1 - HTTP header 'x-redirect-by'.
+#: app/Api/Redirects.php:657
+#, php-format
+msgid "This redirect seems not to be done by AIOSEO. Expected header 'x-redirect-by' to be 'AIOSEO' but found '%1$s' instead."
+msgstr ""
+
+#: app/Main/Server/Test.php:61
+msgid "Server Redirects Missing"
+msgstr ""
+
+#. Translators: 1 - The plugin short name ("AIOSEO").
+#: app/Main/Server/Test.php:64
+#, php-format
+msgid "Warning: %1$s was unable to detect server level redirects. This probably means the redirects have not been added properly. You may need to reload your server configuration or restart it in order for the redirects to take place."
+msgstr ""
+
+#: app/Main/Server/Test.php:69
+msgid "Learn More"
+msgstr ""
+
+#: app/Models/Redirect.php:149
+msgid "source url set once post is published"
+msgstr ""
+
+#: app/Models/Redirect.php:216
+#: app/Utils/Helpers.php:119
+msgid "All"
+msgstr ""
+
+#: app/Models/Redirect.php:222
+#: app/Utils/Helpers.php:125
+msgid "Enabled"
+msgstr ""
+
+#: app/Models/Redirect.php:228
+#: app/Utils/Helpers.php:131
+msgid "Disabled"
+msgstr ""
+
+#: app/Models/Redirect.php:246
+msgid "External"
+msgstr ""
+
+#: app/Models/Redirect.php:248
+msgid "Modified Post"
+msgstr ""
+
+#: app/Models/Redirect.php:252
+msgid "Imported"
+msgstr ""
+
+#: app/Models/Redirect.php:255
+msgid "Manual Redirect"
+msgstr ""
+
+#: app/Redirects.php:244
+msgid "Plugin is missing required dependencies. Please contact support for more information."
+msgstr ""
+
+#: app/Utils/Options.php:156
+#: app/Utils/Options.php:157
+msgid "1 week"
+msgstr ""
+
+#: app/Utils/Options.php:158
+msgid "Full Logging"
+msgstr ""
+
+#: app/Utils/Options.php:159
+msgid "1 hour"
+msgstr ""
+
+#: app/Utils/Options.php:160
+msgid "Exact match all parameters in any order"
+msgstr ""

@@ -1,0 +1,62 @@
+# Copyright (C) 2025 All in One SEO Team
+# This file is distributed under the same license as the AIOSEO - Link Assistant plugin.
+msgid ""
+msgstr ""
+"Project-Id-Version: AIOSEO - Link Assistant 1.1.10\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/aioseo-link-assistant\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2025-06-24T16:01:22+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: aioseo-link-assistant\n"
+
+#. Plugin Name of the plugin
+#: aioseo-link-assistant.php
+msgid "AIOSEO - Link Assistant"
+msgstr ""
+
+#. Plugin URI of the plugin
+#. Author URI of the plugin
+#: aioseo-link-assistant.php
+msgid "https://aioseo.com"
+msgstr ""
+
+#. Description of the plugin
+#: aioseo-link-assistant.php
+msgid "Adds Link Assistant to All in One SEO."
+msgstr ""
+
+#. Author of the plugin
+#: aioseo-link-assistant.php
+msgid "All in One SEO Team"
+msgstr ""
+
+#: app/LinkAssistant.php:182
+msgid "Plugin is missing required dependencies. Please contact support for more information."
+msgstr ""
+
+#: app/Traits/LinksReport.php:58
+msgid "All"
+msgstr ""
+
+#: app/Traits/LinksReport.php:64
+msgid "Linking Opportunities"
+msgstr ""
+
+#: app/Traits/LinksReport.php:70
+msgid "Orphaned Posts"
+msgstr ""
+
+#: app/Traits/LinksReport.php:128
+msgid "All Included Post Types"
+msgstr ""
+
+#. Translators: 1 - Plural label of a taxonomy (e.g. "Categories").
+#: app/Traits/LinksReport.php:163
+#, php-format
+msgid "All %1$s"
+msgstr ""

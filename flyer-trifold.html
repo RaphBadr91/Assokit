@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Assokit · Dépliant 3 volets</title>
+<style>
+@page { size: A4 landscape; margin: 0; }
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color: #0F172A;
+  background: #ECECEC;
+}
+.sheet {
+  width: 297mm; height: 210mm;
+  display: grid; grid-template-columns: repeat(3, 99mm);
+  background: #fff;
+  position: relative;
+  overflow: hidden;
+  page-break-after: always;
+  break-after: page;
+}
+.sheet:last-child { page-break-after: auto; break-after: auto; }
+.panel {
+  width: 99mm; height: 210mm;
+  position: relative;
+  overflow: hidden;
+  padding: 12mm 10mm;
+}
+.fold { display: none !important; } /* v10: pointillés de pliure retirés pour impression */
+.fold.f1 { left: 99mm; } .fold.f2 { left: 198mm; }
+
+/* BACKGROUNDS */
+.bg-cream { background: #FAF8F5; }
+.bg-white { background: #fff; }
+.bg-dark {
+  background: linear-gradient(155deg, #064E3B 0%, #065F46 55%, #047857 100%);
+  color: #fff; position: relative;
+}
+.bg-dark::before {
+  content: ""; position: absolute;
+  top: -30%; right: -30%; width: 80%; height: 160%;
+  background: radial-gradient(circle, rgba(167,243,208,0.20), transparent 70%);
+  pointer-events: none;
+}
+.blob { position: absolute; border-radius: 50%; filter: blur(60px); pointer-events: none; }
+.blob-green { background: radial-gradient(circle, #A7F3D0, transparent 70%); opacity: 0.45; }
+.blob-blue { background: radial-gradient(circle, #DBEAFE, transparent 70%); opacity: 0.40; }
+
+/* TYPO */
+.eyebrow {
+  display: inline-block;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, #ECFDF5, #DBEAFE);
+  color: #047857;
+  font-size: 7pt; font-weight: 800;
+  letter-spacing: 0.10em; text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid rgba(16,185,129,0.18);
+  margin-bottom: 5mm;
+}
+.eyebrow.blue { background: linear-gradient(135deg, #DBEAFE, #E0E7FF); color: #1E40AF; border-color: rgba(59,130,246,0.18); }
+.h-title {
+  font-size: 19pt; font-weight: 800;
+  line-height: 1.08; letter-spacing: -0.03em;
+  color: #0F172A; margin-bottom: 3mm;
+}
+.h-title em {
+  background: linear-gradient(135deg, #10B981, #047857);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; font-style: normal;
+}
+.h-title em.blue {
+  background: linear-gradient(135deg, #3B82F6, #1E40AF);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.lead {
+  font-size: 8.5pt; line-height: 1.5;
+  color: #475569; margin-bottom: 5mm;
+}
+.lead strong { color: #064E3B; font-weight: 700; }
+
+/* MODULE CARDS — compactes */
+.mod {
+  background: #fff;
+  border-radius: 8px;
+  padding: 4mm 4.5mm;
+  margin-bottom: 2.5mm;
+  border-left: 2.5pt solid #10B981;
+  box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+}
+.mod.blue { border-left-color: #3B82F6; }
+.mod.amber { border-left-color: #F59E0B; }
+.mod.violet { border-left-color: #8B5CF6; }
+.mod-row { display: flex; align-items: flex-start; gap: 8px; }
+.mod-ico {
+  width: 22px; height: 22px; border-radius: 6px;
+  background: linear-gradient(135deg, #ECFDF5, #fff);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10pt; flex-shrink: 0;
+}
+.mod.blue .mod-ico { background: linear-gradient(135deg, #DBEAFE, #fff); }
+.mod.amber .mod-ico { background: linear-gradient(135deg, #FEF3C7, #fff); }
+.mod.violet .mod-ico { background: linear-gradient(135deg, #F3E8FF, #fff); }
+.mod-content { flex: 1; min-width: 0; }
+.mod-title { font-size: 9pt; font-weight: 800; color: #064E3B; line-height: 1.2; margin-bottom: 0.8mm; }
+.mod-desc { font-size: 7pt; line-height: 1.45; color: #475569; }
+.mod-feat { margin-top: 1.5mm; font-size: 6.5pt; color: #047857; font-weight: 700; }
+.mod.blue .mod-feat { color: #1E40AF; }
+.mod.amber .mod-feat { color: #92400E; }
+.mod.violet .mod-feat { color: #5B21B6; }
+
+/* ===== COUVERTURE ===== */
+.cover { padding: 14mm 10mm; display: flex; flex-direction: column; height: 100%; }
+.cover-brand { display: flex; align-items: center; gap: 7px; margin-bottom: 8mm; }
+.cover-brand img { width: 28px; height: 28px; border-radius: 6px; }
+.cover-brand-text { font-size: 14pt; font-weight: 800; letter-spacing: -0.025em; color: #fff; }
+.cover-brand-text em { color: #6EE7B7; font-style: normal; }
+.cover-eyebrow {
+  padding: 4px 10px;
+  background: rgba(167,243,208,0.22);
+  color: #A7F3D0;
+  font-size: 6.5pt; font-weight: 700;
+  letter-spacing: 0.10em; text-transform: uppercase;
+  border-radius: 999px; margin-bottom: 6mm; display: inline-block;
+}
+.cover-title {
+  font-size: 24pt; font-weight: 800;
+  line-height: 1.0; letter-spacing: -0.04em;
+  color: #fff; margin-bottom: 5mm;
+}
+.cover-title .l2 {
+  background: linear-gradient(135deg, #A7F3D0, #6EE7B7);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: block;
+}
+.cover-tri {
+  font-size: 7.5pt; font-weight: 700;
+  color: #6EE7B7; letter-spacing: 0.10em;
+  margin-bottom: 6mm;
+}
+.cover-tri span::after { content: " · "; color: rgba(167,243,208,0.5); }
+.cover-tri span:last-child::after { content: ""; }
+
+/* ===== MOCKUP DESKTOP + MOBILE ===== */
+.devices {
+  position: relative;
+  margin: 0 auto 6mm;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.laptop {
+  position: relative;
+  width: 70mm;
+}
+.laptop-screen {
+  background: #fff;
+  border-radius: 4px 4px 0 0;
+  border: 1.5px solid rgba(255,255,255,0.20);
+  border-bottom: none;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+.laptop-inner {
+  background: #FAF8F5;
+  border-radius: 2px;
+  padding: 3mm 3mm;
+  font-size: 5.5pt;
+}
+.laptop-base {
+  width: 80mm;
+  height: 2mm;
+  margin: 0 -5mm;
+  background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 50%, #64748b 100%);
+  border-radius: 0 0 6px 6px;
+  position: relative;
+}
+.laptop-notch {
+  position: absolute;
+  top: 0; left: 50%; transform: translateX(-50%);
+  width: 8mm; height: 0.8mm;
+  background: #475569;
+  border-radius: 0 0 2px 2px;
+}
+.mock-head {
+  display: flex; align-items: center; gap: 3px;
+  padding-bottom: 1.5mm; margin-bottom: 1.5mm;
+  border-bottom: 1px solid #e5e7eb;
+}
+.mock-dots { display: flex; gap: 1.5px; }
+.mock-dots span { width: 2.5px; height: 2.5px; border-radius: 50%; }
+.mock-dots span:nth-child(1) { background: #FF5F57; }
+.mock-dots span:nth-child(2) { background: #FEBC2E; }
+.mock-dots span:nth-child(3) { background: #28C840; }
+.mock-title { font-size: 5pt; font-weight: 700; color: #64748b; }
+.mock-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5mm; }
+.mock-stat {
+  background: linear-gradient(135deg, #ECFDF5, #fff);
+  border: 1px solid #D1FAE5;
+  border-radius: 2px;
+  padding: 1.5mm 1.5mm;
+}
+.mock-stat.ai {
+  background: linear-gradient(135deg, #F5F3FF, #fff);
+  border-color: #DDD6FE;
+}
+.mock-stat-lbl { font-size: 4pt; color: #6b7280; font-weight: 700; text-transform: uppercase; }
+.mock-stat-val { font-size: 9pt; font-weight: 800; color: #064E3B; line-height: 1; margin-top: 0.5mm; letter-spacing: -0.02em; }
+.mock-stat.ai .mock-stat-val { color: #5B21B6; }
+.mock-stat-trend { font-size: 3.5pt; color: #10B981; font-weight: 700; }
+.mock-stat.ai .mock-stat-trend { color: #7C3AED; }
+
+/* PHONE */
+.phone {
+  position: absolute;
+  bottom: -4mm; right: -6mm;
+  width: 22mm; height: 42mm;
+  background: #0F172A;
+  border-radius: 4mm;
+  padding: 1.2mm;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.40), inset 0 0 0 0.4px rgba(255,255,255,0.10);
+  border: 0.5px solid rgba(255,255,255,0.12);
+}
+.phone-screen {
+  background: #FAF8F5;
+  border-radius: 2.5mm;
+  height: 100%;
+  padding: 2mm 1.5mm;
+  position: relative;
+  overflow: hidden;
+}
+.phone-notch {
+  position: absolute;
+  top: 1mm; left: 50%; transform: translateX(-50%);
+  width: 6mm; height: 1mm;
+  background: #0F172A; border-radius: 1mm;
+  z-index: 2;
+}
+.phone-content { padding-top: 3mm; }
+.phone-brand { font-size: 5pt; font-weight: 800; color: #064E3B; margin-bottom: 1mm; }
+.phone-brand em { color: #10B981; font-style: normal; }
+.phone-stat {
+  background: #fff;
+  border-radius: 1.5mm;
+  padding: 1mm 1.5mm;
+  margin-bottom: 0.8mm;
+  border-left: 1pt solid #10B981;
+}
+.phone-stat-lbl { font-size: 3.5pt; color: #6b7280; font-weight: 700; }
+.phone-stat-val { font-size: 6pt; font-weight: 800; color: #064E3B; line-height: 1; }
+.phone-stat.ai { border-left-color: #8B5CF6; }
+.phone-stat.ai .phone-stat-val { color: #5B21B6; }
+
+/* COVER BOTTOM */
+.cover-bottom { margin-top: auto; padding-top: 4mm; }
+.cover-bottom-eyebrow {
+  font-size: 6.5pt; font-weight: 800;
+  color: #A7F3D0;
+  letter-spacing: 0.10em; text-transform: uppercase;
+  margin-bottom: 2mm;
+}
+.cover-bottom-title {
+  font-size: 11pt; font-weight: 800;
+  color: #fff; line-height: 1.2;
+  margin-bottom: 2mm;
+}
+.cover-url { font-size: 10pt; font-weight: 800; color: #6EE7B7; }
+
+/* ===== DOS ===== */
+.back-panel { padding: 14mm 10mm; display: flex; flex-direction: column; height: 100%; }
+.back-brand { text-align: center; margin-bottom: 6mm; }
+.back-brand img { width: 44px; height: 44px; border-radius: 10px; box-shadow: 0 4px 14px rgba(16,185,129,0.20); margin-bottom: 3mm; }
+.back-brand-text { font-size: 18pt; font-weight: 800; letter-spacing: -0.025em; color: #fff; }
+.back-brand-text em { color: #6EE7B7; font-style: normal; }
+.back-tagline {
+  font-size: 9pt; color: #D1FAE5;
+  text-align: center; line-height: 1.45;
+  margin-bottom: 7mm; font-weight: 500;
+}
+.back-tagline em { color: #6EE7B7; font-style: normal; font-weight: 700; }
+.back-qr-wrap {
+  background: rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 5mm;
+  text-align: center;
+  border: 1px solid rgba(167,243,208,0.20);
+  margin-bottom: 4mm;
+}
+.back-qr {
+  width: 88px; height: 88px;
+  background: #fff; border-radius: 9px;
+  padding: 4px;
+  margin: 0 auto 3mm;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.20);
+}
+.back-qr img { width: 100%; height: 100%; display: block; }
+.back-qr-title { font-size: 9pt; font-weight: 800; color: #fff; margin-bottom: 0.5mm; }
+.back-qr-sub { font-size: 7pt; color: #A7F3D0; font-weight: 700; letter-spacing: 0.06em; }
+.back-contact {
+  background: rgba(255,255,255,0.06);
+  border-radius: 9px;
+  padding: 3.5mm 4mm;
+  text-align: center;
+  margin-bottom: 3mm;
+}
+.back-contact-label { font-size: 6.5pt; color: #A7F3D0; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 1.5mm; }
+.back-contact-tel { font-size: 12pt; font-weight: 800; color: #fff; letter-spacing: 0.04em; margin-bottom: 1mm; }
+.back-contact-email { font-size: 8pt; color: #D1FAE5; font-weight: 600; }
+.back-trust {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 3px;
+  font-size: 6pt; color: rgba(255,255,255,0.80);
+  margin-top: auto; margin-bottom: 3mm;
+}
+.back-trust span {
+  padding: 2px 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 999px;
+  border: 1px solid rgba(167,243,208,0.18);
+  font-weight: 600;
+}
+.back-foot {
+  text-align: center;
+  font-size: 5.5pt; color: rgba(255,255,255,0.55);
+  letter-spacing: 0.05em;
+}
+
+/* ===== TARIFS ===== */
+.plan {
+  background: #fff; border-radius: 9px;
+  padding: 3.5mm 4mm; margin-bottom: 2.5mm;
+  border: 1px solid #e5e7eb;
+}
+.plan.featured {
+  border: 2px solid #10B981;
+  background: linear-gradient(135deg, #ECFDF5, #fff);
+  position: relative;
+  box-shadow: 0 6px 18px rgba(16,185,129,0.15);
+}
+.plan.featured::before {
+  content: "★ LE PLUS CHOISI";
+  position: absolute; top: -6px; right: 6mm;
+  background: linear-gradient(135deg, #10B981, #047857);
+  color: #fff; font-size: 5.5pt; font-weight: 800;
+  padding: 2px 7px; border-radius: 999px;
+  letter-spacing: 0.08em;
+  box-shadow: 0 2px 6px rgba(16,185,129,0.30);
+}
+.plan-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.plan-name { font-size: 11pt; font-weight: 800; color: #064E3B; }
+.plan-tag { font-size: 6pt; font-weight: 800; color: #10B981; letter-spacing: 0.08em; text-transform: uppercase; }
+.plan-price-wrap { text-align: right; line-height: 1; }
+.plan-price { font-size: 17pt; font-weight: 800; color: #064E3B; letter-spacing: -0.02em; }
+.plan-unit { font-size: 7pt; color: #6b7280; font-weight: 600; }
+.plan-feats { font-size: 7pt; color: #475569; line-height: 1.5; margin-top: 2mm; }
+
+/* ===== PROOF / Témoignages ===== */
+.proof {
+  background: #fff;
+  border-radius: 9px;
+  padding: 4mm 4.5mm;
+  margin-bottom: 2.5mm;
+  border: 1px solid #f1f5f9;
+}
+.proof-stars { color: #F59E0B; font-size: 8pt; margin-bottom: 1mm; letter-spacing: 1px; }
+.proof-quote { font-size: 7.5pt; line-height: 1.5; color: #1E293B; font-style: italic; margin-bottom: 2mm; }
+.proof-author { font-size: 6.5pt; color: #6b7280; font-weight: 600; }
+.proof-author strong { color: #064E3B; font-weight: 700; display: block; }
+.proof-score {
+  background: linear-gradient(135deg, #ECFDF5, #fff);
+  border: 1px solid #A7F3D0;
+  text-align: center;
+  border-radius: 9px;
+  padding: 4mm;
+}
+.proof-score-val { font-size: 22pt; font-weight: 800; color: #10B981; letter-spacing: -0.02em; line-height: 1; }
+.proof-score-val span { font-size: 11pt; color: #6b7280; }
+.proof-score-lbl { font-size: 6.5pt; color: #475569; font-weight: 700; margin-top: 1.5mm; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* === V10c : Pas d'image hero (l'utilisateur l'ajoutera manuellement) === */
+.devices-v10 {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 4mm 0 5mm;
+}
+.cover-mockup-img {
+  width: 100%;
+  max-width: 95mm;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 14px 26px rgba(0,0,0,0.35));
+}
+@media print {
+  .cover-mockup-img { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+@media print {
+  .cover-mockup-img {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    /* mix-blend-mode retiré : image transparente */
+  }
+}
+
+/* Vraies images dashboard */
+.laptop-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 1px;
+  margin: 0;
+}
+.laptop-glare {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 0%, transparent 35%, rgba(255,255,255,0.18) 45%, transparent 60%);
+  pointer-events: none;
+  border-radius: 4px 4px 0 0;
+}
+.laptop-screen { position: relative; }
+
+.phone-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 2.5mm;
+}
+.phone-glare {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.10) 0%, transparent 35%, transparent 100%);
+  pointer-events: none;
+  border-radius: 2.5mm;
+}
+.phone-screen { position: relative; padding: 0; overflow: hidden; }
+.phone-screen .phone-notch { top: 0.6mm; }
+
+/* Effet flottement premium */
+.devices {
+  filter: drop-shadow(0 20px 40px rgba(0,0,0,0.35));
+}
+.laptop, .phone {
+  transition: transform 0.3s;
+}
+
+/* Badge LIVE pulsant sur la couverture */
+.live-badge {
+  position: absolute;
+  top: 8mm; right: 6mm;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.25);
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 6.5pt; font-weight: 800;
+  letter-spacing: 0.10em;
+  color: #6EE7B7;
+  z-index: 10;
+}
+.live-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #6EE7B7;
+  box-shadow: 0 0 8px rgba(110,231,183,0.8);
+}
+
+
+/* Tags ASSO / TPE dans les témoignages */
+.proof-tag {
+  display: inline-block;
+  font-size: 5.5pt; font-weight: 800;
+  padding: 1px 6px; border-radius: 999px;
+  letter-spacing: 0.10em; margin-left: 4px;
+  vertical-align: middle;
+}
+.proof-tag.asso { background: #ECFDF5; color: #047857; border: 0.5px solid #A7F3D0; }
+.proof-tag.tpe  { background: #DBEAFE; color: #1E40AF; border: 0.5px solid #93C5FD; }
+
+/* Témoignages plus compacts */
+.proof { padding: 2.8mm 3.5mm !important; margin-bottom: 1.8mm !important; border-radius: 7px !important; }
+.proof-stars { font-size: 7pt !important; margin-bottom: 0.5mm !important; }
+.proof-quote { font-size: 6.5pt !important; line-height: 1.35 !important; margin-bottom: 1.2mm !important; }
+.proof-author { font-size: 5.8pt !important; line-height: 1.2; }
+.proof-author strong { font-size: 6.2pt; }
+.proof-score { padding: 3mm !important; margin-top: 2mm; }
+.proof-score-val { font-size: 18pt !important; }
+.proof-score-val span { font-size: 9pt !important; }
+.proof-score-lbl { font-size: 5.5pt !important; margin-top: 1mm !important; }
+
+
+/* Compactage témoignages × 6 */
+.panel:has(.proof) { padding: 6mm 6mm !important; }
+.proof { padding: 2.2mm 3mm !important; margin-bottom: 1.3mm !important; border-radius: 6px !important; }
+.proof-stars { font-size: 6pt !important; margin-bottom: 0.3mm !important; letter-spacing: 0.5pt !important; }
+.proof-quote { font-size: 6.2pt !important; line-height: 1.3 !important; margin-bottom: 1mm !important; }
+.proof-quote strong { color: #047857; font-weight: 800; }
+.proof-author { font-size: 5.5pt !important; line-height: 1.15 !important; }
+.proof-author strong { font-size: 5.8pt !important; }
+.proof-tag { font-size: 4.8pt !important; padding: 0.5px 5px !important; }
+.proof-score { padding: 2.5mm 3mm !important; margin-top: 1.5mm !important; }
+.proof-score-val { font-size: 16pt !important; }
+.proof-score-val span { font-size: 8pt !important; }
+.proof-score-lbl { font-size: 5pt !important; margin-top: 0.5mm !important; }
+
+/* Réduire header du panneau preuves */
+.panel:has(.proof) .eyebrow { margin-bottom: 3mm !important; padding: 3px 8px !important; font-size: 6.5pt !important; }
+.panel:has(.proof) .h-title { font-size: 15pt !important; line-height: 1.05 !important; margin-bottom: 2mm !important; }
+.panel:has(.proof) .lead { font-size: 7.5pt !important; line-height: 1.4 !important; margin-bottom: 4mm !important; }
+
+
+/* Module hero "coup de cœur" */
+.mod-hero {
+  background: linear-gradient(135deg, #ECFDF5 0%, #fff 50%, #F0FDF4 100%);
+  border: 1.5px solid #6EE7B7 !important;
+  border-left: 4pt solid #10B981 !important;
+  position: relative;
+  padding: 5mm 5mm !important;
+  margin-bottom: 3.5mm !important;
+  box-shadow: 0 6px 18px rgba(16,185,129,0.15);
+}
+.mod-hero-blue {
+  background: linear-gradient(135deg, #DBEAFE 0%, #fff 50%, #EFF6FF 100%) !important;
+  border: 1.5px solid #93C5FD !important;
+  border-left: 4pt solid #3B82F6 !important;
+  box-shadow: 0 6px 18px rgba(59,130,246,0.15);
+}
+.mod-hero .mod-ico {
+  width: 28px !important; height: 28px !important;
+  background: linear-gradient(135deg, #10B981, #047857) !important;
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(16,185,129,0.30);
+  font-size: 13pt !important;
+}
+.mod-hero-blue .mod-ico {
+  background: linear-gradient(135deg, #3B82F6, #1E40AF) !important;
+  box-shadow: 0 3px 10px rgba(59,130,246,0.30);
+}
+.mod-hero .mod-title {
+  font-size: 10.5pt !important;
+  color: #064E3B !important;
+  letter-spacing: -0.01em;
+}
+.mod-hero-blue .mod-title { color: #1E3A8A !important; }
+.mod-hero .mod-desc {
+  font-size: 7.5pt !important;
+  line-height: 1.5 !important;
+  color: #1E293B !important;
+  margin-top: 1mm;
+}
+.mod-hero .mod-desc strong { color: #047857; font-weight: 700; }
+.mod-hero-blue .mod-desc strong { color: #1E40AF; }
+.mod-hero .mod-feat {
+  font-size: 7pt !important;
+  color: #047857 !important;
+  margin-top: 2mm !important;
+}
+.mod-hero-blue .mod-feat { color: #1E40AF !important; }
+.mod-badge {
+  position: absolute;
+  top: -7px; right: 5mm;
+  background: linear-gradient(135deg, #10B981, #047857);
+  color: #fff;
+  font-size: 5.5pt; font-weight: 800;
+  padding: 2.5px 8px; border-radius: 999px;
+  letter-spacing: 0.10em;
+  box-shadow: 0 3px 8px rgba(16,185,129,0.35);
+  z-index: 2;
+}
+.mod-badge.blue {
+  background: linear-gradient(135deg, #3B82F6, #1E40AF);
+  box-shadow: 0 3px 8px rgba(59,130,246,0.35);
+}
+
+
+/* Tag-line au-dessus du titre du module hero */
+.mod-tag-line {
+  font-size: 6.5pt; font-weight: 800;
+  color: #047857;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  margin-bottom: 1mm;
+  display: block;
+}
+.mod-tag-line.blue { color: #1E40AF; }
+.mod-tag-line.violet { color: #7C3AED; }
+
+/* Titre du module hero plus impactant */
+.mod-hero .mod-title {
+  font-size: 13pt !important;
+  font-weight: 800 !important;
+  line-height: 1.1 !important;
+  margin-bottom: 2mm !important;
+  letter-spacing: -0.02em;
+}
+.mod-hero .mod-title em {
+  background: linear-gradient(135deg, #10B981, #047857);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-style: normal;
+}
+.mod-hero-blue .mod-title em.blue {
+  background: linear-gradient(135deg, #3B82F6, #1E40AF);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Module IA hero (violet) */
+.mod-hero-ia {
+  background: linear-gradient(135deg, #F5F3FF 0%, #fff 50%, #FAF5FF 100%) !important;
+  border: 1.5px solid #C4B5FD !important;
+  border-left: 4pt solid #8B5CF6 !important;
+  position: relative;
+  padding: 5mm 5mm !important;
+  box-shadow: 0 6px 18px rgba(139,92,246,0.15);
+}
+.mod-hero-ia .mod-ico {
+  width: 28px !important; height: 28px !important;
+  background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
+  color: #fff !important;
+  box-shadow: 0 3px 10px rgba(139,92,246,0.30);
+  font-size: 13pt !important;
+}
+.mod-hero-ia .mod-title {
+  color: #4C1D95 !important;
+  font-size: 11.5pt !important;
+  font-weight: 800 !important;
+  margin-bottom: 1.5mm !important;
+}
+.mod-hero-ia .mod-title em.violet {
+  background: linear-gradient(135deg, #8B5CF6, #6D28D9);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-style: normal;
+}
+.mod-hero-ia .mod-desc {
+  font-size: 7.5pt !important;
+  line-height: 1.5 !important;
+  color: #1E293B !important;
+  margin-top: 1mm;
+}
+.mod-hero-ia .mod-desc strong { color: #6D28D9; font-weight: 700; }
+.mod-hero-ia .mod-feat {
+  font-size: 7pt !important;
+  color: #6D28D9 !important;
+  margin-top: 2mm !important;
+}
+.mod-badge.violet {
+  background: linear-gradient(135deg, #8B5CF6, #6D28D9);
+  box-shadow: 0 3px 8px rgba(139,92,246,0.35);
+}
+
+
+/* Témoignage hero "coup de cœur" émotionnel */
+.proof-hero {
+  position: relative;
+  background: linear-gradient(135deg, #ECFDF5 0%, #fff 60%, #F0FDF4 100%);
+  border: 1.5px solid #6EE7B7;
+  border-radius: 9px;
+  padding: 4mm 4.5mm 3.5mm;
+  margin-bottom: 2.5mm;
+  box-shadow: 0 6px 18px rgba(16,185,129,0.12);
+}
+.proof-hero-blue {
+  background: linear-gradient(135deg, #DBEAFE 0%, #fff 60%, #EFF6FF 100%);
+  border-color: #93C5FD;
+  box-shadow: 0 6px 18px rgba(59,130,246,0.12);
+}
+.proof-hero-quote-mark {
+  position: absolute;
+  top: 1mm; left: 3.5mm;
+  font-size: 26pt; font-weight: 800;
+  color: #10B981; opacity: 0.20;
+  font-family: Georgia, serif;
+  line-height: 0.8;
+}
+.proof-hero-blue .proof-hero-quote-mark { color: #3B82F6; }
+.proof-hero-quote {
+  font-size: 7.2pt;
+  line-height: 1.45;
+  color: #064E3B;
+  font-style: italic;
+  margin: 3mm 0 2.5mm;
+  padding-left: 5mm;
+  letter-spacing: 0;
+}
+.proof-hero-blue .proof-hero-quote { color: #1E3A8A; }
+.proof-hero-quote strong {
+  color: #047857;
+  font-weight: 800;
+  font-style: normal;
+  background: linear-gradient(120deg, transparent 30%, #A7F3D0 30%);
+  padding: 0 2px;
+}
+.proof-hero-blue .proof-hero-quote strong {
+  color: #1E40AF;
+  background: linear-gradient(120deg, transparent 30%, #BFDBFE 30%);
+}
+.proof-hero-author {
+  display: flex; align-items: center; gap: 5px;
+  padding-top: 2.5mm;
+  border-top: 1px solid rgba(16,185,129,0.18); /* v10: dashed→solid */
+}
+.proof-hero-blue .proof-hero-author { border-top-color: rgba(59,130,246,0.25); }
+.proof-hero-avatar {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #10B981, #047857);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 6.5pt; font-weight: 800;
+  flex-shrink: 0;
+}
+.proof-hero-avatar.blue { background: linear-gradient(135deg, #3B82F6, #1E40AF); }
+.proof-hero-author > div:nth-child(3) { margin-left: auto; }
+.proof-hero-author strong {
+  display: block;
+  font-size: 6.5pt; font-weight: 800;
+  color: #064E3B;
+  line-height: 1.1;
+}
+.proof-hero-blue .proof-hero-author strong { color: #1E3A8A; }
+.proof-hero-author span {
+  display: block;
+  font-size: 5.5pt;
+  color: #475569;
+  font-weight: 500;
+}
+.proof-hero-stars {
+  color: #F59E0B;
+  font-size: 6pt;
+  letter-spacing: 0.5pt;
+}
+
+.proof-divider {
+  text-align: center;
+  font-size: 6pt; font-weight: 700;
+  color: #94A3B8;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin: 2.5mm 0 1.5mm;
+}
+
+/* Compactage MAX des 6 témoignages classiques */
+.proof { padding: 1.8mm 2.8mm !important; margin-bottom: 1mm !important; border-radius: 5px !important; border: 1px solid #f1f5f9; }
+.proof-stars { font-size: 5.8pt !important; margin-bottom: 0.3mm !important; }
+.proof-quote { font-size: 5.8pt !important; line-height: 1.3 !important; margin-bottom: 0.8mm !important; }
+.proof-author { font-size: 5pt !important; }
+.proof-author strong { font-size: 5.3pt !important; }
+.proof-tag { font-size: 4.5pt !important; padding: 0.5px 4px !important; }
+
+.panel:has(.proof-hero) .eyebrow { margin-bottom: 2.5mm !important; padding: 2.5px 7px !important; font-size: 6pt !important; }
+.panel:has(.proof-hero) .h-title { font-size: 13pt !important; line-height: 1.05 !important; margin-bottom: 1.5mm !important; }
+.panel:has(.proof-hero) .lead { font-size: 7pt !important; line-height: 1.35 !important; margin-bottom: 3mm !important; }
+.panel:has(.proof-hero) { padding: 5mm 5mm !important; }
+
+.proof-score { padding: 2mm 3mm !important; margin-top: 1.5mm !important; }
+.proof-score-val { font-size: 14pt !important; }
+.proof-score-val span { font-size: 7pt !important; }
+.proof-score-lbl { font-size: 4.8pt !important; margin-top: 0.5mm !important; }
+
+
+/* === AJUSTEMENTS SAFE-PRINT v2 === */
+/* Garantit safe zone 8mm minimum sur impression */
+.panel .h-title { font-size: 18pt !important; line-height: 1.05 !important; margin-bottom: 3mm !important; }
+.panel .lead { font-size: 8pt !important; line-height: 1.45 !important; margin-bottom: 4mm !important; }
+.panel .eyebrow { padding: 3.5px 9px !important; font-size: 6.5pt !important; margin-bottom: 4mm !important; }
+
+/* Modules standard plus compacts */
+.mod { padding: 3.5mm 4mm !important; margin-bottom: 2mm !important; border-radius: 7px !important; }
+.mod-ico { width: 20px !important; height: 20px !important; font-size: 9pt !important; border-radius: 5px !important; }
+.mod-title { font-size: 8.5pt !important; line-height: 1.2 !important; margin-bottom: 0.6mm !important; }
+.mod-desc { font-size: 6.8pt !important; line-height: 1.4 !important; }
+.mod-feat { margin-top: 1.2mm !important; font-size: 6.3pt !important; }
+
+/* Module hero coup de cœur — bien proportionné */
+.mod-hero, .mod-hero-blue, .mod-hero-ia {
+  padding: 4mm 4mm !important;
+  margin-bottom: 2.5mm !important;
+}
+.mod-hero .mod-ico, .mod-hero-blue .mod-ico, .mod-hero-ia .mod-ico {
+  width: 26px !important; height: 26px !important;
+  font-size: 12pt !important;
+  border-radius: 7px !important;
+}
+.mod-hero .mod-tag-line { font-size: 6pt !important; margin-bottom: 0.8mm !important; }
+.mod-hero .mod-title { font-size: 11pt !important; margin-bottom: 1.5mm !important; line-height: 1.1 !important; }
+.mod-hero .mod-desc { font-size: 6.8pt !important; line-height: 1.45 !important; }
+.mod-hero .mod-feat { font-size: 6.3pt !important; margin-top: 1.5mm !important; }
+.mod-badge { font-size: 5pt !important; padding: 1.8px 6px !important; top: -6px !important; right: 4mm !important; }
+
+/* Plans tarifs compacts */
+.plan { padding: 3mm 4mm !important; margin-bottom: 2.2mm !important; border-radius: 8px !important; }
+.plan-name { font-size: 10pt !important; }
+.plan-tag { font-size: 5.5pt !important; }
+.plan-price { font-size: 15pt !important; }
+.plan-unit { font-size: 6pt !important; }
+.plan-feats { font-size: 6.3pt !important; line-height: 1.45 !important; margin-top: 1.5mm !important; }
+
+/* Blobs : repositionnés pour ne pas dépasser */
+.blob { opacity: 0.25 !important; }
+
+/* Témoignages hero un peu plus compacts pour faire de la place */
+.proof-hero { padding: 3.5mm 4mm 3mm !important; margin-bottom: 2mm !important; }
+.proof-hero-quote { font-size: 6.8pt !important; line-height: 1.4 !important; margin: 2.5mm 0 2mm !important; padding-left: 4mm !important; }
+.proof-hero-quote-mark { font-size: 22pt !important; top: 0.5mm !important; left: 3mm !important; }
+.proof-hero-avatar { width: 20px !important; height: 20px !important; font-size: 6pt !important; }
+.proof-hero-author strong { font-size: 6.2pt !important; }
+.proof-hero-author span { font-size: 5.2pt !important; }
+.proof-hero-stars { font-size: 5.5pt !important; }
+
+.proof-divider { margin: 2mm 0 1.5mm !important; font-size: 5.5pt !important; }
+
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- RECTO : [ Témoignages | DOS | COUVERTURE ]                    -->
+<!-- ============================================================ -->
+<div class="sheet">
+
+  <!-- Volet : Témoignages (visible quand on déplie 1ère fois) -->
+  <div class="panel bg-cream">
+    <div class="blob blob-green" style="width:140px;height:140px;top:-60px;right:-50px;"></div>
+
+    <span class="eyebrow">★ Histoires vécues</span>
+    <h2 class="h-title">Ils ont <em>repris le contrôle.</em></h2>
+    <p class="lead"><strong>350+ structures</strong> ont déjà choisi Assokit pour respirer.</p>
+
+    <!-- COUP DE CŒUR 1 : Boulangère -->
+    <div class="proof-hero">
+      <div class="proof-hero-quote-mark">"</div>
+      <p class="proof-hero-quote">J'ai une boulangerie et 2 enfants. <strong>Je ne m'en sortais plus</strong> : Excel, papiers partout, je ne savais même plus combien j'avais gagné. <strong>Assokit a tout clarifié en 1 semaine.</strong> Aujourd'hui je dors mieux.</p>
+      <div class="proof-hero-author">
+        <div class="proof-hero-avatar">SD</div>
+        <div>
+          <strong>Sarah D.</strong>
+          <span>Boulangère · Toulouse</span>
+        </div>
+        <div class="proof-hero-stars">★★★★★</div>
+      </div>
+    </div>
+
+    <!-- COUP DE CŒUR 2 : Plombier -->
+    <div class="proof-hero proof-hero-blue">
+      <div class="proof-hero-quote-mark">"</div>
+      <p class="proof-hero-quote">Avant, mes devis prenaient mes soirées. Mes clients attendaient 3 jours. Aujourd'hui, je dicte 3 mots à l'IA et <strong>le devis part dans la foulée</strong>. <strong>J'ai retrouvé mes weekends</strong> et mes clients sont bluffés par ma réactivité.</p>
+      <div class="proof-hero-author">
+        <div class="proof-hero-avatar blue">AL</div>
+        <div>
+          <strong>Antoine L.</strong>
+          <span>Plombier indépendant · Lyon</span>
+        </div>
+        <div class="proof-hero-stars">★★★★★</div>
+      </div>
+    </div>
+
+    <div class="proof-divider">— Ils en parlent aussi —</div>
+
+    <div class="proof">
+      <div class="proof-stars">★★★★★ <span class="proof-tag asso">ASSO</span></div>
+      <p class="proof-quote">« Nos 3 groupes WhatsApp sont remplacés. Tout le monde voit l'avancement, plus personne ne dit "j'ai pas vu". »</p>
+      <div class="proof-author"><strong>Sophie B.</strong>Trésorière · Asso sportive</div>
+    </div>
+
+    <div class="proof">
+      <div class="proof-stars">★★★★★ <span class="proof-tag tpe">TPE</span></div>
+      <p class="proof-quote">« Assokit a remplacé 3 outils et 2 tableurs. On gagne 5h par semaine sur la facturation. »</p>
+      <div class="proof-author"><strong>Thomas R.</strong>Artisan ébéniste · TPE</div>
+    </div>
+
+    <div class="proof">
+      <div class="proof-stars">★★★★★ <span class="proof-tag tpe">TPE</span></div>
+      <p class="proof-quote">« Les relances IA font le boulot à ma place. <strong>+40% de paiements dans les délais</strong> en 3 mois. »</p>
+      <div class="proof-author"><strong>Claire M.</strong>Consultante · Indépendante</div>
+    </div>
+
+    <div class="proof">
+      <div class="proof-stars">★★★★★ <span class="proof-tag asso">ASSO</span></div>
+      <p class="proof-quote">« Avant : 4 outils, 6h de paperasse par semaine. Aujourd'hui : <strong>1 seul outil et 1h suffit.</strong> »</p>
+      <div class="proof-author"><strong>Léa T.</strong>Secrétaire · Asso étudiante</div>
+    </div>
+
+    <div class="proof-score">
+      <div class="proof-score-val">4,9<span>/5</span></div>
+      <div class="proof-score-lbl">500+ avis · 350 structures</div>
+    </div>
+  </div>
+
+  <!-- DOS -->
+  <div class="panel bg-dark back-panel">
+    <div class="back-brand">
+      <img src="/assets/logo-assokit.png" alt="">
+      <div class="back-brand-text">Asso<em>kit</em></div>
+    </div>
+    <p class="back-tagline">Le logiciel de gestion moderne avec <em>IA intégrée</em> pour les associations &amp; TPE.</p>
+
+    <div class="back-qr-wrap">
+      <div class="back-qr">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https%3A%2F%2Fassokit.fr%2Fcontact&margin=0">
+      </div>
+      <div class="back-qr-title">Essai gratuit · 14 jours</div>
+      <div class="back-qr-sub">SCANNEZ POUR DÉMARRER</div>
+    </div>
+
+    <div class="back-contact">
+      <div class="back-contact-label">Nous contacter</div>
+      <div class="back-contact-tel">+33 7 56 89 73 36</div>
+      <div class="back-contact-email">contact@assokit.fr</div>
+    </div>
+
+    <div class="back-trust">
+      <span>🇫🇷 France</span><span>🔒 RGPD</span><span>⚡ 24h</span><span>💚 Sans engagement</span>
+    </div>
+    <div class="back-foot">www.assokit.fr · Édité par RBPS, Évry</div>
+  </div>
+
+  <!-- COUVERTURE -->
+  <div class="panel bg-dark cover">
+    <div class="cover-brand">
+      <img src="/assets/logo-assokit.png" alt="">
+      <div class="cover-brand-text">Asso<em>kit</em></div>
+    </div>
+
+    <span class="cover-eyebrow">● Avec IA intégrée</span>
+
+    <h1 class="cover-title">
+      Toute votre gestion.
+      <span class="l2">Un seul outil</span>
+      intelligent.
+    </h1>
+
+    <div class="cover-tri">
+      <span>Centralisez</span><span>Automatisez</span><span>Avancez</span>
+    </div>
+
+    <!-- DEVICES MOCKUP — image unique v10 -->
+    <div class="devices-v10">
+      <img src="/assets/flyer/Ordinateur1_Mobile_Assokit.png?v=1778709366" alt="Assokit sur ordinateur et mobile" class="cover-mockup-img">
+    </div>
+
+    <div class="cover-bottom">
+      <div class="cover-bottom-eyebrow">★ Essai gratuit · sans CB</div>
+      <div class="cover-bottom-title">14 jours pour tout tester.</div>
+      <div class="cover-url">www.assokit.fr</div>
+    </div>
+  </div>
+
+  <div class="fold f1"></div>
+  <div class="fold f2"></div>
+</div>
+
+<!-- ============================================================ -->
+<!-- VERSO : [ Asso | TPE | Tarifs ] — l'intérieur déplié          -->
+<!-- ============================================================ -->
+<div class="sheet">
+
+  <!-- ASSO -->
+  <div class="panel bg-cream">
+    <div class="blob blob-green" style="width:130px;height:130px;top:-50px;right:-50px;"></div>
+
+    <span class="eyebrow">🏛️ Pour les associations</span>
+    <h2 class="h-title">Moins de paperasse. <em>Plus d'impact.</em></h2>
+    <p class="lead">Vos projets, vos bénévoles, vos bilans — <strong>au même endroit, vraiment.</strong></p>
+
+    <div class="mod mod-hero">
+      <span class="mod-badge">★ LE COUP DE CŒUR</span>
+      <div class="mod-row">
+        <div class="mod-ico">🎯</div>
+        <div class="mod-content">
+          <div class="mod-tag-line">Le quotidien associatif, transformé</div>
+          <div class="mod-title">Vos projets avancent. <em>Vraiment.</em></div>
+          <div class="mod-desc">Plus jamais de <strong>« on en est où ? »</strong>. Chaque projet a son équipe, son budget, ses étapes — visibles par tous, mis à jour en direct. <strong>Les bénévoles savent. Les responsables pilotent. L'asso avance ensemble.</strong></div>
+          <div class="mod-feat">✓ Équipes assignées · Avancement live · Messagerie intégrée · Budget en temps réel</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-row">
+        <div class="mod-ico">🏛️</div>
+        <div class="mod-content">
+          <div class="mod-title">Assemblées Générales</div>
+          <div class="mod-desc">Convocations, votes en ligne, PV PDF auto.</div>
+          <div class="mod-feat">✓ Signature électronique</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mod blue">
+      <div class="mod-row">
+        <div class="mod-ico">✍️</div>
+        <div class="mod-content">
+          <div class="mod-title">Émargement QR Code</div>
+          <div class="mod-desc">Vos participants signent en 5 secondes.</div>
+          <div class="mod-feat">✓ Export PDF officiel</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mod amber">
+      <div class="mod-row">
+        <div class="mod-ico">💶</div>
+        <div class="mod-content">
+          <div class="mod-title">Subventions &amp; rappels</div>
+          <div class="mod-desc">Rappels auto J-7 / J-30 avant échéance.</div>
+          <div class="mod-feat">✓ État · Région · EPCI</div>
+        </div>
+      </div>
+    </div>
+
+
+
+    <div class="mod violet mod-hero-ia">
+      <span class="mod-badge violet">★ MAGIQUE</span>
+      <div class="mod-row">
+        <div class="mod-ico">✨</div>
+        <div class="mod-content">
+          <div class="mod-tag-line violet">Votre copilote IA · Asso</div>
+          <div class="mod-title">L'IA écrit. <em class="violet">Vous validez.</em></div>
+          <div class="mod-desc"><strong>Bilans annuels en 1 seconde</strong>, convocations AG, appels aux dons, posts réseaux, lettres aux adhérents : l'IA <strong>rédige tout</strong>. Vous gagnez un week-end entier par mois.</div>
+          <div class="mod-feat">✓ Bilans · Convocations · Communication · Posts</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TPE -->
+  <div class="panel bg-white">
+    <div class="blob blob-blue" style="width:130px;height:130px;top:-50px;left:-50px;"></div>
+
+    <span class="eyebrow blue">🛠️ Pour les TPE</span>
+    <h2 class="h-title">Gestion simple. <em class="blue">Image pro.</em></h2>
+    <p class="lead">Vos missions, vos clients, votre IA — <strong>tout au même endroit, dans votre rythme.</strong></p>
+
+    <div class="mod mod-hero mod-hero-blue">
+      <span class="mod-badge blue">★ LE COUP DE CŒUR</span>
+      <div class="mod-row">
+        <div class="mod-ico">🎯</div>
+        <div class="mod-content">
+          <div class="mod-tag-line blue">Le pilotage TPE, enfin clair</div>
+          <div class="mod-title">Vos missions, <em class="blue">sous contrôle.</em></div>
+          <div class="mod-desc">Un client appelle ? <strong>Vous sortez son dossier complet en 3 secondes.</strong> Une mission démarre ? Étapes, livrables, deadline — tout est cadré. <strong>Vous ne courez plus après l'info, elle vient à vous.</strong></div>
+          <div class="mod-feat">✓ Pipeline live · Deadlines auto · Livrables · Budget temps réel</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mod blue">
+      <div class="mod-row">
+        <div class="mod-ico">📄</div>
+        <div class="mod-content">
+          <div class="mod-title">Devis &amp; Factures</div>
+          <div class="mod-desc">Signature électronique, HT/TVA/TTC, modèles.</div>
+          <div class="mod-feat">✓ Récurrentes · PDF auto</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mod amber">
+      <div class="mod-row">
+        <div class="mod-ico">⚡</div>
+        <div class="mod-content">
+          <div class="mod-title">Relances automatiques</div>
+          <div class="mod-desc">J+15, J+30, J+45. Emails IA. +35% recouvrement.</div>
+          <div class="mod-feat">✓ Suivi paiements live</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mod violet mod-hero-ia">
+      <span class="mod-badge violet">★ MAGIQUE</span>
+      <div class="mod-row">
+        <div class="mod-ico">✨</div>
+        <div class="mod-content">
+          <div class="mod-tag-line violet">Votre copilote IA</div>
+          <div class="mod-title">L'IA écrit. <em class="violet">Vous validez.</em></div>
+          <div class="mod-desc">3 mots tapés, votre email pro est prêt. Un devis à envoyer ? L'IA le rédige. Un client à relancer ? L'IA propose le bon ton. <strong>Vous gagnez 1h+ chaque jour, sans effort.</strong></div>
+          <div class="mod-feat">✓ Emails · Devis · Newsletter · Posts · Relances</div>
+        </div>
+      </div>
+    </div>
+
+
+  </div>
+
+  <!-- TARIFS -->
+  <div class="panel bg-cream">
+    <div class="blob blob-green" style="width:130px;height:130px;bottom:-50px;right:-50px;"></div>
+
+    <span class="eyebrow">💎 Tarifs simples</span>
+    <h2 class="h-title">Choisissez votre <em>plan</em>.</h2>
+    <p class="lead"><strong>14 jours d'essai gratuit.</strong> Sans CB. Sans engagement.</p>
+
+    <div class="plan">
+      <div class="plan-row">
+        <div>
+          <div class="plan-tag">Démarrer</div>
+          <div class="plan-name">Essentiel</div>
+        </div>
+        <div class="plan-price-wrap">
+          <span class="plan-price">29,99€</span><br>
+          <span class="plan-unit">/mois HT</span>
+        </div>
+      </div>
+      <div class="plan-feats">30 contacts · 2 utilisateurs · 20 IA/mois · Support email</div>
+    </div>
+
+    <div class="plan featured">
+      <div class="plan-row">
+        <div>
+          <div class="plan-tag">Le plus choisi</div>
+          <div class="plan-name">Pro</div>
+        </div>
+        <div class="plan-price-wrap">
+          <span class="plan-price">49,99€</span><br>
+          <span class="plan-unit">/mois HT</span>
+        </div>
+      </div>
+      <div class="plan-feats">400 adhérents · 20 utilisateurs · 300 IA · Pack Asso · Sous-domaine</div>
+    </div>
+
+    <div class="plan">
+      <div class="plan-row">
+        <div>
+          <div class="plan-tag">Grands comptes</div>
+          <div class="plan-name">Sur-mesure</div>
+        </div>
+        <div class="plan-price-wrap">
+          <span class="plan-price">149€</span><br>
+          <span class="plan-unit">/mois HT</span>
+        </div>
+      </div>
+      <div class="plan-feats">Illimité · Domaine perso · White-label · Support dédié</div>
+    </div>
+
+    <div style="margin-top:4mm;padding:3.5mm 4mm;background:linear-gradient(135deg,#064E3B,#047857);border-radius:9px;text-align:center;color:#fff;">
+      <div style="font-size:6pt;font-weight:800;color:#A7F3D0;letter-spacing:0.10em;text-transform:uppercase;margin-bottom:1mm;">★ Essai gratuit 14j · Sans CB</div>
+      <div style="font-size:9pt;font-weight:800;line-height:1.2;color:#6EE7B7;">www.assokit.fr</div>
+    </div>
+  </div>
+
+  <div class="fold f1"></div>
+  <div class="fold f2"></div>
+</div>
+
+</body>
+</html>
