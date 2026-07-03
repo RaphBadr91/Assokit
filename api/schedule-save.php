@@ -13,6 +13,13 @@ if (empty($_SESSION['user_id'])) {
     exit;
 }
 
+// CSRF (fail-closed) — le jeton 'csrf' est envoye par le JS (emploi-du-temps.php)
+if (!function_exists('check_csrf') || !check_csrf($_POST['csrf'] ?? '')) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Jeton de sécurité invalide, rechargez la page']);
+    exit;
+}
+
 $user = current_user();
 $org_id = (int)$user['org_id'];
 $user_id = (int)$user['id'];

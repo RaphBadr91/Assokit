@@ -54,10 +54,21 @@ if (!$is_demo_account) {
     exit;
 }
 
+// Jeton CSRF pour les formulaires de switch d'organisation
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 // =============================================================
 // ACTION POST : switch d'organisation
 // =============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['target_org_id'])) {
+    // CSRF (fail-closed)
+    if (!function_exists('check_csrf') || !check_csrf($_POST['csrf'] ?? '')) {
+        $_SESSION['demo_error'] = 'Session expirée, réessayez.';
+        header('Location: /demo-selector.php');
+        exit;
+    }
     $target_org_id = (int)$_POST['target_org_id'];
     
     try {
@@ -227,6 +238,7 @@ body { font-family: -apple-system, sans-serif; background: linear-gradient(135de
     ?>
     <form method="POST" action="" class="demo-form">
         <input type="hidden" name="target_org_id" value="<?= (int)$org['id'] ?>">
+        <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '', ENT_QUOTES) ?>">
         <div class="demo-card <?= $is_premium ? 'is-premium' : '' ?>" style="--card-color: <?= $cfg['color'] ?>">
             <div class="demo-card-icon"><?= $cfg['icon'] ?></div>
             <div class="demo-card-name"><?= h_dem($org['name']) ?></div>
