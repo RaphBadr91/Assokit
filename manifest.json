@@ -1,6 +1,6 @@
 {
-  "name": "AssoKit",
-  "short_name": "AssoKit",
+  "name": "Assokit",
+  "short_name": "Assokit",
   "description": "Le SaaS qui simplifie la gestion d'association",
   "start_url": "/dashboard",
   "scope": "/",

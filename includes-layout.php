@@ -90,7 +90,7 @@ function render_head($page_title) {
 <link rel="manifest" href="/manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="AssoKit">
+<meta name="apple-mobile-web-app-title" content="Assokit">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512.png">
@@ -1996,6 +1996,58 @@ function render_foot() {
       navigator.serviceWorker.register('/service-worker.js').catch(function(){});
     });
   }
+})();
+</script>
+
+<!-- 📱 PWA : invite d'installation discrete (rejetable, memorisee) -->
+<script>
+(function() {
+  var KEY = 'ak_pwa_install_dismissed';
+  try { if (localStorage.getItem(KEY)) return; } catch (e) { return; }
+  // Deja installe (mode standalone) : ne rien afficher
+  if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone) return;
+
+  var deferred = null;
+  function dismiss(el){ try { localStorage.setItem(KEY, '1'); } catch(e){} if (el) el.remove(); }
+  function showBanner(mode) {
+    if (document.getElementById('ak-pwa-banner')) return;
+    var b = document.createElement('div');
+    b.id = 'ak-pwa-banner';
+    b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;max-width:440px;margin:0 auto;background:#fff;border:1px solid #E2E8F0;border-radius:14px;box-shadow:0 10px 40px rgba(15,23,42,.18);padding:14px 16px;display:flex;align-items:center;gap:12px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;';
+    var txt = (mode === 'ios')
+      ? 'Appuyez sur Partager puis « Sur l\'écran d\'accueil »'
+      : 'Accès rapide, plein écran, même hors-ligne';
+    b.innerHTML = '<img src="/icons/icon-192.png" alt="" width="40" height="40" style="border-radius:9px;flex:none;">'
+      + '<div style="flex:1;min-width:0;"><div style="font-weight:650;font-size:14px;color:#0F172A;">Installer Assokit</div>'
+      + '<div style="font-size:12.5px;color:#475569;line-height:1.35;">' + txt + '</div></div>';
+    var actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:6px;flex:none;align-items:center;';
+    if (mode === 'android') {
+      var inst = document.createElement('button');
+      inst.type = 'button';
+      inst.textContent = 'Installer';
+      inst.style.cssText = 'background:#059669;color:#fff;border:0;border-radius:9px;padding:9px 14px;font-weight:600;font-size:13px;cursor:pointer;';
+      inst.onclick = function() {
+        if (deferred) { deferred.prompt(); deferred.userChoice.finally(function(){ deferred = null; dismiss(b); }); }
+        else { dismiss(b); }
+      };
+      actions.appendChild(inst);
+    }
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Fermer');
+    close.textContent = '✕';
+    close.style.cssText = 'background:#F1F5F9;color:#475569;border:0;border-radius:9px;padding:9px 12px;font-size:13px;cursor:pointer;';
+    close.onclick = function() { dismiss(b); };
+    actions.appendChild(close);
+    b.appendChild(actions);
+    document.body.appendChild(b);
+  }
+  window.addEventListener('beforeinstallprompt', function(e) { e.preventDefault(); deferred = e; showBanner('android'); });
+  var ua = navigator.userAgent || '';
+  var isIOS = /iphone|ipad|ipod/i.test(ua);
+  var isSafari = /safari/i.test(ua) && !/crios|fxios|chrome|android/i.test(ua);
+  if (isIOS && isSafari) { setTimeout(function() { showBanner('ios'); }, 3000); }
 })();
 </script>
 </body>

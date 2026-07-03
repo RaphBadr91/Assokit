@@ -249,6 +249,7 @@ if (!function_exists('render_public_footer')) {
                 <a href="/fonctionnalites">Fonctionnalités</a>
                 <a href="/pour-organismes">Collectivités</a>
                 <a href="/tarifs">Tarifs</a>
+                <a href="/application">Application mobile</a>
                 <a href="/contact">Réserver une démo</a>
                 <a href="/connexion">Connexion</a>
               </div>
