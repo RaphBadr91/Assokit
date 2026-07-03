@@ -239,7 +239,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
-<title>Créer mon compte — Assokit</title>
+<title>Démarrer ma démo — Assokit</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%23059669'/%3E%3Ccircle cx='22' cy='22' r='4.5' fill='%23FFFFFF'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -358,8 +358,8 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
       <span class="plan-pill"><span class="plan-pill-dot"></span>Plan Essentiel gratuit</span>
     <?php endif; ?>
 
-    <h1>Créez votre espace Assokit</h1>
-    <p class="sub">Une association, un admin, et c'est parti. Sans carte bancaire, sans engagement.</p>
+    <h1>Démarrez votre démo Assokit</h1>
+    <p class="sub">Accès démo immédiat, en 1 minute. Sans carte bancaire, sans engagement.</p>
 
     <?php if ($error): ?>
       <div class="alert-error">⚠️ <?= htmlspecialchars($error) ?></div>
@@ -410,7 +410,7 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
         <span>J'accepte les <a href="/cgu" target="_blank">conditions générales d'utilisation</a> et la <a href="/politique-confidentialite" target="_blank">politique de confidentialité</a>.</span>
       </label>
 
-      <button type="submit" class="btn-submit">Créer mon espace →</button>
+      <button type="submit" class="btn-submit">Démarrer ma démo →</button>
     </form>
 
     <div class="trust-line">
@@ -422,7 +422,8 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
   </div>
 
   <div class="login-link">
-    Vous avez déjà un compte ? <a href="/connexion">Se connecter</a>
+    Vous avez déjà un compte ? <a href="/connexion">Se connecter</a><br>
+    Vous préférez être accompagné ? <a href="/contact">Parler à un conseiller</a>
   </div>
 
 </div>

@@ -223,7 +223,7 @@ if (empty($_SESSION['csrf_token'])) {
     <button type="submit" class="btn-submit">Se connecter</button>
   </form>
   <a href="/mot-de-passe-oublie" class="forgot-link">Mot de passe oublié ?</a>
-  <div class="footer-note">Pas encore de compte ? <a href="/">Découvrir Assokit</a></div>
+  <div class="footer-note">Pas encore de compte ? <a href="/signup">Créer ma démo</a> · <a href="/contact">Parler à un conseiller</a></div>
 </div>
 </body>
 </html>
