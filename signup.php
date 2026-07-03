@@ -40,8 +40,8 @@ if (empty($_SESSION['csrf_token'])) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_once __DIR__ . '/rate-limit-helper.php';
-    // CSRF check
-    $csrf_ok = true;
+    // CSRF check (fail-closed : si la fonction n'est pas chargee, on rejette)
+    $csrf_ok = false;
     if (function_exists('check_csrf')) {
         $csrf_ok = check_csrf($_POST['csrf_token'] ?? '');
     }

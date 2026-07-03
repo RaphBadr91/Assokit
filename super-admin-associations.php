@@ -28,7 +28,7 @@ $view_id = (int) ($_GET['id'] ?? 0);
 // =====================================================================
 // Traitement POST (modifs d'une asso)
 // =====================================================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!function_exists('check_csrf') || check_csrf($_POST['csrf_token'] ?? ''))) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && check_csrf($_POST['csrf_token'] ?? '')) {
 
     $action = $_POST['action'] ?? '';
     $target_id = (int) ($_POST['org_id'] ?? 0);

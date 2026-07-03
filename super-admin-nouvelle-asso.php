@@ -20,7 +20,7 @@ $ctx = sa_get_permissions_context();
 $error = null;
 $success_data = null;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!function_exists('check_csrf') || check_csrf($_POST['csrf_token'] ?? ''))) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && check_csrf($_POST['csrf_token'] ?? '')) {
 
     $org_name   = trim($_POST['org_name'] ?? '');
     $org_email  = trim($_POST['org_email'] ?? '');

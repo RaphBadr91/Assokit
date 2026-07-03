@@ -89,7 +89,7 @@ function send_email_safe(callable $callback): void {
 // ==================================================================
 // Traitement POST
 // ==================================================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!function_exists('check_csrf') || check_csrf($_POST['csrf_token'] ?? ''))) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && check_csrf($_POST['csrf_token'] ?? '')) {
 
     $action = $_POST['action'] ?? '';
 
