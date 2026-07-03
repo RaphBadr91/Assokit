@@ -29,7 +29,7 @@ $pages = [
     ['/blog',                      '0.9', 'daily'],
     ['/mentions-legales',          '0.3', 'yearly'],
     ['/cgu',                       '0.3', 'yearly'],
-    ['/politique-confidentialite', '0.3', 'yearly'],
+    ['/confidentialite',           '0.3', 'yearly'],
     ['/cookies',                   '0.3', 'yearly'],
 ];
 

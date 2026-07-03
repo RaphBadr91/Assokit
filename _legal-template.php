@@ -91,7 +91,7 @@ a:hover { text-decoration: underline; }
   <div>© 2026 Assokit. Hébergé en France 🇫🇷</div>
   <div class="footer-links">
     <a href="/mentions-legales">Mentions légales</a>
-    <a href="/politique-confidentialite">Confidentialité</a>
+    <a href="/confidentialite">Confidentialité</a>
     <a href="/cgu">CGU</a>
     <a href="mailto:contact@assokit.fr">Contact</a>
   </div>

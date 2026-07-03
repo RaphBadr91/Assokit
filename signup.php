@@ -407,7 +407,7 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
 
       <label class="cgu-row">
         <input type="checkbox" name="accept_cgu" value="1" required>
-        <span>J'accepte les <a href="/cgu" target="_blank">conditions générales d'utilisation</a> et la <a href="/politique-confidentialite" target="_blank">politique de confidentialité</a>.</span>
+        <span>J'accepte les <a href="/cgu" target="_blank">conditions générales d'utilisation</a> et la <a href="/confidentialite" target="_blank">politique de confidentialité</a>.</span>
       </label>
 
       <button type="submit" class="btn-submit">Démarrer ma démo →</button>

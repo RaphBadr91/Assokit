@@ -61,7 +61,7 @@ Allow: /contact
 Allow: /blog
 Allow: /mentions-legales
 Allow: /cgu
-Allow: /politique-confidentialite
+Allow: /confidentialite
 Allow: /rgpd
 Allow: /cookies
 Allow: /asso/

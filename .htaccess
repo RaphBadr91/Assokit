@@ -98,7 +98,7 @@ RewriteRule ^emarger/([a-f0-9]{32,64})/?$      emarger.php?t=$1 [L,QSA]
 
 RewriteRule ^signup/?$                       signup.php [L,QSA]
 RewriteRule ^mentions-legales/?$             mentions-legales.php [L,QSA]
-RewriteRule ^politique-confidentialite/?$    politique-confidentialite.php [L,QSA]
+RewriteRule ^politique-confidentialite/?$    /confidentialite [R=301,L]
 RewriteRule ^cgu/?$                          cgu.php [L,QSA]
 
 # Routes Pack #5B Factures
