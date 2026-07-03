@@ -211,6 +211,15 @@ RewriteRule ^cgu/?$ cgu.php [L,QSA]
 RewriteRule ^confidentialite/?$ confidentialite.php [L,QSA]
 RewriteRule ^cookies/?$ cookies.php [L,QSA]
 
+# Redirections 301 des anciennes URLs sans page (SEO — evite les 404 connues de Google)
+RewriteRule ^plans/?$              /tarifs                     [R=301,L]
+RewriteRule ^login/?$              /connexion                  [R=301,L]
+RewriteRule ^inscription/?$        /tarifs                     [R=301,L]
+RewriteRule ^pour-associations/?$  /                           [R=301,L]
+RewriteRule ^pour-tpe/?$           /                           [R=301,L]
+RewriteRule ^cgv/?$                /cgu                        [R=301,L]
+RewriteRule ^rgpd/?$               /politique-confidentialite  [R=301,L]
+
 # Redirections 301 .php → URL propre (SEO + cohérence)
 # Existait déjà en lignes 214-215 du htaccess actuel pour le dashboard.
 # Compléter avec ces redirections publiques :
@@ -542,6 +551,15 @@ Options -Indexes
 
 # Bloquer les fichiers cachés (.env, .git, etc.)
 <FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Bloquer TOUT le dossier .git (le FilesMatch ci-dessus ne couvre pas
+# /.git/config, /.git/HEAD... dont le nom de fichier ne commence pas par un point)
+RedirectMatch 404 /\.git
+
+# Defense en profondeur : bloquer les scripts d'outillage/debug residuels
+<FilesMatch "^(diag-|test-|fix-branding|restore-branding|cron-login-diagnostic|PATCH-|SNIPPET)">
     Require all denied
 </FilesMatch>
 
