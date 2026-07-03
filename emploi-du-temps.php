@@ -17,6 +17,11 @@ $user_id = (int)$user['id'];
 $role = $user['role'] ?? '';
 $is_admin = in_array($role, ['admin', 'founder', 'super_admin'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
 
+// Jeton CSRF pour les formulaires planning/absence (verifie cote api/schedule-save et api/absence-save)
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 if (is_follower()) {
     header('Location: /projets');
     exit;
