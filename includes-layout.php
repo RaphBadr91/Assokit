@@ -2003,6 +2003,8 @@ function render_foot() {
 <script>
 (function() {
   var KEY = 'ak_pwa_install_dismissed';
+  // Dans l'app native (Capacitor) : jamais d'invite d'installation PWA
+  if (window.Capacitor) return;
   try { if (localStorage.getItem(KEY)) return; } catch (e) { return; }
   // Deja installe (mode standalone) : ne rien afficher
   if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone) return;

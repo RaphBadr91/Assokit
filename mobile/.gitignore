@@ -1,0 +1,12 @@
+# Dependances
+node_modules/
+
+# Projets natifs generes par `npx cap add ...` (regenerables, volumineux)
+android/
+ios/
+
+# Build / divers
+dist/
+.DS_Store
+*.log
+.gradle/

@@ -1,0 +1,26 @@
+{
+  "name": "assokit-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Application mobile native Assokit (iOS + Android) via Capacitor",
+  "scripts": {
+    "sync": "cap sync",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios",
+    "add:android": "cap add android",
+    "add:ios": "cap add ios",
+    "icons": "npx @capacitor/assets generate --iconBackgroundColor '#059669' --iconBackgroundColorDark '#047857' --splashBackgroundColor '#059669' --splashBackgroundColorDark '#047857'"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/app": "^6.0.2",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/ios": "^6.2.0",
+    "@capacitor/push-notifications": "^6.0.4",
+    "@capacitor/splash-screen": "^6.0.3",
+    "@capacitor/status-bar": "^6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
+}
