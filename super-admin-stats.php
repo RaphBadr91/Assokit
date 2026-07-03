@@ -121,6 +121,7 @@ try {
         SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COUNT(*) AS nb
         FROM organizations
         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+          AND deleted_at IS NULL
         GROUP BY ym
         ORDER BY ym ASC
     ");
@@ -131,7 +132,7 @@ try {
 $plans_split = [];
 try {
     $plans_split = $pdo->query("
-        SELECT plan, COUNT(*) AS nb FROM organizations GROUP BY plan
+        SELECT plan, COUNT(*) AS nb FROM organizations WHERE deleted_at IS NULL GROUP BY plan
     ")->fetchAll(PDO::FETCH_KEY_PAIR);
 } catch (Throwable $e) {}
 

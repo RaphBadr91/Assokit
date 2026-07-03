@@ -23,14 +23,14 @@ $ctx = sa_get_permissions_context();
 // =====================================================================
 // KPIs communs
 // =====================================================================
-$nb_orgs_total = (int) $pdo->query("SELECT COUNT(*) FROM organizations")->fetchColumn();
-$nb_orgs_active = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE status = 'active'")->fetchColumn();
-$nb_orgs_trial = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE status = 'trial'")->fetchColumn();
-$nb_orgs_suspended = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE status = 'suspended'")->fetchColumn();
+$nb_orgs_total = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE deleted_at IS NULL")->fetchColumn();
+$nb_orgs_active = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE status = 'active' AND deleted_at IS NULL")->fetchColumn();
+$nb_orgs_trial = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE status = 'trial' AND deleted_at IS NULL")->fetchColumn();
+$nb_orgs_suspended = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE status = 'suspended' AND deleted_at IS NULL")->fetchColumn();
 
 $nb_orgs_pending = 0;
 try {
-    $nb_orgs_pending = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE validation_status = 'pending_founder'")->fetchColumn();
+    $nb_orgs_pending = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE validation_status = 'pending_founder' AND deleted_at IS NULL")->fetchColumn();
 } catch (Throwable $e) {}
 
 $nb_users = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role NOT IN ('super_admin') AND is_active = 1 AND deleted_at IS NULL")->fetchColumn();
@@ -76,6 +76,7 @@ $stmt = $pdo->query("
            COALESCE(o.validation_status, 'validated') AS validation_status,
            (SELECT COUNT(*) FROM users WHERE org_id = o.id AND deleted_at IS NULL AND is_active = 1) AS nb_users
     FROM organizations o
+    WHERE o.deleted_at IS NULL
     ORDER BY o.created_at DESC
     LIMIT 5
 ");
