@@ -14,20 +14,21 @@ header('X-Robots-Tag: noindex');
 $site_url = defined('SITE_URL') ? rtrim(SITE_URL, '/') : 'https://assokit.fr';
 $today    = date('Y-m-d');
 
-// Pages statiques du site Assokit (mêmes URLs que ton sitemap actuel)
+// Pages statiques du site Assokit — uniquement des URLs qui repondent en 200.
+// (Les anciennes URLs /plans, /inscription, /login, /pour-associations,
+//  /pour-tpe, /cgv n'existaient pas : 404 -> retirees. Elles sont
+//  redirigees en 301 vers les vraies pages via .htaccess.)
 $pages = [
     ['/',                          '1.0', 'weekly'],
-    ['/plans',                     '0.9', 'monthly'],
-    ['/inscription',               '0.9', 'monthly'],
-    ['/contact',                   '0.7', 'monthly'],
-    ['/login',                     '0.6', 'yearly'],
+    ['/tarifs',                    '0.9', 'monthly'],
     ['/fonctionnalites',           '0.8', 'monthly'],
-    ['/pour-associations',         '0.8', 'monthly'],
-    ['/pour-tpe',                  '0.8', 'monthly'],
+    ['/comptabilite-analytique',   '0.8', 'monthly'],
+    ['/pour-organismes',           '0.7', 'monthly'],
+    ['/a-propos',                  '0.6', 'monthly'],
+    ['/contact',                   '0.7', 'monthly'],
     ['/blog',                      '0.9', 'daily'],
     ['/mentions-legales',          '0.3', 'yearly'],
     ['/cgu',                       '0.3', 'yearly'],
-    ['/cgv',                       '0.3', 'yearly'],
     ['/politique-confidentialite', '0.3', 'yearly'],
     ['/rgpd',                      '0.3', 'yearly'],
     ['/cookies',                   '0.3', 'yearly'],

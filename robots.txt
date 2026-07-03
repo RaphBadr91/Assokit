@@ -50,18 +50,17 @@ Disallow: /reset-password
 Disallow: /verify-email
 Disallow: /logout
 
-# === AUTORISATIONS EXPLICITES (RECOMMANDÉ) ===
+# === AUTORISATIONS EXPLICITES (URLs reelles du site) ===
 Allow: /
-Allow: /plans
-Allow: /inscription
-Allow: /login
-Allow: /contact
+Allow: /tarifs
 Allow: /fonctionnalites
-Allow: /pour-associations
-Allow: /pour-tpe
+Allow: /comptabilite-analytique
+Allow: /pour-organismes
+Allow: /a-propos
+Allow: /contact
+Allow: /blog
 Allow: /mentions-legales
 Allow: /cgu
-Allow: /cgv
 Allow: /politique-confidentialite
 Allow: /rgpd
 Allow: /cookies

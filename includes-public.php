@@ -27,10 +27,13 @@ if (!function_exists('render_public_head')) {
         // Sinon, on construit avec " · Assokit" en suffixe
         if (!empty($seo['title_full'])) {
             $full_title = (string)$seo['title_full'];
+        } elseif ($title === 'Assokit') {
+            $full_title = 'Assokit · Le logiciel tout-en-un pour piloter votre association et votre TPE sereinement';
+        } elseif (stripos($title, 'assokit') !== false) {
+            // La marque est déjà présente dans le titre : ne pas la dupliquer.
+            $full_title = $title;
         } else {
-            $full_title  = $title === 'Assokit'
-                ? 'Assokit · Le logiciel tout-en-un pour piloter votre association et votre TPE sereinement'
-                : "{$title} · Assokit";
+            $full_title = "{$title} · Assokit";
         }
         $desc        = trim((string)($seo['description'] ?? 'Centralisez vos projets, vos adhérents et votre communication — main dans la main avec l\'IA. Pour les associations loi 1901 et les petites entreprises engagées.'));
         $path        = (string)($seo['path'] ?? '/');

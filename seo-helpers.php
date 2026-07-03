@@ -310,13 +310,10 @@ function ak_seo_render_software_jsonld(): void {
                 'description' => 'Tout inclus + sous-domaine, paiement mensuel',
             ],
         ],
-        'aggregateRating' => [
-            '@type' => 'AggregateRating',
-            'ratingValue' => '4.9',
-            'ratingCount' => '12',
-            'bestRating' => '5',
-            'worstRating' => '1',
-        ],
+        // aggregateRating retire : pas d'avis reels affiches sur la page.
+        // Un AggregateRating fabrique est contraire aux consignes Google
+        // (risque d'action manuelle « rich results spammy »). A reintroduire
+        // uniquement quand de vrais avis verifiables seront affiches.
     ];
     echo "\n" . '<script type="application/ld+json">' . "\n";
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
