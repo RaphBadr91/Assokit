@@ -201,6 +201,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $pdo->commit();
 
+                    // 4b. Emails de conversion (hors transaction : un echec n'empeche jamais l'inscription)
+                    try {
+                        @require_once __DIR__ . '/signup-email-helpers.php';
+                        $verify_url = function_exists('ak_email_verify_url')
+                            ? ak_email_verify_url($user_id)
+                            : 'https://assokit.fr/connexion';
+                        if (function_exists('send_demo_welcome_email')) {
+                            send_demo_welcome_email($form['email'], $form['first_name'], $form['org_name'], $verify_url);
+                        }
+                        if (function_exists('send_demo_founder_notification')) {
+                            send_demo_founder_notification($form['org_name'], trim($form['first_name'] . ' ' . $form['last_name']), $form['email']);
+                        }
+                    } catch (Throwable $e) {
+                        error_log('[signup emails] ' . $e->getMessage());
+                    }
+
                     // 5. Login auto
                     session_regenerate_id(true);
                     $_SESSION['user_id'] = $user_id;
