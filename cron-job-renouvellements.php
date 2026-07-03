@@ -40,6 +40,8 @@ $sql = "
       AND o.current_period_end IS NOT NULL
       AND o.current_period_end <= CURDATE()
       AND o.monthly_price_cents > 0
+      AND o.deleted_at IS NULL
+      AND o.slug NOT LIKE 'demo-%'
     ORDER BY o.current_period_end ASC
     LIMIT 500
 ";

@@ -51,6 +51,8 @@ $sql = "
     FROM organizations o
     WHERE o.status = 'trial'
       AND o.trial_ends_at IS NOT NULL
+      AND o.deleted_at IS NULL
+      AND o.slug NOT LIKE 'demo-%'
       AND EXISTS (
             SELECT 1 FROM asso_subscriptions s
             JOIN asso_plans p ON p.id = s.plan_id

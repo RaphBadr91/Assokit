@@ -44,6 +44,9 @@ $sql = "
     INNER JOIN organizations o ON o.id = i.org_id
     WHERE i.status IN ('pending', 'overdue')
       AND i.due_date < CURDATE()
+      AND o.deleted_at IS NULL
+      AND o.slug NOT LIKE 'demo-%'
+      AND o.status <> 'cancelled'
     ORDER BY i.due_date ASC
     LIMIT 500
 ";
