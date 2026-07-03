@@ -376,6 +376,22 @@ function ak_trial_gate(PDO $pdo, int $org_id, string $key, int $cap = 1): array 
     return ['blocked'=>false,'trial'=>true,'used'=>$used+1,'cap'=>$cap,'plan'=>$plan];
 }
 
+// Gate compta analytique : illimite pour les plans avec feature_advanced_stats
+// (Pro, Sur-mesure) ; 1 seule generation pour les autres (Essentiel, Demarrage,
+// Demo/pro-essai) via le compteur org_feature_usage 'bilan_analytique'.
+function ak_bilan_analytique_gate(PDO $pdo, int $org_id): array {
+    $plan = ak_get_current_plan($pdo, $org_id);
+    if (!empty($plan['feature_advanced_stats'])) {
+        return ['blocked'=>false,'unlimited'=>true,'used'=>0,'cap'=>null,'plan'=>$plan];
+    }
+    $used = ak_feature_usage_count($pdo, $org_id, 'bilan_analytique');
+    if ($used >= 1) {
+        return ['blocked'=>true,'unlimited'=>false,'used'=>$used,'cap'=>1,'plan'=>$plan];
+    }
+    ak_feature_usage_record($pdo, $org_id, 'bilan_analytique');
+    return ['blocked'=>false,'unlimited'=>false,'used'=>$used+1,'cap'=>1,'plan'=>$plan];
+}
+
 // ============================================================
 // 4. Statut abonnement (overdue, grâce, etc.)
 // ============================================================
