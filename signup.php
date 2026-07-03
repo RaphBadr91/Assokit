@@ -127,10 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     $pdo->beginTransaction();
 
-                    // 1. Creer organization
+                    // 1. Creer organization (modele DEMO : entre dans la file de validation fondateur)
                     $stmt = $pdo->prepare("
-                        INSERT INTO organizations (name, plan_type, trial_ends_at, created_at)
-                        VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 14 DAY), NOW())
+                        INSERT INTO organizations (name, plan_type, validation_status, trial_ends_at, created_at)
+                        VALUES (?, ?, 'pending_founder', DATE_ADD(NOW(), INTERVAL 14 DAY), NOW())
                     ");
                     $stmt->execute([$form['org_name'], $form['plan']]);
                     $org_id = (int) $pdo->lastInsertId();
@@ -172,6 +172,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmt->execute([$org_id]);
                     } catch (Throwable $e) {
                         error_log('[signup] Subscription trial: ' . $e->getMessage());
+                    }
+
+                    // 3c. [demo] Plan DEMO bride (pro-essai, is_trial=1) dans le systeme moderne.
+                    //     Active le gating moderne + la limite compta analytique 1x (ak_trial_gate).
+                    try {
+                        $demo_plan_id = (int) $pdo->query("SELECT id FROM asso_plans WHERE slug = 'pro-essai' LIMIT 1")->fetchColumn();
+                        if ($demo_plan_id > 0) {
+                            $stmt = $pdo->prepare("
+                                INSERT INTO asso_subscriptions (org_id, plan_id, status, started_at)
+                                VALUES (?, ?, 'active', NOW())
+                            ");
+                            $stmt->execute([$org_id, $demo_plan_id]);
+                        }
+                    } catch (Throwable $e) {
+                        error_log('[signup] asso_subscriptions demo: ' . $e->getMessage());
                     }
 
                     // 4. Maj le signup log

@@ -1100,10 +1100,10 @@ function render_trial_banner() {
 </style>
 <div class="ak-trial-banner">
   <div class="ak-trial-banner-info">
-    <span class="ak-trial-banner-icon">🎁</span>
-    <div class="ak-trial-banner-text"><strong>Essai gratuit Pro</strong> &middot; <?= $msg ?></div>
+    <span class="ak-trial-banner-icon">🚀</span>
+    <div class="ak-trial-banner-text"><strong>Mode Démo</strong> &middot; <?= $msg ?></div>
   </div>
-  <a href="/abonnement?tab=plans" class="ak-trial-banner-btn">⚡ Choisir une formule</a>
+  <a href="/abonnement?tab=plans" class="ak-trial-banner-btn">⚡ S'abonner</a>
 </div>
         <?php
     } catch (Throwable $e) {}
