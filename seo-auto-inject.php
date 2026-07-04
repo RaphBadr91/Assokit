@@ -65,6 +65,9 @@ $_seo_skip_patterns = [
     '#^/changer-mot-de-passe#i',
     '#^/mot-de-passe-oublie#i',
     '#^/definir-mot-de-passe#i',
+    '#^/signup#i',
+    '#^/inscription#i',
+    '#^/verifier-email#i',
     '#^/sitemap#i',
     '#^/robots#i',
 ];
