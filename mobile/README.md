@@ -1,137 +1,93 @@
-# Assokit — Application mobile native (iOS + Android)
+# Assokit — Application mobile (Expo / React Native)
 
-Projet **Capacitor** qui emballe l'application web Assokit dans de **vraies applications natives**
-publiables sur l'**App Store** (Apple) et le **Google Play Store** (Android).
+Application native **iOS + Android** construite avec **Expo**. Elle affiche l'application web
+Assokit (`https://assokit.fr`) dans une WebView native, avec splash screen, barre de statut aux
+couleurs Assokit, gestion du bouton retour Android, et **notifications push** (`expo-notifications`).
 
-- **App ID** : `fr.assokit.app`
-- **Nom** : `Assokit`
-- **Principe** : l'app native charge `https://assokit.fr` dans une WebView native, avec un
-  splash screen natif, la barre de statut aux couleurs Assokit, la gestion du bouton retour
-  Android, et la base pour les **notifications push**.
-- **Avantage clé** : comme l'app charge le site en direct, **99 % de tes mises à jour se font en
-  modifiant le site** (git pull) — **sans re-soumettre** l'app aux stores. On ne re-soumet que si
-  on change l'icône, le nom, ou qu'on ajoute une fonction native.
+- **Bundle ID iOS** : `fr.assokit.app`
+- **Package Android** : `fr.assokit.app`
+- **Avantage** : avec **EAS Build**, l'iOS se compile **dans le cloud** — pas besoin de Mac/Xcode
+  pour builder. (Un compte Apple Developer reste requis pour *publier* sur l'App Store.)
+- **Mises à jour de contenu** : elles se font en modifiant le site (`git pull` serveur), **sans**
+  re-soumettre l'app.
 
 ---
 
-## 0. Ce qu'il te faut
+## Prérequis (une fois)
 
-| Pour… | Il te faut |
+```bash
+npm install -g eas-cli
+eas login              # ton compte Expo (le meme que ton autre projet)
+```
+
+## Installer et tester
+
+```bash
+cd Assokit/mobile
+npm install
+npx expo-doctor        # verifie que les versions sont coherentes
+npx expo start         # teste dans Expo Go (scanne le QR code avec ton telephone)
+```
+> Dans Expo Go, la WebView fonctionne. Les **notifications push** réelles ne fonctionnent qu'avec
+> un *build de développement* ou un build EAS (voir ci-dessous), pas dans Expo Go.
+
+## Lier le projet à EAS (une fois)
+
+```bash
+eas init               # cree le projectId (a coller dans app.json -> extra.eas.projectId si demande)
+```
+
+## Builder les apps (cloud)
+
+```bash
+eas build --platform android      # genere un .aab (Play Store)
+eas build --platform ios          # genere un .ipa (App Store) — cloud, pas besoin de Mac
+# ou les deux :
+eas build --platform all
+```
+Au 1er build iOS, EAS te guide pour la signature (identifiants Apple Developer).
+
+## Tester le build
+
+- **Android** : télécharge l'`.aab`/`.apk` depuis le lien EAS, installe-le sur ton téléphone.
+- **iOS** : `eas build` produit un build TestFlight → installe via **TestFlight**.
+
+## Publier sur les stores
+
+```bash
+eas submit --platform android     # envoie sur Google Play Console
+eas submit --platform ios         # envoie sur App Store Connect
+```
+Puis, dans les consoles, remplis les fiches (nom, description, captures, politique de
+confidentialité → `https://assokit.fr/confidentialite`) et soumets pour révision.
+
+| | Compte requis |
 |---|---|
-| **Android** | Un PC ou Mac + [Android Studio](https://developer.android.com/studio) (gratuit) + un compte **Google Play Console** (25 $ une fois) |
-| **iOS** | Obligatoirement un **Mac** + [Xcode](https://apps.apple.com/app/xcode/id497799835) (gratuit) + un compte **Apple Developer** (99 $/an) |
-| **Les deux** | [Node.js LTS](https://nodejs.org) installé |
-
-> ⚠️ Le build iOS **ne peut se faire que sur un Mac** (contrainte Apple, pas Assokit).
+| 🤖 Google Play | Google Play Console — 25 $ une fois |
+| 🍎 App Store | Apple Developer — 99 $/an |
 
 ---
 
-## 1. Installation du projet (sur ta machine)
+## Notifications push (étape suivante)
 
-```bash
-# Récupère le dépôt (si pas déjà fait)
-git clone git@github.com:RaphBadr91/Assokit.git
-cd Assokit/mobile
+Le client est déjà prêt (`expo-notifications` demande la permission et récupère le **Expo push
+token** au lancement — visible dans les logs). Pour envoyer des notifications :
+1. L'app envoie son token au serveur (à sa connexion) → on stocke le token par utilisateur.
+2. Le serveur Assokit envoie une notif via l'**API Expo Push**
+   (`https://exp.host/--/api/v2/push/send`) — ex. « Nouvelle facture », « Nouveau message ».
 
-# Installe les dépendances
-npm install
-```
-
-## 2. Génère les icônes et le splash (une fois, et à chaque changement de logo)
-
-Les sources sont dans `resources/` (`icon.png` 1024×1024, `splash.png` 2732×2732).
-
-```bash
-npm run icons
-```
-Cela génère automatiquement toutes les tailles d'icônes/splash pour iOS et Android.
-
-## 3. Ajoute les plateformes natives
-
-```bash
-npm run add:android      # crée le dossier android/
-npm run add:ios          # crée le dossier ios/  (Mac uniquement)
-npx cap sync             # synchronise config + plugins + web
-```
+Dis-moi quand tu veux : je code le côté serveur (stockage du token + envoi) et le petit bout
+JS qui transmet le token au site.
 
 ---
 
-## 4. Android — tester puis publier
-
-### Tester
-```bash
-npm run open:android     # ouvre Android Studio
-```
-Dans Android Studio : branche ton téléphone (mode développeur activé) ou lance un émulateur,
-puis clique **▶ Run**. L'app s'ouvre sur Assokit.
-
-### Publier sur le Google Play Store
-1. Dans Android Studio : **Build → Generate Signed Bundle / APK → Android App Bundle (.aab)**.
-2. Crée une **clé de signature** (keystore) quand il le demande — **garde-la précieusement**
-   (sans elle, impossible de mettre à jour l'app plus tard).
-3. Va sur [Google Play Console](https://play.google.com/console) → **Créer une application**.
-4. Remplis la fiche (nom, description, captures d'écran, icône 512×512 = `resources/`).
-5. Envoie le fichier `.aab` dans **Production** (ou d'abord en **Test fermé**).
-6. Validation Google : généralement quelques heures à 3 jours.
-
----
-
-## 5. iOS — tester puis publier (Mac requis)
-
-### Tester
-```bash
-npm run open:ios         # ouvre Xcode
-```
-Dans Xcode : sélectionne ton iPhone (ou un simulateur), signe avec ton **Apple Developer Team**
-(onglet *Signing & Capabilities*), puis **▶ Run**.
-
-### Publier sur l'App Store
-1. Dans Xcode : **Product → Archive**.
-2. **Distribute App → App Store Connect → Upload**.
-3. Va sur [App Store Connect](https://appstoreconnect.apple.com) → **Mes apps → +**.
-4. Remplis la fiche (nom, description, captures, mots-clés, politique de confidentialité →
-   `https://assokit.fr/confidentialite`).
-5. Teste via **TestFlight**, puis **Soumettre pour révision**.
-6. Révision Apple : généralement 24–48 h.
-
-> **Astuce anti-rejet (règle Apple 4.2)** : une app qui n'est « qu'un site web » peut être
-> refusée. Le projet inclut déjà des fonctions natives (splash, barre de statut, retour Android,
-> base push). Pour être tranquille, **active les notifications push** (section 7) : c'est le
-> meilleur argument de valeur native, et ça booste l'engagement.
-
----
-
-## 6. Mettre à jour l'app
-
-- **Changement sur le site** (texte, pages, fonctionnalités) → **rien à faire côté app**, elle
-  charge le site en direct. Juste `git pull` sur le serveur, comme d'habitude.
-- **Changement d'icône / nom / version / fonction native** → refaire `npx cap sync`, rebuild,
-  et re-soumettre aux stores (nouvelle version).
-
----
-
-## 7. Notifications push (étape suivante recommandée)
-
-Le plugin `@capacitor/push-notifications` est déjà installé. Pour l'activer, il faudra :
-- **Android** : créer un projet [Firebase](https://console.firebase.google.com) (FCM), déposer
-  le `google-services.json` dans `android/app/`.
-- **iOS** : activer *Push Notifications* dans Xcode + créer une clé APNs sur le compte Apple Developer.
-- **Côté serveur** : stocker le « device token » (envoyé par l'app à sa connexion) et envoyer les
-  notifications via FCM/APNs.
-
-Dis-moi quand tu veux : je te prépare le code (client + serveur) pour envoyer par ex. une notif
-« Nouvelle facture », « Nouveau message », ou pour tes relances.
-
----
-
-## Résumé des commandes
+## Récap des commandes
 
 ```bash
 cd Assokit/mobile
 npm install
-npm run icons
-npm run add:android      # + npm run add:ios sur Mac
-npx cap sync
-npm run open:android     # puis Run / Build signé
-npm run open:ios         # puis Archive / Upload (Mac)
+eas login
+eas init
+eas build --platform all
+eas submit --platform android   # puis --platform ios
 ```

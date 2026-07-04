@@ -1,26 +1,22 @@
 {
-  "name": "assokit-mobile",
+  "name": "assokit",
   "version": "1.0.0",
+  "main": "node_modules/expo/AppEntry.js",
   "private": true,
-  "description": "Application mobile native Assokit (iOS + Android) via Capacitor",
   "scripts": {
-    "sync": "cap sync",
-    "open:android": "cap open android",
-    "open:ios": "cap open ios",
-    "add:android": "cap add android",
-    "add:ios": "cap add ios",
-    "icons": "npx @capacitor/assets generate --iconBackgroundColor '#059669' --iconBackgroundColorDark '#047857' --splashBackgroundColor '#059669' --splashBackgroundColorDark '#047857'"
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "doctor": "npx expo-doctor"
   },
   "dependencies": {
-    "@capacitor/android": "^6.2.0",
-    "@capacitor/app": "^6.0.2",
-    "@capacitor/core": "^6.2.0",
-    "@capacitor/ios": "^6.2.0",
-    "@capacitor/push-notifications": "^6.0.4",
-    "@capacitor/splash-screen": "^6.0.3",
-    "@capacitor/status-bar": "^6.0.2"
-  },
-  "devDependencies": {
-    "@capacitor/cli": "^6.2.0"
+    "expo": "~51.0.28",
+    "expo-constants": "~16.0.2",
+    "expo-notifications": "~0.28.19",
+    "expo-splash-screen": "~0.27.7",
+    "expo-status-bar": "~1.12.1",
+    "react": "18.2.0",
+    "react-native": "0.74.5",
+    "react-native-webview": "13.8.6"
   }
 }

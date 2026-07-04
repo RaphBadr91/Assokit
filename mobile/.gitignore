@@ -1,12 +1,16 @@
 # Dependances
 node_modules/
 
-# Projets natifs generes par `npx cap add ...` (regenerables, volumineux)
-android/
-ios/
-
-# Build / divers
+# Expo
+.expo/
 dist/
-.DS_Store
+web-build/
+expo-env.d.ts
+
+# Projets natifs (generes par prebuild / EAS)
+ios/
+android/
+
+# Divers
 *.log
-.gradle/
+.DS_Store

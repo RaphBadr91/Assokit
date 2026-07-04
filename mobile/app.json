@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Assokit",
+    "slug": "assokit",
+    "scheme": "assokit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#059669",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#059669"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "fr.assokit.app",
+      "buildNumber": "1"
+    },
+    "android": {
+      "package": "fr.assokit.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#059669"
+      }
+    },
+    "plugins": [
+      "expo-notifications"
+    ]
+  }
+}
