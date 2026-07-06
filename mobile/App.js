@@ -10,14 +10,19 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 
 const SITE_URL = 'https://assokit.fr';
 const BRAND = '#059669';
 
-// Comment afficher une notif quand l'app est au premier plan
+// Comment afficher une notif quand l'app est au premier plan.
+// (On fournit les anciens ET nouveaux champs pour rester compatible
+//  quelle que soit la version du SDK Expo.)
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
@@ -55,8 +60,16 @@ export default function App() {
         }
         const { status } = await Notifications.requestPermissionsAsync();
         if (status !== 'granted') return;
+        // projectId requis par les versions recentes du SDK (lu depuis app.json / EAS)
+        const projectId =
+          Constants?.expoConfig?.extra?.eas?.projectId ??
+          Constants?.easConfig?.projectId;
+        const token = (
+          await Notifications.getExpoPushTokenAsync(
+            projectId ? { projectId } : undefined
+          )
+        ).data;
         // Token a envoyer au serveur plus tard (integration push cote serveur)
-        const token = (await Notifications.getExpoPushTokenAsync()).data;
         console.log('Expo push token:', token);
       } catch (e) {
         // silencieux : l'app fonctionne meme sans notifications
