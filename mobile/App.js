@@ -12,7 +12,7 @@ import { WebView } from 'react-native-webview';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 
-const SITE_URL = 'https://assokit.fr';
+const SITE_URL = 'https://assokit.fr/connexion';
 const BRAND = '#059669';
 
 // Comment afficher une notif quand l'app est au premier plan.
@@ -93,6 +93,7 @@ export default function App() {
         sharedCookiesEnabled
         originWhitelist={['https://*', 'http://*', 'mailto:*', 'tel:*']}
         setSupportMultipleWindows={false}
+        applicationNameForUserAgent="AssokitApp/1.0"
         style={styles.web}
       />
       {loading && (
