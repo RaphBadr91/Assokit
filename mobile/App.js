@@ -168,7 +168,7 @@ function tabsFor(profile) {
 }
 
 const QUICK_ACTIONS_ASSO = [
-  { label: 'Nouveau projet', icon: 'add-circle', color: '#059669', path: '/nouveau-projet' },
+  { label: 'Nouveau projet', icon: 'add-circle', color: '#059669', form: 'project' },
   { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', form: 'invoice' },
   { label: 'Nouvel adhérent', icon: 'person-add', color: '#D97706', form: 'member' },
   { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', path: '/messages' },
@@ -1050,6 +1050,89 @@ function BillingForm({ mode, onBack, onSubmit, submitting, error, clients }) {
   );
 }
 
+function ProjectForm({ onBack, onSubmit, submitting, error, folders }) {
+  const [name, setName] = useState('');
+  const [folderId, setFolderId] = useState(0);
+  const [newFolder, setNewFolder] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [steps, setSteps] = useState(['Préparation', 'Organisation', 'Réalisation', 'Bilan']);
+  const [description, setDescription] = useState('');
+  const [budget, setBudget] = useState('');
+
+  const setStep = (i, v) => setSteps((s) => s.map((x, j) => (j === i ? v : x)));
+  const addStep = () => setSteps((s) => [...s, '']);
+  const rmStep = (i) => setSteps((s) => (s.length > 4 ? s.filter((_, j) => j !== i) : s));
+  const selFolder = folders && folders.find((f) => f.id === folderId);
+
+  const submit = () => {
+    const payload = {
+      name,
+      steps: steps.map((t) => ({ title: t })).filter((x) => x.title.trim() !== ''),
+      description,
+      budget_planned: budget,
+    };
+    if (folderId > 0) payload.folder_id = folderId; else payload.new_folder = newFolder;
+    onSubmit(payload);
+  };
+
+  return (
+    <FormShell title="Nouveau projet" onBack={onBack} onSubmit={submit} submitLabel="Créer le projet" submitting={submitting} error={error}>
+      <Field label="Nom du projet *" value={name} onChangeText={setName} autoCapitalize="sentences" />
+
+      <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Dossier</Text>
+        {folders && folders.length > 0 && (
+          <TouchableOpacity onPress={() => setPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>Choisir un dossier</Text></TouchableOpacity>
+        )}
+      </View>
+      {selFolder ? (
+        <View style={styles.pickedClient}>
+          <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selFolder.name}</Text></View>
+          <TouchableOpacity onPress={() => setFolderId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+        </View>
+      ) : (
+        <Field label="Nouveau dossier *" value={newFolder} onChangeText={setNewFolder} placeholder="Ex : Événements 2026" autoCapitalize="sentences" hint="Un dossier regroupe vos projets." />
+      )}
+
+      <Text style={[styles.formCardTitle, { marginTop: 20 }]}>Étapes (4 minimum)</Text>
+      {steps.map((s, i) => (
+        <View key={i} style={styles.stepEditRow}>
+          <Text style={styles.stepEditIdx}>{i + 1}</Text>
+          <TextInput style={[styles.fInput, { flex: 1 }]} value={s} onChangeText={(v) => setStep(i, v)} placeholder={'Étape ' + (i + 1)} placeholderTextColor="#B6C0CC" />
+          {steps.length > 4 && (
+            <TouchableOpacity onPress={() => rmStep(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 8 }}>
+              <Ionicons name="close-circle" size={22} color="#CBD5E1" />
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
+      <TouchableOpacity style={[styles.addLineBtn, { marginTop: 4 }]} onPress={addStep} activeOpacity={0.8}>
+        <Ionicons name="add" size={18} color={BRAND} /><Text style={styles.addLineTxt}>Ajouter une étape</Text>
+      </TouchableOpacity>
+
+      <View style={{ height: 18 }} />
+      <Field label="Description" value={description} onChangeText={setDescription} multiline numberOfLines={3} style={[styles.fInput, { height: 90, textAlignVertical: 'top' }]} />
+      <Field label="Budget prévu (€)" value={budget} onChangeText={setBudget} keyboardType="decimal-pad" />
+
+      <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setPickerOpen(false)}>
+          <Pressable style={[styles.sheet, { maxHeight: '70%' }]}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Dossiers</Text>
+            <ScrollView>
+              {(folders || []).map((fo) => (
+                <TouchableOpacity key={fo.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => { setFolderId(fo.id); setPickerOpen(false); }}>
+                  <View style={[styles.shortcutIcon, { marginRight: 12 }]}><Ionicons name="folder" size={20} color={BRAND} /></View>
+                  <Text style={styles.qaLabel}>{fo.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </FormShell>
+  );
+}
+
 /* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
@@ -1075,6 +1158,7 @@ function AppShell({ startPath, onExitToWelcome }) {
   const [submitting, setSubmitting] = useState(false);
   const [csrf, setCsrf] = useState('');
   const [pickClients, setPickClients] = useState([]);
+  const [folders, setFolders] = useState([]);
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
@@ -1139,6 +1223,7 @@ function AppShell({ startPath, onExitToWelcome }) {
     client:  '/api/app-create-client.php',
     invoice: '/api/app-create-invoice.php',
     quote:   '/api/app-create-quote.php',
+    project: '/api/app-create-project.php',
   };
 
   const openForm = useCallback((type) => {
@@ -1149,6 +1234,7 @@ function AppShell({ startPath, onExitToWelcome }) {
     setForm({ type });
     inject(FETCH_CSRF_JS);
     if (type === 'invoice' || type === 'quote') inject(fetchJS('/api/app-clients.php', '__akpick'));
+    if (type === 'project') inject(fetchJS('/api/app-folders.php', '__akfolders'));
   }, [inject, clearDetail]);
 
   const closeForm = useCallback(() => { setForm(null); setFormErr(''); setSubmitting(false); }, []);
@@ -1214,6 +1300,7 @@ function AppShell({ startPath, onExitToWelcome }) {
       }
       if (msg && msg.__akcsrf && msg.__akcsrf.ok) setCsrf(msg.__akcsrf.csrf);
       if (msg && msg.__akpick && msg.__akpick.ok) setPickClients(msg.__akpick.clients || []);
+      if (msg && msg.__akfolders && msg.__akfolders.ok) setFolders(msg.__akfolders.folders || []);
       if (msg && msg.__akwrite) {
         setSubmitting(false);
         const w = msg.__akwrite;
@@ -1226,6 +1313,7 @@ function AppShell({ startPath, onExitToWelcome }) {
           if (created === 'member') fetchPeople(false);
           else if (created === 'client') fetchPeople(true);
           else if (created === 'invoice') fetchInvoices();
+          else if (created === 'project') fetchProjects();
         } else {
           setFormErr(w.message || 'Une erreur est survenue.');
         }
@@ -1315,7 +1403,7 @@ function AppShell({ startPath, onExitToWelcome }) {
         )}
         {showProjects && (
           <View style={styles.homeOverlay}>
-            <NativeProjects data={projects} loading={projLoading} onRefresh={fetchProjects} onOpen={openProject} onNew={() => onGoto('/nouveau-projet')} />
+            <NativeProjects data={projects} loading={projLoading} onRefresh={fetchProjects} onOpen={openProject} onNew={() => openForm('project')} />
           </View>
         )}
         {showInvoices && (
@@ -1345,6 +1433,9 @@ function AppShell({ startPath, onExitToWelcome }) {
             )}
             {(form.type === 'invoice' || form.type === 'quote') && (
               <BillingForm mode={form.type} onBack={closeForm} onSubmit={(d) => submitForm(form.type, d)} submitting={submitting} error={formErr} clients={pickClients} />
+            )}
+            {form.type === 'project' && (
+              <ProjectForm onBack={closeForm} onSubmit={(d) => submitForm('project', d)} submitting={submitting} error={formErr} folders={folders} />
             )}
           </View>
         )}
@@ -1589,6 +1680,8 @@ const styles = StyleSheet.create({
   addLineBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#CBD5E1' },
   addLineTxt: { fontSize: 14, fontWeight: '600', color: BRAND },
   totalsBox: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginTop: 14, borderWidth: 1, borderColor: '#EEF2F6' },
+  stepEditRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  stepEditIdx: { width: 24, fontSize: 14, fontWeight: '700', color: MUTE, textAlign: 'center', marginRight: 6 },
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
