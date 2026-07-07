@@ -69,6 +69,18 @@ const FETCH_PROJECTS_JS = `
 true;
 `;
 
+function fetchJS(endpoint, key) {
+  return "(function(){ try { fetch('" + endpoint + "', { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'include' })"
+    + ".then(function(r){ return r.json(); })"
+    + ".then(function(d){ window.ReactNativeWebView.postMessage(JSON.stringify({ " + key + ": d })); })"
+    + ".catch(function(){ window.ReactNativeWebView.postMessage(JSON.stringify({ " + key + ": { ok: false } })); });"
+    + " } catch(e){} })(); true;";
+}
+
+const FETCH_MEMBERS_JS = fetchJS('/api/app-members.php', '__akmembers');
+const FETCH_CLIENTS_JS = fetchJS('/api/app-clients.php', '__akclients');
+const FETCH_INVOICES_JS = fetchJS('/api/app-invoices.php', '__akinvoices');
+
 function gotoJS(path) {
   return "(function(){ try { window.location.href='" + BASE + path + "'; } catch(e){} })(); true;";
 }
@@ -108,27 +120,58 @@ const FEATURES = [
   { icon: 'stats-chart', label: 'Comptabilité analytique incluse' },
 ];
 
-const TABS = [
-  { key: 'accueil', label: 'Accueil', icon: 'home', path: '/dashboard' },
-  { key: 'projets', label: 'Projets', icon: 'folder', path: '/projets' },
-  { key: 'add', label: '', icon: 'add', path: null },
-  { key: 'adherents', label: 'Membres', icon: 'people', path: '/adherents' },
-  { key: 'menu', label: 'Plus', icon: 'grid', path: null },
-];
+/* Barre d'onglets adaptative selon le profil (association vs TPE) */
+function tabsFor(profile) {
+  const isTpe = profile === 'tpe';
+  return [
+    { key: 'accueil', label: 'Accueil', icon: 'home' },
+    isTpe
+      ? { key: 'factures', label: 'Factures', icon: 'receipt' }
+      : { key: 'projets', label: 'Projets', icon: 'folder' },
+    { key: 'add', label: '', icon: 'add' },
+    isTpe
+      ? { key: 'people', label: 'Clients', icon: 'briefcase' }
+      : { key: 'people', label: 'Membres', icon: 'people' },
+    { key: 'menu', label: 'Plus', icon: 'grid' },
+  ];
+}
 
-const QUICK_ACTIONS = [
+const QUICK_ACTIONS_ASSO = [
   { label: 'Nouveau projet', icon: 'add-circle', color: '#059669', path: '/nouveau-projet' },
   { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', path: '/mon-asso-facture-new' },
   { label: 'Nouvel adhérent', icon: 'person-add', color: '#D97706', path: '/adherents' },
   { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', path: '/messages' },
 ];
 
-const SHORTCUTS = [
+const QUICK_ACTIONS_TPE = [
+  { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', path: '/mon-asso-facture-new' },
+  { label: 'Nouveau devis', icon: 'create', color: '#059669', path: '/mon-asso-devis-new' },
+  { label: 'Nouveau client', icon: 'person-add', color: '#D97706', path: '/mon-asso-clients' },
+  { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', path: '/messages' },
+];
+
+const SHORTCUTS_ASSO = [
   { label: 'Projets', icon: 'folder-open', path: '/projets' },
   { label: 'Factures', icon: 'receipt', path: '/mon-asso-factures' },
   { label: 'Agenda', icon: 'calendar', path: '/agenda' },
   { label: 'Messages', icon: 'chatbubbles', path: '/messages' },
 ];
+
+const SHORTCUTS_TPE = [
+  { label: 'Factures', icon: 'receipt', path: '/mon-asso-factures' },
+  { label: 'Devis', icon: 'document-text', path: '/mon-asso-devis' },
+  { label: 'Clients', icon: 'people', path: '/mon-asso-clients' },
+  { label: 'Recettes', icon: 'stats-chart', path: '/mon-asso-stats' },
+];
+
+/* Couleurs des statuts de facture (par "kind" renvoye par l'API) */
+const INV_KIND = {
+  done:  { color: '#065F46', bg: '#D1FAE5' },
+  wait:  { color: '#92400E', bg: '#FEF3C7' },
+  late:  { color: '#991B1B', bg: '#FEE2E2' },
+  draft: { color: '#475569', bg: '#F1F5F9' },
+  off:   { color: '#64748B', bg: '#F1F5F9' },
+};
 
 /* ================================================================== */
 /*  ECRAN D'ACCUEIL (marketing) natif                                  */
@@ -191,14 +234,23 @@ function WelcomeScreen({ onLogin, onSignup }) {
 /* ================================================================== */
 /*  ACCUEIL NATIF (KPIs premium)                                       */
 /* ================================================================== */
-function NativeHome({ data, loading, onRefresh, onGoto }) {
+function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
   const k = (data && data.kpis) || {};
-  const cards = [
-    { icon: 'folder', color: '#059669', bg: '#ECFDF5', label: 'Projets actifs', value: String(k.projets_actifs ?? 0), sub: 'en cours', path: '/projets' },
-    { icon: 'people', color: '#2563EB', bg: '#EFF6FF', label: 'Membres', value: String(k.membres ?? 0), sub: (k.membres_nouveaux > 0 ? '+' + k.membres_nouveaux + ' en 30j' : 'actifs'), path: '/adherents' },
-    { icon: 'calendar', color: '#D97706', bg: '#FFFBEB', label: 'Événements', value: String(k.evenements ?? 0), sub: 'à venir', path: '/agenda' },
-    { icon: 'wallet', color: '#7C3AED', bg: '#F5F3FF', label: 'Budget engagé', value: fmtEuro(k.budget_used), sub: 'sur ' + fmtEuro(k.budget_planned), path: '/projets' },
-  ];
+  const isTpe = profile === 'tpe';
+  const cards = isTpe
+    ? [
+        { icon: 'briefcase', color: '#2563EB', bg: '#EFF6FF', label: 'Clients', value: String(k.clients ?? 0), sub: 'au total', path: '/mon-asso-clients' },
+        { icon: 'document-text', color: '#059669', bg: '#ECFDF5', label: 'Devis en cours', value: String(k.devis_encours ?? 0), sub: 'à relancer', path: '/mon-asso-devis' },
+        { icon: 'wallet', color: '#7C3AED', bg: '#F5F3FF', label: 'CA encaissé', value: fmtEuro(k.ca_paid), sub: (k.factures ?? 0) + ' facture' + ((k.factures ?? 0) > 1 ? 's' : ''), path: '/mon-asso-factures' },
+        { icon: 'alert-circle', color: '#D97706', bg: '#FFFBEB', label: 'Impayés', value: fmtEuro(k.impayes), sub: 'à recouvrer', path: '/mon-asso-factures' },
+      ]
+    : [
+        { icon: 'folder', color: '#059669', bg: '#ECFDF5', label: 'Projets actifs', value: String(k.projets_actifs ?? 0), sub: 'en cours', path: '/projets' },
+        { icon: 'people', color: '#2563EB', bg: '#EFF6FF', label: 'Membres', value: String(k.membres ?? 0), sub: (k.membres_nouveaux > 0 ? '+' + k.membres_nouveaux + ' en 30j' : 'actifs'), path: '/adherents' },
+        { icon: 'calendar', color: '#D97706', bg: '#FFFBEB', label: 'Événements', value: String(k.evenements ?? 0), sub: 'à venir', path: '/agenda' },
+        { icon: 'wallet', color: '#7C3AED', bg: '#F5F3FF', label: 'Budget engagé', value: fmtEuro(k.budget_used), sub: 'sur ' + fmtEuro(k.budget_planned), path: '/projets' },
+      ];
+  const shortcuts = isTpe ? SHORTCUTS_TPE : SHORTCUTS_ASSO;
 
   return (
     <ScrollView
@@ -253,7 +305,7 @@ function NativeHome({ data, loading, onRefresh, onGoto }) {
 
           <Text style={styles.sectionTitle}>Accès rapide</Text>
           <View style={styles.shortcuts}>
-            {SHORTCUTS.map((s) => (
+            {shortcuts.map((s) => (
               <TouchableOpacity key={s.label} style={styles.shortcut} activeOpacity={0.8} onPress={() => onGoto(s.path)}>
                 <View style={styles.shortcutIcon}>
                   <Ionicons name={s.icon} size={22} color={BRAND} />
@@ -336,6 +388,128 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew }) {
 }
 
 /* ================================================================== */
+/*  MEMBRES / CLIENTS (liste native)                                   */
+/* ================================================================== */
+function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew }) {
+  const isClients = mode === 'clients';
+  const list = data ? (isClients ? (data.clients || []) : (data.members || [])) : null;
+  const title = isClients ? 'Clients' : 'Membres';
+  const newLabel = isClients ? 'Nouveau' : 'Inviter';
+
+  return (
+    <View style={styles.projWrap}>
+      <View style={styles.projHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.projTitle}>{title}</Text>
+          <Text style={styles.projSub}>{(list ? list.length : 0)} {title.toLowerCase()}</Text>
+        </View>
+        <TouchableOpacity style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
+          <Ionicons name={isClients ? 'add' : 'person-add'} size={18} color="#fff" />
+          <Text style={styles.projNewTxt}>{newLabel}</Text>
+        </TouchableOpacity>
+      </View>
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : list.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Ionicons name={isClients ? 'briefcase-outline' : 'people-outline'} size={44} color="#CBD5E1" />
+          <Text style={styles.emptyTxt}>{isClients ? 'Aucun client' : 'Aucun membre'}</Text>
+          <TouchableOpacity style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}>
+            <Text style={styles.emptyBtnTxt}>{isClients ? 'Ajouter un client' : 'Inviter un membre'}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
+        >
+          {list.map((p) => (
+            <TouchableOpacity key={p.id} style={styles.personCard} activeOpacity={0.85} onPress={() => onOpen(p.id)}>
+              <View style={[styles.personAvatar, { backgroundColor: (p.color || BRAND) }]}>
+                <Text style={styles.personAvatarTxt}>{p.initials}</Text>
+              </View>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.personName} numberOfLines={1}>{p.name}</Text>
+                <Text style={styles.personSub} numberOfLines={1}>
+                  {isClients ? (p.city || p.email || '—') : (p.email || '—')}
+                </Text>
+              </View>
+              {isClients ? (
+                <Text style={styles.personRight}>{fmtEuro(p.total_paid)}</Text>
+              ) : (
+                <View style={styles.personBadges}>
+                  <View style={[styles.roleChip, { backgroundColor: '#EEF2F6' }]}>
+                    <Text style={styles.roleChipTxt}>{p.role_label}</Text>
+                  </View>
+                  <View style={[styles.dot, { backgroundColor: p.up_to_date ? '#10B981' : '#F59E0B' }]} />
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+/* ================================================================== */
+/*  FACTURES (liste native)                                            */
+/* ================================================================== */
+function NativeInvoices({ data, loading, onRefresh, onOpen, onNew }) {
+  const list = data ? (data.invoices || []) : null;
+  return (
+    <View style={styles.projWrap}>
+      <View style={styles.projHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.projTitle}>Factures</Text>
+          <Text style={styles.projSub}>{(list ? list.length : 0)} facture{(list && list.length > 1) ? 's' : ''}</Text>
+        </View>
+        <TouchableOpacity style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
+          <Ionicons name="add" size={19} color="#fff" />
+          <Text style={styles.projNewTxt}>Nouvelle</Text>
+        </TouchableOpacity>
+      </View>
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : list.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Ionicons name="receipt-outline" size={44} color="#CBD5E1" />
+          <Text style={styles.emptyTxt}>Aucune facture</Text>
+          <TouchableOpacity style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}>
+            <Text style={styles.emptyBtnTxt}>Créer une facture</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
+        >
+          {list.map((inv) => {
+            const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
+            return (
+              <TouchableOpacity key={inv.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpen(inv.id)}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.invNum} numberOfLines={1}>{inv.number}</Text>
+                  <Text style={styles.invClient} numberOfLines={1}>{inv.client || '—'}{inv.date ? '  ·  ' + inv.date : ''}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.invAmount}>{fmtEuro(inv.amount)}</Text>
+                  <View style={[styles.projChip, { backgroundColor: km.bg, marginTop: 5 }]}>
+                    <Text style={[styles.projChipTxt, { color: km.color }]}>{inv.status_label}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+/* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
 function AppShell({ startPath, onExitToWelcome }) {
@@ -349,7 +523,16 @@ function AppShell({ startPath, onExitToWelcome }) {
   const [kpiLoading, setKpiLoading] = useState(false);
   const [projects, setProjects] = useState(null);
   const [projLoading, setProjLoading] = useState(false);
+  const [people, setPeople] = useState(null);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [invoices, setInvoices] = useState(null);
+  const [invLoading, setInvLoading] = useState(false);
   const [webMode, setWebMode] = useState(false);
+
+  const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
+  const isTpe = profile === 'tpe';
+  const TABS = tabsFor(profile);
+  const QUICK_ACTIONS = isTpe ? QUICK_ACTIONS_TPE : QUICK_ACTIONS_ASSO;
 
   const inject = useCallback((js) => {
     if (webRef.current) webRef.current.injectJavaScript(js);
@@ -365,11 +548,24 @@ function AppShell({ startPath, onExitToWelcome }) {
     inject(FETCH_PROJECTS_JS);
   }, [inject]);
 
+  const fetchPeople = useCallback((tpe) => {
+    setPeopleLoading(true);
+    setPeople(null);
+    inject(tpe ? FETCH_CLIENTS_JS : FETCH_MEMBERS_JS);
+  }, [inject]);
+
+  const fetchInvoices = useCallback(() => {
+    setInvLoading(true);
+    inject(FETCH_INVOICES_JS);
+  }, [inject]);
+
   useEffect(() => {
     if (webMode || !authed) return;
     if (active === 'accueil') fetchKpis();
     else if (active === 'projets') fetchProjects();
-  }, [active, authed, webMode, fetchKpis, fetchProjects]);
+    else if (active === 'factures') fetchInvoices();
+    else if (active === 'people') fetchPeople(isTpe);
+  }, [active, authed, webMode, isTpe, fetchKpis, fetchProjects, fetchInvoices, fetchPeople]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -398,17 +594,18 @@ function AppShell({ startPath, onExitToWelcome }) {
       const msg = JSON.parse(e.nativeEvent.data);
       if (msg && msg.__akkpi) { setKpi(msg.__akkpi); setKpiLoading(false); }
       if (msg && msg.__akprojects) { setProjects(msg.__akprojects); setProjLoading(false); }
+      if (msg && msg.__akmembers) { setPeople(msg.__akmembers); setPeopleLoading(false); }
+      if (msg && msg.__akclients) { setPeople(msg.__akclients); setPeopleLoading(false); }
+      if (msg && msg.__akinvoices) { setInvoices(msg.__akinvoices); setInvLoading(false); }
     } catch (err) {}
   };
 
   const goTab = (tab) => {
     if (tab.key === 'add') { setQuickOpen(true); return; }
-    if (tab.key === 'accueil') { setActive('accueil'); setWebMode(false); return; }
-    if (tab.key === 'projets') { setActive('projets'); setWebMode(false); return; }
     if (tab.key === 'menu') { setActive('menu'); setWebMode(true); inject(OPEN_MENU_JS); return; }
+    // Onglets natifs : accueil / projets / factures / people
     setActive(tab.key);
-    setWebMode(true);
-    if (tab.path) inject(gotoJS(tab.path));
+    setWebMode(false);
   };
 
   const onQuick = (a) => {
@@ -419,6 +616,9 @@ function AppShell({ startPath, onExitToWelcome }) {
 
   const onGoto = (path) => {
     if (path === '/projets') { setActive('projets'); setWebMode(false); return; }
+    if (path === '/adherents' && !isTpe) { setActive('people'); setWebMode(false); return; }
+    if (path === '/mon-asso-clients' && isTpe) { setActive('people'); setWebMode(false); return; }
+    if (path === '/mon-asso-factures') { setActive('factures'); setWebMode(false); return; }
     setWebMode(true);
     inject(gotoJS(path));
   };
@@ -428,9 +628,21 @@ function AppShell({ startPath, onExitToWelcome }) {
     inject(gotoJS('/projet/' + id));
   };
 
+  const openInvoice = (id) => {
+    setWebMode(true);
+    inject(gotoJS('/mon-asso-facture-edit?id=' + id));
+  };
+
+  const openPerson = (id) => {
+    setWebMode(true);
+    inject(gotoJS(isTpe ? ('/mon-asso-client-detail?id=' + id) : ('/adherent?id=' + id)));
+  };
+
   const showHome = active === 'accueil' && authed && !webMode;
   const showProjects = active === 'projets' && authed && !webMode;
-  const showWeb = !showHome && !showProjects;
+  const showInvoices = active === 'factures' && authed && !webMode;
+  const showPeople = active === 'people' && authed && !webMode;
+  const showWeb = !showHome && !showProjects && !showInvoices && !showPeople;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -456,12 +668,29 @@ function AppShell({ startPath, onExitToWelcome }) {
         />
         {showHome && (
           <View style={styles.homeOverlay}>
-            <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} />
+            <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} profile={profile} />
           </View>
         )}
         {showProjects && (
           <View style={styles.homeOverlay}>
             <NativeProjects data={projects} loading={projLoading} onRefresh={fetchProjects} onOpen={openProject} onNew={() => onGoto('/nouveau-projet')} />
+          </View>
+        )}
+        {showInvoices && (
+          <View style={styles.homeOverlay}>
+            <NativeInvoices data={invoices} loading={invLoading} onRefresh={fetchInvoices} onOpen={openInvoice} onNew={() => onGoto('/mon-asso-facture-new')} />
+          </View>
+        )}
+        {showPeople && (
+          <View style={styles.homeOverlay}>
+            <NativePeople
+              mode={isTpe ? 'clients' : 'members'}
+              data={people}
+              loading={peopleLoading}
+              onRefresh={() => fetchPeople(isTpe)}
+              onOpen={openPerson}
+              onNew={() => onGoto(isTpe ? '/mon-asso-clients' : '/adherents')}
+            />
           </View>
         )}
         {loading && showWeb && (
@@ -599,6 +828,24 @@ const styles = StyleSheet.create({
   progTrack: { flex: 1, height: 7, borderRadius: 4, backgroundColor: '#EEF2F6', overflow: 'hidden' },
   progFill: { height: 7, borderRadius: 4 },
   progTxt: { fontSize: 12.5, fontWeight: '700', color: '#64748B', width: 38, textAlign: 'right' },
+  /* Membres / Clients */
+  personCard: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  personAvatar: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 13 },
+  personAvatarTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  personName: { fontSize: 15.5, fontWeight: '700', color: INK },
+  personSub: { fontSize: 13, color: MUTE, marginTop: 2 },
+  personRight: { fontSize: 15, fontWeight: '800', color: '#047857' },
+  personBadges: { alignItems: 'flex-end', gap: 6 },
+  roleChip: { paddingVertical: 4, paddingHorizontal: 9, borderRadius: 20 },
+  roleChipTxt: { fontSize: 11, fontWeight: '700', color: '#475569' },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+
+  /* Factures */
+  invCard: { backgroundColor: '#fff', borderRadius: 16, padding: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  invNum: { fontSize: 15.5, fontWeight: '700', color: INK },
+  invClient: { fontSize: 13, color: MUTE, marginTop: 3 },
+  invAmount: { fontSize: 16.5, fontWeight: '800', color: INK },
+
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
   emptyBtn: { marginTop: 18, backgroundColor: BRAND, paddingVertical: 12, paddingHorizontal: 22, borderRadius: 12 },

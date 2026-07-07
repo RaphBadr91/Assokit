@@ -81,10 +81,55 @@ try {
         $events = (int) $stmt->fetchColumn();
     } catch (Throwable $e) {}
 
+    // --- Profil TPE vs Association ---------------------------------------
+    // Heuristique : une TPE facture des clients et n'a pas de projets/dossiers.
+    // (aucune colonne de type n'existe cote base -> detection par usage)
+    $clients_count = 0;
+    try {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM asso_clients WHERE org_id = ? AND (deleted_at IS NULL OR deleted_at = '')");
+        $stmt->execute([$org_id]);
+        $clients_count = (int) $stmt->fetchColumn();
+    } catch (Throwable $e) {}
+
+    $projects_total = 0;
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM projects p JOIN folders f ON p.folder_id = f.id
+            WHERE f.org_id = ?
+        ");
+        $stmt->execute([$org_id]);
+        $projects_total = (int) $stmt->fetchColumn();
+    } catch (Throwable $e) {}
+
+    $profile = ($clients_count > 0 && $projects_total === 0) ? 'tpe' : 'asso';
+
+    // KPIs facturation (utiles pour TPE, calcules pour les deux)
+    $ca_paid_cents = 0; $impayes_cents = 0; $factures_count = 0; $devis_encours = 0;
+    try {
+        $stmt = $pdo->prepare("
+            SELECT
+              COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_ttc_cents ELSE 0 END), 0) AS paid,
+              COALESCE(SUM(CASE WHEN status IN ('pending','overdue') THEN amount_ttc_cents ELSE 0 END), 0) AS due,
+              COUNT(*) AS total
+            FROM asso_invoices WHERE org_id = ?
+        ");
+        $stmt->execute([$org_id]);
+        $fi = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $ca_paid_cents  = (int) ($fi['paid'] ?? 0);
+        $impayes_cents  = (int) ($fi['due'] ?? 0);
+        $factures_count = (int) ($fi['total'] ?? 0);
+    } catch (Throwable $e) {}
+    try {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM asso_quotes WHERE org_id = ? AND status = 'sent'");
+        $stmt->execute([$org_id]);
+        $devis_encours = (int) $stmt->fetchColumn();
+    } catch (Throwable $e) {}
+
     $initials = strtoupper(function_exists('mb_substr') ? mb_substr($org_name, 0, 2) : substr($org_name, 0, 2));
 
     echo json_encode([
         'ok'           => true,
+        'profile'      => $profile,
         'first_name'   => $first_name,
         'org_name'     => $org_name,
         'org_initials' => $initials,
@@ -96,6 +141,12 @@ try {
             'evenements'       => $events,
             'budget_used'      => (float) $b['used'],
             'budget_planned'   => (float) $b['planned'],
+            // TPE
+            'clients'          => $clients_count,
+            'devis_encours'    => $devis_encours,
+            'factures'         => $factures_count,
+            'ca_paid'          => $ca_paid_cents / 100,
+            'impayes'          => $impayes_cents / 100,
         ],
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
