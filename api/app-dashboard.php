@@ -28,6 +28,17 @@ try {
     $stmt->execute([$org_id]);
     $org_name = (string) ($stmt->fetchColumn() ?: '');
 
+    // Logo de l'org (defensif : la colonne peut ne pas exister)
+    $org_logo = null;
+    try {
+        $stmt = $pdo->prepare("SELECT logo_path FROM organizations WHERE id = ? LIMIT 1");
+        $stmt->execute([$org_id]);
+        $lp = trim((string) ($stmt->fetchColumn() ?: ''));
+        if ($lp !== '') {
+            $org_logo = (strpos($lp, 'http') === 0) ? $lp : 'https://assokit.fr/' . ltrim($lp, '/');
+        }
+    } catch (Throwable $e) {}
+
     // Projets actifs
     $stmt = $pdo->prepare("
         SELECT COUNT(*) FROM projects p
@@ -77,6 +88,7 @@ try {
         'first_name'   => $first_name,
         'org_name'     => $org_name,
         'org_initials' => $initials,
+        'org_logo'     => $org_logo,
         'kpis'         => [
             'projets_actifs'   => $active_projects,
             'membres'          => $total_users,

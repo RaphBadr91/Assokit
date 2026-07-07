@@ -4,6 +4,7 @@ import {
   StyleSheet,
   View,
   Text,
+  Image,
   TouchableOpacity,
   ActivityIndicator,
   BackHandler,
@@ -58,9 +59,25 @@ const FETCH_KPIS_JS = `
 true;
 `;
 
+const FETCH_PROJECTS_JS = `
+(function(){ try {
+  fetch('/api/app-projects.php', { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'include' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akprojects: d })); })
+    .catch(function(){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akprojects: { ok: false } })); });
+} catch(e){} })();
+true;
+`;
+
 function gotoJS(path) {
   return "(function(){ try { window.location.href='" + BASE + path + "'; } catch(e){} })(); true;";
 }
+
+const STATUS_META = {
+  warning: { label: 'À suivre', color: '#D97706', bg: '#FFFBEB' },
+  active: { label: 'En cours', color: '#059669', bg: '#ECFDF5' },
+  done: { label: 'Terminé', color: '#2563EB', bg: '#EFF6FF' },
+};
 
 function fmtEuro(n) {
   n = Number(n) || 0;
@@ -203,7 +220,11 @@ function NativeHome({ data, loading, onRefresh, onGoto }) {
             <Text style={styles.hOrg}>{(data && data.org_name) || ' '}</Text>
           </View>
           <View style={styles.hAvatar}>
-            <Text style={styles.hAvatarTxt}>{(data && data.org_initials) || '·'}</Text>
+            {data && data.org_logo ? (
+              <Image source={{ uri: data.org_logo }} style={styles.hAvatarImg} resizeMode="cover" />
+            ) : (
+              <Text style={styles.hAvatarTxt}>{(data && data.org_initials) || '·'}</Text>
+            )}
           </View>
         </View>
       </LinearGradient>
@@ -253,6 +274,68 @@ function NativeHome({ data, loading, onRefresh, onGoto }) {
 }
 
 /* ================================================================== */
+/*  PROJETS (liste native)                                             */
+/* ================================================================== */
+function NativeProjects({ data, loading, onRefresh, onOpen, onNew }) {
+  const projects = (data && data.projects) || [];
+  return (
+    <View style={styles.projWrap}>
+      <View style={styles.projHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.projTitle}>Projets</Text>
+          <Text style={styles.projSub}>{projects.length} projet{projects.length > 1 ? 's' : ''}</Text>
+        </View>
+        <TouchableOpacity style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
+          <Ionicons name="add" size={19} color="#fff" />
+          <Text style={styles.projNewTxt}>Nouveau</Text>
+        </TouchableOpacity>
+      </View>
+      {!data ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : projects.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Ionicons name="folder-open-outline" size={44} color="#CBD5E1" />
+          <Text style={styles.emptyTxt}>Aucun projet en cours</Text>
+          <TouchableOpacity style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}>
+            <Text style={styles.emptyBtnTxt}>Créer un projet</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
+        >
+          {projects.map((p) => {
+            const sm = STATUS_META[p.status] || STATUS_META.active;
+            const pct = Math.max(0, Math.min(100, p.progress || 0));
+            return (
+              <TouchableOpacity key={p.id} style={styles.projCard} activeOpacity={0.85} onPress={() => onOpen(p.id)}>
+                <View style={styles.projCardTop}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={styles.projName} numberOfLines={1}>{p.name}</Text>
+                    <Text style={styles.projFolder} numberOfLines={1}>{p.folder}</Text>
+                  </View>
+                  <View style={[styles.projChip, { backgroundColor: sm.bg }]}>
+                    <Text style={[styles.projChipTxt, { color: sm.color }]}>{sm.label}</Text>
+                  </View>
+                </View>
+                <View style={styles.progRow}>
+                  <View style={styles.progTrack}>
+                    <View style={[styles.progFill, { width: pct + '%', backgroundColor: sm.color }]} />
+                  </View>
+                  <Text style={styles.progTxt}>{pct}%</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+/* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
 function AppShell({ startPath, onExitToWelcome }) {
@@ -264,6 +347,9 @@ function AppShell({ startPath, onExitToWelcome }) {
   const [authed, setAuthed] = useState(false);
   const [kpi, setKpi] = useState(null);
   const [kpiLoading, setKpiLoading] = useState(false);
+  const [projects, setProjects] = useState(null);
+  const [projLoading, setProjLoading] = useState(false);
+  const [webMode, setWebMode] = useState(false);
 
   const inject = useCallback((js) => {
     if (webRef.current) webRef.current.injectJavaScript(js);
@@ -274,23 +360,31 @@ function AppShell({ startPath, onExitToWelcome }) {
     inject(FETCH_KPIS_JS);
   }, [inject]);
 
+  const fetchProjects = useCallback(() => {
+    setProjLoading(true);
+    inject(FETCH_PROJECTS_JS);
+  }, [inject]);
+
   useEffect(() => {
-    if (active === 'accueil' && authed) fetchKpis();
-  }, [active, authed, fetchKpis]);
+    if (webMode || !authed) return;
+    if (active === 'accueil') fetchKpis();
+    else if (active === 'projets') fetchProjects();
+  }, [active, authed, webMode, fetchKpis, fetchProjects]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     const onBack = () => {
       if (quickOpen) { setQuickOpen(false); return true; }
-      if (active !== 'accueil') { goTab(TABS[0]); return true; }
-      if (canGoBack && webRef.current) { webRef.current.goBack(); return true; }
+      if (webMode && canGoBack && webRef.current) { webRef.current.goBack(); return true; }
+      if (webMode) { setWebMode(false); return true; }
+      if (active !== 'accueil') { setActive('accueil'); return true; }
       onExitToWelcome();
       return true;
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
     // eslint-disable-next-line
-  }, [canGoBack, quickOpen, active, onExitToWelcome]);
+  }, [canGoBack, quickOpen, active, webMode, onExitToWelcome]);
 
   const onNav = (nav) => {
     setCanGoBack(nav.canGoBack);
@@ -303,28 +397,40 @@ function AppShell({ startPath, onExitToWelcome }) {
     try {
       const msg = JSON.parse(e.nativeEvent.data);
       if (msg && msg.__akkpi) { setKpi(msg.__akkpi); setKpiLoading(false); }
+      if (msg && msg.__akprojects) { setProjects(msg.__akprojects); setProjLoading(false); }
     } catch (err) {}
   };
 
   const goTab = (tab) => {
     if (tab.key === 'add') { setQuickOpen(true); return; }
-    if (tab.key === 'menu') { setActive('menu'); inject(OPEN_MENU_JS); return; }
+    if (tab.key === 'accueil') { setActive('accueil'); setWebMode(false); return; }
+    if (tab.key === 'projets') { setActive('projets'); setWebMode(false); return; }
+    if (tab.key === 'menu') { setActive('menu'); setWebMode(true); inject(OPEN_MENU_JS); return; }
     setActive(tab.key);
+    setWebMode(true);
     if (tab.path) inject(gotoJS(tab.path));
   };
 
   const onQuick = (a) => {
     setQuickOpen(false);
-    setActive('projets');
+    setWebMode(true);
     inject(gotoJS(a.path));
   };
 
-  const gotoFromHome = (path) => {
-    setActive('projets');
+  const onGoto = (path) => {
+    if (path === '/projets') { setActive('projets'); setWebMode(false); return; }
+    setWebMode(true);
     inject(gotoJS(path));
   };
 
-  const showHome = active === 'accueil' && authed;
+  const openProject = (id) => {
+    setWebMode(true);
+    inject(gotoJS('/projet/' + id));
+  };
+
+  const showHome = active === 'accueil' && authed && !webMode;
+  const showProjects = active === 'projets' && authed && !webMode;
+  const showWeb = !showHome && !showProjects;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -334,7 +440,7 @@ function AppShell({ startPath, onExitToWelcome }) {
           ref={webRef}
           source={{ uri: BASE + startPath }}
           onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => { setLoading(false); if (active === 'accueil' && authed) fetchKpis(); }}
+          onLoadEnd={() => { setLoading(false); if (!webMode && authed && active === 'accueil') fetchKpis(); }}
           onNavigationStateChange={onNav}
           onMessage={onMessage}
           allowsBackForwardNavigationGestures
@@ -350,10 +456,15 @@ function AppShell({ startPath, onExitToWelcome }) {
         />
         {showHome && (
           <View style={styles.homeOverlay}>
-            <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={gotoFromHome} />
+            <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} />
           </View>
         )}
-        {loading && !showHome && (
+        {showProjects && (
+          <View style={styles.homeOverlay}>
+            <NativeProjects data={projects} loading={projLoading} onRefresh={fetchProjects} onOpen={openProject} onNew={() => onGoto('/nouveau-projet')} />
+          </View>
+        )}
+        {loading && showWeb && (
           <View style={styles.loader} pointerEvents="none">
             <ActivityIndicator size="large" color={BRAND} />
           </View>
@@ -469,6 +580,29 @@ const styles = StyleSheet.create({
 
   openFull: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8, marginHorizontal: 16, paddingVertical: 15, borderRadius: 16, borderWidth: 1.5, borderColor: '#D1FAE5', backgroundColor: '#F0FDF9' },
   openFullTxt: { fontSize: 15, fontWeight: '700', color: BRAND },
+  hAvatarImg: { width: 50, height: 50, borderRadius: 15 },
+
+  /* Projets natifs */
+  projWrap: { flex: 1, backgroundColor: '#F4F6FA' },
+  projHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 12 },
+  projTitle: { fontSize: 26, fontWeight: '800', color: INK, letterSpacing: -0.4 },
+  projSub: { fontSize: 13.5, color: MUTE, marginTop: 2 },
+  projNewBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: BRAND, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  projNewTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  projCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, marginBottom: 12, shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  projCardTop: { flexDirection: 'row', alignItems: 'flex-start' },
+  projName: { fontSize: 16, fontWeight: '700', color: INK },
+  projFolder: { fontSize: 13, color: MUTE, marginTop: 2 },
+  projChip: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 20 },
+  projChipTxt: { fontSize: 11.5, fontWeight: '700' },
+  progRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14, gap: 10 },
+  progTrack: { flex: 1, height: 7, borderRadius: 4, backgroundColor: '#EEF2F6', overflow: 'hidden' },
+  progFill: { height: 7, borderRadius: 4 },
+  progTxt: { fontSize: 12.5, fontWeight: '700', color: '#64748B', width: 38, textAlign: 'right' },
+  emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
+  emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
+  emptyBtn: { marginTop: 18, backgroundColor: BRAND, paddingVertical: 12, paddingHorizontal: 22, borderRadius: 12 },
+  emptyBtnTxt: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
 
   /* Tab bar */
   tabBar: { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#EEF2F6', paddingBottom: Platform.OS === 'ios' ? 22 : 10, paddingTop: 8, alignItems: 'flex-end', shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: -3 }, elevation: 12 },
