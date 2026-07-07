@@ -15,6 +15,20 @@ import Constants from 'expo-constants';
 const SITE_URL = 'https://assokit.fr/connexion';
 const BRAND = '#059669';
 
+// CSS injecte UNIQUEMENT dans l'app (le site web n'est jamais modifie) :
+// masque le bandeau d'abonnement et l'invite d'installation PWA cote app.
+const APP_ONLY_CSS = `
+(function(){ try {
+  if (!document.getElementById('ak-app-only-css')) {
+    var s = document.createElement('style');
+    s.id = 'ak-app-only-css';
+    s.textContent = '.ak-trial-banner{display:none!important}#ak-pwa-banner{display:none!important}';
+    (document.head || document.documentElement).appendChild(s);
+  }
+} catch(e){} })();
+true;
+`;
+
 // Comment afficher une notif quand l'app est au premier plan.
 // (On fournit les anciens ET nouveaux champs pour rester compatible
 //  quelle que soit la version du SDK Expo.)
@@ -94,6 +108,7 @@ export default function App() {
         originWhitelist={['https://*', 'http://*', 'mailto:*', 'tel:*']}
         setSupportMultipleWindows={false}
         applicationNameForUserAgent="AssokitApp/1.0"
+        injectedJavaScript={APP_ONLY_CSS}
         style={styles.web}
       />
       {loading && (

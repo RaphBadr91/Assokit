@@ -1053,8 +1053,6 @@ body { font-family: var(--font-sans); background: var(--bg-2); color: var(--ink)
  */
 function render_trial_banner() {
     global $pdo;
-    // App native (Apple / Play Store) : pas de bandeau d'abonnement (regle App Store 3.1.1)
-    if (strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'AssokitApp') !== false) return;
     if (!function_exists('current_user')) return;
     $user = current_user();
     if (!$user || empty($user['org_id'])) return;
@@ -2005,8 +2003,8 @@ function render_foot() {
 <script>
 (function() {
   var KEY = 'ak_pwa_install_dismissed';
-  // Dans l'app native (Capacitor ou wrapper Expo/WebView) : jamais d'invite d'installation PWA
-  if (window.Capacitor || /AssokitApp/.test(navigator.userAgent || '')) return;
+  // Dans l'app native (Capacitor) : jamais d'invite d'installation PWA
+  if (window.Capacitor) return;
   try { if (localStorage.getItem(KEY)) return; } catch (e) { return; }
   // Deja installe (mode standalone) : ne rien afficher
   if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone) return;
