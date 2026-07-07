@@ -510,6 +510,304 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew }) {
 }
 
 /* ================================================================== */
+/*  FICHES DÉTAIL (natives)                                            */
+/* ================================================================== */
+function DetailHeader({ title, onBack }) {
+  return (
+    <View style={styles.dHeader}>
+      <TouchableOpacity onPress={onBack} style={styles.dBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.7}>
+        <Ionicons name="chevron-back" size={26} color={INK} />
+      </TouchableOpacity>
+      <Text style={styles.dTitle} numberOfLines={1}>{title}</Text>
+      <View style={{ width: 34 }} />
+    </View>
+  );
+}
+
+function DetailLoading({ title, onBack }) {
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title={title} onBack={onBack} />
+      <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+    </View>
+  );
+}
+
+function InfoRow({ icon, label, value, onPress }) {
+  if (!value) return null;
+  const Row = onPress ? TouchableOpacity : View;
+  return (
+    <Row style={styles.infoRow} onPress={onPress} activeOpacity={0.7}>
+      <View style={styles.infoIcon}><Ionicons name={icon} size={18} color={BRAND} /></View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={[styles.infoValue, onPress ? { color: BRAND } : null]}>{value}</Text>
+      </View>
+      {onPress ? <Ionicons name="chevron-forward" size={16} color="#CBD5E1" /> : null}
+    </Row>
+  );
+}
+
+function NativeProjectDetail({ entry, onBack, onRefresh, onWeb }) {
+  const d = entry.data;
+  if (!d || !d.project) return <DetailLoading title="Projet" onBack={onBack} />;
+  const p = d.project;
+  const sm = STATUS_META[p.status] || STATUS_META.active;
+  const pct = Math.max(0, Math.min(100, p.progress || 0));
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Projet" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <Text style={styles.dName}>{p.name}</Text>
+        <Text style={styles.dFolder}>{p.folder}</Text>
+        <View style={[styles.projChip, { backgroundColor: sm.bg, alignSelf: 'flex-start', marginTop: 10 }]}>
+          <Text style={[styles.projChipTxt, { color: sm.color }]}>{sm.label}</Text>
+        </View>
+
+        <View style={styles.dCard}>
+          <View style={styles.dCardRow}>
+            <Text style={styles.dCardLabel}>Avancement</Text>
+            <Text style={styles.dCardStrong}>{pct}%</Text>
+          </View>
+          <View style={styles.progTrack}><View style={[styles.progFill, { width: pct + '%', backgroundColor: sm.color }]} /></View>
+          <Text style={styles.dSteps}>{p.steps_done}/{p.steps_total} étape{p.steps_total > 1 ? 's' : ''} terminée{p.steps_done > 1 ? 's' : ''}</Text>
+        </View>
+
+        {p.budget_planned > 0 && (
+          <View style={styles.dCard}>
+            <View style={styles.dCardRow}>
+              <Text style={styles.dCardLabel}>Budget engagé</Text>
+              <Text style={styles.dCardStrong}>{fmtEuro(p.budget_used)} / {fmtEuro(p.budget_planned)}</Text>
+            </View>
+            <View style={styles.progTrack}><View style={[styles.progFill, { width: Math.min(100, p.budget_pct) + '%', backgroundColor: '#7C3AED' }]} /></View>
+          </View>
+        )}
+
+        {!!p.description && (<><Text style={styles.dSection}>Description</Text><Text style={styles.dText}>{p.description}</Text></>)}
+        {!!p.objective && (<><Text style={styles.dSection}>Objectif</Text><Text style={styles.dText}>{p.objective}</Text></>)}
+
+        {p.referent && (
+          <>
+            <Text style={styles.dSection}>Référent</Text>
+            <View style={styles.personCard}>
+              <View style={[styles.personAvatar, { backgroundColor: BRAND }]}><Text style={styles.personAvatarTxt}>{p.referent.initials}</Text></View>
+              <Text style={styles.personName}>{p.referent.name}</Text>
+            </View>
+          </>
+        )}
+
+        {d.steps && d.steps.length > 0 && (
+          <>
+            <Text style={styles.dSection}>Étapes</Text>
+            {d.steps.map((s) => (
+              <View key={s.id} style={styles.stepRow}>
+                <Ionicons name={s.done ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={s.done ? '#10B981' : '#CBD5E1'} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.stepTitle, s.done ? styles.stepDone : null]}>{s.title}</Text>
+                  {!!s.desc && <Text style={styles.stepDesc}>{s.desc}</Text>}
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
+        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/projet/' + p.id)}>
+          <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
+          <Ionicons name="open-outline" size={18} color={BRAND} />
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) {
+  const d = entry.data;
+  if (!d || !d.member) return <DetailLoading title="Membre" onBack={onBack} />;
+  const m = d.member;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Membre" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <View style={styles.dHero}>
+          <View style={[styles.dHeroAvatar, { backgroundColor: m.color || BRAND }]}><Text style={styles.dHeroAvatarTxt}>{m.initials}</Text></View>
+          <Text style={styles.dName}>{m.name}</Text>
+          <View style={styles.dChipsRow}>
+            <View style={[styles.roleChip, { backgroundColor: '#EEF2F6' }]}><Text style={styles.roleChipTxt}>{m.role_label}</Text></View>
+            <View style={[styles.roleChip, { backgroundColor: m.up_to_date ? '#D1FAE5' : '#FEF3C7' }]}>
+              <Text style={[styles.roleChipTxt, { color: m.up_to_date ? '#065F46' : '#92400E' }]}>{m.up_to_date ? 'À jour' : 'Cotisation à renouveler'}</Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={styles.dSection}>Contact</Text>
+        <View style={styles.dCard}>
+          <InfoRow icon="mail" label="Email" value={m.email} onPress={m.email ? () => onWeb('mailto:' + m.email) : null} />
+          <InfoRow icon="call" label="Téléphone" value={m.phone} />
+          <InfoRow icon="location" label="Ville" value={m.city} />
+        </View>
+
+        <Text style={styles.dSection}>Adhésion</Text>
+        <View style={styles.dCard}>
+          <InfoRow icon="calendar" label="Adhérent depuis" value={m.adhesion_since} />
+          <InfoRow icon="time" label="Valide jusqu'au" value={m.adhesion_until} />
+          <InfoRow icon="log-in" label="Dernière connexion" value={m.last_login} />
+        </View>
+
+        {d.projects && d.projects.length > 0 && (
+          <>
+            <Text style={styles.dSection}>Projets pilotés</Text>
+            {d.projects.map((p) => {
+              const sm = STATUS_META[p.status] || STATUS_META.active;
+              return (
+                <TouchableOpacity key={p.id} style={styles.projCard} activeOpacity={0.85} onPress={() => onOpenProject(p.id)}>
+                  <View style={styles.projCardTop}>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={styles.projName} numberOfLines={1}>{p.name}</Text>
+                      <Text style={styles.projFolder} numberOfLines={1}>{p.folder}</Text>
+                    </View>
+                    <View style={[styles.projChip, { backgroundColor: sm.bg }]}><Text style={[styles.projChipTxt, { color: sm.color }]}>{sm.label}</Text></View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </>
+        )}
+
+        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/adherent?id=' + m.id)}>
+          <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
+          <Ionicons name="open-outline" size={18} color={BRAND} />
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) {
+  const d = entry.data;
+  if (!d || !d.client) return <DetailLoading title="Client" onBack={onBack} />;
+  const c = d.client;
+  const s = d.stats || {};
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Client" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <View style={styles.dHero}>
+          <View style={[styles.dHeroAvatar, { backgroundColor: '#2563EB' }]}><Text style={styles.dHeroAvatarTxt}>{c.initials}</Text></View>
+          <Text style={styles.dName}>{c.name}</Text>
+          <Text style={styles.dFolder}>{c.type === 'individual' ? 'Particulier' : 'Entreprise'}</Text>
+        </View>
+
+        <View style={styles.miniKpiRow}>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé</Text></View>
+          <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#B45309' }]}>{fmtEuro((s.pending || 0) + (s.overdue || 0))}</Text><Text style={styles.miniKpiLbl}>En attente</Text></View>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.nb || 0}</Text><Text style={styles.miniKpiLbl}>Factures</Text></View>
+        </View>
+
+        <Text style={styles.dSection}>Contact</Text>
+        <View style={styles.dCard}>
+          <InfoRow icon="mail" label="Email" value={c.email} onPress={c.email ? () => onWeb('mailto:' + c.email) : null} />
+          <InfoRow icon="call" label="Téléphone" value={c.phone} />
+          <InfoRow icon="location" label="Adresse" value={c.address} />
+          <InfoRow icon="business" label="SIREN" value={c.siren} />
+          <InfoRow icon="pricetag" label="N° TVA" value={c.vat_number} />
+        </View>
+
+        {d.invoices && d.invoices.length > 0 && (
+          <>
+            <Text style={styles.dSection}>Factures</Text>
+            {d.invoices.map((inv) => {
+              const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
+              return (
+                <TouchableOpacity key={inv.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpenInvoice(inv.id)}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={styles.invNum} numberOfLines={1}>{inv.number}</Text>
+                    <Text style={styles.invClient} numberOfLines={1}>{inv.date || '—'}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.invAmount}>{fmtEuro(inv.amount)}</Text>
+                    <View style={[styles.projChip, { backgroundColor: km.bg, marginTop: 5 }]}><Text style={[styles.projChipTxt, { color: km.color }]}>{inv.status_label}</Text></View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </>
+        )}
+
+        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-client-detail?id=' + c.id)}>
+          <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
+          <Ionicons name="open-outline" size={18} color={BRAND} />
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb }) {
+  const d = entry.data;
+  if (!d || !d.invoice) return <DetailLoading title="Facture" onBack={onBack} />;
+  const inv = d.invoice;
+  const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Facture" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <Text style={styles.dName}>{inv.number}</Text>
+        {!!inv.client && <Text style={styles.dFolder}>{inv.client}</Text>}
+        <View style={[styles.projChip, { backgroundColor: km.bg, alignSelf: 'flex-start', marginTop: 10 }]}>
+          <Text style={[styles.projChipTxt, { color: km.color }]}>{inv.status_label}</Text>
+        </View>
+
+        <View style={styles.dCard}>
+          <View style={styles.dCardRow}><Text style={styles.dCardLabel}>Total TTC</Text><Text style={styles.dTotal}>{fmtEuro(inv.amount_ttc)}</Text></View>
+          <View style={[styles.dCardRow, { marginTop: 6 }]}><Text style={styles.dMuted}>Total HT</Text><Text style={styles.dMuted}>{fmtEuro(inv.amount_ht)}</Text></View>
+          <View style={[styles.dCardRow, { marginTop: 4 }]}><Text style={styles.dMuted}>TVA</Text><Text style={styles.dMuted}>{fmtEuro(inv.amount_vat)}</Text></View>
+        </View>
+
+        <View style={styles.dCard}>
+          <InfoRow icon="calendar" label="Émise le" value={inv.issued_at} />
+          <InfoRow icon="time" label="Échéance" value={inv.due_at} />
+          <InfoRow icon="checkmark-done" label="Payée le" value={inv.paid_at} />
+        </View>
+
+        {d.lines && d.lines.length > 0 && (
+          <>
+            <Text style={styles.dSection}>Détail</Text>
+            <View style={styles.dCard}>
+              {d.lines.map((l, i) => (
+                <View key={i} style={[styles.lineRow, i > 0 ? styles.lineSep : null]}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={styles.lineLabel} numberOfLines={2}>{l.label}</Text>
+                    <Text style={styles.lineQty}>{l.qty} × {fmtEuro(l.unit)}{l.vat ? '  · TVA ' + l.vat + '%' : ''}</Text>
+                  </View>
+                  <Text style={styles.lineTotal}>{fmtEuro(l.total)}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {!!inv.description && (<><Text style={styles.dSection}>Note</Text><Text style={styles.dText}>{inv.description}</Text></>)}
+
+        {!!inv.public_uuid && (
+          <TouchableOpacity style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onWeb('/facture/' + inv.public_uuid)}>
+            <Ionicons name="document-text" size={18} color="#fff" />
+            <Text style={styles.dPrimaryBtnTxt}>Voir / envoyer la facture</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-facture-edit?id=' + inv.id)}>
+          <Text style={styles.dWebBtnTxt}>Modifier la facture</Text>
+          <Ionicons name="open-outline" size={18} color={BRAND} />
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+/* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
 function AppShell({ startPath, onExitToWelcome }) {
@@ -528,6 +826,7 @@ function AppShell({ startPath, onExitToWelcome }) {
   const [invoices, setInvoices] = useState(null);
   const [invLoading, setInvLoading] = useState(false);
   const [webMode, setWebMode] = useState(false);
+  const [stack, setStack] = useState([]); // pile de fiches détail natives
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
@@ -559,6 +858,33 @@ function AppShell({ startPath, onExitToWelcome }) {
     inject(FETCH_INVOICES_JS);
   }, [inject]);
 
+  // --- Pile de fiches détail natives ---------------------------------
+  const fetchDetail = useCallback((type, id) => {
+    inject(fetchJS('/api/app-' + type + '.php?id=' + id, '__akdetail'));
+  }, [inject]);
+
+  const pushDetail = useCallback((type, id) => {
+    setStack((s) => [...s, { type, id, data: null, loading: true }]);
+    fetchDetail(type, id);
+  }, [fetchDetail]);
+
+  const popDetail = useCallback(() => {
+    setStack((s) => s.slice(0, -1));
+  }, []);
+
+  const clearDetail = useCallback(() => setStack([]), []);
+
+  const refreshDetail = useCallback(() => {
+    setStack((s) => {
+      if (!s.length) return s;
+      const top = s[s.length - 1];
+      fetchDetail(top.type, top.id);
+      const cp = s.slice();
+      cp[cp.length - 1] = { ...top, loading: true };
+      return cp;
+    });
+  }, [fetchDetail]);
+
   useEffect(() => {
     if (webMode || !authed) return;
     if (active === 'accueil') fetchKpis();
@@ -571,6 +897,7 @@ function AppShell({ startPath, onExitToWelcome }) {
     if (Platform.OS !== 'android') return;
     const onBack = () => {
       if (quickOpen) { setQuickOpen(false); return true; }
+      if (stack.length) { popDetail(); return true; }
       if (webMode && canGoBack && webRef.current) { webRef.current.goBack(); return true; }
       if (webMode) { setWebMode(false); return true; }
       if (active !== 'accueil') { setActive('accueil'); return true; }
@@ -580,7 +907,7 @@ function AppShell({ startPath, onExitToWelcome }) {
     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
     // eslint-disable-next-line
-  }, [canGoBack, quickOpen, active, webMode, onExitToWelcome]);
+  }, [canGoBack, quickOpen, active, webMode, stack.length, popDetail, onExitToWelcome]);
 
   const onNav = (nav) => {
     setCanGoBack(nav.canGoBack);
@@ -597,11 +924,20 @@ function AppShell({ startPath, onExitToWelcome }) {
       if (msg && msg.__akmembers) { setPeople(msg.__akmembers); setPeopleLoading(false); }
       if (msg && msg.__akclients) { setPeople(msg.__akclients); setPeopleLoading(false); }
       if (msg && msg.__akinvoices) { setInvoices(msg.__akinvoices); setInvLoading(false); }
+      if (msg && msg.__akdetail) {
+        setStack((s) => {
+          if (!s.length) return s;
+          const cp = s.slice();
+          cp[cp.length - 1] = { ...cp[cp.length - 1], data: msg.__akdetail, loading: false };
+          return cp;
+        });
+      }
     } catch (err) {}
   };
 
   const goTab = (tab) => {
     if (tab.key === 'add') { setQuickOpen(true); return; }
+    clearDetail();
     if (tab.key === 'menu') { setActive('menu'); setWebMode(true); inject(OPEN_MENU_JS); return; }
     // Onglets natifs : accueil / projets / factures / people
     setActive(tab.key);
@@ -610,11 +946,13 @@ function AppShell({ startPath, onExitToWelcome }) {
 
   const onQuick = (a) => {
     setQuickOpen(false);
+    clearDetail();
     setWebMode(true);
     inject(gotoJS(a.path));
   };
 
   const onGoto = (path) => {
+    clearDetail();
     if (path === '/projets') { setActive('projets'); setWebMode(false); return; }
     if (path === '/adherents' && !isTpe) { setActive('people'); setWebMode(false); return; }
     if (path === '/mon-asso-clients' && isTpe) { setActive('people'); setWebMode(false); return; }
@@ -623,26 +961,28 @@ function AppShell({ startPath, onExitToWelcome }) {
     inject(gotoJS(path));
   };
 
-  const openProject = (id) => {
+  // Ouvre une page web depuis une fiche détail (PDF, édition, mailto…)
+  const openWeb = (path) => {
+    if (/^(mailto:|tel:)/.test(path)) {
+      inject("(function(){ try { window.location.href='" + path + "'; } catch(e){} })(); true;");
+      return;
+    }
+    clearDetail();
     setWebMode(true);
-    inject(gotoJS('/projet/' + id));
+    inject(gotoJS(path));
   };
 
-  const openInvoice = (id) => {
-    setWebMode(true);
-    inject(gotoJS('/mon-asso-facture-edit?id=' + id));
-  };
+  const openProject = (id) => pushDetail('project', id);
+  const openInvoice = (id) => pushDetail('invoice', id);
+  const openPerson = (id) => pushDetail(isTpe ? 'client' : 'member', id);
 
-  const openPerson = (id) => {
-    setWebMode(true);
-    inject(gotoJS(isTpe ? ('/mon-asso-client-detail?id=' + id) : ('/adherent?id=' + id)));
-  };
-
-  const showHome = active === 'accueil' && authed && !webMode;
-  const showProjects = active === 'projets' && authed && !webMode;
-  const showInvoices = active === 'factures' && authed && !webMode;
-  const showPeople = active === 'people' && authed && !webMode;
-  const showWeb = !showHome && !showProjects && !showInvoices && !showPeople;
+  const detailTop = stack.length ? stack[stack.length - 1] : null;
+  const showHome = active === 'accueil' && authed && !webMode && !detailTop;
+  const showProjects = active === 'projets' && authed && !webMode && !detailTop;
+  const showInvoices = active === 'factures' && authed && !webMode && !detailTop;
+  const showPeople = active === 'people' && authed && !webMode && !detailTop;
+  const showDetail = !!detailTop && authed && !webMode;
+  const showWeb = !showHome && !showProjects && !showInvoices && !showPeople && !showDetail;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -691,6 +1031,22 @@ function AppShell({ startPath, onExitToWelcome }) {
               onOpen={openPerson}
               onNew={() => onGoto(isTpe ? '/mon-asso-clients' : '/adherents')}
             />
+          </View>
+        )}
+        {showDetail && (
+          <View style={styles.homeOverlay}>
+            {detailTop.type === 'project' && (
+              <NativeProjectDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
+            )}
+            {detailTop.type === 'member' && (
+              <NativeMemberDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onOpenProject={(id) => pushDetail('project', id)} onWeb={openWeb} />
+            )}
+            {detailTop.type === 'client' && (
+              <NativeClientDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onOpenInvoice={(id) => pushDetail('invoice', id)} onWeb={openWeb} />
+            )}
+            {detailTop.type === 'invoice' && (
+              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
+            )}
           </View>
         )}
         {loading && showWeb && (
@@ -845,6 +1201,49 @@ const styles = StyleSheet.create({
   invNum: { fontSize: 15.5, fontWeight: '700', color: INK },
   invClient: { fontSize: 13, color: MUTE, marginTop: 3 },
   invAmount: { fontSize: 16.5, fontWeight: '800', color: INK },
+
+  /* Fiches détail natives */
+  detailWrap: { flex: 1, backgroundColor: '#F4F6FA' },
+  dHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEF2F6' },
+  dBack: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  dTitle: { flex: 1, textAlign: 'center', fontSize: 16.5, fontWeight: '700', color: INK },
+  detailContent: { padding: 18, paddingBottom: 40 },
+  dName: { fontSize: 24, fontWeight: '800', color: INK, letterSpacing: -0.4 },
+  dFolder: { fontSize: 14, color: MUTE, marginTop: 4 },
+  dCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, marginTop: 14, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  dCardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dCardLabel: { fontSize: 14, fontWeight: '600', color: '#334155' },
+  dCardStrong: { fontSize: 14.5, fontWeight: '800', color: INK },
+  dSteps: { fontSize: 12.5, color: MUTE, marginTop: 8 },
+  dSection: { fontSize: 15, fontWeight: '700', color: INK, marginTop: 22, marginBottom: 2 },
+  dText: { fontSize: 14.5, color: '#334155', lineHeight: 21, marginTop: 8 },
+  stepRow: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff', borderRadius: 14, padding: 14, marginTop: 8 },
+  stepTitle: { fontSize: 14.5, fontWeight: '600', color: INK },
+  stepDone: { color: '#94A3B8', textDecorationLine: 'line-through' },
+  stepDesc: { fontSize: 13, color: MUTE, marginTop: 3 },
+  dHero: { alignItems: 'center', paddingTop: 6, paddingBottom: 4 },
+  dHeroAvatar: { width: 76, height: 76, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  dHeroAvatarTxt: { color: '#fff', fontSize: 28, fontWeight: '800' },
+  dChipsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 10 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9 },
+  infoIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  infoLabel: { fontSize: 12, color: MUTE },
+  infoValue: { fontSize: 14.5, fontWeight: '600', color: INK, marginTop: 1 },
+  miniKpiRow: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 18, padding: 6, marginTop: 16, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  miniKpi: { flex: 1, alignItems: 'center', paddingVertical: 12 },
+  miniKpiVal: { fontSize: 17, fontWeight: '800', color: '#047857' },
+  miniKpiLbl: { fontSize: 11.5, color: MUTE, marginTop: 3 },
+  dTotal: { fontSize: 20, fontWeight: '800', color: INK },
+  dMuted: { fontSize: 13.5, color: '#64748B' },
+  lineRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12 },
+  lineSep: { borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  lineLabel: { fontSize: 14, fontWeight: '600', color: INK },
+  lineQty: { fontSize: 12.5, color: MUTE, marginTop: 3 },
+  lineTotal: { fontSize: 14.5, fontWeight: '700', color: INK },
+  dWebBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16, paddingVertical: 15, borderRadius: 16, borderWidth: 1.5, borderColor: '#D1FAE5', backgroundColor: '#F0FDF9' },
+  dWebBtnTxt: { fontSize: 15, fontWeight: '700', color: BRAND },
+  dPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, paddingVertical: 16, borderRadius: 16, backgroundColor: BRAND, shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
+  dPrimaryBtnTxt: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
