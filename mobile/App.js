@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
@@ -117,45 +118,56 @@ const SHORTCUTS = [
 /* ================================================================== */
 function WelcomeScreen({ onLogin, onSignup }) {
   return (
-    <LinearGradient
-      colors={['#07A873', '#059669', '#046B50']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.wBg}
-    >
-      <StatusBar barStyle="light-content" backgroundColor="#07A873" />
+    <View style={styles.wBg}>
+      <LinearGradient
+        colors={['#0AA173', '#059669', '#03583F']}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 0.9, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[styles.blob, styles.blob1]} />
+      <View style={[styles.blob, styles.blob2]} />
+      <View style={[styles.blob, styles.blob3]} />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <SafeAreaView style={styles.wSafe}>
         <View style={styles.wTop}>
-          <View style={styles.logoTile}>
-            <View style={styles.logoDot} />
+          <View style={styles.logoHalo}>
+            <View style={styles.logoTile}>
+              <View style={styles.logoDot} />
+            </View>
           </View>
           <Text style={styles.brand}>Assokit</Text>
-          <Text style={styles.tagline}>L'art de mener vos projets</Text>
+          <View style={styles.taglinePill}>
+            <Text style={styles.tagline}>L'art de mener vos projets</Text>
+          </View>
         </View>
 
         <View style={styles.wFeatures}>
           {FEATURES.map((f, i) => (
-            <View key={i} style={styles.wFeatureCard}>
+            <BlurView key={i} intensity={22} tint="light" style={styles.glassCard}>
               <View style={styles.wFeatureIcon}>
                 <Ionicons name={f.icon} size={20} color="#fff" />
               </View>
               <Text style={styles.wFeatureTxt}>{f.label}</Text>
-              <Ionicons name="checkmark-circle" size={20} color="rgba(255,255,255,0.9)" />
-            </View>
+              <Ionicons name="checkmark-circle" size={22} color="#fff" />
+            </BlurView>
           ))}
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity style={styles.btnPrimary} onPress={onLogin} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.btnPrimary} onPress={onLogin} activeOpacity={0.9}>
             <Text style={styles.btnPrimaryTxt}>Se connecter</Text>
+            <Ionicons name="arrow-forward" size={18} color="#047857" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.btnGhost} onPress={onSignup} activeOpacity={0.7}>
-            <Text style={styles.btnGhostTxt}>Créer ma démo</Text>
+          <TouchableOpacity activeOpacity={0.85} onPress={onSignup} style={styles.btnGlassWrap}>
+            <BlurView intensity={18} tint="light" style={styles.btnGlass}>
+              <Text style={styles.btnGhostTxt}>Créer ma démo</Text>
+            </BlurView>
           </TouchableOpacity>
           <Text style={styles.wFooter}>🇫🇷 Hébergé en France · Conforme RGPD</Text>
         </View>
       </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -474,22 +486,29 @@ const styles = StyleSheet.create({
   qaIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   qaLabel: { flex: 1, fontSize: 16, fontWeight: '600', color: INK },
 
-  /* Welcome */
-  wBg: { flex: 1 },
+  /* Welcome — Liquid Glass */
+  wBg: { flex: 1, backgroundColor: '#059669', overflow: 'hidden' },
+  blob: { position: 'absolute', borderRadius: 9999 },
+  blob1: { width: 340, height: 340, top: -90, right: -90, backgroundColor: 'rgba(255,255,255,0.15)' },
+  blob2: { width: 300, height: 300, bottom: 40, left: -100, backgroundColor: 'rgba(6,214,160,0.30)' },
+  blob3: { width: 220, height: 220, top: 220, right: 140, backgroundColor: 'rgba(252,211,77,0.16)' },
   wSafe: { flex: 1, paddingHorizontal: 24, justifyContent: 'space-between' },
-  wTop: { alignItems: 'center', marginTop: 46 },
-  logoTile: { width: 78, height: 78, borderRadius: 22, backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 8, marginBottom: 20 },
+  wTop: { alignItems: 'center', marginTop: 40 },
+  logoHalo: { width: 108, height: 108, borderRadius: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.14)', marginBottom: 20 },
+  logoTile: { width: 80, height: 80, borderRadius: 22, backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 10 },
   logoDot: { position: 'absolute', right: 17, bottom: 17, width: 19, height: 19, borderRadius: 10, backgroundColor: BRAND },
-  brand: { color: '#fff', fontSize: 40, fontWeight: '700', letterSpacing: -0.5 },
-  tagline: { color: 'rgba(255,255,255,0.9)', fontSize: 16, marginTop: 8 },
+  brand: { color: '#fff', fontSize: 42, fontWeight: '800', letterSpacing: -0.6 },
+  taglinePill: { marginTop: 10, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  tagline: { color: 'rgba(255,255,255,0.95)', fontSize: 14.5, fontWeight: '500' },
   wFeatures: { marginVertical: 10 },
-  wFeatureCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 16, paddingVertical: 15, paddingHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  wFeatureIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  wFeatureTxt: { color: '#fff', fontSize: 15, fontWeight: '600', flex: 1 },
+  glassCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 18, paddingVertical: 16, paddingHorizontal: 16, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)' },
+  wFeatureIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  wFeatureTxt: { color: '#fff', fontSize: 15.5, fontWeight: '600', flex: 1 },
   actions: { marginBottom: 20 },
-  btnPrimary: { backgroundColor: '#fff', borderRadius: 15, paddingVertical: 17, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
-  btnPrimaryTxt: { color: '#047857', fontSize: 17, fontWeight: '700' },
-  btnGhost: { marginTop: 12, borderRadius: 15, paddingVertical: 16, alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)' },
-  btnGhostTxt: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  wFooter: { color: 'rgba(255,255,255,0.85)', fontSize: 12.5, textAlign: 'center', marginTop: 18 },
+  btnPrimary: { backgroundColor: '#fff', borderRadius: 16, paddingVertical: 17, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 5 },
+  btnPrimaryTxt: { color: '#047857', fontSize: 17, fontWeight: '800' },
+  btnGlassWrap: { marginTop: 12, borderRadius: 16, overflow: 'hidden' },
+  btnGlass: { paddingVertical: 16, alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.45)', borderRadius: 16, overflow: 'hidden' },
+  btnGhostTxt: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  wFooter: { color: 'rgba(255,255,255,0.9)', fontSize: 12.5, textAlign: 'center', marginTop: 18 },
 });
