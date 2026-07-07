@@ -24,6 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
+import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
 
 const BASE = 'https://assokit.fr';
@@ -98,6 +99,24 @@ function postJS(endpoint, payload) {
     + " } catch(e){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akwrite: { ok:false, message:'Erreur.' } })); } })(); true;";
 }
 
+// Envoi d'une photo de facture au moteur IA (multipart, dans la WebView = même session)
+function scanJS(base64, mime, projectId, csrf) {
+  return "(function(){ try {"
+    + " var b64=" + JSON.stringify(base64) + ";"
+    + " var bin=atob(b64); var arr=new Uint8Array(bin.length);"
+    + " for (var i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);"
+    + " var blob=new Blob([arr], { type: " + JSON.stringify(mime) + " });"
+    + " var fd=new FormData();"
+    + " fd.append('invoice_file', blob, 'facture.jpg');"
+    + " fd.append('project_id', " + JSON.stringify(String(projectId)) + ");"
+    + " fd.append('csrf_token', " + JSON.stringify(csrf) + ");"
+    + " fetch('/action-scan-facture.php', { method:'POST', credentials:'include', body: fd })"
+    + ".then(function(r){ return r.json().catch(function(){ return { success:false, error:'Réponse invalide.' }; }); })"
+    + ".then(function(d){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akscan: d })); })"
+    + ".catch(function(){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akscan: { success:false, error:'Analyse impossible.' } })); });"
+    + " } catch(e){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akscan: { success:false, error:'Image illisible.' } })); } })(); true;";
+}
+
 // Calcul des totaux d'une facture/devis (miroir de ak_asso_line_compute)
 function computeTotals(lines) {
   let ht = 0, vat = 0;
@@ -169,6 +188,7 @@ function tabsFor(profile) {
 
 const QUICK_ACTIONS_ASSO = [
   { label: 'Nouveau projet', icon: 'add-circle', color: '#059669', form: 'project' },
+  { label: 'Scanner une facture', icon: 'camera', color: '#0EA5E9', form: 'expense' },
   { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', form: 'invoice' },
   { label: 'Nouvel adhérent', icon: 'person-add', color: '#D97706', form: 'member' },
   { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', path: '/messages' },
@@ -579,10 +599,11 @@ function InfoRow({ icon, label, value, onPress }) {
   );
 }
 
-function NativeProjectDetail({ entry, onBack, onRefresh, onWeb }) {
+function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense }) {
   const d = entry.data;
   if (!d || !d.project) return <DetailLoading title="Projet" onBack={onBack} />;
   const p = d.project;
+  const bilan = entry.bilan;
   const sm = STATUS_META[p.status] || STATUS_META.active;
   const pct = Math.max(0, Math.min(100, p.progress || 0));
   return (
@@ -643,6 +664,44 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb }) {
           </>
         )}
 
+        <View style={styles.bilanHead}>
+          <Text style={styles.dSection}>Bilan analytique</Text>
+          <Ionicons name="pie-chart" size={18} color={BRAND} />
+        </View>
+        {!bilan ? (
+          <View style={styles.dCard}><ActivityIndicator color={BRAND} /></View>
+        ) : bilan.allowed === false ? (
+          <View style={styles.upsellCard}>
+            <Ionicons name="lock-closed" size={22} color="#B45309" />
+            <Text style={styles.upsellTxt}>{bilan.upsell || 'Fonctionnalité incluse dans le plan Pro.'}</Text>
+            <TouchableOpacity style={styles.upsellBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-plan')}>
+              <Text style={styles.upsellBtnTxt}>Voir les plans</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (bilan.count || 0) === 0 ? (
+          <View style={styles.dCard}><Text style={styles.dMuted}>Aucune dépense enregistrée. Scannez une facture pour l'ajouter au projet.</Text></View>
+        ) : (
+          <View style={styles.dCard}>
+            {(bilan.postes || []).map((po) => (
+              <View key={po.code} style={styles.bilanRow}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.bilanLabel} numberOfLines={1}>{po.code} · {po.label}</Text>
+                  <Text style={styles.bilanCount}>{po.count} facture{po.count > 1 ? 's' : ''}</Text>
+                </View>
+                <Text style={styles.bilanAmount}>{fmtEuro(po.total)}</Text>
+              </View>
+            ))}
+            <View style={[styles.bilanRow, styles.bilanTotalRow]}>
+              <Text style={styles.dCardLabel}>Total dépenses</Text>
+              <Text style={styles.dTotal}>{fmtEuro(bilan.total)}</Text>
+            </View>
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onAddExpense(p.id)}>
+          <Ionicons name="camera" size={19} color="#fff" />
+          <Text style={styles.dPrimaryBtnTxt}>Scanner une facture</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/projet/' + p.id)}>
           <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
           <Ionicons name="open-outline" size={18} color={BRAND} />
@@ -1133,6 +1192,104 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders }) {
   );
 }
 
+const EXPENSE_CATS = ['Matériel', 'Fournitures', 'Alimentation', 'Transport', 'Location', 'Télécom', 'Prestations externes', 'Frais administratifs', 'Autre'];
+
+function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject, scanData, scanning, onScan }) {
+  const [projectId, setProjectId] = useState(preProject || 0);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [supplier, setSupplier] = useState('');
+  const [category, setCategory] = useState('');
+  const [mode, setMode] = useState('ttc');
+  const [vat, setVat] = useState('20');
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState('');
+  const [desc, setDesc] = useState('');
+  const [tempFile, setTempFile] = useState('');
+  const [scanned, setScanned] = useState(false);
+
+  // Applique les données extraites par l'IA
+  useEffect(() => {
+    if (!scanData) return;
+    if (scanData.supplier_name) setSupplier(String(scanData.supplier_name));
+    if (scanData.invoice_date) setDate(String(scanData.invoice_date));
+    if (scanData.amount_ttc != null) { setAmount(String(scanData.amount_ttc)); setMode('ttc'); }
+    if (scanData.vat_rate != null) setVat(String(scanData.vat_rate));
+    if (scanData.category) setCategory(String(scanData.category));
+    if (scanData.description) setDesc(String(scanData.description));
+    if (scanData.temp_file) setTempFile(String(scanData.temp_file));
+    setScanned(true);
+  }, [scanData]);
+
+  const selProject = projects && projects.find((p) => p.id === projectId);
+  const submit = () => {
+    onSubmit({
+      project_id: projectId, supplier_name: supplier, category, description: desc,
+      amount_mode: mode, vat_rate: vat, amount_ttc: mode !== 'ht' ? amount : '', amount_ht: mode === 'ht' ? amount : '',
+      invoice_date: date, temp_file: tempFile,
+    });
+  };
+
+  return (
+    <FormShell title="Facture de projet" onBack={onBack} onSubmit={submit} submitLabel="Ajouter au projet" submitting={submitting} error={error}>
+      <Text style={styles.fLabel}>Projet</Text>
+      <TouchableOpacity style={styles.selectRow} activeOpacity={0.8} onPress={() => setPickerOpen(true)}>
+        <Text style={[styles.selectVal, !selProject ? { color: '#B6C0CC' } : null]}>{selProject ? selProject.name : 'Choisir un projet…'}</Text>
+        <Ionicons name="chevron-down" size={18} color={MUTE} />
+      </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.scanBtn, (!projectId || scanning) ? { opacity: 0.5 } : null]} activeOpacity={0.85}
+        onPress={() => { if (projectId && !scanning) onScan(projectId); }}>
+        {scanning ? <ActivityIndicator color={BRAND} /> : <Ionicons name="camera" size={20} color={BRAND} />}
+        <Text style={styles.scanBtnTxt}>{scanning ? 'Analyse en cours…' : (scanned ? 'Rescanner une photo' : 'Scanner la facture (IA)')}</Text>
+      </TouchableOpacity>
+      {!projectId && <Text style={styles.fHint}>Choisissez d'abord un projet pour scanner.</Text>}
+      {scanned && <Text style={[styles.fHint, { color: BRAND }]}>✓ Champs pré-remplis par l'IA — vérifiez puis validez.</Text>}
+
+      <View style={{ height: 8 }} />
+      <Field label="Fournisseur *" value={supplier} onChangeText={setSupplier} autoCapitalize="words" />
+      <Field label="Date *" value={date} onChangeText={setDate} placeholder="AAAA-MM-JJ" keyboardType="numbers-and-punctuation" />
+
+      <Text style={styles.fLabel}>Montant</Text>
+      <Segmented options={[{ value: 'ttc', label: 'TTC' }, { value: 'ht', label: 'HT' }, { value: 'no_vat', label: 'Sans TVA' }]} value={mode} onChange={setMode} />
+      <View style={{ height: 12 }} />
+      <View style={styles.line3}>
+        <View style={{ flex: 1.4 }}><Field label={'Montant ' + (mode === 'ht' ? 'HT' : 'TTC') + ' €'} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" /></View>
+        {mode !== 'no_vat' && <View style={{ flex: 1 }}><Field label="TVA %" value={vat} onChangeText={setVat} keyboardType="decimal-pad" /></View>}
+      </View>
+
+      <Text style={styles.fLabel}>Catégorie</Text>
+      <View style={styles.catWrap}>
+        {EXPENSE_CATS.map((c) => (
+          <TouchableOpacity key={c} style={[styles.catChip, category === c ? styles.catChipOn : null]} activeOpacity={0.8} onPress={() => setCategory(c)}>
+            <Text style={[styles.catTxt, category === c ? styles.catTxtOn : null]}>{c}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <View style={{ height: 14 }} />
+      <Field label="Note" value={desc} onChangeText={setDesc} multiline numberOfLines={2} style={[styles.fInput, { height: 70, textAlignVertical: 'top' }]} />
+
+      <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setPickerOpen(false)}>
+          <Pressable style={[styles.sheet, { maxHeight: '70%' }]}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Projets</Text>
+            <ScrollView>
+              {(projects || []).map((p) => (
+                <TouchableOpacity key={p.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => { setProjectId(p.id); setPickerOpen(false); }}>
+                  <View style={[styles.shortcutIcon, { marginRight: 12 }]}><Ionicons name="folder" size={20} color={BRAND} /></View>
+                  <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{p.name}</Text><Text style={styles.pickedMail}>{p.folder}</Text></View>
+                </TouchableOpacity>
+              ))}
+              {(!projects || projects.length === 0) && <Text style={[styles.dMuted, { padding: 16 }]}>Aucun projet actif.</Text>}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </FormShell>
+  );
+}
+
 /* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
@@ -1159,6 +1316,9 @@ function AppShell({ startPath, onExitToWelcome }) {
   const [csrf, setCsrf] = useState('');
   const [pickClients, setPickClients] = useState([]);
   const [folders, setFolders] = useState([]);
+  const [scanData, setScanData] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [expenseProject, setExpenseProject] = useState(0);
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
@@ -1196,9 +1356,10 @@ function AppShell({ startPath, onExitToWelcome }) {
   }, [inject]);
 
   const pushDetail = useCallback((type, id) => {
-    setStack((s) => [...s, { type, id, data: null, loading: true }]);
+    setStack((s) => [...s, { type, id, data: null, loading: true, bilan: null }]);
     fetchDetail(type, id);
-  }, [fetchDetail]);
+    if (type === 'project') inject(fetchJS('/api/app-project-bilan.php?id=' + id, '__akbilan'));
+  }, [fetchDetail, inject]);
 
   const popDetail = useCallback(() => {
     setStack((s) => s.slice(0, -1));
@@ -1224,9 +1385,10 @@ function AppShell({ startPath, onExitToWelcome }) {
     invoice: '/api/app-create-invoice.php',
     quote:   '/api/app-create-quote.php',
     project: '/api/app-create-project.php',
+    expense: '/api/app-create-expense.php',
   };
 
-  const openForm = useCallback((type) => {
+  const openForm = useCallback((type, preId = 0) => {
     setQuickOpen(false);
     clearDetail();
     setWebMode(false);
@@ -1235,7 +1397,48 @@ function AppShell({ startPath, onExitToWelcome }) {
     inject(FETCH_CSRF_JS);
     if (type === 'invoice' || type === 'quote') inject(fetchJS('/api/app-clients.php', '__akpick'));
     if (type === 'project') inject(fetchJS('/api/app-folders.php', '__akfolders'));
-  }, [inject, clearDetail]);
+    if (type === 'expense') {
+      setScanData(null);
+      setScanning(false);
+      setExpenseProject(preId || 0);
+      if (!projects) inject(FETCH_PROJECTS_JS);
+    }
+  }, [inject, clearDetail, projects]);
+
+  // Capture/sélection d'une photo + envoi à l'IA (scan de facture)
+  const runScan = useCallback(async (source, projectId) => {
+    try {
+      const opts = { mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.5 };
+      let res;
+      if (source === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) { setFormErr('Autorisez l\'appareil photo pour scanner.'); return; }
+        res = await ImagePicker.launchCameraAsync(opts);
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) { setFormErr('Autorisez l\'accès aux photos pour scanner.'); return; }
+        res = await ImagePicker.launchImageLibraryAsync(opts);
+      }
+      if (res.canceled || !res.assets || !res.assets[0] || !res.assets[0].base64) return;
+      if (!csrf) { setFormErr('Session en préparation, réessayez.'); inject(FETCH_CSRF_JS); return; }
+      setScanning(true);
+      setFormErr('');
+      inject(scanJS(res.assets[0].base64, 'image/jpeg', projectId, csrf));
+    } catch (e) {
+      setScanning(false);
+      setFormErr('Impossible d\'ouvrir la caméra / photothèque.');
+    }
+  }, [csrf, inject]);
+
+  const pickAndScan = useCallback((projectId) => {
+    Alert.alert('Scanner une facture', 'Choisissez la source de la photo', [
+      { text: 'Prendre une photo', onPress: () => runScan('camera', projectId) },
+      { text: 'Galerie', onPress: () => runScan('library', projectId) },
+      { text: 'Annuler', style: 'cancel' },
+    ]);
+  }, [runScan]);
+
+  const onAddExpense = useCallback((projectId) => { openForm('expense', projectId); }, [openForm]);
 
   const closeForm = useCallback(() => { setForm(null); setFormErr(''); setSubmitting(false); }, []);
 
@@ -1301,6 +1504,19 @@ function AppShell({ startPath, onExitToWelcome }) {
       if (msg && msg.__akcsrf && msg.__akcsrf.ok) setCsrf(msg.__akcsrf.csrf);
       if (msg && msg.__akpick && msg.__akpick.ok) setPickClients(msg.__akpick.clients || []);
       if (msg && msg.__akfolders && msg.__akfolders.ok) setFolders(msg.__akfolders.folders || []);
+      if (msg && msg.__akbilan) {
+        setStack((s) => {
+          if (!s.length) return s;
+          const cp = s.slice();
+          cp[cp.length - 1] = { ...cp[cp.length - 1], bilan: msg.__akbilan };
+          return cp;
+        });
+      }
+      if (msg && msg.__akscan) {
+        setScanning(false);
+        if (msg.__akscan.success) setScanData(msg.__akscan);
+        else setFormErr(msg.__akscan.error || 'La facture n\'a pas pu être analysée.');
+      }
       if (msg && msg.__akwrite) {
         setSubmitting(false);
         const w = msg.__akwrite;
@@ -1314,6 +1530,7 @@ function AppShell({ startPath, onExitToWelcome }) {
           else if (created === 'client') fetchPeople(true);
           else if (created === 'invoice') fetchInvoices();
           else if (created === 'project') fetchProjects();
+          else if (created === 'expense') { fetchProjects(); if (expenseProject) pushDetail('project', expenseProject); }
         } else {
           setFormErr(w.message || 'Une erreur est survenue.');
         }
@@ -1437,12 +1654,17 @@ function AppShell({ startPath, onExitToWelcome }) {
             {form.type === 'project' && (
               <ProjectForm onBack={closeForm} onSubmit={(d) => submitForm('project', d)} submitting={submitting} error={formErr} folders={folders} />
             )}
+            {form.type === 'expense' && (
+              <ExpenseForm onBack={closeForm} onSubmit={(d) => submitForm('expense', d)} submitting={submitting} error={formErr}
+                projects={(projects && projects.projects) || []} preProject={expenseProject}
+                scanData={scanData} scanning={scanning} onScan={pickAndScan} />
+            )}
           </View>
         )}
         {showDetail && (
           <View style={styles.homeOverlay}>
             {detailTop.type === 'project' && (
-              <NativeProjectDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
+              <NativeProjectDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onAddExpense={onAddExpense} />
             )}
             {detailTop.type === 'member' && (
               <NativeMemberDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onOpenProject={(id) => pushDetail('project', id)} onWeb={openWeb} />
@@ -1682,6 +1904,25 @@ const styles = StyleSheet.create({
   totalsBox: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginTop: 14, borderWidth: 1, borderColor: '#EEF2F6' },
   stepEditRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   stepEditIdx: { width: 24, fontSize: 14, fontWeight: '700', color: MUTE, textAlign: 'center', marginRight: 6 },
+  selectRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, marginBottom: 12 },
+  selectVal: { flex: 1, fontSize: 15, color: INK, fontWeight: '600' },
+  scanBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 14, borderWidth: 1.5, borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' },
+  scanBtnTxt: { fontSize: 15, fontWeight: '700', color: '#0369A1' },
+  catWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  catChip: { paddingVertical: 8, paddingHorizontal: 13, borderRadius: 20, backgroundColor: '#EEF2F6' },
+  catChipOn: { backgroundColor: BRAND },
+  catTxt: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  catTxtOn: { color: '#fff' },
+  bilanHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  bilanRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  bilanLabel: { fontSize: 13.5, fontWeight: '600', color: INK },
+  bilanCount: { fontSize: 12, color: MUTE, marginTop: 2 },
+  bilanAmount: { fontSize: 14.5, fontWeight: '700', color: INK },
+  bilanTotalRow: { borderTopWidth: 1, borderTopColor: '#EEF2F6', marginTop: 4, paddingTop: 12, justifyContent: 'space-between' },
+  upsellCard: { alignItems: 'center', backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 16, padding: 18, marginTop: 6 },
+  upsellTxt: { fontSize: 13.5, color: '#92400E', textAlign: 'center', marginTop: 8, lineHeight: 19 },
+  upsellBtn: { marginTop: 12, backgroundColor: '#D97706', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 12 },
+  upsellBtnTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
