@@ -130,6 +130,7 @@ try {
     echo json_encode([
         'ok'           => true,
         'profile'      => $profile,
+        'role'         => (string) ($user['role'] ?? 'member'),
         'first_name'   => $first_name,
         'org_name'     => $org_name,
         'org_initials' => $initials,

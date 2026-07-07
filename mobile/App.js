@@ -14,6 +14,10 @@ import {
   Pressable,
   ScrollView,
   RefreshControl,
+  TextInput,
+  Switch,
+  KeyboardAvoidingView,
+  Alert,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -80,6 +84,33 @@ function fetchJS(endpoint, key) {
 const FETCH_MEMBERS_JS = fetchJS('/api/app-members.php', '__akmembers');
 const FETCH_CLIENTS_JS = fetchJS('/api/app-clients.php', '__akclients');
 const FETCH_INVOICES_JS = fetchJS('/api/app-invoices.php', '__akinvoices');
+const FETCH_CSRF_JS = fetchJS('/api/app-csrf.php', '__akcsrf');
+
+// POST JSON depuis la WebView (meme session/cookies) -> renvoie __akwrite
+function postJS(endpoint, payload) {
+  const body = JSON.stringify(JSON.stringify(payload)); // littéral JS échappé proprement
+  return "(function(){ try {"
+    + " fetch('" + endpoint + "', { method:'POST', credentials:'include',"
+    + " headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: " + body + " })"
+    + ".then(function(r){ return r.json().catch(function(){ return { ok:false, message:'Réponse invalide.' }; }); })"
+    + ".then(function(d){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akwrite: d })); })"
+    + ".catch(function(){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akwrite: { ok:false, message:'Connexion impossible.' } })); });"
+    + " } catch(e){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akwrite: { ok:false, message:'Erreur.' } })); } })(); true;";
+}
+
+// Calcul des totaux d'une facture/devis (miroir de ak_asso_line_compute)
+function computeTotals(lines) {
+  let ht = 0, vat = 0;
+  for (const l of lines) {
+    const q = parseFloat(String(l.quantity).replace(',', '.')) || 0;
+    const u = parseFloat(String(l.unit_price_ht).replace(',', '.')) || 0;
+    const r = (l.vat_rate === '' || l.vat_rate == null) ? 0 : (parseFloat(String(l.vat_rate).replace(',', '.')) || 0);
+    const lineHt = Math.round(q * u * 100);
+    ht += lineHt;
+    vat += r > 0 ? Math.round(lineHt * r / 100) : 0;
+  }
+  return { ht: ht / 100, vat: vat / 100, ttc: (ht + vat) / 100 };
+}
 
 function gotoJS(path) {
   return "(function(){ try { window.location.href='" + BASE + path + "'; } catch(e){} })(); true;";
@@ -138,15 +169,15 @@ function tabsFor(profile) {
 
 const QUICK_ACTIONS_ASSO = [
   { label: 'Nouveau projet', icon: 'add-circle', color: '#059669', path: '/nouveau-projet' },
-  { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', path: '/mon-asso-facture-new' },
-  { label: 'Nouvel adhérent', icon: 'person-add', color: '#D97706', path: '/adherents' },
+  { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', form: 'invoice' },
+  { label: 'Nouvel adhérent', icon: 'person-add', color: '#D97706', form: 'member' },
   { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', path: '/messages' },
 ];
 
 const QUICK_ACTIONS_TPE = [
-  { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', path: '/mon-asso-facture-new' },
-  { label: 'Nouveau devis', icon: 'create', color: '#059669', path: '/mon-asso-devis-new' },
-  { label: 'Nouveau client', icon: 'person-add', color: '#D97706', path: '/mon-asso-clients' },
+  { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', form: 'invoice' },
+  { label: 'Nouveau devis', icon: 'create', color: '#059669', form: 'quote' },
+  { label: 'Nouveau client', icon: 'person-add', color: '#D97706', form: 'client' },
   { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', path: '/messages' },
 ];
 
@@ -808,6 +839,218 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb }) {
 }
 
 /* ================================================================== */
+/*  FORMULAIRES DE CRÉATION (natifs)                                   */
+/* ================================================================== */
+function Field({ label, hint, ...props }) {
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={styles.fLabel}>{label}</Text>
+      <TextInput
+        style={styles.fInput}
+        placeholderTextColor="#B6C0CC"
+        {...props}
+      />
+      {!!hint && <Text style={styles.fHint}>{hint}</Text>}
+    </View>
+  );
+}
+
+function Segmented({ options, value, onChange }) {
+  return (
+    <View style={styles.segWrap}>
+      {options.map((o) => {
+        const on = value === o.value;
+        return (
+          <TouchableOpacity key={o.value} style={[styles.segItem, on ? styles.segItemOn : null]} activeOpacity={0.8} onPress={() => onChange(o.value)}>
+            <Text style={[styles.segTxt, on ? styles.segTxtOn : null]}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function FormShell({ title, onBack, onSubmit, submitLabel, submitting, error, children }) {
+  return (
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <DetailHeader title={title} onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {!!error && (
+          <View style={styles.formErr}>
+            <Ionicons name="alert-circle" size={18} color="#B91C1C" />
+            <Text style={styles.formErrTxt}>{error}</Text>
+          </View>
+        )}
+        {children}
+      </ScrollView>
+      <View style={styles.formFooter}>
+        <TouchableOpacity style={[styles.dPrimaryBtn, { marginTop: 0 }, submitting ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={submitting ? undefined : onSubmit}>
+          {submitting ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark-circle" size={19} color="#fff" />}
+          <Text style={styles.dPrimaryBtnTxt}>{submitting ? 'Enregistrement…' : submitLabel}</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+function MemberForm({ onBack, onSubmit, submitting, error, canAdmin }) {
+  const [f, setF] = useState({ first_name: '', last_name: '', email: '', phone: '', city: '', role: 'member', send_email: true });
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  const roles = [
+    { value: 'member', label: 'Membre' },
+    { value: 'referent', label: 'Référent' },
+    { value: 'coordinator', label: 'Coordinateur' },
+  ];
+  if (canAdmin) roles.push({ value: 'admin', label: 'Admin' });
+  return (
+    <FormShell title="Nouvel adhérent" onBack={onBack} onSubmit={() => onSubmit(f)} submitLabel="Créer l'adhérent" submitting={submitting} error={error}>
+      <Field label="Prénom *" value={f.first_name} onChangeText={set('first_name')} autoCapitalize="words" />
+      <Field label="Nom *" value={f.last_name} onChangeText={set('last_name')} autoCapitalize="words" />
+      <Field label="Email *" value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" placeholder="prenom.nom@example.com" />
+      <Field label="Téléphone" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
+      <Field label="Ville" value={f.city} onChangeText={set('city')} autoCapitalize="words" />
+      <Text style={styles.fLabel}>Rôle</Text>
+      <Segmented options={roles} value={f.role} onChange={set('role')} />
+      <View style={styles.switchRow}>
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={styles.switchLabel}>Envoyer l'email d'invitation</Text>
+          <Text style={styles.switchSub}>L'adhérent crée lui-même son mot de passe (lien sécurisé 7 j).</Text>
+        </View>
+        <Switch value={f.send_email} onValueChange={set('send_email')} trackColor={{ true: BRAND }} />
+      </View>
+    </FormShell>
+  );
+}
+
+function ClientForm({ onBack, onSubmit, submitting, error }) {
+  const [f, setF] = useState({ client_type: 'company', display_name: '', email: '', phone: '', address_city: '', siren: '', vat_number: '' });
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  return (
+    <FormShell title="Nouveau client" onBack={onBack} onSubmit={() => onSubmit(f)} submitLabel="Enregistrer le client" submitting={submitting} error={error}>
+      <Text style={styles.fLabel}>Type</Text>
+      <Segmented options={[{ value: 'company', label: 'Entreprise' }, { value: 'individual', label: 'Particulier' }]} value={f.client_type} onChange={set('client_type')} />
+      <Field label="Nom / Raison sociale *" value={f.display_name} onChangeText={set('display_name')} autoCapitalize="words" />
+      <Field label="Email *" value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" />
+      <Field label="Téléphone" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
+      <Field label="Ville" value={f.address_city} onChangeText={set('address_city')} autoCapitalize="words" />
+      {f.client_type === 'company' && (
+        <>
+          <Field label="SIREN" value={f.siren} onChangeText={set('siren')} keyboardType="number-pad" />
+          <Field label="N° TVA" value={f.vat_number} onChangeText={set('vat_number')} autoCapitalize="characters" />
+        </>
+      )}
+    </FormShell>
+  );
+}
+
+function BillingForm({ mode, onBack, onSubmit, submitting, error, clients }) {
+  const isQuote = mode === 'quote';
+  const [client, setClient] = useState({ id: 0, client_type: 'company', display_name: '', email: '', phone: '', address_city: '' });
+  const [lines, setLines] = useState([{ designation: '', quantity: '1', unit_price_ht: '', vat_rate: '20' }]);
+  const [status, setStatus] = useState(isQuote ? 'draft' : 'pending');
+  const [dueDays, setDueDays] = useState('30');
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const setC = (k) => (v) => setClient((s) => ({ ...s, [k]: v, id: 0 }));
+  const setLine = (i, k, v) => setLines((s) => s.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
+  const addLine = () => setLines((s) => [...s, { designation: '', quantity: '1', unit_price_ht: '', vat_rate: '20' }]);
+  const rmLine = (i) => setLines((s) => (s.length > 1 ? s.filter((_, j) => j !== i) : s));
+  const pickClient = (c) => { setClient({ id: c.id, display_name: c.name, email: c.email, client_type: c.type || 'company', phone: '', address_city: c.city || '' }); setPickerOpen(false); };
+
+  const t = computeTotals(lines);
+  const submit = () => {
+    const payload = { lines, status };
+    if (!isQuote) payload.due_days = parseInt(dueDays, 10) || 30;
+    if (client.id > 0) payload.client_id = client.id;
+    else payload.client = { client_type: client.client_type, display_name: client.display_name, email: client.email, phone: client.phone, address_city: client.address_city };
+    onSubmit(payload);
+  };
+
+  return (
+    <FormShell title={isQuote ? 'Nouveau devis' : 'Nouvelle facture'} onBack={onBack} onSubmit={submit}
+      submitLabel={isQuote ? 'Créer le devis' : 'Créer la facture'} submitting={submitting} error={error}>
+
+      <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Client</Text>
+        {clients && clients.length > 0 && (
+          <TouchableOpacity onPress={() => setPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>Choisir un client</Text></TouchableOpacity>
+        )}
+      </View>
+      {client.id > 0 ? (
+        <View style={styles.pickedClient}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pickedName}>{client.display_name}</Text>
+            <Text style={styles.pickedMail}>{client.email}</Text>
+          </View>
+          <TouchableOpacity onPress={() => setClient({ id: 0, client_type: 'company', display_name: '', email: '', phone: '', address_city: '' })} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="close-circle" size={22} color="#CBD5E1" />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <Segmented options={[{ value: 'company', label: 'Entreprise' }, { value: 'individual', label: 'Particulier' }]} value={client.client_type} onChange={setC('client_type')} />
+          <View style={{ height: 12 }} />
+          <Field label="Nom du client *" value={client.display_name} onChangeText={setC('display_name')} autoCapitalize="words" />
+          <Field label="Email *" value={client.email} onChangeText={setC('email')} keyboardType="email-address" autoCapitalize="none" hint="Un email déjà connu réutilise le client existant." />
+        </>
+      )}
+
+      <Text style={[styles.formCardTitle, { marginTop: 20 }]}>Lignes</Text>
+      {lines.map((l, i) => (
+        <View key={i} style={styles.lineCard}>
+          <View style={styles.lineCardHead}>
+            <Text style={styles.lineCardIdx}>Ligne {i + 1}</Text>
+            {lines.length > 1 && (
+              <TouchableOpacity onPress={() => rmLine(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+          </View>
+          <Field label="Désignation *" value={l.designation} onChangeText={(v) => setLine(i, 'designation', v)} />
+          <View style={styles.line3}>
+            <View style={{ flex: 1 }}><Field label="Qté" value={l.quantity} onChangeText={(v) => setLine(i, 'quantity', v)} keyboardType="decimal-pad" /></View>
+            <View style={{ flex: 1.3 }}><Field label="P.U. HT €" value={l.unit_price_ht} onChangeText={(v) => setLine(i, 'unit_price_ht', v)} keyboardType="decimal-pad" /></View>
+            <View style={{ flex: 1 }}><Field label="TVA %" value={l.vat_rate} onChangeText={(v) => setLine(i, 'vat_rate', v)} keyboardType="decimal-pad" /></View>
+          </View>
+        </View>
+      ))}
+      <TouchableOpacity style={styles.addLineBtn} onPress={addLine} activeOpacity={0.8}>
+        <Ionicons name="add" size={18} color={BRAND} /><Text style={styles.addLineTxt}>Ajouter une ligne</Text>
+      </TouchableOpacity>
+
+      <View style={styles.totalsBox}>
+        <View style={styles.dCardRow}><Text style={styles.dMuted}>Total HT</Text><Text style={styles.dMuted}>{fmtEuro(t.ht)}</Text></View>
+        <View style={[styles.dCardRow, { marginTop: 4 }]}><Text style={styles.dMuted}>TVA</Text><Text style={styles.dMuted}>{fmtEuro(t.vat)}</Text></View>
+        <View style={[styles.dCardRow, { marginTop: 8 }]}><Text style={styles.dCardLabel}>Total TTC</Text><Text style={styles.dTotal}>{fmtEuro(t.ttc)}</Text></View>
+      </View>
+
+      {!isQuote && <View style={{ marginTop: 16 }}><Field label="Échéance (jours)" value={dueDays} onChangeText={setDueDays} keyboardType="number-pad" /></View>}
+
+      <Text style={[styles.fLabel, { marginTop: 8 }]}>Statut</Text>
+      <Segmented
+        options={isQuote ? [{ value: 'draft', label: 'Brouillon' }, { value: 'sent', label: 'Envoyé' }] : [{ value: 'pending', label: 'À encaisser' }, { value: 'draft', label: 'Brouillon' }]}
+        value={status} onChange={setStatus} />
+
+      <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setPickerOpen(false)}>
+          <Pressable style={[styles.sheet, { maxHeight: '70%' }]}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Clients existants</Text>
+            <ScrollView>
+              {(clients || []).map((c) => (
+                <TouchableOpacity key={c.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => pickClient(c)}>
+                  <View style={[styles.personAvatar, { backgroundColor: '#2563EB', width: 40, height: 40, borderRadius: 12, marginRight: 12 }]}><Text style={styles.personAvatarTxt}>{c.initials}</Text></View>
+                  <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{c.name}</Text><Text style={styles.pickedMail}>{c.email}</Text></View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </FormShell>
+  );
+}
+
+/* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
 function AppShell({ startPath, onExitToWelcome }) {
@@ -827,6 +1070,11 @@ function AppShell({ startPath, onExitToWelcome }) {
   const [invLoading, setInvLoading] = useState(false);
   const [webMode, setWebMode] = useState(false);
   const [stack, setStack] = useState([]); // pile de fiches détail natives
+  const [form, setForm] = useState(null); // { type } formulaire natif ouvert
+  const [formErr, setFormErr] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [csrf, setCsrf] = useState('');
+  const [pickClients, setPickClients] = useState([]);
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
@@ -885,6 +1133,33 @@ function AppShell({ startPath, onExitToWelcome }) {
     });
   }, [fetchDetail]);
 
+  // --- Formulaires natifs (création) ---------------------------------
+  const CREATE_ENDPOINTS = {
+    member:  '/api/app-create-member.php',
+    client:  '/api/app-create-client.php',
+    invoice: '/api/app-create-invoice.php',
+    quote:   '/api/app-create-quote.php',
+  };
+
+  const openForm = useCallback((type) => {
+    setQuickOpen(false);
+    clearDetail();
+    setWebMode(false);
+    setFormErr('');
+    setForm({ type });
+    inject(FETCH_CSRF_JS);
+    if (type === 'invoice' || type === 'quote') inject(fetchJS('/api/app-clients.php', '__akpick'));
+  }, [inject, clearDetail]);
+
+  const closeForm = useCallback(() => { setForm(null); setFormErr(''); setSubmitting(false); }, []);
+
+  const submitForm = useCallback((type, data) => {
+    if (!csrf) { setFormErr('Session en cours de préparation, réessayez dans un instant.'); inject(FETCH_CSRF_JS); return; }
+    setFormErr('');
+    setSubmitting(true);
+    inject(postJS(CREATE_ENDPOINTS[type], { ...data, csrf }));
+  }, [csrf, inject]);
+
   useEffect(() => {
     if (webMode || !authed) return;
     if (active === 'accueil') fetchKpis();
@@ -894,9 +1169,14 @@ function AppShell({ startPath, onExitToWelcome }) {
   }, [active, authed, webMode, isTpe, fetchKpis, fetchProjects, fetchInvoices, fetchPeople]);
 
   useEffect(() => {
+    if (authed && !csrf) inject(FETCH_CSRF_JS);
+  }, [authed, csrf, inject]);
+
+  useEffect(() => {
     if (Platform.OS !== 'android') return;
     const onBack = () => {
       if (quickOpen) { setQuickOpen(false); return true; }
+      if (form) { closeForm(); return true; }
       if (stack.length) { popDetail(); return true; }
       if (webMode && canGoBack && webRef.current) { webRef.current.goBack(); return true; }
       if (webMode) { setWebMode(false); return true; }
@@ -907,7 +1187,7 @@ function AppShell({ startPath, onExitToWelcome }) {
     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
     // eslint-disable-next-line
-  }, [canGoBack, quickOpen, active, webMode, stack.length, popDetail, onExitToWelcome]);
+  }, [canGoBack, quickOpen, active, webMode, stack.length, form, popDetail, closeForm, onExitToWelcome]);
 
   const onNav = (nav) => {
     setCanGoBack(nav.canGoBack);
@@ -932,12 +1212,31 @@ function AppShell({ startPath, onExitToWelcome }) {
           return cp;
         });
       }
+      if (msg && msg.__akcsrf && msg.__akcsrf.ok) setCsrf(msg.__akcsrf.csrf);
+      if (msg && msg.__akpick && msg.__akpick.ok) setPickClients(msg.__akpick.clients || []);
+      if (msg && msg.__akwrite) {
+        setSubmitting(false);
+        const w = msg.__akwrite;
+        if (w.ok) {
+          const created = form && form.type;
+          closeForm();
+          Alert.alert('C\'est fait ✅', w.message || 'Enregistré avec succès.');
+          // Rafraîchir les données concernées
+          fetchKpis();
+          if (created === 'member') fetchPeople(false);
+          else if (created === 'client') fetchPeople(true);
+          else if (created === 'invoice') fetchInvoices();
+        } else {
+          setFormErr(w.message || 'Une erreur est survenue.');
+        }
+      }
     } catch (err) {}
   };
 
   const goTab = (tab) => {
     if (tab.key === 'add') { setQuickOpen(true); return; }
     clearDetail();
+    closeForm();
     if (tab.key === 'menu') { setActive('menu'); setWebMode(true); inject(OPEN_MENU_JS); return; }
     // Onglets natifs : accueil / projets / factures / people
     setActive(tab.key);
@@ -945,6 +1244,7 @@ function AppShell({ startPath, onExitToWelcome }) {
   };
 
   const onQuick = (a) => {
+    if (a.form) { openForm(a.form); return; }
     setQuickOpen(false);
     clearDetail();
     setWebMode(true);
@@ -953,6 +1253,7 @@ function AppShell({ startPath, onExitToWelcome }) {
 
   const onGoto = (path) => {
     clearDetail();
+    closeForm();
     if (path === '/projets') { setActive('projets'); setWebMode(false); return; }
     if (path === '/adherents' && !isTpe) { setActive('people'); setWebMode(false); return; }
     if (path === '/mon-asso-clients' && isTpe) { setActive('people'); setWebMode(false); return; }
@@ -977,12 +1278,13 @@ function AppShell({ startPath, onExitToWelcome }) {
   const openPerson = (id) => pushDetail(isTpe ? 'client' : 'member', id);
 
   const detailTop = stack.length ? stack[stack.length - 1] : null;
-  const showHome = active === 'accueil' && authed && !webMode && !detailTop;
-  const showProjects = active === 'projets' && authed && !webMode && !detailTop;
-  const showInvoices = active === 'factures' && authed && !webMode && !detailTop;
-  const showPeople = active === 'people' && authed && !webMode && !detailTop;
-  const showDetail = !!detailTop && authed && !webMode;
-  const showWeb = !showHome && !showProjects && !showInvoices && !showPeople && !showDetail;
+  const showForm = !!form && authed;
+  const showHome = active === 'accueil' && authed && !webMode && !detailTop && !showForm;
+  const showProjects = active === 'projets' && authed && !webMode && !detailTop && !showForm;
+  const showInvoices = active === 'factures' && authed && !webMode && !detailTop && !showForm;
+  const showPeople = active === 'people' && authed && !webMode && !detailTop && !showForm;
+  const showDetail = !!detailTop && authed && !webMode && !showForm;
+  const showWeb = !showHome && !showProjects && !showInvoices && !showPeople && !showDetail && !showForm;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -1018,7 +1320,7 @@ function AppShell({ startPath, onExitToWelcome }) {
         )}
         {showInvoices && (
           <View style={styles.homeOverlay}>
-            <NativeInvoices data={invoices} loading={invLoading} onRefresh={fetchInvoices} onOpen={openInvoice} onNew={() => onGoto('/mon-asso-facture-new')} />
+            <NativeInvoices data={invoices} loading={invLoading} onRefresh={fetchInvoices} onOpen={openInvoice} onNew={() => openForm('invoice')} />
           </View>
         )}
         {showPeople && (
@@ -1029,8 +1331,21 @@ function AppShell({ startPath, onExitToWelcome }) {
               loading={peopleLoading}
               onRefresh={() => fetchPeople(isTpe)}
               onOpen={openPerson}
-              onNew={() => onGoto(isTpe ? '/mon-asso-clients' : '/adherents')}
+              onNew={() => openForm(isTpe ? 'client' : 'member')}
             />
+          </View>
+        )}
+        {showForm && (
+          <View style={styles.homeOverlay}>
+            {form.type === 'member' && (
+              <MemberForm onBack={closeForm} onSubmit={(d) => submitForm('member', d)} submitting={submitting} error={formErr} canAdmin={(kpi && kpi.role) === 'admin'} />
+            )}
+            {form.type === 'client' && (
+              <ClientForm onBack={closeForm} onSubmit={(d) => submitForm('client', d)} submitting={submitting} error={formErr} />
+            )}
+            {(form.type === 'invoice' || form.type === 'quote') && (
+              <BillingForm mode={form.type} onBack={closeForm} onSubmit={(d) => submitForm(form.type, d)} submitting={submitting} error={formErr} clients={pickClients} />
+            )}
           </View>
         )}
         {showDetail && (
@@ -1244,6 +1559,36 @@ const styles = StyleSheet.create({
   dWebBtnTxt: { fontSize: 15, fontWeight: '700', color: BRAND },
   dPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, paddingVertical: 16, borderRadius: 16, backgroundColor: BRAND, shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
   dPrimaryBtnTxt: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
+
+  /* Formulaires natifs */
+  formContent: { padding: 18, paddingBottom: 30 },
+  formFooter: { padding: 14, paddingBottom: Platform.OS === 'ios' ? 26 : 14, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#EEF2F6' },
+  formErr: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', borderRadius: 12, padding: 12, marginBottom: 14 },
+  formErrTxt: { flex: 1, color: '#B91C1C', fontSize: 13.5, fontWeight: '500' },
+  fLabel: { fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 6 },
+  fInput: { backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 13 : 10, fontSize: 15, color: INK },
+  fHint: { fontSize: 11.5, color: MUTE, marginTop: 5 },
+  segWrap: { flexDirection: 'row', backgroundColor: '#EEF2F6', borderRadius: 12, padding: 4, gap: 4 },
+  segItem: { flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: 'center' },
+  segItemOn: { backgroundColor: '#fff', shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  segTxt: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  segTxtOn: { color: BRAND },
+  switchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, marginTop: 16 },
+  switchLabel: { fontSize: 14, fontWeight: '600', color: INK },
+  switchSub: { fontSize: 12, color: MUTE, marginTop: 3, lineHeight: 16 },
+  formCardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  formCardTitle: { fontSize: 15, fontWeight: '700', color: INK, marginBottom: 10 },
+  formLink: { fontSize: 13.5, fontWeight: '600', color: BRAND },
+  pickedClient: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FDF9', borderWidth: 1, borderColor: '#D1FAE5', borderRadius: 12, padding: 14 },
+  pickedName: { fontSize: 15, fontWeight: '700', color: INK },
+  pickedMail: { fontSize: 12.5, color: MUTE, marginTop: 2 },
+  lineCard: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#EEF2F6', borderRadius: 14, padding: 14, marginBottom: 12 },
+  lineCardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  lineCardIdx: { fontSize: 12.5, fontWeight: '700', color: MUTE },
+  line3: { flexDirection: 'row', gap: 8 },
+  addLineBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#CBD5E1' },
+  addLineTxt: { fontSize: 14, fontWeight: '600', color: BRAND },
+  totalsBox: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginTop: 14, borderWidth: 1, borderColor: '#EEF2F6' },
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
