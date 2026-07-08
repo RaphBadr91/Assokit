@@ -268,9 +268,10 @@ function WelcomeScreen({ onLogin, onSignup }) {
   return (
     <View style={styles.wBg}>
       <LinearGradient
-        colors={['#0AA173', '#059669', '#03583F']}
-        start={{ x: 0.1, y: 0 }}
-        end={{ x: 0.9, y: 1 }}
+        colors={['#10C98D', '#059669', '#04624A', '#022E22']}
+        locations={[0, 0.42, 0.78, 1]}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.85, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
       <View style={[styles.blob, styles.blob1]} />
@@ -280,8 +281,11 @@ function WelcomeScreen({ onLogin, onSignup }) {
       <SafeAreaView style={styles.wSafe}>
         <View style={styles.wTop}>
           <View style={styles.logoHalo}>
-            <View style={styles.logoTile}>
-              <View style={styles.logoDot} />
+            <View style={styles.logoRing}>
+              <LinearGradient colors={['#FFFFFF', '#E9FBF3']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={styles.logoTile}>
+                <View style={styles.logoGloss} />
+                <View style={styles.logoDot} />
+              </LinearGradient>
             </View>
           </View>
           <Text style={styles.brand}>Assokit</Text>
@@ -348,7 +352,7 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
       refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
     >
       <LinearGradient
-        colors={['#07A873', '#047857']}
+        colors={['#0BBE85', '#059669', '#036B4E']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.hHeader}
@@ -3205,15 +3209,17 @@ const styles = StyleSheet.create({
   /* Welcome — Liquid Glass */
   wBg: { flex: 1, backgroundColor: '#059669', overflow: 'hidden' },
   blob: { position: 'absolute', borderRadius: 9999 },
-  blob1: { width: 340, height: 340, top: -90, right: -90, backgroundColor: 'rgba(255,255,255,0.15)' },
-  blob2: { width: 300, height: 300, bottom: 40, left: -100, backgroundColor: 'rgba(6,214,160,0.30)' },
-  blob3: { width: 220, height: 220, top: 220, right: 140, backgroundColor: 'rgba(252,211,77,0.16)' },
+  blob1: { width: 380, height: 380, top: -110, right: -110, backgroundColor: 'rgba(255,255,255,0.10)' },
+  blob2: { width: 320, height: 320, bottom: 20, left: -120, backgroundColor: 'rgba(16,201,141,0.22)' },
+  blob3: { width: 240, height: 240, top: 200, right: 150, backgroundColor: 'rgba(255,255,255,0.06)' },
   wSafe: { flex: 1, paddingHorizontal: 24, justifyContent: 'space-between' },
   wTop: { alignItems: 'center', marginTop: 40 },
-  logoHalo: { width: 108, height: 108, borderRadius: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.14)', marginBottom: 20 },
-  logoTile: { width: 80, height: 80, borderRadius: 22, backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 10 },
-  logoDot: { position: 'absolute', right: 17, bottom: 17, width: 19, height: 19, borderRadius: 10, backgroundColor: BRAND },
-  brand: { color: '#fff', fontSize: 42, fontWeight: '800', letterSpacing: -0.6 },
+  logoHalo: { width: 116, height: 116, borderRadius: 34, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', marginBottom: 22 },
+  logoRing: { width: 88, height: 88, borderRadius: 26, padding: 3, backgroundColor: 'rgba(255,255,255,0.55)', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 26, shadowOffset: { width: 0, height: 14 }, elevation: 12 },
+  logoTile: { flex: 1, borderRadius: 23, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  logoGloss: { position: 'absolute', top: 0, left: 0, right: 0, height: '48%', backgroundColor: 'rgba(255,255,255,0.55)', borderTopLeftRadius: 23, borderTopRightRadius: 23 },
+  logoDot: { position: 'absolute', right: 18, bottom: 18, width: 22, height: 22, borderRadius: 11, backgroundColor: BRAND, shadowColor: BRAND, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
+  brand: { color: '#fff', fontSize: 44, fontWeight: '800', letterSpacing: -0.8, textShadowColor: 'rgba(0,0,0,0.18)', textShadowOffset: { width: 0, height: 3 }, textShadowRadius: 12 },
   taglinePill: { marginTop: 10, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
   tagline: { color: 'rgba(255,255,255,0.95)', fontSize: 14.5, fontWeight: '500' },
   wFeatures: { marginVertical: 10 },
