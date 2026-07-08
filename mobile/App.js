@@ -839,12 +839,13 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
 
 function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb }) {
   const d = entry.data;
-  if (!d || !d.invoice) return <DetailLoading title="Facture" onBack={onBack} />;
+  const isQuote = d && d.invoice && d.invoice.is_quote;
+  if (!d || !d.invoice) return <DetailLoading title={isQuote ? 'Devis' : 'Facture'} onBack={onBack} />;
   const inv = d.invoice;
   const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
   return (
     <View style={styles.detailWrap}>
-      <DetailHeader title="Facture" onBack={onBack} />
+      <DetailHeader title={isQuote ? 'Devis' : 'Facture'} onBack={onBack} />
       <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
         <Text style={styles.dName}>{inv.number}</Text>
@@ -860,9 +861,9 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb }) {
         </View>
 
         <View style={styles.dCard}>
-          <InfoRow icon="calendar" label="Émise le" value={inv.issued_at} />
-          <InfoRow icon="time" label="Échéance" value={inv.due_at} />
-          <InfoRow icon="checkmark-done" label="Payée le" value={inv.paid_at} />
+          <InfoRow icon="calendar" label="Émis le" value={inv.issued_at} />
+          <InfoRow icon="time" label={isQuote ? 'Valable jusqu\'au' : 'Échéance'} value={inv.due_at} />
+          {!isQuote && <InfoRow icon="checkmark-done" label="Payée le" value={inv.paid_at} />}
         </View>
 
         {d.lines && d.lines.length > 0 && (
@@ -885,13 +886,13 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb }) {
         {!!inv.description && (<><Text style={styles.dSection}>Note</Text><Text style={styles.dText}>{inv.description}</Text></>)}
 
         {!!inv.public_uuid && (
-          <TouchableOpacity style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onWeb('/facture/' + inv.public_uuid)}>
+          <TouchableOpacity style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/devis/' : '/facture/') + inv.public_uuid)}>
             <Ionicons name="document-text" size={18} color="#fff" />
-            <Text style={styles.dPrimaryBtnTxt}>Voir / envoyer la facture</Text>
+            <Text style={styles.dPrimaryBtnTxt}>{isQuote ? 'Voir / envoyer le devis' : 'Voir / envoyer la facture'}</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-facture-edit?id=' + inv.id)}>
-          <Text style={styles.dWebBtnTxt}>Modifier la facture</Text>
+        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/mon-asso-devis-edit?id=' : '/mon-asso-facture-edit?id=') + inv.id)}>
+          <Text style={styles.dWebBtnTxt}>{isQuote ? 'Modifier le devis' : 'Modifier la facture'}</Text>
           <Ionicons name="open-outline" size={18} color={BRAND} />
         </TouchableOpacity>
       </ScrollView>
@@ -1469,19 +1470,19 @@ const MORE_GROUPS = [
     items: [
       { label: 'Adhérents', icon: 'people', nav: { tab: 'people' } },
       { label: 'Agenda', icon: 'calendar', nav: { screen: 'agenda' } },
-      { label: 'Cotisations', icon: 'card', nav: { web: '/cotisations' } },
+      { label: 'Cotisations', icon: 'card', nav: { screen: 'cotisations' } },
+      { label: 'Subventions', icon: 'cash', nav: { screen: 'subventions' } },
       { label: 'Assemblées', icon: 'clipboard', nav: { web: '/assemblees' } },
       { label: 'Émargement', icon: 'checkbox', nav: { web: '/emargement' } },
-      { label: 'Subventions', icon: 'cash', nav: { web: '/subventions' } },
     ],
   },
   {
     title: 'Finances',
     items: [
       { label: 'Factures', icon: 'receipt', nav: { tab: 'factures' } },
-      { label: 'Devis', icon: 'document-text', nav: { web: '/mon-asso-devis' } },
-      { label: 'Clients', icon: 'briefcase', nav: { web: '/mon-asso-clients' } },
-      { label: 'Statistiques', icon: 'stats-chart', nav: { web: '/mon-asso-stats' } },
+      { label: 'Devis', icon: 'document-text', nav: { screen: 'devis' } },
+      { label: 'Clients', icon: 'briefcase', nav: { tab: 'people' } },
+      { label: 'Statistiques', icon: 'stats-chart', nav: { screen: 'stats' } },
       { label: 'Mon abonnement', icon: 'card-outline', nav: { screen: 'subinvoices' } },
     ],
   },
@@ -1489,6 +1490,7 @@ const MORE_GROUPS = [
     title: 'Communication',
     items: [
       { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' } },
+      { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' } },
       { label: 'Communication', icon: 'mail', nav: { web: '/communication' } },
       { label: 'Coach IA', icon: 'sparkles', nav: { web: '/coach-ia' } },
     ],
@@ -1498,7 +1500,6 @@ const MORE_GROUPS = [
     items: [
       { label: 'Paramètres', icon: 'settings', nav: { web: '/parametres' } },
       { label: 'Mon logo', icon: 'image', nav: { web: '/mon-asso-logo' } },
-      { label: 'Notifications', icon: 'notifications', nav: { web: '/notifications' } },
       { label: 'Support', icon: 'help-buoy', nav: { web: '/support' } },
     ],
   },
@@ -1533,6 +1534,249 @@ function NativeMore({ orgName, initials, logo, onNav, onLogout }) {
         <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
           <Ionicons name="log-out-outline" size={19} color="#DC2626" />
           <Text style={styles.logoutTxt}>Se déconnecter</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+/* ================================================================== */
+/*  DEVIS / STATS / NOTIFS / COTISATIONS / SUBVENTIONS (natifs)        */
+/* ================================================================== */
+function NativeQuotes({ data, loading, onRefresh, onOpen, onNew, onBack }) {
+  const list = data ? (data.quotes || []) : null;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Devis" onBack={onBack} />
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          <TouchableOpacity style={[styles.projNewBtn, { alignSelf: 'flex-start', marginBottom: 14 }]} onPress={onNew} activeOpacity={0.85}>
+            <Ionicons name="add" size={18} color="#fff" /><Text style={styles.projNewTxt}>Nouveau devis</Text>
+          </TouchableOpacity>
+          {list.length === 0 ? (
+            <View style={styles.emptyBox}><Ionicons name="document-text-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun devis</Text></View>
+          ) : list.map((q) => {
+            const km = INV_KIND[q.status_kind] || INV_KIND.wait;
+            return (
+              <TouchableOpacity key={q.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpen(q.id)}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.invNum} numberOfLines={1}>{q.number}</Text>
+                  <Text style={styles.invClient} numberOfLines={1}>{q.client || '—'}{q.date ? '  ·  ' + q.date : ''}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.invAmount}>{fmtEuro(q.amount)}</Text>
+                  <View style={[styles.projChip, { backgroundColor: km.bg, marginTop: 5 }]}><Text style={[styles.projChipTxt, { color: km.color }]}>{q.status_label}</Text></View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function NativeStats({ data, loading, onRefresh, onBack }) {
+  if (!data) return <DetailLoading title="Statistiques" onBack={onBack} />;
+  if (data.allowed === false) {
+    return (
+      <View style={styles.detailWrap}>
+        <DetailHeader title="Statistiques" onBack={onBack} />
+        <View style={styles.emptyBox}><Ionicons name="lock-closed" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>{data.message || 'Réservé aux administrateurs.'}</Text></View>
+      </View>
+    );
+  }
+  const k = data.kpis || {};
+  const months = data.months || [];
+  const maxv = data.month_max || 1;
+  const top = data.top_clients || [];
+  const cards = [
+    { label: 'CA encaissé', value: fmtEuro(k.ca), color: '#047857' },
+    { label: 'En attente', value: fmtEuro(k.pending), color: '#B45309' },
+    { label: 'Factures', value: String(k.nb_invoices || 0), color: INK },
+    { label: 'Conversion devis', value: (k.conversion || 0) + '%', color: '#2563EB' },
+  ];
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title={'Statistiques ' + (data.year || '')} onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <View style={styles.statGrid}>
+          {cards.map((c) => (
+            <View key={c.label} style={styles.statCard}>
+              <Text style={[styles.statVal, { color: c.color }]}>{c.value}</Text>
+              <Text style={styles.statLbl}>{c.label}</Text>
+            </View>
+          ))}
+        </View>
+        {months.length > 0 && (
+          <>
+            <Text style={styles.dSection}>Encaissé (6 mois)</Text>
+            <View style={[styles.dCard, { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 150, paddingTop: 20 }]}>
+              {months.map((m, i) => (
+                <View key={i} style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={styles.barVal}>{m.paid >= 1000 ? Math.round(m.paid / 1000) + 'k' : Math.round(m.paid)}</Text>
+                  <View style={[styles.bar, { height: Math.max(4, Math.round((m.paid / maxv) * 80)) }]} />
+                  <Text style={styles.barLbl}>{m.label}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+        {top.length > 0 && (
+          <>
+            <Text style={styles.dSection}>Meilleurs clients</Text>
+            <View style={styles.dCard}>
+              {top.map((c, i) => (
+                <View key={i} style={[styles.bilanRow, i > 0 ? { borderTopWidth: 1, borderTopColor: '#F1F5F9' } : null]}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={styles.bilanLabel} numberOfLines={1}>{c.name}</Text>
+                    <Text style={styles.bilanCount}>{c.nb} facture{c.nb > 1 ? 's' : ''}</Text>
+                  </View>
+                  <Text style={styles.bilanAmount}>{fmtEuro(c.paid)}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function NativeNotifications({ data, loading, onRefresh, onOpen, onBack }) {
+  const list = data ? (data.items || []) : null;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Notifications" onBack={onBack} />
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : list.length === 0 ? (
+        <View style={styles.emptyBox}><Ionicons name="notifications-off-outline" size={44} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune notification</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          {list.map((n) => (
+            <TouchableOpacity key={n.id} style={[styles.notifCard, !n.read ? styles.notifUnread : null]} activeOpacity={n.link ? 0.85 : 1} onPress={() => n.link && onOpen(n.link)}>
+              <View style={[styles.notifIcon, !n.read ? { backgroundColor: '#ECFDF5' } : null]}><Ionicons name={n.icon} size={18} color={!n.read ? BRAND : '#94A3B8'} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.notifTitle, !n.read ? { fontWeight: '700' } : null]} numberOfLines={2}>{n.title}</Text>
+                {!!n.body && <Text style={styles.notifBody} numberOfLines={2}>{n.body}</Text>}
+                <Text style={styles.notifAgo}>{n.ago}</Text>
+              </View>
+              {!n.read ? <View style={styles.chanDot} /> : null}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function NativeCotisations({ data, loading, onRefresh, onBack }) {
+  const list = data ? (data.campaigns || []) : null;
+  const s = (data && data.stats) || {};
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Cotisations" onBack={onBack} />
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          <View style={styles.miniKpiRow}>
+            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.total)}</Text><Text style={styles.miniKpiLbl}>Encaissé</Text></View>
+            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.active || 0}</Text><Text style={styles.miniKpiLbl}>Campagnes actives</Text></View>
+          </View>
+          {list.length === 0 ? (
+            <View style={styles.emptyBox}><Ionicons name="card-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune campagne</Text></View>
+          ) : list.map((c) => (
+            <View key={c.id} style={styles.projCard}>
+              <View style={styles.projCardTop}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.projName} numberOfLines={1}>{c.name}</Text>
+                  <Text style={styles.projFolder}>{c.year} · {c.paid} payé{c.paid > 1 ? 's' : ''} · {c.pending} en attente</Text>
+                </View>
+                <View style={[styles.projChip, { backgroundColor: c.active ? '#D1FAE5' : '#F1F5F9' }]}>
+                  <Text style={[styles.projChipTxt, { color: c.active ? '#065F46' : '#64748B' }]}>{c.active ? 'Active' : 'Clôturée'}</Text>
+                </View>
+              </View>
+              <Text style={[styles.dTotal, { marginTop: 10, fontSize: 18 }]}>{fmtEuro(c.total)}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function NativeGrants({ data, loading, onRefresh, onBack }) {
+  const list = data ? (data.grants || []) : null;
+  const s = (data && data.stats) || {};
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Subventions" onBack={onBack} />
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          <View style={styles.miniKpiRow}>
+            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.granted)}</Text><Text style={styles.miniKpiLbl}>Accordé</Text></View>
+            <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: INK }]}>{fmtEuro(s.requested)}</Text><Text style={styles.miniKpiLbl}>Demandé</Text></View>
+            <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#B45309' }]}>{s.pending || 0}</Text><Text style={styles.miniKpiLbl}>En cours</Text></View>
+          </View>
+          {list.length === 0 ? (
+            <View style={styles.emptyBox}><Ionicons name="cash-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune subvention</Text></View>
+          ) : list.map((g) => {
+            const km = INV_KIND[g.status_kind] || INV_KIND.wait;
+            return (
+              <View key={g.id} style={styles.projCard}>
+                <View style={styles.projCardTop}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={styles.projName} numberOfLines={2}>{g.name}</Text>
+                    <Text style={styles.projFolder} numberOfLines={1}>{[g.funder, g.funder_type].filter(Boolean).join(' · ')}</Text>
+                  </View>
+                  <View style={[styles.projChip, { backgroundColor: km.bg }]}><Text style={[styles.projChipTxt, { color: km.color }]}>{g.status_label}</Text></View>
+                </View>
+                <View style={[styles.dCardRow, { marginTop: 12 }]}>
+                  <Text style={styles.dMuted}>{g.deadline ? 'Échéance ' + g.deadline : ' '}</Text>
+                  <Text style={styles.bilanAmount}>{fmtEuro(g.status === 'granted' ? g.granted : g.requested)}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function NativeEventDetail({ entry, onBack, onRefresh, onWeb }) {
+  const d = entry.data;
+  if (!d || !d.event) return <DetailLoading title="Événement" onBack={onBack} />;
+  const e = d.event;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Événement" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <View style={[styles.projChip, { backgroundColor: e.color + '22', alignSelf: 'flex-start', marginBottom: 10 }]}>
+          <Text style={[styles.projChipTxt, { color: e.color }]}>{e.type_label}</Text>
+        </View>
+        <Text style={styles.dName}>{e.title}</Text>
+        <View style={styles.dCard}>
+          <InfoRow icon="time" label="Quand" value={e.when} />
+          <InfoRow icon="location" label="Lieu" value={e.location} />
+          <InfoRow icon="folder" label="Projet" value={e.project} />
+        </View>
+        {!!e.description && (<><Text style={styles.dSection}>Description</Text><Text style={styles.dText}>{e.description}</Text></>)}
+        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/evenement/' + e.id)}>
+          <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
+          <Ionicons name="open-outline" size={18} color={BRAND} />
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -1579,6 +1823,16 @@ function AppShell({ startPath, onExitToWelcome }) {
   const [sendingMsg, setSendingMsg] = useState(false);
   const [subInv, setSubInv] = useState(null);
   const [subInvLoading, setSubInvLoading] = useState(false);
+  const [quotes, setQuotes] = useState(null);
+  const [quotesLoading, setQuotesLoading] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [notifs, setNotifs] = useState(null);
+  const [notifsLoading, setNotifsLoading] = useState(false);
+  const [coti, setCoti] = useState(null);
+  const [cotiLoading, setCotiLoading] = useState(false);
+  const [grantsData, setGrantsData] = useState(null);
+  const [grantsLoading, setGrantsLoading] = useState(false);
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
@@ -1706,13 +1960,23 @@ function AppShell({ startPath, onExitToWelcome }) {
   const fetchChannels = useCallback(() => { setChannelsLoading(true); inject(fetchJS('/api/app-channels.php', '__akchannels')); }, [inject]);
   const fetchSubInv = useCallback(() => { setSubInvLoading(true); inject(fetchJS('/api/app-subscription-invoices.php', '__aksubinv')); }, [inject]);
   const fetchChanMsgs = useCallback((chId) => { setChanLoading(true); inject(fetchJS('/api/app-channel-messages.php?channel_id=' + chId, '__akchanmsgs')); }, [inject]);
+  const fetchQuotes = useCallback(() => { setQuotesLoading(true); inject(fetchJS('/api/app-quotes.php', '__akquotes')); }, [inject]);
+  const fetchStats = useCallback(() => { setStatsLoading(true); inject(fetchJS('/api/app-stats.php', '__akstats')); }, [inject]);
+  const fetchNotifs = useCallback(() => { setNotifsLoading(true); inject(fetchJS('/api/app-notifications.php', '__aknotifs')); }, [inject]);
+  const fetchCoti = useCallback(() => { setCotiLoading(true); inject(fetchJS('/api/app-cotisations.php', '__akcoti')); }, [inject]);
+  const fetchGrants = useCallback(() => { setGrantsLoading(true); inject(fetchJS('/api/app-grants.php', '__akgrants')); }, [inject]);
 
   const openMenuScreen = useCallback((screen) => {
     setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(screen);
     if (screen === 'agenda') fetchEvents();
     else if (screen === 'messages') { setChannels(null); fetchChannels(); }
     else if (screen === 'subinvoices') fetchSubInv();
-  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv]);
+    else if (screen === 'devis') fetchQuotes();
+    else if (screen === 'stats') fetchStats();
+    else if (screen === 'notifications') fetchNotifs();
+    else if (screen === 'cotisations') fetchCoti();
+    else if (screen === 'subventions') fetchGrants();
+  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchCoti, fetchGrants]);
 
   const openChannelFn = useCallback((c) => { setOpenChannel(c); setChanMsgs(null); fetchChanMsgs(c.id); }, [fetchChanMsgs]);
 
@@ -1815,6 +2079,11 @@ function AppShell({ startPath, onExitToWelcome }) {
       if (msg && msg.__akchannels) { setChannels(msg.__akchannels); setChannelsLoading(false); }
       if (msg && msg.__akchanmsgs) { setChanMsgs(msg.__akchanmsgs); setChanLoading(false); }
       if (msg && msg.__aksubinv) { setSubInv(msg.__aksubinv); setSubInvLoading(false); }
+      if (msg && msg.__akquotes) { setQuotes(msg.__akquotes); setQuotesLoading(false); }
+      if (msg && msg.__akstats) { setStats(msg.__akstats); setStatsLoading(false); }
+      if (msg && msg.__aknotifs) { setNotifs(msg.__aknotifs); setNotifsLoading(false); }
+      if (msg && msg.__akcoti) { setCoti(msg.__akcoti); setCotiLoading(false); }
+      if (msg && msg.__akgrants) { setGrantsData(msg.__akgrants); setGrantsLoading(false); }
       if (msg && msg.__akmsgsent) {
         setSendingMsg(false);
         if (msg.__akmsgsent.ok && openChannel) fetchChanMsgs(openChannel.id);
@@ -1831,6 +2100,7 @@ function AppShell({ startPath, onExitToWelcome }) {
           if (created === 'member') fetchPeople(false);
           else if (created === 'client') fetchPeople(true);
           else if (created === 'invoice') fetchInvoices();
+          else if (created === 'quote') fetchQuotes();
           else if (created === 'project') fetchProjects();
           else if (created === 'expense') { fetchProjects(); if (expenseProject) pushDetail('project', expenseProject); }
         } else {
@@ -1976,9 +2246,19 @@ function AppShell({ startPath, onExitToWelcome }) {
         {showMenu && (
           <View style={styles.homeOverlay}>
             {menuScreen === 'agenda' ? (
-              <NativeAgenda data={events} loading={eventsLoading} onRefresh={fetchEvents} onOpen={(id) => openWeb('/evenement/' + id)} onBack={() => setMenuScreen(null)} />
+              <NativeAgenda data={events} loading={eventsLoading} onRefresh={fetchEvents} onOpen={(id) => pushDetail('event', id)} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'subinvoices' ? (
               <NativeSubInvoices data={subInv} loading={subInvLoading} onRefresh={fetchSubInv} onBack={() => setMenuScreen(null)} onWeb={openWeb} />
+            ) : menuScreen === 'devis' ? (
+              <NativeQuotes data={quotes} loading={quotesLoading} onRefresh={fetchQuotes} onOpen={(id) => pushDetail('quote', id)} onNew={() => openForm('quote')} onBack={() => setMenuScreen(null)} />
+            ) : menuScreen === 'stats' ? (
+              <NativeStats data={stats} loading={statsLoading} onRefresh={fetchStats} onBack={() => setMenuScreen(null)} />
+            ) : menuScreen === 'notifications' ? (
+              <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onOpen={openWeb} onBack={() => setMenuScreen(null)} />
+            ) : menuScreen === 'cotisations' ? (
+              <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)} />
+            ) : menuScreen === 'subventions' ? (
+              <NativeGrants data={grantsData} loading={grantsLoading} onRefresh={fetchGrants} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'messages' ? (
               openChannel ? (
                 <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg}
@@ -2010,6 +2290,12 @@ function AppShell({ startPath, onExitToWelcome }) {
             )}
             {detailTop.type === 'invoice' && (
               <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
+            )}
+            {detailTop.type === 'quote' && (
+              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
+            )}
+            {detailTop.type === 'event' && (
+              <NativeEventDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
             )}
           </View>
         )}
@@ -2308,6 +2594,23 @@ const styles = StyleSheet.create({
   moreItemTxt: { fontSize: 12, fontWeight: '600', color: INK, textAlign: 'center' },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
   logoutTxt: { fontSize: 15, fontWeight: '700', color: '#DC2626' },
+
+  /* Stats */
+  statGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  statCard: { width: '48%', backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  statVal: { fontSize: 22, fontWeight: '800', letterSpacing: -0.4 },
+  statLbl: { fontSize: 12.5, color: MUTE, marginTop: 4 },
+  bar: { width: 22, borderRadius: 6, backgroundColor: BRAND, marginTop: 6 },
+  barVal: { fontSize: 10, color: '#64748B', fontWeight: '600' },
+  barLbl: { fontSize: 10.5, color: MUTE, marginTop: 6 },
+
+  /* Notifications */
+  notifCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff', borderRadius: 14, padding: 13, marginBottom: 8, shadowColor: '#0F172A', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
+  notifUnread: { backgroundColor: '#F7FFFC', borderWidth: 1, borderColor: '#D1FAE5' },
+  notifIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  notifTitle: { fontSize: 14, fontWeight: '600', color: INK, lineHeight: 19 },
+  notifBody: { fontSize: 12.5, color: '#64748B', marginTop: 2 },
+  notifAgo: { fontSize: 11, color: MUTE, marginTop: 4 },
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
