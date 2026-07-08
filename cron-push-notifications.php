@@ -104,4 +104,60 @@ if ($dead) {
     $pdo->exec("DELETE FROM asso_push_tokens WHERE id IN ($in)");
 }
 
-fwrite(STDOUT, "Push envoyes: $sent — tokens morts supprimes: " . count(array_unique($dead)) . "\n");
+/* ------------------------------------------------------------------ */
+/*  RELANCES AUTOMATIQUES (proactives)                                 */
+/*  Ex: rappeler au responsable d'un projet actif SANS facture         */
+/*  d'ajouter ses factures. Throttle : 1 rappel / semaine / projet.    */
+/* ------------------------------------------------------------------ */
+$reminders = 0;
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS asso_push_reminder_log (
+            user_id INT NOT NULL,
+            reminder_key VARCHAR(80) NOT NULL,
+            last_sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, reminder_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+
+    // Projets actifs, avec responsable disposant d'un token, et 0 facture
+    $q = $pdo->query("
+        SELECT p.id AS pid, p.name AS pname, p.referent_id AS uid, t.token AS token
+        FROM projects p
+        JOIN folders f ON p.folder_id = f.id
+        JOIN asso_push_tokens t ON t.user_id = p.referent_id
+        WHERE p.status IN ('active','warning')
+          AND (p.archived_at IS NULL OR p.archived_at = '0000-00-00 00:00:00')
+          AND (f.archived_at IS NULL OR f.archived_at = '0000-00-00 00:00:00')
+          AND p.referent_id IS NOT NULL AND p.referent_id > 0
+          AND NOT EXISTS (SELECT 1 FROM project_invoices pi WHERE pi.project_id = p.id)
+    ");
+    $rows = $q ? $q->fetchAll(PDO::FETCH_ASSOC) : [];
+
+    $chk = $pdo->prepare("SELECT last_sent_at FROM asso_push_reminder_log WHERE user_id = ? AND reminder_key = ?");
+    $ins = $pdo->prepare("INSERT INTO asso_push_reminder_log (user_id, reminder_key, last_sent_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE last_sent_at = NOW()");
+
+    $rmsgs = [];
+    foreach ($rows as $r) {
+        $key = 'inv:' . (int) $r['pid'];
+        $chk->execute([(int) $r['uid'], $key]);
+        $lastSent = $chk->fetchColumn();
+        if ($lastSent && (time() - strtotime((string) $lastSent)) < 7 * 86400) continue; // throttle 7 jours
+        $rmsgs[] = [
+            'to'    => $r['token'],
+            'title' => '📸 ' . (string) $r['pname'],
+            'body'  => 'Pensez à ajouter vos factures pour suivre le budget de ce projet.',
+            'sound' => 'default',
+            'data'  => ['url' => '/projet/' . (int) $r['pid']],
+        ];
+        $ins->execute([(int) $r['uid'], $key]);
+    }
+    foreach (array_chunk($rmsgs, 90) as $chunk) {
+        expo_push_send($chunk);
+        $reminders += count($chunk);
+    }
+} catch (Throwable $e) {
+    error_log('[cron-push reminders] ' . $e->getMessage());
+}
+
+fwrite(STDOUT, "Push envoyes: $sent — relances: $reminders — tokens morts supprimes: " . count(array_unique($dead)) . "\n");
