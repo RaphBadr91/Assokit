@@ -1626,6 +1626,7 @@ function AppShell({ startPath, onExitToWelcome }) {
   }, []);
 
   const clearDetail = useCallback(() => setStack([]), []);
+  const closeForm = useCallback(() => { setForm(null); setFormErr(''); setSubmitting(false); }, []);
 
   const refreshDetail = useCallback(() => {
     setStack((s) => {
@@ -1732,8 +1733,6 @@ function AppShell({ startPath, onExitToWelcome }) {
     }
     if (nav.web) { clearDetail(); closeForm(); setWebMode(true); inject(gotoJS(nav.web)); }
   }, [openMenuScreen, clearDetail, closeForm, inject]);
-
-  const closeForm = useCallback(() => { setForm(null); setFormErr(''); setSubmitting(false); }, []);
 
   const submitForm = useCallback((type, data) => {
     if (!csrf) { setFormErr('Session en cours de préparation, réessayez dans un instant.'); inject(FETCH_CSRF_JS); return; }
