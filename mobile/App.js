@@ -25,6 +25,10 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import Constants from 'expo-constants';
 
 const BASE = 'https://assokit.fr';
@@ -135,6 +139,37 @@ function computeTotals(lines) {
 
 function gotoJS(path) {
   return "(function(){ try { window.location.href='" + BASE + path + "'; } catch(e){} })(); true;";
+}
+
+// Capture les identifiants à la connexion (pour "rester connecté" via Face ID)
+const CAPTURE_CREDS_JS = "(function(){ try {"
+  + " var f=document.querySelector('form');"
+  + " if(f && !f.__akhook){ f.__akhook=1; f.addEventListener('submit', function(){ try {"
+  + "   var e=document.querySelector('input[type=email],input[name=email]');"
+  + "   var p=document.querySelector('input[type=password]');"
+  + "   if(e&&p&&e.value&&p.value){ window.ReactNativeWebView.postMessage(JSON.stringify({__akcreds:{email:e.value,password:p.value}})); }"
+  + " } catch(x){} }, true); }"
+  + " } catch(x){} })(); true;";
+
+// Re-remplit et soumet le formulaire de connexion (auto-login Face ID)
+function autoLoginJS(email, password) {
+  return "(function(){ try {"
+    + " var e=document.querySelector('input[type=email],input[name=email]');"
+    + " var p=document.querySelector('input[type=password]');"
+    + " if(e&&p){ e.value=" + JSON.stringify(email) + "; p.value=" + JSON.stringify(password) + ";"
+    + " e.dispatchEvent(new Event('input',{bubbles:true})); p.dispatchEvent(new Event('input',{bubbles:true}));"
+    + " var f=e.form||document.querySelector('form'); if(f){ if(f.requestSubmit){ f.requestSubmit(); } else { f.submit(); } } }"
+    + " } catch(x){} })(); true;";
+}
+
+// Récupère un PDF authentifié en base64 (pour partage/téléchargement natif)
+function fetchPdfJS(url) {
+  return "(function(){ try {"
+    + " fetch(" + JSON.stringify(url) + ", {credentials:'include'})"
+    + ".then(function(r){ return r.blob(); })"
+    + ".then(function(b){ var fr=new FileReader(); fr.onloadend=function(){ var s=String(fr.result||''); var i=s.indexOf('base64,'); window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:true, data: i>=0 ? s.slice(i+7) : ''}})); }; fr.onerror=function(){ window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false}})); }; fr.readAsDataURL(b); })"
+    + ".catch(function(){ window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false}})); });"
+    + " } catch(x){ window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false}})); } })(); true;";
 }
 
 const STATUS_META = {
@@ -609,6 +644,19 @@ function DetailLoading({ title, onBack }) {
   );
 }
 
+function DetailError({ title, onBack, onRetry }) {
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title={title} onBack={onBack} />
+      <View style={styles.emptyBox}>
+        <Ionicons name="cloud-offline-outline" size={44} color="#CBD5E1" />
+        <Text style={styles.emptyTxt}>Chargement impossible. Vérifiez votre connexion.</Text>
+        <TouchableOpacity style={styles.emptyBtn} onPress={onRetry} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Réessayer</Text></TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 function InfoRow({ icon, label, value, onPress }) {
   if (!value) return null;
   const Row = onPress ? TouchableOpacity : View;
@@ -624,8 +672,9 @@ function InfoRow({ icon, label, value, onPress }) {
   );
 }
 
-function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense }) {
+function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, onSharePdf, pdfBusy }) {
   const d = entry.data;
+  if (d && d.ok === false) return <DetailError title="Projet" onBack={onBack} onRetry={onRefresh} />;
   if (!d || !d.project) return <DetailLoading title="Projet" onBack={onBack} />;
   const p = d.project;
   const bilan = entry.bilan;
@@ -725,9 +774,9 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense }) 
 
         <Text style={styles.bilanNote}>ℹ️ Sans factures ni informations saisies, le bilan analytique sera incomplet.</Text>
         <View style={styles.pdfRow}>
-          <TouchableOpacity style={styles.pdfBtn} activeOpacity={0.85} onPress={() => onWeb('/download-bilan-analytique.php?project=' + p.id)}>
-            <Ionicons name="pie-chart" size={17} color="#4F46E5" />
-            <Text style={styles.pdfBtnTxt}>Bilan analytique (PDF)</Text>
+          <TouchableOpacity style={[styles.pdfBtn, pdfBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={() => !pdfBusy && onSharePdf('/download-bilan-analytique.php?project=' + p.id)}>
+            {pdfBusy ? <ActivityIndicator size="small" color="#4F46E5" /> : <Ionicons name="share-outline" size={17} color="#4F46E5" />}
+            <Text style={styles.pdfBtnTxt}>{pdfBusy ? 'Préparation…' : 'Bilan analytique (PDF)'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.pdfBtn} activeOpacity={0.85} onPress={() => onWeb('/projet/' + p.id + '/bilan')}>
             <Ionicons name="document-text" size={17} color="#4F46E5" />
@@ -750,6 +799,7 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense }) 
 
 function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) {
   const d = entry.data;
+  if (d && d.ok === false) return <DetailError title="Membre" onBack={onBack} onRetry={onRefresh} />;
   if (!d || !d.member) return <DetailLoading title="Membre" onBack={onBack} />;
   const m = d.member;
   return (
@@ -813,6 +863,7 @@ function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) 
 
 function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) {
   const d = entry.data;
+  if (d && d.ok === false) return <DetailError title="Client" onBack={onBack} onRetry={onRefresh} />;
   if (!d || !d.client) return <DetailLoading title="Client" onBack={onBack} />;
   const c = d.client;
   const s = d.stats || {};
@@ -875,6 +926,7 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
 function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb }) {
   const d = entry.data;
   const isQuote = d && d.invoice && d.invoice.is_quote;
+  if (d && d.ok === false) return <DetailError title="Document" onBack={onBack} onRetry={onRefresh} />;
   if (!d || !d.invoice) return <DetailLoading title={isQuote ? 'Devis' : 'Facture'} onBack={onBack} />;
   const inv = d.invoice;
   const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
@@ -1824,6 +1876,7 @@ function NativeGrants({ data, loading, onRefresh, onBack }) {
 
 function NativeEventDetail({ entry, onBack, onRefresh, onWeb }) {
   const d = entry.data;
+  if (d && d.ok === false) return <DetailError title="Événement" onBack={onBack} onRetry={onRefresh} />;
   if (!d || !d.event) return <DetailLoading title="Événement" onBack={onBack} />;
   const e = d.event;
   return (
@@ -2006,9 +2059,13 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
 /* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
-function AppShell({ startPath, pushToken, onExitToWelcome }) {
+function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, onLogout, onExitToWelcome }) {
   const webRef = useRef(null);
   const pushRegistered = useRef(false);
+  const autoLoginTried = useRef(false);
+  const pendingCreds = useRef(null);
+  const lastUrl = useRef('');
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
   const [active, setActive] = useState('accueil');
@@ -2313,6 +2370,35 @@ function AppShell({ startPath, pushToken, onExitToWelcome }) {
     }
   }, [authed, csrf, pushToken, inject]);
 
+  // Mémorise les identifiants (pour Face ID) une fois la connexion réussie
+  useEffect(() => {
+    if (authed && pendingCreds.current) {
+      if (onSaveCreds) onSaveCreds(pendingCreds.current);
+      pendingCreds.current = null;
+      autoLoginTried.current = false;
+    }
+  }, [authed, onSaveCreds]);
+
+  // Partage/téléchargement d'un PDF authentifié
+  const sharePdf = useCallback((url) => {
+    setPdfBusy(true);
+    inject(fetchPdfJS(url));
+  }, [inject]);
+
+  const sharePdfData = useCallback(async (base64) => {
+    try {
+      const uri = FileSystem.cacheDirectory + 'assokit-bilan-analytique.pdf';
+      await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Bilan analytique' });
+      } else {
+        Alert.alert('PDF', 'Le partage n\'est pas disponible sur cet appareil.');
+      }
+    } catch (e) {
+      Alert.alert('PDF', 'Impossible d\'ouvrir le document.');
+    }
+  }, []);
+
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     const onBack = () => {
@@ -2335,6 +2421,7 @@ function AppShell({ startPath, pushToken, onExitToWelcome }) {
   const onNav = (nav) => {
     setCanGoBack(nav.canGoBack);
     const u = nav.url || '';
+    lastUrl.current = u;
     if (/\/(connexion|signup|deconnexion|login|mot-de-passe|verifier-email)/.test(u)) setAuthed(false);
     else if (u.indexOf('assokit.fr') !== -1) setAuthed(true);
   };
@@ -2385,6 +2472,12 @@ function AppShell({ startPath, pushToken, onExitToWelcome }) {
       if (msg && msg.__akbroadcasts) { setBroadcasts(msg.__akbroadcasts); setSecLoading(false); }
       if (msg && msg.__aktickets) { setTickets(msg.__aktickets); setSecLoading(false); }
       if (msg && msg.__akcoach) { setCoach(msg.__akcoach); setSecLoading(false); }
+      if (msg && msg.__akcreds && msg.__akcreds.email && msg.__akcreds.password) { pendingCreds.current = msg.__akcreds; }
+      if (msg && msg.__akpdf) {
+        setPdfBusy(false);
+        if (msg.__akpdf.ok && msg.__akpdf.data) sharePdfData(msg.__akpdf.data);
+        else Alert.alert('PDF', 'Impossible de récupérer le document.');
+      }
       if (msg && msg.__akinvai) { setInvAI(msg.__akinvai && msg.__akinvai.ok ? (msg.__akinvai.analysis || '') : 'Analyse indisponible.'); setInvAILoading(false); }
       if (msg && msg.__akstatsai) { setStatsCockpit(msg.__akstatsai && msg.__akstatsai.ok ? (msg.__akstatsai.cockpit || null) : null); setStatsCockpitLoading(false); }
       if (msg && msg.__akaccount) { setAccount(msg.__akaccount); }
@@ -2404,7 +2497,7 @@ function AppShell({ startPath, pushToken, onExitToWelcome }) {
         else Alert.alert('Coach IA', msg.__akcoachgen.message || 'Génération impossible.');
       }
       if (msg && msg.__akdeleted) {
-        if (msg.__akdeleted.ok) { Alert.alert('Compte supprimé', msg.__akdeleted.message || 'À bientôt.'); onExitToWelcome(); }
+        if (msg.__akdeleted.ok) { if (onClearCreds) onClearCreds(); Alert.alert('Compte supprimé', msg.__akdeleted.message || 'À bientôt.'); onExitToWelcome(); }
         else Alert.alert('Suppression', msg.__akdeleted.message || 'Erreur.');
       }
       if (msg && msg.__akmsgsent) {
@@ -2504,7 +2597,15 @@ function AppShell({ startPath, pushToken, onExitToWelcome }) {
           ref={webRef}
           source={{ uri: BASE + startPath }}
           onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => { setLoading(false); if (!webMode && authed && active === 'accueil') fetchKpis(); }}
+          onLoadEnd={() => {
+            setLoading(false);
+            const u = lastUrl.current || '';
+            if (/\/(connexion|login)/.test(u)) {
+              inject(CAPTURE_CREDS_JS);
+              if (autoCreds && !autoLoginTried.current) { autoLoginTried.current = true; inject(autoLoginJS(autoCreds.email, autoCreds.password)); }
+            }
+            if (!webMode && authed && active === 'accueil') fetchKpis();
+          }}
           onNavigationStateChange={onNav}
           onMessage={onMessage}
           allowsBackForwardNavigationGestures
@@ -2617,7 +2718,7 @@ function AppShell({ startPath, pushToken, onExitToWelcome }) {
             ) : menuScreen === 'settings' ? (
               <NativeSettings data={account} onBack={() => setMenuScreen(null)} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
                 onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb}
-                onLogout={() => { setMenuScreen(null); setWebMode(true); inject(gotoJS('/deconnexion.php')); }} />
+                onLogout={() => { if (onClearCreds) onClearCreds(); setMenuScreen(null); setActive('accueil'); setWebMode(true); autoLoginTried.current = true; inject(gotoJS('/deconnexion.php')); }} />
             ) : menuScreen === 'messages' ? (
               openChannel ? (
                 <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg}
@@ -2639,7 +2740,7 @@ function AppShell({ startPath, pushToken, onExitToWelcome }) {
         {showDetail && (
           <View style={styles.homeOverlay}>
             {detailTop.type === 'project' && (
-              <NativeProjectDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onAddExpense={onAddExpense} />
+              <NativeProjectDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onAddExpense={onAddExpense} onSharePdf={sharePdf} pdfBusy={pdfBusy} />
             )}
             {detailTop.type === 'member' && (
               <NativeMemberDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onOpenProject={(id) => pushDetail('project', id)} onWeb={openWeb} />
@@ -2662,6 +2763,13 @@ function AppShell({ startPath, pushToken, onExitToWelcome }) {
           <View style={styles.loader} pointerEvents="none">
             <ActivityIndicator size="large" color={BRAND} />
           </View>
+        )}
+        {showWeb && webMode && (
+          <TouchableOpacity style={styles.floatBack} activeOpacity={0.85}
+            onPress={() => { if (canGoBack && webRef.current) webRef.current.goBack(); else { setWebMode(false); setMenuScreen(null); } }}>
+            <Ionicons name="chevron-back" size={20} color={INK} />
+            <Text style={styles.floatBackTxt}>Retour</Text>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -2707,9 +2815,41 @@ function AppShell({ startPath, pushToken, onExitToWelcome }) {
   );
 }
 
+async function saveCreds(c) {
+  try { await SecureStore.setItemAsync('ak_email', c.email); await SecureStore.setItemAsync('ak_pass', c.password); } catch (e) {}
+}
+async function clearCreds() {
+  try { await SecureStore.deleteItemAsync('ak_email'); await SecureStore.deleteItemAsync('ak_pass'); } catch (e) {}
+}
+
 export default function App() {
   const [path, setPath] = useState(null);
   const [pushToken, setPushToken] = useState(null);
+  const [autoCreds, setAutoCreds] = useState(null);
+  const [ready, setReady] = useState(false);
+
+  // Au lancement : si des identifiants sont mémorisés, déverrouiller par Face ID puis auto-login
+  useEffect(() => {
+    (async () => {
+      try {
+        const em = await SecureStore.getItemAsync('ak_email');
+        const pw = await SecureStore.getItemAsync('ak_pass');
+        if (em && pw) {
+          let ok = true;
+          try {
+            const hasHw = await LocalAuthentication.hasHardwareAsync();
+            const enrolled = await LocalAuthentication.isEnrolledAsync();
+            if (hasHw && enrolled) {
+              const r = await LocalAuthentication.authenticateAsync({ promptMessage: 'Déverrouiller Assokit', fallbackLabel: 'Code', cancelLabel: 'Annuler' });
+              ok = !!r.success;
+            }
+          } catch (e) { ok = true; }
+          if (ok) { setAutoCreds({ email: em, password: pw }); setPath('/connexion'); }
+        }
+      } catch (e) {}
+      setReady(true);
+    })();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -2732,10 +2872,23 @@ export default function App() {
     })();
   }, []);
 
+  if (!ready) {
+    return <View style={{ flex: 1, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color="#fff" /></View>;
+  }
   if (!path) {
     return <WelcomeScreen onLogin={() => setPath('/connexion')} onSignup={() => setPath('/signup')} />;
   }
-  return <AppShell startPath={path} pushToken={pushToken} onExitToWelcome={() => setPath(null)} />;
+  return (
+    <AppShell
+      startPath={path}
+      pushToken={pushToken}
+      autoCreds={autoCreds}
+      onSaveCreds={saveCreds}
+      onClearCreds={clearCreds}
+      onLogout={async () => { await clearCreds(); setAutoCreds(null); setPath(null); }}
+      onExitToWelcome={() => setPath(null)}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
@@ -3023,6 +3176,10 @@ const styles = StyleSheet.create({
   pdfRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
   pdfBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 13, borderWidth: 1.5, borderColor: '#DDD6FE', backgroundColor: '#F5F3FF' },
   pdfBtnTxt: { fontSize: 12.5, fontWeight: '700', color: '#4F46E5' },
+
+  /* Bouton retour flottant (pages web / PDF) */
+  floatBack: { position: 'absolute', top: 10, left: 12, flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 22, paddingVertical: 8, paddingLeft: 8, paddingRight: 14, shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  floatBackTxt: { fontSize: 14.5, fontWeight: '700', color: INK },
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
