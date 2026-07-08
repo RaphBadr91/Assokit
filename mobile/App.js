@@ -381,11 +381,12 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
 /* ================================================================== */
 /*  PROJETS (liste native)                                             */
 /* ================================================================== */
-function NativeProjects({ data, loading, onRefresh, onOpen, onNew }) {
+function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
   const projects = (data && data.projects) || [];
   return (
     <View style={styles.projWrap}>
       <View style={styles.projHeader}>
+        {onBack && <TouchableOpacity onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
         <View style={{ flex: 1 }}>
           <Text style={styles.projTitle}>Projets</Text>
           <Text style={styles.projSub}>{projects.length} projet{projects.length > 1 ? 's' : ''}</Text>
@@ -443,7 +444,7 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew }) {
 /* ================================================================== */
 /*  MEMBRES / CLIENTS (liste native)                                   */
 /* ================================================================== */
-function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew }) {
+function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack }) {
   const isClients = mode === 'clients';
   const list = data ? (isClients ? (data.clients || []) : (data.members || [])) : null;
   const title = isClients ? 'Clients' : 'Membres';
@@ -452,6 +453,7 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew }) {
   return (
     <View style={styles.projWrap}>
       <View style={styles.projHeader}>
+        {onBack && <TouchableOpacity onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
         <View style={{ flex: 1 }}>
           <Text style={styles.projTitle}>{title}</Text>
           <Text style={styles.projSub}>{(list ? list.length : 0)} {title.toLowerCase()}</Text>
@@ -509,11 +511,19 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew }) {
 /* ================================================================== */
 /*  FACTURES (liste native)                                            */
 /* ================================================================== */
-function NativeInvoices({ data, loading, onRefresh, onOpen, onNew }) {
+function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiText, aiLoading, onAnalyze }) {
   const list = data ? (data.invoices || []) : null;
+  const t = (list || []).reduce((a, i) => {
+    const v = i.amount || 0; a.total += v;
+    if (i.status === 'paid') a.paid += v;
+    else if (i.status === 'overdue') a.overdue += v;
+    else if (i.status === 'pending') a.pending += v;
+    return a;
+  }, { total: 0, paid: 0, pending: 0, overdue: 0 });
   return (
     <View style={styles.projWrap}>
       <View style={styles.projHeader}>
+        {onBack && <TouchableOpacity onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
         <View style={{ flex: 1 }}>
           <Text style={styles.projTitle}>Factures</Text>
           <Text style={styles.projSub}>{(list ? list.length : 0)} facture{(list && list.length > 1) ? 's' : ''}</Text>
@@ -525,21 +535,34 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew }) {
       </View>
       {!list ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
-      ) : list.length === 0 ? (
-        <View style={styles.emptyBox}>
-          <Ionicons name="receipt-outline" size={44} color="#CBD5E1" />
-          <Text style={styles.emptyTxt}>Aucune facture</Text>
-          <TouchableOpacity style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}>
-            <Text style={styles.emptyBtnTxt}>Créer une facture</Text>
-          </TouchableOpacity>
-        </View>
       ) : (
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
         >
-          {list.map((inv) => {
+          <View style={styles.miniKpiRow}>
+            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(t.total)}</Text><Text style={styles.miniKpiLbl}>Total</Text></View>
+            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(t.paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé</Text></View>
+            <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: (t.overdue + t.pending) > 0 ? '#B45309' : '#047857' }]}>{fmtEuro(t.overdue + t.pending)}</Text><Text style={styles.miniKpiLbl}>Impayés</Text></View>
+          </View>
+
+          <View style={styles.aiCard}>
+            <View style={styles.aiHead}><Ionicons name="sparkles" size={15} color="#7C3AED" /><Text style={styles.aiTitle}>Analyse IA</Text></View>
+            {aiText ? <Text style={styles.aiTxt}>{aiText}</Text> : <Text style={styles.aiMuted}>Un conseil de trésorerie personnalisé sur vos factures.</Text>}
+            <TouchableOpacity style={[styles.aiBtn, aiLoading ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={aiLoading ? undefined : onAnalyze}>
+              {aiLoading ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="sparkles" size={15} color="#7C3AED" />}
+              <Text style={styles.aiBtnTxt}>{aiLoading ? 'Analyse…' : (aiText ? 'Actualiser l\'analyse' : 'Analyser via IA')}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {list.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Ionicons name="receipt-outline" size={44} color="#CBD5E1" />
+              <Text style={styles.emptyTxt}>Aucune facture</Text>
+              <TouchableOpacity style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Créer une facture</Text></TouchableOpacity>
+            </View>
+          ) : list.map((inv) => {
             const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
             return (
               <TouchableOpacity key={inv.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpen(inv.id)}>
@@ -699,6 +722,18 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense }) 
             </View>
           </View>
         )}
+
+        <Text style={styles.bilanNote}>ℹ️ Sans factures ni informations saisies, le bilan analytique sera incomplet.</Text>
+        <View style={styles.pdfRow}>
+          <TouchableOpacity style={styles.pdfBtn} activeOpacity={0.85} onPress={() => onWeb('/download-bilan-analytique.php?project=' + p.id)}>
+            <Ionicons name="pie-chart" size={17} color="#4F46E5" />
+            <Text style={styles.pdfBtnTxt}>Bilan analytique (PDF)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.pdfBtn} activeOpacity={0.85} onPress={() => onWeb('/projet/' + p.id + '/bilan')}>
+            <Ionicons name="document-text" size={17} color="#4F46E5" />
+            <Text style={styles.pdfBtnTxt}>Bilan du projet</Text>
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onAddExpense(p.id)}>
           <Ionicons name="camera" size={19} color="#fff" />
@@ -1468,7 +1503,7 @@ const MORE_GROUPS = [
   {
     title: 'Association',
     items: [
-      { label: 'Adhérents', icon: 'people', nav: { tab: 'people' } },
+      { label: 'Adhérents', icon: 'people', nav: { screen: 'members' } },
       { label: 'Agenda', icon: 'calendar', nav: { screen: 'agenda' } },
       { label: 'Cotisations', icon: 'card', nav: { screen: 'cotisations' } },
       { label: 'Subventions', icon: 'cash', nav: { screen: 'subventions' } },
@@ -1481,7 +1516,7 @@ const MORE_GROUPS = [
     items: [
       { label: 'Factures', icon: 'receipt', nav: { tab: 'factures' } },
       { label: 'Devis', icon: 'document-text', nav: { screen: 'devis' } },
-      { label: 'Clients', icon: 'briefcase', nav: { tab: 'people' } },
+      { label: 'Clients', icon: 'briefcase', nav: { screen: 'clients' } },
       { label: 'Statistiques', icon: 'stats-chart', nav: { screen: 'stats' } },
       { label: 'Mon abonnement', icon: 'card-outline', nav: { screen: 'subinvoices' } },
     ],
@@ -1578,12 +1613,12 @@ function NativeQuotes({ data, loading, onRefresh, onOpen, onNew, onBack }) {
   );
 }
 
-function NativeStats({ data, loading, onRefresh, onBack }) {
-  if (!data) return <DetailLoading title="Statistiques" onBack={onBack} />;
+function NativeStats({ data, loading, onRefresh, onBack, cockpit, cockpitLoading, onCockpit }) {
+  if (!data) return <DetailLoading title="Cockpit" onBack={onBack} />;
   if (data.allowed === false) {
     return (
       <View style={styles.detailWrap}>
-        <DetailHeader title="Statistiques" onBack={onBack} />
+        <DetailHeader title="Cockpit" onBack={onBack} />
         <View style={styles.emptyBox}><Ionicons name="lock-closed" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>{data.message || 'Réservé aux administrateurs.'}</Text></View>
       </View>
     );
@@ -1600,9 +1635,42 @@ function NativeStats({ data, loading, onRefresh, onBack }) {
   ];
   return (
     <View style={styles.detailWrap}>
-      <DetailHeader title={'Statistiques ' + (data.year || '')} onBack={onBack} />
+      <DetailHeader title={'Cockpit ' + (data.year || '')} onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+
+        <LinearGradient colors={['#4F46E5', '#7C3AED']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.cockpitCard}>
+          <View style={styles.cockpitHead}>
+            <Ionicons name="sparkles" size={18} color="#fff" />
+            <Text style={styles.cockpitTitle}>Directeur financier IA</Text>
+            {cockpit && cockpit.health ? <View style={styles.healthPill}><Text style={styles.healthTxt}>{cockpit.health}</Text></View> : null}
+          </View>
+          {cockpit ? (
+            <>
+              {!!cockpit.summary && <Text style={styles.cockpitSummary}>{cockpit.summary}</Text>}
+              {(cockpit.insights || []).map((s, i) => (
+                <View key={i} style={styles.cockpitInsight}><Text style={styles.cockpitBullet}>›</Text><Text style={styles.cockpitInsightTxt}>{s}</Text></View>
+              ))}
+              {(cockpit.actions || []).length > 0 && (
+                <View style={{ marginTop: 12, gap: 8 }}>
+                  {cockpit.actions.map((a, i) => (
+                    <View key={i} style={styles.cockpitAction}>
+                      <Text style={{ fontSize: 20 }}>{a.icon}</Text>
+                      <View style={{ flex: 1 }}><Text style={styles.cockpitActTitle}>{a.title}</Text>{!!a.why && <Text style={styles.cockpitActWhy}>{a.why}</Text>}</View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </>
+          ) : (
+            <Text style={styles.cockpitEmpty}>Une analyse complète de votre santé financière et vos actions prioritaires, par l'IA.</Text>
+          )}
+          <TouchableOpacity style={[styles.cockpitBtn, cockpitLoading ? { opacity: 0.7 } : null]} activeOpacity={0.85} onPress={cockpitLoading ? undefined : onCockpit}>
+            {cockpitLoading ? <ActivityIndicator size="small" color="#4F46E5" /> : <Ionicons name="sparkles" size={16} color="#4F46E5" />}
+            <Text style={styles.cockpitBtnTxt}>{cockpitLoading ? 'Analyse en cours…' : (cockpit ? 'Actualiser' : 'Générer mon cockpit IA')}</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+
         <View style={styles.statGrid}>
           {cards.map((c) => (
             <View key={c.label} style={styles.statCard}>
@@ -1996,6 +2064,10 @@ function AppShell({ startPath, onExitToWelcome }) {
   const [settingsErr, setSettingsErr] = useState('');
   const [logoBusy, setLogoBusy] = useState(false);
   const [secLoading, setSecLoading] = useState(false);
+  const [invAI, setInvAI] = useState(null);
+  const [invAILoading, setInvAILoading] = useState(false);
+  const [statsCockpit, setStatsCockpit] = useState(null);
+  const [statsCockpitLoading, setStatsCockpitLoading] = useState(false);
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
@@ -2145,13 +2217,19 @@ function AppShell({ startPath, onExitToWelcome }) {
     else if (screen === 'notifications') fetchNotifs();
     else if (screen === 'cotisations') fetchCoti();
     else if (screen === 'subventions') fetchGrants();
+    else if (screen === 'members') { setPeople(null); fetchPeople(false); }
+    else if (screen === 'clients') { setPeople(null); fetchPeople(true); }
     else if (screen === 'assemblies') fetchAssemblies();
     else if (screen === 'attendance') fetchAttendance();
     else if (screen === 'broadcasts') fetchBroadcasts();
     else if (screen === 'tickets') fetchTickets();
     else if (screen === 'coach') fetchCoach();
     else if (screen === 'settings') { setSettingsErr(''); setAccount(null); fetchAccount(); inject(FETCH_CSRF_JS); }
-  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchCoti, fetchGrants, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
+  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchCoti, fetchGrants, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
+
+  const onAnalyzeInvoices = useCallback(() => { setInvAILoading(true); inject(fetchJS('/api/app-invoices-ai.php', '__akinvai')); }, [inject]);
+  const onCockpit = useCallback(() => { setStatsCockpitLoading(true); inject(fetchJS('/api/app-stats-ai.php', '__akstatsai')); }, [inject]);
+  const backToHub = useCallback(() => { clearDetail(); closeForm(); setWebMode(false); setActive('menu'); setMenuScreen(null); }, [clearDetail, closeForm]);
 
   const openChannelFn = useCallback((c) => { setOpenChannel(c); setChanMsgs(null); fetchChanMsgs(c.id); }, [fetchChanMsgs]);
 
@@ -2298,6 +2376,8 @@ function AppShell({ startPath, onExitToWelcome }) {
       if (msg && msg.__akbroadcasts) { setBroadcasts(msg.__akbroadcasts); setSecLoading(false); }
       if (msg && msg.__aktickets) { setTickets(msg.__aktickets); setSecLoading(false); }
       if (msg && msg.__akcoach) { setCoach(msg.__akcoach); setSecLoading(false); }
+      if (msg && msg.__akinvai) { setInvAI(msg.__akinvai && msg.__akinvai.ok ? (msg.__akinvai.analysis || '') : 'Analyse indisponible.'); setInvAILoading(false); }
+      if (msg && msg.__akstatsai) { setStatsCockpit(msg.__akstatsai && msg.__akstatsai.ok ? (msg.__akstatsai.cockpit || null) : null); setStatsCockpitLoading(false); }
       if (msg && msg.__akaccount) { setAccount(msg.__akaccount); }
       if (msg && msg.__akaccountsaved) {
         setSettingsBusy(false);
@@ -2436,12 +2516,15 @@ function AppShell({ startPath, onExitToWelcome }) {
         )}
         {showProjects && (
           <View style={styles.homeOverlay}>
-            <NativeProjects data={projects} loading={projLoading} onRefresh={fetchProjects} onOpen={openProject} onNew={() => openForm('project')} />
+            <NativeProjects data={projects} loading={projLoading} onRefresh={fetchProjects} onOpen={openProject} onNew={() => openForm('project')}
+              onBack={TABS.some((t) => t.key === 'projets') ? undefined : backToHub} />
           </View>
         )}
         {showInvoices && (
           <View style={styles.homeOverlay}>
-            <NativeInvoices data={invoices} loading={invLoading} onRefresh={fetchInvoices} onOpen={openInvoice} onNew={() => openForm('invoice')} />
+            <NativeInvoices data={invoices} loading={invLoading} onRefresh={fetchInvoices} onOpen={openInvoice} onNew={() => openForm('invoice')}
+              onBack={TABS.some((t) => t.key === 'factures') ? undefined : backToHub}
+              aiText={invAI} aiLoading={invAILoading} onAnalyze={onAnalyzeInvoices} />
           </View>
         )}
         {showPeople && (
@@ -2486,7 +2569,14 @@ function AppShell({ startPath, onExitToWelcome }) {
             ) : menuScreen === 'devis' ? (
               <NativeQuotes data={quotes} loading={quotesLoading} onRefresh={fetchQuotes} onOpen={(id) => pushDetail('quote', id)} onNew={() => openForm('quote')} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'stats' ? (
-              <NativeStats data={stats} loading={statsLoading} onRefresh={fetchStats} onBack={() => setMenuScreen(null)} />
+              <NativeStats data={stats} loading={statsLoading} onRefresh={fetchStats} onBack={() => setMenuScreen(null)}
+                cockpit={statsCockpit} cockpitLoading={statsCockpitLoading} onCockpit={onCockpit} />
+            ) : menuScreen === 'members' ? (
+              <NativePeople mode="members" data={people} loading={peopleLoading} onRefresh={() => fetchPeople(false)}
+                onOpen={(id) => pushDetail('member', id)} onNew={() => openForm('member')} onBack={() => setMenuScreen(null)} />
+            ) : menuScreen === 'clients' ? (
+              <NativePeople mode="clients" data={people} loading={peopleLoading} onRefresh={() => fetchPeople(true)}
+                onOpen={(id) => pushDetail('client', id)} onNew={() => openForm('client')} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'notifications' ? (
               <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onOpen={openWeb} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'cotisations' ? (
@@ -2888,6 +2978,41 @@ const styles = StyleSheet.create({
   settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 12, padding: 15, marginTop: 10, shadowColor: '#0F172A', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
   settingsRowTxt: { flex: 1, fontSize: 14.5, fontWeight: '600', color: INK },
   deleteTxt: { fontSize: 13.5, color: '#DC2626', fontWeight: '600', textDecorationLine: 'underline' },
+
+  /* Back arrow sur les écrans d'onglet */
+  projBack: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', marginLeft: -6, marginRight: 2 },
+
+  /* Carte Analyse IA (factures) */
+  aiCard: { backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 16, padding: 15, marginTop: 14, marginBottom: 6 },
+  aiHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  aiTitle: { fontSize: 13, fontWeight: '800', color: '#6D28D9', letterSpacing: 0.2 },
+  aiTxt: { fontSize: 14, color: '#334155', lineHeight: 20 },
+  aiMuted: { fontSize: 13, color: '#7C6FAE' },
+  aiBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 12, paddingVertical: 11, borderRadius: 12, backgroundColor: '#EDE9FE' },
+  aiBtnTxt: { fontSize: 14, fontWeight: '700', color: '#6D28D9' },
+
+  /* Cockpit IA (stats) */
+  cockpitCard: { borderRadius: 20, padding: 18, marginBottom: 18 },
+  cockpitHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cockpitTitle: { flex: 1, fontSize: 15.5, fontWeight: '800', color: '#fff' },
+  healthPill: { backgroundColor: 'rgba(255,255,255,0.22)', paddingVertical: 4, paddingHorizontal: 11, borderRadius: 20 },
+  healthTxt: { color: '#fff', fontSize: 12.5, fontWeight: '800' },
+  cockpitSummary: { color: 'rgba(255,255,255,0.95)', fontSize: 14, lineHeight: 20, marginTop: 12 },
+  cockpitInsight: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 8 },
+  cockpitBullet: { color: 'rgba(255,255,255,0.7)', fontSize: 15, fontWeight: '800', lineHeight: 19 },
+  cockpitInsightTxt: { flex: 1, color: 'rgba(255,255,255,0.9)', fontSize: 13.5, lineHeight: 19 },
+  cockpitAction: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 13, padding: 12 },
+  cockpitActTitle: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  cockpitActWhy: { color: 'rgba(255,255,255,0.82)', fontSize: 12.5, marginTop: 2, lineHeight: 17 },
+  cockpitEmpty: { color: 'rgba(255,255,255,0.9)', fontSize: 13.5, lineHeight: 19, marginTop: 10 },
+  cockpitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16, paddingVertical: 13, borderRadius: 13, backgroundColor: '#fff' },
+  cockpitBtnTxt: { fontSize: 14.5, fontWeight: '800', color: '#4F46E5' },
+
+  /* Boutons Bilan PDF */
+  bilanNote: { fontSize: 12.5, color: '#94A3B8', marginTop: 12, lineHeight: 17 },
+  pdfRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  pdfBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 13, borderWidth: 1.5, borderColor: '#DDD6FE', backgroundColor: '#F5F3FF' },
+  pdfBtnTxt: { fontSize: 12.5, fontWeight: '700', color: '#4F46E5' },
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
