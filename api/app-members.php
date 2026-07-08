@@ -73,7 +73,7 @@ try {
             'city'     => (string) ($r['city'] ?? ''),
             'role'     => $role,
             'role_label' => $ROLE_LABELS[$role] ?? ucfirst($role),
-            'color'    => (string) ($r['avatar_color'] ?? '#059669'),
+            'color'    => function_exists('folder_color_hex') ? folder_color_hex((string) ($r['avatar_color'] ?? 'blue')) : '#3B82F6',
             'up_to_date' => $valid,
         ];
     }

@@ -91,7 +91,7 @@ try {
             'city'        => (string) ($m['city'] ?? ''),
             'role'        => $role,
             'role_label'  => $ROLE_LABELS[$role] ?? ucfirst($role),
-            'color'       => (string) ($m['avatar_color'] ?? '#059669'),
+            'color'       => function_exists('folder_color_hex') ? folder_color_hex((string) ($m['avatar_color'] ?? 'blue')) : '#3B82F6',
             'up_to_date'  => $up_to_date,
             'is_active'   => !empty($m['is_active']),
             'adhesion_since' => fdate($m['adhesion_date'] ?? null),

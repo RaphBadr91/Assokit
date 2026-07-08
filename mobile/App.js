@@ -87,16 +87,18 @@ const FETCH_CLIENTS_JS = fetchJS('/api/app-clients.php', '__akclients');
 const FETCH_INVOICES_JS = fetchJS('/api/app-invoices.php', '__akinvoices');
 const FETCH_CSRF_JS = fetchJS('/api/app-csrf.php', '__akcsrf');
 
-// POST JSON depuis la WebView (meme session/cookies) -> renvoie __akwrite
-function postJS(endpoint, payload) {
+// POST JSON depuis la WebView (meme session/cookies) -> renvoie sous la clé `key`
+function postJS(endpoint, payload, key) {
+  key = key || '__akwrite';
   const body = JSON.stringify(JSON.stringify(payload)); // littéral JS échappé proprement
+  const k = JSON.stringify(key);
   return "(function(){ try {"
     + " fetch('" + endpoint + "', { method:'POST', credentials:'include',"
     + " headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}, body: " + body + " })"
     + ".then(function(r){ return r.json().catch(function(){ return { ok:false, message:'Réponse invalide.' }; }); })"
-    + ".then(function(d){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akwrite: d })); })"
-    + ".catch(function(){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akwrite: { ok:false, message:'Connexion impossible.' } })); });"
-    + " } catch(e){ window.ReactNativeWebView.postMessage(JSON.stringify({ __akwrite: { ok:false, message:'Erreur.' } })); } })(); true;";
+    + ".then(function(d){ var o={}; o[" + k + "]=d; window.ReactNativeWebView.postMessage(JSON.stringify(o)); })"
+    + ".catch(function(){ var o={}; o[" + k + "]={ ok:false, message:'Connexion impossible.' }; window.ReactNativeWebView.postMessage(JSON.stringify(o)); });"
+    + " } catch(e){ var o={}; o[" + k + "]={ ok:false, message:'Erreur.' }; window.ReactNativeWebView.postMessage(JSON.stringify(o)); } })(); true;";
 }
 
 // Envoi d'une photo de facture au moteur IA (multipart, dans la WebView = même session)
@@ -1291,6 +1293,253 @@ function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject
 }
 
 /* ================================================================== */
+/*  AGENDA (natif)                                                     */
+/* ================================================================== */
+function NativeAgenda({ data, loading, onRefresh, onOpen, onBack }) {
+  const events = data ? (data.events || []) : null;
+  // Grouper par jour
+  const groups = [];
+  if (events) {
+    let cur = null;
+    for (const e of events) {
+      if (!cur || cur.key !== e.day_key) { cur = { key: e.day_key, label: e.day_label, items: [] }; groups.push(cur); }
+      cur.items.push(e);
+    }
+  }
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Agenda" onBack={onBack} />
+      {!events ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : events.length === 0 ? (
+        <View style={styles.emptyBox}><Ionicons name="calendar-outline" size={44} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun événement à venir</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          {groups.map((g) => (
+            <View key={g.key} style={{ marginBottom: 18 }}>
+              <Text style={styles.agDay}>{g.label}</Text>
+              {g.items.map((e) => (
+                <TouchableOpacity key={e.id} style={styles.agCard} activeOpacity={0.85} onPress={() => onOpen(e.id)}>
+                  <View style={[styles.agBar, { backgroundColor: e.color }]} />
+                  <View style={styles.agTime}><Text style={styles.agTimeTxt}>{e.time}</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.agTitle} numberOfLines={2}>{e.title}</Text>
+                    {(e.location || e.project) ? (
+                      <Text style={styles.agSub} numberOfLines={1}>{[e.location, e.project].filter(Boolean).join(' · ')}</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+/* ================================================================== */
+/*  MES FACTURES (abonnement Stripe) — natif                           */
+/* ================================================================== */
+function NativeSubInvoices({ data, loading, onRefresh, onBack, onWeb }) {
+  const list = data ? (data.invoices || []) : null;
+  const s = (data && data.stats) || {};
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Mes factures" onBack={onBack} />
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          <View style={styles.miniKpiRow}>
+            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.total_paid)}</Text><Text style={styles.miniKpiLbl}>Total payé</Text></View>
+            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.nb_paid || 0}</Text><Text style={styles.miniKpiLbl}>Payées</Text></View>
+            <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: s.nb_pending ? '#B45309' : '#047857' }]}>{s.nb_pending || 0}</Text><Text style={styles.miniKpiLbl}>En attente</Text></View>
+          </View>
+          {list.length === 0 ? (
+            <View style={styles.emptyBox}><Ionicons name="receipt-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune facture</Text></View>
+          ) : list.map((inv, i) => {
+            const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
+            return (
+              <TouchableOpacity key={i} style={styles.invCard} activeOpacity={inv.pdf ? 0.85 : 1} onPress={() => inv.pdf && onWeb(inv.pdf)}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.invNum} numberOfLines={1}>{inv.number || '—'}</Text>
+                  <Text style={styles.invClient} numberOfLines={1}>{inv.date}{inv.period ? '  ·  ' + inv.period : ''}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.invAmount}>{fmtEuro(inv.amount)}</Text>
+                  <View style={[styles.projChip, { backgroundColor: km.bg, marginTop: 5 }]}><Text style={[styles.projChipTxt, { color: km.color }]}>{inv.status_label}</Text></View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+/* ================================================================== */
+/*  MESSAGES (canaux + chat natif)                                     */
+/* ================================================================== */
+const CHAN_ICON = { announce: 'megaphone', private: 'lock-closed', public: 'chatbubbles' };
+
+function NativeChannels({ data, loading, onRefresh, onOpen, onBack }) {
+  const list = data ? (data.channels || []) : null;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Messages" onBack={onBack} />
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : list.length === 0 ? (
+        <View style={styles.emptyBox}><Ionicons name="chatbubbles-outline" size={44} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun canal</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          {list.map((c) => (
+            <TouchableOpacity key={c.id} style={styles.chanCard} activeOpacity={0.85} onPress={() => onOpen(c)}>
+              <View style={[styles.chanIcon, { backgroundColor: (c.color || BRAND) + '22' }]}>
+                <Ionicons name={CHAN_ICON[c.type] || 'chatbubbles'} size={20} color={c.color || BRAND} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.chanName} numberOfLines={1}>{c.name}</Text>
+                <Text style={styles.chanSub}>{c.count} message{c.count > 1 ? 's' : ''}</Text>
+              </View>
+              {c.unread ? <View style={styles.chanDot} /> : null}
+              <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh }) {
+  const [text, setText] = useState('');
+  const msgs = data ? (data.messages || []) : null;
+  const scRef = useRef(null);
+  const submit = () => { const t = text.trim(); if (!t || sending) return; onSend(channel.id, t); setText(''); };
+  return (
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      <DetailHeader title={channel.name} onBack={onBack} />
+      {!msgs ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : (
+        <ScrollView ref={scRef} contentContainerStyle={{ padding: 14, paddingBottom: 18 }} showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => scRef.current && scRef.current.scrollToEnd({ animated: false })}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          {msgs.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingTop: 40 }}><Text style={styles.dMuted}>Aucun message. Lancez la discussion !</Text></View>
+          ) : msgs.map((m) => (
+            <View key={m.id} style={[styles.msgRow, m.is_self ? styles.msgRowSelf : null]}>
+              {!m.is_self && <View style={[styles.msgAvatar, { backgroundColor: m.color || BRAND }]}><Text style={styles.msgAvatarTxt}>{m.initials}</Text></View>}
+              <View style={[styles.msgBubbleWrap, m.is_self ? { alignItems: 'flex-end' } : null]}>
+                {!m.is_self && <Text style={styles.msgAuthor}>{m.author}</Text>}
+                {m.reply ? (
+                  <View style={styles.msgReply}><Text style={styles.msgReplyAuthor} numberOfLines={1}>{m.reply.author}</Text><Text style={styles.msgReplyTxt} numberOfLines={1}>{m.reply.content}</Text></View>
+                ) : null}
+                <View style={[styles.msgBubble, m.is_self ? styles.msgBubbleSelf : null]}>
+                  <Text style={[styles.msgTxt, m.is_self ? { color: '#fff' } : null]}>{m.content}</Text>
+                </View>
+                <Text style={styles.msgTime}>{m.time}</Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+      <View style={styles.composer}>
+        <TextInput style={styles.composerInput} value={text} onChangeText={setText} placeholder="Écrire un message…" placeholderTextColor="#94A3B8" multiline />
+        <TouchableOpacity style={[styles.composerBtn, (!text.trim() || sending) ? { opacity: 0.5 } : null]} onPress={submit} activeOpacity={0.85}>
+          {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="send" size={18} color="#fff" />}
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+/* ================================================================== */
+/*  MENU « PLUS » (hub natif)                                           */
+/* ================================================================== */
+const MORE_GROUPS = [
+  {
+    title: 'Association',
+    items: [
+      { label: 'Adhérents', icon: 'people', nav: { tab: 'people' } },
+      { label: 'Agenda', icon: 'calendar', nav: { screen: 'agenda' } },
+      { label: 'Cotisations', icon: 'card', nav: { web: '/cotisations' } },
+      { label: 'Assemblées', icon: 'clipboard', nav: { web: '/assemblees' } },
+      { label: 'Émargement', icon: 'checkbox', nav: { web: '/emargement' } },
+      { label: 'Subventions', icon: 'cash', nav: { web: '/subventions' } },
+    ],
+  },
+  {
+    title: 'Finances',
+    items: [
+      { label: 'Factures', icon: 'receipt', nav: { tab: 'factures' } },
+      { label: 'Devis', icon: 'document-text', nav: { web: '/mon-asso-devis' } },
+      { label: 'Clients', icon: 'briefcase', nav: { web: '/mon-asso-clients' } },
+      { label: 'Statistiques', icon: 'stats-chart', nav: { web: '/mon-asso-stats' } },
+      { label: 'Mon abonnement', icon: 'card-outline', nav: { screen: 'subinvoices' } },
+    ],
+  },
+  {
+    title: 'Communication',
+    items: [
+      { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' } },
+      { label: 'Communication', icon: 'mail', nav: { web: '/communication' } },
+      { label: 'Coach IA', icon: 'sparkles', nav: { web: '/coach-ia' } },
+    ],
+  },
+  {
+    title: 'Compte',
+    items: [
+      { label: 'Paramètres', icon: 'settings', nav: { web: '/parametres' } },
+      { label: 'Mon logo', icon: 'image', nav: { web: '/mon-asso-logo' } },
+      { label: 'Notifications', icon: 'notifications', nav: { web: '/notifications' } },
+      { label: 'Support', icon: 'help-buoy', nav: { web: '/support' } },
+    ],
+  },
+];
+
+function NativeMore({ orgName, initials, logo, onNav, onLogout }) {
+  return (
+    <View style={styles.detailWrap}>
+      <View style={styles.moreHeader}>
+        <View style={styles.moreAvatar}>
+          {logo ? <Image source={{ uri: logo }} style={styles.moreAvatarImg} /> : <Text style={styles.moreAvatarTxt}>{initials || '·'}</Text>}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.moreOrg} numberOfLines={1}>{orgName || 'Mon organisation'}</Text>
+          <Text style={styles.moreSub}>Tous vos outils</Text>
+        </View>
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+        {MORE_GROUPS.map((g) => (
+          <View key={g.title} style={{ marginBottom: 20 }}>
+            <Text style={styles.moreGroupTitle}>{g.title}</Text>
+            <View style={styles.moreGrid}>
+              {g.items.map((it) => (
+                <TouchableOpacity key={it.label} style={styles.moreItem} activeOpacity={0.8} onPress={() => onNav(it.nav)}>
+                  <View style={styles.moreItemIcon}><Ionicons name={it.icon} size={22} color={BRAND} /></View>
+                  <Text style={styles.moreItemTxt} numberOfLines={1}>{it.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ))}
+        <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
+          <Ionicons name="log-out-outline" size={19} color="#DC2626" />
+          <Text style={styles.logoutTxt}>Se déconnecter</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+/* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
 function AppShell({ startPath, onExitToWelcome }) {
@@ -1319,6 +1568,17 @@ function AppShell({ startPath, onExitToWelcome }) {
   const [scanData, setScanData] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [expenseProject, setExpenseProject] = useState(0);
+  const [menuScreen, setMenuScreen] = useState(null); // null=hub | 'agenda' | 'messages' | 'subinvoices'
+  const [events, setEvents] = useState(null);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [channels, setChannels] = useState(null);
+  const [channelsLoading, setChannelsLoading] = useState(false);
+  const [openChannel, setOpenChannel] = useState(null);
+  const [chanMsgs, setChanMsgs] = useState(null);
+  const [chanLoading, setChanLoading] = useState(false);
+  const [sendingMsg, setSendingMsg] = useState(false);
+  const [subInv, setSubInv] = useState(null);
+  const [subInvLoading, setSubInvLoading] = useState(false);
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
@@ -1440,6 +1700,39 @@ function AppShell({ startPath, onExitToWelcome }) {
 
   const onAddExpense = useCallback((projectId) => { openForm('expense', projectId); }, [openForm]);
 
+  // --- Écrans du menu « Plus » (natifs) ------------------------------
+  const fetchEvents = useCallback(() => { setEventsLoading(true); inject(fetchJS('/api/app-events.php', '__akevents')); }, [inject]);
+  const fetchChannels = useCallback(() => { setChannelsLoading(true); inject(fetchJS('/api/app-channels.php', '__akchannels')); }, [inject]);
+  const fetchSubInv = useCallback(() => { setSubInvLoading(true); inject(fetchJS('/api/app-subscription-invoices.php', '__aksubinv')); }, [inject]);
+  const fetchChanMsgs = useCallback((chId) => { setChanLoading(true); inject(fetchJS('/api/app-channel-messages.php?channel_id=' + chId, '__akchanmsgs')); }, [inject]);
+
+  const openMenuScreen = useCallback((screen) => {
+    setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(screen);
+    if (screen === 'agenda') fetchEvents();
+    else if (screen === 'messages') { setChannels(null); fetchChannels(); }
+    else if (screen === 'subinvoices') fetchSubInv();
+  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv]);
+
+  const openChannelFn = useCallback((c) => { setOpenChannel(c); setChanMsgs(null); fetchChanMsgs(c.id); }, [fetchChanMsgs]);
+
+  const sendMessage = useCallback((chId, content) => {
+    if (!csrf) { inject(FETCH_CSRF_JS); return; }
+    setSendingMsg(true);
+    inject(postJS('/api/app-send-message.php', { channel_id: chId, content, csrf }, '__akmsgsent'));
+  }, [csrf, inject]);
+
+  const onMoreNav = useCallback((nav) => {
+    if (!nav) return;
+    if (nav.screen) { openMenuScreen(nav.screen); return; }
+    if (nav.tab) {
+      clearDetail(); closeForm(); setMenuScreen(null);
+      if (nav.tab === 'factures') { setActive('factures'); setWebMode(false); return; }
+      if (nav.tab === 'people') { setActive('people'); setWebMode(false); return; }
+      setActive(nav.tab); setWebMode(false); return;
+    }
+    if (nav.web) { clearDetail(); closeForm(); setWebMode(true); inject(gotoJS(nav.web)); }
+  }, [openMenuScreen, clearDetail, closeForm, inject]);
+
   const closeForm = useCallback(() => { setForm(null); setFormErr(''); setSubmitting(false); }, []);
 
   const submitForm = useCallback((type, data) => {
@@ -1469,6 +1762,8 @@ function AppShell({ startPath, onExitToWelcome }) {
       if (stack.length) { popDetail(); return true; }
       if (webMode && canGoBack && webRef.current) { webRef.current.goBack(); return true; }
       if (webMode) { setWebMode(false); return true; }
+      if (active === 'menu' && openChannel) { setOpenChannel(null); return true; }
+      if (active === 'menu' && menuScreen) { setMenuScreen(null); return true; }
       if (active !== 'accueil') { setActive('accueil'); return true; }
       onExitToWelcome();
       return true;
@@ -1476,7 +1771,7 @@ function AppShell({ startPath, onExitToWelcome }) {
     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
     // eslint-disable-next-line
-  }, [canGoBack, quickOpen, active, webMode, stack.length, form, popDetail, closeForm, onExitToWelcome]);
+  }, [canGoBack, quickOpen, active, webMode, stack.length, form, menuScreen, openChannel, popDetail, closeForm, onExitToWelcome]);
 
   const onNav = (nav) => {
     setCanGoBack(nav.canGoBack);
@@ -1517,6 +1812,14 @@ function AppShell({ startPath, onExitToWelcome }) {
         if (msg.__akscan.success) setScanData(msg.__akscan);
         else setFormErr(msg.__akscan.error || 'La facture n\'a pas pu être analysée.');
       }
+      if (msg && msg.__akevents) { setEvents(msg.__akevents); setEventsLoading(false); }
+      if (msg && msg.__akchannels) { setChannels(msg.__akchannels); setChannelsLoading(false); }
+      if (msg && msg.__akchanmsgs) { setChanMsgs(msg.__akchanmsgs); setChanLoading(false); }
+      if (msg && msg.__aksubinv) { setSubInv(msg.__aksubinv); setSubInvLoading(false); }
+      if (msg && msg.__akmsgsent) {
+        setSendingMsg(false);
+        if (msg.__akmsgsent.ok && openChannel) fetchChanMsgs(openChannel.id);
+      }
       if (msg && msg.__akwrite) {
         setSubmitting(false);
         const w = msg.__akwrite;
@@ -1542,8 +1845,9 @@ function AppShell({ startPath, onExitToWelcome }) {
     if (tab.key === 'add') { setQuickOpen(true); return; }
     clearDetail();
     closeForm();
-    if (tab.key === 'menu') { setActive('menu'); setWebMode(true); inject(OPEN_MENU_JS); return; }
+    if (tab.key === 'menu') { setActive('menu'); setWebMode(false); setMenuScreen(null); setOpenChannel(null); return; }
     // Onglets natifs : accueil / projets / factures / people
+    setMenuScreen(null);
     setActive(tab.key);
     setWebMode(false);
   };
@@ -1559,10 +1863,12 @@ function AppShell({ startPath, onExitToWelcome }) {
   const onGoto = (path) => {
     clearDetail();
     closeForm();
-    if (path === '/projets') { setActive('projets'); setWebMode(false); return; }
-    if (path === '/adherents' && !isTpe) { setActive('people'); setWebMode(false); return; }
-    if (path === '/mon-asso-clients' && isTpe) { setActive('people'); setWebMode(false); return; }
-    if (path === '/mon-asso-factures') { setActive('factures'); setWebMode(false); return; }
+    if (path === '/projets') { setMenuScreen(null); setActive('projets'); setWebMode(false); return; }
+    if (path === '/adherents' && !isTpe) { setMenuScreen(null); setActive('people'); setWebMode(false); return; }
+    if (path === '/mon-asso-clients' && isTpe) { setMenuScreen(null); setActive('people'); setWebMode(false); return; }
+    if (path === '/mon-asso-factures') { setMenuScreen(null); setActive('factures'); setWebMode(false); return; }
+    if (path === '/agenda') { openMenuScreen('agenda'); return; }
+    if (path === '/messages') { openMenuScreen('messages'); return; }
     setWebMode(true);
     inject(gotoJS(path));
   };
@@ -1574,8 +1880,14 @@ function AppShell({ startPath, onExitToWelcome }) {
       return;
     }
     clearDetail();
+    closeForm();
+    setMenuScreen(null);
     setWebMode(true);
-    inject(gotoJS(path));
+    if (/^https?:\/\//.test(path)) {
+      inject("(function(){ try { window.location.href='" + path + "'; } catch(e){} })(); true;");
+    } else {
+      inject(gotoJS(path));
+    }
   };
 
   const openProject = (id) => pushDetail('project', id);
@@ -1584,12 +1896,13 @@ function AppShell({ startPath, onExitToWelcome }) {
 
   const detailTop = stack.length ? stack[stack.length - 1] : null;
   const showForm = !!form && authed;
+  const showMenu = active === 'menu' && authed && !webMode && !detailTop && !showForm;
   const showHome = active === 'accueil' && authed && !webMode && !detailTop && !showForm;
   const showProjects = active === 'projets' && authed && !webMode && !detailTop && !showForm;
   const showInvoices = active === 'factures' && authed && !webMode && !detailTop && !showForm;
   const showPeople = active === 'people' && authed && !webMode && !detailTop && !showForm;
   const showDetail = !!detailTop && authed && !webMode && !showForm;
-  const showWeb = !showHome && !showProjects && !showInvoices && !showPeople && !showDetail && !showForm;
+  const showWeb = !showHome && !showProjects && !showInvoices && !showPeople && !showDetail && !showForm && !showMenu;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -1658,6 +1971,30 @@ function AppShell({ startPath, onExitToWelcome }) {
               <ExpenseForm onBack={closeForm} onSubmit={(d) => submitForm('expense', d)} submitting={submitting} error={formErr}
                 projects={(projects && projects.projects) || []} preProject={expenseProject}
                 scanData={scanData} scanning={scanning} onScan={pickAndScan} />
+            )}
+          </View>
+        )}
+        {showMenu && (
+          <View style={styles.homeOverlay}>
+            {menuScreen === 'agenda' ? (
+              <NativeAgenda data={events} loading={eventsLoading} onRefresh={fetchEvents} onOpen={(id) => openWeb('/evenement/' + id)} onBack={() => setMenuScreen(null)} />
+            ) : menuScreen === 'subinvoices' ? (
+              <NativeSubInvoices data={subInv} loading={subInvLoading} onRefresh={fetchSubInv} onBack={() => setMenuScreen(null)} onWeb={openWeb} />
+            ) : menuScreen === 'messages' ? (
+              openChannel ? (
+                <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg}
+                  onBack={() => { setOpenChannel(null); }} onSend={sendMessage} onRefresh={() => fetchChanMsgs(openChannel.id)} />
+              ) : (
+                <NativeChannels data={channels} loading={channelsLoading} onRefresh={fetchChannels} onOpen={openChannelFn} onBack={() => setMenuScreen(null)} />
+              )
+            ) : (
+              <NativeMore
+                orgName={kpi && kpi.org_name}
+                initials={kpi && kpi.org_initials}
+                logo={kpi && kpi.org_logo}
+                onNav={onMoreNav}
+                onLogout={() => { setMenuScreen(null); setWebMode(true); inject(gotoJS('/deconnexion.php')); }}
+              />
             )}
           </View>
         )}
@@ -1923,6 +2260,55 @@ const styles = StyleSheet.create({
   upsellTxt: { fontSize: 13.5, color: '#92400E', textAlign: 'center', marginTop: 8, lineHeight: 19 },
   upsellBtn: { marginTop: 12, backgroundColor: '#D97706', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 12 },
   upsellBtnTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  /* Agenda */
+  agDay: { fontSize: 13, fontWeight: '700', color: '#64748B', textTransform: 'capitalize', marginBottom: 8, marginLeft: 2 },
+  agCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 8, overflow: 'hidden', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  agBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
+  agTime: { width: 54, alignItems: 'center', marginLeft: 4 },
+  agTimeTxt: { fontSize: 13, fontWeight: '700', color: INK },
+  agTitle: { fontSize: 14.5, fontWeight: '600', color: INK },
+  agSub: { fontSize: 12.5, color: MUTE, marginTop: 2 },
+
+  /* Canaux */
+  chanCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  chanIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginRight: 13 },
+  chanName: { fontSize: 15.5, fontWeight: '700', color: INK },
+  chanSub: { fontSize: 12.5, color: MUTE, marginTop: 2 },
+  chanDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: BRAND, marginRight: 8 },
+
+  /* Chat */
+  msgRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 12 },
+  msgRowSelf: { justifyContent: 'flex-end' },
+  msgAvatar: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+  msgAvatarTxt: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  msgBubbleWrap: { maxWidth: '78%' },
+  msgAuthor: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 3, marginLeft: 4 },
+  msgReply: { borderLeftWidth: 3, borderLeftColor: '#CBD5E1', paddingLeft: 8, marginBottom: 4, marginLeft: 4 },
+  msgReplyAuthor: { fontSize: 11.5, fontWeight: '700', color: '#64748B' },
+  msgReplyTxt: { fontSize: 11.5, color: MUTE },
+  msgBubble: { backgroundColor: '#fff', borderRadius: 16, paddingVertical: 10, paddingHorizontal: 13, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  msgBubbleSelf: { backgroundColor: BRAND },
+  msgTxt: { fontSize: 14.5, color: INK, lineHeight: 20 },
+  msgTime: { fontSize: 10.5, color: '#B6C0CC', marginTop: 3, marginHorizontal: 4 },
+  composer: { flexDirection: 'row', alignItems: 'flex-end', padding: 10, paddingBottom: Platform.OS === 'ios' ? 24 : 10, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#EEF2F6', gap: 8 },
+  composerInput: { flex: 1, maxHeight: 110, backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 11 : 8, paddingBottom: Platform.OS === 'ios' ? 11 : 8, fontSize: 15, color: INK },
+  composerBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' },
+
+  /* Menu Plus (hub) */
+  moreHeader: { flexDirection: 'row', alignItems: 'center', padding: 18, paddingTop: 22, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEF2F6' },
+  moreAvatar: { width: 52, height: 52, borderRadius: 16, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 14, overflow: 'hidden' },
+  moreAvatarImg: { width: 52, height: 52, borderRadius: 16 },
+  moreAvatarTxt: { fontSize: 19, fontWeight: '800', color: BRAND },
+  moreOrg: { fontSize: 18, fontWeight: '800', color: INK },
+  moreSub: { fontSize: 13, color: MUTE, marginTop: 2 },
+  moreGroupTitle: { fontSize: 13, fontWeight: '700', color: '#64748B', marginBottom: 10, marginLeft: 2 },
+  moreGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  moreItem: { width: '31%', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 6, alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  moreItemIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  moreItemTxt: { fontSize: 12, fontWeight: '600', color: INK, textAlign: 'center' },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
+  logoutTxt: { fontSize: 15, fontWeight: '700', color: '#DC2626' },
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
