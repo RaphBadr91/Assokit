@@ -2006,8 +2006,9 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
 /* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
-function AppShell({ startPath, onExitToWelcome }) {
+function AppShell({ startPath, pushToken, onExitToWelcome }) {
   const webRef = useRef(null);
+  const pushRegistered = useRef(false);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
   const [active, setActive] = useState('accueil');
@@ -2303,6 +2304,14 @@ function AppShell({ startPath, onExitToWelcome }) {
   useEffect(() => {
     if (authed && !csrf) inject(FETCH_CSRF_JS);
   }, [authed, csrf, inject]);
+
+  // Enregistre le token de notifications push une fois connecté
+  useEffect(() => {
+    if (authed && csrf && pushToken && !pushRegistered.current) {
+      pushRegistered.current = true;
+      inject(postJS('/api/app-register-push.php', { token: pushToken, platform: Platform.OS, csrf }, '__akpushreg'));
+    }
+  }, [authed, csrf, pushToken, inject]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -2700,6 +2709,7 @@ function AppShell({ startPath, onExitToWelcome }) {
 
 export default function App() {
   const [path, setPath] = useState(null);
+  const [pushToken, setPushToken] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -2717,7 +2727,7 @@ export default function App() {
           Constants?.expoConfig?.extra?.eas?.projectId ??
           Constants?.easConfig?.projectId;
         const token = (await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined)).data;
-        console.log('Expo push token:', token);
+        if (token) setPushToken(token);
       } catch (e) {}
     })();
   }, []);
@@ -2725,7 +2735,7 @@ export default function App() {
   if (!path) {
     return <WelcomeScreen onLogin={() => setPath('/connexion')} onSignup={() => setPath('/signup')} />;
   }
-  return <AppShell startPath={path} onExitToWelcome={() => setPath(null)} />;
+  return <AppShell startPath={path} pushToken={pushToken} onExitToWelcome={() => setPath(null)} />;
 }
 
 const styles = StyleSheet.create({
