@@ -1472,8 +1472,8 @@ const MORE_GROUPS = [
       { label: 'Agenda', icon: 'calendar', nav: { screen: 'agenda' } },
       { label: 'Cotisations', icon: 'card', nav: { screen: 'cotisations' } },
       { label: 'Subventions', icon: 'cash', nav: { screen: 'subventions' } },
-      { label: 'Assemblées', icon: 'clipboard', nav: { web: '/assemblees' } },
-      { label: 'Émargement', icon: 'checkbox', nav: { web: '/emargement' } },
+      { label: 'Assemblées', icon: 'clipboard', nav: { screen: 'assemblies' } },
+      { label: 'Émargement', icon: 'checkbox', nav: { screen: 'attendance' } },
     ],
   },
   {
@@ -1491,16 +1491,15 @@ const MORE_GROUPS = [
     items: [
       { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' } },
       { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' } },
-      { label: 'Communication', icon: 'mail', nav: { web: '/communication' } },
-      { label: 'Coach IA', icon: 'sparkles', nav: { web: '/coach-ia' } },
+      { label: 'Communication', icon: 'mail', nav: { screen: 'broadcasts' } },
+      { label: 'Coach IA', icon: 'sparkles', nav: { screen: 'coach' } },
     ],
   },
   {
     title: 'Compte',
     items: [
-      { label: 'Paramètres', icon: 'settings', nav: { web: '/parametres' } },
-      { label: 'Mon logo', icon: 'image', nav: { web: '/mon-asso-logo' } },
-      { label: 'Support', icon: 'help-buoy', nav: { web: '/support' } },
+      { label: 'Paramètres', icon: 'settings', nav: { screen: 'settings' } },
+      { label: 'Support', icon: 'help-buoy', nav: { screen: 'tickets' } },
     ],
   },
 ];
@@ -1784,6 +1783,159 @@ function NativeEventDetail({ entry, onBack, onRefresh, onWeb }) {
 }
 
 /* ================================================================== */
+/*  ASSEMBLÉES / ÉMARGEMENT / COMMUNICATION / SUPPORT / COACH / RÉGLAGES */
+/* ================================================================== */
+function GatedList({ title, data, loading, onRefresh, onBack, emptyIcon, emptyLabel, renderStats, renderItem, itemsKey }) {
+  const allowed = !data || data.allowed !== false;
+  const list = data ? (data[itemsKey] || []) : null;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title={title} onBack={onBack} />
+      {!data ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : !allowed ? (
+        <View style={styles.emptyBox}><Ionicons name="lock-closed" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>{data.message || 'Accès restreint.'}</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          {renderStats ? renderStats(data.stats || {}) : null}
+          {(!list || list.length === 0) ? (
+            <View style={styles.emptyBox}><Ionicons name={emptyIcon} size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>{emptyLabel}</Text></View>
+          ) : list.map(renderItem)}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function StatusItemCard({ title, sub, right, kind, statusLabel }) {
+  const km = INV_KIND[kind] || INV_KIND.wait;
+  return (
+    <View style={styles.projCard}>
+      <View style={styles.projCardTop}>
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text style={styles.projName} numberOfLines={2}>{title}</Text>
+          {!!sub && <Text style={styles.projFolder} numberOfLines={1}>{sub}</Text>}
+        </View>
+        {statusLabel ? <View style={[styles.projChip, { backgroundColor: km.bg }]}><Text style={[styles.projChipTxt, { color: km.color }]}>{statusLabel}</Text></View> : right}
+      </View>
+      {right && statusLabel ? <View style={{ marginTop: 10, alignItems: 'flex-end' }}>{right}</View> : null}
+    </View>
+  );
+}
+
+function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack }) {
+  if (!data) return <DetailLoading title="Coach IA" onBack={onBack} />;
+  if (data.allowed === false) {
+    return (<View style={styles.detailWrap}><DetailHeader title="Coach IA" onBack={onBack} />
+      <View style={styles.emptyBox}><Ionicons name="lock-closed" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>{data.message || 'Réservé aux administrateurs.'}</Text></View></View>);
+  }
+  const r = data.report;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Coach IA" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        {!r ? (
+          <View style={styles.emptyBox}><Ionicons name="sparkles" size={44} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun rapport encore</Text></View>
+        ) : (
+          <>
+            {!!r.week && <Text style={styles.coachWeek}>Semaine {r.week}</Text>}
+            {!!r.summary && <View style={styles.dCard}><Text style={styles.dText}>{r.summary}</Text></View>}
+            {r.highlights && r.highlights.length > 0 && (
+              <><Text style={styles.dSection}>Points forts</Text>{r.highlights.map((h, i) => (
+                <View key={i} style={styles.coachRow}><Ionicons name="checkmark-circle" size={18} color="#10B981" /><Text style={styles.coachRowTxt}>{h}</Text></View>
+              ))}</>
+            )}
+            {r.warnings && r.warnings.length > 0 && (
+              <><Text style={styles.dSection}>Vigilance</Text>{r.warnings.map((w, i) => (
+                <View key={i} style={styles.coachRow}><Ionicons name="alert-circle" size={18} color="#D97706" /><Text style={styles.coachRowTxt}>{w}</Text></View>
+              ))}</>
+            )}
+            {r.recos && r.recos.length > 0 && (
+              <><Text style={styles.dSection}>Actions recommandées</Text>{r.recos.map((a, i) => (
+                <View key={i} style={styles.recoCard}>
+                  <Text style={styles.recoIcon}>{a.icon}</Text>
+                  <View style={{ flex: 1 }}><Text style={styles.recoTitle}>{a.title}</Text>{!!a.why && <Text style={styles.recoWhy}>{a.why}</Text>}</View>
+                </View>
+              ))}</>
+            )}
+          </>
+        )}
+        <TouchableOpacity style={[styles.dPrimaryBtn, generating ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={generating ? undefined : onGenerate}>
+          {generating ? <ActivityIndicator color="#fff" /> : <Ionicons name="sparkles" size={18} color="#fff" />}
+          <Text style={styles.dPrimaryBtnTxt}>{generating ? 'Génération…' : (r ? 'Générer un nouveau rapport' : 'Générer mon rapport')}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb }) {
+  const a = (data && data.account) || null;
+  const [f, setF] = useState(null);
+  useEffect(() => { if (a && !f) setF({ first_name: a.first_name, last_name: a.last_name, email: a.email, phone: a.phone, city: a.city }); }, [a]);
+  if (!data || !f) return <DetailLoading title="Paramètres" onBack={onBack} />;
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  const org = data.org || {};
+  return (
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <DetailHeader title="Paramètres" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {org.is_admin && (
+          <>
+            <Text style={styles.formCardTitle}>Logo de l'organisation</Text>
+            <View style={styles.logoRow}>
+              <View style={styles.logoBox}>
+                {org.logo ? <Image source={{ uri: org.logo }} style={styles.logoImg} /> : <Ionicons name="image-outline" size={26} color="#CBD5E1" />}
+              </View>
+              <TouchableOpacity style={[styles.scanBtn, { flex: 1 }, logoBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={logoBusy ? undefined : onLogo}>
+                {logoBusy ? <ActivityIndicator color={BRAND} /> : <Ionicons name="cloud-upload" size={18} color="#0369A1" />}
+                <Text style={styles.scanBtnTxt}>{logoBusy ? 'Envoi…' : 'Changer le logo'}</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        <Text style={[styles.formCardTitle, { marginTop: 20 }]}>Mon compte</Text>
+        {!!error && <View style={styles.formErr}><Ionicons name="alert-circle" size={18} color="#B91C1C" /><Text style={styles.formErrTxt}>{error}</Text></View>}
+        <Field label="Prénom" value={f.first_name} onChangeText={set('first_name')} autoCapitalize="words" />
+        <Field label="Nom" value={f.last_name} onChangeText={set('last_name')} autoCapitalize="words" />
+        <Field label="Email" value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" />
+        <Field label="Téléphone" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
+        <Field label="Ville" value={f.city} onChangeText={set('city')} autoCapitalize="words" />
+        <TouchableOpacity style={[styles.dPrimaryBtn, saving ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={saving ? undefined : () => onSave(f)}>
+          {saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark-circle" size={18} color="#fff" />}
+          <Text style={styles.dPrimaryBtnTxt}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.settingsRow} activeOpacity={0.7} onPress={() => onWeb('/parametres?tab=securite')}>
+          <Ionicons name="lock-closed-outline" size={20} color="#475569" />
+          <Text style={styles.settingsRowTxt}>Sécurité & mot de passe</Text>
+          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+        </TouchableOpacity>
+        {org.is_admin && (
+          <TouchableOpacity style={styles.settingsRow} activeOpacity={0.7} onPress={() => onWeb('/parametres?tab=organisation')}>
+            <Ionicons name="business-outline" size={20} color="#475569" />
+            <Text style={styles.settingsRowTxt}>Infos de l'organisation</Text>
+            <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
+          <Ionicons name="log-out-outline" size={19} color="#DC2626" /><Text style={styles.logoutTxt}>Se déconnecter</Text>
+        </TouchableOpacity>
+        {a.can_delete && (
+          <TouchableOpacity style={{ marginTop: 14, alignItems: 'center' }} activeOpacity={0.7} onPress={onDelete}>
+            <Text style={styles.deleteTxt}>Supprimer mon compte (RGPD)</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+/* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
 function AppShell({ startPath, onExitToWelcome }) {
@@ -1833,6 +1985,17 @@ function AppShell({ startPath, onExitToWelcome }) {
   const [cotiLoading, setCotiLoading] = useState(false);
   const [grantsData, setGrantsData] = useState(null);
   const [grantsLoading, setGrantsLoading] = useState(false);
+  const [assemblies, setAssemblies] = useState(null);
+  const [attendance, setAttendance] = useState(null);
+  const [broadcasts, setBroadcasts] = useState(null);
+  const [tickets, setTickets] = useState(null);
+  const [coach, setCoach] = useState(null);
+  const [coachGen, setCoachGen] = useState(false);
+  const [account, setAccount] = useState(null);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsErr, setSettingsErr] = useState('');
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [secLoading, setSecLoading] = useState(false);
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
@@ -1965,6 +2128,12 @@ function AppShell({ startPath, onExitToWelcome }) {
   const fetchNotifs = useCallback(() => { setNotifsLoading(true); inject(fetchJS('/api/app-notifications.php', '__aknotifs')); }, [inject]);
   const fetchCoti = useCallback(() => { setCotiLoading(true); inject(fetchJS('/api/app-cotisations.php', '__akcoti')); }, [inject]);
   const fetchGrants = useCallback(() => { setGrantsLoading(true); inject(fetchJS('/api/app-grants.php', '__akgrants')); }, [inject]);
+  const fetchAssemblies = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-assemblies.php', '__akassemblies')); }, [inject]);
+  const fetchAttendance = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-attendance.php', '__akattendance')); }, [inject]);
+  const fetchBroadcasts = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-broadcasts.php', '__akbroadcasts')); }, [inject]);
+  const fetchTickets = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-tickets.php', '__aktickets')); }, [inject]);
+  const fetchCoach = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-coach.php', '__akcoach')); }, [inject]);
+  const fetchAccount = useCallback(() => { inject(fetchJS('/api/app-account.php', '__akaccount')); }, [inject]);
 
   const openMenuScreen = useCallback((screen) => {
     setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(screen);
@@ -1976,7 +2145,13 @@ function AppShell({ startPath, onExitToWelcome }) {
     else if (screen === 'notifications') fetchNotifs();
     else if (screen === 'cotisations') fetchCoti();
     else if (screen === 'subventions') fetchGrants();
-  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchCoti, fetchGrants]);
+    else if (screen === 'assemblies') fetchAssemblies();
+    else if (screen === 'attendance') fetchAttendance();
+    else if (screen === 'broadcasts') fetchBroadcasts();
+    else if (screen === 'tickets') fetchTickets();
+    else if (screen === 'coach') fetchCoach();
+    else if (screen === 'settings') { setSettingsErr(''); setAccount(null); fetchAccount(); inject(FETCH_CSRF_JS); }
+  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchCoti, fetchGrants, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
 
   const openChannelFn = useCallback((c) => { setOpenChannel(c); setChanMsgs(null); fetchChanMsgs(c.id); }, [fetchChanMsgs]);
 
@@ -1997,6 +2172,40 @@ function AppShell({ startPath, onExitToWelcome }) {
     }
     if (nav.web) { clearDetail(); closeForm(); setWebMode(true); inject(gotoJS(nav.web)); }
   }, [openMenuScreen, clearDetail, closeForm, inject]);
+
+  const saveAccount = useCallback((f) => {
+    if (!csrf) { setSettingsErr('Session en préparation, réessayez.'); inject(FETCH_CSRF_JS); return; }
+    setSettingsErr(''); setSettingsBusy(true);
+    inject(postJS('/api/app-update-account.php', { ...f, csrf }, '__akaccountsaved'));
+  }, [csrf, inject]);
+
+  const uploadLogo = useCallback(async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { setSettingsErr('Autorisez l\'accès aux photos.'); return; }
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.7 });
+      if (res.canceled || !res.assets || !res.assets[0] || !res.assets[0].base64) return;
+      if (!csrf) { inject(FETCH_CSRF_JS); return; }
+      setLogoBusy(true);
+      inject(postJS('/api/app-upload-logo.php', { image: res.assets[0].base64, mime: 'image/jpeg', csrf }, '__aklogosaved'));
+    } catch (e) { setLogoBusy(false); setSettingsErr('Impossible d\'ouvrir la photothèque.'); }
+  }, [csrf, inject]);
+
+  const generateCoach = useCallback(() => {
+    if (!csrf) { inject(FETCH_CSRF_JS); return; }
+    setCoachGen(true);
+    inject(postJS('/api/app-coach-generate.php', { csrf }, '__akcoachgen'));
+  }, [csrf, inject]);
+
+  const deleteAccount = useCallback(() => {
+    Alert.alert('Supprimer mon compte', 'Cette action est définitive et anonymise vos données (RGPD). Continuer ?', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Supprimer', style: 'destructive', onPress: () => {
+        if (!csrf) { inject(FETCH_CSRF_JS); return; }
+        inject(postJS('/api/app-delete-account.php', { confirm: 'SUPPRIMER', csrf }, '__akdeleted'));
+      } },
+    ]);
+  }, [csrf, inject]);
 
   const submitForm = useCallback((type, data) => {
     if (!csrf) { setFormErr('Session en cours de préparation, réessayez dans un instant.'); inject(FETCH_CSRF_JS); return; }
@@ -2084,6 +2293,31 @@ function AppShell({ startPath, onExitToWelcome }) {
       if (msg && msg.__aknotifs) { setNotifs(msg.__aknotifs); setNotifsLoading(false); }
       if (msg && msg.__akcoti) { setCoti(msg.__akcoti); setCotiLoading(false); }
       if (msg && msg.__akgrants) { setGrantsData(msg.__akgrants); setGrantsLoading(false); }
+      if (msg && msg.__akassemblies) { setAssemblies(msg.__akassemblies); setSecLoading(false); }
+      if (msg && msg.__akattendance) { setAttendance(msg.__akattendance); setSecLoading(false); }
+      if (msg && msg.__akbroadcasts) { setBroadcasts(msg.__akbroadcasts); setSecLoading(false); }
+      if (msg && msg.__aktickets) { setTickets(msg.__aktickets); setSecLoading(false); }
+      if (msg && msg.__akcoach) { setCoach(msg.__akcoach); setSecLoading(false); }
+      if (msg && msg.__akaccount) { setAccount(msg.__akaccount); }
+      if (msg && msg.__akaccountsaved) {
+        setSettingsBusy(false);
+        if (msg.__akaccountsaved.ok) { Alert.alert('Enregistré', msg.__akaccountsaved.message || 'Profil mis à jour.'); fetchAccount(); }
+        else setSettingsErr(msg.__akaccountsaved.message || 'Erreur.');
+      }
+      if (msg && msg.__aklogosaved) {
+        setLogoBusy(false);
+        if (msg.__aklogosaved.ok) { Alert.alert('Logo mis à jour ✅'); fetchAccount(); fetchKpis(); }
+        else setSettingsErr(msg.__aklogosaved.message || 'Logo non enregistré.');
+      }
+      if (msg && msg.__akcoachgen) {
+        setCoachGen(false);
+        if (msg.__akcoachgen.ok) setCoach({ ok: true, allowed: true, report: msg.__akcoachgen.report });
+        else Alert.alert('Coach IA', msg.__akcoachgen.message || 'Génération impossible.');
+      }
+      if (msg && msg.__akdeleted) {
+        if (msg.__akdeleted.ok) { Alert.alert('Compte supprimé', msg.__akdeleted.message || 'À bientôt.'); onExitToWelcome(); }
+        else Alert.alert('Suppression', msg.__akdeleted.message || 'Erreur.');
+      }
       if (msg && msg.__akmsgsent) {
         setSendingMsg(false);
         if (msg.__akmsgsent.ok && openChannel) fetchChanMsgs(openChannel.id);
@@ -2259,6 +2493,32 @@ function AppShell({ startPath, onExitToWelcome }) {
               <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'subventions' ? (
               <NativeGrants data={grantsData} loading={grantsLoading} onRefresh={fetchGrants} onBack={() => setMenuScreen(null)} />
+            ) : menuScreen === 'assemblies' ? (
+              <GatedList title="Assemblées" data={assemblies} loading={secLoading} onRefresh={fetchAssemblies} onBack={() => setMenuScreen(null)}
+                itemsKey="items" emptyIcon="clipboard-outline" emptyLabel="Aucune assemblée"
+                renderStats={(s) => (<View style={styles.miniKpiRow}><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.total || 0}</Text><Text style={styles.miniKpiLbl}>Total</Text></View><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.upcoming || 0}</Text><Text style={styles.miniKpiLbl}>À venir</Text></View></View>)}
+                renderItem={(it) => (<StatusItemCard key={it.id} title={it.title} sub={[it.type, it.date, it.location].filter(Boolean).join(' · ')} statusLabel={it.status_label} kind={it.status_kind} />)} />
+            ) : menuScreen === 'attendance' ? (
+              <GatedList title="Émargement" data={attendance} loading={secLoading} onRefresh={fetchAttendance} onBack={() => setMenuScreen(null)}
+                itemsKey="items" emptyIcon="checkbox-outline" emptyLabel="Aucune session"
+                renderStats={(s) => (<View style={styles.miniKpiRow}><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.open || 0}</Text><Text style={styles.miniKpiLbl}>Ouvertes</Text></View><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.records || 0}</Text><Text style={styles.miniKpiLbl}>Signatures</Text></View></View>)}
+                renderItem={(it) => (<StatusItemCard key={it.id} title={it.title} sub={[it.date, it.location, it.nb_signed + ' signature' + (it.nb_signed > 1 ? 's' : '')].filter(Boolean).join(' · ')} statusLabel={it.is_open ? 'Ouverte' : 'Fermée'} kind={it.is_open ? 'done' : 'off'} />)} />
+            ) : menuScreen === 'broadcasts' ? (
+              <GatedList title="Communication" data={broadcasts} loading={secLoading} onRefresh={fetchBroadcasts} onBack={() => setMenuScreen(null)}
+                itemsKey="items" emptyIcon="mail-outline" emptyLabel="Aucune diffusion"
+                renderStats={(s) => (<View style={styles.miniKpiRow}><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.sent || 0}</Text><Text style={styles.miniKpiLbl}>Envoyées</Text></View><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.nb || 0}</Text><Text style={styles.miniKpiLbl}>Total</Text></View></View>)}
+                renderItem={(it) => (<StatusItemCard key={it.id} title={it.subject} sub={[it.date, it.nb_sent ? it.nb_sent + ' envoyé' + (it.nb_sent > 1 ? 's' : '') : ''].filter(Boolean).join(' · ')} statusLabel={it.status_label} kind={it.status_kind} />)} />
+            ) : menuScreen === 'tickets' ? (
+              <GatedList title="Support" data={tickets} loading={secLoading} onRefresh={fetchTickets} onBack={() => setMenuScreen(null)}
+                itemsKey="items" emptyIcon="help-buoy-outline" emptyLabel="Aucun ticket"
+                renderStats={(s) => (<View style={styles.miniKpiRow}><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.open || 0}</Text><Text style={styles.miniKpiLbl}>Ouverts</Text></View><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.nb || 0}</Text><Text style={styles.miniKpiLbl}>Total</Text></View></View>)}
+                renderItem={(it) => (<StatusItemCard key={it.id} title={it.title} sub={it.date} statusLabel={it.status_label} kind={it.status_kind} />)} />
+            ) : menuScreen === 'coach' ? (
+              <NativeCoach data={coach} loading={secLoading} generating={coachGen} onGenerate={generateCoach} onRefresh={fetchCoach} onBack={() => setMenuScreen(null)} />
+            ) : menuScreen === 'settings' ? (
+              <NativeSettings data={account} onBack={() => setMenuScreen(null)} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
+                onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb}
+                onLogout={() => { setMenuScreen(null); setWebMode(true); inject(gotoJS('/deconnexion.php')); }} />
             ) : menuScreen === 'messages' ? (
               openChannel ? (
                 <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg}
@@ -2611,6 +2871,23 @@ const styles = StyleSheet.create({
   notifTitle: { fontSize: 14, fontWeight: '600', color: INK, lineHeight: 19 },
   notifBody: { fontSize: 12.5, color: '#64748B', marginTop: 2 },
   notifAgo: { fontSize: 11, color: MUTE, marginTop: 4 },
+
+  /* Coach IA */
+  coachWeek: { fontSize: 13, fontWeight: '700', color: BRAND, marginBottom: 10 },
+  coachRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: '#fff', borderRadius: 12, padding: 13, marginBottom: 8 },
+  coachRowTxt: { flex: 1, fontSize: 14, color: '#334155', lineHeight: 20 },
+  recoCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#F0FDF9', borderWidth: 1, borderColor: '#D1FAE5', borderRadius: 14, padding: 14, marginBottom: 10 },
+  recoIcon: { fontSize: 22 },
+  recoTitle: { fontSize: 14.5, fontWeight: '700', color: INK },
+  recoWhy: { fontSize: 13, color: '#475569', marginTop: 3, lineHeight: 18 },
+
+  /* Réglages */
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logoBox: { width: 64, height: 64, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  logoImg: { width: 64, height: 64, borderRadius: 16 },
+  settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 12, padding: 15, marginTop: 10, shadowColor: '#0F172A', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
+  settingsRowTxt: { flex: 1, fontSize: 14.5, fontWeight: '600', color: INK },
+  deleteTxt: { fontSize: 13.5, color: '#DC2626', fontWeight: '600', textDecorationLine: 'underline' },
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
