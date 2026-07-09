@@ -108,12 +108,15 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 a { color: inherit; text-decoration: none; }
 
 :root {
-  --acc: #059669; --acc-hover: #047857; --acc-light: #D1FAE5; --acc-dark: #065F46;
-  --ai: #7F77DD; --ai-light: #EEEDFE; --ai-dark: #3C3489;
-  --ink: #0A0A0B; --ink-2: #3F3F46; --ink-3: #71717A; --ink-4: #A1A1AA;
-  --bg: #FFFFFF; --bg-2: #FAFAF9; --bg-3: #F4F4F5;
-  --border: rgba(0, 0, 0, 0.06); --border-strong: rgba(0, 0, 0, 0.12);
-  --radius: 10px; --radius-lg: 14px;
+  --acc: #059669; --acc-hover: #047857; --acc-light: #D1FAE5; --acc-dark: #047857;
+  --ai: #6366F1; --ai-light: #ECEBFE; --ai-dark: #4338CA;
+  --ink: #0B1A13; --ink-2: #45544D; --ink-3: #78857F; --ink-4: #A6B0AA;
+  --bg: #FFFFFF; --bg-2: #EDF2EF; --bg-3: #E6EDE9;
+  --border: rgba(12, 40, 28, 0.07); --border-strong: rgba(12, 40, 28, 0.13);
+  --radius: 12px; --radius-lg: 18px;
+  --glass: rgba(255,255,255,0.72); --glass-border: rgba(255,255,255,0.65);
+  --shadow-card: 0 1px 2px rgba(9,30,22,0.04), 0 14px 34px -16px rgba(9,30,22,0.16);
+  --shadow-pop: 0 2px 8px rgba(9,30,22,0.06), 0 26px 56px -20px rgba(9,30,22,0.24);
   --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --sidebar-w: 240px;
 }
@@ -127,11 +130,17 @@ a { color: inherit; text-decoration: none; }
   }
 }
 */
-body { font-family: var(--font-sans); background: var(--bg-2); color: var(--ink); font-size: 14px; line-height: 1.55; letter-spacing: -0.005em; }
+body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-height: 1.55; letter-spacing: -0.005em;
+  background:
+    radial-gradient(58% 52% at 8% 0%, rgba(16,185,129,0.11), transparent 60%),
+    radial-gradient(50% 48% at 96% 1%, rgba(99,102,241,0.10), transparent 62%),
+    radial-gradient(55% 55% at 88% 100%, rgba(16,185,129,0.07), transparent 60%),
+    var(--bg-2);
+  background-attachment: fixed; }
 .app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
 
 /* SIDEBAR */
-.sidebar { background: var(--bg); border-right: 1px solid var(--border); padding: 18px 12px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.sidebar { background: var(--glass); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border-right: 1px solid var(--glass-border); padding: 18px 12px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 .sb-logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; font-size: 16px; letter-spacing: -0.02em; padding: 4px 10px; }
 .sb-search {
     display: flex; align-items: center; gap: 8px;
@@ -154,8 +163,8 @@ body { font-family: var(--font-sans); background: var(--bg-2); color: var(--ink)
     padding: 1px 6px; background: #fff; color: var(--ink-3, #6b7280);
     border-radius: 4px; border: 1px solid var(--border, #e5e7eb);
 }
-.sb-logo-mark { width: 22px; height: 22px; background: var(--acc); border-radius: 6px; position: relative; }
-.sb-logo-mark::after { content: ""; position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; background: #fff; border-radius: 50%; }
+.sb-logo-mark { width: 24px; height: 24px; background: linear-gradient(140deg, #12CE93, #059669 58%, #025C43); border-radius: 8px; position: relative; box-shadow: 0 4px 10px -2px rgba(5,150,105,0.5), inset 0 1px 0 rgba(255,255,255,0.5); }
+.sb-logo-mark::after { content: ""; position: absolute; right: 4.5px; bottom: 4.5px; width: 7px; height: 7px; background: #fff; border-radius: 50%; opacity: 0.95; }
 
 /* ===== Bandeau retour cockpit (Super Admin / Fondateur) ===== */
 .sb-backto-sa { display: block; margin: 0 14px; padding: 9px 11px; border-radius: 10px; text-decoration: none; transition: transform 0.15s, box-shadow 0.15s; position: relative; overflow: hidden; }
@@ -580,7 +589,10 @@ body { font-family: var(--font-sans); background: var(--bg-2); color: var(--ink)
 .proj-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; }
 @media (max-width: 960px) { .proj-layout { grid-template-columns: 1fr; } }
 
-.panel { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; margin-bottom: 16px; }
+.panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px 24px; margin-bottom: 16px; box-shadow: var(--shadow-card); position: relative; }
+/* Élévation premium partagée : les cartes principales du site gagnent la profondeur "Liquid Glass" */
+.today, .mp-card, .folder-card, .metric, .folder, .cal-grid, .stat-card, .kpi-card, .ak-kpi-card { box-shadow: var(--shadow-card); }
+.mp-card:hover, .folder-card:hover { box-shadow: var(--shadow-pop); }
 .panel-title { font-size: 15px; font-weight: 500; letter-spacing: -0.01em; margin: 0 0 14px; display: flex; justify-content: space-between; align-items: center; }
 .panel-title-actions { font-size: 12px; color: var(--acc); font-weight: 500; }
 .panel-title-actions:hover { text-decoration: underline; }
