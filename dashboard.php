@@ -466,9 +466,23 @@ function ak_dash_coach_actions(PDO $pdo, int $user_id, int $org_id, ?array $foll
 function ak_dash_upcoming_deadlines(PDO $pdo, int $org_id, ?array $follower_ids): array {
     $items = [];
 
+    // Palette calendrier (couleurs Google) — pour donner à chaque événement sa vraie couleur
+    $GPAL = ['#7986CB', '#33B679', '#8E24AA', '#E67C73', '#F6BF26', '#039BE5', '#3F51B5', '#0B8043', '#D50000', '#F4511E'];
+    $evt_color = function ($title, $color_theme, $sync_origin) use ($GPAL) {
+        $ct = trim((string) $color_theme);
+        if ($ct !== '' && $ct[0] === '#') return $ct;               // couleur Google explicite
+        $b = function_exists('mb_strtolower') ? mb_strtolower(trim((string) $title)) : strtolower(trim((string) $title));
+        if (($sync_origin ?? '') === 'google') {
+            return $b === '' ? $GPAL[0] : $GPAL[abs(crc32($b)) % count($GPAL)];
+        }
+        if ($ct !== '' && function_exists('folder_color_hex')) return folder_color_hex($ct);
+        // fallback : couleur stable dérivée du titre (aspect calendrier coloré)
+        return $b === '' ? $GPAL[0] : $GPAL[abs(crc32($b)) % count($GPAL)];
+    };
+
     // Source 1 : table events (si elle existe)
     try {
-        $sql = "SELECT id, title, starts_at, ends_at, is_all_day FROM events
+        $sql = "SELECT id, title, starts_at, ends_at, is_all_day, color_theme, sync_origin FROM events
                 WHERE org_id = ? AND deleted_at IS NULL
                   AND starts_at >= NOW() AND starts_at <= DATE_ADD(NOW(), INTERVAL 7 DAY)
                 ORDER BY starts_at ASC LIMIT 20";
@@ -498,6 +512,7 @@ function ak_dash_upcoming_deadlines(PDO $pdo, int $org_id, ?array $follower_ids)
                 'end' => $is_multi ? $end_d : $start_d,
                 'multi' => $is_multi,
                 'id' => $e['id'],
+                'color' => $evt_color($e['title'], $e['color_theme'] ?? '', $e['sync_origin'] ?? ''),
             ];
         }
         foreach ($grouped as $g) {
@@ -507,7 +522,8 @@ function ak_dash_upcoming_deadlines(PDO $pdo, int $org_id, ?array $follower_ids)
                 'date_end' => $multi ? $g['end'] : null,
                 'label' => $g['title'],
                 'tone' => 'event',
-                'icon' => ak_dash_date_badge($g['start']),
+                'color' => $g['color'],
+                'icon' => ak_dash_date_badge($g['start'], $g['color']),
                 'link' => '/agenda',
             ];
         }
@@ -633,16 +649,17 @@ function ak_dash_format_short_date(string $date_iso): string {
     }
 }
 
-function ak_dash_date_badge(string $date_iso): string {
+function ak_dash_date_badge(string $date_iso, string $color = '#DC2626'): string {
     try {
+        $color = (is_string($color) && $color !== '' && $color[0] === '#') ? $color : '#DC2626';
         $dt = new DateTime($date_iso);
         $day = $dt->format('j');
         $mois = ['','JAN','FÉV','MAR','AVR','MAI','JUIN','JUIL','AOÛ','SEP','OCT','NOV','DÉC'];
         $m = $mois[(int)$dt->format('n')] ?? '';
         return '<svg width="34" height="34" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg" style="display:block;">'
             . '<rect x="2" y="4" width="30" height="28" rx="5" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>'
-            . '<rect x="2" y="4" width="30" height="8" rx="5" fill="#DC2626"/>'
-            . '<rect x="2" y="9" width="30" height="3" fill="#DC2626"/>'
+            . '<rect x="2" y="4" width="30" height="8" rx="5" fill="' . htmlspecialchars($color) . '"/>'
+            . '<rect x="2" y="9" width="30" height="3" fill="' . htmlspecialchars($color) . '"/>'
             . '<text x="17" y="10.5" text-anchor="middle" fill="#fff" font-family="-apple-system,sans-serif" font-size="6.5" font-weight="700">' . htmlspecialchars($m) . '</text>'
             . '<text x="17" y="26" text-anchor="middle" fill="#111827" font-family="-apple-system,sans-serif" font-size="13" font-weight="800">' . htmlspecialchars($day) . '</text>'
             . '</svg>';
@@ -1452,6 +1469,10 @@ render_sidebar('accueil');
                 'planned' => '#3B82F6',
                 'event' => '#6366F1',
               ][$tone] ?? '#6B7280';
+              // Couleur réelle de l'événement (agenda) si disponible → aspect calendrier coloré
+              if (!empty($d['color']) && is_string($d['color']) && $d['color'][0] === '#') {
+                $tone_color = $d['color'];
+              }
             ?>
             <a href="<?= htmlspecialchars($d['link'], ENT_QUOTES) ?>" class="ai-dl-row">
               <span class="ai-dl-icon"><?= $d['icon'] /* SVG ou emoji safe */ ?></span>
