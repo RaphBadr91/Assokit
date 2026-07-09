@@ -839,9 +839,9 @@ body { font-family: var(--font-sans); background: var(--bg-2); color: var(--ink)
 /* Grille calendrier mois */
 .cal-grid { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--border); }
-.cal-weekday { padding: 10px 8px; font-size: 11px; font-weight: 500; color: var(--ink-3); letter-spacing: 0.06em; text-transform: uppercase; text-align: center; }
+.cal-weekday { padding: 10px 8px; font-size: 11px; font-weight: 500; color: var(--ink-3); letter-spacing: 0.06em; text-transform: uppercase; text-align: center; box-sizing: border-box; min-width: 0; }
 .cal-days { display: grid; grid-template-columns: repeat(7, 1fr); }
-.cal-day { min-height: 100px; padding: 8px; border-right: 1px solid var(--border); border-top: 1px solid var(--border); cursor: pointer; transition: background 0.12s ease; position: relative; }
+.cal-day { min-height: 100px; padding: 8px; border-right: 1px solid var(--border); border-top: 1px solid var(--border); cursor: pointer; transition: background 0.12s ease; position: relative; box-sizing: border-box; min-width: 0; overflow: hidden; }
 .cal-day:nth-child(7n) { border-right: none; }
 .cal-day:hover { background: var(--bg-2); }
 .cal-day.other-month { background: var(--bg-2); color: var(--ink-4); }

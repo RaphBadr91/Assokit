@@ -80,6 +80,10 @@ if ($action === 'select_calendar') {
 }
 
 if ($action === 'sync_now') {
+    // Sync manuelle = pull complet : rafraîchit tout (dont les couleurs Google) sur les événements existants
+    try {
+        $pdo->prepare("UPDATE org_google_calendar SET sync_token = NULL WHERE org_id = ?")->execute([$user['org_id']]);
+    } catch (Throwable $e) {}
     $result = pull_events_from_google($user['org_id']);
     if (!$result['success']) {
         header('Location: /mon-agenda?error=' . urlencode($result['error'] ?? 'sync_failed'));

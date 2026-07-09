@@ -76,7 +76,9 @@ $events = $stmt->fetchAll();
 
 // Helper : classe de couleur selon type + projet
 function event_color_class($evt) {
-    if (!empty($evt['color_theme'])) return 'ev-' . $evt['color_theme'];
+    $c = (string)($evt['color_theme'] ?? '');
+    if ($c !== '' && $c[0] === '#') return ''; // couleur Google (hex) : gérée en inline
+    if ($c !== '') return 'ev-' . $c;
     if (!empty($evt['folder_color'])) return 'ev-' . $evt['folder_color'];
     $type_colors = [
         'meeting' => 'ev-blue',
@@ -87,6 +89,19 @@ function event_color_class($evt) {
         'other' => 'ev-amber',
     ];
     return $type_colors[$evt['event_type']] ?? 'ev-blue';
+}
+
+// Style inline si la couleur est un hex (import Google) : pastille pleine, texte blanc
+function event_color_style($evt) {
+    $c = (string)($evt['color_theme'] ?? '');
+    if ($c !== '' && $c[0] === '#') return 'background:' . htmlspecialchars($c) . ';color:#fff;';
+    return '';
+}
+// Style de la barre latérale (vue liste) pour un hex Google
+function event_bar_style($evt) {
+    $c = (string)($evt['color_theme'] ?? '');
+    if ($c !== '' && $c[0] === '#') return 'background:' . htmlspecialchars($c) . ';';
+    return '';
 }
 
 // Groupe les événements par date (pour la vue calendrier)
@@ -205,9 +220,10 @@ render_sidebar('agenda');
           <div class="cal-day-events">
             <?php foreach (array_slice($day_events, 0, 3) as $e):
               $color_class = event_color_class($e);
+              $color_style = event_color_style($e);
               $time = $e['is_all_day'] ? '' : format_hhmm($e['starts_at']) . ' ';
             ?>
-              <a href="/evenement/<?= (int)$e['id'] ?>" class="cal-event-pill <?= $color_class ?>" title="<?= h($e['title']) ?>">
+              <a href="/evenement/<?= (int)$e['id'] ?>" class="cal-event-pill <?= $color_class ?>" style="<?= $color_style ?>" title="<?= h($e['title']) ?>">
                 <span class="cal-event-time"><?= h($time) ?></span><?= h(mb_substr($e['title'], 0, 30)) ?>
               </a>
             <?php endforeach; ?>
@@ -246,6 +262,7 @@ render_sidebar('agenda');
           <div class="cal-list-events">
             <?php foreach ($day_events as $e):
               $color_class = event_color_class($e);
+              $bar_style = event_bar_style($e);
               $start_time = $e['is_all_day'] ? 'Journée' : format_hhmm($e['starts_at']);
               $end_time = $e['is_all_day'] ? '' : format_hhmm($e['ends_at']);
             ?>
@@ -256,7 +273,7 @@ render_sidebar('agenda');
                   <small>→ <?= h($end_time) ?></small>
                 <?php endif; ?>
               </div>
-              <div class="cal-list-event-bar <?= $color_class ?>"></div>
+              <div class="cal-list-event-bar <?= $color_class ?>" style="<?= $bar_style ?>"></div>
               <div class="cal-list-event-body">
                 <div class="cal-list-event-title"><?= h($e['title']) ?></div>
                 <div class="cal-list-event-meta">

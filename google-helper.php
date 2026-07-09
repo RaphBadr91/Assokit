@@ -290,10 +290,30 @@ function pull_events_from_google($org_id) {
     return array_merge(['success' => true], $stats);
 }
 
+// Palette officielle des couleurs d'événement Google Agenda (colorId => hex)
+function gcal_color_hex($colorId) {
+    $map = [
+        '1'  => '#7986CB', // Lavande
+        '2'  => '#33B679', // Sauge
+        '3'  => '#8E24AA', // Raisin
+        '4'  => '#E67C73', // Flamant
+        '5'  => '#F6BF26', // Banane
+        '6'  => '#F4511E', // Mandarine
+        '7'  => '#039BE5', // Paon
+        '8'  => '#616161', // Graphite
+        '9'  => '#3F51B5', // Myrtille
+        '10' => '#0B8043', // Basilic
+        '11' => '#D50000', // Tomate
+    ];
+    $colorId = (string) $colorId;
+    return $map[$colorId] ?? null;
+}
+
 function google_event_to_assokit($google_event, $org_id, $default_user_id) {
     global $pdo;
     $google_id = $google_event['id'] ?? null;
     if (!$google_id) return null;
+    $gcolor = gcal_color_hex($google_event['colorId'] ?? '');
 
     $stmt = $pdo->prepare("SELECT id, sync_origin FROM events WHERE google_event_id = ? LIMIT 1");
     $stmt->execute([$google_id]);
@@ -328,9 +348,9 @@ function google_event_to_assokit($google_event, $org_id, $default_user_id) {
         if ($existing['sync_origin'] === 'google') {
             $pdo->prepare("
                 UPDATE events
-                SET title = ?, description = ?, location = ?, starts_at = ?, ends_at = ?, is_all_day = ?, synced_at = NOW()
+                SET title = ?, description = ?, location = ?, starts_at = ?, ends_at = ?, is_all_day = ?, color_theme = ?, synced_at = NOW()
                 WHERE id = ?
-            ")->execute([$title, $description, $location, $starts_at, $ends_at, $is_all_day ? 1 : 0, $existing['id']]);
+            ")->execute([$title, $description, $location, $starts_at, $ends_at, $is_all_day ? 1 : 0, $gcolor, $existing['id']]);
             return 'updated';
         }
         return null;
@@ -338,11 +358,11 @@ function google_event_to_assokit($google_event, $org_id, $default_user_id) {
 
     $pdo->prepare("
         INSERT INTO events (org_id, created_by, title, description, location,
-                           event_type, starts_at, ends_at, is_all_day, visibility,
+                           event_type, color_theme, starts_at, ends_at, is_all_day, visibility,
                            google_event_id, sync_origin, synced_at)
-        VALUES (?, ?, ?, ?, ?, 'other', ?, ?, ?, 'organization', ?, 'google', NOW())
+        VALUES (?, ?, ?, ?, ?, 'other', ?, ?, ?, ?, 'organization', ?, 'google', NOW())
     ")->execute([$org_id, $default_user_id, $title, $description, $location,
-                 $starts_at, $ends_at, $is_all_day ? 1 : 0, $google_id]);
+                 $gcolor, $starts_at, $ends_at, $is_all_day ? 1 : 0, $google_id]);
 
     return 'imported';
 }
