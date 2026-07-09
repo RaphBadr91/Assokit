@@ -193,7 +193,8 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .sb-group-items .sb-link { padding: 6px 10px; font-size: 12.5px; }
 .ak-collapse { display: flex; flex-direction: column; }
 .ak-collapse-row { display: flex; align-items: center; gap: 2px; }
-.ak-collapse-toggle { background: transparent; border: 0; padding: 6px 8px; cursor: pointer; color: var(--ink-3); border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s, background 0.15s; flex-shrink: 0; }
+.ak-collapse-toggle { background: transparent; border: 0; padding: 6px 8px; cursor: pointer; color: var(--ink-4); border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s, background 0.15s, opacity 0.15s; flex-shrink: 0; opacity: 0; }
+.ak-collapse-row:hover .ak-collapse-toggle, .ak-collapse.is-open .ak-collapse-toggle { opacity: 1; }
 .ak-collapse-toggle:hover { background: var(--bg-2); color: var(--ink); }
 .ak-collapse.is-open .ak-collapse-toggle { transform: rotate(180deg); color: var(--acc); }
 .ak-collapse-body { display: none; flex-direction: column; margin-left: 24px; border-left: 1px solid var(--border); padding-left: 8px; gap: 1px; margin-top: 2px; }
@@ -313,11 +314,11 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .sb-org:hover { background: var(--bg-3); }
 .sb-org-avatar { width: 28px; height: 28px; border-radius: 7px; background: #FAC775; color: #633806; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; flex-shrink: 0; }
 .sb-org-body { flex: 1; min-width: 0; text-align: left; }
-.sb-org-name { font-size: 13px; font-weight: 500; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-org-name { font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-org-role { font-size: 11px; color: var(--ink-3); line-height: 1.2; }
 .sb-org-chevron { color: var(--ink-4); flex-shrink: 0; }
 .sb-nav { display: flex; flex-direction: column; gap: 3px; }
-.sb-link { display: flex; align-items: center; gap: 12px; padding: 9px 11px; border-radius: 11px; font-size: 13.5px; color: var(--ink-2); transition: background 0.12s ease, color 0.12s ease; }
+.sb-link { display: flex; align-items: center; gap: 12px; padding: 9px 11px; border-radius: 11px; font-size: 13.5px; font-weight: 500; color: var(--ink-2); transition: background 0.12s ease, color 0.12s ease; }
 .sb-link:hover { background: var(--bg-2); color: var(--ink); }
 .sb-link.active { background: var(--acc-light); color: var(--acc-dark); font-weight: 600; }
 .sb-link svg { color: var(--ink-3); flex-shrink: 0; }
@@ -327,7 +328,7 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .sb-foot { margin-top: auto; padding: 10px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); }
 .sb-user-avatar { width: 32px; height: 32px; border-radius: 50%; background: #B5D4F4; color: #0C447C; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; flex-shrink: 0; }
 .sb-user-body { flex: 1; min-width: 0; }
-.sb-user-name { font-size: 13px; font-weight: 500; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-user-name { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-user-email { font-size: 11px; color: var(--ink-3); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-user-menu { color: var(--ink-4); padding: 4px; border-radius: 4px; }
 .sb-user-menu:hover { background: var(--bg-2); color: var(--ink); }
@@ -1637,10 +1638,13 @@ function render_foot() {
 .notif-toast-time { font-size: 11px; color: #3B82F6; font-weight: 500; margin-top: 4px; }
 
 /* Toggle son notifications */
-.ak-sound-tgl, .ak-push-tgl { position: absolute; top: 50%; transform: translateY(-50%); background: transparent; border: 0; padding: 4px 6px; font-size: 12px; cursor: pointer; opacity: 0.55; border-radius: 5px; transition: opacity 0.15s, background 0.15s; }
+.ak-sound-tgl, .ak-push-tgl { position: absolute; top: 50%; transform: translateY(-50%); background: transparent; border: 0; padding: 4px 6px; font-size: 12px; cursor: pointer; opacity: 0; visibility: hidden; border-radius: 5px; transition: opacity 0.15s, background 0.15s; }
 .ak-sound-tgl { right: 32px; }
 .ak-push-tgl { right: 6px; }
-.ak-sound-tgl:hover, .ak-push-tgl:hover { opacity: 1; background: rgba(0,0,0,0.05); }
+/* au repos : menu épuré (juste le badge rouge) ; au survol : les réglages son/push apparaissent */
+.sb-link-notif:hover .ak-sound-tgl, .sb-link-notif:hover .ak-push-tgl { opacity: 0.6; visibility: visible; }
+.sb-link-notif:hover .sb-badge-notif { opacity: 0; }
+.ak-sound-tgl:hover, .ak-push-tgl:hover { opacity: 1 !important; background: rgba(0,0,0,0.05); }
 .sb-link.sb-link-notif { padding-right: 62px !important; }
 
 /* Pulse animation pour le badge cloche */
