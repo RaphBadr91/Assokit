@@ -1098,9 +1098,22 @@ render_sidebar('projets');
       // 🤖 Données IA pour ce dossier
       $f_activity = $folder_activity[(int)$f['id']] ?? array_fill(0, 14, 0);
       $f_badge = ak_folder_ai_badge($f, $f_activity);
+      // Dossier entièrement terminé (que des projets « done ») : statut positif, pas de relance
+      $fully_done = ((int)$f['active_count'] === 0 && (int)$f['done_count'] > 0);
+      if ($fully_done) {
+          $f_badge['emoji'] = '✅';
+          $f_badge['label'] = 'Terminé';
+          $f_badge['color'] = '#10B981';
+      }
       $f_total_act = array_sum($f_activity);
       $spark_color = $f_badge['color'];
-      $avg = (int)$f['avg_progress'];
+      // Complétion du dossier : inclut les projets terminés (= 100%), pas seulement les actifs
+      $__prog_vals = [];
+      foreach ($projects as $__pv) {
+          if (($__pv['status'] ?? '') === 'done') { $__prog_vals[] = 100; }
+          elseif (in_array($__pv['status'] ?? '', ['active', 'warning'], true)) { $__prog_vals[] = (int)$__pv['progress_percent']; }
+      }
+      $avg = $__prog_vals ? (int)round(array_sum($__prog_vals) / count($__prog_vals)) : (int)$f['avg_progress'];
 
       // Avatars : initiales des référents distincts des projets du dossier
       $avatar_inits = [];
@@ -1120,7 +1133,9 @@ render_sidebar('projets');
       // Prochaine action IA (par dossier)
       $act7 = array_sum(array_slice($f_activity, 0, 7));
       $na_ok = false;
-      if ((int)$f['active_count'] === 0 && (int)$f['done_count'] === 0) {
+      if ($fully_done) {
+          $na_txt = 'dossier complété — tout est bouclé, bravo !'; $na_ok = true;
+      } elseif ((int)$f['active_count'] === 0 && (int)$f['done_count'] === 0) {
           $na_txt = 'définir un premier jalon pour lancer le dossier.';
       } elseif ($f_badge['emoji'] === '🎯') {
           $na_txt = 'presque terminé — une dernière poussée pour clôturer.'; $na_ok = true;
