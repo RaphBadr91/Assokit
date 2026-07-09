@@ -740,6 +740,134 @@ render_sidebar('projets');
 .project-row.has-unread { background: linear-gradient(90deg, #FEF2F2 0%, transparent 8%); }
 </style>
 
+<style>
+/* ============================================================
+   PROJETS 2.0 — surcouche premium Liquid Glass (maquette)
+   Les règles ci-dessous surchargent la v3 ci-dessus.
+   ============================================================ */
+.main{max-width:1200px}
+
+/* Hero + toolbar */
+.pj-head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pj-search{display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:var(--radius, 12px);
+  background:var(--glass);border:1px solid var(--glass-border);color:var(--ink-3);font-size:13px;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);min-width:190px;box-shadow:var(--shadow-card)}
+.pj-search svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.pj-search .k{margin-left:auto;font-size:10.5px;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:1px 6px}
+.pj-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:0 0 18px}
+.pj-chips{display:flex;gap:8px;flex-wrap:wrap}
+.pj-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;font-size:12.5px;font-weight:600;cursor:pointer;
+  background:var(--glass);border:1px solid var(--glass-border);color:var(--ink-2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:.15s;font-family:inherit}
+.pj-chip .n{font-variant-numeric:tabular-nums;color:var(--ink-3);font-weight:700}
+.pj-chip i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.pj-chip:hover{color:var(--ink)}
+.pj-chip.on{background:var(--acc);border-color:transparent;color:#fff;box-shadow:0 8px 18px -8px rgba(5,150,105,.6)}
+.pj-chip.on .n{color:rgba(255,255,255,.85)}
+.pj-seg{display:inline-flex;background:var(--glass);border:1px solid var(--glass-border);border-radius:11px;padding:3px;gap:2px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.pj-seg button{border:0;background:transparent;color:var(--ink-3);width:34px;height:30px;border-radius:8px;cursor:pointer;display:grid;place-items:center}
+.pj-seg button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.pj-seg button.on{background:var(--bg);color:var(--acc);box-shadow:var(--shadow-card)}
+
+/* Pulse panel — verre */
+.pulse-bar{background:var(--glass);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);
+  border:1px solid var(--glass-border);border-radius:var(--radius-lg, 18px);box-shadow:var(--shadow-card);padding:20px 22px;margin-bottom:16px}
+.pulse-bar::before{background:linear-gradient(90deg,#10B981,#3B82F6,#6366F1,#8B5CF6);background-size:300% 100%}
+.pulse-title{color:var(--ink-2)}
+.pulse-ai-tag{background:var(--ai-light);color:var(--ai);border:1px solid rgba(99,102,241,.2);font-weight:600;cursor:pointer}
+.pulse-cell{background:var(--bg-2);border:1px solid var(--hairline, rgba(12,40,28,.06));border-radius:var(--radius, 12px)}
+.pulse-cell-lbl{color:var(--ink-3)}
+.pulse-cell-val{color:var(--ink)}
+.pulse-cell.is-score{background:var(--bg-2);border-color:var(--hairline, rgba(12,40,28,.06))}
+.pulse-score-num{color:var(--ink)}
+.pulse-score-status{color:var(--ink)}
+.pulse-score-lbl,.pulse-score-help{color:var(--ink-3)}
+
+/* Bande IA « prochaine action » */
+.pj-aiband{display:flex;align-items:center;gap:15px;padding:15px 20px;margin-bottom:14px;
+  background:var(--glass);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);
+  border:1px solid var(--glass-border);border-radius:var(--radius-lg, 18px);box-shadow:var(--shadow-card);position:relative;overflow:hidden}
+.pj-aiband-band{position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(120% 100% at 0% 0%, rgba(99,102,241,.14), transparent 55%),
+  radial-gradient(120% 120% at 100% 0%, rgba(139,92,246,.12), transparent 55%)}
+.pj-aiband-badge{width:40px;height:40px;border-radius:12px;flex:none;background:linear-gradient(140deg,#8B5CF6,#6366F1);
+  display:grid;place-items:center;box-shadow:0 8px 20px -6px rgba(99,102,241,.6), inset 0 1px 0 rgba(255,255,255,.4);position:relative;overflow:hidden;z-index:1}
+.pj-aiband-badge svg{width:20px;height:20px;fill:#fff;position:relative;z-index:1}
+.pj-aiband-badge::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.55) 50%,transparent 70%);
+  transform:translateX(-120%);animation:pjsheen 4.5s ease-in-out infinite}
+@keyframes pjsheen{0%,70%{transform:translateX(-120%)}85%,100%{transform:translateX(120%)}}
+.pj-aiband-txt{position:relative;z-index:1;flex:1;min-width:0}
+.pj-aiband-txt b{font-size:14px;letter-spacing:-.01em;color:var(--ink)}
+.pj-aiband-txt p{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.pj-aiband .go{position:relative;z-index:1;margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:650;
+  color:var(--ai);background:var(--ai-light);border:1px solid rgba(99,102,241,.2);padding:9px 14px;border-radius:11px;cursor:pointer;white-space:nowrap;text-decoration:none}
+.pj-aiband .go svg{width:15px;height:15px;stroke:currentColor;stroke-width:2.3;fill:none}
+.pj-ins-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:24px}
+.pj-ins{display:flex;align-items:flex-start;gap:12px;padding:13px 15px;background:var(--glass);border:1px solid var(--glass-border);
+  border-radius:var(--radius, 12px);box-shadow:var(--shadow-card);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.pj-ins .ic{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:17px;background:var(--ai-light)}
+.pj-ins.tone-success .ic{background:linear-gradient(135deg,#d1fae5,#a7f3d0)}
+.pj-ins.tone-warn .ic{background:linear-gradient(135deg,#fef3c7,#fde68a)}
+.pj-ins.tone-info .ic{background:linear-gradient(135deg,#dbeafe,#bfdbfe)}
+.pj-ins h4{font-size:13px;font-weight:650;color:var(--ink)}
+.pj-ins p{font-size:12px;color:var(--ink-2);line-height:1.45;margin-top:2px}
+.pj-ins p strong{color:var(--ink);font-weight:650}
+
+/* Grille de cartes dossiers */
+.ak-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(390px,1fr));gap:16px;align-items:start;margin-bottom:20px}
+.ak-grid.is-list{grid-template-columns:1fr}
+.ak-grid .folder{margin-bottom:0;background:var(--glass);backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);
+  border:1px solid var(--glass-border);border-radius:var(--radius-lg, 18px);box-shadow:var(--shadow-card);transition:transform .18s ease, box-shadow .18s ease}
+.ak-grid .folder:hover{transform:translateY(-3px);box-shadow:var(--shadow-pop)}
+.ak-grid .folder.is-pinned{box-shadow:var(--shadow-card), 0 0 0 1.5px rgba(224,133,12,.35)}
+.ak-grid .folder-btn{flex-direction:column;align-items:stretch;gap:0;padding:0;position:relative}
+.ak-grid .folder-btn:hover{background:transparent}
+.ak-card-glow{position:absolute;inset:0 0 auto 0;height:3px;border-radius:3px 3px 0 0;z-index:2}
+.ak-card-in{padding:18px 18px 14px}
+.ak-card-top{display:flex;align-items:center;gap:12px}
+.ak-card-fi{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
+.ak-card-fi svg{width:22px;height:22px}
+.ak-card-h{flex:1;min-width:0;text-align:left}
+.ak-card-h b{font-size:15px;font-weight:700;letter-spacing:-.01em;color:var(--ink);display:flex;align-items:center;gap:6px}
+.ak-card-h small{font-size:12px;color:var(--ink-3);display:block;margin-top:1px}
+.ak-status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;flex:none;white-space:nowrap}
+.ak-card-btn-chevron{color:var(--ink-3);transition:transform .22s ease;flex:none}
+.folder.open .ak-card-btn-chevron{transform:rotate(180deg)}
+.ak-card-prog{display:flex;align-items:center;gap:14px;margin:16px 0 6px;text-align:left}
+.ak-ring{width:52px;height:52px;flex:none}
+.ak-ring-lab{flex:1;min-width:0}
+.ak-ring-lab .pct{font-size:19px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink)}
+.ak-ring-lab small{font-size:11.5px;color:var(--ink-3);display:block;margin-top:1px}
+.ak-avatars{display:flex;flex:none}
+.ak-avatars span{width:27px;height:27px;border-radius:50%;border:2px solid var(--bg);margin-left:-8px;display:grid;place-items:center;font-size:10px;font-weight:700;color:#fff}
+.ak-avatars span:first-child{margin-left:0}
+.ak-avatars .more{background:var(--bg-2);color:var(--ink-3);border-color:var(--glass-border)}
+.ak-card-spark-wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px}
+.ak-card-spark-wrap .lbl{font-size:10px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.05em;font-weight:700;white-space:nowrap}
+.ak-card-spark-wrap .ak-sparkline{width:150px;height:30px}
+.ak-card-foot{display:flex;align-items:center;gap:10px;padding:11px 16px;border-top:1px solid var(--hairline, rgba(12,40,28,.06));background:var(--ai-light)}
+.ak-card-foot.is-ok{background:var(--acc-light)}
+.ak-card-foot .fx{width:24px;height:24px;border-radius:7px;background:var(--bg);display:grid;place-items:center;flex:none;box-shadow:var(--shadow-card)}
+.ak-card-foot .fx svg{width:13px;height:13px;stroke:var(--ai);fill:none;stroke-width:2.2}
+.ak-card-foot.is-ok .fx svg{stroke:var(--acc)}
+.ak-card-foot p{font-size:11.5px;color:var(--ink-2);line-height:1.4;text-align:left}
+.ak-card-foot p b{color:var(--ink);font-weight:650}
+/* le corps déroulant (liste projets) garde le style global mais s'arrondit en bas */
+.ak-grid .folder-body{border-radius:0 0 var(--radius-lg,18px) var(--radius-lg,18px)}
+
+/* carte fantôme « nouveau dossier » */
+.ak-ghost{display:grid;place-items:center;min-height:210px;border:1.5px dashed var(--glass-border)!important;background:var(--bg-2)!important;
+  border-radius:var(--radius-lg,18px);text-decoration:none;color:inherit;text-align:center;padding:20px;transition:.18s;box-shadow:none!important}
+.ak-ghost:hover{border-color:var(--acc)!important;transform:translateY(-3px)}
+.ak-ghost .plus{width:46px;height:46px;border-radius:14px;margin:0 auto 12px;display:grid;place-items:center;background:var(--acc-light);color:var(--acc)}
+.ak-ghost b{font-size:14px;color:var(--ink)}
+.ak-ghost p{font-size:12px;color:var(--ink-3);margin-top:4px;max-width:180px}
+
+@media (max-width:820px){
+  .ak-grid{grid-template-columns:1fr}
+  .ak-card-spark-wrap .ak-sparkline{width:120px}
+}
+</style>
+
 <div class="main">
 
   <nav class="crumbs" aria-label="Fil d'Ariane">
@@ -763,8 +891,12 @@ render_sidebar('projets');
         <div class="page-sub"><?= count($folders) ?> dossier<?= count($folders) > 1 ? 's' : '' ?> · <?= (int)$total_active ?> projet<?= $total_active > 1 ? 's' : '' ?> en cours</div>
       <?php endif; ?>
     </div>
+    <div class="pj-head-actions">
+      <label class="pj-search" for="pjSearch">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <input id="pjSearch" type="search" placeholder="Rechercher un dossier…" style="border:0;background:transparent;outline:none;font:inherit;color:var(--ink);min-width:0;flex:1;">
+      </label>
     <?php if ($user['role'] === 'admin' || $can_create): ?>
-    <div class="head-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
       <?php if ($can_create): ?>
         <a href="/nouveau-projet" class="btn btn-primary">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -781,9 +913,34 @@ render_sidebar('projets');
           Archives
         </a>
       <?php endif; ?>
-    </div>
     <?php endif; ?>
+    </div>
   </div>
+
+  <?php
+  // ====== Barre d'outils : filtres par statut + bascule Grille/Liste ======
+  if (!empty($folders)):
+    $cnt_all = count($folders);
+    $cnt_active = 0; $cnt_idle = 0; $cnt_done = 0;
+    foreach ($folders as $__f) {
+      if ((int)$__f['active_count'] > 0) $cnt_active++;
+      if ((int)$__f['done_count'] > 0) $cnt_done++;
+      if ((int)$__f['active_count'] === 0 && (int)$__f['done_count'] === 0) $cnt_idle++;
+    }
+  ?>
+  <div class="pj-toolbar">
+    <div class="pj-chips" id="pjChips">
+      <span class="pj-chip on" data-filter="all">Tous <span class="n"><?= $cnt_all ?></span></span>
+      <span class="pj-chip" data-filter="active"><i style="background:var(--acc)"></i> En cours <span class="n"><?= $cnt_active ?></span></span>
+      <span class="pj-chip" data-filter="idle"><i style="background:var(--ink-4)"></i> En attente <span class="n"><?= $cnt_idle ?></span></span>
+      <span class="pj-chip" data-filter="done"><i style="background:var(--blue, #2F73E8)"></i> Terminés <span class="n"><?= $cnt_done ?></span></span>
+    </div>
+    <div class="pj-seg" id="pjView">
+      <button class="on" data-view="grid" title="Grille" aria-label="Vue grille"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+      <button data-view="list" title="Liste" aria-label="Vue liste"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
+    </div>
+  </div>
+  <?php endif; ?>
 
   <?php if ($flash): ?>
     <div class="alert alert-<?= $flash['type'] === 'error' ? 'error' : 'success' ?>">
@@ -885,19 +1042,35 @@ render_sidebar('projets');
     </div>
   </section>
 
-  <?php // 🤖 INSIGHTS IA AUTO-GÉNÉRÉS ?>
-  <?php if (!empty($ai_insights)): ?>
-  <div class="ai-insights" aria-label="Suggestions IA">
-    <?php foreach ($ai_insights as $ins): ?>
-      <div class="ai-insight tone-<?= h($ins['tone']) ?>">
-        <div class="ai-ins-icon"><?= h($ins['icon']) ?></div>
-        <div class="ai-ins-body">
-          <div class="ai-ins-title"><?= h($ins['title']) ?></div>
-          <div class="ai-ins-text"><?= $ins['body'] /* déjà échappé sauf <strong> intentionnels */ ?></div>
+  <?php // 🤖 COPILOTE IA — bande "prochaine action" + insights secondaires ?>
+  <?php if (!empty($ai_insights)):
+    $ins_main = $ai_insights[0];
+    $ins_rest = array_slice($ai_insights, 1);
+  ?>
+  <section class="pj-aiband">
+    <div class="pj-aiband-band"></div>
+    <span class="pj-aiband-badge"><svg viewBox="0 0 24 24"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2z"/></svg></span>
+    <div class="pj-aiband-txt">
+      <b><?= h($ins_main['title']) ?></b>
+      <p><?= $ins_main['body'] /* déjà échappé sauf <strong> intentionnels */ ?></p>
+    </div>
+    <?php if ($can_create): ?>
+      <a href="/nouveau-projet" class="go">Passer à l'action <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+    <?php endif; ?>
+  </section>
+  <?php if (!empty($ins_rest)): ?>
+  <div class="pj-ins-row" aria-label="Suggestions IA">
+    <?php foreach ($ins_rest as $ins): ?>
+      <div class="pj-ins tone-<?= h($ins['tone']) ?>">
+        <div class="ic"><?= h($ins['icon']) ?></div>
+        <div>
+          <h4><?= h($ins['title']) ?></h4>
+          <p><?= $ins['body'] /* déjà échappé sauf <strong> intentionnels */ ?></p>
         </div>
       </div>
     <?php endforeach; ?>
   </div>
+  <?php endif; ?>
   <?php endif; ?>
 
   <?php endif; // !empty($folders) ?>
@@ -918,6 +1091,7 @@ render_sidebar('projets');
     </div>
   <?php else: ?>
 
+    <section class="ak-grid" id="folderGrid">
     <?php foreach ($folders as $idx => $f):
       $projects = $projects_by_folder[$f['id']] ?? [];
       $is_pinned = !empty($f['is_pinned']);
@@ -926,55 +1100,94 @@ render_sidebar('projets');
       $f_badge = ak_folder_ai_badge($f, $f_activity);
       $f_total_act = array_sum($f_activity);
       $spark_color = $f_badge['color'];
-      // Classe de tendance pour le badge
-      $badge_class = 'is-trend-flat';
-      if ($f_badge['trend'] >= 30) $badge_class = 'is-trend-up';
-      elseif ($f_badge['trend'] <= -30) $badge_class = 'is-trend-warn';
-      if (in_array($f_badge['emoji'], ['⚠️'], true)) $badge_class = 'is-trend-warn';
-      if (in_array($f_badge['emoji'], ['🎯', '🚀'], true)) $badge_class = 'is-trend-up';
+      $avg = (int)$f['avg_progress'];
+
+      // Avatars : initiales des référents distincts des projets du dossier
+      $avatar_inits = [];
+      foreach ($projects as $__pp) {
+          $__ini = trim(mb_strtoupper(mb_substr((string)($__pp['ref_first'] ?? ''), 0, 1) . mb_substr((string)($__pp['ref_last'] ?? ''), 0, 1)));
+          if ($__ini !== '' && !in_array($__ini, $avatar_inits, true)) $avatar_inits[] = $__ini;
+          if (count($avatar_inits) >= 3) break;
+      }
+      $avatar_grads = ['linear-gradient(135deg,#6366F1,#4F46E5)', 'linear-gradient(135deg,#10B981,#059669)', 'linear-gradient(135deg,#F59E0B,#D97706)'];
+
+      // data-states pour les filtres
+      $states = [];
+      if ((int)$f['active_count'] > 0) $states[] = 'active';
+      if ((int)$f['done_count'] > 0) $states[] = 'done';
+      if ((int)$f['active_count'] === 0 && (int)$f['done_count'] === 0) $states[] = 'idle';
+
+      // Prochaine action IA (par dossier)
+      $act7 = array_sum(array_slice($f_activity, 0, 7));
+      $na_ok = false;
+      if ((int)$f['active_count'] === 0 && (int)$f['done_count'] === 0) {
+          $na_txt = 'définir un premier jalon pour lancer le dossier.';
+      } elseif ($f_badge['emoji'] === '🎯') {
+          $na_txt = 'presque terminé — une dernière poussée pour clôturer.'; $na_ok = true;
+      } elseif ($f_badge['emoji'] === '🚀') {
+          $na_txt = 'en accélération — continuez sur cette lancée.'; $na_ok = true;
+      } elseif ($f_badge['emoji'] === '💤' || $act7 === 0) {
+          $na_txt = '14 jours sans mouvement — relancer le référent.';
+      } elseif ($f_badge['emoji'] === '⚠️') {
+          $na_txt = 'activité en baisse — créez une étape pour relancer.';
+      } else {
+          $na_txt = 'avancement stable — gardez le rythme.'; $na_ok = true;
+      }
+      $na_head = $na_ok ? 'Sur la bonne voie —' : 'Prochaine action —';
+      $bc = $f_badge['color'];
     ?>
-    <div class="folder<?= $is_pinned ? ' is-pinned' : '' ?>" id="f<?= (int)$f['id'] ?>" data-folder-id="<?= (int)$f['id'] ?>">
+    <div class="folder<?= $is_pinned ? ' is-pinned' : '' ?>" id="f<?= (int)$f['id'] ?>" data-folder-id="<?= (int)$f['id'] ?>" data-states="<?= implode(' ', $states) ?>" data-name="<?= h(mb_strtolower($f['name'])) ?>">
       <button class="folder-btn" type="button">
-        <div class="folder-icon <?= folder_icon_class($f['color_theme']) ?>">
-          <?= folder_icon_svg($f['color_theme'], $f['icon'] ?? null) ?>
-        </div>
-        <div class="folder-info">
-          <div class="folder-name">
-            <?= h($f['name']) ?>
-            <?php if ($is_pinned): ?>
-              <span title="Dossier épinglé" style="font-size:13px; margin-left:6px;">📌</span>
-            <?php endif; ?>
-            <?php // 🤖 Badge IA contextuel ?>
-            <span class="ak-folder-badge <?= $badge_class ?>" style="margin-left:8px;" title="<?= $f_total_act ?> action<?= $f_total_act > 1 ? 's' : '' ?> sur 14 jours<?= $f_badge['trend'] != 0 ? ' · tendance ' . ($f_badge['trend'] > 0 ? '+' : '') . $f_badge['trend'] . '%' : '' ?>">
-              <span class="emoji"><?= h($f_badge['emoji']) ?></span>
-              <span><?= h($f_badge['label']) ?></span>
+        <span class="ak-card-glow" style="background:linear-gradient(90deg,<?= h($bc) ?>,<?= h($bc) ?>)"></span>
+        <div class="ak-card-in">
+          <div class="ak-card-top">
+            <span class="ak-card-fi folder-icon <?= folder_icon_class($f['color_theme']) ?>">
+              <?= folder_icon_svg($f['color_theme'], $f['icon'] ?? null) ?>
             </span>
+            <div class="ak-card-h">
+              <b><?= h($f['name']) ?><?php if ($is_pinned): ?> <span title="Dossier épinglé" style="font-size:12px">📌</span><?php endif; ?></b>
+              <small>
+                <?= (int)$f['active_count'] + (int)$f['done_count'] ?> projet<?= ((int)$f['active_count'] + (int)$f['done_count']) > 1 ? 's' : '' ?><?php if ($f['done_count'] > 0): ?> · <?= (int)$f['done_count'] ?> terminé<?= $f['done_count'] > 1 ? 's' : '' ?><?php endif; ?><?php if ($can_view_finances): ?> · <?= h(format_budget($f['total_budget'])) ?><?php endif; ?>
+              </small>
+            </div>
+            <span class="ak-status" style="background:<?= h($bc) ?>1a;color:<?= h($bc) ?>" title="<?= $f_total_act ?> action<?= $f_total_act > 1 ? 's' : '' ?> sur 14 jours"><?= h($f_badge['emoji']) ?> <?= h($f_badge['label']) ?></span>
+            <svg class="folder-toggle ak-card-btn-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
-          <div class="folder-meta">
-            <span><?= (int)$f['active_count'] + (int)$f['done_count'] ?> projet<?= ((int)$f['active_count'] + (int)$f['done_count']) > 1 ? 's' : '' ?></span>
-            <?php if ($f['done_count'] > 0): ?>
-              <span class="dot">·</span>
-              <span><?= (int)$f['done_count'] ?> terminé<?= $f['done_count'] > 1 ? 's' : '' ?></span>
-            <?php endif; ?>
-            <span class="dot">·</span>
-            <span><?= (int)$f['total_participants'] ?> participants</span>
-            <?php if ($can_view_finances): ?>
-            <span class="dot">·</span>
-            <span>Budget <?= h(format_budget($f['total_budget'])) ?></span>
-            <?php endif; ?>
+          <div class="ak-card-prog">
+            <svg class="ak-ring" viewBox="0 0 42 42">
+              <circle cx="21" cy="21" r="16" fill="none" stroke="var(--hairline, rgba(12,40,28,.06))" stroke-width="5"/>
+              <circle cx="21" cy="21" r="16" fill="none" stroke="<?= h($bc) ?>" stroke-width="5" stroke-linecap="round" pathLength="100" stroke-dasharray="<?= max(0, min(100, $avg)) ?> 100" transform="rotate(-90 21 21)"/>
+              <text x="21" y="24.6" text-anchor="middle" font-size="10" font-weight="800" fill="var(--ink)"><?= $avg ?>%</text>
+            </svg>
+            <div class="ak-ring-lab">
+              <div class="pct"><?= $avg ?> %</div>
+              <small>avancement moyen</small>
+            </div>
+            <div class="ak-avatars">
+              <?php foreach ($avatar_inits as $__i => $__ini): ?>
+                <span style="background:<?= $avatar_grads[$__i % count($avatar_grads)] ?>"><?= h($__ini) ?></span>
+              <?php endforeach; ?>
+              <?php if ((int)$f['total_participants'] > 0): ?>
+                <span class="more">+<?= (int)$f['total_participants'] ?></span>
+              <?php elseif (empty($avatar_inits)): ?>
+                <span class="more">0</span>
+              <?php endif; ?>
+            </div>
+          </div>
+          <div class="ak-card-spark-wrap">
+            <span class="lbl">Activité 14j</span>
+            <?= ak_render_sparkline($f_activity, $spark_color, 150, 30) ?>
           </div>
         </div>
-        <div class="folder-stats">
-          <?php // 🤖 Sparkline 14 jours ?>
-          <div class="ak-folder-spark">
-            <div class="ak-folder-spark-lbl">Activité 14j</div>
-            <?= ak_render_sparkline($f_activity, $spark_color) ?>
-          </div>
-          <div class="folder-pct-wrap">
-            <div class="folder-pct-lbl">Moyenne</div>
-            <div class="folder-pct-big"><?= (int)$f['avg_progress'] ?> %</div>
-          </div>
-          <svg class="folder-toggle" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <div class="ak-card-foot<?= $na_ok ? ' is-ok' : '' ?>">
+          <span class="fx">
+            <?php if ($na_ok): ?>
+              <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+            <?php else: ?>
+              <svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.9L18.7 9l-4.9 1.8L12 15l-1.8-4.2L5.3 9l4.9-1.1z"/></svg>
+            <?php endif; ?>
+          </span>
+          <p><b><?= $na_head ?></b> <?= h($na_txt) ?></p>
         </div>
       </button>
 
@@ -1066,9 +1279,59 @@ render_sidebar('projets');
     </div>
     <?php endforeach; ?>
 
+    <?php if ($is_admin): ?>
+    <a href="/nouveau-dossier" class="ak-ghost" id="pjGhost">
+      <span class="plus"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      <b>Nouveau dossier</b>
+      <p>Regroupez vos projets par thème ou par financeur.</p>
+    </a>
+    <?php endif; ?>
+    </section>
+
   <?php endif; ?>
 
 </div>
+
+<script>
+// ============================================================
+// PROJETS 2.0 — filtres (chips), recherche, bascule grille/liste
+// ============================================================
+(function(){
+  var grid = document.getElementById('folderGrid');
+  if (!grid) return;
+  var cards = Array.prototype.slice.call(grid.querySelectorAll('.folder'));
+  var ghost = document.getElementById('pjGhost');
+  var chips = document.getElementById('pjChips');
+  var search = document.getElementById('pjSearch');
+  var view = document.getElementById('pjView');
+  var curFilter = 'all', curQuery = '';
+
+  function apply(){
+    cards.forEach(function(c){
+      var states = (c.getAttribute('data-states') || '').split(' ');
+      var name = c.getAttribute('data-name') || '';
+      var okFilter = (curFilter === 'all') || states.indexOf(curFilter) !== -1;
+      var okQuery = (curQuery === '') || name.indexOf(curQuery) !== -1;
+      c.style.display = (okFilter && okQuery) ? '' : 'none';
+    });
+    if (ghost) ghost.style.display = (curFilter === 'all' && curQuery === '') ? '' : 'none';
+  }
+  if (chips) chips.addEventListener('click', function(e){
+    var chip = e.target.closest('.pj-chip'); if (!chip) return;
+    chips.querySelectorAll('.pj-chip').forEach(function(x){ x.classList.remove('on'); });
+    chip.classList.add('on');
+    curFilter = chip.getAttribute('data-filter') || 'all';
+    apply();
+  });
+  if (search) search.addEventListener('input', function(){ curQuery = this.value.trim().toLowerCase(); apply(); });
+  if (view) view.addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    view.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+    grid.classList.toggle('is-list', b.getAttribute('data-view') === 'list');
+  });
+})();
+</script>
 
 <script>
 // ============================================================
