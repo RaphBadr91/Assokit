@@ -224,93 +224,105 @@ $current_user_id = (int) ($_SESSION['user_id'] ?? 0);
   Guide & Aide
 </button>
 
-<!-- ========== MODAL GUIDE ONBOARDING ========== -->
-<div id="ak-onboarding-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.55); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px; animation:akFadeIn 0.2s ease;">
-  <div style="background:white; border-radius:20px; max-width:540px; width:100%; max-height:92vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.25); position:relative; animation:akScaleIn 0.25s ease;">
+<!-- ========== MODAL GUIDE ONBOARDING (2.0 Liquid Glass) ========== -->
+<div id="ak-onboarding-modal" class="ak-ob">
+  <div class="ak-ob-card">
 
     <!-- Bouton fermer -->
-    <button type="button" onclick="akOnboardingClose()"
-            style="position:absolute; top:16px; right:16px; background:transparent; border:none; width:32px; height:32px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#78716C; z-index:2; font-size:20px; transition:background 0.15s;"
-            onmouseover="this.style.background='#F5F5F4'" onmouseout="this.style.background='transparent'"
-            title="Fermer">✕</button>
+    <button type="button" onclick="akOnboardingClose()" class="ak-ob-x" title="Fermer" aria-label="Fermer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
 
     <!-- Corps -->
-    <div style="padding:36px 32px 24px; text-align:center;">
-
-      <!-- Illustration SVG dans un cercle vert clair -->
-      <div id="ak-step-icon" style="width:140px; height:140px; margin:0 auto 20px;">
-        <?= $steps[0]['svg'] ?>
-      </div>
+    <div class="ak-ob-body">
+      <!-- Illustration SVG (médaillon) -->
+      <div id="ak-step-icon" class="ak-ob-medal"><?= $steps[0]['svg'] ?></div>
 
       <!-- Titre -->
-      <h2 id="ak-step-title" style="font-size:22px; font-weight:600; color:#1C1917; margin:0 0 12px; letter-spacing:-0.02em; line-height:1.3;">
+      <h2 id="ak-step-title" class="ak-ob-title">
         <?= $steps[0]['icon'] ?> <?= htmlspecialchars($steps[0]['title']) ?>
       </h2>
 
       <!-- Description -->
-      <div id="ak-step-desc" style="font-size:14px; line-height:1.65; color:#44403C; margin-bottom:18px; max-width:420px; margin-left:auto; margin-right:auto;">
-        <?= $steps[0]['desc'] ?>
-      </div>
+      <div id="ak-step-desc" class="ak-ob-desc"><?= $steps[0]['desc'] ?></div>
 
       <!-- Tip -->
-      <div id="ak-step-tip-wrap" style="background:#ECFDF5; border:1px solid #A7F3D0; border-radius:10px; padding:12px 16px; margin-bottom:22px; text-align:left; font-size:13px; line-height:1.55; color:#065F46;">
+      <div id="ak-step-tip-wrap" class="ak-ob-tip">
         <div id="ak-step-tip"><?= $steps[0]['tip'] ?></div>
       </div>
 
-      <!-- Progression (petits cercles) -->
-      <div style="display:flex; justify-content:center; gap:8px; margin-bottom:24px;">
+      <!-- Progression (points) -->
+      <div class="ak-ob-dots">
         <?php for ($i = 0; $i < $total_steps; $i++): ?>
           <span class="ak-dot" data-step="<?= $i ?>" onclick="akOnboardingGoTo(<?= $i ?>)"
-                style="width:8px; height:8px; border-radius:50%; background:<?= $i === 0 ? '#059669' : '#E7E5E4' ?>; transition:all 0.25s; cursor:pointer;"></span>
+                style="width:<?= $i === 0 ? '26px' : '9px' ?>; height:9px; border-radius:<?= $i === 0 ? '6px' : '50%' ?>; background:<?= $i === 0 ? 'linear-gradient(90deg,#10B981,#059669)' : 'var(--ak-ob-dot,#E7E5E4)' ?>; transition:all 0.25s; cursor:pointer; display:inline-block;"></span>
         <?php endfor; ?>
       </div>
 
       <!-- Navigation -->
-      <div style="display:flex; gap:10px; justify-content:space-between; align-items:center;">
-        <button type="button" id="ak-btn-prev" onclick="akOnboardingPrev()"
-                style="padding:10px 18px; background:transparent; color:#78716C; border:1px solid #D6D3D1; border-radius:10px; font-family:inherit; font-size:13.5px; cursor:pointer; visibility:hidden; transition:all 0.15s;"
-                onmouseover="this.style.background='#F5F5F4'" onmouseout="this.style.background='transparent'">
-          ← Précédent
-        </button>
-
-        <div id="ak-step-counter" style="font-size:12px; color:#A8A29E; font-weight:500;">
-          Étape 1 sur <?= $total_steps ?>
-        </div>
-
-        <button type="button" id="ak-btn-next" onclick="akOnboardingNext()"
-                style="padding:10px 22px; background:#059669; color:white; border:none; border-radius:10px; font-family:inherit; font-size:13.5px; font-weight:500; cursor:pointer; transition:background 0.15s;"
-                onmouseover="this.style.background='#047857'" onmouseout="this.style.background='#059669'">
-          Suivant →
-        </button>
+      <div class="ak-ob-nav">
+        <button type="button" id="ak-btn-prev" onclick="akOnboardingPrev()" class="ak-ob-prev" style="visibility:hidden;">← Précédent</button>
+        <div id="ak-step-counter" class="ak-ob-counter">Étape 1 sur <?= $total_steps ?></div>
+        <button type="button" id="ak-btn-next" onclick="akOnboardingNext()" class="ak-ob-next">Suivant →</button>
       </div>
     </div>
 
     <!-- Footer avec skip -->
-    <div style="border-top:1px solid #F5F5F4; padding:14px 24px; text-align:center; background:#FAFAF9; border-radius:0 0 20px 20px;">
-      <button type="button" onclick="akOnboardingSkip()"
-              style="background:transparent; border:none; color:#A8A29E; font-size:12px; cursor:pointer; font-family:inherit; transition:color 0.15s;"
-              onmouseover="this.style.color='#059669'" onmouseout="this.style.color='#A8A29E'">
-        Passer le guide
-      </button>
+    <div class="ak-ob-foot">
+      <button type="button" onclick="akOnboardingSkip()" class="ak-ob-skip">Passer le guide</button>
     </div>
 
   </div>
 </div>
 
 <style>
-@keyframes akFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes akFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes akScaleIn { from { opacity: 0; transform: translateY(16px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes akMedalFloat { 0%,100%{ transform: translateY(0);} 50%{ transform: translateY(-6px);} }
+/* backdrop : voile + mesh vert/indigo flouté */
+.ak-ob{
+  display:none; position:fixed; inset:0; z-index:9999; padding:20px;
+  align-items:center; justify-content:center;
+  background:
+    radial-gradient(50% 45% at 15% 10%, rgba(16,185,129,.28), transparent 60%),
+    radial-gradient(45% 40% at 88% 6%, rgba(99,102,241,.24), transparent 62%),
+    rgba(6,20,14,.55);
+  backdrop-filter:blur(8px) saturate(1.1); -webkit-backdrop-filter:blur(8px) saturate(1.1);
+  animation:akFadeIn .22s ease;
 }
-@keyframes akScaleIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+#ak-onboarding-modal.open{ display:flex !important; }
+.ak-ob-card{
+  position:relative; width:100%; max-width:520px; max-height:92vh; overflow-y:auto;
+  background:var(--surface, rgba(255,255,255,.86)); backdrop-filter:blur(30px) saturate(1.6); -webkit-backdrop-filter:blur(30px) saturate(1.6);
+  border:1px solid var(--glass-border, rgba(255,255,255,.85)); border-radius:26px;
+  box-shadow:0 4px 10px rgba(9,30,22,.07), 0 50px 100px -30px rgba(9,30,22,.5);
+  animation:akScaleIn .4s cubic-bezier(.2,.9,.3,1.2) both;
 }
-#ak-onboarding-modal.open { display: flex !important; }
-@media (max-width: 520px) {
-  #ak-onboarding-modal > div { max-height: 100vh; border-radius: 16px; }
-  #ak-step-icon { width: 100px !important; height: 100px !important; }
-}
+.ak-ob-card::before{ content:""; position:absolute; inset:0 0 auto 0; height:34%; background:linear-gradient(180deg, var(--glass-hi, rgba(255,255,255,.9)), transparent); opacity:.55; pointer-events:none; border-radius:26px 26px 0 0; }
+.ak-ob-x{ position:absolute; top:18px; right:18px; width:34px; height:34px; border-radius:10px; border:0; background:transparent; color:var(--ink-3,#78716C); cursor:pointer; display:grid; place-items:center; z-index:2; transition:background .15s; }
+.ak-ob-x:hover{ background:var(--brand-soft, rgba(5,150,105,.1)); color:var(--ink,#1C1917); }
+.ak-ob-x svg{ width:19px; height:19px; }
+.ak-ob-body{ padding:38px 36px 24px; text-align:center; position:relative; }
+.ak-ob-medal{ width:134px; height:134px; margin:6px auto 22px; filter:drop-shadow(0 18px 34px rgba(5,150,105,.35)); animation:akMedalFloat 5s ease-in-out infinite; }
+.ak-ob-title{ font-size:24px; font-weight:800; color:var(--ink,#1C1917); margin:0 0 12px; letter-spacing:-.02em; line-height:1.25; text-wrap:balance; }
+.ak-ob-desc{ font-size:15px; line-height:1.6; color:var(--ink-2,#44403C); margin:0 auto 20px; max-width:420px; }
+.ak-ob-desc strong{ color:var(--ink,#1C1917); font-weight:650; }
+.ak-ob-tip{ text-align:left; font-size:13.5px; line-height:1.5; color:var(--brand-ink,#065F46); font-weight:550;
+  background:var(--brand-soft, rgba(16,185,129,.1)); border:1px solid var(--brand-soft-2, rgba(16,185,129,.28)); border-radius:15px; padding:14px 18px; margin:0 0 24px; }
+.ak-ob-tip strong{ color:var(--brand-ink,#065F46); font-weight:750; }
+.ak-ob-dots{ display:flex; justify-content:center; gap:8px; margin-bottom:26px; }
+.ak-ob-nav{ display:flex; gap:12px; justify-content:space-between; align-items:center; }
+.ak-ob-prev{ padding:12px 18px; background:transparent; color:var(--ink-3,#78716C); border:1px solid var(--border, #D6D3D1); border-radius:12px; font-family:inherit; font-size:13.5px; font-weight:600; cursor:pointer; transition:background .15s; }
+.ak-ob-prev:hover{ background:var(--bg-2, #F5F5F4); color:var(--ink); }
+.ak-ob-counter{ font-size:13px; color:var(--ink-3,#A8A29E); font-weight:600; }
+.ak-ob-next{ padding:14px 26px; background:linear-gradient(140deg,#10B981,#059669); color:#fff; border:0; border-radius:14px; font-family:inherit; font-size:15px; font-weight:700; cursor:pointer;
+  box-shadow:0 14px 28px -10px rgba(5,150,105,.65), inset 0 1px 0 rgba(255,255,255,.35); transition:transform .12s ease, box-shadow .15s ease; }
+.ak-ob-next:hover{ transform:translateY(-1px); box-shadow:0 18px 34px -12px rgba(5,150,105,.7), inset 0 1px 0 rgba(255,255,255,.35); }
+.ak-ob-foot{ border-top:1px solid var(--hairline, #F0EFEC); padding:18px; text-align:center; }
+.ak-ob-skip{ background:transparent; border:0; color:var(--ink-3,#A8A29E); font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; transition:color .15s; }
+.ak-ob-skip:hover{ color:var(--brand,#059669); }
+@media (prefers-reduced-motion:reduce){ .ak-ob-medal{ animation:none; } }
+@media (max-width: 520px){ .ak-ob-card{ max-height:100vh; border-radius:18px; } .ak-ob-medal{ width:104px; height:104px; } .ak-ob-body{ padding:30px 22px 20px; } }
 </style>
 
 <script>
@@ -389,9 +401,10 @@ $current_user_id = (int) ($_SESSION['user_id'] ?? 0);
     document.getElementById('ak-step-counter').textContent = 'Étape ' + (akCurrent + 1) + ' sur ' + akTotal;
 
     document.querySelectorAll('.ak-dot').forEach((dot, i) => {
-      dot.style.background = i === akCurrent ? '#059669' : (i < akCurrent ? '#A7F3D0' : '#E7E5E4');
-      dot.style.width = i === akCurrent ? '22px' : '8px';
-      dot.style.borderRadius = i === akCurrent ? '4px' : '50%';
+      dot.style.background = i === akCurrent ? 'linear-gradient(90deg,#10B981,#059669)' : (i < akCurrent ? '#6EE7B7' : 'var(--ak-ob-dot,#E7E5E4)');
+      dot.style.width = i === akCurrent ? '26px' : '9px';
+      dot.style.height = '9px';
+      dot.style.borderRadius = i === akCurrent ? '6px' : '50%';
     });
 
     const btnPrev = document.getElementById('ak-btn-prev');
