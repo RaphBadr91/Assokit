@@ -96,6 +96,53 @@ render_head('Adhérents');
 render_sidebar('adherents');
 ?>
 
+<style>
+/* ============================================================
+   ADHÉRENTS 2.0 — surcouche premium Liquid Glass (maquette)
+   ============================================================ */
+.main{max-width:1200px}
+.main .page-title{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1;color:var(--ink)}
+.main .page-sub{font-size:13.5px;color:var(--ink-2);margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.main .page-sub::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;background:#10B981;box-shadow:0 0 0 4px var(--acc-light,rgba(5,150,105,.12))}
+
+/* KPI en verre + liseré coloré */
+.stats-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px}
+.stats-bar .metric{position:relative;overflow:hidden;background:var(--glass);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--glass-border);border-radius:var(--radius-lg,18px);padding:16px 18px;box-shadow:var(--shadow-card);transition:transform .18s ease,box-shadow .18s ease}
+.stats-bar .metric:hover{transform:translateY(-2px);box-shadow:var(--shadow-pop)}
+.stats-bar .metric::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;border-radius:3px 3px 0 0}
+.stats-bar .metric:nth-child(1)::before{background:linear-gradient(90deg,#34D399,#059669)}
+.stats-bar .metric:nth-child(2)::before{background:linear-gradient(90deg,#FBBF24,#E0850C)}
+.stats-bar .metric:nth-child(3)::before{background:linear-gradient(90deg,#8B5CF6,#6366F1)}
+.stats-bar .metric:nth-child(4)::before{background:linear-gradient(90deg,#60A5FA,#2F73E8)}
+.stats-bar .metric-lbl{font-size:12px;color:var(--ink-3);font-weight:600}
+.stats-bar .metric-val{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1;margin-top:10px;color:var(--ink);font-variant-numeric:tabular-nums}
+.stats-bar .metric-sub{font-size:11.5px;color:var(--ink-3);margin-top:8px}
+.stats-bar .metric-sub.up{color:var(--acc,#059669);font-weight:600}
+
+/* Recherche + filtres en verre */
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.toolbar .search-wrap{flex:1;min-width:220px;display:flex;align-items:center;gap:10px;padding:12px 15px;border-radius:var(--radius,12px);background:var(--glass);border:1px solid var(--glass-border);color:var(--ink-3);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:var(--shadow-card)}
+.toolbar .search-wrap svg{stroke:var(--ink-3);flex:none}
+.toolbar .search-input{border:0;background:transparent;outline:none;font:inherit;font-size:13.5px;color:var(--ink);width:100%}
+.toolbar .filter-chips{display:flex;gap:8px;flex-wrap:wrap}
+.toolbar .filter-chips .chip{padding:9px 15px;border-radius:999px;font-size:12.5px;font-weight:600;text-decoration:none;background:var(--glass);border:1px solid var(--glass-border);color:var(--ink-2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.toolbar .filter-chips .chip.active{background:var(--ink);border-color:transparent;color:var(--bg);box-shadow:var(--shadow-card)}
+
+/* Liste en verre */
+.list{background:var(--glass);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--glass-border);border-radius:var(--radius-lg,18px);box-shadow:var(--shadow-card);padding:6px;overflow:hidden}
+.list .adh-row{border-radius:14px;transition:background .15s ease}
+.list .adh-row:hover{background:var(--bg-2)}
+.list .list-row-header{background:transparent}
+.adh-avatar{border-radius:50%!important}
+.adh-role-badge{font-size:11px;font-weight:700;padding:4px 11px;border-radius:999px}
+.adh-role-badge.role-admin{background:rgba(224,133,12,.14);color:#B45309}
+.adh-role-badge.role-coordinator{background:var(--ai-light,rgba(99,102,241,.12));color:var(--ai-dark,#4338CA)}
+.adh-role-badge.role-referent{background:var(--acc-light,rgba(5,150,105,.12));color:var(--acc-dark,#047857)}
+.adh-role-badge.role-member{background:rgba(47,115,232,.12);color:#2F73E8}
+@media (prefers-color-scheme:dark){.adh-role-badge.role-admin{color:#F5B342}.adh-role-badge.role-member{color:#6AA1FF}}
+@media (max-width:900px){.stats-bar{grid-template-columns:1fr 1fr}}
+</style>
+
 <div class="main">
 
   <nav class="crumbs">
