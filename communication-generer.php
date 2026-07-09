@@ -489,6 +489,20 @@ $types_config = [
         'prompt_template' => "Rédige une lettre de partenariat de \"{nom_asso}\" vers \"{nom_entreprise}\".\n\n=== ENTREPRISE ===\n{nom_entreprise}\nInterlocuteur : {interlocuteur}\n\n=== TYPE ===\n{type_partenariat}\nMontant : {montant_souhaite}\n\n=== PROJET ===\n{projet_concerne}\n\n=== POURQUOI VOUS ===\n{arguments_alignement}\n\n=== CONTREPARTIES ===\n{contreparties_proposees}\n\n=== HISTORIQUE ===\n{historique_partenariat}\n\n=== SIGNATAIRE ===\n{prenom_user} {nom_user}, Président(e) de {nom_asso}\n\nProduis une lettre business : (1) en-tête + destinataire, (2) accroche personnalisée qui montre que tu connais l'entreprise, (3) présentation brève et impactante de l'asso (mission + chiffres clés), (4) projet à soutenir (besoin, objectifs, public), (5) ARGUMENTAIRE D'ALIGNEMENT spécifique entreprise-asso, (6) demande précise (type + montant), (7) rappel mécanisme fiscal (mécénat 60% IS) si financier, (8) CONTREPARTIES détaillées, (9) proposition de RDV, (10) formule de politesse, (11) signature. 500-700 mots. Ton partenarial.",
     ],
 
+    // ========== RÉDACTION LIBRE (composer IA) ==========
+    'libre' => [
+        'title' => 'Rédaction IA',
+        'icon'  => '✨',
+        'category' => 'autre',
+        'fields' => [
+            'demande'  => ['label' => 'Votre demande', 'type' => 'textarea', 'required' => true, 'rows' => 5, 'placeholder' => "Décrivez ce que vous voulez rédiger…"],
+            'ton'      => ['label' => 'Ton', 'type' => 'select', 'options' => ['Formel', 'Chaleureux', 'Neutre', 'Dynamique']],
+            'format'   => ['label' => 'Format', 'type' => 'select', 'options' => ['Email', 'Courrier', 'Réseaux sociaux', 'Note interne']],
+            'longueur' => ['label' => 'Longueur', 'type' => 'select', 'options' => ['Standard', 'Court', 'Détaillé']],
+        ],
+        'system' => "Tu es l'assistant de communication d'une association loi 1901. À partir de la demande de l'utilisateur, tu rédiges un document complet, professionnel et prêt à l'emploi, en français. Tu respectes le ton, le format et la longueur demandés. Tu structures clairement (objet, corps, formule de politesse, signature si pertinent). Tu n'inventes jamais d'informations factuelles manquantes (dates, montants, noms) : utilise des crochets [à compléter] plutôt que d'inventer.",
+        'prompt_template' => "Rédige un document de communication pour l'association \"{nom_asso}\".\n\n=== DEMANDE ===\n{demande}\n\n=== CONSIGNES ===\n- Ton : {ton}\n- Format : {format}\n- Longueur : {longueur}\n\n=== SIGNATAIRE ÉVENTUEL ===\n{prenom_user} {nom_user}\n\nProduis un texte complet, bien structuré et prêt à envoyer. Adapte la mise en forme au format demandé. Si des informations précises manquent, utilise des crochets [à compléter] plutôt que d'inventer.",
+    ],
 
 ];
 

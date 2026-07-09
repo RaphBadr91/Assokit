@@ -37,6 +37,14 @@ $stmt = $pdo->prepare("SELECT COUNT(*) FROM communication_campaigns WHERE org_id
 $stmt->execute([$org_id]);
 $nb_ai = (int) $stmt->fetchColumn();
 
+// Dernières générations (pour la reprise rapide)
+$recent_campaigns = [];
+try {
+    $stmt = $pdo->prepare("SELECT id, title, status, created_at FROM communication_campaigns WHERE org_id = ? ORDER BY created_at DESC LIMIT 3");
+    $stmt->execute([$org_id]);
+    $recent_campaigns = $stmt->fetchAll();
+} catch (Throwable $e) { $recent_campaigns = []; }
+
 // Stats V2 diffusion
 $nb_broadcasts = 0;
 try {
@@ -158,6 +166,61 @@ render_sidebar('communication');
   </div>
 
   <?php if ($tab === 'rediger'): ?>
+
+    <!-- ===== COMPOSER IA (rédaction libre) ===== -->
+    <section class="comm-composer">
+      <div class="comm-composer-band" aria-hidden="true"></div>
+      <form method="POST" action="/communication-generer?type=libre" class="comm-composer-in">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
+        <div class="comm-composer-head">
+          <span class="comm-composer-badge"><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 2l2.2 6.1L20.5 10l-6.3 1.9L12 18l-2.2-6.1L3.5 10l6.3-1.9z"/></svg></span>
+          <div><b>Que voulez-vous rédiger&nbsp;?</b><small>Décrivez votre besoin — Assokit rédige, vous validez.</small></div>
+        </div>
+        <textarea name="demande" id="commDemande" class="comm-composer-field" rows="3" required
+                  placeholder="Ex. « Convocation à l'AG ordinaire le 15 mars à 18h, salle des fêtes, avec vote du budget »"></textarea>
+        <div class="comm-composer-row">
+          <div class="comm-selects">
+            <label class="comm-sel">Ton
+              <select name="ton"><option>Formel</option><option>Chaleureux</option><option>Neutre</option><option>Dynamique</option></select>
+            </label>
+            <label class="comm-sel">Format
+              <select name="format"><option>Email</option><option>Courrier</option><option>Réseaux sociaux</option><option>Note interne</option></select>
+            </label>
+            <label class="comm-sel">Longueur
+              <select name="longueur"><option>Standard</option><option>Court</option><option>Détaillé</option></select>
+            </label>
+          </div>
+          <button type="submit" class="comm-gen-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="17" height="17"><path d="M12 2l2.2 6.1L20.5 10l-6.3 1.9L12 18l-2.2-6.1L3.5 10l6.3-1.9z"/></svg>
+            Générer avec l'IA
+          </button>
+        </div>
+        <div class="comm-quick">
+          <span class="lbl">Rapide&nbsp;:</span>
+          <button type="button" class="comm-qchip" data-fill="Convocation à l'assemblée générale ordinaire le [date] à [heure], [lieu], avec l'ordre du jour suivant : rapport moral, rapport financier, questions diverses.">🏛️ Convocation AG</button>
+          <button type="button" class="comm-qchip" data-fill="Appel à dons pour financer [projet]. Objectif : [montant]. Expliquer à quoi servira l'argent et rappeler la déduction fiscale de 66%.">💰 Appel à dons</button>
+          <button type="button" class="comm-qchip" data-fill="Newsletter du mois de [mois] : actualité phare, retour sur les événements passés, événements à venir et un appel à l'action.">📰 Newsletter</button>
+          <button type="button" class="comm-qchip" data-fill="Lettre de remerciement chaleureuse pour un donateur ayant donné [montant] le [date], avec mention du reçu fiscal.">🙏 Remerciement</button>
+          <button type="button" class="comm-qchip" data-fill="Message aux adhérents pour annoncer [information importante] et inviter à [action].">📢 Annonce adhérents</button>
+        </div>
+      </form>
+    </section>
+
+    <?php if (!empty($recent_campaigns)): ?>
+    <div class="comm-sec-h2"><b>Vos dernières générations</b><a href="/communication?tab=bibliotheque">Tout voir →</a></div>
+    <section class="comm-recents">
+      <?php foreach ($recent_campaigns as $rc):
+        $rc_sent = ($rc['status'] ?? '') === 'sent';
+      ?>
+        <a href="/communication?tab=bibliotheque" class="comm-recent">
+          <div class="comm-recent-t"><span class="comm-recent-i">✨</span><h4><?= h($rc['title']) ?></h4></div>
+          <p><span class="comm-recent-badge<?= $rc_sent ? '' : ' draft' ?>"><?= $rc_sent ? 'Envoyé' : 'Brouillon' ?></span> · <?= h(date('d/m/Y', strtotime($rc['created_at']))) ?></p>
+        </a>
+      <?php endforeach; ?>
+    </section>
+    <?php endif; ?>
+
+    <div class="comm-sec-h2"><b>Ou partez d'un modèle</b></div>
 
     <?php foreach ($catalog as $cat_key => $cat): ?>
       <section class="comm-section">
@@ -464,6 +527,58 @@ render_sidebar('communication');
 .comm-card-cta{font-weight:650;color:var(--brand-ink,#047857)}
 @media (max-width:960px){.comm-grid{grid-template-columns:1fr 1fr}}
 @media (max-width:560px){.comm-grid{grid-template-columns:1fr}}
+
+/* ===== Composer IA + Récents ===== */
+.comm-composer{position:relative;overflow:hidden;margin-bottom:22px;background:var(--glass);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--glass-border);border-radius:var(--radius-lg,18px);box-shadow:var(--shadow-card)}
+.comm-composer-band{position:absolute;inset:0;pointer-events:none;background:radial-gradient(130% 100% at 0% 0%,rgba(99,102,241,.15),transparent 55%),radial-gradient(120% 120% at 100% 0%,rgba(16,185,129,.13),transparent 55%)}
+.comm-composer-in{position:relative;padding:22px 24px 20px}
+.comm-composer-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.comm-composer-badge{width:40px;height:40px;border-radius:12px;flex:none;background:linear-gradient(140deg,#8B5CF6,#6366F1);display:grid;place-items:center;color:#fff;box-shadow:0 10px 22px -8px rgba(99,102,241,.6),inset 0 1px 0 rgba(255,255,255,.4);position:relative;overflow:hidden}
+.comm-composer-badge svg{position:relative;z-index:1}
+.comm-composer-badge::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.55) 50%,transparent 70%);transform:translateX(-120%);animation:commSheen 4.5s ease-in-out infinite}
+@keyframes commSheen{0%,70%{transform:translateX(-120%)}85%,100%{transform:translateX(120%)}}
+.comm-composer-head b{font-size:16px;letter-spacing:-.01em;color:var(--ink)}
+.comm-composer-head small{display:block;color:var(--ink-3);font-size:12.5px;margin-top:1px}
+.comm-composer-field{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:15px 17px;font:inherit;font-size:15px;color:var(--ink);resize:vertical;min-height:70px;box-shadow:var(--shadow-sm);outline:none}
+.comm-composer-field:focus{border-color:var(--ai,#6366F1);box-shadow:0 0 0 4px var(--ai-light,rgba(99,102,241,.1))}
+.comm-composer-row{display:flex;align-items:flex-end;gap:12px;margin-top:14px;flex-wrap:wrap}
+.comm-selects{display:flex;gap:8px;flex-wrap:wrap}
+.comm-sel{display:inline-flex;flex-direction:column;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);gap:4px}
+.comm-sel select{font:inherit;font-size:13px;font-weight:600;color:var(--ink);background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:8px 11px;cursor:pointer;text-transform:none;letter-spacing:0}
+.comm-gen-btn{margin-left:auto;display:inline-flex;align-items:center;gap:9px;padding:13px 22px;border-radius:13px;border:0;cursor:pointer;font-size:14.5px;font-weight:700;color:#fff;background:linear-gradient(140deg,#8B5CF6,#6366F1);box-shadow:0 12px 26px -8px rgba(99,102,241,.6),inset 0 1px 0 rgba(255,255,255,.35);transition:transform .12s ease}
+.comm-gen-btn:hover{transform:translateY(-1px)}
+.comm-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}
+.comm-quick .lbl{font-size:12px;color:var(--ink-3);font-weight:600}
+.comm-qchip{font:inherit;display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:999px;font-size:12.5px;font-weight:600;background:var(--bg-2);border:1px solid var(--border);color:var(--ink-2);cursor:pointer;transition:.15s}
+.comm-qchip:hover{border-color:rgba(99,102,241,.35);color:var(--ink)}
+.comm-sec-h2{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:6px 2px 12px}
+.comm-sec-h2 b{font-size:16px;font-weight:750;letter-spacing:-.015em;color:var(--ink)}
+.comm-sec-h2 a{font-size:13px;color:var(--brand-ink,#047857);font-weight:600;text-decoration:none}
+.comm-recents{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:26px}
+.comm-recent{padding:15px 17px;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--glass-border);border-radius:var(--radius-lg,18px);box-shadow:var(--shadow-card);text-decoration:none;color:inherit;transition:transform .16s ease,box-shadow .16s ease}
+.comm-recent:hover{transform:translateY(-2px);box-shadow:var(--shadow-pop)}
+.comm-recent-t{display:flex;align-items:center;gap:9px}
+.comm-recent-i{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:15px;flex:none;background:var(--ai-light,rgba(99,102,241,.1))}
+.comm-recent h4{font-size:13.5px;font-weight:650;letter-spacing:-.01em;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
+.comm-recent p{font-size:11.5px;color:var(--ink-3);margin-top:9px}
+.comm-recent-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--brand-soft);color:var(--brand-ink)}
+.comm-recent-badge.draft{background:var(--amber-soft,rgba(224,133,12,.14));color:var(--amber,#E0850C)}
+@media (max-width:900px){.comm-recents{grid-template-columns:1fr 1fr}.comm-gen-btn{margin-left:0;width:100%;justify-content:center}}
+@media (max-width:560px){.comm-recents{grid-template-columns:1fr}}
 </style>
+
+<script>
+(function(){
+  document.querySelectorAll('.comm-qchip').forEach(function(b){
+    b.addEventListener('click', function(){
+      var ta = document.getElementById('commDemande');
+      if (!ta) return;
+      ta.value = this.getAttribute('data-fill') || '';
+      ta.focus();
+      ta.dispatchEvent(new Event('input'));
+    });
+  });
+})();
+</script>
 
 <?php render_foot(); ?>
