@@ -117,6 +117,30 @@ if ($is_follower_user) {
 
 $total_active = array_sum(array_column($folders, 'active_count'));
 
+// ====== Membres (comptes utilisateurs) par dossier — pour les avatars ======
+$folder_members = [];
+try {
+    $mstmt = $pdo->prepare("
+        SELECT p.folder_id, u.first_name, u.last_name
+        FROM project_members pm
+        JOIN projects p ON p.id = pm.project_id
+        JOIN folders f ON f.id = p.folder_id
+        JOIN users u ON u.id = pm.user_id
+        WHERE f.org_id = ? AND f.archived_at IS NULL AND p.archived_at IS NULL
+        GROUP BY p.folder_id, u.id, u.first_name, u.last_name
+        ORDER BY p.folder_id ASC, u.last_name ASC, u.first_name ASC
+    ");
+    $mstmt->execute([$org_id]);
+    foreach ($mstmt->fetchAll() as $mrow) {
+        $fid = (int) $mrow['folder_id'];
+        $ini = trim(mb_strtoupper(mb_substr((string) $mrow['first_name'], 0, 1) . mb_substr((string) $mrow['last_name'], 0, 1)));
+        if ($ini === '') continue;
+        $folder_members[$fid][] = $ini;
+    }
+} catch (Throwable $e) {
+    $folder_members = [];
+}
+
 // ============================================================
 // 🤖 NOUVEAU v3 : DONNÉES IA POUR PULSE BAR + SPARKLINES
 // ============================================================
@@ -1132,14 +1156,22 @@ render_sidebar('projets');
       }
       $avg = $__prog_vals ? (int)round(array_sum($__prog_vals) / count($__prog_vals)) : (int)$f['avg_progress'];
 
-      // Avatars : initiales des référents distincts des projets du dossier
-      $avatar_inits = [];
-      foreach ($projects as $__pp) {
-          $__ini = trim(mb_strtoupper(mb_substr((string)($__pp['ref_first'] ?? ''), 0, 1) . mb_substr((string)($__pp['ref_last'] ?? ''), 0, 1)));
-          if ($__ini !== '' && !in_array($__ini, $avatar_inits, true)) $avatar_inits[] = $__ini;
-          if (count($avatar_inits) >= 3) break;
+      // Avatars : vraies initiales des membres du dossier (5 max) + reste
+      $members = $folder_members[(int)$f['id']] ?? [];
+      if (empty($members)) {
+          // fallback : référents des projets si aucun membre déclaré
+          foreach ($projects as $__pp) {
+              $__ini = trim(mb_strtoupper(mb_substr((string)($__pp['ref_first'] ?? ''), 0, 1) . mb_substr((string)($__pp['ref_last'] ?? ''), 0, 1)));
+              if ($__ini !== '' && !in_array($__ini, $members, true)) $members[] = $__ini;
+          }
       }
-      $avatar_grads = ['linear-gradient(135deg,#6366F1,#4F46E5)', 'linear-gradient(135deg,#10B981,#059669)', 'linear-gradient(135deg,#F59E0B,#D97706)'];
+      $members_shown = array_slice($members, 0, 5);
+      $members_more = max(0, count($members) - 5);
+      $avatar_grads = [
+          'linear-gradient(135deg,#6366F1,#4F46E5)', 'linear-gradient(135deg,#10B981,#059669)',
+          'linear-gradient(135deg,#F59E0B,#D97706)', 'linear-gradient(135deg,#2F73E8,#1D4ED8)',
+          'linear-gradient(135deg,#8B5CF6,#7C3AED)',
+      ];
 
       // data-states pour les filtres (par statut des projets contenus)
       $states = [];
@@ -1202,12 +1234,12 @@ render_sidebar('projets');
               <small>avancement moyen</small>
             </div>
             <div class="ak-avatars">
-              <?php foreach ($avatar_inits as $__i => $__ini): ?>
-                <span style="background:<?= $avatar_grads[$__i % count($avatar_grads)] ?>"><?= h($__ini) ?></span>
+              <?php foreach ($members_shown as $__i => $__ini): ?>
+                <span style="background:<?= $avatar_grads[$__i % count($avatar_grads)] ?>" title="Membre du dossier"><?= h($__ini) ?></span>
               <?php endforeach; ?>
-              <?php if ((int)$f['total_participants'] > 0): ?>
-                <span class="more">+<?= (int)$f['total_participants'] ?></span>
-              <?php elseif (empty($avatar_inits)): ?>
+              <?php if ($members_more > 0): ?>
+                <span class="more" title="<?= $members_more ?> autre<?= $members_more > 1 ? 's' : '' ?> membre<?= $members_more > 1 ? 's' : '' ?>">+<?= $members_more ?></span>
+              <?php elseif (empty($members_shown)): ?>
                 <span class="more">0</span>
               <?php endif; ?>
             </div>
