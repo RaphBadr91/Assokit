@@ -747,6 +747,14 @@ render_sidebar('projets');
    ============================================================ */
 .main{max-width:1200px}
 
+/* Titre + sous-titre (maquette) */
+.main .page-title{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1;color:var(--ink)}
+.main .page-sub{font-size:13.5px;color:var(--ink-2);margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.main .page-sub .pj-dot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--brand-2, #10B981);box-shadow:0 0 0 4px var(--acc-light, rgba(5,150,105,.12))}
+.pj-sec{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:2px 2px 14px}
+.pj-sec b{font-size:16px;letter-spacing:-.015em;font-weight:700;color:var(--ink)}
+.pj-sec span{font-size:12.5px;color:var(--ink-3)}
+
 /* Hero + toolbar */
 .pj-head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .pj-search{display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:var(--radius, 12px);
@@ -888,7 +896,11 @@ render_sidebar('projets');
           <?php endif; ?>
         </div>
       <?php else: ?>
-        <div class="page-sub"><?= count($folders) ?> dossier<?= count($folders) > 1 ? 's' : '' ?> · <?= (int)$total_active ?> projet<?= $total_active > 1 ? 's' : '' ?> en cours</div>
+        <?php $__done_all = (int) array_sum(array_column($folders, 'done_count')); ?>
+        <div class="page-sub">
+          <span class="pj-dot"></span>
+          <?= count($folders) ?> dossier<?= count($folders) > 1 ? 's' : '' ?> · <?= (int)$total_active ?> projet<?= $total_active > 1 ? 's' : '' ?> en cours<?php if ($__done_all > 0): ?> · <?= $__done_all ?> terminé<?= $__done_all > 1 ? 's' : '' ?> cette année<?php endif; ?>
+        </div>
       <?php endif; ?>
     </div>
     <div class="pj-head-actions">
@@ -918,21 +930,25 @@ render_sidebar('projets');
   </div>
 
   <?php
-  // ====== Barre d'outils : filtres par statut + bascule Grille/Liste ======
+  // ====== Barre d'outils : filtres par statut de projet + bascule Grille/Liste ======
   if (!empty($folders)):
-    $cnt_all = count($folders);
-    $cnt_active = 0; $cnt_idle = 0; $cnt_done = 0;
-    foreach ($folders as $__f) {
-      if ((int)$__f['active_count'] > 0) $cnt_active++;
-      if ((int)$__f['done_count'] > 0) $cnt_done++;
-      if ((int)$__f['active_count'] === 0 && (int)$__f['done_count'] === 0) $cnt_idle++;
+    $cnt_all = count($all_projects);
+    $cnt_active = 0; $cnt_warn = 0; $cnt_wait = 0; $cnt_done = 0;
+    foreach ($all_projects as $__p) {
+      switch ($__p['status']) {
+        case 'active':  $cnt_active++; break;
+        case 'warning': $cnt_warn++;   break;
+        case 'done':    $cnt_done++;   break;
+        case 'draft':   $cnt_wait++;   break;
+      }
     }
   ?>
   <div class="pj-toolbar">
     <div class="pj-chips" id="pjChips">
       <span class="pj-chip on" data-filter="all">Tous <span class="n"><?= $cnt_all ?></span></span>
       <span class="pj-chip" data-filter="active"><i style="background:var(--acc)"></i> En cours <span class="n"><?= $cnt_active ?></span></span>
-      <span class="pj-chip" data-filter="idle"><i style="background:var(--ink-4)"></i> En attente <span class="n"><?= $cnt_idle ?></span></span>
+      <span class="pj-chip" data-filter="warn"><i style="background:var(--amber, #E0850C)"></i> À surveiller <span class="n"><?= $cnt_warn ?></span></span>
+      <span class="pj-chip" data-filter="wait"><i style="background:var(--ink-4)"></i> En attente <span class="n"><?= $cnt_wait ?></span></span>
       <span class="pj-chip" data-filter="done"><i style="background:var(--blue, #2F73E8)"></i> Terminés <span class="n"><?= $cnt_done ?></span></span>
     </div>
     <div class="pj-seg" id="pjView">
@@ -1091,6 +1107,7 @@ render_sidebar('projets');
     </div>
   <?php else: ?>
 
+    <div class="pj-sec"><b>Vos dossiers</b><span>Triés par activité récente</span></div>
     <section class="ak-grid" id="folderGrid">
     <?php foreach ($folders as $idx => $f):
       $projects = $projects_by_folder[$f['id']] ?? [];
@@ -1124,11 +1141,17 @@ render_sidebar('projets');
       }
       $avatar_grads = ['linear-gradient(135deg,#6366F1,#4F46E5)', 'linear-gradient(135deg,#10B981,#059669)', 'linear-gradient(135deg,#F59E0B,#D97706)'];
 
-      // data-states pour les filtres
+      // data-states pour les filtres (par statut des projets contenus)
       $states = [];
-      if ((int)$f['active_count'] > 0) $states[] = 'active';
-      if ((int)$f['done_count'] > 0) $states[] = 'done';
-      if ((int)$f['active_count'] === 0 && (int)$f['done_count'] === 0) $states[] = 'idle';
+      foreach ($projects as $__ps) {
+          switch ($__ps['status']) {
+              case 'active':  $states['active'] = 1; break;
+              case 'warning': $states['warn']   = 1; break;
+              case 'done':    $states['done']   = 1; break;
+              case 'draft':   $states['wait']   = 1; break;
+          }
+      }
+      $states = array_keys($states);
 
       // Prochaine action IA (par dossier)
       $act7 = array_sum(array_slice($f_activity, 0, 7));
