@@ -1361,8 +1361,8 @@ render_sidebar('accueil');
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2z"/></svg>
           </span>
           <div class="ai-coach-title-txt">
-            <b>Assokit, votre copilote</b>
-            <small><?= count($dash_coach) ?> chose<?= count($dash_coach) > 1 ? 's' : '' ?> mérite<?= count($dash_coach) > 1 ? 'nt' : '' ?> votre attention aujourd'hui</small>
+            <b>Votre coach AssoKit IA</b>
+            <small><?= count($dash_coach) ?> conseil<?= count($dash_coach) > 1 ? 's' : '' ?> pour faire avancer vos projets</small>
           </div>
         </div>
         <span class="ai-coach-tag">✦ Suggestions personnalisées</span>

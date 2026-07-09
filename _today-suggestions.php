@@ -31,18 +31,23 @@ $priority_colors = [
 ];
 ?>
 
-<section class="today">
-  <div class="today-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-    <div style="display:flex; align-items:center; gap:8px;">
-      <div class="today-label"><span class="today-label-dot"></span>Aujourd'hui</div>
-      <?php if (!empty($suggestions) && !$has_error): ?>
-        <span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; background:linear-gradient(135deg, #7F77DD 0%, #A78BFA 100%); color:white; font-size:10.5px; font-weight:600; border-radius:999px; text-transform:uppercase; letter-spacing:0.03em;">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-          Copilote IA
-        </span>
-      <?php endif; ?>
+<section class="today today-copilot">
+  <div class="today-band" aria-hidden="true"></div>
+  <div class="today-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; position:relative;">
+    <div class="today-copilot-title">
+      <span class="today-copilot-badge">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2z"/></svg>
+      </span>
+      <div class="today-copilot-txt">
+        <b>Assokit, votre copilote</b>
+        <?php $n = count($suggestions); ?>
+        <small><?php if ($n > 0): ?><?= $n ?> chose<?= $n > 1 ? 's' : '' ?> mérite<?= $n > 1 ? 'nt' : '' ?> votre attention aujourd'hui<?php else: ?>Tout est sous contrôle aujourd'hui<?php endif; ?></small>
+      </div>
     </div>
-    <div style="display:flex; align-items:center; gap:12px;">
+    <div style="display:flex; align-items:center; gap:12px; position:relative;">
+      <?php if (!empty($suggestions) && !$has_error): ?>
+        <span class="today-copilot-pill">✦ Suggestions personnalisées</span>
+      <?php endif; ?>
       <div class="today-date"><?= h($today_fr) ?></div>
       <?php if (!empty($suggestions)): ?>
         <button type="button" id="today-refresh-btn" onclick="todayRefresh()"
@@ -155,5 +160,63 @@ $priority_colors = [
 @keyframes todaySpin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* ===== Panneau « Assokit, votre copilote » (maquette 2.0) ===== */
+.today.today-copilot {
+  position: relative;
+  overflow: hidden;
+  background: var(--glass, rgba(255,255,255,0.72));
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.65));
+  border-radius: var(--radius-lg, 18px);
+  box-shadow: var(--shadow-card, 0 1px 2px rgba(9,30,22,0.04), 0 14px 34px -16px rgba(9,30,22,0.16));
+}
+.today.today-copilot .today-band {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(99,102,241,0.16), transparent 55%),
+    radial-gradient(120% 120% at 100% 0%, rgba(139,92,246,0.14), transparent 55%);
+}
+.today.today-copilot .today-list { position: relative; z-index: 1; }
+.today-copilot-title { display: flex; align-items: center; gap: 11px; }
+.today-copilot-badge {
+  width: 34px; height: 34px; border-radius: 11px; flex: none;
+  background: linear-gradient(140deg, #8B5CF6, #6366F1); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 20px -6px rgba(99,102,241,0.6), inset 0 1px 0 rgba(255,255,255,0.4);
+  position: relative; overflow: hidden;
+}
+.today-copilot-badge svg { position: relative; z-index: 1; }
+.today-copilot-badge::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%);
+  transform: translateX(-120%);
+  animation: todaySheen 4.5s ease-in-out infinite;
+}
+@keyframes todaySheen { 0%,70%{transform:translateX(-120%)} 85%,100%{transform:translateX(120%)} }
+.today-copilot-txt b { font-size: 15.5px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink, #0B1A13); display: block; }
+.today-copilot-txt small { display: block; color: var(--ink-3, #7C8983); font-size: 11.5px; font-weight: 500; margin-top: 1px; }
+.today-copilot-pill {
+  font-size: 11.5px; font-weight: 600; color: var(--ai, #6366F1);
+  background: var(--ai-light, rgba(99,102,241,0.10)); padding: 6px 12px; border-radius: 999px;
+  border: 1px solid rgba(99,102,241,0.2); white-space: nowrap;
+}
+/* items en cartes de verre indigo */
+.today.today-copilot .today-item {
+  background: var(--bg-2, rgba(255,255,255,0.55));
+  border: 1px solid var(--border, rgba(12,40,28,0.06));
+  border-radius: 15px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.today.today-copilot .today-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(99,102,241,0.3);
+  box-shadow: var(--shadow-card, 0 1px 2px rgba(9,30,22,0.04), 0 14px 34px -16px rgba(9,30,22,0.16));
+}
+.today.today-copilot .today-item:hover .today-arrow { color: var(--ai, #6366F1); }
+@media (max-width: 640px) {
+  .today-copilot-pill { display: none; }
 }
 </style>
