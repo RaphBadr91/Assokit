@@ -74,10 +74,25 @@ $stmt = $pdo->prepare($events_sql);
 $stmt->execute($events_params);
 $events = $stmt->fetchAll();
 
-// Helper : classe de couleur selon type + projet
-function event_color_class($evt) {
+// Couleur effective d'un événement en HEX (ou '' pour utiliser une classe ev-*).
+// - color_theme = hex (#xxxxxx) : couleur Google explicite -> utilisée telle quelle
+// - événement importé de Google sans couleur : couleur stable dérivée du titre
+//   (comme un vrai agenda coloré : chaque type d'événement a sa couleur constante)
+function event_hex($evt) {
     $c = (string)($evt['color_theme'] ?? '');
-    if ($c !== '' && $c[0] === '#') return ''; // couleur Google (hex) : gérée en inline
+    if ($c !== '' && $c[0] === '#') return $c;
+    if (($evt['sync_origin'] ?? '') === 'google') {
+        $palette = ['#7986CB', '#33B679', '#8E24AA', '#E67C73', '#F6BF26', '#039BE5', '#3F51B5', '#0B8043', '#D50000', '#F4511E'];
+        $base = function_exists('mb_strtolower') ? mb_strtolower(trim((string)($evt['title'] ?? ''))) : strtolower(trim((string)($evt['title'] ?? '')));
+        return $base === '' ? $palette[0] : $palette[abs(crc32($base)) % count($palette)];
+    }
+    return '';
+}
+
+// Classe de couleur (utilisée seulement pour les événements internes, sans hex)
+function event_color_class($evt) {
+    if (event_hex($evt) !== '') return ''; // couleur gérée en inline
+    $c = (string)($evt['color_theme'] ?? '');
     if ($c !== '') return 'ev-' . $c;
     if (!empty($evt['folder_color'])) return 'ev-' . $evt['folder_color'];
     $type_colors = [
@@ -91,17 +106,15 @@ function event_color_class($evt) {
     return $type_colors[$evt['event_type']] ?? 'ev-blue';
 }
 
-// Style inline si la couleur est un hex (import Google) : pastille pleine, texte blanc
+// Pastille pleine + texte blanc pour un hex
 function event_color_style($evt) {
-    $c = (string)($evt['color_theme'] ?? '');
-    if ($c !== '' && $c[0] === '#') return 'background:' . htmlspecialchars($c) . ';color:#fff;';
-    return '';
+    $hex = event_hex($evt);
+    return $hex !== '' ? 'background:' . htmlspecialchars($hex) . ';color:#fff;' : '';
 }
-// Style de la barre latérale (vue liste) pour un hex Google
+// Barre latérale (vue liste) pour un hex
 function event_bar_style($evt) {
-    $c = (string)($evt['color_theme'] ?? '');
-    if ($c !== '' && $c[0] === '#') return 'background:' . htmlspecialchars($c) . ';';
-    return '';
+    $hex = event_hex($evt);
+    return $hex !== '' ? 'background:' . htmlspecialchars($hex) . ';' : '';
 }
 
 // Groupe les événements par date (pour la vue calendrier)

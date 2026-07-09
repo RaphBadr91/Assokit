@@ -32,7 +32,7 @@ try {
     $end = date('Y-m-d 23:59:59', strtotime('+120 days'));
 
     $stmt = $pdo->prepare("
-        SELECT e.id, e.title, e.location, e.event_type, e.color_theme,
+        SELECT e.id, e.title, e.location, e.event_type, e.color_theme, e.sync_origin,
                e.starts_at, e.ends_at, e.is_all_day, e.project_id,
                p.name AS project_name, f.color_theme AS folder_color
         FROM events e
@@ -46,12 +46,21 @@ try {
     $stmt->execute([$org_id, $now, $end]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+    $GPAL = ['#7986CB', '#33B679', '#8E24AA', '#E67C73', '#F6BF26', '#039BE5', '#3F51B5', '#0B8043', '#D50000', '#F4511E'];
     $events = [];
     foreach ($rows as $r) {
-        $theme = trim((string) ($r['color_theme'] ?? ''));
-        if ($theme === '') $theme = trim((string) ($r['folder_color'] ?? ''));
-        if ($theme === '') $theme = $TYPE_COLOR[$r['event_type'] ?? 'other'] ?? 'blue';
-        $color = function_exists('folder_color_hex') ? folder_color_hex($theme) : '#3B82F6';
+        $ct = trim((string) ($r['color_theme'] ?? ''));
+        if ($ct !== '' && $ct[0] === '#') {
+            $color = $ct; // couleur Google explicite
+        } elseif (($r['sync_origin'] ?? '') === 'google') {
+            $b = function_exists('mb_strtolower') ? mb_strtolower(trim((string) $r['title'])) : strtolower(trim((string) $r['title']));
+            $color = $b === '' ? $GPAL[0] : $GPAL[abs(crc32($b)) % count($GPAL)];
+        } else {
+            $theme = $ct;
+            if ($theme === '') $theme = trim((string) ($r['folder_color'] ?? ''));
+            if ($theme === '') $theme = $TYPE_COLOR[$r['event_type'] ?? 'other'] ?? 'blue';
+            $color = function_exists('folder_color_hex') ? folder_color_hex($theme) : '#3B82F6';
+        }
 
         $ts = strtotime((string) $r['starts_at']);
         $day_key = date('Y-m-d', $ts);

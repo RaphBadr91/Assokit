@@ -309,11 +309,21 @@ function gcal_color_hex($colorId) {
     return $map[$colorId] ?? null;
 }
 
+// Couleur stable dérivée d'un texte (quand Google ne fournit pas de couleur explicite)
+function gcal_color_from_title($title) {
+    // Palette proche de Google Agenda
+    $palette = ['#7986CB', '#33B679', '#8E24AA', '#E67C73', '#F6BF26', '#039BE5', '#3F51B5', '#0B8043', '#D50000', '#F4511E'];
+    $base = function_exists('mb_strtolower') ? mb_strtolower(trim((string) $title)) : strtolower(trim((string) $title));
+    if ($base === '') return $palette[0];
+    return $palette[abs(crc32($base)) % count($palette)];
+}
+
 function google_event_to_assokit($google_event, $org_id, $default_user_id) {
     global $pdo;
     $google_id = $google_event['id'] ?? null;
     if (!$google_id) return null;
     $gcolor = gcal_color_hex($google_event['colorId'] ?? '');
+    if (!$gcolor) $gcolor = gcal_color_from_title($google_event['summary'] ?? '');
 
     $stmt = $pdo->prepare("SELECT id, sync_origin FROM events WHERE google_event_id = ? LIMIT 1");
     $stmt->execute([$google_id]);

@@ -39,10 +39,19 @@ try {
     $e = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$e) { http_response_code(404); echo json_encode(['ok' => false, 'error' => 'not_found']); exit; }
 
-    $theme = trim((string) ($e['color_theme'] ?? ''));
-    if ($theme === '') $theme = trim((string) ($e['folder_color'] ?? ''));
-    if ($theme === '') $theme = $TYPE_COLOR[$e['event_type'] ?? 'other'] ?? 'blue';
-    $color = function_exists('folder_color_hex') ? folder_color_hex($theme) : '#3B82F6';
+    $ct = trim((string) ($e['color_theme'] ?? ''));
+    if ($ct !== '' && $ct[0] === '#') {
+        $color = $ct;
+    } elseif (($e['sync_origin'] ?? '') === 'google') {
+        $GPAL = ['#7986CB', '#33B679', '#8E24AA', '#E67C73', '#F6BF26', '#039BE5', '#3F51B5', '#0B8043', '#D50000', '#F4511E'];
+        $b = function_exists('mb_strtolower') ? mb_strtolower(trim((string) $e['title'])) : strtolower(trim((string) $e['title']));
+        $color = $b === '' ? $GPAL[0] : $GPAL[abs(crc32($b)) % count($GPAL)];
+    } else {
+        $theme = $ct;
+        if ($theme === '') $theme = trim((string) ($e['folder_color'] ?? ''));
+        if ($theme === '') $theme = $TYPE_COLOR[$e['event_type'] ?? 'other'] ?? 'blue';
+        $color = function_exists('folder_color_hex') ? folder_color_hex($theme) : '#3B82F6';
+    }
 
     $ts = strtotime((string) $e['starts_at']);
     $te = strtotime((string) $e['ends_at']);
