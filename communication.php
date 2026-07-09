@@ -315,7 +315,7 @@ render_sidebar('communication');
     <div class="main-head" style="margin-bottom: 18px;">
       <div>
         <h2 style="font-size: 18px; font-weight: 500; margin: 0;">🎪 Vos événements</h2>
-        <div class="page-sub">Organisez et diffusez vos événements avec système de RSVP</div>
+        <div class="page-sub">Les événements que vous proposez à vos adhérents — avec inscription en ligne (RSVP)</div>
       </div>
       <div>
         <a href="/communication-evenement-nouveau" class="btn btn-primary">+ Nouvel événement</a>
