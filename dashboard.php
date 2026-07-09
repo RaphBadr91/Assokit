@@ -806,39 +806,65 @@ render_sidebar('accueil');
     margin-bottom: 24px;
 }
 .dash-kpi {
-    background: var(--bg, #fff);
-    border: 1px solid var(--border, #e5e7eb);
-    border-radius: 14px;
-    padding: 18px 20px;
+    background: var(--glass, rgba(255,255,255,0.72));
+    backdrop-filter: blur(22px) saturate(1.5);
+    -webkit-backdrop-filter: blur(22px) saturate(1.5);
+    border: 1px solid var(--glass-border, rgba(255,255,255,0.65));
+    border-radius: var(--radius-lg, 18px);
+    padding: 18px 18px 16px;
     position: relative;
     overflow: hidden;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s;
+    box-shadow: var(--shadow-card, 0 1px 2px rgba(9,30,22,0.04), 0 14px 34px -16px rgba(9,30,22,0.16));
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.dash-kpi::before {
+    content: ''; position: absolute; inset: 0 0 auto 0; height: 42%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.9), transparent);
+    opacity: 0.5; pointer-events: none;
 }
 .dash-kpi:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.06);
-    border-color: var(--ink-3, #9ca3af);
+    box-shadow: var(--shadow-pop, 0 2px 8px rgba(9,30,22,0.06), 0 26px 56px -20px rgba(9,30,22,0.24));
+}
+.dash-kpi-glow {
+    position: absolute; inset: 0 0 auto 0; height: 3px;
+    border-radius: 3px 3px 0 0;
 }
 .dash-kpi-head {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 12px;
+    margin-bottom: 14px; position: relative;
 }
 .dash-kpi-icon {
-    width: 36px; height: 36px; border-radius: 10px;
+    width: 38px; height: 38px; border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
 }
 .dash-kpi-trend {
-    font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px;
-    background: #dcfce7; color: #166534;
+    font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px;
+    background: rgba(5,150,105,0.10); color: #047857;
 }
-.dash-kpi-trend.down { background: #fee2e2; color: #991b1b; }
-.dash-kpi-lbl { font-size: 12px; color: var(--ink-3, #6b7280); font-weight: 500; margin-bottom: 4px; }
+.dash-kpi-trend.down { background: rgba(229,72,77,0.12); color: #b42318; }
 .dash-kpi-val {
-    font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
-    color: var(--ink, #111827); line-height: 1;
-    font-variant-numeric: tabular-nums;
+    font-size: 34px; font-weight: 800; letter-spacing: -0.03em;
+    color: var(--ink, #0B1A13); line-height: 1;
+    font-variant-numeric: tabular-nums; position: relative;
 }
-.dash-kpi-sub { font-size: 11.5px; color: var(--ink-3, #9ca3af); margin-top: 6px; }
+.dash-kpi-val-unit { font-size: 18px; font-weight: 700; color: var(--ink-3, #7C8983); letter-spacing: 0; }
+.dash-kpi-lbl { font-size: 13.5px; color: var(--ink, #0B1A13); font-weight: 600; margin-top: 5px; }
+.dash-kpi-sub { font-size: 12px; color: var(--ink-3, #78857F); margin-top: 2px; }
+/* variantes couleur (liséré + icône + tag) */
+.dash-kpi.k-green .dash-kpi-glow { background: linear-gradient(90deg,#10B981,#059669); }
+.dash-kpi.k-green .dash-kpi-icon { background: rgba(5,150,105,0.10); color: #059669; }
+.dash-kpi.k-green .dash-kpi-trend { background: rgba(5,150,105,0.10); color: #047857; }
+.dash-kpi.k-blue .dash-kpi-glow { background: linear-gradient(90deg,#60A5FA,#2F73E8); }
+.dash-kpi.k-blue .dash-kpi-icon { background: rgba(47,115,232,0.12); color: #2F73E8; }
+.dash-kpi.k-blue .dash-kpi-trend { background: rgba(47,115,232,0.12); color: #2F73E8; }
+.dash-kpi.k-amber .dash-kpi-glow { background: linear-gradient(90deg,#FBBF24,#E0850C); }
+.dash-kpi.k-amber .dash-kpi-icon { background: rgba(224,133,12,0.12); color: #E0850C; }
+.dash-kpi.k-amber .dash-kpi-trend { background: rgba(224,133,12,0.12); color: #b45309; }
+.dash-kpi.k-ai .dash-kpi-glow { background: linear-gradient(90deg,#8B5CF6,#6366F1); }
+.dash-kpi.k-ai .dash-kpi-icon { background: rgba(99,102,241,0.10); color: #6366F1; }
+.dash-kpi.k-ai .dash-kpi-trend { background: rgba(99,102,241,0.10); color: #6366F1; }
 
 /* Charts row */
 .dash-charts-row {
@@ -1104,76 +1130,75 @@ render_sidebar('accueil');
   }
   ?>
 
+  <?php
+  /* ---- Score de santé IA (heuristique locale, 0-100, sans appel externe) ---- */
+  $__completed = (int) ($status_counts['completed'] ?? 0);
+  $health_score = 55;
+  $health_score += min(20, (int) round(($total_activity ?? 0) * 1.6)); // activité 30j
+  $health_score += ($upcoming_events_count > 0) ? 8 : 0;               // agenda alimenté
+  $health_score += ($active_projects > 0) ? 8 : 0;                     // projets vivants
+  $health_score += ($new_users > 0) ? 5 : 0;                           // recrutement
+  $health_score += min(4, $__completed);                               // livraisons
+  $health_score = max(0, min(100, $health_score));
+  $health_label = $health_score >= 85 ? 'Excellent' : ($health_score >= 70 ? 'Bon' : ($health_score >= 55 ? 'Correct' : 'À surveiller'));
+  ?>
   <!-- ====== KPI CARDS ANIMÉES ====== -->
   <div class="dash-kpis">
-    <div class="dash-kpi" style="border-top: 3px solid #10B981;">
+    <div class="dash-kpi k-green">
+      <span class="dash-kpi-glow"></span>
       <div class="dash-kpi-head">
-        <div class="dash-kpi-icon" style="background: #ECFDF5; color: #059669;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <div class="dash-kpi-icon">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         </div>
         <span class="dash-kpi-trend">Actif</span>
       </div>
-      <div class="dash-kpi-lbl">Projets actifs</div>
       <div class="dash-kpi-val"><span class="kpi-counter" data-target="<?= $active_projects ?>">0</span></div>
+      <div class="dash-kpi-lbl">Projets actifs</div>
       <div class="dash-kpi-sub">en cours ce mois</div>
     </div>
-    
-    <div class="dash-kpi" style="border-top: 3px solid #3B82F6;">
+
+    <div class="dash-kpi k-blue">
+      <span class="dash-kpi-glow"></span>
       <div class="dash-kpi-head">
-        <div class="dash-kpi-icon" style="background: #EFF6FF; color: #2563EB;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <div class="dash-kpi-icon">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
         <?php if ($new_users > 0): ?>
           <span class="dash-kpi-trend">+<?= $new_users ?></span>
         <?php endif; ?>
       </div>
-      <div class="dash-kpi-lbl">Membres actifs</div>
       <div class="dash-kpi-val"><span class="kpi-counter" data-target="<?= $total_users ?>">0</span></div>
+      <div class="dash-kpi-lbl">Membres actifs</div>
       <div class="dash-kpi-sub"><?= $new_users ?> nouveau<?= $new_users > 1 ? 'x' : '' ?> en 30j</div>
     </div>
-    
-    <div class="dash-kpi" style="border-top: 3px solid #F59E0B;">
+
+    <div class="dash-kpi k-amber">
+      <span class="dash-kpi-glow"></span>
       <div class="dash-kpi-head">
-        <div class="dash-kpi-icon" style="background: #FFFBEB; color: #D97706;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <div class="dash-kpi-icon">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         </div>
         <?php if ($upcoming_events_count > 0): ?>
         <span class="dash-kpi-trend">À venir</span>
         <?php endif; ?>
       </div>
-      <div class="dash-kpi-lbl">Événements</div>
       <div class="dash-kpi-val"><span class="kpi-counter" data-target="<?= $upcoming_events_count ?>">0</span></div>
+      <div class="dash-kpi-lbl">Événements</div>
       <div class="dash-kpi-sub">à venir cette saison</div>
     </div>
-    
-    <?php if ($can_view_finances): ?>
-    <div class="dash-kpi" style="border-top: 3px solid #8B5CF6;">
+
+    <div class="dash-kpi k-ai">
+      <span class="dash-kpi-glow"></span>
       <div class="dash-kpi-head">
-        <div class="dash-kpi-icon" style="background: #F5F3FF; color: #7C3AED;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <div class="dash-kpi-icon">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.2 6.1L20.5 10l-6.3 1.9L12 18l-2.2-6.1L3.5 10l6.3-1.9L12 2z"/></svg>
         </div>
-        <?php if ($budget_planned > 0): 
-          $pct_used = round(($budget_used / $budget_planned) * 100);
-        ?>
-        <span class="dash-kpi-trend <?= $pct_used > 90 ? 'down' : '' ?>"><?= $pct_used ?>%</span>
-        <?php endif; ?>
+        <span class="dash-kpi-trend"><?= h($health_label) ?></span>
       </div>
-      <div class="dash-kpi-lbl">Budget engagé</div>
-      <div class="dash-kpi-val" style="font-size: 22px;"><?= h(format_budget($budget_used)) ?></div>
-      <div class="dash-kpi-sub">sur <?= h(format_budget($budget_planned)) ?></div>
+      <div class="dash-kpi-val"><span class="kpi-counter" data-target="<?= $health_score ?>">0</span><span class="dash-kpi-val-unit">/100</span></div>
+      <div class="dash-kpi-lbl">Score de santé IA</div>
+      <div class="dash-kpi-sub">activité · vélocité · engagement</div>
     </div>
-    <?php else: ?>
-    <div class="dash-kpi" style="border-top: 3px solid #8B5CF6;">
-      <div class="dash-kpi-head">
-        <div class="dash-kpi-icon" style="background: #F5F3FF; color: #7C3AED;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        </div>
-      </div>
-      <div class="dash-kpi-lbl">Projets terminés</div>
-      <div class="dash-kpi-val"><span class="kpi-counter" data-target="<?= $status_counts['completed'] ?? 0 ?>">0</span></div>
-      <div class="dash-kpi-sub">finalisés cette année</div>
-    </div>
-    <?php endif; ?>
   </div>
 
   <!-- ====== AUJOURD'HUI (Copilote IA) ====== -->
@@ -1329,14 +1354,18 @@ render_sidebar('accueil');
     <!-- Coach IA (full-width) -->
     <?php if (!empty($dash_coach)): ?>
     <div class="ai-coach">
+      <div class="ai-coach-band" aria-hidden="true"></div>
       <div class="ai-coach-head">
         <div class="ai-coach-title">
           <span class="ai-coach-icon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2z"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2z"/></svg>
           </span>
-          Ton coach AssoKit IA
+          <div class="ai-coach-title-txt">
+            <b>Assokit, votre copilote</b>
+            <small><?= count($dash_coach) ?> chose<?= count($dash_coach) > 1 ? 's' : '' ?> mérite<?= count($dash_coach) > 1 ? 'nt' : '' ?> votre attention aujourd'hui</small>
+          </div>
         </div>
-        <span class="ai-coach-tag">Suggestions personnalisées</span>
+        <span class="ai-coach-tag">✦ Suggestions personnalisées</span>
       </div>
       <div class="ai-coach-list">
         <?php foreach ($dash_coach as $a): ?>
@@ -1522,48 +1551,59 @@ render_sidebar('accueil');
 
   /* Coach IA */
   .ai-coach {
-    background: linear-gradient(135deg, #ffffff 0%, #f5f7ff 100%);
-    border: 1px solid #e0e7ff;
-    border-radius: 16px;
-    padding: 18px 20px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.03), 0 8px 24px rgba(99,102,241,0.06);
+    background: var(--glass, rgba(255,255,255,0.72));
+    backdrop-filter: blur(22px) saturate(1.5);
+    -webkit-backdrop-filter: blur(22px) saturate(1.5);
+    border: 1px solid var(--glass-border, rgba(255,255,255,0.65));
+    border-radius: var(--radius-lg, 18px);
+    padding: 18px 20px 16px;
+    box-shadow: var(--shadow-card, 0 1px 2px rgba(9,30,22,0.04), 0 14px 34px -16px rgba(9,30,22,0.16));
     position: relative;
     overflow: hidden;
   }
-  .ai-coach::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-    background: linear-gradient(90deg, #6366F1, #8B5CF6, #EC4899);
-    background-size: 200% 100%;
-    animation: ai-coach-grad 6s ease infinite;
+  .ai-coach-band {
+    position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(120% 100% at 0% 0%, rgba(99,102,241,0.16), transparent 55%),
+      radial-gradient(120% 120% at 100% 0%, rgba(139,92,246,0.14), transparent 55%);
   }
-  @keyframes ai-coach-grad { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
   .ai-coach-head {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 14px; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 14px; gap: 10px; flex-wrap: wrap; position: relative;
   }
   .ai-coach-title {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 14px; font-weight: 700; color: #1e1b4b;
+    display: flex; align-items: center; gap: 11px;
   }
   .ai-coach-icon {
-    width: 26px; height: 26px; border-radius: 8px;
-    background: linear-gradient(135deg, #6366F1, #8B5CF6);
-    color: #fff;
+    width: 34px; height: 34px; border-radius: 11px;
+    background: linear-gradient(140deg, #8B5CF6, #6366F1);
+    color: #fff; flex: none;
     display: inline-flex; align-items: center; justify-content: center;
-    box-shadow: 0 2px 6px rgba(99,102,241,0.3);
+    box-shadow: 0 8px 20px -6px rgba(99,102,241,0.6), inset 0 1px 0 rgba(255,255,255,0.4);
+    position: relative; overflow: hidden;
   }
+  .ai-coach-icon svg { position: relative; z-index: 1; }
+  .ai-coach-icon::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%);
+    transform: translateX(-120%);
+    animation: ai-coach-sheen 4.5s ease-in-out infinite;
+  }
+  @keyframes ai-coach-sheen { 0%,70%{transform:translateX(-120%)} 85%,100%{transform:translateX(120%)} }
+  .ai-coach-title-txt b { font-size: 15.5px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink, #0B1A13); display: block; }
+  .ai-coach-title-txt small { display: block; color: var(--ink-3, #7C8983); font-size: 11.5px; font-weight: 500; margin-top: 1px; }
   .ai-coach-tag {
-    font-size: 11px; font-weight: 600; color: #4338CA;
-    background: #EEF2FF; padding: 4px 10px; border-radius: 999px;
-    letter-spacing: 0.02em;
+    font-size: 11.5px; font-weight: 600; color: var(--ai, #6366F1);
+    background: var(--ai-light, rgba(99,102,241,0.10)); padding: 6px 12px; border-radius: 999px;
+    border: 1px solid rgba(99,102,241,0.2); letter-spacing: 0.01em;
   }
-  .ai-coach-list { display: flex; flex-direction: column; gap: 8px; }
+  .ai-coach-list { display: flex; flex-direction: column; gap: 8px; position: relative; }
   .ai-coach-item {
-    display: flex; align-items: center; gap: 12px;
-    padding: 12px 14px;
-    background: #ffffff;
-    border: 1px solid #f3f4f6;
-    border-radius: 10px;
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px;
+    background: var(--bg-2, rgba(255,255,255,0.55));
+    border: 1px solid var(--border, rgba(12,40,28,0.06));
+    border-radius: 15px;
     text-decoration: none;
     transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
     position: relative;
@@ -1571,27 +1611,25 @@ render_sidebar('accueil');
   a.ai-coach-item { color: inherit; }
   .ai-coach-item:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    border-color: #e5e7eb;
+    box-shadow: var(--shadow-card, 0 1px 2px rgba(9,30,22,0.04), 0 14px 34px -16px rgba(9,30,22,0.16));
+    border-color: rgba(99,102,241,0.3);
   }
-  .ai-coach-item.tone-warn { border-left: 3px solid #F59E0B; padding-left: 12px; border-radius: 0 10px 10px 0; }
-  .ai-coach-item.tone-success { border-left: 3px solid #10B981; padding-left: 12px; border-radius: 0 10px 10px 0; }
-  .ai-coach-item.tone-info { border-left: 3px solid #3B82F6; padding-left: 12px; border-radius: 0 10px 10px 0; }
   .ai-coach-emoji {
-    width: 36px; height: 36px; border-radius: 10px;
-    background: #f9fafb;
+    width: 40px; height: 40px; border-radius: 12px;
+    background: var(--ai-light, rgba(99,102,241,0.10));
+    border: 1px solid rgba(99,102,241,0.18);
     display: flex; align-items: center; justify-content: center;
-    font-size: 18px; flex-shrink: 0;
+    font-size: 19px; flex-shrink: 0;
   }
-  .ai-coach-item.tone-success .ai-coach-emoji { background: linear-gradient(135deg, #d1fae5, #a7f3d0); }
-  .ai-coach-item.tone-warn .ai-coach-emoji { background: linear-gradient(135deg, #fef3c7, #fde68a); }
-  .ai-coach-item.tone-info .ai-coach-emoji { background: linear-gradient(135deg, #dbeafe, #bfdbfe); }
+  .ai-coach-item.tone-success .ai-coach-emoji { background: linear-gradient(135deg, #d1fae5, #a7f3d0); border-color: rgba(16,185,129,0.2); }
+  .ai-coach-item.tone-warn .ai-coach-emoji { background: linear-gradient(135deg, #fef3c7, #fde68a); border-color: rgba(224,133,12,0.2); }
+  .ai-coach-item.tone-info .ai-coach-emoji { background: linear-gradient(135deg, #dbeafe, #bfdbfe); border-color: rgba(47,115,232,0.2); }
   .ai-coach-body { flex: 1; min-width: 0; }
-  .ai-coach-item-title { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 2px; }
-  .ai-coach-item-text { font-size: 12.5px; color: #4b5563; line-height: 1.5; }
-  .ai-coach-item-text strong { color: #111827; font-weight: 600; }
-  .ai-coach-arrow { color: #9ca3af; flex-shrink: 0; transition: transform 0.18s ease, color 0.18s ease; }
-  .ai-coach-item:hover .ai-coach-arrow { transform: translateX(3px); color: #6366F1; }
+  .ai-coach-item-title { font-size: 14px; font-weight: 650; color: var(--ink, #0B1A13); margin-bottom: 2px; letter-spacing: -0.01em; }
+  .ai-coach-item-text { font-size: 12.5px; color: var(--ink-2, #46554E); line-height: 1.5; }
+  .ai-coach-item-text strong { color: var(--ink, #0B1A13); font-weight: 600; }
+  .ai-coach-arrow { color: var(--ai, #6366F1); flex-shrink: 0; transition: transform 0.18s ease, color 0.18s ease; }
+  .ai-coach-item:hover .ai-coach-arrow { transform: translateX(3px); color: #4338CA; }
 
   /* Row 2 colonnes */
   .ai-row-2col {
