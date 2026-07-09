@@ -671,11 +671,6 @@ render_sidebar('projets');
           </div>
           <div class="ck-kpi-sub" style="color:<?= h($proj_health['color']) ?>"><?= h($proj_health['label']) ?></div>
         </div>
-        <div class="ck-kpi">
-          <div class="ck-kpi-lbl">Complétude bilan</div>
-          <div class="ck-kpi-val"><span data-counter-to="<?= (int)$proj_health['completeness'] ?>">0</span><span class="ck-kpi-unit">%</span></div>
-          <div class="ck-kpi-sub">Description, fichiers, factures</div>
-        </div>
       </div>
 
       <!-- Sparkline 14j -->
@@ -725,10 +720,17 @@ render_sidebar('projets');
       <?php endif; ?>
 
       <?php if ($can_edit_project || $is_admin): ?>
-      <div class="ck-docs-extra" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-        <a href="/download-bilan-analytique?project=<?= (int)$project['id'] ?>" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid #1D4ED8;color:#1D4ED8;background:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;">📊 Bilan analytique</a>
-        <a href="/download-justificatifs?project=<?= (int)$project['id'] ?>" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid #1D4ED8;color:#1D4ED8;background:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;">📎 Justificatifs</a>
-        <a href="/download-bilan-analytique-xlsx?project=<?= (int)$project['id'] ?>" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid #1D4ED8;color:#1D4ED8;background:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;">📗 Excel</a>
+      <div class="ck-exports">
+        <button type="button" class="ck-exports-btn" aria-haspopup="true" onclick="var m=this.parentNode.querySelector('.ck-exports-menu'); m.hidden=!m.hidden;">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Exports</span>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:2px;opacity:.7"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="ck-exports-menu" hidden>
+          <a href="/download-bilan-analytique?project=<?= (int)$project['id'] ?>" target="_blank" rel="noopener"><span class="mi">📊</span> Bilan analytique</a>
+          <a href="/download-justificatifs?project=<?= (int)$project['id'] ?>" target="_blank" rel="noopener"><span class="mi">📎</span> Justificatifs</a>
+          <a href="/download-bilan-analytique-xlsx?project=<?= (int)$project['id'] ?>" target="_blank" rel="noopener"><span class="mi">📗</span> Export Excel</a>
+        </div>
       </div>
       <?php endif; ?>
 
@@ -3559,6 +3561,27 @@ function copyDoc(id) {
 .ck-bilan-btn{border-radius:13px!important}
 .tab{font-weight:600}
 .tab-badge{font-weight:700}
+
+/* Cockpit simplifié : 3 KPI + menu Exports (non coupé) */
+.ck-hero{overflow:visible!important}
+.ck-hero-bg{border-radius:var(--radius-lg,18px) var(--radius-lg,18px) 0 0!important}
+.ck-kpi-grid{grid-template-columns:repeat(3,1fr)!important}
+.ck-exports{position:relative;margin-top:10px}
+.ck-exports-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border-radius:12px;border:1px solid var(--glass-border);background:var(--surface);color:var(--ink-2);font-size:13px;font-weight:650;cursor:pointer;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:var(--shadow-sm);font-family:inherit}
+.ck-exports-btn:hover{color:var(--ink)}
+.ck-exports-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:220px;background:var(--surface);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);border:1px solid var(--glass-border);border-radius:15px;box-shadow:var(--shadow-pop);padding:6px;z-index:50}
+.ck-exports-menu a{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:10px;text-decoration:none;color:var(--ink);font-size:13.5px;font-weight:550}
+.ck-exports-menu a:hover{background:var(--bg-2)}
+.ck-exports-menu .mi{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:15px;flex:none;background:var(--bg-2)}
 </style>
+
+<script>
+/* Ferme le menu Exports au clic en dehors */
+document.addEventListener('click', function(e){
+  document.querySelectorAll('.ck-exports-menu:not([hidden])').forEach(function(m){
+    if (!m.parentNode.contains(e.target)) m.hidden = true;
+  });
+});
+</script>
 
 <?php render_foot(); ?>
