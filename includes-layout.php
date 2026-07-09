@@ -141,7 +141,8 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 
 /* SIDEBAR */
 .sidebar { background: var(--glass); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border-right: 1px solid var(--glass-border); padding: 18px 12px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-.sb-logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; font-size: 16px; letter-spacing: -0.02em; padding: 4px 10px; }
+.sb-logo { display: inline-flex; align-items: center; gap: 11px; font-weight: 700; font-size: 18px; letter-spacing: -0.02em; padding: 4px 10px; color: var(--ink); }
+.sb-logo i { font-style: normal; color: var(--acc); }
 .sb-search {
     display: flex; align-items: center; gap: 8px;
     width: 100%;
@@ -163,8 +164,8 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
     padding: 1px 6px; background: #fff; color: var(--ink-3, #6b7280);
     border-radius: 4px; border: 1px solid var(--border, #e5e7eb);
 }
-.sb-logo-mark { width: 24px; height: 24px; background: linear-gradient(140deg, #12CE93, #059669 58%, #025C43); border-radius: 8px; position: relative; box-shadow: 0 4px 10px -2px rgba(5,150,105,0.5), inset 0 1px 0 rgba(255,255,255,0.5); }
-.sb-logo-mark::after { content: ""; position: absolute; right: 4.5px; bottom: 4.5px; width: 7px; height: 7px; background: #fff; border-radius: 50%; opacity: 0.95; }
+.sb-logo-mark { width: 30px; height: 30px; background: linear-gradient(140deg, #12CE93, #059669 58%, #025C43); border-radius: 10px; position: relative; box-shadow: 0 6px 14px -3px rgba(5,150,105,0.55), inset 0 1px 0 rgba(255,255,255,0.5); flex-shrink: 0; }
+.sb-logo-mark::after { content: ""; position: absolute; right: 6px; bottom: 6px; width: 8px; height: 8px; background: #fff; border-radius: 50%; opacity: 0.95; }
 
 /* ===== Bandeau retour cockpit (Super Admin / Fondateur) ===== */
 .sb-backto-sa { display: block; margin: 0 14px; padding: 9px 11px; border-radius: 10px; text-decoration: none; transition: transform 0.15s, box-shadow 0.15s; position: relative; overflow: hidden; }
@@ -203,7 +204,8 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .sb-mobile-header { display: none; position: sticky; top: 0; z-index: 50; background: var(--bg); border-bottom: 1px solid var(--border); padding: 10px 14px; align-items: center; gap: 12px; }
 .sb-burger { width: 38px; height: 38px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-3); color: var(--ink); cursor: pointer; transition: background 0.15s; flex-shrink: 0; border: none; }
 .sb-burger:hover { background: var(--border); }
-.sb-mobile-title { display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 15px; }
+.sb-mobile-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+.sb-mobile-title i { font-style: normal; color: var(--acc); }
 .sb-mobile-title .sb-logo-mark { width: 18px; height: 18px; }
 .sb-mobile-org { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); padding: 5px 10px; background: var(--bg-3); border-radius: 8px; }
 .sb-mobile-org-main { margin-left: 0; flex: 1; min-width: 0; font-size: 14px; font-weight: 500; color: var(--ink); padding: 6px 12px; }
@@ -314,14 +316,14 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .sb-org-name { font-size: 13px; font-weight: 500; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-org-role { font-size: 11px; color: var(--ink-3); line-height: 1.2; }
 .sb-org-chevron { color: var(--ink-4); flex-shrink: 0; }
-.sb-nav { display: flex; flex-direction: column; gap: 2px; }
-.sb-link { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 8px; font-size: 13.5px; color: var(--ink-2); transition: background 0.12s ease, color 0.12s ease; }
+.sb-nav { display: flex; flex-direction: column; gap: 3px; }
+.sb-link { display: flex; align-items: center; gap: 12px; padding: 9px 11px; border-radius: 11px; font-size: 13.5px; color: var(--ink-2); transition: background 0.12s ease, color 0.12s ease; }
 .sb-link:hover { background: var(--bg-2); color: var(--ink); }
-.sb-link.active { background: var(--acc-light); color: var(--acc-dark); font-weight: 500; }
+.sb-link.active { background: var(--acc-light); color: var(--acc-dark); font-weight: 600; }
 .sb-link svg { color: var(--ink-3); flex-shrink: 0; }
 .sb-link.active svg { color: var(--acc); }
-.sb-badge { margin-left: auto; font-size: 10.5px; background: var(--bg-3); color: var(--ink-2); padding: 1px 7px; border-radius: 999px; font-weight: 500; }
-.sb-link.active .sb-badge { background: var(--bg); color: var(--acc); }
+.sb-badge { margin-left: auto; font-size: 11px; background: var(--acc); color: #fff; padding: 1px 8px; border-radius: 999px; font-weight: 700; }
+.sb-link.active .sb-badge { background: var(--acc); color: #fff; }
 .sb-foot { margin-top: auto; padding: 10px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); }
 .sb-user-avatar { width: 32px; height: 32px; border-radius: 50%; background: #B5D4F4; color: #0C447C; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; flex-shrink: 0; }
 .sb-user-body { flex: 1; min-width: 0; }
@@ -1192,7 +1194,7 @@ function render_sidebar($active = 'accueil') {
     <?php else: ?>
     <div class="sb-mobile-title">
         <span class="sb-logo-mark"></span>
-        <span>Assokit</span>
+        <span>Asso<i>kit</i></span>
     </div>
     <?php endif; ?>
     <button type="button" class="sb-mobile-logout" onclick="window.location.href='/deconnexion.php'" aria-label="Se déconnecter" title="Se déconnecter">
@@ -1225,7 +1227,7 @@ function render_sidebar($active = 'accueil') {
       <?php endif; ?>
     <?php endif; ?>
 
-    <a href="/" class="sb-logo"><span class="sb-logo-mark"></span><span>Assokit</span></a>
+    <a href="/" class="sb-logo"><span class="sb-logo-mark"></span><span>Asso<i>kit</i></span></a>
 
     <button class="sb-org" aria-label="Organisation">
       <span class="sb-org-avatar"><?= h($org_initials) ?></span>
