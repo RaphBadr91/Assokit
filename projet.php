@@ -3518,4 +3518,47 @@ function copyDoc(id) {
 })();
 </script>
 
+<style>
+/* ============================================================
+   PROJET 2.0 — harmonisation Liquid Glass (même look partout)
+   Uniquement l'apparence : aucune logique ni permission modifiée.
+   ============================================================ */
+.main{max-width:1200px}
+
+/* Cartes principales → verre dépoli cohérent */
+.ck-hero, .ov2-card, .ov2-side-card, .inv-summary-card, .ai-action-card{
+  background:var(--glass)!important;
+  backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);
+  border:1px solid var(--glass-border)!important;
+  border-radius:var(--radius-lg,18px)!important;
+  box-shadow:var(--shadow-card)!important;
+}
+.ck-hero:hover, .ov2-card:hover, .ov2-side-card:hover, .inv-summary-card:hover, .ai-action-card:hover{
+  box-shadow:var(--shadow-pop)!important;
+}
+
+/* Cellules internes (KPI cockpit) → fond doux */
+.ck-kpi{background:var(--bg-2)!important;border:1px solid var(--hairline,rgba(12,40,28,.06))!important;border-radius:12px!important}
+
+/* Titres / valeurs → encre (mode sombre géré) */
+.ck-donut-num, .ov2-card-title, .ov2-side-value, .ck-kpi-val, .ck-card-title, .ck-nba-title{color:var(--ink)!important}
+.ov2-card-text{color:var(--ink-2)!important}
+.ck-kpi-lbl, .ov2-side-label, .ck-donut-lbl, .ck-kpi-sub, .ov2-card-action, .ck-card-sub, .ck-nba-text{color:var(--ink-3)!important}
+
+/* Objectif — identité verte conservée, harmonisée */
+.ov2-objective{background:var(--glass)!important;border:1px solid var(--glass-border)!important}
+.ov2-objective-text{background:var(--brand-soft,rgba(16,185,129,.08))!important;border-left:3px solid var(--brand-2,#10B981)!important;color:var(--brand-ink,#065F46)!important;border-radius:0 12px 12px 0!important}
+
+/* Compteur d'étapes / pastille */
+.ov2-step-counter{background:var(--ai-light,#ede9fe)!important;color:var(--ai-dark,#5b21b6)!important}
+
+/* Icônes d'en-tête de carte : léger relief */
+.ov2-card-icon, .ov2-side-icon{box-shadow:inset 0 1px 0 var(--glass-hi,rgba(255,255,255,.6))}
+
+/* Boutons / onglets */
+.ck-bilan-btn{border-radius:13px!important}
+.tab{font-weight:600}
+.tab-badge{font-weight:700}
+</style>
+
 <?php render_foot(); ?>
