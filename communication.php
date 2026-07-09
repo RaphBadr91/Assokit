@@ -279,7 +279,7 @@ render_sidebar('communication');
         <a href="/communication-diffuser-nouveau" class="btn btn-primary">+ Créer la première diffusion</a>
       </div>
     <?php else: ?>
-      <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
+      <div class="comm-list" style="overflow:hidden;">
         <?php foreach ($broadcasts as $b): ?>
           <div style="display:grid; grid-template-columns: 1fr auto auto; gap:14px; padding:14px 18px; border-bottom:1px solid var(--border); align-items:center;">
             <div style="min-width:0;">
@@ -358,10 +358,8 @@ render_sidebar('communication');
         <?php foreach ($events as $e):
           $is_past = strtotime($e['start_date']) < time();
         ?>
-          <a href="/communication-evenement?id=<?= (int)$e['id'] ?>"
-             style="display:block; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:18px; text-decoration:none; color:inherit; transition:border-color 0.15s; <?= $is_past ? 'opacity:0.65;' : '' ?>"
-             onmouseover="this.style.borderColor='var(--acc)'"
-             onmouseout="this.style.borderColor='var(--border)'">
+          <a href="/communication-evenement?id=<?= (int)$e['id'] ?>" class="comm-evt-card"
+             style="display:block; padding:18px; text-decoration:none; color:inherit; <?= $is_past ? 'opacity:0.65;' : '' ?>">
             <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
               <div style="font-size:11px; font-weight:500; color:var(--acc); letter-spacing:0.03em; text-transform:uppercase;">
                 <?= date('d M Y', strtotime($e['start_date'])) ?> · <?= date('H:i', strtotime($e['start_date'])) ?>
@@ -565,6 +563,28 @@ render_sidebar('communication');
 .comm-recent-badge.draft{background:var(--amber-soft,rgba(224,133,12,.14));color:var(--amber,#E0850C)}
 @media (max-width:900px){.comm-recents{grid-template-columns:1fr 1fr}.comm-gen-btn{margin-left:0;width:100%;justify-content:center}}
 @media (max-width:560px){.comm-recents{grid-template-columns:1fr}}
+
+/* ===== Onglets Diffuser / Événements / Affiches / Bibliothèque ===== */
+.main .main-head h2{font-weight:750!important;letter-spacing:-.01em;color:var(--ink)}
+.empty-state{background:var(--glass)!important;backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--glass-border)!important;border-radius:var(--radius-lg,18px)!important;box-shadow:var(--shadow-card)}
+/* Diffuser / Événements : listes en verre */
+.comm-list{background:var(--glass)!important;backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);border:1px solid var(--glass-border)!important;border-radius:var(--radius-lg,18px)!important;box-shadow:var(--shadow-card);overflow:hidden}
+.comm-evt-card{background:var(--glass)!important;backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);border:1px solid var(--glass-border)!important;border-radius:var(--radius-lg,18px)!important;box-shadow:var(--shadow-card)!important;transition:transform .16s ease,box-shadow .16s ease}
+.comm-evt-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-pop)!important}
+/* Affiches — teaser premium */
+.comm-coming{background:var(--glass);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--glass-border);border-radius:var(--radius-lg,18px);box-shadow:var(--shadow-card);position:relative;overflow:hidden}
+.comm-coming::before{content:"V5 · Bientôt";position:absolute;top:14px;right:16px;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--ai);background:var(--ai-light,rgba(99,102,241,.1));border:1px solid rgba(99,102,241,.2);padding:4px 10px;border-radius:999px}
+.comm-coming-title{font-weight:750;letter-spacing:-.02em}
+.comm-preview{background:var(--glass);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);border:1px solid var(--glass-border);border-radius:var(--radius-lg,18px);box-shadow:var(--shadow-card);transition:transform .16s ease,box-shadow .16s ease}
+.comm-preview:hover{transform:translateY(-3px);box-shadow:var(--shadow-pop)}
+.comm-preview-icon{font-size:26px}
+.comm-preview-title{font-weight:700}
+/* Bibliothèque — cartes de verre */
+.comm-lib{gap:12px}
+.comm-lib-row{background:var(--glass)!important;backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);border:1px solid var(--glass-border)!important;border-radius:var(--radius-lg,18px)!important;box-shadow:var(--shadow-card);padding:15px 18px!important;transition:transform .16s ease,box-shadow .16s ease}
+.comm-lib-row:hover{transform:translateY(-2px);box-shadow:var(--shadow-pop)}
+.comm-lib-title{font-weight:700}
+.comm-lib-cat{background:var(--ai-light,rgba(99,102,241,.1))!important;color:var(--ai)!important;border-radius:999px!important;font-weight:700}
 </style>
 
 <script>
