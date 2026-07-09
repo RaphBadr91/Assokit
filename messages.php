@@ -211,7 +211,7 @@ function format_msg_content($content) {
     $safe = preg_replace_callback(
         '/(@[a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ\.\-]+)/u',
         function($m) {
-            return '<span style="background:#DBEAFE; color:#1E40AF; padding:1px 6px; border-radius:4px; font-weight:500;">' . $m[1] . '</span>';
+            return '<span style="background:var(--ai-light,#EEF2FF); color:var(--ai-dark,#4338CA); padding:1px 6px; border-radius:5px; font-weight:600;">' . $m[1] . '</span>';
         },
         $safe
     );
@@ -768,6 +768,25 @@ if (aiModalEl) aiModalEl.addEventListener('click', function(e) {
   0%, 100% { background: transparent; }
   20%, 60% { background: #FEF3C7; }
 }
+
+/* ============================================================
+   MESSAGES 2.0 — surcouche premium Liquid Glass (maquette)
+   ============================================================ */
+.msg-channels{background:var(--glass)!important;backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--glass-border)!important;border-radius:var(--radius-lg,18px)!important;box-shadow:var(--shadow-card)}
+.msg-channels-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.msg-channel-link{border-radius:11px;font-weight:500}
+.msg-channel-link.active{background:var(--acc-light)!important;color:var(--acc-dark)!important;font-weight:650}
+.msg-main{background:var(--glass)!important;backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--glass-border)!important;border-radius:var(--radius-lg,18px)!important;box-shadow:var(--shadow-card)}
+.msg-head-name{font-weight:700}
+.msg-head-btn.ai{color:var(--ai)!important;background:var(--ai-light)!important;border:1px solid rgba(99,102,241,.2)!important;font-weight:650;border-radius:11px}
+.msg-author{font-weight:650}
+.msg-author-role{font-size:10px;font-weight:700;background:var(--bg-2);color:var(--ink-3);border-radius:6px;padding:2px 7px}
+.msg-quote{background:var(--bg-2);border-left:3px solid var(--brand-2,#10B981);border-radius:0 10px 10px 0}
+.msg-quote:hover{background:var(--bg-3)}
+.msg-quote-author{color:var(--brand-ink,#065F46)}
+.msg-quote-content{color:var(--ink-2)}
+.msg-compose-input{border:1.5px solid var(--acc,#059669)!important;border-radius:14px!important;box-shadow:0 0 0 4px var(--acc-light,rgba(5,150,105,.12))}
+.msg-compose-send{background:linear-gradient(140deg,#10B981,#059669)!important;border:0!important;border-radius:12px!important;box-shadow:0 10px 22px -8px rgba(5,150,105,.6)!important}
 </style>
 <script>
 function setReplyTo(msgId, author, content) {
