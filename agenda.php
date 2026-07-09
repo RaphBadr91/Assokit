@@ -163,6 +163,31 @@ render_head('Agenda');
 render_sidebar('agenda');
 ?>
 
+<style>
+/* ============================================================
+   AGENDA 2.0 — surcouche premium Liquid Glass (maquette)
+   ============================================================ */
+.main{max-width:1260px}
+.main .page-title{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1;color:var(--ink)}
+.main .page-sub{font-size:13.5px;color:var(--ink-2);margin-top:10px}
+.cal-toolbar{margin-bottom:16px}
+.cal-nav{gap:14px}
+.cal-nav-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--glass-border);background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:var(--shadow-card);display:inline-flex;align-items:center;justify-content:center;color:var(--ink)}
+.cal-month-title{font-size:19px;font-weight:750;letter-spacing:-.02em;color:var(--ink)}
+.cal-today-btn{border-radius:11px}
+.cal-view-switch{background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;padding:3px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:var(--shadow-card)}
+.cal-view-btn{border-radius:9px;font-weight:600;color:var(--ink-3)}
+.cal-view-btn.active{background:var(--bg);color:var(--ink);box-shadow:var(--shadow-card)}
+/* grille en verre */
+.cal-grid{background:var(--glass);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--glass-border);border-radius:var(--radius-lg,18px);box-shadow:var(--shadow-card);overflow:hidden}
+.cal-weekday{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.cal-event-pill{border-radius:7px;font-weight:600}
+.cal-day.today .cal-day-num{background:var(--acc);color:#fff;border-radius:50%}
+.cal-day-more{font-size:11px;color:var(--ink-3);font-weight:600}
+/* liste en verre */
+.cal-list{background:var(--glass);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--glass-border);border-radius:var(--radius-lg,18px);box-shadow:var(--shadow-card);overflow:hidden}
+</style>
+
 <main class="main">
 
   <nav class="crumbs">
