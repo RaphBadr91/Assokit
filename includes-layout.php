@@ -1241,7 +1241,7 @@ function render_sidebar($active = 'accueil') {
 
     <nav class="sb-nav">
       <a href="/dashboard" class="sb-link <?= $active === 'accueil' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         Accueil
       </a>
 
@@ -1273,7 +1273,7 @@ function render_sidebar($active = 'accueil') {
 
       <?php // Projets : tout le monde voit sauf les followers purs (mais on affiche quand même, filtré côté contenu) ?>
       <a href="/projets" class="sb-link <?= $active === 'projets' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
         <?= is_follower() ? 'Projets suivis' : 'Projets' ?>
         <?php if (!is_follower()): ?><span class="sb-badge"><?= $proj_count ?></span><?php endif; ?>
       </a>
@@ -1284,7 +1284,7 @@ function render_sidebar($active = 'accueil') {
       <div class="ak-collapse <?= $adh_open ? 'is-open' : '' ?>">
         <div class="ak-collapse-row">
           <a href="/adherents" class="sb-link ak-collapse-link <?= $active === 'adherents' ? 'active' : '' ?>" style="flex:1;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 5"/></svg>
             Adhérents
             <span class="sb-badge"><?= $user_count ?></span>
           </a>
@@ -1308,7 +1308,7 @@ function render_sidebar($active = 'accueil') {
       <div class="ak-collapse <?= $ag_open ? 'is-open' : '' ?>">
         <div class="ak-collapse-row">
           <a href="/agenda" class="sb-link ak-collapse-link <?= $active === 'agenda' ? 'active' : '' ?>" style="flex:1;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>
             Agenda
           </a>
           <?php if (!is_follower()): ?>
@@ -1362,7 +1362,7 @@ function render_sidebar($active = 'accueil') {
       <?php // Messages : tout le monde sauf followers ?>
       <?php if (!is_follower()): ?>
       <a href="/messages" class="sb-link <?= $active === 'messages' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v14H5.17L4 19.17z"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 3z"/></svg>
         Messages
       </a>
       <?php endif; ?>
@@ -1387,7 +1387,7 @@ function render_sidebar($active = 'accueil') {
       }
       ?>
       <a href="/support" class="sb-link <?= $active === 'support' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10H4z"/><path d="M8 20h8M12 15v5"/></svg>
         Support
         <?php if ($support_unread > 0): ?>
           <span class="sb-badge" style="background:#EF4444; color:white;"><?= $support_unread ?></span>
@@ -1438,14 +1438,14 @@ function render_sidebar($active = 'accueil') {
       <?php // Communication : uniquement si capacité access_marketing ?>
       <?php if (can('access_marketing')): ?>
       <a href="/communication" class="sb-link <?= $active === 'communication' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-7-7 18-3-8z"/></svg>
         Communication
       </a>
       <?php endif; ?>
 
       <?php // ⚙️ Paramètres : visible pour tous les users connectés ?>
       <a href="/parametres" class="sb-link <?= $active === 'parametres' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.4l2-1.5-2-3.5-2.3 1a7 7 0 0 0-2.4-1.4L15.8 2h-4l-.4 2.7A7 7 0 0 0 9 6.1L6.7 5 4.7 8.5l2 1.5A7 7 0 0 0 6.6 12a7 7 0 0 0 .1 1.4l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 2.4 1.4l.4 2.7h4l.4-2.7a7 7 0 0 0 2.4-1.4l2.3 1 2-3.5-2-1.5A7 7 0 0 0 19 12z"/></svg>
         Paramètres
       </a>
 
