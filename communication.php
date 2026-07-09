@@ -439,6 +439,31 @@ render_sidebar('communication');
 .comm-lib-title { font-size: 14px; font-weight: 500; color: var(--ink); margin-bottom: 2px; }
 .comm-lib-meta  { font-size: 12px; color: var(--ink-3); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .comm-lib-cat   { background: var(--bg-3); padding: 1px 7px; border-radius: 5px; font-size: 11px; }
+
+/* ============================================================
+   COMMUNICATION 2.0 — surcouche premium Liquid Glass (maquette)
+   ============================================================ */
+.main{max-width:1200px}
+.main .page-title{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1;color:var(--ink)}
+.main .page-sub{font-size:13.5px;color:var(--ink-2);margin-top:10px}
+.comm-stats{gap:10px}
+.comm-stat{background:var(--glass);backdrop-filter:blur(12px) saturate(1.4);-webkit-backdrop-filter:blur(12px) saturate(1.4);border:1px solid var(--glass-border);border-radius:14px;box-shadow:var(--shadow-card);padding:12px 18px;min-width:84px}
+.comm-stat-n{font-size:24px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.comm-stat:first-child .comm-stat-n{color:var(--ai)}
+.comm-stat-l{font-size:9.5px;font-weight:700}
+.comm-section-title{font-size:17px;font-weight:750;letter-spacing:-.02em}
+.comm-grid{grid-template-columns:repeat(4,1fr);gap:16px}
+.comm-card{position:relative;overflow:hidden;padding:18px 20px 16px;background:var(--glass);backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);border:1px solid var(--glass-border);border-radius:var(--radius-lg,18px);box-shadow:var(--shadow-card);transition:transform .16s ease,box-shadow .16s ease}
+.comm-card::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,#34D399,#059669)}
+.comm-section:nth-of-type(2) .comm-card::before{background:linear-gradient(90deg,#FBBF24,#E0850C)}
+.comm-section:nth-of-type(3) .comm-card::before{background:linear-gradient(90deg,#60A5FA,#2F73E8)}
+.comm-section:nth-of-type(4) .comm-card::before{background:linear-gradient(90deg,#8B5CF6,#6366F1)}
+.comm-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-pop)}
+.comm-card-title{font-size:15px;font-weight:700}
+.comm-card-desc{min-height:34px}
+.comm-card-cta{font-weight:650;color:var(--brand-ink,#047857)}
+@media (max-width:960px){.comm-grid{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.comm-grid{grid-template-columns:1fr}}
 </style>
 
 <?php render_foot(); ?>
