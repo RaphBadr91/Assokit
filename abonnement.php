@@ -332,79 +332,86 @@ render_sidebar($active);
       </div>
 
       <?php elseif ($tab === 'plans'): ?>
-      <!-- ============ 5.2.3 PLANS DISPONIBLES ============ -->
-      <div>
-        <h2 class="pa-form-h2">Plans Assokit disponibles</h2>
-        <p class="pa-form-sub">Choisissez la formule qui correspond à vos besoins. Sans engagement, modifiable à tout moment.</p>
+      <!-- ============ 5.2.3 PLANS DISPONIBLES (redesign) ============ -->
+      <div class="pa-plans">
+        <h2 class="pa-plans-title">Choisissez votre formule</h2>
+        <p class="pa-plans-sub">Sans engagement, modifiable à tout moment. Un conseiller Assokit vous accompagne pour tout changement.</p>
 
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-top:32px;">
+        <div class="plan-grid">
           <?php foreach ($plans as $p):
-            $is_current = $current_plan && $current_plan['slug'] === $p['slug'];
+            $is_current  = $current_plan && $current_plan['slug'] === $p['slug'];
             $is_featured = !empty($p['is_featured']);
-            $is_custom = !empty($p['is_custom_quote']);
-            $card_border = $is_featured ? '2px solid #F59E0B' : '1px solid #E4E4E7';
-            $card_bg = $is_current ? 'linear-gradient(135deg,#ECFDF5,#FFFFFF)' : '#fff';
+            $is_custom   = !empty($p['is_custom_quote']);
+            $df = $detailed_features[$p['slug']] ?? null;
           ?>
-          <div style="position:relative;padding:20px;background:<?= $card_bg ?>;border:<?= $card_border ?>;border-radius:14px;display:flex;flex-direction:column;gap:12px;">
-            <?php if ($is_featured): ?>
-              <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#F59E0B;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;letter-spacing:0.05em;">⭐ LE PLUS CHOISI</div>
-            <?php endif; ?>
-            <?php if ($is_current): ?>
-              <div style="position:absolute;top:14px;right:14px;background:#10B981;color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;">ACTIF</div>
-            <?php endif; ?>
-            <div>
-              <h3 style="margin:0 0 4px;font-size:18px;font-weight:700;color:#0A0A0B;"><?= h($p['name']) ?></h3>
-              <p style="margin:0;font-size:12px;color:#71717A;"><?= h($p['tagline'] ?? '') ?></p>
-            </div>
-            <div style="margin:6px 0;">
+          <div class="plan-card<?= $is_featured ? ' is-featured' : '' ?><?= $is_current ? ' is-current' : '' ?>">
+            <?php if ($is_featured): ?><span class="plan-flag">★ Le plus choisi</span><?php endif; ?>
+            <?php if ($is_current): ?><span class="plan-active">✓ Actif</span><?php endif; ?>
+
+            <div class="plan-name"><?= h($p['name']) ?></div>
+            <div class="plan-tagline"><?= h($p['tagline'] ?? '') ?></div>
+
+            <div class="plan-price">
               <?php if ($is_custom): ?>
-                <div style="font-size:22px;font-weight:700;color:#0A0A0B;">Sur devis</div>
-                <div style="font-size:11px;color:#71717A;">contact direct</div>
+                <span class="plan-amount">Sur devis</span>
+                <span class="plan-unit">tarif adapté à vos besoins</span>
               <?php elseif ((int)$p['price_cents'] === 0): ?>
-                <div style="font-size:28px;font-weight:700;color:#059669;">Gratuit</div>
-                <div style="font-size:11px;color:#71717A;">à vie</div>
+                <span class="plan-amount">Gratuit</span>
+                <span class="plan-unit">à vie</span>
               <?php else: ?>
-                <div style="font-size:24px;font-weight:700;color:#0A0A0B;"><?= number_format((int)$p['price_cents'] / 100, 2, ',', ' ') ?> €</div>
-                <div style="font-size:11px;color:#71717A;">HT / mois</div>
+                <span class="plan-amount"><?= number_format((int)$p['price_cents'] / 100, 2, ',', ' ') ?> €</span>
+                <span class="plan-unit">HT / mois</span>
                 <?php if ((int)$p['price_yearly_cents'] > 0): ?>
-                  <div style="font-size:11px;color:#10B981;margin-top:2px;">soit <?= number_format((int)$p['price_yearly_cents'] / 100, 0, ',', ' ') ?> € HT / an</div>
+                  <span class="plan-year">soit <?= number_format((int)$p['price_yearly_cents'] / 100, 0, ',', ' ') ?> € HT / an</span>
                 <?php endif; ?>
               <?php endif; ?>
             </div>
-            <?php $df = $detailed_features[$p['slug']] ?? null; ?>
+
+            <div class="plan-cta">
+              <?php if ($is_current): ?>
+                <button class="plan-btn is-disabled" disabled>Votre formule actuelle</button>
+              <?php else:
+                $req_label = $is_custom ? 'Être recontacté' : 'Choisir ' . $p['name'];
+                $req_title = 'Changement de formule : ' . $p['name'];
+                $req_body  = $is_custom
+                    ? 'Bonjour, je souhaite être recontacté(e) pour une formule sur-mesure adaptée à mon organisation. Merci.'
+                    : 'Bonjour, je souhaite passer à la formule ' . $p['name']
+                      . ((int)$p['price_cents'] > 0 ? ' (' . number_format((int)$p['price_cents'] / 100, 2, ',', ' ') . ' € HT / mois)' : '')
+                      . '. Merci de m\'accompagner pour ce changement.';
+              ?>
+                <form method="POST" action="/support/nouveau" class="plan-form">
+                  <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+                  <input type="hidden" name="category" value="billing">
+                  <input type="hidden" name="priority" value="normal">
+                  <input type="hidden" name="title" value="<?= h($req_title) ?>">
+                  <input type="hidden" name="body" value="<?= h($req_body) ?>">
+                  <button type="submit" class="plan-btn<?= $is_featured ? ' is-primary' : '' ?>"><?= h($req_label) ?></button>
+                </form>
+              <?php endif; ?>
+            </div>
+
             <?php if ($df): ?>
-              <div style="margin:4px 0 14px;flex:1;">
-                <div style="font-size:10px;font-weight:700;color:#71717A;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;"><?= h($df['header']) ?></div>
-                <ul style="list-style:none;padding:0;margin:0;font-size:12px;color:#3F3F46;line-height:1.55;">
+              <div class="plan-feats">
+                <div class="plan-feats-h"><?= h($df['header']) ?></div>
+                <ul>
                   <?php foreach ($df['items'] as $item): ?>
-                    <li style="display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;">
-                      <span style="color:#10B981;flex-shrink:0;margin-top:1px;font-weight:700;">✓</span>
-                      <span><?= $item ?></span>
-                    </li>
+                    <li><span class="plan-ck"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span><span><?= $item ?></span></li>
                   <?php endforeach; ?>
                 </ul>
               </div>
             <?php else: ?>
-              <ul style="list-style:none;padding:0;margin:8px 0;font-size:13px;color:#3F3F46;line-height:1.7;">
+              <ul class="plan-feats-mini">
                 <li><strong><?= $p['limit_adherents'] === null ? '∞' : number_format((int)$p['limit_adherents'], 0, ',', ' ') ?></strong> adhérents</li>
                 <li><strong><?= $p['limit_users'] === null ? '∞' : number_format((int)$p['limit_users'], 0, ',', ' ') ?></strong> utilisateurs</li>
               </ul>
             <?php endif; ?>
-            <div style="margin-top:auto;">
-              <?php if ($is_current): ?>
-                <button disabled style="width:100%;padding:10px;background:#E4E4E7;color:#71717A;border:0;border-radius:10px;font-size:13px;font-weight:600;cursor:not-allowed;">Formule actuelle</button>
-              <?php elseif ($is_custom): ?>
-                <a href="mailto:contact@assokit.fr?subject=Demande%20de%20devis%20Sur-mesure" style="display:block;width:100%;padding:10px;background:#0A0A0B;color:#fff;border-radius:10px;font-size:13px;font-weight:600;text-align:center;text-decoration:none;">Demander un devis</a>
-              <?php else: ?>
-                <a href="mailto:contact@assokit.fr?subject=Changement%20vers%20<?= urlencode($p['name']) ?>" style="display:block;width:100%;padding:10px;background:<?= $is_featured ? '#F59E0B' : '#059669' ?>;color:#fff;border-radius:10px;font-size:13px;font-weight:600;text-align:center;text-decoration:none;">Demander cette formule</a>
-              <?php endif; ?>
-            </div>
           </div>
           <?php endforeach; ?>
         </div>
 
-        <div style="margin-top:24px;padding:14px;background:#FEF3C7;border:1px solid #FBBF24;border-radius:10px;font-size:13px;color:#92400E;line-height:1.5;">
-          <strong>ℹ️ Note :</strong> Le paiement par carte sera disponible prochainement. En attendant, contactez <a href="mailto:contact@assokit.fr" style="color:#92400E;text-decoration:underline;">contact@assokit.fr</a> pour changer de formule.
+        <div class="plan-note">
+          <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          <div>En cliquant sur un bouton, <strong>votre demande part directement à notre support</strong> — pas d'email à envoyer. Notre équipe vous répond dans votre espace <a href="/support">Support</a>.</div>
         </div>
       </div>
 
@@ -595,6 +602,52 @@ render_sidebar($active);
 .pa-content .pa-form-card [style*="grid-template-columns:repeat(auto-fit,minmax(220px"] > div {
   background: var(--bg-2, #EDF2EF); border-radius: 10px; padding: 9px 12px !important;
 }
+
+/* ===== Plans disponibles — redesign ===== */
+.pa-plans-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink, #0B1A13); margin: 0 0 6px; }
+.pa-plans-sub { color: var(--ink-3, #78857F); font-size: 14px; margin: 0 0 24px; max-width: 640px; }
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.plan-card {
+  position: relative; display: flex; flex-direction: column;
+  padding: 24px 22px; border-radius: var(--radius-lg, 18px);
+  background: var(--glass, rgba(255,255,255,0.72));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.65));
+  box-shadow: var(--shadow-card, 0 1px 2px rgba(9,30,22,0.04), 0 14px 34px -16px rgba(9,30,22,0.16));
+  backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+.plan-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-pop, 0 2px 8px rgba(9,30,22,0.06), 0 26px 56px -20px rgba(9,30,22,0.24)); }
+.plan-card.is-featured { border: 1.5px solid rgba(245,158,11,0.55); box-shadow: 0 1px 2px rgba(9,30,22,0.04), 0 22px 46px -18px rgba(245,158,11,0.4); }
+.plan-card.is-current::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1.5px rgba(16,185,129,0.5); pointer-events: none; }
+.plan-flag { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg,#FBBF24,#F59E0B); color: #fff; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 999px; letter-spacing: .04em; box-shadow: 0 6px 14px -4px rgba(245,158,11,.5); white-space: nowrap; }
+.plan-active { position: absolute; top: 16px; right: 16px; background: var(--acc, #059669); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+.plan-name { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink, #0B1A13); margin-top: 4px; }
+.plan-tagline { font-size: 12.5px; color: var(--ink-3, #78857F); margin-top: 2px; min-height: 16px; }
+.plan-price { margin: 16px 0 4px; display: flex; flex-direction: column; gap: 1px; }
+.plan-amount { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink, #0B1A13); line-height: 1; }
+.plan-unit { font-size: 12px; color: var(--ink-3, #78857F); margin-top: 4px; }
+.plan-year { font-size: 12px; color: var(--acc, #059669); font-weight: 600; margin-top: 3px; }
+.plan-cta { margin: 16px 0 4px; }
+.plan-form { margin: 0; }
+.plan-btn {
+  width: 100%; padding: 12px; border: 0; border-radius: 12px; font-family: inherit;
+  font-size: 14px; font-weight: 700; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease;
+  background: var(--bg-2, #EDF2EF); color: var(--ink, #0B1A13);
+}
+.plan-btn:hover:not(.is-disabled) { transform: translateY(-1px); }
+.plan-btn.is-primary { background: linear-gradient(140deg,#FBBF24,#F59E0B); color: #fff; box-shadow: 0 10px 22px -8px rgba(245,158,11,.6), inset 0 1px 0 rgba(255,255,255,.35); }
+.plan-card:not(.is-featured):not(.is-current) .plan-btn { background: linear-gradient(140deg,#10B981,#059669); color: #fff; box-shadow: 0 10px 22px -8px rgba(5,150,105,.55), inset 0 1px 0 rgba(255,255,255,.3); }
+.plan-btn.is-disabled { background: var(--bg-2, #EDF2EF); color: var(--ink-3, #78857F); cursor: default; }
+.plan-feats { margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--border, rgba(12,40,28,0.07)); }
+.plan-feats-h { font-size: 10.5px; font-weight: 800; color: var(--ink-4, #A6B0AA); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 12px; }
+.plan-feats ul { list-style: none; padding: 0; margin: 0; }
+.plan-feats li { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; color: var(--ink-2, #45544D); line-height: 1.5; margin-bottom: 9px; }
+.plan-ck { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--acc-light, #D1FAE5); display: grid; place-items: center; margin-top: 1px; }
+.plan-ck svg { width: 11px; height: 11px; stroke: var(--acc-dark, #047857); fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.plan-feats-mini { list-style: none; padding: 16px 0 0; margin: 6px 0 0; border-top: 1px solid var(--border, rgba(12,40,28,0.07)); font-size: 13.5px; color: var(--ink-2, #45544D); line-height: 1.9; }
+.plan-note { display: flex; align-items: flex-start; gap: 12px; margin-top: 24px; padding: 15px 18px; border-radius: 14px; background: var(--acc-light, #D1FAE5); border: 1px solid rgba(5,150,105,0.2); font-size: 13px; color: var(--acc-dark, #047857); line-height: 1.5; }
+.plan-note svg { flex: none; width: 18px; height: 18px; stroke: var(--acc, #059669); fill: none; stroke-width: 2; margin-top: 1px; }
+.plan-note a { color: var(--acc-dark, #047857); font-weight: 700; text-decoration: underline; }
 </style>
 
 <?php render_foot(); ?>
