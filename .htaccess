@@ -164,6 +164,7 @@ RewriteRule ^([a-f0-9]{32})\.txt$ indexnow-key.php?key=$1 [L,QSA]
 # ============================================================
 
 # Routes Fondateur (nouvelles URLs propres)
+   RewriteRule ^fondateur-pilotage/?$ fondateur-pilotage.php [L,QSA]
    RewriteRule ^fondateur-plans/?$ fondateur-plans.php [L,QSA]
    RewriteRule ^fondateur-create-organization/?$ fondateur-create-organization.php [L,QSA]
    RewriteRule ^fondateur-domains/?$ fondateur-domains.php [L,QSA]

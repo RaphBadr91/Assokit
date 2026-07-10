@@ -262,6 +262,23 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
     background: linear-gradient(135deg, rgba(252,211,77,0.22) 0%, rgba(245,158,11,0.12) 100%);
     border-color: rgba(252,211,77,0.55);
 }
+/* Bouton unique Pilotage Fondateur (vers la page-hub) */
+.sa-founder-btn {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 6px; padding: 11px 12px;
+    border-radius: 11px;
+    font-size: 13px; font-weight: 700;
+    color: #FCD34D; text-transform: uppercase; letter-spacing: 0.05em;
+    background: linear-gradient(135deg, rgba(252,211,77,0.11) 0%, rgba(245,158,11,0.05) 100%);
+    border: 1px solid rgba(252,211,77,0.28);
+    transition: all 0.18s; user-select: none;
+}
+.sa-founder-btn:hover { background: linear-gradient(135deg, rgba(252,211,77,0.20) 0%, rgba(245,158,11,0.11) 100%); border-color: rgba(252,211,77,0.5); transform: translateY(-1px); }
+.sa-founder-btn.active { background: linear-gradient(135deg, rgba(252,211,77,0.24) 0%, rgba(245,158,11,0.13) 100%); border-color: rgba(252,211,77,0.6); box-shadow: 0 8px 20px -10px rgba(245,158,11,.45); }
+.sa-founder-btn-star { font-size: 15px; width: 18px; text-align: center; }
+.sa-founder-btn-arrow { margin-left: auto; font-size: 13px; opacity: 0.6; transition: transform .18s; }
+.sa-founder-btn:hover .sa-founder-btn-arrow { transform: translateX(3px); opacity: 1; }
+
 .sa-dropdown-icon {
     font-size: 14px;
     width: 18px;
@@ -740,49 +757,17 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
         <?php endif; ?>
       </a>
 
-      <?php // === [PACK 6.4] Section Pilotage Fondateur — MENU DÉROULANT === ?>
+      <?php // === Section Pilotage Fondateur — bouton unique vers la page-hub === ?>
       <?php if ($is_founder): ?>
       <?php
-        // Détection auto : si la page active fait partie du menu, on ouvre le dropdown
-        $founder_pages = ['fondateur-plans', 'fondateur-create-organization', 'fondateur-domains', 'fondateur-stripe-config', 'admin-blog', 'fondateur-activity'];
-        $founder_open = in_array($active, $founder_pages, true);
+        $founder_pages = ['fondateur-pilotage', 'fondateur-pricing', 'fondateur-plans', 'fondateur-create-organization', 'fondateur-domains', 'fondateur-stripe-config', 'admin-blog', 'fondateur-activity'];
+        $founder_active = in_array($active, $founder_pages, true);
       ?>
-      <details class="sa-dropdown" <?= $founder_open ? 'open' : '' ?>>
-        <summary class="sa-dropdown-trigger">
-          <span class="sa-dropdown-icon">⭐</span>
-          <span>Pilotage Fondateur</span>
-          <span class="sa-dropdown-arrow">▼</span>
-        </summary>
-        <div class="sa-dropdown-content">
-          <div class="sa-dd-label">Monétisation</div>
-          <a href="/fondateur-pricing" class="sa-link <?= $active === 'fondateur-pricing' ? 'active' : '' ?>">
-            <span style="font-size:14px;">💶</span> Tarifs &amp; TVA
-          </a>
-          <a href="/fondateur-plans" class="sa-link <?= $active === 'fondateur-plans' ? 'active' : '' ?>">
-            <span class="sa-link-icon">💼</span> Plans tarifaires
-          </a>
-          <a href="/fondateur-stripe-config" class="sa-link <?= $active === 'fondateur-stripe-config' ? 'active' : '' ?>">
-            <span class="sa-link-icon">💳</span> Config Stripe
-          </a>
-
-          <div class="sa-dd-label">Croissance</div>
-          <a href="/fondateur-create-organization" class="sa-link <?= $active === 'fondateur-create-organization' ? 'active' : '' ?>">
-            <span class="sa-link-icon">🌱</span> Créer un compte
-          </a>
-          <a href="/fondateur-domains" class="sa-link <?= $active === 'fondateur-domains' ? 'active' : '' ?>">
-            <span class="sa-link-icon">🌐</span> Domaines
-          </a>
-          <a href="/admin-blog/" class="sa-link <?= $active === 'admin-blog' ? 'active' : '' ?>" target="_blank" rel="noopener">
-            <span class="sa-link-icon">✍️</span> Blog SEO
-            <span style="margin-left:auto; font-size:10px; opacity:0.5;">↗</span>
-          </a>
-
-          <div class="sa-dd-label">Supervision</div>
-          <a href="/fondateur-activity.php" class="sa-link <?= $active === 'fondateur-activity' ? 'active' : '' ?>">
-            <span class="sa-link-icon">🕵️</span> Activité utilisateurs
-          </a>
-        </div>
-      </details>
+      <a href="/fondateur-pilotage" class="sa-founder-btn <?= $founder_active ? 'active' : '' ?>">
+        <span class="sa-founder-btn-star">⭐</span>
+        <span>Pilotage Fondateur</span>
+        <span class="sa-founder-btn-arrow">→</span>
+      </a>
       <?php endif; ?>
 
       <div class="sa-nav-section">Administration</div>
