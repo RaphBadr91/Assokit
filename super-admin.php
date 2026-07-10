@@ -164,335 +164,429 @@ sa_render_head('Dashboard');
 sa_render_sidebar('dashboard');
 ?>
 
-<div class="sa-page-head">
+
+<?php
+// ── Construction de la liste "Signal — à traiter" à partir des données réelles ──
+$fc_signals = [];
+if ($ctx['is_founder'] && $nb_orgs_pending > 0) {
+    $fc_signals[] = [
+        'tone' => 'amber', 'ic' => '🏗️',
+        't' => $nb_orgs_pending . ' validation' . ($nb_orgs_pending > 1 ? 's' : '') . ' en attente',
+        'd' => 'Association' . ($nb_orgs_pending > 1 ? 's' : '') . ' créée' . ($nb_orgs_pending > 1 ? 's' : '') . ' par un Super Admin',
+        'go' => 'Valider →', 'url' => '/super-admin/associations?filter=pending',
+    ];
+}
+if ($nb_unpaid > 0) {
+    $fc_signals[] = [
+        'tone' => 'red', 'ic' => '💰',
+        't' => $nb_unpaid . ' facture' . ($nb_unpaid > 1 ? 's' : '') . ' impayée' . ($nb_unpaid > 1 ? 's' : ''),
+        'd' => 'Total ' . number_format($total_unpaid, 2, ',', ' ') . ' € · à relancer',
+        'go' => 'Relancer →', 'url' => '/super-admin/abonnements?filter=unpaid',
+    ];
+}
+foreach ($expiring as $e) {
+    $dl = (int) $e['days_left'];
+    $fc_signals[] = [
+        'tone' => 'violet', 'ic' => '⏱',
+        't' => 'Essai — ' . $e['name'],
+        'd' => 'Expire dans ' . $dl . ' jour' . ($dl > 1 ? 's' : ''),
+        'go' => 'Convertir →', 'url' => '/super-admin/associations?id=' . (int) $e['id'],
+    ];
+}
+?>
+
+<style>
+/* ============ Cockpit Fondateur — surcouche (scopée .fc) ============ */
+.fc{ --fc-gold:#FCD34D; --fc-gold-2:#F59E0B; --fc-gold-ink:#3A2A08; --fc-gold-soft:rgba(245,158,11,.12);
+  --fc-green:#34D399; --fc-green-2:#10B981; --fc-green-soft:rgba(16,185,129,.12);
+  --fc-violet:#A78BFA; --fc-violet-2:#8B5CF6; --fc-violet-soft:rgba(139,92,246,.14);
+  --fc-blue:#60A5FA; --fc-blue-soft:rgba(96,165,250,.12);
+  --fc-red:#F87171; --fc-red-soft:rgba(248,113,113,.13); --fc-amber:#FBBF24; --fc-amber-soft:rgba(251,191,36,.12);
+  --fc-panel:linear-gradient(180deg,rgba(22,33,28,.55),rgba(14,21,17,.5)); --fc-panel-2:#16211C; --fc-panel-3:#1B2822;
+  --fc-line:rgba(255,255,255,.075); --fc-line-2:rgba(255,255,255,.045);
+  --fc-ink:#EAF2EE; --fc-ink-2:#9DB1A8; --fc-ink-3:#7C8F87; --fc-ink-4:#5A6A62;
+  --fc-r:18px; --fc-r-sm:13px; --fc-shadow:0 2px 8px rgba(0,0,0,.35),0 24px 50px -18px rgba(0,0,0,.65);
+}
+.fc .num{font-variant-numeric:tabular-nums}
+.fc svg{display:block}
+.fc .panel{background:var(--fc-panel);border:1px solid var(--fc-line);border-radius:var(--fc-r);box-shadow:var(--fc-shadow);backdrop-filter:blur(14px)}
+
+/* command bar */
+.fc-cmd{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:22px}
+.fc-hello{font-size:28px;font-weight:800;letter-spacing:-.03em;display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:var(--fc-ink)}
+.fc-seal{font-size:11.5px;font-weight:800;letter-spacing:.05em;padding:5px 12px;border-radius:999px;background:linear-gradient(135deg,#FCD34D,#F59E0B);color:var(--fc-gold-ink);box-shadow:0 8px 18px -6px rgba(245,158,11,.55);display:inline-flex;gap:6px;align-items:center}
+.fc-seal.violet{background:var(--fc-violet-soft);color:#C4B5FD;box-shadow:none}
+.fc-hello-sub{color:var(--fc-ink-2);font-size:13.5px;margin-top:9px;display:flex;align-items:center;gap:8px}
+.fc-hello-sub .dot{width:6px;height:6px;border-radius:50%;background:var(--fc-green);box-shadow:0 0 0 4px var(--fc-green-soft)}
+.fc-hello-sub strong{color:var(--fc-ink)}
+.fc-cmd-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.fc-btn{display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:12px;font-size:13.5px;font-weight:650;cursor:pointer;border:0;font-family:inherit}
+.fc-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.fc-btn-ghost{background:var(--fc-panel-2);border:1px solid var(--fc-line);color:var(--fc-ink);position:relative}
+.fc-btn-ghost:hover{background:var(--fc-panel-3)}
+.fc-btn-ghost .bdg{position:absolute;top:-6px;right:-6px;background:var(--fc-red);color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;padding:0 4px;border-radius:999px;display:grid;place-items:center}
+.fc-btn-gold{background:linear-gradient(140deg,#FCD34D,#F59E0B);color:var(--fc-gold-ink);box-shadow:0 10px 22px -8px rgba(245,158,11,.6),inset 0 1px 0 rgba(255,255,255,.35)}
+.fc-btn-gold:hover{transform:translateY(-1px)}
+
+/* KPIs */
+.fc-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.fc-kpi{position:relative;overflow:hidden;padding:18px 18px 14px;border-radius:var(--fc-r)}
+.fc-kpi::before{content:"";position:absolute;inset:0 0 auto 0;height:3px}
+.fc-kpi.k-gold::before{background:linear-gradient(90deg,#FCD34D,#F59E0B)}
+.fc-kpi.k-green::before{background:linear-gradient(90deg,#34D399,#10B981)}
+.fc-kpi.k-violet::before{background:linear-gradient(90deg,#C4B5FD,#8B5CF6)}
+.fc-kpi.k-blue::before{background:linear-gradient(90deg,#93C5FD,#3B82F6)}
+.fc-kpi-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.fc-kpi-lab{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fc-ink-3)}
+.fc-kpi-ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:15px}
+.k-gold .fc-kpi-ic{background:var(--fc-gold-soft)} .k-green .fc-kpi-ic{background:var(--fc-green-soft)}
+.k-violet .fc-kpi-ic{background:var(--fc-violet-soft)} .k-blue .fc-kpi-ic{background:var(--fc-blue-soft)}
+.fc-kpi-val{font-size:30px;font-weight:800;letter-spacing:-.035em;margin-top:12px;line-height:1;color:var(--fc-ink)}
+.k-gold .fc-kpi-val{color:var(--fc-gold)} .k-green .fc-kpi-val{color:var(--fc-green)}
+.fc-kpi-val small{font-size:17px;font-weight:700;color:var(--fc-ink-3);letter-spacing:0}
+.fc-kpi-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
+.fc-kpi-sub{font-size:12px;color:var(--fc-ink-3)}
+.fc-kpi-trend{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-flex;gap:3px;align-items:center;white-space:nowrap}
+.fc-kpi-trend.up{background:var(--fc-green-soft);color:var(--fc-green)}
+.fc-kpi-trend.red{background:var(--fc-red-soft);color:var(--fc-red)}
+.fc-spark{width:100%;height:30px;margin-top:12px;overflow:visible}
+
+/* band */
+.fc-band{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-bottom:16px}
+.fc-phead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 18px 12px}
+.fc-ptitle{font-size:13px;font-weight:750;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;color:var(--fc-ink)}
+.fc-ptitle .ic{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:12px}
+.fc-plink{font-size:12px;color:var(--fc-ink-3);font-weight:600}
+.fc-plink:hover{color:var(--fc-ink)}
+.fc-chart-legend{display:flex;gap:16px;padding:0 18px 6px;flex-wrap:wrap}
+.fc-lg{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--fc-ink-2)}
+.fc-lg i{width:20px;height:3px;border-radius:2px;display:inline-block}
+.fc-chart-wrap{padding:2px 14px 16px}
+.fc-chart-wrap canvas{width:100%;height:180px;display:block}
+
+/* signal */
+.fc-signal{padding:6px 14px 14px;display:flex;flex-direction:column;gap:8px}
+.fc-sig{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:var(--fc-r-sm);background:var(--fc-panel-2);border:1px solid var(--fc-line-2);text-decoration:none}
+.fc-sig .sic{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;font-size:15px;flex:none}
+.fc-sig.amber .sic{background:var(--fc-amber-soft)} .fc-sig.red .sic{background:var(--fc-red-soft)} .fc-sig.violet .sic{background:var(--fc-violet-soft)}
+.fc-sig-b{flex:1;min-width:0}
+.fc-sig-t{font-size:13px;font-weight:650;color:var(--fc-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fc-sig-d{font-size:11.5px;color:var(--fc-ink-3);margin-top:2px;line-height:1.4}
+.fc-sig-go{font-size:11.5px;font-weight:700;align-self:center;white-space:nowrap}
+.fc-sig.amber .fc-sig-go{color:var(--fc-amber)} .fc-sig.red .fc-sig-go{color:var(--fc-red)} .fc-sig.violet .fc-sig-go{color:var(--fc-violet)}
+.fc-sig-ok{display:flex;flex-direction:column;align-items:center;gap:8px;padding:34px 16px;color:var(--fc-ink-3);text-align:center}
+.fc-sig-ok .em{font-size:32px}
+
+/* diffusion */
+.fc-diff{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.fc-diff-card{padding:16px 18px 18px;border-radius:var(--fc-r)}
+.fc-diff-h{display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:700;margin-bottom:14px;color:var(--fc-ink)}
+.fc-diff-h .ic{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:13px}
+.fc-diff-e .ic{background:var(--fc-violet-soft)} .fc-diff-s .ic{background:var(--fc-green-soft)}
+.fc-periods{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.fc-per{padding:11px 12px;border-radius:11px;background:var(--fc-panel-2);border:1px solid var(--fc-line-2)}
+.fc-per-l{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--fc-ink-4)}
+.fc-per-v{font-size:21px;font-weight:750;margin-top:5px;letter-spacing:-.02em}
+.fc-diff-e .fc-per-v{color:#C4B5FD} .fc-diff-s .fc-per-v{color:#6EE7B7}
+.fc-diff-e .fc-per-v.zero,.fc-diff-s .fc-per-v.zero{color:var(--fc-ink-4)}
+
+/* section head */
+.fc-sech{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:26px 0 12px}
+.fc-sect{font-size:16px;font-weight:750;letter-spacing:-.02em;display:flex;align-items:center;gap:9px;color:var(--fc-ink)}
+
+/* table */
+.fc-tbl-wrap{padding:4px 8px 8px;overflow-x:auto}
+.fc-tbl-wrap table{width:100%;border-collapse:separate;border-spacing:0;min-width:640px}
+.fc-tbl-wrap thead th{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--fc-ink-4);text-align:left;padding:10px 14px}
+.fc-tbl-wrap tbody td{padding:13px 14px;border-top:1px solid var(--fc-line-2);font-size:13px;vertical-align:middle;color:var(--fc-ink-2)}
+.fc-tbl-wrap tbody tr:hover td{background:rgba(255,255,255,.02)}
+.fc-org-n{font-weight:650;color:var(--fc-ink)} .fc-org-id{font-size:11px;color:var(--fc-ink-4);margin-top:1px}
+.fc-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px}
+.fc-chip-green{background:var(--fc-green-soft);color:var(--fc-green)}
+.fc-chip-violet{background:var(--fc-violet-soft);color:var(--fc-violet)}
+.fc-chip-red{background:var(--fc-red-soft);color:var(--fc-red)}
+.fc-chip-gray{background:var(--fc-panel-3);color:var(--fc-ink-2)}
+.fc-chip.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block}
+.fc-tbtn{font-size:12px;font-weight:650;color:var(--fc-ink-2);padding:6px 12px;border-radius:9px;border:1px solid var(--fc-line);background:var(--fc-panel-2);display:inline-block}
+.fc-tbtn:hover{color:var(--fc-ink);border-color:var(--fc-violet-2)}
+
+/* power actions */
+.fc-power{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.fc-act{padding:18px;border-radius:var(--fc-r);border:1px solid var(--fc-line);background:var(--fc-panel-2);position:relative;overflow:hidden;transition:transform .14s,border-color .14s;display:block;text-decoration:none}
+.fc-act:hover{transform:translateY(-3px);border-color:var(--fc-violet-2)}
+.fc-act-ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-size:18px;background:var(--fc-panel-3);margin-bottom:12px}
+.fc-act-t{font-size:14px;font-weight:700;letter-spacing:-.01em;color:var(--fc-ink)}
+.fc-act-d{font-size:12px;color:var(--fc-ink-3);margin-top:4px;line-height:1.45}
+.fc-act-tag{position:absolute;top:13px;right:13px;font-size:9.5px;font-weight:800;letter-spacing:.04em;padding:3px 8px;border-radius:6px}
+.fc-act.gold{background:linear-gradient(140deg,rgba(252,211,77,.09),rgba(245,158,11,.06));border-color:rgba(245,158,11,.3)}
+.fc-act.gold:hover{border-color:var(--fc-gold-2)} .fc-act.gold .fc-act-ic{background:var(--fc-gold-soft)}
+.fc-act.gold .fc-act-tag{background:linear-gradient(135deg,#FCD34D,#F59E0B);color:var(--fc-gold-ink)}
+.fc-act.violet{background:linear-gradient(140deg,rgba(139,92,246,.10),rgba(167,139,250,.05));border-color:rgba(139,92,246,.3)}
+.fc-act.violet .fc-act-ic{background:var(--fc-violet-soft)} .fc-act.violet .fc-act-tag{background:var(--fc-violet-soft);color:var(--fc-violet)}
+
+/* founder seal */
+.fc-fseal{margin-top:16px;padding:20px 22px;border-radius:var(--fc-r);position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(252,211,77,.08),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.28);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.fc-fseal .ghost{position:absolute;right:-10px;bottom:-24px;font-size:120px;opacity:.05;transform:rotate(-12deg)}
+.fc-fseal .av{width:52px;height:52px;border-radius:15px;background:linear-gradient(140deg,#FCD34D,#F59E0B);display:grid;place-items:center;font-size:18px;font-weight:800;color:var(--fc-gold-ink);flex:none;box-shadow:0 10px 22px -8px rgba(245,158,11,.6)}
+.fc-fseal .fn{font-size:16px;font-weight:750;color:var(--fc-ink)}
+.fc-fseal .fe{font-size:12.5px;color:var(--fc-ink-3);margin-top:1px}
+.fc-fseal .fb{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.fc-fbadge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px}
+.fc-fbadge.gold{background:var(--fc-gold-soft);color:var(--fc-gold)} .fc-fbadge.violet{background:var(--fc-violet-soft);color:var(--fc-violet)}
+.fc-fseal .flog{margin-left:auto;text-align:right;font-size:11.5px;color:var(--fc-ink-4)}
+
+@media (max-width:1080px){ .fc-kpis{grid-template-columns:1fr 1fr} .fc-band{grid-template-columns:1fr} .fc-power{grid-template-columns:1fr 1fr} }
+@media (max-width:640px){ .fc-kpis{grid-template-columns:1fr 1fr} .fc-diff{grid-template-columns:1fr} .fc-power{grid-template-columns:1fr 1fr} }
+</style>
+
+<div class="fc">
+  <!-- ===== command bar ===== -->
+  <div class="fc-cmd">
     <div>
-        <h1 class="sa-page-title">
-            Bienvenue <?= h($user['first_name']) ?>
-            <?php if ($ctx['is_founder']): ?>
-                <span style="font-size:14px;vertical-align:middle;margin-left:8px;background:linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%);color:#78350F;padding:4px 12px;border-radius:999px;font-weight:600;letter-spacing:0.03em;">
-                    🏗️ FONDATEUR
-                </span>
-            <?php else: ?>
-                <span style="font-size:14px;vertical-align:middle;margin-left:8px;" class="sa-badge sa-badge-violet">
-                    👑 Super Admin
-                </span>
-            <?php endif; ?>
-        </h1>
-        <div class="sa-page-sub">
-            <?= $ctx['is_founder']
-                ? 'Vous avez <strong>pouvoir absolu</strong> sur la plateforme Assokit'
-                : 'Vue d\'ensemble de la plateforme au ' . date('d/m/Y') ?>
-        </div>
-    </div>
-    <div class="sa-page-actions">
-        <?php if ($ctx['is_founder'] && $nb_unread_notifs > 0): ?>
-            <a href="/super-admin/notifications" class="sa-btn sa-btn-ghost" style="position:relative">
-                🔔 Notifications
-                <span style="position:absolute;top:-4px;right:-4px;background:#EF4444;color:white;font-size:10px;padding:2px 6px;border-radius:999px;font-weight:600;">
-                    <?= $nb_unread_notifs ?>
-                </span>
-            </a>
+      <div class="fc-hello">
+        Bienvenue <?= h($user['first_name']) ?>
+        <?php if ($ctx['is_founder']): ?>
+          <span class="fc-seal">🏗️ FONDATEUR</span>
+        <?php else: ?>
+          <span class="fc-seal violet">👑 Super Admin</span>
         <?php endif; ?>
-        <a href="/super-admin/nouvelle-asso" class="sa-btn sa-btn-violet">+ Créer une association</a>
+      </div>
+      <div class="fc-hello-sub">
+        <span class="dot"></span>
+        <?php if ($ctx['is_founder']): ?>
+          Pouvoir absolu sur la plateforme Assokit · <?= date('d/m/Y') ?>
+        <?php else: ?>
+          Vue d'ensemble de la plateforme au <?= date('d/m/Y') ?>
+        <?php endif; ?>
+      </div>
     </div>
-</div>
-
-<!-- ============ Alertes ============ -->
-<?php if ($ctx['is_founder'] && $nb_orgs_pending > 0): ?>
-    <div class="sa-alert sa-alert-info" style="border-color:rgba(251, 191, 36, 0.3);background:rgba(251, 191, 36, 0.08);color:#FCD34D;">
-        <span style="font-size:18px">🏗️</span>
-        <div>
-            <strong>Validation requise</strong> — <?= $nb_orgs_pending ?> association<?= $nb_orgs_pending > 1 ? 's en attente' : ' en attente' ?>
-            créée<?= $nb_orgs_pending > 1 ? 's' : '' ?> par un Super Admin.
-            <a href="/super-admin/associations?filter=pending" style="color:#FCD34D;text-decoration:underline;margin-left:8px">Voir →</a>
-        </div>
-    </div>
-<?php endif; ?>
-
-<?php if ($nb_unpaid > 0): ?>
-    <div class="sa-alert sa-alert-error">
-        <span style="font-size:18px">💰</span>
-        <div>
-            <strong>Attention</strong> — <?= $nb_unpaid ?> facture<?= $nb_unpaid > 1 ? 's' : '' ?> impayée<?= $nb_unpaid > 1 ? 's' : '' ?>
-            pour un total de <strong><?= number_format($total_unpaid, 2, ',', ' ') ?> €</strong>.
-            <a href="/super-admin/abonnements?filter=unpaid" style="color:#FCA5A5;text-decoration:underline;margin-left:8px">Voir →</a>
-        </div>
-    </div>
-<?php endif; ?>
-
-<?php if (!empty($expiring)): ?>
-    <div class="sa-alert sa-alert-info">
-        <span style="font-size:18px">⏱</span>
-        <div>
-            <strong><?= count($expiring) ?> essai<?= count($expiring) > 1 ? 's' : '' ?></strong> expire<?= count($expiring) > 1 ? 'nt' : '' ?> dans les 7 prochains jours :
-            <?php foreach ($expiring as $i => $e): ?>
-                <a href="/super-admin/associations?id=<?= (int) $e['id'] ?>" style="color:#C4B5FD;margin-left:4px">
-                    <?= h($e['name']) ?> (<?= (int) $e['days_left'] ?>j)
-                </a><?= $i < count($expiring) - 1 ? ',' : '' ?>
-            <?php endforeach; ?>
-        </div>
-    </div>
-<?php endif; ?>
-
-<!-- ============ KPIs principaux ============ -->
-<div class="sa-kpi-grid">
-    <div class="sa-kpi">
-        <div class="sa-kpi-label">MRR (TTC)</div>
-        <div class="sa-kpi-value"><?= number_format($mrr, 2, ',', ' ') ?> €</div>
-        <div class="sa-kpi-trend">Revenu mensuel récurrent</div>
-    </div>
-    <div class="sa-kpi">
-        <div class="sa-kpi-label">Associations</div>
-        <div class="sa-kpi-value"><?= $nb_orgs_total ?></div>
-        <div class="sa-kpi-trend">
-            <?= $nb_orgs_active ?> actives · <?= $nb_orgs_trial ?> essai
-            <?php if ($nb_orgs_suspended > 0): ?> · <span style="color:#FCA5A5"><?= $nb_orgs_suspended ?> suspendues</span><?php endif; ?>
-        </div>
-    </div>
-    <div class="sa-kpi">
-        <div class="sa-kpi-label">Utilisateurs</div>
-        <div class="sa-kpi-value"><?= number_format($nb_users, 0, ',', ' ') ?></div>
-        <div class="sa-kpi-trend">tous rôles confondus</div>
-    </div>
-    <div class="sa-kpi">
-        <div class="sa-kpi-label">Générations IA</div>
-        <div class="sa-kpi-value"><?= number_format((int) $ia_stats['nb'], 0, ',', ' ') ?></div>
-        <div class="sa-kpi-trend"><?= number_format((float) $ia_stats['cost'], 2, ',', ' ') ?> € dépensés</div>
-    </div>
-</div>
-
-<!-- ============ Stats avancées FONDATEUR ============ -->
-<?php if ($ctx['is_founder'] && $advanced_stats): ?>
-<div class="sa-page-head" style="margin-top: 24px;">
-    <h2 class="sa-page-title" style="font-size: 17px;">📊 Communications sortantes (Fondateur)</h2>
-    <div class="sa-page-actions">
-        <a href="/super-admin/stats" class="sa-btn sa-btn-ghost sa-btn-sm">Stats approfondies →</a>
-    </div>
-</div>
-
-<div class="sa-comm-grid" style="margin-bottom:24px;">
-    <div class="sa-card" style="border-color:rgba(127, 119, 221, 0.25);">
-        <div class="sa-card-title">📧 Emails envoyés</div>
-        <div class="sa-period-grid">
-            <div style="padding:12px;background:rgba(127, 119, 221, 0.08);border-radius:10px;">
-                <div style="font-size:10.5px;color:var(--sa-ink-3);text-transform:uppercase;letter-spacing:0.05em;">Semaine</div>
-                <div style="font-size:22px;font-weight:600;color:#C4B5FD;margin-top:4px;"><?= number_format($advanced_stats['emails']['week'], 0, ',', ' ') ?></div>
-            </div>
-            <div style="padding:12px;background:rgba(127, 119, 221, 0.08);border-radius:10px;">
-                <div style="font-size:10.5px;color:var(--sa-ink-3);text-transform:uppercase;letter-spacing:0.05em;">Mois</div>
-                <div style="font-size:22px;font-weight:600;color:#C4B5FD;margin-top:4px;"><?= number_format($advanced_stats['emails']['month'], 0, ',', ' ') ?></div>
-            </div>
-            <div style="padding:12px;background:rgba(127, 119, 221, 0.08);border-radius:10px;">
-                <div style="font-size:10.5px;color:var(--sa-ink-3);text-transform:uppercase;letter-spacing:0.05em;">Trimestre</div>
-                <div style="font-size:22px;font-weight:600;color:#C4B5FD;margin-top:4px;"><?= number_format($advanced_stats['emails']['quarter'], 0, ',', ' ') ?></div>
-            </div>
-            <div style="padding:12px;background:rgba(127, 119, 221, 0.08);border-radius:10px;">
-                <div style="font-size:10.5px;color:var(--sa-ink-3);text-transform:uppercase;letter-spacing:0.05em;">Année</div>
-                <div style="font-size:22px;font-weight:600;color:#C4B5FD;margin-top:4px;"><?= number_format($advanced_stats['emails']['year'], 0, ',', ' ') ?></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="sa-card" style="border-color:rgba(16, 185, 129, 0.25);">
-        <div class="sa-card-title">💬 SMS envoyés</div>
-        <div class="sa-period-grid">
-            <div style="padding:12px;background:rgba(16, 185, 129, 0.08);border-radius:10px;">
-                <div style="font-size:10.5px;color:var(--sa-ink-3);text-transform:uppercase;letter-spacing:0.05em;">Semaine</div>
-                <div style="font-size:22px;font-weight:600;color:#6EE7B7;margin-top:4px;"><?= number_format($advanced_stats['sms']['week'], 0, ',', ' ') ?></div>
-            </div>
-            <div style="padding:12px;background:rgba(16, 185, 129, 0.08);border-radius:10px;">
-                <div style="font-size:10.5px;color:var(--sa-ink-3);text-transform:uppercase;letter-spacing:0.05em;">Mois</div>
-                <div style="font-size:22px;font-weight:600;color:#6EE7B7;margin-top:4px;"><?= number_format($advanced_stats['sms']['month'], 0, ',', ' ') ?></div>
-            </div>
-            <div style="padding:12px;background:rgba(16, 185, 129, 0.08);border-radius:10px;">
-                <div style="font-size:10.5px;color:var(--sa-ink-3);text-transform:uppercase;letter-spacing:0.05em;">Trimestre</div>
-                <div style="font-size:22px;font-weight:600;color:#6EE7B7;margin-top:4px;"><?= number_format($advanced_stats['sms']['quarter'], 0, ',', ' ') ?></div>
-            </div>
-            <div style="padding:12px;background:rgba(16, 185, 129, 0.08);border-radius:10px;">
-                <div style="font-size:10.5px;color:var(--sa-ink-3);text-transform:uppercase;letter-spacing:0.05em;">Année</div>
-                <div style="font-size:22px;font-weight:600;color:#6EE7B7;margin-top:4px;"><?= number_format($advanced_stats['sms']['year'], 0, ',', ' ') ?></div>
-            </div>
-        </div>
-    </div>
-</div>
-<?php endif; ?>
-
-<!-- ============ Fondateurs ============ -->
-<?php if (!empty($founders)): ?>
-<div class="sa-page-head" style="margin-top: 8px;">
-    <h2 class="sa-page-title" style="font-size: 18px;">🏗️ Fondateur<?= count($founders) > 1 ? 's' : '' ?> de la plateforme</h2>
-</div>
-
-<div class="sa-cards-grid" style="margin-bottom: 20px;">
-    <?php foreach ($founders as $f): ?>
-        <div class="sa-card" style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.04) 0%, rgba(245, 158, 11, 0.06) 100%); border-color: rgba(251, 191, 36, 0.25); position:relative; overflow:hidden;">
-            <div style="position:absolute; top:-20px; right:-20px; font-size:80px; opacity:0.08; transform:rotate(15deg);">🏗️</div>
-            <div style="display:flex; align-items:center; gap:14px; position:relative;">
-                <div style="width:48px; height:48px; border-radius:14px; background:linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%); display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:600; color:#78350F; flex-shrink:0;">
-                    <?= h(strtoupper(mb_substr($f['first_name'] ?? 'F', 0, 1) . mb_substr($f['last_name'] ?? '', 0, 1))) ?>
-                </div>
-                <div style="flex:1; min-width:0;">
-                    <div style="font-weight:600; font-size:15px; letter-spacing:-0.01em;">
-                        <?= h($f['first_name'] . ' ' . $f['last_name']) ?>
-                    </div>
-                    <div style="font-size:12px; color:var(--sa-ink-3); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                        <?= h($f['email']) ?>
-                    </div>
-                    <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
-                        <span class="sa-badge sa-badge-gold" style="font-size:10px;">🏗️ FONDATEUR</span>
-                        <span class="sa-badge sa-badge-violet" style="font-size:10px;">👑 Super Admin</span>
-                    </div>
-                </div>
-            </div>
-            <?php if ($f['last_login_at']): ?>
-                <div style="font-size:11px; color:var(--sa-ink-4); margin-top:12px; padding-top:10px; border-top:1px solid rgba(251, 191, 36, 0.15);">
-                    Dernière connexion : <?= date('d/m/Y H:i', strtotime($f['last_login_at'])) ?>
-                </div>
-            <?php endif; ?>
-        </div>
-    <?php endforeach; ?>
-</div>
-<?php endif; ?>
-
-<!-- ============ Dernières assos ============ -->
-<div class="sa-page-head" style="margin-top: 8px;">
-    <h2 class="sa-page-title" style="font-size: 18px;">🏛️ Dernières associations créées</h2>
-    <div class="sa-page-actions">
-        <a href="/super-admin/associations" class="sa-btn sa-btn-ghost sa-btn-sm">Voir tout →</a>
-    </div>
-</div>
-
-<?php if (empty($latest_orgs)): ?>
-    <div class="sa-card">
-        <div class="sa-empty">
-            <div class="sa-empty-icon">🏛️</div>
-            <div class="sa-empty-title">Aucune association</div>
-            <div>Créez la première en cliquant sur le bouton violet en haut.</div>
-        </div>
-    </div>
-<?php else: ?>
-    <div class="sa-table-wrap">
-        <table class="sa-table">
-            <thead>
-                <tr>
-                    <th>Association</th>
-                    <th>Validation</th>
-                    <th>Statut</th>
-                    <th>Plan</th>
-                    <th>Utilisateurs</th>
-                    <th>Créée</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($latest_orgs as $o): ?>
-                    <tr>
-                        <td>
-                            <div class="sa-main-col"><?= h($o['name']) ?></div>
-                            <div class="sa-sub-col">ID #<?= (int) $o['id'] ?></div>
-                        </td>
-                        <td>
-                            <?php if ($o['validation_status'] === 'pending_founder'): ?>
-                                <span class="sa-badge sa-badge-gold">🏗️ En attente</span>
-                            <?php elseif ($o['validation_status'] === 'rejected'): ?>
-                                <span class="sa-badge sa-badge-red">✕ Refusée</span>
-                            <?php else: ?>
-                                <span class="sa-badge sa-badge-green">✓ Validée</span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <span class="sa-badge <?=
-                                match($o['status']) {
-                                    'active' => 'sa-badge-green', 'trial' => 'sa-badge-violet',
-                                    'suspended' => 'sa-badge-red', 'cancelled' => 'sa-badge-gray',
-                                    default => 'sa-badge-gray',
-                                } ?>">
-                                <?= match($o['status']) {
-                                    'active' => '● Active', 'trial' => '⏱ Essai',
-                                    'suspended' => '⏸ Suspendue', 'cancelled' => '✕ Résiliée',
-                                    default => h($o['status']),
-                                } ?>
-                            </span>
-                        </td>
-                        <td><span class="sa-badge sa-badge-gray"><?= h(ucfirst($o['plan'])) ?></span></td>
-                        <td><?= (int) $o['nb_users'] ?></td>
-                        <td style="color:var(--sa-ink-3); font-size:12.5px;"><?= date('d/m/Y', strtotime($o['created_at'])) ?></td>
-                        <td>
-                            <a href="/super-admin/associations?id=<?= (int) $o['id'] ?>" class="sa-btn sa-btn-ghost sa-btn-sm">Gérer →</a>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-<?php endif; ?>
-
-<!-- ============ Quick actions ============ -->
-<div class="sa-quick-actions-grid" style="margin-top: 32px;">
-
-    <a href="/super-admin/nouvelle-asso" class="sa-card" style="display:block; text-decoration:none; transition: border-color 0.15s;" onmouseover="this.style.borderColor='var(--sa-violet)'" onmouseout="this.style.borderColor=''">
-        <div style="font-size:24px;margin-bottom:6px">➕</div>
-        <div class="sa-card-title">Nouvelle association</div>
-        <div style="font-size:12.5px;color:var(--sa-ink-3)">
-            <?= $ctx['is_founder'] ? 'Création directe' : 'Soumettre à validation' ?>
-        </div>
-    </a>
-
-    <a href="/super-admin/abonnements" class="sa-card" style="display:block; text-decoration:none;" onmouseover="this.style.borderColor='var(--sa-violet)'" onmouseout="this.style.borderColor=''">
-        <div style="font-size:24px;margin-bottom:6px">💳</div>
-        <div class="sa-card-title">Gérer les paiements</div>
-        <div style="font-size:12.5px;color:var(--sa-ink-3)">Factures, paiements, impayés</div>
-    </a>
-
-    <a href="/super-admin-mairies" class="sa-card" style="display:block; text-decoration:none; border-color:rgba(245, 158, 11, 0.35)!important; background: linear-gradient(135deg, rgba(245, 158, 11, 0.06) 0%, rgba(252, 211, 77, 0.08) 100%); position:relative;" onmouseover="this.style.borderColor='#F59E0B'" onmouseout="this.style.borderColor='rgba(245, 158, 11, 0.35)'">
-        <div style="position:absolute; top:14px; right:14px; font-size:10px; background:linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%); color:#78350F; padding:3px 8px; border-radius:5px; font-weight:700; letter-spacing:0.04em;">
-            🏛️ MULTI-ASSO
-        </div>
-        <div style="font-size:24px;margin-bottom:6px">🏛️</div>
-        <div class="sa-card-title">Collectivités &amp; Mairies</div>
-        <div style="font-size:12.5px;color:var(--sa-ink-3)">Créer / gérer mairies, CAF, départements…</div>
-    </a>
-
-    <a href="/admin-cron-login" class="sa-card" style="display:block; text-decoration:none; border-color:rgba(127, 119, 221, 0.35)!important; background: linear-gradient(135deg, rgba(127, 119, 221, 0.06) 0%, rgba(167, 139, 250, 0.08) 100%); position:relative;" onmouseover="this.style.borderColor='var(--sa-violet)'" onmouseout="this.style.borderColor='rgba(127, 119, 221, 0.35)'">
-        <div style="position:absolute; top:14px; right:14px; font-size:10px; background:rgba(127, 119, 221, 0.2); color:#A78BFA; padding:3px 8px; border-radius:5px; font-weight:700; letter-spacing:0.04em;">
-            🔒 RÉAUTH 15 MIN
-        </div>
-        <div style="font-size:24px;margin-bottom:6px">🛡</div>
-        <div class="sa-card-title">Cockpit CRON</div>
-        <div style="font-size:12.5px;color:var(--sa-ink-3)">Relances, essais, renouvellements</div>
-    </a>
-
-    <?php if ($ctx['is_founder']): ?>
-    <a href="/fondateur-cockpit/societe" class="sa-card" style="display:block; text-decoration:none; border-color:rgba(251, 191, 36, 0.35)!important; background: linear-gradient(135deg, rgba(251, 191, 36, 0.06) 0%, rgba(252, 211, 77, 0.08) 100%); position:relative;" onmouseover="this.style.borderColor='#FCD34D'" onmouseout="this.style.borderColor='rgba(251, 191, 36, 0.35)'">
-        <div style="position:absolute; top:14px; right:14px; font-size:10px; background:linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%); color:#78350F; padding:3px 8px; border-radius:5px; font-weight:700; letter-spacing:0.04em;">
-            🏗️ FONDATEUR
-        </div>
-        <div style="font-size:24px;margin-bottom:6px">⚙️</div>
-        <div class="sa-card-title">Paramètres société</div>
-        <div style="font-size:12.5px;color:var(--sa-ink-3)">Infos légales, TVA, IBAN, logo</div>
-    </a>
-    <?php endif; ?>
-
-    <?php if ($ctx['is_founder']): ?>
-        <a href="/super-admin/super-admins" class="sa-card" style="display:block; text-decoration:none;" onmouseover="this.style.borderColor='var(--sa-violet)'" onmouseout="this.style.borderColor=''">
-            <div style="font-size:24px;margin-bottom:6px">👑</div>
-            <div class="sa-card-title">Super admins (<?= $nb_super_admins ?>)</div>
-            <div style="font-size:12.5px;color:var(--sa-ink-3)">Créer / gérer les SA</div>
+    <div class="fc-cmd-actions">
+      <?php if ($ctx['is_founder'] && $nb_unread_notifs > 0): ?>
+        <a href="/super-admin/notifications" class="fc-btn fc-btn-ghost">
+          <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          Notifications <span class="bdg"><?= (int) $nb_unread_notifs ?></span>
         </a>
+      <?php endif; ?>
+      <a href="/super-admin/nouvelle-asso" class="fc-btn fc-btn-gold">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Créer une association
+      </a>
+    </div>
+  </div>
 
-        <a href="/super-admin/stats" class="sa-card" style="display:block; text-decoration:none; border-color:rgba(251, 191, 36, 0.25)!important; background: linear-gradient(135deg, rgba(251, 191, 36, 0.03) 0%, rgba(245, 158, 11, 0.05) 100%);" onmouseover="this.style.borderColor='#FCD34D'" onmouseout="this.style.borderColor='rgba(251, 191, 36, 0.25)'">
-            <div style="font-size:24px;margin-bottom:6px">📊</div>
-            <div class="sa-card-title">Statistiques approfondies</div>
-            <div style="font-size:12.5px;color:var(--sa-ink-3)">Emails, SMS, usage plateforme</div>
-        </a>
+  <!-- ===== KPIs ===== -->
+  <section class="fc-kpis">
+    <div class="panel fc-kpi k-gold">
+      <div class="fc-kpi-top"><span class="fc-kpi-lab">MRR (TTC)</span><span class="fc-kpi-ic">💶</span></div>
+      <div class="fc-kpi-val num"><?= number_format($mrr, 2, ',', ' ') ?> <small>€</small></div>
+      <svg class="fc-spark" viewBox="0 0 120 30" preserveAspectRatio="none"><defs><linearGradient id="fcgg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F59E0B" stop-opacity=".35"/><stop offset="1" stop-color="#F59E0B" stop-opacity="0"/></linearGradient></defs><path d="M0 24 L20 22 L40 23 L60 17 L80 15 L100 9 L120 6 L120 30 L0 30 Z" fill="url(#fcgg)"/><path d="M0 24 L20 22 L40 23 L60 17 L80 15 L100 9 L120 6" fill="none" stroke="#FCD34D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="120" cy="6" r="2.6" fill="#FCD34D"/></svg>
+      <div class="fc-kpi-foot"><span class="fc-kpi-sub">Revenu mensuel récurrent</span></div>
+    </div>
+
+    <div class="panel fc-kpi k-green">
+      <div class="fc-kpi-top"><span class="fc-kpi-lab">Associations</span><span class="fc-kpi-ic">🏛️</span></div>
+      <div class="fc-kpi-val num"><?= (int) $nb_orgs_total ?></div>
+      <svg class="fc-spark" viewBox="0 0 120 30" preserveAspectRatio="none"><path d="M0 26 L20 25 L40 24 L60 22 L80 19 L100 15 L120 9" fill="none" stroke="#34D399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="120" cy="9" r="2.6" fill="#34D399"/></svg>
+      <div class="fc-kpi-foot"><span class="fc-kpi-sub"><?= (int) $nb_orgs_active ?> actives · <?= (int) $nb_orgs_trial ?> essai</span><?php if ($nb_orgs_suspended > 0): ?><span class="fc-kpi-trend red"><?= (int) $nb_orgs_suspended ?> susp.</span><?php endif; ?></div>
+    </div>
+
+    <div class="panel fc-kpi k-violet">
+      <div class="fc-kpi-top"><span class="fc-kpi-lab">Utilisateurs</span><span class="fc-kpi-ic">👥</span></div>
+      <div class="fc-kpi-val num"><?= number_format($nb_users, 0, ',', ' ') ?></div>
+      <svg class="fc-spark" viewBox="0 0 120 30" preserveAspectRatio="none"><path d="M0 25 L20 24 L40 21 L60 20 L80 16 L100 12 L120 7" fill="none" stroke="#A78BFA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="120" cy="7" r="2.6" fill="#A78BFA"/></svg>
+      <div class="fc-kpi-foot"><span class="fc-kpi-sub">tous rôles confondus</span></div>
+    </div>
+
+    <div class="panel fc-kpi k-blue">
+      <div class="fc-kpi-top"><span class="fc-kpi-lab">Générations IA</span><span class="fc-kpi-ic">✨</span></div>
+      <div class="fc-kpi-val num"><?= number_format((int) $ia_stats['nb'], 0, ',', ' ') ?></div>
+      <svg class="fc-spark" viewBox="0 0 120 30" preserveAspectRatio="none"><path d="M0 22 L20 24 L40 20 L60 23 L80 17 L100 18 L120 11" fill="none" stroke="#60A5FA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="120" cy="11" r="2.6" fill="#60A5FA"/></svg>
+      <div class="fc-kpi-foot"><span class="fc-kpi-sub"><?= number_format((float) $ia_stats['cost'], 2, ',', ' ') ?> € dépensés</span></div>
+    </div>
+  </section>
+
+  <!-- ===== growth + signal ===== -->
+  <section class="fc-band">
+    <div class="panel">
+      <div class="fc-phead">
+        <div class="fc-ptitle"><span class="ic" style="background:var(--fc-gold-soft)">📈</span> Croissance plateforme — 12 mois</div>
+        <a href="/super-admin/stats" class="fc-plink">Stats approfondies →</a>
+      </div>
+      <div class="fc-chart-legend">
+        <span class="fc-lg"><i style="background:linear-gradient(90deg,#FCD34D,#F59E0B)"></i> MRR (€)</span>
+        <span class="fc-lg"><i style="background:#34D399"></i> Associations</span>
+      </div>
+      <div class="fc-chart-wrap"><canvas id="fcGrowth" width="740" height="180"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <div class="fc-phead">
+        <div class="fc-ptitle"><span class="ic" style="background:var(--fc-amber-soft)">🛰️</span> Signal — à traiter</div>
+        <a href="/super-admin/associations" class="fc-plink">Tout voir →</a>
+      </div>
+      <div class="fc-signal">
+        <?php if (empty($fc_signals)): ?>
+          <div class="fc-sig-ok"><span class="em">✅</span><div><strong style="color:var(--fc-ink)">Tout est sous contrôle</strong><br><span style="font-size:12px">Aucune action urgente en attente.</span></div></div>
+        <?php else: foreach (array_slice($fc_signals, 0, 5) as $s): ?>
+          <a href="<?= h($s['url']) ?>" class="fc-sig <?= h($s['tone']) ?>">
+            <div class="sic"><?= $s['ic'] ?></div>
+            <div class="fc-sig-b"><div class="fc-sig-t"><?= h($s['t']) ?></div><div class="fc-sig-d"><?= h($s['d']) ?></div></div>
+            <div class="fc-sig-go"><?= h($s['go']) ?></div>
+          </a>
+        <?php endforeach; endif; ?>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== diffusion (Fondateur) ===== -->
+  <?php if ($ctx['is_founder'] && $advanced_stats): ?>
+  <section class="fc-diff">
+    <div class="panel fc-diff-card fc-diff-e">
+      <div class="fc-diff-h"><span class="ic">📧</span> Emails envoyés — plateforme</div>
+      <div class="fc-periods">
+        <?php foreach (['week'=>'Semaine','month'=>'Mois','quarter'=>'Trimestre','year'=>'Année'] as $k=>$lbl): $v=(int)$advanced_stats['emails'][$k]; ?>
+          <div class="fc-per"><div class="fc-per-l"><?= $lbl ?></div><div class="fc-per-v num <?= $v===0?'zero':'' ?>"><?= number_format($v,0,',',' ') ?></div></div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <div class="panel fc-diff-card fc-diff-s">
+      <div class="fc-diff-h"><span class="ic">💬</span> SMS envoyés — plateforme</div>
+      <div class="fc-periods">
+        <?php foreach (['week'=>'Semaine','month'=>'Mois','quarter'=>'Trimestre','year'=>'Année'] as $k=>$lbl): $v=(int)$advanced_stats['sms'][$k]; ?>
+          <div class="fc-per"><div class="fc-per-l"><?= $lbl ?></div><div class="fc-per-v num <?= $v===0?'zero':'' ?>"><?= number_format($v,0,',',' ') ?></div></div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  </section>
+  <?php endif; ?>
+
+  <!-- ===== dernières associations ===== -->
+  <div class="fc-sech"><div class="fc-sect">🏛️ Dernières associations créées</div><a href="/super-admin/associations" class="fc-plink">Voir tout →</a></div>
+  <?php if (empty($latest_orgs)): ?>
+    <div class="panel" style="padding:40px;text-align:center;color:var(--fc-ink-3)">
+      <div style="font-size:34px;margin-bottom:8px">🏛️</div>
+      <div style="font-weight:700;color:var(--fc-ink)">Aucune association</div>
+      <div style="font-size:12.5px;margin-top:4px">Créez la première avec le bouton en haut.</div>
+    </div>
+  <?php else: ?>
+    <div class="panel fc-tbl-wrap">
+      <table>
+        <thead><tr><th>Association</th><th>Validation</th><th>Statut</th><th>Plan</th><th>Utilisateurs</th><th>Créée</th><th></th></tr></thead>
+        <tbody>
+          <?php foreach ($latest_orgs as $o): ?>
+          <tr>
+            <td><div class="fc-org-n"><?= h($o['name']) ?></div><div class="fc-org-id">ID #<?= (int) $o['id'] ?></div></td>
+            <td>
+              <?php if ($o['validation_status'] === 'pending_founder'): ?>
+                <span class="fc-chip fc-chip-violet">🏗️ En attente</span>
+              <?php elseif ($o['validation_status'] === 'rejected'): ?>
+                <span class="fc-chip fc-chip-red">✕ Refusée</span>
+              <?php else: ?>
+                <span class="fc-chip fc-chip-green">✓ Validée</span>
+              <?php endif; ?>
+            </td>
+            <td>
+              <span class="fc-chip dot <?= match($o['status']) { 'active'=>'fc-chip-green','trial'=>'fc-chip-violet','suspended'=>'fc-chip-red','cancelled'=>'fc-chip-gray',default=>'fc-chip-gray' } ?>">
+                <?= match($o['status']) { 'active'=>'Active','trial'=>'Essai','suspended'=>'Suspendue','cancelled'=>'Résiliée',default=>h($o['status']) } ?>
+              </span>
+            </td>
+            <td><span class="fc-chip fc-chip-gray"><?= h(ucfirst($o['plan'])) ?></span></td>
+            <td class="num"><?= (int) $o['nb_users'] ?></td>
+            <td class="num"><?= date('d/m/Y', strtotime($o['created_at'])) ?></td>
+            <td><a href="/super-admin/associations?id=<?= (int) $o['id'] ?>" class="fc-tbtn">Gérer →</a></td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
+
+  <!-- ===== actions rapides ===== -->
+  <div class="fc-sech"><div class="fc-sect">⚡ Actions rapides</div></div>
+  <section class="fc-power">
+    <a href="/super-admin/nouvelle-asso" class="fc-act">
+      <div class="fc-act-ic">➕</div><div class="fc-act-t">Nouvelle association</div>
+      <div class="fc-act-d"><?= $ctx['is_founder'] ? 'Création directe' : 'Soumettre à validation' ?></div>
+    </a>
+    <a href="/super-admin/abonnements" class="fc-act">
+      <div class="fc-act-ic">💳</div><div class="fc-act-t">Gérer les paiements</div>
+      <div class="fc-act-d">Factures, paiements, impayés</div>
+    </a>
+    <a href="/super-admin-mairies" class="fc-act gold">
+      <span class="fc-act-tag">🏛️ MULTI-ASSO</span><div class="fc-act-ic">🏛️</div>
+      <div class="fc-act-t">Collectivités &amp; Mairies</div><div class="fc-act-d">Mairies, CAF, départements…</div>
+    </a>
+    <a href="/admin-cron-login" class="fc-act violet">
+      <span class="fc-act-tag">🔒 RÉAUTH 15 MIN</span><div class="fc-act-ic">🛡️</div>
+      <div class="fc-act-t">Cockpit CRON</div><div class="fc-act-d">Relances, essais, renouvellements</div>
+    </a>
+    <?php if ($ctx['is_founder']): ?>
+    <a href="/fondateur-cockpit/societe" class="fc-act gold">
+      <span class="fc-act-tag">🏗️ FONDATEUR</span><div class="fc-act-ic">⚙️</div>
+      <div class="fc-act-t">Paramètres société</div><div class="fc-act-d">Infos légales, TVA, IBAN, logo</div>
+    </a>
+    <a href="/super-admin/super-admins" class="fc-act">
+      <div class="fc-act-ic">👑</div><div class="fc-act-t">Super admins (<?= (int) $nb_super_admins ?>)</div>
+      <div class="fc-act-d">Créer / gérer les SA</div>
+    </a>
+    <a href="/super-admin/stats" class="fc-act gold">
+      <div class="fc-act-ic">📊</div><div class="fc-act-t">Statistiques approfondies</div>
+      <div class="fc-act-d">Emails, SMS, usage plateforme</div>
+    </a>
     <?php else: ?>
-        <a href="/super-admin/associations" class="sa-card" style="display:block; text-decoration:none;" onmouseover="this.style.borderColor='var(--sa-violet)'" onmouseout="this.style.borderColor=''">
-            <div style="font-size:24px;margin-bottom:6px">🏛️</div>
-            <div class="sa-card-title">Gérer les assos</div>
-            <div style="font-size:12.5px;color:var(--sa-ink-3)">Support, modifications</div>
-        </a>
+    <a href="/super-admin/associations" class="fc-act">
+      <div class="fc-act-ic">🏛️</div><div class="fc-act-t">Gérer les assos</div>
+      <div class="fc-act-d">Support, modifications</div>
+    </a>
     <?php endif; ?>
+  </section>
 
+  <!-- ===== sceau Fondateur ===== -->
+  <?php if (!empty($founders)): $f0 = $founders[0]; ?>
+  <div class="fc-fseal">
+    <div class="ghost">🏗️</div>
+    <div class="av"><?= h(strtoupper(mb_substr($f0['first_name'] ?? 'F', 0, 1) . mb_substr($f0['last_name'] ?? '', 0, 1))) ?></div>
+    <div>
+      <div class="fn"><?= h(trim(($f0['first_name'] ?? '') . ' ' . ($f0['last_name'] ?? ''))) ?></div>
+      <div class="fe"><?= h($f0['email'] ?? '') ?></div>
+      <div class="fb"><span class="fc-fbadge gold">🏗️ FONDATEUR</span><span class="fc-fbadge violet">👑 Super Admin</span></div>
+    </div>
+    <?php if (!empty($f0['last_login_at'])): ?>
+      <div class="flog">Dernière connexion<br><?= date('d/m/Y · H:i', strtotime($f0['last_login_at'])) ?></div>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
 </div>
+
+<script>
+(function(){
+  var cv=document.getElementById('fcGrowth');if(!cv)return;var ctx=cv.getContext('2d');
+  var W=cv.width,H=cv.height,padL=6,padR=10,padT=14,padB=22;
+  // NOTE: série illustrative — à brancher sur l'historique réel MRR/assos
+  var mrr=[41,48,52,58,63,69,74,82,89,96,103,109];
+  var assos=[3,3,4,4,5,5,6,6,7,7,8,8];
+  var labels=['A','S','O','N','D','J','F','M','A','M','J','J'];
+  var maxM=120,maxA=10;
+  function x(i){return padL+(W-padL-padR)*(i/(mrr.length-1));}
+  function yM(v){return padT+(H-padT-padB)*(1-v/maxM);}
+  function yA(v){return padT+(H-padT-padB)*(1-v/maxA);}
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.05)';ctx.lineWidth=1;
+  for(var g=0;g<=3;g++){var yy=padT+(H-padT-padB)*g/3;ctx.beginPath();ctx.moveTo(padL,yy);ctx.lineTo(W-padR,yy);ctx.stroke();}
+  var grad=ctx.createLinearGradient(0,padT,0,H-padB);
+  grad.addColorStop(0,'rgba(245,158,11,.34)');grad.addColorStop(1,'rgba(245,158,11,0)');
+  ctx.beginPath();ctx.moveTo(x(0),yM(mrr[0]));
+  for(var i=1;i<mrr.length;i++)ctx.lineTo(x(i),yM(mrr[i]));
+  ctx.lineTo(x(mrr.length-1),H-padB);ctx.lineTo(x(0),H-padB);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+  ctx.beginPath();ctx.moveTo(x(0),yM(mrr[0]));
+  for(i=1;i<mrr.length;i++)ctx.lineTo(x(i),yM(mrr[i]));
+  ctx.strokeStyle='#FCD34D';ctx.lineWidth=2.4;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+  ctx.beginPath();ctx.arc(x(mrr.length-1),yM(mrr[mrr.length-1]),3.4,0,7);ctx.fillStyle='#FCD34D';ctx.fill();
+  ctx.beginPath();ctx.moveTo(x(0),yA(assos[0]));
+  for(i=1;i<assos.length;i++)ctx.lineTo(x(i),yA(assos[i]));
+  ctx.strokeStyle='#34D399';ctx.lineWidth=2;ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='rgba(255,255,255,.28)';ctx.font='10px sans-serif';ctx.textAlign='center';
+  for(i=0;i<labels.length;i++)ctx.fillText(labels[i],x(i),H-6);
+})();
+</script>
 
 <?php sa_render_foot(); ?>
