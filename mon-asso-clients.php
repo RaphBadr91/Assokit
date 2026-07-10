@@ -88,29 +88,29 @@ render_sidebar('clients');
     </div>
     <?php endif; ?>
 
-    <div class="card" style="padding:16px; margin-bottom:14px;">
-        <div style="margin-bottom:14px;">
-            <input type="text" id="live-search" placeholder="🔍 Recherche live (nom, email, ville...)" style="width:100%; padding:11px 14px; border:2px solid #E5E7EB; border-radius:10px; font-size:14px;">
+    <div class="card" style="padding:18px; margin-bottom:14px;">
+        <div style="margin-bottom:16px;">
+            <input type="text" id="live-search" class="fac-search" placeholder="🔍 Rechercher un client (nom, email, ville…)">
         </div>
 
-        <div style="margin-bottom:10px;">
-            <div style="font-size:11px; color:#6B7280; text-transform:uppercase; margin-bottom:6px;">Type</div>
-            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <div style="margin-bottom:12px;">
+            <div class="fac-label">Type</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <?php foreach (['all'=>'Tous','company'=>'Entreprises / Assos','individual'=>'Particuliers'] as $val=>$lbl):
                     $active = ($type_filter === $val);
                     $params2 = $_GET; $params2['type'] = $val;
                 ?>
-                    <a href="?<?= h(http_build_query($params2)) ?>" style="padding:6px 12px; border-radius:6px; font-size:12px; text-decoration:none; <?= $active ? 'background:#059669; color:#fff;' : 'background:#F3F4F6; color:#374151;' ?>"><?= h($lbl) ?></a>
+                    <a href="?<?= h(http_build_query($params2)) ?>" class="fac-chip <?= $active ? 'on' : '' ?>"><?= h($lbl) ?></a>
                 <?php endforeach; ?>
             </div>
         </div>
 
         <?php if (!empty($all_tags)): ?>
         <div>
-            <div style="font-size:11px; color:#6B7280; text-transform:uppercase; margin-bottom:6px;">Tags</div>
+            <div class="fac-label" style="margin-bottom:8px;">Tags</div>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 <?php $params2 = $_GET; unset($params2['tag']); ?>
-                <a href="?<?= h(http_build_query($params2)) ?>" style="padding:4px 10px; border-radius:10px; font-size:11px; text-decoration:none; <?= $tag_id===0 ? 'background:#1F2937; color:#fff;' : 'background:#F3F4F6; color:#374151;' ?>">Tous</a>
+                <a href="?<?= h(http_build_query($params2)) ?>" class="fac-chip <?= $tag_id===0 ? 'on' : '' ?>">Tous</a>
                 <?php foreach ($all_tags as $t):
                     $active = ((int)$t['id'] === $tag_id);
                     $params2 = $_GET; $params2['tag'] = (int)$t['id'];

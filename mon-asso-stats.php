@@ -54,49 +54,31 @@ render_sidebar('stats');
 
     <h3 style="margin:0 0 14px; font-size:16px; color:var(--ink,#0B1A13);">Analyse détaillée <?= (int)$kpis['year'] ?></h3>
 
-    <!-- KPIs principaux -->
-    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; margin-bottom:18px;">
-        <div class="card" style="padding:18px; background:linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); border-left:4px solid #10B981;">
-            <div style="font-size:11px; color:#065F46; text-transform:uppercase; font-weight:600;">CA <?= $kpis['year'] ?></div>
-            <div style="font-size:26px; font-weight:700; color:#10B981; margin-top:4px; font-variant-numeric:tabular-nums;">
-                <?= h(ak_asso_fmt_cents($kpis['revenue_paid_cents'])) ?>
-            </div>
-            <div style="font-size:12px; color:#065F46; margin-top:2px;">
-                <?= (int)$kpis['nb_paid'] ?> facture<?= $kpis['nb_paid']>1?'s':'' ?> payée<?= $kpis['nb_paid']>1?'s':'' ?>
-            </div>
+    <!-- KPIs performance (complète le hub qui montre les montants) -->
+    <div class="fstat-kpis">
+        <div class="fstat-kpi">
+            <span class="g" style="background:linear-gradient(90deg,#8B5CF6,#6366F1);"></span>
+            <div class="l">Taux de conversion</div>
+            <div class="n" style="color:#6366F1;"><?= number_format($kpis['conversion_rate'], 1, ',', '') ?> %</div>
+            <div class="c"><?= (int)$kpis['nb_signed'] + (int)$kpis['nb_converted'] ?>/<?= (int)$kpis['total_quotes'] ?> devis acceptés</div>
         </div>
-
-        <div class="card" style="padding:18px; background:linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border-left:4px solid #F59E0B;">
-            <div style="font-size:11px; color:#92400E; text-transform:uppercase; font-weight:600;">À encaisser</div>
-            <div style="font-size:26px; font-weight:700; color:#F59E0B; margin-top:4px; font-variant-numeric:tabular-nums;">
-                <?= h(ak_asso_fmt_cents($kpis['revenue_pending_cents'])) ?>
-            </div>
-            <div style="font-size:12px; color:#92400E; margin-top:2px;">
-                <?= (int)$kpis['nb_pending'] + (int)$kpis['nb_overdue'] ?> en attente
-                <?php if ($kpis['nb_overdue'] > 0): ?>
-                    · <span style="color:#DC2626; font-weight:600;"><?= (int)$kpis['nb_overdue'] ?> en retard</span>
-                <?php endif; ?>
-            </div>
+        <div class="fstat-kpi">
+            <span class="g" style="background:linear-gradient(90deg,#60A5FA,#2F73E8);"></span>
+            <div class="l">Délai moyen de paiement</div>
+            <div class="n" style="color:#2F73E8;"><?= number_format($kpis['avg_payment_days'], 1, ',', '') ?> j</div>
+            <div class="c">après émission de la facture</div>
         </div>
-
-        <div class="card" style="padding:18px; background:linear-gradient(135deg, #F3E8FF 0%, #E9D5FF 100%); border-left:4px solid #7E22CE;">
-            <div style="font-size:11px; color:#6B21A8; text-transform:uppercase; font-weight:600;">Taux conversion devis</div>
-            <div style="font-size:26px; font-weight:700; color:#7E22CE; margin-top:4px;">
-                <?= number_format($kpis['conversion_rate'], 1, ',', '') ?>%
-            </div>
-            <div style="font-size:12px; color:#6B21A8; margin-top:2px;">
-                <?= (int)$kpis['nb_signed'] + (int)$kpis['nb_converted'] ?>/<?= (int)$kpis['total_quotes'] ?> devis acceptés
-            </div>
+        <div class="fstat-kpi">
+            <span class="g" style="background:linear-gradient(90deg,#34D399,#059669);"></span>
+            <div class="l">Factures payées</div>
+            <div class="n" style="color:#059669;"><?= (int)$kpis['nb_paid'] ?></div>
+            <div class="c">sur <?= (int)$kpis['total_invoices'] ?> émise<?= $kpis['total_invoices']>1?'s':'' ?> en <?= (int)$kpis['year'] ?></div>
         </div>
-
-        <div class="card" style="padding:18px; background:linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%); border-left:4px solid #3B82F6;">
-            <div style="font-size:11px; color:#1E40AF; text-transform:uppercase; font-weight:600;">Délai moyen paiement</div>
-            <div style="font-size:26px; font-weight:700; color:#3B82F6; margin-top:4px;">
-                <?= number_format($kpis['avg_payment_days'], 1, ',', '') ?> j
-            </div>
-            <div style="font-size:12px; color:#1E40AF; margin-top:2px;">
-                après émission
-            </div>
+        <div class="fstat-kpi">
+            <span class="g" style="background:linear-gradient(90deg,#F87171,#E5484D);"></span>
+            <div class="l">Factures en retard</div>
+            <div class="n" style="color:<?= (int)$kpis['nb_overdue'] > 0 ? '#E5484D' : 'var(--ink)' ?>;"><?= (int)$kpis['nb_overdue'] ?></div>
+            <div class="c"><?= (int)$kpis['nb_overdue'] > 0 ? 'à relancer rapidement' : 'aucun retard 🎉' ?></div>
         </div>
     </div>
 

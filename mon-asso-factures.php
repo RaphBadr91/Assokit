@@ -94,7 +94,7 @@ render_sidebar('mon-asso-factures');
   ]); ?>
 
   <!-- Filtres -->
-  <form method="get" action="/mon-asso-factures" style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+  <form method="get" action="/mon-asso-factures" class="card" style="padding:14px 18px;margin-bottom:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
     <select name="status" style="padding:9px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:13.5px;">
       <option value="">Tous les statuts</option>
       <option value="paid" <?= $f_status === 'paid' ? 'selected' : '' ?>>Payées</option>
@@ -117,7 +117,7 @@ render_sidebar('mon-asso-factures');
   </form>
 
   <!-- Tableau factures -->
-  <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;">
+  <div class="card" style="overflow:hidden;">
     <?php if (empty($invoices)): ?>
       <div style="padding:60px 20px;text-align:center;color:#64748B;">
         <div style="font-size:48px;margin-bottom:12px;">📄</div>
