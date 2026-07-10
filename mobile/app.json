@@ -17,7 +17,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "fr.assokit.app",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Assokit utilise Face ID pour déverrouiller l'application en toute sécurité.",
+        "NSCameraUsageDescription": "Assokit utilise l'appareil photo pour scanner vos factures et documents.",
+        "NSPhotoLibraryUsageDescription": "Assokit accède à vos photos pour importer un logo ou une facture."
+      }
     },
     "android": {
       "package": "fr.assokit.app",
@@ -25,10 +30,30 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#059669"
-      }
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
     },
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Assokit accède à vos photos pour importer un logo ou une facture.",
+          "cameraPermission": "Assokit utilise l'appareil photo pour scanner vos factures et documents."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Assokit utilise Face ID pour déverrouiller l'application en toute sécurité."
+        }
+      ]
     ]
   }
 }
