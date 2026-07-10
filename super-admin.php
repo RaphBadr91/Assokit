@@ -160,6 +160,43 @@ try {
     $founders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {}
 
+// =====================================================================
+// Courbe de croissance (12 derniers mois) — données réelles
+//   - assos : nombre d'organisations existantes à la fin de chaque mois
+//   - mrr   : MRR (TTC) reconstitué = abonnements actifs à la fin du mois
+// =====================================================================
+$growth_labels = [];
+$growth_assos = [];
+$growth_mrr = [];
+try {
+    $mois_fr = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+    $q_assos = $pdo->prepare("
+        SELECT COUNT(*) FROM organizations
+        WHERE created_at <= :end AND (deleted_at IS NULL OR deleted_at > :end)
+    ");
+    $q_mrr = $pdo->prepare("
+        SELECT COALESCE(SUM(
+            CASE WHEN billing_cycle = 'yearly' THEN (price_ht * (1 + tva_rate/100)) / 12
+                 ELSE price_ht * (1 + tva_rate/100) END
+        ), 0)
+        FROM subscriptions
+        WHERE (started_at IS NULL OR started_at <= :end)
+          AND (cancelled_at IS NULL OR cancelled_at > :end)
+          AND status <> 'cancelled'
+    ");
+    for ($i = 11; $i >= 0; $i--) {
+        $end = date('Y-m-t 23:59:59', strtotime("first day of -$i month"));
+        $m = (int) date('n', strtotime("first day of -$i month"));
+        $growth_labels[] = $mois_fr[$m - 1];
+        $q_assos->execute([':end' => $end]);
+        $growth_assos[] = (int) $q_assos->fetchColumn();
+        $q_mrr->execute([':end' => $end]);
+        $growth_mrr[] = round((float) $q_mrr->fetchColumn(), 2);
+    }
+} catch (Throwable $e) {
+    $growth_labels = []; $growth_assos = []; $growth_mrr = [];
+}
+
 sa_render_head('Dashboard');
 sa_render_sidebar('dashboard');
 ?>
@@ -561,11 +598,12 @@ foreach ($expiring as $e) {
 (function(){
   var cv=document.getElementById('fcGrowth');if(!cv)return;var ctx=cv.getContext('2d');
   var W=cv.width,H=cv.height,padL=6,padR=10,padT=14,padB=22;
-  // NOTE: série illustrative — à brancher sur l'historique réel MRR/assos
-  var mrr=[41,48,52,58,63,69,74,82,89,96,103,109];
-  var assos=[3,3,4,4,5,5,6,6,7,7,8,8];
-  var labels=['A','S','O','N','D','J','F','M','A','M','J','J'];
-  var maxM=120,maxA=10;
+  var mrr=<?= json_encode($growth_mrr) ?>;
+  var assos=<?= json_encode($growth_assos) ?>;
+  var labels=<?= json_encode($growth_labels, JSON_UNESCAPED_UNICODE) ?>;
+  if (!mrr.length) return;
+  var maxM=Math.max(10, Math.ceil(Math.max.apply(null, mrr.concat([1])) * 1.15));
+  var maxA=Math.max(2, Math.ceil(Math.max.apply(null, assos.concat([1])) * 1.2));
   function x(i){return padL+(W-padL-padR)*(i/(mrr.length-1));}
   function yM(v){return padT+(H-padT-padB)*(1-v/maxM);}
   function yA(v){return padT+(H-padT-padB)*(1-v/maxA);}
