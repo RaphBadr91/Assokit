@@ -636,3 +636,94 @@ pre.code-block {
     padding: 0;
     font: inherit;
 }
+
+/* =======================================================================
+   PREMIUM UPGRADE — Liquid Glass léger (cohérent avec Assokit)
+   Conserve l'identité indigo du blog admin, la rend plus premium & simple
+   ======================================================================= */
+:root {
+    --radius: 14px; --radius-sm: 10px;
+    --shadow-sm: 0 1px 2px rgba(24,24,50,.05);
+    --shadow: 0 1px 2px rgba(24,24,50,.04), 0 18px 40px -22px rgba(24,24,50,.22);
+    --glass: rgba(255,255,255,.72);
+    --glass-border: rgba(255,255,255,.7);
+    --hairline: rgba(17,24,39,.08);
+}
+body {
+    background:
+        radial-gradient(52% 42% at 100% 0%, rgba(99,102,241,.10), transparent 60%),
+        radial-gradient(48% 42% at 0% 3%, rgba(16,185,129,.08), transparent 62%),
+        #f5f6fb;
+    background-attachment: fixed;
+}
+
+/* Topbar en verre */
+.topbar {
+    background: var(--glass);
+    backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: 0 1px 0 rgba(255,255,255,.6), 0 8px 24px -16px rgba(24,24,50,.3);
+}
+.brand-text { font-weight: 750; letter-spacing: -.01em; }
+.nav-link { font-weight: 550; }
+.nav-link.active { box-shadow: inset 0 0 0 1px rgba(79,70,229,.15); font-weight: 650; }
+
+/* Titres */
+.page-head h1 { font-weight: 800; letter-spacing: -.03em; }
+.card-head h2 { font-weight: 750; letter-spacing: -.02em; }
+
+/* Cartes en verre */
+.card, .stat-card, .auth-card {
+    background: var(--glass);
+    backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+/* KPI premium : liseré coloré + gros chiffres */
+.stat-card { position: relative; overflow: hidden; padding: 18px 20px; transition: transform .14s ease, box-shadow .14s ease; }
+.stat-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; }
+.stat-card:hover { transform: translateY(-2px); box-shadow: 0 1px 2px rgba(24,24,50,.05), 0 26px 50px -24px rgba(24,24,50,.3); }
+.stats-grid .stat-card:nth-child(1)::before { background: linear-gradient(90deg,#34D399,#059669); }
+.stats-grid .stat-card:nth-child(2)::before { background: linear-gradient(90deg,#818CF8,#4F46E5); }
+.stats-grid .stat-card:nth-child(3)::before { background: linear-gradient(90deg,#60A5FA,#2563EB); }
+.stats-grid .stat-card:nth-child(4)::before { background: linear-gradient(90deg,#FBBF24,#F59E0B); }
+.stat-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+.stat-value { font-size: 32px; font-weight: 800; letter-spacing: -.035em; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.stat-sub { color: var(--text-dim); font-size: 12.5px; margin-top: 6px; }
+
+/* Barres de progression en dégradé */
+.progress-bar { background: rgba(17,24,39,.07); border-radius: 999px; overflow: hidden; }
+.progress-bar-fill { background: linear-gradient(90deg,#6366F1,#4F46E5); border-radius: 999px; box-shadow: 0 2px 8px -2px rgba(79,70,229,.5); }
+.bar-mini { background: rgba(17,24,39,.07); border-radius: 999px; }
+.bar-mini-fill { background: linear-gradient(90deg,#818CF8,#4F46E5); border-radius: 999px; }
+
+/* Badges */
+.badge { font-weight: 700; border-radius: 999px; }
+
+/* Boutons premium */
+.btn-primary {
+    background: linear-gradient(140deg,#6366F1,#4F46E5); border: 0;
+    box-shadow: 0 10px 22px -8px rgba(79,70,229,.55), inset 0 1px 0 rgba(255,255,255,.3);
+    border-radius: 11px; font-weight: 650;
+}
+.btn-primary:hover { transform: translateY(-1px); background: linear-gradient(140deg,#4F46E5,#4338CA); text-decoration: none; }
+.btn-secondary, .btn-ghost, .btn-ghost-sm { border-radius: 11px; }
+
+/* Tableaux */
+.data-table { border-collapse: separate; border-spacing: 0; }
+.data-table thead th { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); border-bottom: 1px solid var(--hairline); }
+.data-table tbody td { border-bottom: 1px solid var(--hairline); }
+.data-table tbody tr { transition: background .12s ease; }
+.data-table tbody tr:hover td { background: rgba(99,102,241,.04); }
+
+/* Champs de formulaire */
+.form-grid input, .form-grid select, .form-grid textarea,
+input[type=text], input[type=email], input[type=number], input[type=url], textarea, select {
+    border-radius: 10px;
+}
+
+/* kv grid */
+.kv-key { color: var(--text-faint); font-weight: 600; text-transform: uppercase; font-size: 10.5px; letter-spacing: .05em; }
+.kv-val { font-weight: 650; }
