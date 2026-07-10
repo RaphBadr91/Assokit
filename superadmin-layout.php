@@ -286,6 +286,11 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
     gap: 1px;
     animation: sa-dropdown-fade 0.2s ease-out;
 }
+.sa-dd-label {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--sa-ink-4); padding: 9px 10px 4px;
+}
+.sa-dd-label:first-child { padding-top: 3px; }
 @keyframes sa-dropdown-fade {
     from { opacity: 0; transform: translateY(-4px); }
     to { opacity: 1; transform: translateY(0); }
@@ -749,25 +754,30 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
           <span class="sa-dropdown-arrow">▼</span>
         </summary>
         <div class="sa-dropdown-content">
+          <div class="sa-dd-label">Monétisation</div>
           <a href="/fondateur-pricing" class="sa-link <?= $active === 'fondateur-pricing' ? 'active' : '' ?>">
             <span style="font-size:14px;">💶</span> Tarifs &amp; TVA
           </a>
           <a href="/fondateur-plans" class="sa-link <?= $active === 'fondateur-plans' ? 'active' : '' ?>">
             <span class="sa-link-icon">💼</span> Plans tarifaires
           </a>
+          <a href="/fondateur-stripe-config" class="sa-link <?= $active === 'fondateur-stripe-config' ? 'active' : '' ?>">
+            <span class="sa-link-icon">💳</span> Config Stripe
+          </a>
+
+          <div class="sa-dd-label">Croissance</div>
           <a href="/fondateur-create-organization" class="sa-link <?= $active === 'fondateur-create-organization' ? 'active' : '' ?>">
             <span class="sa-link-icon">🌱</span> Créer un compte
           </a>
           <a href="/fondateur-domains" class="sa-link <?= $active === 'fondateur-domains' ? 'active' : '' ?>">
             <span class="sa-link-icon">🌐</span> Domaines
           </a>
-          <a href="/fondateur-stripe-config" class="sa-link <?= $active === 'fondateur-stripe-config' ? 'active' : '' ?>">
-            <span class="sa-link-icon">💳</span> Config Stripe
-          </a>
           <a href="/admin-blog/" class="sa-link <?= $active === 'admin-blog' ? 'active' : '' ?>" target="_blank" rel="noopener">
             <span class="sa-link-icon">✍️</span> Blog SEO
             <span style="margin-left:auto; font-size:10px; opacity:0.5;">↗</span>
           </a>
+
+          <div class="sa-dd-label">Supervision</div>
           <a href="/fondateur-activity.php" class="sa-link <?= $active === 'fondateur-activity' ? 'active' : '' ?>">
             <span class="sa-link-icon">🕵️</span> Activité utilisateurs
           </a>

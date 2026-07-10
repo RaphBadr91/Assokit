@@ -295,6 +295,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
             }
         }
     }
+
+    // =======================================================
+    // SUPPRESSION DÉFINITIVE D'UN SUPER ADMIN (jamais le Fondateur)
+    // =======================================================
+    elseif ($action === 'delete_sa') {
+        $target_id = (int) ($_POST['target_id'] ?? 0);
+
+        if ($target_id === (int) $current['id']) {
+            $error = 'Vous ne pouvez pas supprimer votre propre compte.';
+        }
+        // PROTECTION FONDATEUR : absolue, en toutes circonstances
+        elseif (sa_user_is_founder($pdo, $target_id)) {
+            $error = '🏗️ Le <strong>Fondateur</strong> ne peut jamais être supprimé. Protection absolue.';
+        } else {
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND deleted_at IS NULL");
+            $stmt->execute([$target_id]);
+            $target = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$target) {
+                $error = 'Super admin introuvable ou déjà supprimé.';
+            } elseif (!empty($target['is_active']) && count_active_super_admins($pdo) <= 1) {
+                $error = 'Il faut conserver au moins 1 super admin actif dans le système.';
+            } else {
+                // Soft-delete : le compte disparaît du système et ne peut plus se connecter
+                $stmt = $pdo->prepare("UPDATE users SET deleted_at = NOW(), is_active = 0, is_super_admin = 0 WHERE id = ?");
+                $stmt->execute([$target_id]);
+
+                sa_log_action((int) $current['id'], 'delete_super_admin', $target['org_id'] ?? null, $target_id, [
+                    'email' => $target['email'],
+                    'role'  => $target['role'],
+                ]);
+
+                $success = "Super admin <strong>" . h($target['first_name'] . ' ' . $target['last_name']) . "</strong> supprimé définitivement.";
+            }
+        }
+    }
 }
 
 // ==================================================================
@@ -306,7 +342,8 @@ $stmt = $pdo->query("
            (SELECT COUNT(*) FROM platform_activity_log l WHERE l.super_admin_id = u.id) AS nb_actions
     FROM users u
     LEFT JOIN organizations o ON u.org_id = o.id
-    WHERE u.role = 'super_admin' OR u.is_super_admin = 1
+    WHERE (u.role = 'super_admin' OR u.is_super_admin = 1)
+      AND u.deleted_at IS NULL
     ORDER BY u.is_founder DESC, u.is_active DESC, u.created_at ASC
 ");
 $super_admins = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -543,6 +580,16 @@ sa_render_sidebar('superadmins');
                                         <button type="submit" class="sa-btn sa-btn-danger sa-btn-sm">
                                             <?= $is_double ? '👑 Retirer SA' : '⏸ Désactiver' ?>
                                         </button>
+                                    </form>
+                                <?php endif; ?>
+
+                                <?php if (!$is_me && !$is_founder): ?>
+                                    <form method="POST" style="display:inline"
+                                          onsubmit="return confirm('⚠️ SUPPRESSION DÉFINITIVE\n\nSupprimer définitivement ce super admin ?<?= $is_double ? '\n\nCe compte possède aussi un accès à une association : il perdra TOUT accès.' : '' ?>\n\nCette action est irréversible.');">
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
+                                        <input type="hidden" name="action" value="delete_sa">
+                                        <input type="hidden" name="target_id" value="<?= (int) $sa['id'] ?>">
+                                        <button type="submit" class="sa-btn sa-btn-sm" style="background:#DC2626;color:#fff;border-color:#DC2626;">🗑 Supprimer</button>
                                     </form>
                                 <?php endif; ?>
                             </div>
