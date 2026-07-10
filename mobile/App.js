@@ -2162,6 +2162,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
+  const isFounder = !!(kpi && kpi.is_founder);
   const TABS = tabsFor(profile);
   const QUICK_ACTIONS = isTpe ? QUICK_ACTIONS_TPE : QUICK_ACTIONS_ASSO;
 
@@ -2807,6 +2808,19 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
+      {isFounder && (
+        <TouchableOpacity
+          style={styles.founderStrip}
+          activeOpacity={0.9}
+          onPress={() => { clearDetail(); closeForm(); setMenuScreen(null); setOpenChannel(null); setWebMode(true); inject(gotoJS('/super-admin')); }}
+        >
+          <View style={styles.founderStripStar}><Ionicons name="star" size={15} color="#78350F" /></View>
+          <Text style={styles.founderStripTxt}>Espace Fondateur</Text>
+          <Text style={styles.founderStripHint}>Piloter la plateforme</Text>
+          <Ionicons name="chevron-forward" size={16} color="#FCD34D" />
+        </TouchableOpacity>
+      )}
+
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
           if (tab.key === 'add') {
@@ -3235,6 +3249,10 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 11, fontWeight: '600' },
   fabWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   fab: { width: 56, height: 56, borderRadius: 28, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', marginTop: -26, shadowColor: BRAND, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 8, borderWidth: 4, borderColor: '#fff' },
+  founderStrip: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#1F1804', borderTopWidth: 1, borderTopColor: 'rgba(252,211,77,0.35)', paddingHorizontal: 16, paddingVertical: 11 },
+  founderStripStar: { width: 26, height: 26, borderRadius: 8, backgroundColor: '#FCD34D', alignItems: 'center', justifyContent: 'center' },
+  founderStripTxt: { fontSize: 13.5, fontWeight: '800', color: '#FCD34D', letterSpacing: 0.2 },
+  founderStripHint: { flex: 1, fontSize: 11.5, color: '#B8A76E', marginLeft: 2 },
 
   /* Quick actions sheet */
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
