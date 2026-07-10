@@ -8,6 +8,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+require_once __DIR__ . '/facturation-hub.php';
 @require_once __DIR__ . '/stripe-helpers.php';
 
 require_login();
@@ -86,40 +87,11 @@ render_sidebar('mon-asso-factures');
 
 <main class="main">
 
-  <nav class="crumbs">
-    <a href="/dashboard">Dashboard</a>
-    <span class="sep">›</span>
-    <a href="/mon-asso-plan">Mon abonnement</a>
-    <span class="sep">›</span>
-    <span class="current">📄 Mes factures</span>
-  </nav>
-
-  <div class="main-head" style="margin-bottom:24px;">
-    <div>
-      <h1 style="margin:0 0 4px;">📄 Mes factures</h1>
-      <p style="color:#64748B;margin:0;">Toutes vos factures Stripe avec téléchargement PDF</p>
-    </div>
-  </div>
-
-  <!-- Stats -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;margin-bottom:22px;">
-    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:16px 18px;">
-      <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Total factures</div>
-      <div style="font-size:24px;font-weight:700;margin-top:4px;"><?= (int)$stats['total_count'] ?></div>
-    </div>
-    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:16px 18px;">
-      <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Payées</div>
-      <div style="font-size:24px;font-weight:700;color:#059669;margin-top:4px;"><?= (int)$stats['paid_count'] ?></div>
-    </div>
-    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:16px 18px;">
-      <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">En attente</div>
-      <div style="font-size:24px;font-weight:700;color:#EA580C;margin-top:4px;"><?= (int)$stats['open_count'] ?></div>
-    </div>
-    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:16px 18px;">
-      <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Total payé</div>
-      <div style="font-size:24px;font-weight:700;color:#0F172A;margin-top:4px;"><?= ak_format_price_cents((int)$stats['total_paid_cents']) ?></div>
-    </div>
-  </div>
+  <?php render_facturation_hub($pdo, $org_id, 'factures', [
+      'actions' =>
+          '<a href="/mon-asso-devis-new" class="fh-btn fh-btn-ghost"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Nouveau devis</a>'
+        . '<a href="/mon-asso-facture-new" class="fh-btn fh-btn-primary"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Nouvelle facture</a>',
+  ]); ?>
 
   <!-- Filtres -->
   <form method="get" action="/mon-asso-factures" style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">

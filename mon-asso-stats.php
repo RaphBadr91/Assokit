@@ -7,6 +7,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/asso-stats-helpers.php';
+require_once __DIR__ . '/facturation-hub.php';
 
 require_login();
 $user = current_user();
@@ -49,16 +50,9 @@ render_sidebar('stats');
 ?>
 
 <div class="main">
-    <div class="main-head">
-        <div>
-            <h1 class="page-title">📊 Statistiques</h1>
-            <div class="page-sub">Vue d'ensemble de l'activité <?= (int)$kpis['year'] ?></div>
-        </div>
-        <div style="display:flex; gap:8px;">
-            <a href="/mon-asso-factures" class="btn btn-ghost">💼 Factures</a>
-            <a href="/mon-asso-devis" class="btn btn-ghost">📝 Devis</a>
-        </div>
-    </div>
+    <?php render_facturation_hub($pdo, $org_id, 'stats'); ?>
+
+    <h3 style="margin:0 0 14px; font-size:16px; color:var(--ink,#0B1A13);">Analyse détaillée <?= (int)$kpis['year'] ?></h3>
 
     <!-- KPIs principaux -->
     <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; margin-bottom:18px;">

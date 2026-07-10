@@ -172,7 +172,7 @@ $stmt->execute([':id' => $org_id]);
 $org = $stmt->fetch(PDO::FETCH_ASSOC);
 
 render_head('Logo association');
-render_sidebar('factures');
+render_sidebar('logo');
 ?>
 
 <div class="main">

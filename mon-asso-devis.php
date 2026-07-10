@@ -9,6 +9,8 @@ require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/asso-quote-helpers.php';
 require_once __DIR__ . '/asso-tags-helpers.php';
 require_once __DIR__ . '/asso-search-helpers.php';
+require_once __DIR__ . '/asso-stats-helpers.php';
+require_once __DIR__ . '/facturation-hub.php';
 
 require_login();
 $user = current_user();
@@ -175,20 +177,11 @@ $current_query = http_build_query($_GET);
 <div class="main">
 
     <!-- HEADER -->
-    <div class="ak-page-head">
-        <div>
-            <h1 class="ak-page-title">📝 Mes devis</h1>
-            <div class="ak-page-sub">
-                <?= $kpi['count'] ?> devis
-                <?php if ($has_filters): ?> · <span style="color:#7E22CE; font-weight:500;">Filtres actifs</span><?php endif; ?>
-            </div>
-        </div>
-        <div class="ak-page-actions">
-            <a href="/mon-asso-tags" class="ak-btn-ghost">🔖 Tags</a>
-            <a href="/mon-asso-export?type=quote&<?= h($current_query) ?>" class="ak-btn-ghost">📥 Export Excel</a>
-            <a href="/mon-asso-devis-new" class="ak-btn-primary">+ Nouveau devis</a>
-        </div>
-    </div>
+    <?php render_facturation_hub($pdo, $org_id, 'devis', [
+        'actions' =>
+            '<a href="/mon-asso-export?type=quote&' . h($current_query) . '" class="fh-btn fh-btn-ghost"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Export Excel</a>'
+          . '<a href="/mon-asso-devis-new" class="fh-btn fh-btn-primary"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Nouveau devis</a>',
+    ]); ?>
 
     <?php if ($flash): ?>
     <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom:16px; border-radius:10px;">
@@ -196,30 +189,6 @@ $current_query = http_build_query($_GET);
         <?php if (!empty($flash['pdf_link'])): ?> — <a href="<?= h($flash['pdf_link']) ?>" target="_blank" style="font-weight:600;">📥 PDF</a><?php endif; ?>
     </div>
     <?php endif; ?>
-
-    <!-- KPIs -->
-    <div class="ak-kpis">
-        <div class="ak-kpi">
-            <div class="ak-kpi-label">📊 Total filtré</div>
-            <div class="ak-kpi-value"><?= (int)$kpi['count'] ?></div>
-            <div class="ak-kpi-meta">devis</div>
-        </div>
-        <div class="ak-kpi">
-            <div class="ak-kpi-label"><span class="ak-kpi-dot" style="background:#F59E0B;"></span>En attente</div>
-            <div class="ak-kpi-value" style="color:#F59E0B;"><?= h(ak_asso_fmt_cents($kpi['sent'])) ?></div>
-            <div class="ak-kpi-meta">en attente signature</div>
-        </div>
-        <div class="ak-kpi">
-            <div class="ak-kpi-label"><span class="ak-kpi-dot" style="background:#10B981;"></span>Signés</div>
-            <div class="ak-kpi-value" style="color:#10B981;"><?= h(ak_asso_fmt_cents($kpi['signed'])) ?></div>
-            <div class="ak-kpi-meta">acceptés par client</div>
-        </div>
-        <div class="ak-kpi">
-            <div class="ak-kpi-label"><span class="ak-kpi-dot" style="background:#7E22CE;"></span>Convertis</div>
-            <div class="ak-kpi-value" style="color:#7E22CE;"><?= h(ak_asso_fmt_cents($kpi['converted'])) ?></div>
-            <div class="ak-kpi-meta">en facture</div>
-        </div>
-    </div>
 
     <!-- FILTRES -->
     <div class="ak-filters">

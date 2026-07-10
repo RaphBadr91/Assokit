@@ -8,6 +8,8 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/asso-tags-helpers.php';
 require_once __DIR__ . '/asso-search-helpers.php';
+require_once __DIR__ . '/asso-stats-helpers.php';
+require_once __DIR__ . '/facturation-hub.php';
 
 require_login();
 $user = current_user();
@@ -74,17 +76,11 @@ render_sidebar('clients');
 ?>
 
 <div class="main">
-    <div class="main-head">
-        <div>
-            <h1 class="page-title">👥 Mes clients</h1>
-            <div class="page-sub"><?= count($clients) ?> client<?= count($clients)>1?'s':'' ?></div>
-        </div>
-        <div style="display:flex; gap:8px;">
-            <a href="/mon-asso-tags" class="btn btn-ghost">🔖 Tags</a>
-            <a href="/mon-asso-export?type=client&<?= h($current_query) ?>" class="btn btn-ghost">📥 Export Excel</a>
-            <a href="/mon-asso-facture-new" class="btn btn-primary">+ Nouveau (via facture)</a>
-        </div>
-    </div>
+    <?php render_facturation_hub($pdo, $org_id, 'clients', [
+        'actions' =>
+            '<a href="/mon-asso-export?type=client&' . h($current_query) . '" class="fh-btn fh-btn-ghost"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Export Excel</a>'
+          . '<a href="/mon-asso-facture-new" class="fh-btn fh-btn-primary"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Nouvelle facture</a>',
+    ]); ?>
 
     <?php if ($flash): ?>
     <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom:16px;">
