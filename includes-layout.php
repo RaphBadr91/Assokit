@@ -1278,6 +1278,14 @@ function render_sidebar($active = 'accueil') {
         <?php if (!is_follower()): ?><span class="sb-badge"><?= $proj_count ?></span><?php endif; ?>
       </a>
 
+      <?php // Tags (catégorisation des projets) — rattaché aux Projets ?>
+      <?php if (can('manage_finances')): ?>
+      <a href="/mon-asso-tags" class="sb-link <?= $active === 'tags' ? 'active' : '' ?>">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        Tags
+      </a>
+      <?php endif; ?>
+
       <?php // Adhérents (+ sous-menu Cotisations toggleable) ?>
       <?php if (!is_follower()): ?>
       <?php $adh_open = in_array($active, ['adherents','cotisations'], true); ?>
@@ -1394,45 +1402,15 @@ function render_sidebar($active = 'accueil') {
         <?php endif; ?>
       </a>
 
-      <?php // Facturation : groupe déroulant — uniquement si capacité manage_finances ?>
+      <?php // Facturation : une seule page (onglets Factures / Devis / Clients / Statistiques) ?>
       <?php if (can('manage_finances')):
-          $facturation_actives = ['devis','factures','clients','logo','tags','stats'];
-          $facturation_open = in_array($active, $facturation_actives, true);
-          $has_active_class = $facturation_open ? 'has-active' : '';
+          $facturation_actives = ['devis','factures','clients','stats'];
+          $fact_active = in_array($active, $facturation_actives, true);
       ?>
-      <div class="sb-group <?= $facturation_open ? 'open' : '' ?>" id="sb-group-facturation">
-        <button type="button" class="sb-group-toggle <?= $has_active_class ?>" onclick="document.getElementById('sb-group-facturation').classList.toggle('open')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg>
-          <span>Facturation</span>
-          <svg class="sb-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div class="sb-group-items">
-          <a href="/mon-asso-factures" class="sb-link <?= $active === 'factures' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
-            Factures
-          </a>
-          <a href="/mon-asso-devis" class="sb-link <?= $active === 'devis' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            Devis
-          </a>
-          <a href="/mon-asso-clients" class="sb-link <?= $active === 'clients' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Clients
-          </a>
-          <a href="/mon-asso-stats" class="sb-link <?= $active === 'stats' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-            Statistiques
-          </a>
-          <a href="/mon-asso-tags" class="sb-link <?= $active === 'tags' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-            Tags
-          </a>
-          <a href="/mon-asso-logo" class="sb-link <?= $active === 'logo' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            Logo
-          </a>
-        </div>
-      </div>
+      <a href="/mon-asso-factures" class="sb-link <?= $fact_active ? 'active' : '' ?>">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg>
+        Facturation
+      </a>
       <?php endif; ?>
 
       <?php // Communication : uniquement si capacité access_marketing ?>
@@ -1448,6 +1426,14 @@ function render_sidebar($active = 'accueil') {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.4l2-1.5-2-3.5-2.3 1a7 7 0 0 0-2.4-1.4L15.8 2h-4l-.4 2.7A7 7 0 0 0 9 6.1L6.7 5 4.7 8.5l2 1.5A7 7 0 0 0 6.6 12a7 7 0 0 0 .1 1.4l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 2.4 1.4l.4 2.7h4l.4-2.7a7 7 0 0 0 2.4-1.4l2.3 1 2-3.5-2-1.5A7 7 0 0 0 19 12z"/></svg>
         Paramètres
       </a>
+
+      <?php // Logo de la structure — rattaché aux Paramètres ?>
+      <?php if (can('manage_finances')): ?>
+      <a href="/mon-asso-logo" class="sb-link <?= $active === 'logo' ? 'active' : '' ?>">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        Logo de la structure
+      </a>
+      <?php endif; ?>
 
       <?php // Bloc Admin : uniquement si admin ?>
       <?php if (can('admin') || $user['role'] === 'admin'): ?>
