@@ -802,6 +802,7 @@ render_sidebar('projets');
       </div>
     </a>
 
+    <?php if ($active_tab === 'overview'): ?>
     <div class="ck-row-2col">
       <!-- TEAM PULSE -->
       <div class="ck-card">
@@ -862,6 +863,7 @@ render_sidebar('projets');
         <?php endif; ?>
       </div>
     </div>
+    <?php endif; ?>
 
   </section>
 
@@ -1363,33 +1365,7 @@ render_sidebar('projets');
           $prog_color = $project['status'] === 'warning' ? '#F59E0B' : '#10B981';
           $remaining = max(0, $total_steps - $done_steps);
         ?>
-        <div class="ov2-prog">
-          <div class="ov2-prog-bg"></div>
-          <div class="ov2-prog-donut">
-            <svg viewBox="0 0 88 88">
-              <circle cx="<?= $cx_ov ?>" cy="<?= $cy_ov ?>" r="<?= $r_ov ?>" fill="none" stroke="#f3f4f6" stroke-width="7"/>
-              <circle class="ov2-prog-ring" cx="<?= $cx_ov ?>" cy="<?= $cy_ov ?>" r="<?= $r_ov ?>" fill="none"
-                      stroke="<?= $prog_color ?>" stroke-width="7" stroke-linecap="round"
-                      stroke-dasharray="<?= round($circ_ov, 2) ?>"
-                      stroke-dashoffset="<?= round($circ_ov, 2) ?>"
-                      data-final="<?= round($offset_ov, 2) ?>"
-                      transform="rotate(-90 <?= $cx_ov ?> <?= $cy_ov ?>)"/>
-            </svg>
-            <div class="ov2-prog-pct" data-counter-to="<?= $computed_progress ?>">0</div>
-          </div>
-          <div class="ov2-prog-info">
-            <div class="ov2-prog-title">Progression globale</div>
-            <div class="ov2-prog-bar-bg"><div class="ov2-prog-bar" style="width:<?= $computed_progress ?>%; background:<?= $prog_color ?>;"></div></div>
-            <div class="ov2-prog-meta">
-              <span><strong><?= $done_steps ?></strong> sur <strong><?= $total_steps ?></strong> étapes</span>
-              <?php if ($remaining > 0): ?>
-                <span class="ov2-prog-remaining">· <?= $remaining ?> restante<?= $remaining > 1 ? 's' : '' ?></span>
-              <?php elseif ($total_steps > 0): ?>
-                <span class="ov2-prog-done">· 🏁 Terminé !</span>
-              <?php endif; ?>
-            </div>
-          </div>
-        </div>
+        <!-- (Progression affichée dans le cockpit en haut — évite le doublon) -->
 
         <!-- DESCRIPTION -->
         <?php if ($project['description']): ?>
@@ -3585,7 +3561,7 @@ function copyDoc(id) {
 /* Bouton + menu Exports */
 .ck-exports-btn{display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:12px;border:1px solid var(--glass-border);background:var(--surface);color:var(--ink-2);font-size:13.5px;font-weight:650;cursor:pointer;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:var(--shadow-sm);font-family:inherit}
 .ck-exports-btn:hover{color:var(--ink)}
-.ck-exports-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:220px;background:var(--surface);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);border:1px solid var(--glass-border);border-radius:15px;box-shadow:var(--shadow-pop);padding:6px;z-index:50}
+.ck-exports-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:220px;background:var(--solid,#fff);border:1px solid var(--border);border-radius:15px;box-shadow:var(--shadow-pop);padding:6px;z-index:50}
 .ck-exports-menu a{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:10px;text-decoration:none;color:var(--ink);font-size:13.5px;font-weight:550}
 .ck-exports-menu a:hover{background:var(--bg-2)}
 .ck-exports-menu .mi{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:15px;flex:none;background:var(--bg-2)}
