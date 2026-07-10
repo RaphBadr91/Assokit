@@ -1366,14 +1366,15 @@ render_sidebar('projets');
 
         <!-- DESCRIPTION -->
         <?php if ($project['description']): ?>
-        <div class="ov2-card">
+        <div class="ov2-card ov2-desc">
           <div class="ov2-card-head">
             <span class="ov2-card-icon" style="background:linear-gradient(135deg,#dbeafe,#bfdbfe);color:#1e40af;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             </span>
             <span class="ov2-card-title">Description</span>
           </div>
-          <div class="ov2-card-text"><?= nl2br(h($project['description'])) ?></div>
+          <div class="ov2-card-text ov2-clamp"><?= nl2br(h($project['description'])) ?></div>
+          <button type="button" class="ov2-more" hidden>Voir plus ▾</button>
         </div>
         <?php else: ?>
         <?php if ($can_edit_project): ?>
@@ -3583,6 +3584,16 @@ function copyDoc(id) {
 .ov2-row-2col .ck-nudge-label{color:var(--ink)!important;font-weight:650}
 .ov2-row-2col .ck-nudge-why{color:var(--ink-3)!important}
 @media (max-width:860px){.ov2-row-2col{grid-template-columns:1fr!important}}
+
+/* ===== Vue d'ensemble : plus compacte, fluide et lisible ===== */
+.ov2-card-text{line-height:1.6}
+.ov2-desc .ov2-clamp{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.ov2-desc.is-open .ov2-clamp{-webkit-line-clamp:unset;overflow:visible}
+.ov2-more{margin-top:12px;background:transparent;border:0;color:var(--ai,#6366F1);font-weight:650;font-size:13px;cursor:pointer;font-family:inherit;padding:2px 0;display:inline-flex;align-items:center;gap:5px}
+.ov2-more:hover{text-decoration:underline}
+/* Étapes : lignes plus ramassées */
+.ov2-card .step-item{padding-top:11px!important;padding-bottom:11px!important}
+.ov2-card .step-title{font-weight:600}
 </style>
 
 <script>
@@ -3591,6 +3602,18 @@ document.addEventListener('click', function(e){
   document.querySelectorAll('.ck-exports-menu:not([hidden])').forEach(function(m){
     if (!m.parentNode.contains(e.target)) m.hidden = true;
   });
+});
+/* Description repliable : « Voir plus » seulement si le texte dépasse */
+document.querySelectorAll('.ov2-desc').forEach(function(card){
+  var txt = card.querySelector('.ov2-clamp'), btn = card.querySelector('.ov2-more');
+  if (!txt || !btn) return;
+  if (txt.scrollHeight - txt.clientHeight > 4){
+    btn.hidden = false;
+    btn.addEventListener('click', function(){
+      var open = card.classList.toggle('is-open');
+      btn.textContent = open ? 'Voir moins ▴' : 'Voir plus ▾';
+    });
+  }
 });
 </script>
 
