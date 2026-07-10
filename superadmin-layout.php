@@ -543,6 +543,65 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
     .sa-main [style*="minmax(250px"],
     .sa-main [style*="minmax(200px"] { grid-template-columns: 1fr !important; }
 }
+
+/* =======================================================================
+   PREMIUM UPGRADE — harmonisation avec le cockpit Fondateur
+   (raffine les composants .sa-* partagés par toutes les pages super-admin)
+   ======================================================================= */
+.sa-page-title { font-weight: 750; letter-spacing: -0.03em; }
+.sa-page-sub { font-size: 13.5px; color: var(--sa-ink-3); }
+.sa-page-head { margin-bottom: 22px; }
+
+/* Panneaux : léger reflet + ombre douce */
+.sa-card, .sa-kpi, .sa-table-wrap {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.030), rgba(255,255,255,0) 60%),
+        var(--sa-bg-2);
+    border: 1px solid rgba(255,255,255,.085);
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 20px 44px -24px rgba(0,0,0,.75);
+}
+
+/* KPI */
+.sa-kpi { padding: 18px 20px; }
+.sa-kpi::before { height: 3px; opacity: 1; background: linear-gradient(90deg, #A78BFA, #7F77DD); }
+.sa-kpi-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+.sa-kpi-value { font-size: 30px; font-weight: 800; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
+
+/* Cartes */
+.sa-card-title { font-weight: 700; letter-spacing: -0.01em; }
+
+/* Tableaux */
+.sa-table thead { background: transparent; }
+.sa-table th { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; color: var(--sa-ink-4); padding: 12px 16px; }
+.sa-table td { font-size: 13px; border-bottom-color: var(--sa-border); }
+.sa-table tbody tr { transition: background .12s ease; }
+.sa-table tbody tr:hover td { background: rgba(255,255,255,.028); }
+.sa-main-col { font-weight: 650; }
+
+/* Badges */
+.sa-badge { padding: 3px 10px; font-weight: 700; font-size: 11px; letter-spacing: .01em; }
+
+/* Boutons */
+.sa-btn { border-radius: 10px; font-weight: 600; }
+.sa-btn-violet { box-shadow: 0 10px 22px -10px rgba(127,119,221,.65), inset 0 1px 0 rgba(255,255,255,.18); }
+.sa-btn-violet:hover { transform: translateY(-1px); }
+.sa-btn-primary:hover { transform: translateY(-1px); }
+
+/* Champs de formulaire / recherche */
+.sa-group input, .sa-group textarea, .sa-group select {
+    border-radius: 10px; padding: 11px 13px; font-size: 13.5px;
+    background: rgba(255,255,255,.03); border-color: rgba(255,255,255,.10);
+}
+.sa-group input:focus, .sa-group textarea:focus, .sa-group select:focus {
+    box-shadow: 0 0 0 3px rgba(127,119,221,.18);
+}
+
+/* Alertes */
+.sa-alert { border-radius: 12px; }
+
+/* Empty state un peu plus premium */
+.sa-empty-title { color: var(--sa-ink-2); }
 </style>
 </head>
 <body>
