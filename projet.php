@@ -679,6 +679,7 @@ render_sidebar('projets');
         <?= ak_proj_sparkline($proj_activity, $proj_health['color'], 200, 30) ?>
       </div>
 
+      <div class="ck-actions-bar">
       <!-- Bouton Générer le bilan -->
       <?php if ($can_edit_project || $is_admin): ?>
       <div class="ck-bilan">
@@ -776,6 +777,7 @@ render_sidebar('projets');
         </div>
       </div>
       <?php endif; ?>
+      </div><!-- /.ck-actions-bar -->
 
     </div>
 
@@ -3562,17 +3564,37 @@ function copyDoc(id) {
 .tab{font-weight:600}
 .tab-badge{font-weight:700}
 
-/* Cockpit simplifié : 3 KPI + menu Exports (non coupé) */
-.ck-hero{overflow:visible!important}
+/* ===== Cockpit COMPACT : 1 bloc (donut + 3 KPI en haut, barre d'actions en bas) ===== */
+.ck-hero{
+  overflow:visible!important;
+  display:grid!important;
+  grid-template-columns:auto 1fr!important;
+  gap:16px 24px!important;
+  align-items:center!important;
+  padding:20px 24px!important;
+}
 .ck-hero-bg{border-radius:var(--radius-lg,18px) var(--radius-lg,18px) 0 0!important}
-.ck-kpi-grid{grid-template-columns:repeat(3,1fr)!important}
-.ck-exports{position:relative;margin-top:10px}
-.ck-exports-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border-radius:12px;border:1px solid var(--glass-border);background:var(--surface);color:var(--ink-2);font-size:13px;font-weight:650;cursor:pointer;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:var(--shadow-sm);font-family:inherit}
+.ck-donut-block{grid-column:1!important;grid-row:auto!important}
+.ck-kpi-grid{grid-column:2!important;grid-row:auto!important;grid-template-columns:repeat(3,1fr)!important;gap:12px!important}
+.ck-spark{display:none!important}
+/* Barre d'actions : une seule ligne, pleine largeur */
+.ck-actions-bar{grid-column:1 / -1!important;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0!important;padding-top:14px;border-top:1px solid var(--hairline-2,rgba(12,40,28,.05))}
+.ck-bilan{order:0;margin:0!important;padding-top:0!important;border-top:0!important}
+.ck-exports{order:1;margin:0!important;position:relative}
+.ck-share{order:2;margin:0 0 0 auto!important;padding-top:0!important;border-top:0!important}
+/* Bouton + menu Exports */
+.ck-exports-btn{display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:12px;border:1px solid var(--glass-border);background:var(--surface);color:var(--ink-2);font-size:13.5px;font-weight:650;cursor:pointer;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:var(--shadow-sm);font-family:inherit}
 .ck-exports-btn:hover{color:var(--ink)}
 .ck-exports-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:220px;background:var(--surface);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);border:1px solid var(--glass-border);border-radius:15px;box-shadow:var(--shadow-pop);padding:6px;z-index:50}
 .ck-exports-menu a{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:10px;text-decoration:none;color:var(--ink);font-size:13.5px;font-weight:550}
 .ck-exports-menu a:hover{background:var(--bg-2)}
 .ck-exports-menu .mi{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:15px;flex:none;background:var(--bg-2)}
+@media (max-width:760px){
+  .ck-hero{grid-template-columns:1fr!important;justify-items:center;text-align:center}
+  .ck-kpi-grid{grid-column:1!important;grid-template-columns:1fr 1fr!important;width:100%}
+  .ck-actions-bar{justify-content:center}
+  .ck-share{margin-left:0!important}
+}
 </style>
 
 <script>
