@@ -41,19 +41,29 @@ $groups = [
         ],
     ],
     [
-        'label' => 'Croissance',
+        'label' => 'Croissance & acquisition',
         'accent' => '#A78BFA',
         'items' => [
-            ['ic' => '🌱', 'title' => 'Créer un compte',   'desc' => 'Nouvelle organisation en création directe', 'url' => '/fondateur-create-organization'],
-            ['ic' => '🌐', 'title' => 'Domaines',          'desc' => 'Sous-domaines et domaines personnalisés',   'url' => '/fondateur-domains'],
-            ['ic' => '✍️', 'title' => 'Blog SEO',          'desc' => 'Articles et référencement naturel',         'url' => '/admin-blog/', 'ext' => true],
+            ['ic' => '🌱', 'title' => 'Créer un compte',       'desc' => 'Nouvelle organisation en création directe', 'url' => '/fondateur-create-organization'],
+            ['ic' => '🏛️', 'title' => 'Collectivités & Mairies', 'desc' => 'Mairies, CAF, départements…',              'url' => '/super-admin-mairies', 'tag' => 'MULTI-ASSO'],
+            ['ic' => '🌐', 'title' => 'Domaines',              'desc' => 'Sous-domaines et domaines personnalisés',   'url' => '/fondateur-domains'],
+            ['ic' => '✍️', 'title' => 'Blog SEO',              'desc' => 'Articles et référencement naturel',         'url' => '/admin-blog/', 'ext' => true],
         ],
     ],
     [
-        'label' => 'Supervision',
+        'label' => 'Configuration plateforme',
+        'accent' => '#60A5FA',
+        'items' => [
+            ['ic' => '⚙️', 'title' => 'Paramètres société', 'desc' => 'Infos légales, TVA, IBAN, logo Assokit', 'url' => '/fondateur-cockpit/societe', 'tag' => 'FONDATEUR'],
+        ],
+    ],
+    [
+        'label' => 'Supervision & sécurité',
         'accent' => '#FCD34D',
         'items' => [
-            ['ic' => '🕵️', 'title' => 'Activité utilisateurs', 'desc' => 'Journal d\'activité de la plateforme',  'url' => '/fondateur-activity.php'],
+            ['ic' => '🕵️', 'title' => 'Activité utilisateurs', 'desc' => 'Journal d\'activité de la plateforme',   'url' => '/fondateur-activity.php'],
+            ['ic' => '🔐', 'title' => 'Journal d\'accès',      'desc' => 'Connexions et accès sensibles',          'url' => '/fondateur-cockpit/access-logs'],
+            ['ic' => '🛡️', 'title' => 'Cockpit CRON',         'desc' => 'Relances, essais, renouvellements',       'url' => '/admin-cron-login', 'tag' => 'RÉAUTH 15 MIN'],
         ],
     ],
 ];
@@ -90,6 +100,7 @@ sa_render_sidebar('fondateur-pilotage');
 .fp-card-d { font-size:12.5px; color:var(--sa-ink-3); margin-top:3px; line-height:1.4; }
 .fp-card-go { flex:none; color:var(--sa-ink-4); font-size:16px; transition:transform .14s ease, color .14s ease; }
 .fp-card:hover .fp-card-go { transform:translateX(3px); color:var(--sa-ink-2); }
+.fp-card-tag { position:absolute; top:10px; right:12px; font-size:9px; font-weight:800; letter-spacing:.04em; padding:2px 7px; border-radius:5px; background:color-mix(in srgb, var(--fp-accent,#FCD34D) 18%, var(--sa-bg-3)); color:var(--fp-accent,#FCD34D); }
 
 @media (max-width:560px){ .fp-grid{ grid-template-columns:1fr; } }
 </style>
@@ -108,6 +119,7 @@ sa_render_sidebar('fondateur-pilotage');
     <div class="fp-grid">
         <?php foreach ($g['items'] as $it): ?>
         <a href="<?= h($it['url']) ?>" class="fp-card"<?= !empty($it['ext']) ? ' target="_blank" rel="noopener"' : '' ?>>
+            <?php if (!empty($it['tag'])): ?><span class="fp-card-tag"><?= h($it['tag']) ?></span><?php endif; ?>
             <div class="fp-card-ic"><?= $it['ic'] ?></div>
             <div class="fp-card-b">
                 <div class="fp-card-t"><?= h($it['title']) ?><?= !empty($it['ext']) ? ' <span class="ext">↗</span>' : '' ?></div>
