@@ -1421,6 +1421,9 @@ render_sidebar('projets');
               <a href="/modifier-etapes?id=<?= (int)$project['id'] ?>" class="ov2-card-action">⚙️ Modifier</a>
             <?php endif; ?>
           </div>
+          <?php if ($total_steps > 0): ?>
+          <div class="step-progress"><div class="step-progress-fill" style="width:<?= round(($done_steps / max(1, $total_steps)) * 100) ?>%"></div></div>
+          <?php endif; ?>
           <?php if (empty($steps)): ?>
             <div class="ov2-card-empty">
               <div style="font-size: 28px; margin-bottom: 8px;">🌱</div>
@@ -3546,7 +3549,10 @@ function copyDoc(id) {
   gap:16px 24px!important;
   align-items:center!important;
   padding:20px 24px!important;
+  position:relative;z-index:30;
 }
+/* la carte "prochaine action" et la suite passent SOUS le menu Exports ouvert */
+.ck-nba{position:relative;z-index:1}
 .ck-hero-bg{border-radius:var(--radius-lg,18px) var(--radius-lg,18px) 0 0!important}
 .ck-donut-block{grid-column:1!important;grid-row:auto!important}
 .ck-kpi-grid{grid-column:2!important;grid-row:auto!important;grid-template-columns:repeat(3,1fr)!important;gap:12px!important}
@@ -3594,6 +3600,16 @@ function copyDoc(id) {
 /* Étapes : lignes plus ramassées */
 .ov2-card .step-item{padding-top:11px!important;padding-bottom:11px!important}
 .ov2-card .step-title{font-weight:600}
+/* Étapes : validation premium + facile (toute la ligne cliquable) */
+.step-progress{height:6px;border-radius:5px;background:var(--hairline,rgba(12,40,28,.08));overflow:hidden;margin:2px 0 14px}
+.step-progress-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--brand-2,#10B981),var(--acc,#059669));transition:width .6s cubic-bezier(.4,0,.2,1)}
+.ov2-card .step-item{border-radius:12px}
+.ov2-card .step-check{width:24px;height:24px}
+.ov2-card .step-item:hover .step-check:not(.done):not(.readonly){border-color:var(--acc,#059669);background:var(--acc-light,rgba(5,150,105,.12))}
+.ov2-card .step-item:hover .step-check:not(.done):not(.readonly) svg{opacity:.55;color:var(--acc,#059669)}
+.ov2-card .step-check svg{transition:opacity .15s ease}
+.ov2-card .step-check.done{animation:stepPop .28s ease}
+@keyframes stepPop{0%{transform:scale(.82)}60%{transform:scale(1.14)}100%{transform:scale(1)}}
 </style>
 
 <script>
@@ -3614,6 +3630,16 @@ document.querySelectorAll('.ov2-desc').forEach(function(card){
       btn.textContent = open ? 'Voir moins ▴' : 'Voir plus ▾';
     });
   }
+});
+/* Étapes : cliquer n'importe où sur la ligne valide / dévalide */
+document.querySelectorAll('.ov2-card .step-item').forEach(function(item){
+  var btn = item.querySelector('button.step-check');
+  if (!btn) return;
+  item.style.cursor = 'pointer';
+  item.addEventListener('click', function(e){
+    if (e.target.closest('a, form')) return; // le bouton (dans le form) et les liens gardent leur comportement
+    btn.click();
+  });
 });
 </script>
 
