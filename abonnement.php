@@ -345,8 +345,10 @@ render_sidebar($active);
             $df = $detailed_features[$p['slug']] ?? null;
           ?>
           <div class="plan-card<?= $is_featured ? ' is-featured' : '' ?><?= $is_current ? ' is-current' : '' ?>">
-            <?php if ($is_featured): ?><span class="plan-flag">★ Le plus choisi</span><?php endif; ?>
-            <?php if ($is_current): ?><span class="plan-active">✓ Actif</span><?php endif; ?>
+            <div class="plan-chips">
+              <?php if ($is_featured): ?><span class="plan-chip chip-feat">★ Le plus choisi</span><?php endif; ?>
+              <?php if ($is_current): ?><span class="plan-chip chip-active">✓ Votre formule</span><?php endif; ?>
+            </div>
 
             <div class="plan-name"><?= h($p['name']) ?></div>
             <div class="plan-tagline"><?= h($p['tagline'] ?? '') ?></div>
@@ -618,10 +620,12 @@ render_sidebar($active);
 }
 .plan-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-pop, 0 2px 8px rgba(9,30,22,0.06), 0 26px 56px -20px rgba(9,30,22,0.24)); }
 .plan-card.is-featured { border: 1.5px solid rgba(245,158,11,0.55); box-shadow: 0 1px 2px rgba(9,30,22,0.04), 0 22px 46px -18px rgba(245,158,11,0.4); }
-.plan-card.is-current::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1.5px rgba(16,185,129,0.5); pointer-events: none; }
-.plan-flag { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg,#FBBF24,#F59E0B); color: #fff; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 999px; letter-spacing: .04em; box-shadow: 0 6px 14px -4px rgba(245,158,11,.5); white-space: nowrap; }
-.plan-active { position: absolute; top: 16px; right: 16px; background: var(--acc, #059669); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
-.plan-name { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink, #0B1A13); margin-top: 4px; }
+.plan-card.is-current:not(.is-featured)::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1.5px rgba(16,185,129,0.5); pointer-events: none; }
+.plan-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 22px; margin-bottom: 8px; }
+.plan-chip { font-size: 11px; font-weight: 700; padding: 3px 11px; border-radius: 999px; white-space: nowrap; line-height: 1.5; }
+.chip-feat { background: linear-gradient(135deg,#FBBF24,#F59E0B); color: #fff; box-shadow: 0 4px 10px -3px rgba(245,158,11,.5); }
+.chip-active { background: var(--acc-light, #D1FAE5); color: var(--acc-dark, #047857); }
+.plan-name { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink, #0B1A13); margin-top: 2px; }
 .plan-tagline { font-size: 12.5px; color: var(--ink-3, #78857F); margin-top: 2px; min-height: 16px; }
 .plan-price { margin: 16px 0 4px; display: flex; flex-direction: column; gap: 1px; }
 .plan-amount { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink, #0B1A13); line-height: 1; }
