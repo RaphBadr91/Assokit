@@ -36,6 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $action = $_POST['action'] ?? 'upload';
 
+    // Redirection de retour (ex. depuis le dashboard). Chemin local uniquement.
+    $redirect_to = '/mon-asso-logo';
+    $r = $_POST['redirect'] ?? '';
+    if (is_string($r) && $r !== '' && preg_match('#^/[A-Za-z0-9/_-]*$#', $r)) {
+        $redirect_to = $r;
+    }
+
     if ($action === 'delete') {
         // Suppression logo
         try {
@@ -55,13 +62,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Throwable $e) {
             $_SESSION['flash_asso_logo'] = ['type' => 'error', 'message' => 'Erreur : ' . $e->getMessage()];
         }
-        header('Location: /mon-asso-logo'); exit;
+        header('Location: ' . $redirect_to); exit;
     }
 
     // ─── UPLOAD ───
     if (empty($_FILES['logo']) || $_FILES['logo']['error'] !== UPLOAD_ERR_OK) {
         $_SESSION['flash_asso_logo'] = ['type' => 'error', 'message' => 'Aucun fichier reçu.'];
-        header('Location: /mon-asso-logo'); exit;
+        header('Location: ' . $redirect_to); exit;
     }
 
     $file = $_FILES['logo'];
@@ -70,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Limite 5 Mo
     if ($size > 5 * 1024 * 1024) {
         $_SESSION['flash_asso_logo'] = ['type' => 'error', 'message' => 'Fichier trop volumineux (max 5 Mo).'];
-        header('Location: /mon-asso-logo'); exit;
+        header('Location: ' . $redirect_to); exit;
     }
 
     // Type
@@ -81,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!isset($allowed[$mime])) {
         $_SESSION['flash_asso_logo'] = ['type' => 'error', 'message' => 'Format invalide. Utilise PNG, JPG ou GIF.'];
-        header('Location: /mon-asso-logo'); exit;
+        header('Location: ' . $redirect_to); exit;
     }
 
     $ext = $allowed[$mime];
@@ -105,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!move_uploaded_file($file['tmp_name'], $full_path)) {
         $_SESSION['flash_asso_logo'] = ['type' => 'error', 'message' => 'Erreur lors de l\'enregistrement.'];
-        header('Location: /mon-asso-logo'); exit;
+        header('Location: ' . $redirect_to); exit;
     }
 
     @chmod($full_path, 0644);
@@ -163,7 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ->execute([':p' => $relative, ':id' => $org_id]);
 
     $_SESSION['flash_asso_logo'] = ['type' => 'success', 'message' => '✅ Logo uploadé avec succès. Il apparaîtra sur toutes vos prochaines factures.'];
-    header('Location: /mon-asso-logo'); exit;
+    header('Location: ' . $redirect_to); exit;
 }
 
 // Récup logo actuel

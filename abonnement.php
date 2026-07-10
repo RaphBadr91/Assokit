@@ -541,4 +541,60 @@ render_sidebar($active);
 
 <link rel="stylesheet" href="/css/pa-namespace.css">
 
+<style>
+/* ===== Abonnement — surcouche Liquid Glass 2.0 (page-scoped) ===== */
+.pa-wrap { max-width: 1120px; padding: 28px 24px 60px; }
+.pa-header { margin-bottom: 22px; }
+.pa-title { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink, #0B1A13); line-height: 1.05; }
+.pa-sub { color: var(--ink-3, #78857F); font-size: 14px; }
+.pa-grid { gap: 26px; }
+
+/* Onglets — pilules glass */
+.pa-tabs { gap: 5px; }
+.pa-tab { border: 1px solid transparent; border-radius: 12px; color: var(--ink-2, #45544D); font-weight: 600; padding: 11px 14px; transition: background .14s ease, color .14s ease, box-shadow .14s ease; }
+.pa-tab svg { opacity: .85; }
+.pa-tab:hover { background: var(--bg-2, #EDF2EF); color: var(--ink, #0B1A13); }
+.pa-tab.is-active {
+  background: var(--glass, rgba(255,255,255,0.72));
+  border-color: var(--glass-border, rgba(255,255,255,0.65));
+  color: var(--acc-dark, #047857); font-weight: 700;
+  box-shadow: var(--shadow-card, 0 1px 2px rgba(9,30,22,0.04), 0 14px 34px -16px rgba(9,30,22,0.16));
+  backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4);
+}
+.pa-tab.is-active svg { stroke: var(--acc, #059669); opacity: 1; }
+
+/* Cartes — verre dépoli */
+.pa-form-card {
+  background: var(--glass, rgba(255,255,255,0.72));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.65));
+  border-radius: var(--radius-lg, 18px);
+  box-shadow: var(--shadow-card, 0 1px 2px rgba(9,30,22,0.04), 0 14px 34px -16px rgba(9,30,22,0.16));
+  backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  padding: 24px 26px; margin-bottom: 16px;
+}
+.pa-form-h2 { font-size: 16px; font-weight: 750; color: var(--ink, #0B1A13); }
+.pa-form-sub { color: var(--ink-3, #78857F); }
+
+/* Carte "plan actuel" (hero) — accent premium */
+.pa-content > .pa-form-card:first-child {
+  border: 1px solid rgba(16,185,129,0.28) !important;
+  box-shadow: 0 1px 2px rgba(9,30,22,0.04), 0 20px 44px -18px rgba(5,150,105,0.35) !important;
+  position: relative; overflow: hidden;
+}
+.pa-content > .pa-form-card:first-child::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: linear-gradient(90deg,#34D399,#059669);
+}
+
+/* Lignes d'info */
+.pa-info-row { border-bottom: 1px solid var(--border, rgba(12,40,28,0.07)); padding: 11px 0; }
+.pa-info-label { color: var(--ink-3, #78857F); }
+.pa-info-value { color: var(--ink, #0B1A13); font-weight: 650; }
+
+/* Puces "Inclus dans la formule" */
+.pa-content .pa-form-card [style*="grid-template-columns:repeat(auto-fit,minmax(220px"] > div {
+  background: var(--bg-2, #EDF2EF); border-radius: 10px; padding: 9px 12px !important;
+}
+</style>
+
 <?php render_foot(); ?>

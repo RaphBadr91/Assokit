@@ -47,6 +47,27 @@ if (is_follower()) {
     exit;
 }
 
+// ====== Logo de la structure (carte admin sur l'accueil) ======
+// Visible + modifiable uniquement par les admins de l'asso.
+$logo_admin = ($role === 'admin');
+$org_logo = null;
+$org_logo_at = null;
+if ($logo_admin) {
+    try {
+        $stmt = $pdo->prepare("SELECT logo_path, logo_uploaded_at FROM organizations WHERE id = :id");
+        $stmt->execute([':id' => $org_id]);
+        if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $org_logo = $row['logo_path'] ?: null;
+            $org_logo_at = $row['logo_uploaded_at'] ?: null;
+        }
+    } catch (Throwable $e) {}
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+}
+$logo_flash = $_SESSION['flash_asso_logo'] ?? null;
+unset($_SESSION['flash_asso_logo']);
+
 // ====== Salutation contextuelle selon l'heure ======
 $hour = (int)date('H');
 if ($hour < 6) $greeting = 'Vous êtes matinal';
@@ -1050,6 +1071,95 @@ render_sidebar('accueil');
       <div class="dash-search-results" id="dash-search-results" hidden></div>
     </div>
   </div>
+
+  <?php if ($logo_admin): ?>
+  <!-- ====== LOGO DE LA STRUCTURE (admin uniquement) ====== -->
+  <section class="dash-logo" aria-label="Logo de la structure">
+    <div class="dash-logo-preview">
+      <?php if (!empty($org_logo)): ?>
+        <img src="<?= h($org_logo) ?>" alt="Logo de la structure">
+      <?php else: ?>
+        <div class="dash-logo-empty">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+      <?php endif; ?>
+    </div>
+    <div class="dash-logo-body">
+      <div class="dash-logo-title">Logo de la structure</div>
+      <div class="dash-logo-sub">
+        <?php if (!empty($org_logo)): ?>
+          Affiché sur vos factures &amp; devis PDF · mis à jour le <?= h(date('d/m/Y', strtotime($org_logo_at))) ?>
+        <?php else: ?>
+          Ajoutez le logo de votre association ou TPE — il apparaîtra sur vos factures &amp; devis.
+        <?php endif; ?>
+      </div>
+      <?php if ($logo_flash): ?>
+        <div class="dash-logo-flash <?= $logo_flash['type'] === 'success' ? 'ok' : 'err' ?>"><?= h($logo_flash['message']) ?></div>
+      <?php endif; ?>
+    </div>
+    <div class="dash-logo-actions">
+      <form method="POST" action="/mon-asso-logo" enctype="multipart/form-data" id="dashLogoForm">
+        <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+        <input type="hidden" name="action" value="upload">
+        <input type="hidden" name="redirect" value="/dashboard">
+        <input type="file" name="logo" id="dashLogoFile" accept="image/png,image/jpeg,image/jpg,image/gif" hidden onchange="document.getElementById('dashLogoForm').submit()">
+        <button type="button" class="dash-logo-btn primary" onclick="document.getElementById('dashLogoFile').click()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></svg>
+          <?= !empty($org_logo) ? 'Changer' : 'Ajouter un logo' ?>
+        </button>
+      </form>
+      <?php if (!empty($org_logo)): ?>
+      <form method="POST" action="/mon-asso-logo" onsubmit="return confirm('Supprimer le logo de la structure ?')">
+        <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="redirect" value="/dashboard">
+        <button type="submit" class="dash-logo-btn ghost" title="Supprimer le logo">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        </button>
+      </form>
+      <?php endif; ?>
+    </div>
+  </section>
+  <?php endif; ?>
+
+  <style>
+  .dash-logo {
+    display: flex; align-items: center; gap: 18px; margin-top: 16px;
+    padding: 16px 18px; border-radius: var(--radius-lg, 18px);
+    background: var(--glass, rgba(255,255,255,0.72));
+    border: 1px solid var(--glass-border, rgba(255,255,255,0.65));
+    backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+    box-shadow: var(--shadow-card, 0 1px 2px rgba(9,30,22,0.04), 0 14px 34px -16px rgba(9,30,22,0.16));
+    position: relative; overflow: hidden;
+  }
+  .dash-logo::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg,#34D399,#6366F1); }
+  .dash-logo-preview {
+    width: 92px; height: 64px; flex: none; border-radius: 12px;
+    background: #fff; border: 1px solid var(--border, rgba(12,40,28,0.07));
+    display: grid; place-items: center; overflow: hidden;
+    box-shadow: inset 0 1px 3px rgba(9,30,22,0.06);
+  }
+  .dash-logo-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .dash-logo-empty { color: var(--ink-4, #A6B0AA); display: grid; place-items: center; }
+  .dash-logo-body { flex: 1; min-width: 0; }
+  .dash-logo-title { font-size: 15px; font-weight: 750; letter-spacing: -0.01em; color: var(--ink, #0B1A13); }
+  .dash-logo-sub { font-size: 12.5px; color: var(--ink-3, #78857F); margin-top: 3px; line-height: 1.45; }
+  .dash-logo-flash { margin-top: 8px; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px; display: inline-block; }
+  .dash-logo-flash.ok { background: var(--acc-light, #D1FAE5); color: var(--acc-dark, #047857); }
+  .dash-logo-flash.err { background: #FEE2E2; color: #991B1B; }
+  .dash-logo-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+  .dash-logo-btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: 11px; font-size: 13px; font-weight: 650; font-family: inherit; cursor: pointer; border: 0; transition: transform .12s ease, box-shadow .12s ease; }
+  .dash-logo-btn.primary { background: linear-gradient(140deg,#10B981,#059669); color: #fff; box-shadow: 0 8px 18px -8px rgba(5,150,105,.6), inset 0 1px 0 rgba(255,255,255,.35); }
+  .dash-logo-btn.primary:hover { transform: translateY(-1px); }
+  .dash-logo-btn.ghost { background: var(--bg-2, #EDF2EF); color: var(--ink-3, #78857F); padding: 9px 11px; }
+  .dash-logo-btn.ghost:hover { background: #FEE2E2; color: #991B1B; }
+  @media (max-width: 640px) {
+    .dash-logo { flex-wrap: wrap; }
+    .dash-logo-actions { width: 100%; }
+    .dash-logo-actions form:first-child { flex: 1; }
+    .dash-logo-btn.primary { width: 100%; justify-content: center; }
+  }
+  </style>
 
   <style>
   .dash-search { position: relative; margin-top: 18px; }
