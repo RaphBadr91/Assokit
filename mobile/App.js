@@ -1595,7 +1595,16 @@ const MORE_GROUPS = [
   },
 ];
 
-function NativeMore({ orgName, initials, logo, onNav, onLogout }) {
+const FOUNDER_SHORTCUTS = [
+  { label: 'Associations', icon: 'business', web: '/super-admin/associations' },
+  { label: 'Abonnements', icon: 'card', web: '/super-admin/abonnements' },
+  { label: 'Support', icon: 'chatbubbles', web: '/super-admin/support' },
+  { label: 'Stats', icon: 'stats-chart', web: '/super-admin/stats' },
+  { label: 'Super admins', icon: 'shield-checkmark', web: '/super-admin/super-admins' },
+  { label: 'Pilotage', icon: 'grid', web: '/fondateur-pilotage' },
+];
+
+function NativeMore({ orgName, initials, logo, isFounder, onNav, onLogout }) {
   return (
     <View style={styles.detailWrap}>
       <View style={styles.moreHeader}>
@@ -1608,6 +1617,26 @@ function NativeMore({ orgName, initials, logo, onNav, onLogout }) {
         </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+        {isFounder && (
+          <View style={styles.founderBlock}>
+            <TouchableOpacity style={styles.founderBanner} activeOpacity={0.9} onPress={() => onNav({ web: '/super-admin' })}>
+              <View style={styles.founderStar}><Ionicons name="star" size={20} color="#78350F" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.founderTitle}>Espace Fondateur</Text>
+                <Text style={styles.founderSub}>Piloter toute la plateforme Assokit</Text>
+              </View>
+              <Ionicons name="arrow-forward" size={18} color="#FCD34D" />
+            </TouchableOpacity>
+            <View style={styles.founderGrid}>
+              {FOUNDER_SHORTCUTS.map((it) => (
+                <TouchableOpacity key={it.label} style={styles.founderItem} activeOpacity={0.8} onPress={() => onNav({ web: it.web })}>
+                  <View style={styles.founderItemIcon}><Ionicons name={it.icon} size={20} color="#B45309" /></View>
+                  <Text style={styles.founderItemTxt} numberOfLines={1}>{it.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
         {MORE_GROUPS.map((g) => (
           <View key={g.title} style={{ marginBottom: 20 }}>
             <Text style={styles.moreGroupTitle}>{g.title}</Text>
@@ -2735,6 +2764,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 orgName={kpi && kpi.org_name}
                 initials={kpi && kpi.org_initials}
                 logo={kpi && kpi.org_logo}
+                isFounder={!!(kpi && kpi.is_founder)}
                 onNav={onMoreNav}
                 onLogout={() => { setMenuScreen(null); setWebMode(true); inject(gotoJS('/deconnexion.php')); }}
               />
@@ -3109,6 +3139,15 @@ const styles = StyleSheet.create({
   moreItem: { width: '31%', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 6, alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
   moreItemIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   moreItemTxt: { fontSize: 12, fontWeight: '600', color: INK, textAlign: 'center' },
+  founderBlock: { marginBottom: 22 },
+  founderBanner: { flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#1F1804', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(252,211,77,0.35)', paddingVertical: 15, paddingHorizontal: 16, marginBottom: 12 },
+  founderStar: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FCD34D', alignItems: 'center', justifyContent: 'center' },
+  founderTitle: { fontSize: 15.5, fontWeight: '800', color: '#FCD34D', letterSpacing: 0.2 },
+  founderSub: { fontSize: 12, color: '#D6C79A', marginTop: 2 },
+  founderGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  founderItem: { width: '31%', backgroundColor: '#FFFBEB', borderRadius: 16, borderWidth: 1, borderColor: '#FDE68A', paddingVertical: 15, paddingHorizontal: 6, alignItems: 'center' },
+  founderItemIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center', marginBottom: 7 },
+  founderItemTxt: { fontSize: 11.5, fontWeight: '700', color: '#92400E', textAlign: 'center' },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
   logoutTxt: { fontSize: 15, fontWeight: '700', color: '#DC2626' },
 

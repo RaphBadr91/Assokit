@@ -131,6 +131,8 @@ try {
         'ok'           => true,
         'profile'      => $profile,
         'role'         => (string) ($user['role'] ?? 'member'),
+        'is_founder'   => !empty($user['is_founder']),
+        'is_super_admin' => (!empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin'),
         'first_name'   => $first_name,
         'org_name'     => $org_name,
         'org_initials' => $initials,
