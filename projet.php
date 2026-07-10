@@ -802,69 +802,6 @@ render_sidebar('projets');
       </div>
     </a>
 
-    <?php if ($active_tab === 'overview'): ?>
-    <div class="ck-row-2col">
-      <!-- TEAM PULSE -->
-      <div class="ck-card">
-        <div class="ck-card-head">
-          <div class="ck-card-title">👥 Engagement de l'équipe</div>
-          <div class="ck-card-sub">30 derniers jours</div>
-        </div>
-        <?php if (empty($proj_team)): ?>
-          <div class="ck-card-empty">Aucun membre dans l'équipe pour l'instant.</div>
-        <?php else: ?>
-          <div class="ck-team-list">
-            <?php foreach ($proj_team as $i => $t):
-              $pct = (int)$t['pct'];
-              $color = $i === 0 ? '#10B981' : ($i === 1 ? '#6366F1' : ($i === 2 ? '#F59E0B' : '#9CA3AF'));
-            ?>
-            <div class="ck-team-row">
-              <div class="ck-team-av" style="background:<?= $color ?>22;color:<?= $color ?>"><?= h(user_initials($t['first'], $t['last'])) ?></div>
-              <div class="ck-team-info">
-                <div class="ck-team-name"><?= h($t['name']) ?></div>
-                <div class="ck-team-meta">
-                  <?= $t['msg'] ?> msg · <?= $t['step'] ?> étape<?= $t['step'] > 1 ? 's' : '' ?> · <?= $t['file'] ?> fichier<?= $t['file'] > 1 ? 's' : '' ?>
-                </div>
-              </div>
-              <div class="ck-team-bar"><div class="ck-team-fill" style="width:<?= $pct ?>%;background:<?= $color ?>"></div></div>
-              <div class="ck-team-score"><?= (int)$t['score'] ?></div>
-            </div>
-            <?php endforeach; ?>
-          </div>
-        <?php endif; ?>
-      </div>
-
-      <!-- NUDGES INCITATIFS POUR BILAN -->
-      <div class="ck-card ck-nudges-card" id="ck-nudges">
-        <div class="ck-card-head">
-          <div class="ck-card-title">📋 Pour un bilan complet</div>
-          <div class="ck-card-sub"><?= empty($proj_missing) ? '✅ Prêt' : count($proj_missing) . ' à compléter' ?></div>
-        </div>
-        <?php if (empty($proj_missing)): ?>
-          <div class="ck-nudges-ok">
-            <div style="font-size:32px; margin-bottom:8px;">🎉</div>
-            <div style="font-size:13px; font-weight:600; color:#065F46; margin-bottom:4px;">Tout est en place !</div>
-            <div style="font-size:12px; color:#6b7280;">Ton bilan sera complet et professionnel. Clique sur « Générer le bilan » pour le créer.</div>
-          </div>
-        <?php else: ?>
-          <div class="ck-nudges-intro">Ajoute ces éléments pour un bilan riche, lisible et exportable :</div>
-          <div class="ck-nudges-list">
-            <?php foreach ($proj_missing as $m): ?>
-            <a href="<?= htmlspecialchars($m['link'], ENT_QUOTES) ?>" class="ck-nudge">
-              <span class="ck-nudge-icon"><?= h($m['icon']) ?></span>
-              <div class="ck-nudge-body">
-                <div class="ck-nudge-label"><?= h($m['label']) ?></div>
-                <div class="ck-nudge-why"><?= h($m['why']) ?></div>
-              </div>
-              <svg class="ck-nudge-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </a>
-            <?php endforeach; ?>
-          </div>
-        <?php endif; ?>
-      </div>
-    </div>
-    <?php endif; ?>
-
   </section>
 
   <style>
@@ -1365,7 +1302,67 @@ render_sidebar('projets');
           $prog_color = $project['status'] === 'warning' ? '#F59E0B' : '#10B981';
           $remaining = max(0, $total_steps - $done_steps);
         ?>
-        <!-- (Progression affichée dans le cockpit en haut — évite le doublon) -->
+        <!-- ENGAGEMENT ÉQUIPE + BILAN (regroupés sous les onglets) -->
+        <div class="ck-row-2col ov2-row-2col">
+          <!-- TEAM PULSE -->
+          <div class="ck-card">
+            <div class="ck-card-head">
+              <div class="ck-card-title">👥 Engagement de l'équipe</div>
+              <div class="ck-card-sub">30 derniers jours</div>
+            </div>
+            <?php if (empty($proj_team)): ?>
+              <div class="ck-card-empty">Aucun membre dans l'équipe pour l'instant.</div>
+            <?php else: ?>
+              <div class="ck-team-list">
+                <?php foreach ($proj_team as $i => $t):
+                  $pct = (int)$t['pct'];
+                  $color = $i === 0 ? '#10B981' : ($i === 1 ? '#6366F1' : ($i === 2 ? '#F59E0B' : '#9CA3AF'));
+                ?>
+                <div class="ck-team-row">
+                  <div class="ck-team-av" style="background:<?= $color ?>22;color:<?= $color ?>"><?= h(user_initials($t['first'], $t['last'])) ?></div>
+                  <div class="ck-team-info">
+                    <div class="ck-team-name"><?= h($t['name']) ?></div>
+                    <div class="ck-team-meta">
+                      <?= $t['msg'] ?> msg · <?= $t['step'] ?> étape<?= $t['step'] > 1 ? 's' : '' ?> · <?= $t['file'] ?> fichier<?= $t['file'] > 1 ? 's' : '' ?>
+                    </div>
+                  </div>
+                  <div class="ck-team-bar"><div class="ck-team-fill" style="width:<?= $pct ?>%;background:<?= $color ?>"></div></div>
+                  <div class="ck-team-score"><?= (int)$t['score'] ?></div>
+                </div>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
+          </div>
+
+          <!-- NUDGES INCITATIFS POUR BILAN -->
+          <div class="ck-card ck-nudges-card" id="ck-nudges">
+            <div class="ck-card-head">
+              <div class="ck-card-title">📋 Pour un bilan complet</div>
+              <div class="ck-card-sub"><?= empty($proj_missing) ? '✅ Prêt' : count($proj_missing) . ' à compléter' ?></div>
+            </div>
+            <?php if (empty($proj_missing)): ?>
+              <div class="ck-nudges-ok">
+                <div style="font-size:32px; margin-bottom:8px;">🎉</div>
+                <div style="font-size:13px; font-weight:600; color:#065F46; margin-bottom:4px;">Tout est en place !</div>
+                <div style="font-size:12px; color:#6b7280;">Ton bilan sera complet et professionnel. Clique sur « Générer le bilan » pour le créer.</div>
+              </div>
+            <?php else: ?>
+              <div class="ck-nudges-intro">Ajoute ces éléments pour un bilan riche, lisible et exportable :</div>
+              <div class="ck-nudges-list">
+                <?php foreach ($proj_missing as $m): ?>
+                <a href="<?= htmlspecialchars($m['link'], ENT_QUOTES) ?>" class="ck-nudge">
+                  <span class="ck-nudge-icon"><?= h($m['icon']) ?></span>
+                  <div class="ck-nudge-body">
+                    <div class="ck-nudge-label"><?= h($m['label']) ?></div>
+                    <div class="ck-nudge-why"><?= h($m['why']) ?></div>
+                  </div>
+                  <svg class="ck-nudge-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </a>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
+          </div>
+        </div>
 
         <!-- DESCRIPTION -->
         <?php if ($project['description']): ?>
@@ -3571,6 +3568,21 @@ function copyDoc(id) {
   .ck-actions-bar{justify-content:center}
   .ck-share{margin-left:0!important}
 }
+
+/* ===== Cartes Engagement/Bilan déplacées sous les onglets → verre cohérent ===== */
+.ov2-row-2col{display:grid!important;grid-template-columns:1fr 1fr!important;gap:16px!important;margin-bottom:16px!important}
+.ov2-row-2col .ck-card{background:var(--glass)!important;backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);border:1px solid var(--glass-border)!important;border-radius:var(--radius-lg,18px)!important;box-shadow:var(--shadow-card)!important;padding:18px 20px!important}
+.ov2-row-2col .ck-card:hover{box-shadow:var(--shadow-pop)!important}
+.ov2-row-2col .ck-nudges-card{box-shadow:var(--shadow-card), inset 3px 0 0 var(--amber,#E0850C)!important}
+.ov2-row-2col .ck-card-title{color:var(--ink)!important;font-weight:700}
+.ov2-row-2col .ck-card-sub,.ov2-row-2col .ck-card-empty,.ov2-row-2col .ck-nudges-intro{color:var(--ink-3)!important}
+.ov2-row-2col .ck-team-name{color:var(--ink)!important;font-weight:650}
+.ov2-row-2col .ck-team-meta,.ov2-row-2col .ck-team-score{color:var(--ink-3)!important}
+.ov2-row-2col .ck-nudge{background:var(--bg-2)!important;border:1px solid var(--hairline,rgba(12,40,28,.06))!important;border-radius:12px!important}
+.ov2-row-2col .ck-nudge:hover{border-color:rgba(224,133,12,.35)!important}
+.ov2-row-2col .ck-nudge-label{color:var(--ink)!important;font-weight:650}
+.ov2-row-2col .ck-nudge-why{color:var(--ink-3)!important}
+@media (max-width:860px){.ov2-row-2col{grid-template-columns:1fr!important}}
 </style>
 
 <script>
