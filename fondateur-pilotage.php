@@ -32,6 +32,17 @@ if (empty($ctx['is_founder'])) {
 // Groupes de cartes
 $groups = [
     [
+        'label' => 'Plateforme',
+        'accent' => '#FCD34D',
+        'items' => [
+            ['ic' => '🏛️', 'title' => 'Associations',        'desc' => 'Gérer toutes les organisations',        'url' => '/super-admin/associations'],
+            ['ic' => '💳', 'title' => 'Abonnements',         'desc' => 'Factures, paiements, impayés',          'url' => '/super-admin/abonnements'],
+            ['ic' => '💬', 'title' => 'Support',             'desc' => 'Tickets et demandes des assos',         'url' => '/super-admin/support'],
+            ['ic' => '📊', 'title' => 'Stats approfondies',  'desc' => 'Emails, SMS, usage de la plateforme',   'url' => '/super-admin/stats'],
+            ['ic' => '👑', 'title' => 'Super admins',        'desc' => 'Créer, gérer et supprimer les SA',      'url' => '/super-admin/super-admins'],
+        ],
+    ],
+    [
         'label' => 'Monétisation',
         'accent' => '#34D399',
         'items' => [
@@ -59,7 +70,7 @@ $groups = [
     ],
     [
         'label' => 'Supervision & sécurité',
-        'accent' => '#FCD34D',
+        'accent' => '#F87171',
         'items' => [
             ['ic' => '🕵️', 'title' => 'Activité utilisateurs', 'desc' => 'Journal d\'activité de la plateforme',   'url' => '/fondateur-activity.php'],
             ['ic' => '🔐', 'title' => 'Journal d\'accès',      'desc' => 'Connexions et accès sensibles',          'url' => '/fondateur-cockpit/access-logs'],
