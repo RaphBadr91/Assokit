@@ -1580,8 +1580,8 @@ const MORE_GROUPS = [
   {
     title: 'Communication',
     items: [
-      { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' } },
-      { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' } },
+      { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' }, badge: 'msg' },
+      { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' }, badge: 'notif' },
       { label: 'Communication', icon: 'mail', nav: { screen: 'broadcasts' } },
       { label: 'Coach IA', icon: 'sparkles', nav: { screen: 'coach' } },
     ],
@@ -1590,7 +1590,7 @@ const MORE_GROUPS = [
     title: 'Compte',
     items: [
       { label: 'Paramètres', icon: 'settings', nav: { screen: 'settings' } },
-      { label: 'Support', icon: 'help-buoy', nav: { screen: 'tickets' } },
+      { label: 'Support', icon: 'help-buoy', nav: { screen: 'tickets' }, badge: 'support' },
     ],
   },
 ];
@@ -1604,7 +1604,8 @@ const FOUNDER_SHORTCUTS = [
   { label: 'Pilotage', icon: 'grid', web: '/fondateur-pilotage' },
 ];
 
-function NativeMore({ orgName, initials, logo, isFounder, onNav, onLogout }) {
+function NativeMore({ orgName, initials, logo, isFounder, counts, onNav, onLogout }) {
+  const cnt = counts || {};
   return (
     <View style={styles.detailWrap}>
       <View style={styles.moreHeader}>
@@ -1641,12 +1642,18 @@ function NativeMore({ orgName, initials, logo, isFounder, onNav, onLogout }) {
           <View key={g.title} style={{ marginBottom: 20 }}>
             <Text style={styles.moreGroupTitle}>{g.title}</Text>
             <View style={styles.moreGrid}>
-              {g.items.map((it) => (
-                <TouchableOpacity key={it.label} style={styles.moreItem} activeOpacity={0.8} onPress={() => onNav(it.nav)}>
-                  <View style={styles.moreItemIcon}><Ionicons name={it.icon} size={22} color={BRAND} /></View>
-                  <Text style={styles.moreItemTxt} numberOfLines={1}>{it.label}</Text>
-                </TouchableOpacity>
-              ))}
+              {g.items.map((it) => {
+                const n = it.badge ? (cnt[it.badge] || 0) : 0;
+                return (
+                  <TouchableOpacity key={it.label} style={styles.moreItem} activeOpacity={0.8} onPress={() => onNav(it.nav)}>
+                    <View style={styles.moreItemIcon}>
+                      <Ionicons name={it.icon} size={22} color={BRAND} />
+                      {n > 0 && <View style={styles.moreBadge}><Text style={styles.moreBadgeTxt}>{n > 99 ? '99+' : n}</Text></View>}
+                    </View>
+                    <Text style={styles.moreItemTxt} numberOfLines={1}>{it.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         ))}
@@ -2766,6 +2773,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 initials={kpi && kpi.org_initials}
                 logo={kpi && kpi.org_logo}
                 isFounder={!!(kpi && kpi.is_founder)}
+                counts={{ msg: kpi && kpi.msg_unread, support: kpi && kpi.support_unread, notif: kpi && kpi.notif_unread }}
                 onNav={onMoreNav}
                 onLogout={() => { setMenuScreen(null); setWebMode(true); inject(gotoJS('/deconnexion.php')); }}
               />
@@ -2833,9 +2841,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             );
           }
           const isActive = active === tab.key;
+          const tabBadge = tab.key === 'menu' ? (kpi && kpi.notif_unread) || 0 : 0;
           return (
             <TouchableOpacity key={tab.key} style={styles.tab} onPress={() => goTab(tab)} activeOpacity={0.7}>
-              <Ionicons name={isActive ? tab.icon : tab.icon + '-outline'} size={23} color={isActive ? BRAND : MUTE} />
+              <View>
+                <Ionicons name={isActive ? tab.icon : tab.icon + '-outline'} size={23} color={isActive ? BRAND : MUTE} />
+                {tabBadge > 0 && <View style={styles.tabBadge}><Text style={styles.tabBadgeTxt}>{tabBadge > 99 ? '99+' : tabBadge}</Text></View>}
+              </View>
               <Text style={[styles.tabLabel, { color: isActive ? BRAND : MUTE }]}>{tab.label}</Text>
             </TouchableOpacity>
           );
@@ -3162,6 +3174,10 @@ const styles = StyleSheet.create({
   founderItem: { width: '31%', backgroundColor: '#FFFBEB', borderRadius: 16, borderWidth: 1, borderColor: '#FDE68A', paddingVertical: 15, paddingHorizontal: 6, alignItems: 'center' },
   founderItemIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center', marginBottom: 7 },
   founderItemTxt: { fontSize: 11.5, fontWeight: '700', color: '#92400E', textAlign: 'center' },
+  moreBadge: { position: 'absolute', top: -5, right: -8, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 2, borderColor: '#fff' },
+  moreBadgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  tabBadge: { position: 'absolute', top: -6, right: -10, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: '#fff' },
+  tabBadgeTxt: { color: '#fff', fontSize: 9.5, fontWeight: '800' },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
   logoutTxt: { fontSize: 15, fontWeight: '700', color: '#DC2626' },
 

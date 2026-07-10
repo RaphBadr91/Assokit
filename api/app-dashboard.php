@@ -127,12 +127,27 @@ try {
 
     $initials = strtoupper(function_exists('mb_substr') ? mb_substr($org_name, 0, 2) : substr($org_name, 0, 2));
 
+    // Compteurs de notifications non lues (messages internes + support technique)
+    $notif_unread = 0; $msg_unread = 0; $support_unread = 0;
+    try {
+        $nst = $pdo->prepare("SELECT notification_type AS t, COUNT(*) AS c FROM user_notifications WHERE user_id = ? AND is_read = 0 GROUP BY notification_type");
+        $nst->execute([(int) ($user['id'] ?? 0)]);
+        foreach ($nst->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $c = (int) $row['c']; $notif_unread += $c;
+            if ($row['t'] === 'message' || $row['t'] === 'mention') $msg_unread += $c;
+            elseif ($row['t'] === 'support') $support_unread += $c;
+        }
+    } catch (Throwable $e) {}
+
     echo json_encode([
         'ok'           => true,
         'profile'      => $profile,
         'role'         => (string) ($user['role'] ?? 'member'),
         'is_founder'   => !empty($user['is_founder']),
         'is_super_admin' => (!empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin'),
+        'notif_unread' => $notif_unread,
+        'msg_unread'   => $msg_unread,
+        'support_unread' => $support_unread,
         'first_name'   => $first_name,
         'org_name'     => $org_name,
         'org_initials' => $initials,

@@ -17,7 +17,7 @@ if (empty($_SESSION['user_id'])) {
     exit;
 }
 
-$ICON = ['message' => 'chatbubble', 'mention' => 'at', 'team_added' => 'people', 'step_assigned' => 'checkmark-circle'];
+$ICON = ['message' => 'chatbubble', 'mention' => 'at', 'team_added' => 'people', 'step_assigned' => 'checkmark-circle', 'support' => 'help-buoy'];
 
 function nago($v) {
     $ts = strtotime((string) $v);
