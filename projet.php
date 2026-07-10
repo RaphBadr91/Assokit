@@ -3610,6 +3610,22 @@ function copyDoc(id) {
 .ov2-card .step-check svg{transition:opacity .15s ease}
 .ov2-card .step-check.done{animation:stepPop .28s ease}
 @keyframes stepPop{0%{transform:scale(.82)}60%{transform:scale(1.14)}100%{transform:scale(1)}}
+
+/* ===== Fichiers / Factures / Messages : premium + fix débordement des noms ===== */
+.file-card{background:var(--glass)!important;backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);border:1px solid var(--glass-border)!important;border-radius:16px!important;box-shadow:var(--shadow-card)!important;overflow:hidden!important;transition:transform .16s ease,box-shadow .16s ease}
+.file-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-pop)!important}
+.file-info{min-width:0!important;overflow:hidden}
+.file-name{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;color:var(--ink)!important;max-width:100%}
+.file-meta{color:var(--ink-3)!important}
+.drop-zone{background:var(--glass)!important;backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border:2px dashed var(--glass-border)!important;border-radius:var(--radius-lg,18px)!important}
+.drop-zone:hover{border-color:var(--acc)!important;background:var(--acc-light,rgba(5,150,105,.08))!important}
+.drop-zone-title{color:var(--ink)!important;font-weight:650}
+/* Formulaire facture : champs adaptés au thème */
+.form-input-lg,.form-select-lg{background:var(--bg)!important;color:var(--ink)!important;border-color:var(--border)!important;border-radius:12px!important}
+.form-input-lg:focus,.form-select-lg:focus{border-color:var(--acc)!important;box-shadow:0 0 0 4px var(--acc-light,rgba(5,150,105,.12))!important}
+.form-label{color:var(--ink-2)!important;font-weight:600}
+/* Messages : bandeau sync + zone de saisie */
+#chatInput{border-radius:14px!important}
 </style>
 
 <script>
