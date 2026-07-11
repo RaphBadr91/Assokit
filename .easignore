@@ -1,0 +1,8 @@
+# ============================================================
+# .easignore — limite l'archive EAS Build au dossier mobile/
+# Évite d'envoyer tout le site web PHP (wp-content, api, admin-blog…)
+# à chaque build → compression + upload beaucoup plus rapides.
+# Syntaxe identique à .gitignore. N'affecte QUE les builds EAS.
+# ============================================================
+/*
+!/mobile/
