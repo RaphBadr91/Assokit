@@ -1496,10 +1496,10 @@ function NativeChannels({ data, loading, onRefresh, onOpen, onBack }) {
                 <Ionicons name={CHAN_ICON[c.type] || 'chatbubbles'} size={20} color={c.color || BRAND} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.chanName} numberOfLines={1}>{c.name}</Text>
-                <Text style={styles.chanSub}>{c.count} message{c.count > 1 ? 's' : ''}</Text>
+                <Text style={[styles.chanName, c.unread ? { fontWeight: '800' } : null]} numberOfLines={1}>{c.name}</Text>
+                <Text style={[styles.chanSub, c.unread ? { color: BRAND, fontWeight: '600' } : null]}>{c.unread ? 'Nouveaux messages' : (c.count + ' message' + (c.count > 1 ? 's' : ''))}</Text>
               </View>
-              {c.unread ? <View style={styles.chanDot} /> : null}
+              {c.unread ? <View style={styles.chanNewPill}><Text style={styles.chanNewTxt}>Nouveau</Text></View> : null}
               <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
             </TouchableOpacity>
           ))}
@@ -1806,11 +1806,18 @@ function NativeStats({ data, loading, onRefresh, onBack, cockpit, cockpitLoading
   );
 }
 
-function NativeNotifications({ data, loading, onRefresh, onOpen, onBack }) {
+function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead, onBack }) {
   const list = data ? (data.items || []) : null;
+  const unread = data ? (data.unread || 0) : 0;
   return (
     <View style={styles.detailWrap}>
       <DetailHeader title="Notifications" onBack={onBack} />
+      {unread > 0 ? (
+        <TouchableOpacity style={styles.markAllBtn} activeOpacity={0.8} onPress={onMarkAllRead}>
+          <Ionicons name="checkmark-done" size={16} color={BRAND} />
+          <Text style={styles.markAllTxt}>Tout marquer comme lu ({unread})</Text>
+        </TouchableOpacity>
+      ) : null}
       {!list ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : list.length === 0 ? (
@@ -1819,7 +1826,7 @@ function NativeNotifications({ data, loading, onRefresh, onOpen, onBack }) {
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           {list.map((n) => (
-            <TouchableOpacity key={n.id} style={[styles.notifCard, !n.read ? styles.notifUnread : null]} activeOpacity={n.link ? 0.85 : 1} onPress={() => n.link && onOpen(n.link)}>
+            <TouchableOpacity key={n.id} style={[styles.notifCard, !n.read ? styles.notifUnread : null]} activeOpacity={0.85} onPress={() => onPress(n)}>
               <View style={[styles.notifIcon, !n.read ? { backgroundColor: '#ECFDF5' } : null]}><Ionicons name={n.icon} size={18} color={!n.read ? BRAND : '#94A3B8'} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.notifTitle, !n.read ? { fontWeight: '700' } : null]} numberOfLines={2}>{n.title}</Text>
@@ -2313,7 +2320,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (screen === 'subinvoices') fetchSubInv();
     else if (screen === 'devis') fetchQuotes();
     else if (screen === 'stats') fetchStats();
-    else if (screen === 'notifications') fetchNotifs();
+    else if (screen === 'notifications') { fetchNotifs(); inject(FETCH_CSRF_JS); }
     else if (screen === 'cotisations') fetchCoti();
     else if (screen === 'subventions') fetchGrants();
     else if (screen === 'members') { setPeople(null); fetchPeople(false); }
@@ -2330,7 +2337,39 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const onCockpit = useCallback(() => { setStatsCockpitLoading(true); inject(fetchJS('/api/app-stats-ai.php', '__akstatsai')); }, [inject]);
   const backToHub = useCallback(() => { clearDetail(); closeForm(); setWebMode(false); setActive('menu'); setMenuScreen(null); }, [clearDetail, closeForm]);
 
-  const openChannelFn = useCallback((c) => { setOpenChannel(c); setChanMsgs(null); fetchChanMsgs(c.id); }, [fetchChanMsgs]);
+  const openChannelFn = useCallback((c) => {
+    setOpenChannel(c); setChanMsgs(null); fetchChanMsgs(c.id);
+    // Ouvrir un canal = accuser réception des messages internes → on efface le badge Messages
+    setKpi((k) => k ? { ...k, notif_unread: Math.max(0, (k.notif_unread || 0) - (k.msg_unread || 0)), msg_unread: 0 } : k);
+    if (csrf) inject(postJS('/api/app-notif-read.php', { type: 'message', csrf }, '__aknotifread'));
+  }, [fetchChanMsgs, csrf, inject]);
+
+  // --- Notifications : navigation 100% native + marquer lu ---
+  const routeNotif = useCallback((link) => {
+    const l = (link || '').toLowerCase();
+    if (!l) return;
+    if (l.indexOf('support') !== -1) { openMenuScreen('tickets'); return; }
+    if (l.indexOf('/messages') !== -1) { openMenuScreen('messages'); return; }
+    if (l.indexOf('/projet') !== -1) { setMenuScreen(null); setActive('projets'); setWebMode(false); return; }
+    // par défaut : on reste dans l'app (jamais de bascule web)
+  }, [openMenuScreen]);
+
+  const onNotifPress = useCallback((n) => {
+    if (!n) return;
+    if (!n.read) {
+      setNotifs((prev) => prev ? { ...prev, unread: Math.max(0, (prev.unread || 0) - 1), items: (prev.items || []).map((it) => it.id === n.id ? { ...it, read: true } : it) } : prev);
+      const isSupport = ((n.link || '').toLowerCase().indexOf('support') !== -1) || n.icon === 'help-buoy';
+      setKpi((k) => k ? { ...k, notif_unread: Math.max(0, (k.notif_unread || 0) - 1), support_unread: isSupport ? Math.max(0, (k.support_unread || 0) - 1) : k.support_unread, msg_unread: !isSupport ? Math.max(0, (k.msg_unread || 0) - 1) : k.msg_unread } : k);
+      if (csrf) inject(postJS('/api/app-notif-read.php', { id: n.id, csrf }, '__aknotifread'));
+    }
+    routeNotif(n.link);
+  }, [csrf, inject, routeNotif]);
+
+  const onMarkAllRead = useCallback(() => {
+    setNotifs((prev) => prev ? { ...prev, unread: 0, items: (prev.items || []).map((it) => ({ ...it, read: true })) } : prev);
+    setKpi((k) => k ? { ...k, notif_unread: 0, msg_unread: 0, support_unread: 0 } : k);
+    if (csrf) inject(postJS('/api/app-notif-read.php', { all: true, csrf }, '__aknotifread'));
+  }, [csrf, inject]);
 
   const sendMessage = useCallback((chId, content) => {
     if (!csrf) { inject(FETCH_CSRF_JS); return; }
@@ -2506,6 +2545,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akquotes) { setQuotes(msg.__akquotes); setQuotesLoading(false); }
       if (msg && msg.__akstats) { setStats(msg.__akstats); setStatsLoading(false); }
       if (msg && msg.__aknotifs) { setNotifs(msg.__aknotifs); setNotifsLoading(false); }
+      if (msg && msg.__aknotifread && msg.__aknotifread.ok) {
+        const r = msg.__aknotifread;
+        setKpi((k) => k ? { ...k, notif_unread: r.notif_unread, msg_unread: r.msg_unread, support_unread: r.support_unread } : k);
+      }
       if (msg && msg.__akcoti) { setCoti(msg.__akcoti); setCotiLoading(false); }
       if (msg && msg.__akgrants) { setGrantsData(msg.__akgrants); setGrantsLoading(false); }
       if (msg && msg.__akassemblies) { setAssemblies(msg.__akassemblies); setSecLoading(false); }
@@ -2729,7 +2772,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativePeople mode="clients" data={people} loading={peopleLoading} onRefresh={() => fetchPeople(true)}
                 onOpen={(id) => pushDetail('client', id)} onNew={() => openForm('client')} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'notifications' ? (
-              <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onOpen={openWeb} onBack={() => setMenuScreen(null)} />
+              <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onPress={onNotifPress} onMarkAllRead={onMarkAllRead} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'cotisations' ? (
               <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'subventions' ? (
@@ -3174,6 +3217,10 @@ const styles = StyleSheet.create({
   founderItem: { width: '31%', backgroundColor: '#FFFBEB', borderRadius: 16, borderWidth: 1, borderColor: '#FDE68A', paddingVertical: 15, paddingHorizontal: 6, alignItems: 'center' },
   founderItemIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center', marginBottom: 7 },
   founderItemTxt: { fontSize: 11.5, fontWeight: '700', color: '#92400E', textAlign: 'center' },
+  markAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-end', marginHorizontal: 16, marginTop: 4, marginBottom: -4, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
+  markAllTxt: { fontSize: 12.5, fontWeight: '700', color: BRAND },
+  chanNewPill: { backgroundColor: BRAND, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, marginRight: 4 },
+  chanNewTxt: { color: '#fff', fontSize: 10.5, fontWeight: '800' },
   moreBadge: { position: 'absolute', top: -5, right: -8, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 2, borderColor: '#fff' },
   moreBadgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
   tabBadge: { position: 'absolute', top: -6, right: -10, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: '#fff' },
