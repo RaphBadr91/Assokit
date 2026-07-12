@@ -1766,108 +1766,237 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, counts, onNav
 /* ================================================================== */
 /*  ESPACE FONDATEUR (cockpit natif)                                   */
 /* ================================================================== */
-const FD_KPI = [
-  { key: 'mrr', label: 'MRR (TTC)', color: '#FCD34D', glow: ['#FCD34D', '#F59E0B'], icon: 'card', fmt: (k) => fmtEuro(k.mrr), sub: 'revenu mensuel' },
-  { key: 'orgs_total', label: 'Associations', color: '#34D399', glow: ['#34D399', '#10B981'], icon: 'business', fmt: (k) => String(k.orgs_total ?? 0), sub: (k) => (k.orgs_active ?? 0) + ' actives · ' + (k.orgs_trial ?? 0) + ' essai' },
-  { key: 'users', label: 'Utilisateurs', color: '#A78BFA', glow: ['#C4B5FD', '#8B5CF6'], icon: 'people', fmt: (k) => String(k.users ?? 0), sub: 'tous rôles' },
-  { key: 'ia_nb', label: 'Générations IA', color: '#60A5FA', glow: ['#93C5FD', '#3B82F6'], icon: 'sparkles', fmt: (k) => String(k.ia_nb ?? 0), sub: (k) => fmtEuro(k.ia_cost) + ' dépensés' },
+const FC_MINI = [
+  { key: 'orgs', color: '#059669', bg: '#ECFDF5', icon: 'business', label: 'Associations', fmt: (k) => String(k.orgs_total ?? 0), sub: (k) => (k.orgs_active ?? 0) + ' actives · ' + (k.orgs_trial ?? 0) + ' essai' },
+  { key: 'users', color: '#7C3AED', bg: '#F5F3FF', icon: 'people', label: 'Utilisateurs', fmt: (k) => String(k.users ?? 0), sub: () => 'tous rôles' },
+  { key: 'ia', color: '#2563EB', bg: '#EFF6FF', icon: 'sparkles', label: 'Générations IA', fmt: (k) => String(k.ia_nb ?? 0), sub: (k) => fmtEuro(k.ia_cost) + ' dépensés' },
 ];
 
-function NativeFounder({ data, loading, onRefresh, onBack, onOpenWeb, hasAsso, onGotoAsso, onLogout }) {
+const FC_TILES = [
+  { key: 'associations', icon: 'business', color: '#059669', bg: '#ECFDF5', title: 'Associations', desc: 'Gérer · valider · suspendre' },
+  { key: 'billing', icon: 'card', color: '#2563EB', bg: '#EFF6FF', title: 'Abonnements', desc: 'MRR · impayés · relances' },
+  { key: 'support', icon: 'chatbubbles', color: '#7C3AED', bg: '#F5F3FF', title: 'Support', desc: 'Tickets & messages' },
+  { key: 'stats', icon: 'stats-chart', color: '#0891B2', bg: '#ECFEFF', title: 'Statistiques', desc: 'Croissance & revenus' },
+];
+
+function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, onLogout, onTile, onNotifs, notifCount }) {
   const k = (data && data.kpis) || {};
   const sig = (data && data.signals) || {};
   const orgs = (data && data.orgs) || [];
   const signals = [];
-  if (sig.pending > 0) signals.push({ tone: '#FBBF24', bg: 'rgba(251,191,36,0.12)', icon: 'construct', t: sig.pending + ' validation' + (sig.pending > 1 ? 's' : '') + ' en attente', go: '/super-admin/associations?filter=pending' });
-  if (sig.unpaid_nb > 0) signals.push({ tone: '#F87171', bg: 'rgba(248,113,113,0.13)', icon: 'cash', t: sig.unpaid_nb + ' impayé' + (sig.unpaid_nb > 1 ? 's' : '') + ' · ' + fmtEuro(sig.unpaid_total), go: '/super-admin/abonnements?filter=unpaid' });
-  if (sig.expiring > 0) signals.push({ tone: '#A78BFA', bg: 'rgba(167,139,250,0.14)', icon: 'time', t: sig.expiring + ' essai' + (sig.expiring > 1 ? 's' : '') + ' expire' + (sig.expiring > 1 ? 'nt' : '') + ' sous 7j', go: '/super-admin/associations' });
+  if (sig.pending > 0) signals.push({ tone: '#B45309', bg: '#FEF3C7', icon: 'construct', t: sig.pending + ' validation' + (sig.pending > 1 ? 's' : '') + ' en attente', filter: 'pending' });
+  if (sig.unpaid_nb > 0) signals.push({ tone: '#B91C1C', bg: '#FEE2E2', icon: 'cash', t: sig.unpaid_nb + ' impayé' + (sig.unpaid_nb > 1 ? 's' : '') + ' · ' + fmtEuro(sig.unpaid_total), filter: 'unpaid' });
+  if (sig.expiring > 0) signals.push({ tone: '#6D28D9', bg: '#EDE9FE', icon: 'time', t: sig.expiring + ' essai' + (sig.expiring > 1 ? 's' : '') + ' expire' + (sig.expiring > 1 ? 'nt' : '') + ' sous 7j', filter: 'trial' });
+
+  const active = k.orgs_active ?? 0, trial = k.orgs_trial ?? 0;
+  const tot = Math.max(1, active + trial);
 
   return (
-    <View style={styles.fdWrap}>
+    <View style={styles.fcWrap}>
       <StatusBar barStyle="light-content" />
-      <SafeAreaView style={{ backgroundColor: '#0B0F0D' }}>
-        <View style={styles.fdTop}>
-          <TouchableOpacity style={styles.fdBack} activeOpacity={0.8} onPress={onBack}>
-            <Ionicons name="chevron-back" size={20} color="#EAF2EE" />
-          </TouchableOpacity>
-          <Text style={styles.fdTopTitle}>Espace Fondateur</Text>
-          {hasAsso ? (
-            <TouchableOpacity style={styles.fdAssoBtn} activeOpacity={0.85} onPress={onGotoAsso}>
-              <Ionicons name="business" size={13} color="#0B0F0D" />
-              <Text style={styles.fdAssoTxt}>Mode Asso</Text>
-              <Ionicons name="arrow-forward" size={13} color="#0B0F0D" />
-            </TouchableOpacity>
-          ) : <View style={{ width: 40 }} />}
-        </View>
-      </SafeAreaView>
-      {!data ? (
-        <View style={[styles.homeLoader, { backgroundColor: '#0B0F0D', flex: 1 }]}><ActivityIndicator size="large" color="#FCD34D" /></View>
-      ) : (
-        <ScrollView style={{ backgroundColor: '#0B0F0D' }} contentContainerStyle={{ padding: 16, paddingBottom: 36 }} showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor="#FCD34D" colors={['#FCD34D']} />}>
-          <View style={styles.fdHelloRow}>
-            <Text style={styles.fdHello}>Bienvenue {data.first_name || ''}</Text>
-            <View style={styles.fdSeal}><Text style={styles.fdSealTxt}>🏗️ FONDATEUR</Text></View>
-          </View>
-          <Text style={styles.fdHelloSub}>Pouvoir absolu sur la plateforme Assokit</Text>
+      <ScrollView style={styles.fcScroll} contentContainerStyle={{ paddingBottom: 34 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor="#059669" colors={['#059669']} />}>
 
-          <View style={styles.fdKpis}>
-            {FD_KPI.map((kp) => (
-              <View key={kp.key} style={styles.fdKpi}>
-                <LinearGradient colors={kp.glow} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.fdKpiGlow} />
-                <View style={styles.fdKpiTop}>
-                  <Text style={styles.fdKpiLabel}>{kp.label}</Text>
-                  <View style={[styles.fdKpiIcon, { backgroundColor: kp.color + '22' }]}><Ionicons name={kp.icon} size={15} color={kp.color} /></View>
-                </View>
-                <Text style={[styles.fdKpiVal, { color: kp.key === 'mrr' || kp.key === 'orgs_total' ? kp.color : '#EAF2EE' }]}>{kp.fmt(k)}</Text>
-                <Text style={styles.fdKpiSub}>{typeof kp.sub === 'function' ? kp.sub(k) : kp.sub}</Text>
+        {/* Header premium vert + halo doré fondateur */}
+        <View style={styles.fcHeaderWrap}>
+          <LinearGradient colors={['#0CCB8F', '#059669', '#025138']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fcHeader}>
+            <View style={styles.fcOrbGold} />
+            <View style={styles.fcOrbDark} />
+            <SafeAreaView>
+              <View style={styles.fcTopRow}>
+                <TouchableOpacity style={styles.fcBack} activeOpacity={0.8} onPress={onBack}>
+                  <Ionicons name="chevron-back" size={19} color="#EAF2EE" />
+                </TouchableOpacity>
+                <Text style={styles.fcTopTitle}>Espace Fondateur</Text>
+                {hasAsso ? (
+                  <TouchableOpacity style={styles.fcAssoBtn} activeOpacity={0.85} onPress={onGotoAsso}>
+                    <Ionicons name="business" size={13} color="#3A2A08" />
+                    <Text style={styles.fcAssoTxt}>Mode Asso</Text>
+                    <Ionicons name="arrow-forward" size={12} color="#3A2A08" />
+                  </TouchableOpacity>
+                ) : <View style={{ width: 40 }} />}
               </View>
-            ))}
-          </View>
+              <View style={styles.fcHelloRow}>
+                <Text style={styles.fcHello}>Bienvenue {data && data.first_name ? data.first_name : ''} 👋</Text>
+                <View style={styles.fcSeal}><Text style={styles.fcSealTxt}>🏗️ FONDATEUR</Text></View>
+              </View>
+              <View style={styles.fcSubRow}>
+                <View style={styles.fcLive} />
+                <Text style={styles.fcSub}>Pilotage de la plateforme Assokit · en direct</Text>
+              </View>
+            </SafeAreaView>
+          </LinearGradient>
+        </View>
 
-          {signals.length > 0 && (
-            <View style={styles.fdPanel}>
-              <Text style={styles.fdPanelTitle}>🛰️ Signal — à traiter</Text>
-              {signals.map((s, i) => (
-                <TouchableOpacity key={i} style={styles.fdSignal} activeOpacity={0.85} onPress={() => onOpenWeb(s.go)}>
-                  <View style={[styles.fdSignalIcon, { backgroundColor: s.bg }]}><Ionicons name={s.icon} size={16} color={s.tone} /></View>
-                  <Text style={styles.fdSignalTxt} numberOfLines={2}>{s.t}</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#55635C" />
+        {!data ? (
+          <View style={[styles.homeLoader, { flex: 1, paddingTop: 50 }]}><ActivityIndicator size="large" color="#059669" /></View>
+        ) : (
+          <View style={{ paddingHorizontal: 16 }}>
+            {/* MRR vedette — verre liquide */}
+            <TouchableOpacity activeOpacity={0.9} onPress={() => onTile('billing', 'all')} style={styles.fcSpotShadow}>
+              <BlurView intensity={40} tint="light" style={styles.fcSpot}>
+                <View style={styles.fcSpotGloss} />
+                <View style={styles.fcSpotTop}>
+                  <View style={styles.fcSpotIc}><Ionicons name="cash" size={16} color="#B45309" /></View>
+                  <Text style={styles.fcSpotLb}>Revenu mensuel récurrent</Text>
+                  <View style={styles.fcSpotChip}><Text style={styles.fcSpotChipTxt}>{active} payantes</Text></View>
+                </View>
+                <Text style={styles.fcSpotVal}>{fmtEuro(k.mrr)}<Text style={styles.fcSpotUnit}> / mois</Text></Text>
+                <View style={styles.fcDistTrack}>
+                  <View style={[styles.fcDistFill, { flex: active, backgroundColor: '#059669' }]} />
+                  <View style={[styles.fcDistFill, { flex: trial, backgroundColor: '#FBBF24' }]} />
+                  <View style={{ flex: Math.max(0, tot - active - trial) }} />
+                </View>
+                <View style={styles.fcDistMeta}>
+                  <Text style={styles.fcDistTxt}><Text style={{ color: '#059669', fontWeight: '800' }}>■</Text> {active} actives</Text>
+                  <Text style={styles.fcDistTxt}><Text style={{ color: '#FBBF24', fontWeight: '800' }}>■</Text> {trial} essai{trial > 1 ? 's' : ''}</Text>
+                </View>
+              </BlurView>
+            </TouchableOpacity>
+
+            {/* Notifications + Créer */}
+            <View style={styles.fcActions}>
+              <TouchableOpacity style={styles.fcNotif} activeOpacity={0.85} onPress={onNotifs}>
+                <Ionicons name="notifications" size={16} color="#334155" />
+                <Text style={styles.fcNotifTxt}>Notifications</Text>
+                {notifCount > 0 ? <View style={styles.fcNotifPill}><Text style={styles.fcNotifPillTxt}>{notifCount > 99 ? '99+' : notifCount}</Text></View> : null}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.fcCreate} activeOpacity={0.9} onPress={() => onTile('associations', 'all')}>
+                <Ionicons name="add" size={17} color="#3A2A08" />
+                <Text style={styles.fcCreateTxt}>Créer une association</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* mini KPIs */}
+            <View style={styles.fcMiniRow}>
+              {FC_MINI.map((m) => (
+                <View key={m.key} style={styles.fcMini}>
+                  <View style={[styles.fcMiniIc, { backgroundColor: m.bg }]}><Ionicons name={m.icon} size={15} color={m.color} /></View>
+                  <Text style={styles.fcMiniVal}>{m.fmt(k)}</Text>
+                  <Text style={styles.fcMiniLb}>{m.label}</Text>
+                  <Text style={styles.fcMiniSub} numberOfLines={1}>{m.sub(k)}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Signaux à traiter */}
+            {signals.length > 0 && (
+              <>
+                <View style={styles.fcSecRow}>
+                  <Text style={styles.fcSec}>À TRAITER</Text>
+                  <View style={styles.fcSecN}><Text style={styles.fcSecNTxt}>{signals.length}</Text></View>
+                </View>
+                {signals.map((s, i) => (
+                  <TouchableOpacity key={i} style={styles.fcSignal} activeOpacity={0.85} onPress={() => onTile('associations', s.filter)}>
+                    <View style={[styles.fcSignalIc, { backgroundColor: s.bg }]}><Ionicons name={s.icon} size={16} color={s.tone} /></View>
+                    <Text style={styles.fcSignalTxt} numberOfLines={2}>{s.t}</Text>
+                    <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+                  </TouchableOpacity>
+                ))}
+              </>
+            )}
+
+            {/* Centre de contrôle */}
+            <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12 }]}>CENTRE DE CONTRÔLE</Text>
+            <View style={styles.fcTiles}>
+              {FC_TILES.map((t) => (
+                <TouchableOpacity key={t.key} style={styles.fcTile} activeOpacity={0.88} onPress={() => onTile(t.key, t.key === 'billing' ? 'unpaid' : 'all')}>
+                  <View style={[styles.fcTileIc, { backgroundColor: t.bg }]}><Ionicons name={t.icon} size={21} color={t.color} /></View>
+                  <Text style={styles.fcTileTitle}>{t.title}</Text>
+                  <Text style={styles.fcTileDesc} numberOfLines={1}>{t.desc}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-          )}
 
-          <Text style={styles.fdSectionTitle}>🏛️ Dernières associations</Text>
-          <View style={styles.fdPanel}>
-            {orgs.map((o, i) => (
-              <TouchableOpacity key={o.id} style={[styles.fdOrgRow, i > 0 ? styles.fdOrgBorder : null]} activeOpacity={0.8} onPress={() => onOpenWeb('/super-admin/associations?id=' + o.id)}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.fdOrgName} numberOfLines={1}>{o.name}</Text>
-                  <Text style={styles.fdOrgSub}>{o.plan} · {o.nb_users} util. · {o.created}</Text>
+            {/* Dernières associations */}
+            <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12 }]}>DERNIÈRES ASSOCIATIONS</Text>
+            <View style={styles.fcPanel}>
+              {orgs.map((o, i) => (
+                <TouchableOpacity key={o.id} style={[styles.fcOrgRow, i > 0 ? styles.fcOrgBorder : null]} activeOpacity={0.8} onPress={() => onTile('associations', 'all')}>
+                  <View style={styles.fcOrgAv}><Text style={styles.fcOrgAvTxt}>{(o.name || '?').slice(0, 2).toUpperCase()}</Text></View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.fcOrgName} numberOfLines={1}>{o.name}</Text>
+                    <Text style={styles.fcOrgSub}>{o.plan} · {o.nb_users} util. · {o.created}</Text>
+                  </View>
+                  {o.pending ? <View style={[styles.fcChip, { backgroundColor: '#EDE9FE' }]}><Text style={[styles.fcChipTxt, { color: '#6D28D9' }]}>À valider</Text></View>
+                    : <View style={[styles.fcChip, { backgroundColor: o.status === 'active' ? '#D1FAE5' : '#F1F5F9' }]}><Text style={[styles.fcChipTxt, { color: o.status === 'active' ? '#047857' : '#64748B' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity style={styles.fcSeeAll} activeOpacity={0.8} onPress={() => onTile('associations', 'all')}>
+                <Text style={styles.fcSeeAllTxt}>Voir toutes les associations</Text>
+                <Ionicons name="arrow-forward" size={15} color="#059669" />
+              </TouchableOpacity>
+            </View>
+
+            {onLogout ? (
+              <TouchableOpacity style={styles.fcLogout} activeOpacity={0.85} onPress={onLogout}>
+                <Ionicons name="log-out-outline" size={19} color="#DC2626" />
+                <Text style={styles.fcLogoutTxt}>Se déconnecter</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+/* Écran natif : gestion des associations (Fondateur) — aucune page web */
+const FC_ORG_FILTERS = [
+  { key: 'all', label: 'Toutes' },
+  { key: 'pending', label: 'À valider' },
+  { key: 'unpaid', label: 'Impayés' },
+  { key: 'trial', label: 'Essais' },
+];
+function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack, onAction, busyId }) {
+  const orgs = data ? (data.orgs || []) : null;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Associations" onBack={onBack} />
+      <View style={styles.fcFilters}>
+        {FC_ORG_FILTERS.map((f) => (
+          <TouchableOpacity key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
+            <Text style={[styles.fcFilterTxt, filter === f.key && styles.fcFilterTxtOn]}>{f.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {!orgs ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : orgs.length === 0 ? (
+        <View style={styles.emptyBox}><Ionicons name="business-outline" size={42} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune association</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          {orgs.map((o) => {
+            const busy = busyId === o.id;
+            return (
+              <View key={o.id} style={styles.fcOrgCard}>
+                <View style={styles.fcOrgCardTop}>
+                  <View style={styles.fcOrgAv}><Text style={styles.fcOrgAvTxt}>{o.initials}</Text></View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.fcOrgName} numberOfLines={1}>{o.name}</Text>
+                    <Text style={styles.fcOrgSub}>{o.plan} · {o.nb_users} util. · {o.created}</Text>
+                  </View>
+                  {o.pending ? <View style={[styles.fcChip, { backgroundColor: '#EDE9FE' }]}><Text style={[styles.fcChipTxt, { color: '#6D28D9' }]}>À valider</Text></View>
+                    : o.status === 'suspended' ? <View style={[styles.fcChip, { backgroundColor: '#FEE2E2' }]}><Text style={[styles.fcChipTxt, { color: '#B91C1C' }]}>Suspendue</Text></View>
+                    : <View style={[styles.fcChip, { backgroundColor: o.status === 'active' ? '#D1FAE5' : '#F1F5F9' }]}><Text style={[styles.fcChipTxt, { color: o.status === 'active' ? '#047857' : '#64748B' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
                 </View>
-                {o.pending ? <View style={[styles.fdChip, { backgroundColor: 'rgba(167,139,250,0.16)' }]}><Text style={[styles.fdChipTxt, { color: '#A78BFA' }]}>En attente</Text></View>
-                  : <View style={[styles.fdChip, { backgroundColor: o.status === 'active' ? 'rgba(52,211,153,0.16)' : 'rgba(138,154,146,0.16)' }]}><Text style={[styles.fdChipTxt, { color: o.status === 'active' ? '#34D399' : '#8A9A92' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.fdSectionTitle}>⚡ Pilotage</Text>
-          <View style={styles.fdShortcuts}>
-            {FOUNDER_SHORTCUTS.map((it) => (
-              <TouchableOpacity key={it.label} style={styles.fdShortcut} activeOpacity={0.85} onPress={() => onOpenWeb(it.web)}>
-                <View style={styles.fdShortcutIcon}><Ionicons name={it.icon} size={20} color="#FCD34D" /></View>
-                <Text style={styles.fdShortcutTxt} numberOfLines={1}>{it.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {onLogout ? (
-            <TouchableOpacity style={styles.fdLogout} activeOpacity={0.85} onPress={onLogout}>
-              <Ionicons name="log-out-outline" size={19} color="#FCA5A5" />
-              <Text style={styles.fdLogoutTxt}>Se déconnecter</Text>
-            </TouchableOpacity>
-          ) : null}
+                {o.unpaid_nb > 0 && <Text style={styles.fcOrgUnpaid}>⚠︎ {o.unpaid_nb} impayé{o.unpaid_nb > 1 ? 's' : ''} · {fmtEuro(o.unpaid_total)}</Text>}
+                <View style={styles.fcOrgActions}>
+                  {busy ? <ActivityIndicator size="small" color={BRAND} style={{ paddingVertical: 6 }} /> : o.pending ? (
+                    <>
+                      <TouchableOpacity style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'validate')}><Ionicons name="checkmark" size={15} color="#fff" /><Text style={styles.fcActGoTxt}>Valider</Text></TouchableOpacity>
+                      <TouchableOpacity style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'reject')}><Text style={styles.fcActNoTxt}>Refuser</Text></TouchableOpacity>
+                    </>
+                  ) : o.status === 'suspended' ? (
+                    <TouchableOpacity style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'activate')}><Ionicons name="play" size={14} color="#fff" /><Text style={styles.fcActGoTxt}>Réactiver</Text></TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'suspend')}><Ionicons name="pause" size={14} color="#B91C1C" /><Text style={styles.fcActNoTxt}>Suspendre</Text></TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          })}
         </ScrollView>
       )}
     </View>
@@ -2364,6 +2493,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [notifs, setNotifs] = useState(null);
   const [founderData, setFounderData] = useState(null);
   const [founderLoading, setFounderLoading] = useState(false);
+  const [fdOrgs, setFdOrgs] = useState(null);
+  const [fdOrgsLoading, setFdOrgsLoading] = useState(false);
+  const [fdOrgsFilter, setFdOrgsFilter] = useState('all');
+  const [fdBusyId, setFdBusyId] = useState(0);
   const [notifsLoading, setNotifsLoading] = useState(false);
   const [coti, setCoti] = useState(null);
   const [cotiLoading, setCotiLoading] = useState(false);
@@ -2517,6 +2650,20 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const fetchStats = useCallback(() => { setStatsLoading(true); inject(fetchJS('/api/app-stats.php', '__akstats')); }, [inject]);
   const fetchNotifs = useCallback(() => { setNotifsLoading(true); inject(fetchJS('/api/app-notifications.php', '__aknotifs')); }, [inject]);
   const fetchFounder = useCallback(() => { setFounderLoading(true); inject(fetchJS('/api/app-founder.php', '__akfounder')); }, [inject]);
+  const fetchFdOrgs = useCallback((filter) => {
+    setFdOrgsLoading(true);
+    inject(fetchJS('/api/app-founder-orgs.php?filter=' + encodeURIComponent(filter || 'all'), '__akfdorgs'));
+  }, [inject]);
+  const openFdOrgs = useCallback((filter) => {
+    const f = filter || 'all';
+    setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null);
+    setFdOrgs(null); setFdOrgsFilter(f); setMenuScreen('fdorgs'); fetchFdOrgs(f);
+  }, [clearDetail, closeForm, fetchFdOrgs]);
+  const doFounderAction = useCallback((orgId, action) => {
+    if (!csrf) { inject(FETCH_CSRF_JS); return; }
+    setFdBusyId(orgId);
+    inject(postJS('/api/app-founder-action.php', { org_id: orgId, action, csrf }, '__akfdaction'));
+  }, [csrf, inject]);
   const fetchCoti = useCallback(() => { setCotiLoading(true); inject(fetchJS('/api/app-cotisations.php', '__akcoti')); }, [inject]);
   const fetchGrants = useCallback(() => { setGrantsLoading(true); inject(fetchJS('/api/app-grants.php', '__akgrants')); }, [inject]);
   const fetchAssemblies = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-assemblies.php', '__akassemblies')); }, [inject]);
@@ -2546,6 +2693,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (screen === 'coach') fetchCoach();
     else if (screen === 'settings') { setSettingsErr(''); setAccount(null); fetchAccount(); inject(FETCH_CSRF_JS); }
   }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchFounder, fetchCoti, fetchGrants, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
+
+  const onFounderTile = useCallback((key, filter) => {
+    if (key === 'associations' || key === 'billing') openFdOrgs(filter || (key === 'billing' ? 'unpaid' : 'all'));
+    else if (key === 'support') openMenuScreen('tickets');
+    else if (key === 'stats') openMenuScreen('stats');
+  }, [openFdOrgs, openMenuScreen]);
 
   const onAnalyzeInvoices = useCallback(() => { setInvAILoading(true); inject(fetchJS('/api/app-invoices-ai.php', '__akinvai')); }, [inject]);
   const onCockpit = useCallback(() => { setStatsCockpitLoading(true); inject(fetchJS('/api/app-stats-ai.php', '__akstatsai')); }, [inject]);
@@ -2768,6 +2921,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akstats) { setStats(msg.__akstats); setStatsLoading(false); }
       if (msg && msg.__aknotifs) { setNotifs(msg.__aknotifs); setNotifsLoading(false); }
       if (msg && msg.__akfounder) { setFounderData(msg.__akfounder); setFounderLoading(false); }
+      if (msg && msg.__akfdorgs) { setFdOrgs(msg.__akfdorgs); setFdOrgsLoading(false); }
+      if (msg && msg.__akfdaction) {
+        setFdBusyId(0);
+        if (msg.__akfdaction.ok) { fetchFdOrgs(fdOrgsFilter); fetchFounder(); }
+        else { Alert.alert('Action impossible', 'Réessaie dans un instant.'); }
+      }
       if (msg && msg.__aknotifread && msg.__aknotifread.ok) {
         const r = msg.__aknotifread;
         setKpi((k) => k ? { ...k, notif_unread: r.notif_unread, msg_unread: r.msg_unread, support_unread: r.support_unread } : k);
@@ -3059,7 +3218,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 <NativeChannels data={channels} loading={channelsLoading} onRefresh={fetchChannels} onOpen={openChannelFn} onBack={() => setMenuScreen(null)} />
               )
             ) : menuScreen === 'founder' ? (
-              <NativeFounder data={founderData} loading={founderLoading} onRefresh={fetchFounder} onBack={() => { setMenuScreen(null); setActive('accueil'); }} onOpenWeb={openWeb} hasAsso={!!(kpi && kpi.org_name)} onGotoAsso={() => { setMenuScreen(null); setActive('accueil'); }} onLogout={doLogout} />
+              <NativeFounder data={founderData} loading={founderLoading} onRefresh={fetchFounder}
+                onBack={() => { setMenuScreen(null); setActive('accueil'); }}
+                hasAsso={!!(kpi && kpi.org_name)} onGotoAsso={() => { setMenuScreen(null); setActive('accueil'); }}
+                onLogout={doLogout} onTile={onFounderTile} onNotifs={() => openMenuScreen('notifications')}
+                notifCount={(kpi && kpi.notif_unread) || 0} />
+            ) : menuScreen === 'fdorgs' ? (
+              <NativeFounderOrgs data={fdOrgs} loading={fdOrgsLoading} filter={fdOrgsFilter}
+                onFilter={(f) => { setFdOrgs(null); setFdOrgsFilter(f); fetchFdOrgs(f); }}
+                onRefresh={() => fetchFdOrgs(fdOrgsFilter)} onBack={() => openMenuScreen('founder')}
+                onAction={doFounderAction} busyId={fdBusyId} />
             ) : (
               <NativeMore
                 orgName={kpi && kpi.org_name}
@@ -3110,7 +3278,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {isFounder && menuScreen !== 'founder' && !webMode && (
+      {isFounder && menuScreen !== 'founder' && menuScreen !== 'fdorgs' && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
@@ -3645,6 +3813,100 @@ const styles = StyleSheet.create({
   fdShortcutTxt: { fontSize: 11.5, fontWeight: '700', color: '#EAF2EE', textAlign: 'center' },
   fdLogout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 24, paddingVertical: 15, borderRadius: 14, backgroundColor: 'rgba(220,38,38,0.10)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.28)' },
   fdLogoutTxt: { fontSize: 15, fontWeight: '700', color: '#FCA5A5' },
+
+  /* ===== Cockpit Fondateur — clair & premium ===== */
+  fcWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#EDF1F0' },
+  fcScroll: { flex: 1, backgroundColor: '#EDF1F0' },
+  fcHeaderWrap: { borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', shadowColor: '#047857', shadowOpacity: 0.3, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
+  fcHeader: { paddingTop: 8, paddingHorizontal: 16, paddingBottom: 52, position: 'relative', overflow: 'hidden' },
+  fcOrbGold: { position: 'absolute', top: -50, right: -30, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(252,211,77,0.18)' },
+  fcOrbDark: { position: 'absolute', bottom: -70, left: -50, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(2,49,34,0.4)' },
+  fcTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  fcBack: { width: 34, height: 34, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  fcTopTitle: { fontSize: 13, fontWeight: '800', color: '#EAF2EE', letterSpacing: 0.3 },
+  fcAssoBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FCD34D', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 },
+  fcAssoTxt: { fontSize: 11.5, fontWeight: '900', color: '#3A2A08' },
+  fcHelloRow: { flexDirection: 'row', alignItems: 'center', gap: 9, flexWrap: 'wrap' },
+  fcHello: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+  fcSeal: { backgroundColor: '#FCD34D', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+  fcSealTxt: { fontSize: 10, fontWeight: '900', color: '#3A2A08' },
+  fcSubRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 8 },
+  fcLive: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#6EE7B7' },
+  fcSub: { fontSize: 12, color: 'rgba(255,255,255,0.9)', fontWeight: '500' },
+
+  fcSpotShadow: { marginTop: -34, borderRadius: 22, shadowColor: '#025138', shadowOpacity: 0.22, shadowRadius: 22, shadowOffset: { width: 0, height: 14 }, elevation: 9 },
+  fcSpot: { borderRadius: 22, padding: 17, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.78)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
+  fcSpotGloss: { position: 'absolute', top: 0, left: 0, right: 0, height: 44, backgroundColor: 'rgba(255,255,255,0.35)' },
+  fcSpotTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  fcSpotIc: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center' },
+  fcSpotLb: { flex: 1, fontSize: 12, fontWeight: '800', color: '#7C5410', letterSpacing: 0.2 },
+  fcSpotChip: { backgroundColor: 'rgba(5,150,105,0.12)', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+  fcSpotChipTxt: { fontSize: 10.5, fontWeight: '800', color: '#047857' },
+  fcSpotVal: { fontSize: 33, fontWeight: '800', color: '#052E23', letterSpacing: -1, marginTop: 11 },
+  fcSpotUnit: { fontSize: 16, fontWeight: '700', color: '#7C8A83' },
+  fcDistTrack: { flexDirection: 'row', height: 9, borderRadius: 6, backgroundColor: 'rgba(6,95,70,0.1)', marginTop: 14, overflow: 'hidden' },
+  fcDistFill: { height: 9 },
+  fcDistMeta: { flexDirection: 'row', gap: 16, marginTop: 8 },
+  fcDistTxt: { fontSize: 11.5, color: '#475569', fontWeight: '600' },
+
+  fcActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  fcNotif: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 13, paddingVertical: 13, borderWidth: 1, borderColor: '#E7EDEA' },
+  fcNotifTxt: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  fcNotifPill: { backgroundColor: '#EF4444', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, minWidth: 18, alignItems: 'center' },
+  fcNotifPillTxt: { color: '#fff', fontSize: 10, fontWeight: '900' },
+  fcCreate: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#FCD34D', borderRadius: 14, paddingVertical: 13, shadowColor: '#B45309', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
+  fcCreateTxt: { fontSize: 13.5, fontWeight: '900', color: '#3A2A08' },
+
+  fcMiniRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  fcMini: { flex: 1, backgroundColor: '#fff', borderRadius: 17, padding: 13, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  fcMiniIc: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginBottom: 9 },
+  fcMiniVal: { fontSize: 21, fontWeight: '800', color: INK, letterSpacing: -0.5 },
+  fcMiniLb: { fontSize: 11.5, fontWeight: '700', color: '#334155', marginTop: 1 },
+  fcMiniSub: { fontSize: 9.5, color: '#8A9A92', marginTop: 2 },
+
+  fcSecRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 22, marginBottom: 10 },
+  fcSec: { fontSize: 11.5, fontWeight: '800', color: '#8A9A92', letterSpacing: 0.7 },
+  fcSecN: { backgroundColor: '#FEE2E2', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 1 },
+  fcSecNTxt: { fontSize: 10, fontWeight: '900', color: '#DC2626' },
+  fcSignal: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#E7EDEA' },
+  fcSignalIc: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  fcSignalTxt: { flex: 1, fontSize: 13, fontWeight: '700', color: '#1E293B' },
+
+  fcTiles: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  fcTile: { width: '48%', backgroundColor: '#fff', borderRadius: 18, padding: 15, marginBottom: 12, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
+  fcTileIc: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  fcTileTitle: { fontSize: 14.5, fontWeight: '800', color: INK },
+  fcTileDesc: { fontSize: 11, color: '#8A9A92', marginTop: 2 },
+
+  fcPanel: { backgroundColor: '#fff', borderRadius: 18, padding: 6, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
+  fcOrgRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 11, paddingHorizontal: 10 },
+  fcOrgBorder: { borderTopWidth: 1, borderTopColor: '#F1F5F4' },
+  fcOrgAv: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
+  fcOrgAvTxt: { fontSize: 12.5, fontWeight: '800', color: '#047857' },
+  fcOrgName: { fontSize: 14, fontWeight: '800', color: INK },
+  fcOrgSub: { fontSize: 11, color: '#8A9A92', marginTop: 1 },
+  fcChip: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+  fcChipTxt: { fontSize: 10.5, fontWeight: '800' },
+  fcSeeAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 2 },
+  fcSeeAllTxt: { fontSize: 13, fontWeight: '800', color: '#059669' },
+  fcLogout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 22, paddingVertical: 15, borderRadius: 14, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
+  fcLogoutTxt: { fontSize: 15, fontWeight: '800', color: '#DC2626' },
+
+  /* Associations natives — filtres + actions */
+  fcFilters: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4, flexWrap: 'wrap' },
+  fcFilter: { backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  fcFilterOn: { backgroundColor: '#059669', borderColor: '#059669' },
+  fcFilterTxt: { fontSize: 12.5, fontWeight: '700', color: '#64748B' },
+  fcFilterTxtOn: { color: '#fff' },
+  fcOrgCard: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  fcOrgCardTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  fcOrgUnpaid: { fontSize: 11.5, fontWeight: '700', color: '#B91C1C', marginTop: 10 },
+  fcOrgActions: { flexDirection: 'row', gap: 9, marginTop: 12 },
+  fcAct: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 11, paddingVertical: 10, paddingHorizontal: 16 },
+  fcActGo: { flex: 1, backgroundColor: '#059669' },
+  fcActGoTxt: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  fcActNo: { flex: 1, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
+  fcActNoTxt: { fontSize: 13, fontWeight: '800', color: '#B91C1C' },
 
   /* Quick actions sheet */
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
