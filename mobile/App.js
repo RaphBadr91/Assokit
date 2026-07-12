@@ -383,6 +383,7 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
           <View style={styles.kpiGrid}>
             {cards.map((c) => (
               <TouchableOpacity key={c.label} style={styles.kpiCard} activeOpacity={0.85} onPress={() => onGoto(c.path)}>
+                <View style={[styles.kpiAccent, { backgroundColor: c.color }]} />
                 <View style={styles.kpiTop}>
                   <View style={[styles.kpiIcon, { backgroundColor: c.bg }]}>
                     <Ionicons name={c.icon} size={20} color={c.color} />
@@ -456,6 +457,7 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
             const pct = Math.max(0, Math.min(100, p.progress || 0));
             return (
               <TouchableOpacity key={p.id} style={styles.projCard} activeOpacity={0.85} onPress={() => onOpen(p.id)}>
+                <View style={[styles.projAccent, { backgroundColor: sm.color }]} />
                 <View style={styles.projCardTop}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={styles.projName} numberOfLines={1}>{p.name}</Text>
@@ -1555,26 +1557,29 @@ function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh
 /* ================================================================== */
 /*  MENU « PLUS » (hub natif)                                           */
 /* ================================================================== */
+// admin: true  → visible uniquement pour les admins (mêmes autorisations que le site),
+//                affiché avec un petit tag « Admin » pour qu'ils sachent qu'eux seuls le voient.
 const MORE_GROUPS = [
   {
     title: 'Association',
     items: [
       { label: 'Adhérents', icon: 'people', nav: { screen: 'members' } },
       { label: 'Agenda', icon: 'calendar', nav: { screen: 'agenda' } },
-      { label: 'Cotisations', icon: 'card', nav: { screen: 'cotisations' } },
-      { label: 'Subventions', icon: 'cash', nav: { screen: 'subventions' } },
-      { label: 'Assemblées', icon: 'clipboard', nav: { screen: 'assemblies' } },
-      { label: 'Émargement', icon: 'checkbox', nav: { screen: 'attendance' } },
+      { label: 'Cotisations', icon: 'card', nav: { screen: 'cotisations' }, admin: true },
+      { label: 'Subventions', icon: 'cash', nav: { screen: 'subventions' }, admin: true },
+      { label: 'Assemblées', icon: 'clipboard', nav: { screen: 'assemblies' }, admin: true },
+      { label: 'Émargement', icon: 'checkbox', nav: { screen: 'attendance' }, admin: true },
     ],
   },
   {
     title: 'Finances',
+    admin: true,
     items: [
-      { label: 'Factures', icon: 'receipt', nav: { tab: 'factures' } },
-      { label: 'Devis', icon: 'document-text', nav: { screen: 'devis' } },
-      { label: 'Clients', icon: 'briefcase', nav: { screen: 'clients' } },
-      { label: 'Statistiques', icon: 'stats-chart', nav: { screen: 'stats' } },
-      { label: 'Mon abonnement', icon: 'card-outline', nav: { screen: 'subinvoices' } },
+      { label: 'Factures', icon: 'receipt', nav: { tab: 'factures' }, admin: true },
+      { label: 'Devis', icon: 'document-text', nav: { screen: 'devis' }, admin: true },
+      { label: 'Clients', icon: 'briefcase', nav: { screen: 'clients' }, admin: true },
+      { label: 'Statistiques', icon: 'stats-chart', nav: { screen: 'stats' }, admin: true },
+      { label: 'Mon abonnement', icon: 'card-outline', nav: { screen: 'subinvoices' }, admin: true },
     ],
   },
   {
@@ -1582,8 +1587,8 @@ const MORE_GROUPS = [
     items: [
       { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' }, badge: 'msg' },
       { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' }, badge: 'notif' },
-      { label: 'Communication', icon: 'mail', nav: { screen: 'broadcasts' } },
-      { label: 'Coach IA', icon: 'sparkles', nav: { screen: 'coach' } },
+      { label: 'Communication', icon: 'mail', nav: { screen: 'broadcasts' }, admin: true },
+      { label: 'Coach IA', icon: 'sparkles', nav: { screen: 'coach' }, admin: true },
     ],
   },
   {
@@ -1604,7 +1609,7 @@ const FOUNDER_SHORTCUTS = [
   { label: 'Pilotage', icon: 'grid', web: '/fondateur-pilotage' },
 ];
 
-function NativeMore({ orgName, initials, logo, isFounder, counts, onNav, onLogout }) {
+function NativeMore({ orgName, initials, logo, isFounder, isAdmin, counts, onNav, onLogout }) {
   const cnt = counts || {};
   return (
     <View style={styles.detailWrap}>
@@ -1620,7 +1625,7 @@ function NativeMore({ orgName, initials, logo, isFounder, counts, onNav, onLogou
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
         {isFounder && (
           <View style={styles.founderBlock}>
-            <TouchableOpacity style={styles.founderBanner} activeOpacity={0.9} onPress={() => onNav({ web: '/super-admin' })}>
+            <TouchableOpacity style={styles.founderBanner} activeOpacity={0.9} onPress={() => onNav({ screen: 'founder' })}>
               <View style={styles.founderStar}><Ionicons name="star" size={20} color="#78350F" /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.founderTitle}>Espace Fondateur</Text>
@@ -1638,14 +1643,21 @@ function NativeMore({ orgName, initials, logo, isFounder, counts, onNav, onLogou
             </View>
           </View>
         )}
-        {MORE_GROUPS.map((g) => (
+        {MORE_GROUPS.map((g) => {
+          const items = g.items.filter((it) => !it.admin || isAdmin);
+          if (items.length === 0) return null;
+          return (
           <View key={g.title} style={{ marginBottom: 20 }}>
-            <Text style={styles.moreGroupTitle}>{g.title}</Text>
+            <View style={styles.moreGroupHead}>
+              <Text style={styles.moreGroupTitle}>{g.title}</Text>
+              {g.admin && isAdmin ? <View style={styles.adminTag}><Ionicons name="shield-checkmark" size={10} color="#B45309" /><Text style={styles.adminTagTxt}>Admin</Text></View> : null}
+            </View>
             <View style={styles.moreGrid}>
-              {g.items.map((it) => {
+              {items.map((it) => {
                 const n = it.badge ? (cnt[it.badge] || 0) : 0;
                 return (
                   <TouchableOpacity key={it.label} style={styles.moreItem} activeOpacity={0.8} onPress={() => onNav(it.nav)}>
+                    {it.admin && isAdmin && !g.admin ? <View style={styles.adminTagCorner}><Text style={styles.adminTagTxt}>Admin</Text></View> : null}
                     <View style={styles.moreItemIcon}>
                       <Ionicons name={it.icon} size={22} color={BRAND} />
                       {n > 0 && <View style={styles.moreBadge}><Text style={styles.moreBadgeTxt}>{n > 99 ? '99+' : n}</Text></View>}
@@ -1656,12 +1668,111 @@ function NativeMore({ orgName, initials, logo, isFounder, counts, onNav, onLogou
               })}
             </View>
           </View>
-        ))}
+          );
+        })}
         <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
           <Ionicons name="log-out-outline" size={19} color="#DC2626" />
           <Text style={styles.logoutTxt}>Se déconnecter</Text>
         </TouchableOpacity>
       </ScrollView>
+    </View>
+  );
+}
+
+/* ================================================================== */
+/*  ESPACE FONDATEUR (cockpit natif)                                   */
+/* ================================================================== */
+const FD_KPI = [
+  { key: 'mrr', label: 'MRR (TTC)', color: '#FCD34D', glow: ['#FCD34D', '#F59E0B'], icon: 'card', fmt: (k) => fmtEuro(k.mrr), sub: 'revenu mensuel' },
+  { key: 'orgs_total', label: 'Associations', color: '#34D399', glow: ['#34D399', '#10B981'], icon: 'business', fmt: (k) => String(k.orgs_total ?? 0), sub: (k) => (k.orgs_active ?? 0) + ' actives · ' + (k.orgs_trial ?? 0) + ' essai' },
+  { key: 'users', label: 'Utilisateurs', color: '#A78BFA', glow: ['#C4B5FD', '#8B5CF6'], icon: 'people', fmt: (k) => String(k.users ?? 0), sub: 'tous rôles' },
+  { key: 'ia_nb', label: 'Générations IA', color: '#60A5FA', glow: ['#93C5FD', '#3B82F6'], icon: 'sparkles', fmt: (k) => String(k.ia_nb ?? 0), sub: (k) => fmtEuro(k.ia_cost) + ' dépensés' },
+];
+
+function NativeFounder({ data, loading, onRefresh, onBack, onOpenWeb }) {
+  const k = (data && data.kpis) || {};
+  const sig = (data && data.signals) || {};
+  const orgs = (data && data.orgs) || [];
+  const signals = [];
+  if (sig.pending > 0) signals.push({ tone: '#FBBF24', bg: 'rgba(251,191,36,0.12)', icon: 'construct', t: sig.pending + ' validation' + (sig.pending > 1 ? 's' : '') + ' en attente', go: '/super-admin/associations?filter=pending' });
+  if (sig.unpaid_nb > 0) signals.push({ tone: '#F87171', bg: 'rgba(248,113,113,0.13)', icon: 'cash', t: sig.unpaid_nb + ' impayé' + (sig.unpaid_nb > 1 ? 's' : '') + ' · ' + fmtEuro(sig.unpaid_total), go: '/super-admin/abonnements?filter=unpaid' });
+  if (sig.expiring > 0) signals.push({ tone: '#A78BFA', bg: 'rgba(167,139,250,0.14)', icon: 'time', t: sig.expiring + ' essai' + (sig.expiring > 1 ? 's' : '') + ' expire' + (sig.expiring > 1 ? 'nt' : '') + ' sous 7j', go: '/super-admin/associations' });
+
+  return (
+    <View style={styles.fdWrap}>
+      <StatusBar barStyle="light-content" />
+      <SafeAreaView style={{ backgroundColor: '#0B0F0D' }}>
+        <View style={styles.fdTop}>
+          <TouchableOpacity style={styles.fdBack} activeOpacity={0.8} onPress={onBack}>
+            <Ionicons name="chevron-back" size={20} color="#EAF2EE" />
+          </TouchableOpacity>
+          <Text style={styles.fdTopTitle}>Espace Fondateur</Text>
+          <View style={{ width: 36 }} />
+        </View>
+      </SafeAreaView>
+      {!data ? (
+        <View style={[styles.homeLoader, { backgroundColor: '#0B0F0D', flex: 1 }]}><ActivityIndicator size="large" color="#FCD34D" /></View>
+      ) : (
+        <ScrollView style={{ backgroundColor: '#0B0F0D' }} contentContainerStyle={{ padding: 16, paddingBottom: 36 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor="#FCD34D" colors={['#FCD34D']} />}>
+          <View style={styles.fdHelloRow}>
+            <Text style={styles.fdHello}>Bienvenue {data.first_name || ''}</Text>
+            <View style={styles.fdSeal}><Text style={styles.fdSealTxt}>🏗️ FONDATEUR</Text></View>
+          </View>
+          <Text style={styles.fdHelloSub}>Pouvoir absolu sur la plateforme Assokit</Text>
+
+          <View style={styles.fdKpis}>
+            {FD_KPI.map((kp) => (
+              <View key={kp.key} style={styles.fdKpi}>
+                <LinearGradient colors={kp.glow} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.fdKpiGlow} />
+                <View style={styles.fdKpiTop}>
+                  <Text style={styles.fdKpiLabel}>{kp.label}</Text>
+                  <View style={[styles.fdKpiIcon, { backgroundColor: kp.color + '22' }]}><Ionicons name={kp.icon} size={15} color={kp.color} /></View>
+                </View>
+                <Text style={[styles.fdKpiVal, { color: kp.key === 'mrr' || kp.key === 'orgs_total' ? kp.color : '#EAF2EE' }]}>{kp.fmt(k)}</Text>
+                <Text style={styles.fdKpiSub}>{typeof kp.sub === 'function' ? kp.sub(k) : kp.sub}</Text>
+              </View>
+            ))}
+          </View>
+
+          {signals.length > 0 && (
+            <View style={styles.fdPanel}>
+              <Text style={styles.fdPanelTitle}>🛰️ Signal — à traiter</Text>
+              {signals.map((s, i) => (
+                <TouchableOpacity key={i} style={styles.fdSignal} activeOpacity={0.85} onPress={() => onOpenWeb(s.go)}>
+                  <View style={[styles.fdSignalIcon, { backgroundColor: s.bg }]}><Ionicons name={s.icon} size={16} color={s.tone} /></View>
+                  <Text style={styles.fdSignalTxt} numberOfLines={2}>{s.t}</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#55635C" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <Text style={styles.fdSectionTitle}>🏛️ Dernières associations</Text>
+          <View style={styles.fdPanel}>
+            {orgs.map((o, i) => (
+              <TouchableOpacity key={o.id} style={[styles.fdOrgRow, i > 0 ? styles.fdOrgBorder : null]} activeOpacity={0.8} onPress={() => onOpenWeb('/super-admin/associations?id=' + o.id)}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.fdOrgName} numberOfLines={1}>{o.name}</Text>
+                  <Text style={styles.fdOrgSub}>{o.plan} · {o.nb_users} util. · {o.created}</Text>
+                </View>
+                {o.pending ? <View style={[styles.fdChip, { backgroundColor: 'rgba(167,139,250,0.16)' }]}><Text style={[styles.fdChipTxt, { color: '#A78BFA' }]}>En attente</Text></View>
+                  : <View style={[styles.fdChip, { backgroundColor: o.status === 'active' ? 'rgba(52,211,153,0.16)' : 'rgba(138,154,146,0.16)' }]}><Text style={[styles.fdChipTxt, { color: o.status === 'active' ? '#34D399' : '#8A9A92' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.fdSectionTitle}>⚡ Pilotage</Text>
+          <View style={styles.fdShortcuts}>
+            {FOUNDER_SHORTCUTS.map((it) => (
+              <TouchableOpacity key={it.label} style={styles.fdShortcut} activeOpacity={0.85} onPress={() => onOpenWeb(it.web)}>
+                <View style={styles.fdShortcutIcon}><Ionicons name={it.icon} size={20} color="#FCD34D" /></View>
+                <Text style={styles.fdShortcutTxt} numberOfLines={1}>{it.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -2153,6 +2264,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [notifs, setNotifs] = useState(null);
+  const [founderData, setFounderData] = useState(null);
+  const [founderLoading, setFounderLoading] = useState(false);
   const [notifsLoading, setNotifsLoading] = useState(false);
   const [coti, setCoti] = useState(null);
   const [cotiLoading, setCotiLoading] = useState(false);
@@ -2304,6 +2417,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const fetchQuotes = useCallback(() => { setQuotesLoading(true); inject(fetchJS('/api/app-quotes.php', '__akquotes')); }, [inject]);
   const fetchStats = useCallback(() => { setStatsLoading(true); inject(fetchJS('/api/app-stats.php', '__akstats')); }, [inject]);
   const fetchNotifs = useCallback(() => { setNotifsLoading(true); inject(fetchJS('/api/app-notifications.php', '__aknotifs')); }, [inject]);
+  const fetchFounder = useCallback(() => { setFounderLoading(true); inject(fetchJS('/api/app-founder.php', '__akfounder')); }, [inject]);
   const fetchCoti = useCallback(() => { setCotiLoading(true); inject(fetchJS('/api/app-cotisations.php', '__akcoti')); }, [inject]);
   const fetchGrants = useCallback(() => { setGrantsLoading(true); inject(fetchJS('/api/app-grants.php', '__akgrants')); }, [inject]);
   const fetchAssemblies = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-assemblies.php', '__akassemblies')); }, [inject]);
@@ -2321,6 +2435,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (screen === 'devis') fetchQuotes();
     else if (screen === 'stats') fetchStats();
     else if (screen === 'notifications') { fetchNotifs(); inject(FETCH_CSRF_JS); }
+    else if (screen === 'founder') { setFounderData(null); fetchFounder(); }
     else if (screen === 'cotisations') fetchCoti();
     else if (screen === 'subventions') fetchGrants();
     else if (screen === 'members') { setPeople(null); fetchPeople(false); }
@@ -2331,7 +2446,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (screen === 'tickets') fetchTickets();
     else if (screen === 'coach') fetchCoach();
     else if (screen === 'settings') { setSettingsErr(''); setAccount(null); fetchAccount(); inject(FETCH_CSRF_JS); }
-  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchCoti, fetchGrants, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
+  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchFounder, fetchCoti, fetchGrants, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
 
   const onAnalyzeInvoices = useCallback(() => { setInvAILoading(true); inject(fetchJS('/api/app-invoices-ai.php', '__akinvai')); }, [inject]);
   const onCockpit = useCallback(() => { setStatsCockpitLoading(true); inject(fetchJS('/api/app-stats-ai.php', '__akstatsai')); }, [inject]);
@@ -2545,6 +2660,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akquotes) { setQuotes(msg.__akquotes); setQuotesLoading(false); }
       if (msg && msg.__akstats) { setStats(msg.__akstats); setStatsLoading(false); }
       if (msg && msg.__aknotifs) { setNotifs(msg.__aknotifs); setNotifsLoading(false); }
+      if (msg && msg.__akfounder) { setFounderData(msg.__akfounder); setFounderLoading(false); }
       if (msg && msg.__aknotifread && msg.__aknotifread.ok) {
         const r = msg.__aknotifread;
         setKpi((k) => k ? { ...k, notif_unread: r.notif_unread, msg_unread: r.msg_unread, support_unread: r.support_unread } : k);
@@ -2810,12 +2926,15 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               ) : (
                 <NativeChannels data={channels} loading={channelsLoading} onRefresh={fetchChannels} onOpen={openChannelFn} onBack={() => setMenuScreen(null)} />
               )
+            ) : menuScreen === 'founder' ? (
+              <NativeFounder data={founderData} loading={founderLoading} onRefresh={fetchFounder} onBack={() => setMenuScreen(null)} onOpenWeb={openWeb} />
             ) : (
               <NativeMore
                 orgName={kpi && kpi.org_name}
                 initials={kpi && kpi.org_initials}
                 logo={kpi && kpi.org_logo}
                 isFounder={!!(kpi && kpi.is_founder)}
+                isAdmin={!!(kpi && (kpi.role === 'admin' || kpi.is_founder))}
                 counts={{ msg: kpi && kpi.msg_unread, support: kpi && kpi.support_unread, notif: kpi && kpi.notif_unread }}
                 onNav={onMoreNav}
                 onLogout={() => { setMenuScreen(null); setWebMode(true); inject(gotoJS('/deconnexion.php')); }}
@@ -2863,7 +2982,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
-          onPress={() => { clearDetail(); closeForm(); setMenuScreen(null); setOpenChannel(null); setWebMode(true); inject(gotoJS('/super-admin')); }}
+          onPress={() => { setOpenChannel(null); openMenuScreen('founder'); }}
         >
           <View style={styles.founderStripStar}><Ionicons name="star" size={15} color="#78350F" /></View>
           <Text style={styles.founderStripTxt}>Espace Fondateur</Text>
@@ -3016,7 +3135,8 @@ const styles = StyleSheet.create({
   homeLoaderTxt: { color: MUTE, marginTop: 12, fontSize: 14 },
 
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: -14 },
-  kpiCard: { width: '48%', backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 14, shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+  kpiCard: { width: '48%', backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 14, shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4, position: 'relative', overflow: 'hidden' },
+  kpiAccent: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
   kpiTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   kpiIcon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   kpiValue: { fontSize: 30, fontWeight: '800', color: INK, marginTop: 12, letterSpacing: -0.5 },
@@ -3040,7 +3160,8 @@ const styles = StyleSheet.create({
   projSub: { fontSize: 13.5, color: MUTE, marginTop: 2 },
   projNewBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: BRAND, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   projNewTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  projCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, marginBottom: 12, shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  projCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, paddingLeft: 20, marginBottom: 12, shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3, position: 'relative', overflow: 'hidden' },
+  projAccent: { position: 'absolute', top: 0, bottom: 0, left: 0, width: 4 },
   projCardTop: { flexDirection: 'row', alignItems: 'flex-start' },
   projName: { fontSize: 16, fontWeight: '700', color: INK },
   projFolder: { fontSize: 13, color: MUTE, marginTop: 2 },
@@ -3203,7 +3324,11 @@ const styles = StyleSheet.create({
   moreAvatarTxt: { fontSize: 19, fontWeight: '800', color: BRAND },
   moreOrg: { fontSize: 18, fontWeight: '800', color: INK },
   moreSub: { fontSize: 13, color: MUTE, marginTop: 2 },
-  moreGroupTitle: { fontSize: 13, fontWeight: '700', color: '#64748B', marginBottom: 10, marginLeft: 2 },
+  moreGroupTitle: { fontSize: 13, fontWeight: '700', color: '#64748B', marginLeft: 2 },
+  moreGroupHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  adminTag: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2 },
+  adminTagCorner: { position: 'absolute', top: 6, right: 6, backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1, zIndex: 2 },
+  adminTagTxt: { fontSize: 9, fontWeight: '800', color: '#B45309', letterSpacing: 0.2 },
   moreGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   moreItem: { width: '31%', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 6, alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
   moreItemIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
@@ -3316,6 +3441,39 @@ const styles = StyleSheet.create({
   founderStripStar: { width: 26, height: 26, borderRadius: 8, backgroundColor: '#FCD34D', alignItems: 'center', justifyContent: 'center' },
   founderStripTxt: { fontSize: 13.5, fontWeight: '800', color: '#FCD34D', letterSpacing: 0.2 },
   founderStripHint: { flex: 1, fontSize: 11.5, color: '#B8A76E', marginLeft: 2 },
+  fdWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0B0F0D' },
+  fdTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
+  fdBack: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#18211C', alignItems: 'center', justifyContent: 'center' },
+  fdTopTitle: { fontSize: 15, fontWeight: '700', color: '#EAF2EE' },
+  fdHelloRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  fdHello: { fontSize: 24, fontWeight: '800', color: '#EAF2EE', letterSpacing: -0.5 },
+  fdSeal: { backgroundColor: '#FCD34D', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  fdSealTxt: { fontSize: 10.5, fontWeight: '800', color: '#3A2A08' },
+  fdHelloSub: { fontSize: 12.5, color: '#8A9A92', marginTop: 6, marginBottom: 16 },
+  fdKpis: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  fdKpi: { width: '47.5%', flexGrow: 1, backgroundColor: '#131A16', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', padding: 15, overflow: 'hidden' },
+  fdKpiGlow: { position: 'absolute', top: 0, left: 0, right: 0, height: 3 },
+  fdKpiTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  fdKpiLabel: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.4, color: '#8A9A92', textTransform: 'uppercase' },
+  fdKpiIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  fdKpiVal: { fontSize: 25, fontWeight: '800', letterSpacing: -0.8, marginTop: 10 },
+  fdKpiSub: { fontSize: 11, color: '#8A9A92', marginTop: 5 },
+  fdPanel: { backgroundColor: '#131A16', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', padding: 6, marginTop: 8 },
+  fdPanelTitle: { fontSize: 12.5, fontWeight: '700', color: '#EAF2EE', paddingHorizontal: 10, paddingTop: 10, paddingBottom: 6 },
+  fdSignal: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 11, paddingHorizontal: 10 },
+  fdSignalIcon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  fdSignalTxt: { flex: 1, fontSize: 13, fontWeight: '600', color: '#EAF2EE' },
+  fdSectionTitle: { fontSize: 14, fontWeight: '750', color: '#EAF2EE', marginTop: 22, marginBottom: 10 },
+  fdOrgRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 10 },
+  fdOrgBorder: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
+  fdOrgName: { fontSize: 14, fontWeight: '650', color: '#EAF2EE' },
+  fdOrgSub: { fontSize: 11.5, color: '#8A9A92', marginTop: 2 },
+  fdChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
+  fdChipTxt: { fontSize: 11, fontWeight: '700' },
+  fdShortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  fdShortcut: { width: '30%', flexGrow: 1, backgroundColor: '#131A16', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(252,211,77,0.18)', paddingVertical: 15, alignItems: 'center' },
+  fdShortcutIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(252,211,77,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  fdShortcutTxt: { fontSize: 11.5, fontWeight: '700', color: '#EAF2EE', textAlign: 'center' },
 
   /* Quick actions sheet */
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
