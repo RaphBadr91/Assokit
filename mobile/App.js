@@ -2021,6 +2021,14 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
                 </TouchableOpacity>
               ))}
             </View>
+            <TouchableOpacity style={styles.fcBlogTile} activeOpacity={0.9} onPress={() => onTile('blog', 'all')}>
+              <View style={styles.fcBlogIc}><Ionicons name="newspaper" size={22} color="#D97706" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fcTileTitle}>Blog SEO — articles auto</Text>
+                <Text style={styles.fcTileDesc}>Voir ce que le site génère automatiquement</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            </TouchableOpacity>
 
             {/* Dernières associations */}
             <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12 }]}>DERNIÈRES ASSOCIATIONS</Text>
@@ -2113,6 +2121,191 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
           })}
         </ScrollView>
       )}
+    </View>
+  );
+}
+
+/* Fondateur — Paiements & Abonnements (natif) */
+const FC_BILL_FILTERS = [{ key: 'all', label: 'Toutes' }, { key: 'unpaid', label: 'Impayés' }, { key: 'paid', label: 'Payées' }];
+function NativeFounderBilling({ data, loading, filter, onFilter, onRefresh, onBack, onPay, busyId }) {
+  const s = (data && data.summary) || {};
+  const list = data ? (data.invoices || []) : null;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Paiements" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 26 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <View style={styles.miniKpiRow}>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.mrr)}</Text><Text style={styles.miniKpiLbl}>MRR</Text></View>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.ca_paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé</Text></View>
+          <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: (s.unpaid_nb > 0) ? '#B91C1C' : INK }]}>{fmtEuro(s.unpaid_total)}</Text><Text style={styles.miniKpiLbl}>Impayés</Text></View>
+        </View>
+        <View style={styles.fcFilters2}>
+          {FC_BILL_FILTERS.map((f) => (
+            <TouchableOpacity key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
+              <Text style={[styles.fcFilterTxt, filter === f.key && styles.fcFilterTxtOn]}>{f.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {!list ? (
+          <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+        ) : list.length === 0 ? (
+          <View style={styles.emptyBox}><Ionicons name="card-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune facture</Text></View>
+        ) : list.map((inv) => {
+          const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
+          const busy = busyId === inv.id;
+          return (
+            <View key={inv.id} style={styles.fcInvCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.fcOrgName} numberOfLines={1}>{inv.org}</Text>
+                  <Text style={styles.fcOrgSub}>{inv.number} · {inv.date}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.fcInvAmount}>{fmtEuro(inv.amount)}</Text>
+                  <View style={[styles.fcChip, { backgroundColor: km.bg, marginTop: 4 }]}><Text style={[styles.fcChipTxt, { color: km.color }]}>{inv.status_label}</Text></View>
+                </View>
+              </View>
+              {inv.can_pay && (
+                <TouchableOpacity style={styles.fcPayBtn} activeOpacity={0.85} onPress={() => onPay(inv.id)} disabled={busy}>
+                  {busy ? <ActivityIndicator size="small" color="#fff" /> : <><Ionicons name="checkmark-circle" size={16} color="#fff" /><Text style={styles.fcPayTxt}>Marquer payée</Text></>}
+                </TouchableOpacity>
+              )}
+            </View>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+/* Fondateur — Statistiques plateforme (natif) */
+function NativeFounderStats({ data, loading, onBack, onRefresh }) {
+  const o = (data && data.orgs) || {}, u = (data && data.users) || {}, r = (data && data.revenue) || {}, ia = (data && data.ia) || {};
+  const curve = (data && data.curve) || [];
+  const maxN = Math.max(1, ...curve.map((c) => c.n));
+  const cards = [
+    { icon: 'cash', color: '#059669', bg: '#ECFDF5', v: fmtEuro(r.mrr), l: 'MRR', s: 'récurrent' },
+    { icon: 'trending-up', color: '#0891B2', bg: '#ECFEFF', v: fmtEuro(r.ca_paid), l: 'CA encaissé', s: fmtEuro(r.ca_paid_30) + ' /30j' },
+    { icon: 'business', color: '#7C3AED', bg: '#F5F3FF', v: String(o.total ?? 0), l: 'Associations', s: (o.active ?? 0) + ' act. · ' + (o.trial ?? 0) + ' essai' },
+    { icon: 'people', color: '#2563EB', bg: '#EFF6FF', v: String(u.total ?? 0), l: 'Utilisateurs', s: '+' + (u.new30 ?? 0) + ' /30j' },
+    { icon: 'alert-circle', color: '#DC2626', bg: '#FEF2F2', v: fmtEuro(r.unpaid_total), l: 'Impayés', s: (r.unpaid_nb ?? 0) + ' facture' + ((r.unpaid_nb ?? 0) > 1 ? 's' : '') },
+    { icon: 'sparkles', color: '#D97706', bg: '#FFFBEB', v: String(ia.nb ?? 0), l: 'Générations IA', s: fmtEuro(ia.cost) + ' dépensés' },
+  ];
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Statistiques" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 26 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        {!data ? <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View> : (
+          <>
+            <View style={styles.fcStatGrid}>
+              {cards.map((c, i) => (
+                <View key={i} style={styles.fcStatCard}>
+                  <View style={[styles.fcMiniIc, { backgroundColor: c.bg }]}><Ionicons name={c.icon} size={16} color={c.color} /></View>
+                  <Text style={styles.fcStatVal}>{c.v}</Text>
+                  <Text style={styles.fcStatLb}>{c.l}</Text>
+                  <Text style={styles.fcStatSub} numberOfLines={1}>{c.s}</Text>
+                </View>
+              ))}
+            </View>
+            {curve.length > 0 && (
+              <>
+                <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12, color: '#64748B' }]}>NOUVELLES ASSOCIATIONS · 6 MOIS</Text>
+                <View style={styles.fcBars}>
+                  {curve.map((c, i) => (
+                    <View key={i} style={styles.fcBarCol}>
+                      <Text style={styles.fcBarVal}>{c.n}</Text>
+                      <View style={styles.fcBarTrack}><View style={[styles.fcBarFill, { height: Math.max(4, Math.round((c.n / maxN) * 80)) }]} /></View>
+                      <Text style={styles.fcBarLbl}>{(c.ym || '').slice(5)}</Text>
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+          </>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+/* Fondateur — Blog SEO auto (natif) */
+function NativeFounderBlog({ data, loading, onBack, onRefresh, onWeb }) {
+  const s = (data && data.stats) || {};
+  const list = data ? (data.articles || []) : null;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Blog SEO" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 26 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <View style={styles.miniKpiRow}>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.total ?? 0}</Text><Text style={styles.miniKpiLbl}>Articles</Text></View>
+          <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#047857' }]}>{s.published ?? 0}</Text><Text style={styles.miniKpiLbl}>Publiés</Text></View>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.last30 ?? 0}</Text><Text style={styles.miniKpiLbl}>30 jours</Text></View>
+        </View>
+        {!list ? (
+          <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+        ) : list.length === 0 ? (
+          <View style={styles.emptyBox}><Ionicons name="newspaper-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun article</Text></View>
+        ) : list.map((a) => (
+          <TouchableOpacity key={a.id} style={styles.fcArtCard} activeOpacity={a.url ? 0.85 : 1} onPress={() => a.url && onWeb(a.url)}>
+            <View style={[styles.fcArtIc, { backgroundColor: a.published ? '#ECFDF5' : '#F1F5F9' }]}>
+              <Ionicons name={a.published ? 'newspaper' : 'document-text-outline'} size={18} color={a.published ? '#059669' : '#94A3B8'} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.fcOrgName} numberOfLines={2}>{a.title}</Text>
+              <Text style={styles.fcOrgSub} numberOfLines={1}>{[a.category, a.date, a.reading ? a.reading + ' min' : ''].filter(Boolean).join(' · ')}</Text>
+            </View>
+            <View style={[styles.fcChip, { backgroundColor: a.published ? '#D1FAE5' : '#F1F5F9' }]}>
+              <Text style={[styles.fcChipTxt, { color: a.published ? '#047857' : '#64748B' }]}>{a.published ? 'Publié' : 'Brouillon'}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+/* Fondateur — Support plateforme (natif) */
+const FC_SUP_FILTERS = [{ key: 'open', label: 'Ouverts' }, { key: 'all', label: 'Tous' }];
+function NativeFounderSupport({ data, loading, filter, onFilter, onBack, onRefresh, onOpen }) {
+  const s = (data && data.summary) || {};
+  const list = data ? (data.tickets || []) : null;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Support" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 26 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <View style={styles.miniKpiRow}>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.open ?? 0}</Text><Text style={styles.miniKpiLbl}>Ouverts</Text></View>
+          <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: (s.unread > 0) ? '#DC2626' : INK }]}>{s.unread ?? 0}</Text><Text style={styles.miniKpiLbl}>Non lus</Text></View>
+        </View>
+        <View style={styles.fcFilters2}>
+          {FC_SUP_FILTERS.map((f) => (
+            <TouchableOpacity key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
+              <Text style={[styles.fcFilterTxt, filter === f.key && styles.fcFilterTxtOn]}>{f.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {!list ? (
+          <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+        ) : list.length === 0 ? (
+          <View style={styles.emptyBox}><Ionicons name="chatbubbles-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun ticket</Text></View>
+        ) : list.map((t) => {
+          const km = INV_KIND[t.status_kind] || INV_KIND.wait;
+          return (
+            <TouchableOpacity key={t.id} style={styles.fcTicketCard} activeOpacity={0.85} onPress={() => onOpen && onOpen(t)}>
+              <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+                <Text style={styles.fcOrgName} numberOfLines={1}>{t.title}</Text>
+                <Text style={styles.fcOrgSub} numberOfLines={1}>{t.org} · {t.date}</Text>
+              </View>
+              {t.unread > 0 && <View style={styles.fcUnread}><Text style={styles.fcUnreadTxt}>{t.unread}</Text></View>}
+              <View style={[styles.fcChip, { backgroundColor: km.bg }]}><Text style={[styles.fcChipTxt, { color: km.color }]}>{t.status_label}</Text></View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }
@@ -2615,6 +2808,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [fdOrgsLoading, setFdOrgsLoading] = useState(false);
   const [fdOrgsFilter, setFdOrgsFilter] = useState('all');
   const [fdBusyId, setFdBusyId] = useState(0);
+  const [fdBilling, setFdBilling] = useState(null);
+  const [fdBillingLoading, setFdBillingLoading] = useState(false);
+  const [fdBillingFilter, setFdBillingFilter] = useState('all');
+  const [fdBillBusy, setFdBillBusy] = useState(0);
+  const [fdStats, setFdStats] = useState(null);
+  const [fdStatsLoading, setFdStatsLoading] = useState(false);
+  const [fdBlog, setFdBlog] = useState(null);
+  const [fdBlogLoading, setFdBlogLoading] = useState(false);
+  const [fdSupport, setFdSupport] = useState(null);
+  const [fdSupportLoading, setFdSupportLoading] = useState(false);
+  const [fdSupportFilter, setFdSupportFilter] = useState('open');
   const [notifsLoading, setNotifsLoading] = useState(false);
   const [coti, setCoti] = useState(null);
   const [cotiLoading, setCotiLoading] = useState(false);
@@ -2782,6 +2986,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     setFdBusyId(orgId);
     inject(postJS('/api/app-founder-action.php', { org_id: orgId, action, csrf }, '__akfdaction'));
   }, [csrf, inject]);
+  // Fondateur : pages natives dédiées (paiements, stats, blog, support)
+  const fetchFdBilling = useCallback((filter) => { setFdBillingLoading(true); inject(fetchJS('/api/app-founder-billing.php?filter=' + encodeURIComponent(filter || 'all'), '__akfdbill')); }, [inject]);
+  const openFdBilling = useCallback((filter) => { const f = filter || 'all'; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBilling(null); setFdBillingFilter(f); setMenuScreen('fdbilling'); fetchFdBilling(f); }, [clearDetail, closeForm, fetchFdBilling]);
+  const doFounderPay = useCallback((invId) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdBillBusy(invId); inject(postJS('/api/app-founder-billing-action.php', { invoice_id: invId, action: 'mark_paid', csrf }, '__akfdpay')); }, [csrf, inject]);
+  const fetchFdStats = useCallback(() => { setFdStatsLoading(true); inject(fetchJS('/api/app-founder-stats.php', '__akfdstats')); }, [inject]);
+  const openFdStats = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdStats(null); setMenuScreen('fdstats'); fetchFdStats(); }, [clearDetail, closeForm, fetchFdStats]);
+  const fetchFdBlog = useCallback(() => { setFdBlogLoading(true); inject(fetchJS('/api/app-founder-blog.php', '__akfdblog')); }, [inject]);
+  const openFdBlog = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBlog(null); setMenuScreen('fdblog'); fetchFdBlog(); }, [clearDetail, closeForm, fetchFdBlog]);
+  const fetchFdSupport = useCallback((filter) => { setFdSupportLoading(true); inject(fetchJS('/api/app-founder-support.php?filter=' + encodeURIComponent(filter || 'open'), '__akfdsup')); }, [inject]);
+  const openFdSupport = useCallback((filter) => { const f = filter || 'open'; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdSupport(null); setFdSupportFilter(f); setMenuScreen('fdsupport'); fetchFdSupport(f); }, [clearDetail, closeForm, fetchFdSupport]);
   const fetchCoti = useCallback(() => { setCotiLoading(true); inject(fetchJS('/api/app-cotisations.php', '__akcoti')); }, [inject]);
   const fetchGrants = useCallback(() => { setGrantsLoading(true); inject(fetchJS('/api/app-grants.php', '__akgrants')); }, [inject]);
   const fetchAssemblies = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-assemblies.php', '__akassemblies')); }, [inject]);
@@ -2813,10 +3027,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchFounder, fetchCoti, fetchGrants, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
 
   const onFounderTile = useCallback((key, filter) => {
-    if (key === 'associations' || key === 'billing') openFdOrgs(filter || (key === 'billing' ? 'unpaid' : 'all'));
-    else if (key === 'support') openMenuScreen('tickets');
-    else if (key === 'stats') openMenuScreen('stats');
-  }, [openFdOrgs, openMenuScreen]);
+    if (key === 'associations') openFdOrgs(filter || 'all');
+    else if (key === 'billing') openFdBilling(filter || 'all');
+    else if (key === 'support') openFdSupport('open');
+    else if (key === 'stats') openFdStats();
+    else if (key === 'blog') openFdBlog();
+  }, [openFdOrgs, openFdBilling, openFdSupport, openFdStats, openFdBlog]);
 
   const onAnalyzeInvoices = useCallback(() => { setInvAILoading(true); inject(fetchJS('/api/app-invoices-ai.php', '__akinvai')); }, [inject]);
   const onCockpit = useCallback(() => { setStatsCockpitLoading(true); inject(fetchJS('/api/app-stats-ai.php', '__akstatsai')); }, [inject]);
@@ -3076,6 +3292,15 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         if (msg.__akfdaction.ok) { fetchFdOrgs(fdOrgsFilter); fetchFounder(); }
         else { Alert.alert('Action impossible', 'Réessaie dans un instant.'); }
       }
+      if (msg && msg.__akfdbill) { setFdBilling(msg.__akfdbill); setFdBillingLoading(false); }
+      if (msg && msg.__akfdpay) {
+        setFdBillBusy(0);
+        if (msg.__akfdpay.ok) { fetchFdBilling(fdBillingFilter); fetchFounder(); }
+        else { Alert.alert('Action impossible', 'Réessaie dans un instant.'); }
+      }
+      if (msg && msg.__akfdstats) { setFdStats(msg.__akfdstats); setFdStatsLoading(false); }
+      if (msg && msg.__akfdblog) { setFdBlog(msg.__akfdblog); setFdBlogLoading(false); }
+      if (msg && msg.__akfdsup) { setFdSupport(msg.__akfdsup); setFdSupportLoading(false); }
       if (msg && msg.__aknotifread && msg.__aknotifread.ok) {
         const r = msg.__aknotifread;
         setKpi((k) => k ? { ...k, notif_unread: r.notif_unread, msg_unread: r.msg_unread, support_unread: r.support_unread } : k);
@@ -3377,6 +3602,20 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 onFilter={(f) => { setFdOrgs(null); setFdOrgsFilter(f); fetchFdOrgs(f); }}
                 onRefresh={() => fetchFdOrgs(fdOrgsFilter)} onBack={() => openMenuScreen('founder')}
                 onAction={doFounderAction} busyId={fdBusyId} />
+            ) : menuScreen === 'fdbilling' ? (
+              <NativeFounderBilling data={fdBilling} loading={fdBillingLoading} filter={fdBillingFilter}
+                onFilter={(f) => { setFdBilling(null); setFdBillingFilter(f); fetchFdBilling(f); }}
+                onRefresh={() => fetchFdBilling(fdBillingFilter)} onBack={() => openMenuScreen('founder')}
+                onPay={doFounderPay} busyId={fdBillBusy} />
+            ) : menuScreen === 'fdstats' ? (
+              <NativeFounderStats data={fdStats} loading={fdStatsLoading} onRefresh={fetchFdStats} onBack={() => openMenuScreen('founder')} />
+            ) : menuScreen === 'fdblog' ? (
+              <NativeFounderBlog data={fdBlog} loading={fdBlogLoading} onRefresh={fetchFdBlog} onBack={() => openMenuScreen('founder')} onWeb={openWeb} />
+            ) : menuScreen === 'fdsupport' ? (
+              <NativeFounderSupport data={fdSupport} loading={fdSupportLoading} filter={fdSupportFilter}
+                onFilter={(f) => { setFdSupport(null); setFdSupportFilter(f); fetchFdSupport(f); }}
+                onRefresh={() => fetchFdSupport(fdSupportFilter)} onBack={() => openMenuScreen('founder')}
+                onOpen={(t) => openWeb('/super-admin/support?id=' + t.id)} />
             ) : (
               <NativeMore
                 orgName={kpi && kpi.org_name}
@@ -3441,7 +3680,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {authed && isFounder && menuScreen !== 'founder' && menuScreen !== 'fdorgs' && !webMode && (
+      {authed && isFounder && !['founder', 'fdorgs', 'fdbilling', 'fdstats', 'fdblog', 'fdsupport'].includes(menuScreen) && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
@@ -4072,6 +4311,31 @@ const styles = StyleSheet.create({
   fcActGoTxt: { fontSize: 13, fontWeight: '800', color: '#fff' },
   fcActNo: { flex: 1, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
   fcActNoTxt: { fontSize: 13, fontWeight: '800', color: '#B91C1C' },
+  fcBlogTile: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 18, padding: 15, marginTop: 2, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
+  fcBlogIc: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#FFFBEB', alignItems: 'center', justifyContent: 'center' },
+
+  /* Fondateur — pages natives (paiements / stats / blog / support) */
+  fcFilters2: { flexDirection: 'row', gap: 8, marginTop: 14, marginBottom: 6, flexWrap: 'wrap' },
+  fcInvCard: { backgroundColor: '#fff', borderRadius: 15, padding: 14, marginTop: 11, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 1 },
+  fcInvAmount: { fontSize: 16, fontWeight: '800', color: INK },
+  fcPayBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: '#059669', borderRadius: 11, paddingVertical: 11, marginTop: 12 },
+  fcPayTxt: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
+  fcStatGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  fcStatCard: { width: '48%', backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  fcStatVal: { fontSize: 22, fontWeight: '800', color: INK, marginTop: 11, letterSpacing: -0.5 },
+  fcStatLb: { fontSize: 12.5, fontWeight: '700', color: '#334155', marginTop: 2 },
+  fcStatSub: { fontSize: 10.5, color: '#8A9A92', marginTop: 2 },
+  fcBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#E7EDEA' },
+  fcBarCol: { flex: 1, alignItems: 'center', gap: 6 },
+  fcBarVal: { fontSize: 11, fontWeight: '800', color: '#334155' },
+  fcBarTrack: { height: 80, justifyContent: 'flex-end' },
+  fcBarFill: { width: 18, borderRadius: 6, backgroundColor: '#059669' },
+  fcBarLbl: { fontSize: 9.5, color: '#94A3B8', fontWeight: '600' },
+  fcArtCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 15, padding: 13, marginTop: 11, borderWidth: 1, borderColor: '#E7EDEA' },
+  fcArtIc: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  fcTicketCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 15, padding: 14, marginTop: 11, borderWidth: 1, borderColor: '#E7EDEA' },
+  fcUnread: { backgroundColor: '#EF4444', borderRadius: 999, minWidth: 20, paddingHorizontal: 6, paddingVertical: 1, alignItems: 'center' },
+  fcUnreadTxt: { color: '#fff', fontSize: 10.5, fontWeight: '900' },
 
   /* Quick actions sheet */
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
