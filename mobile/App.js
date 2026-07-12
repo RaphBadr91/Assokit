@@ -48,6 +48,9 @@ const APP_ONLY_CSS = `
 true;
 `;
 
+// Style « app-only » du formulaire de connexion (le SITE reste inchangé — logo/police NON touchés)
+const LOGIN_CSS = "(function(){ try { if(document.getElementById('ak-login-css')) return true; var s=document.createElement('style'); s.id='ak-login-css'; s.textContent='body{background:radial-gradient(120% 80% at 50% 0%,#E9FBF3 0%,#F3F6F8 45%,#EAF2EE 100%)!important}.login-card{border:1px solid rgba(16,185,129,.12)!important;border-radius:24px!important;box-shadow:0 40px 70px -28px rgba(4,98,74,.35)!important;padding:34px 26px 30px!important}.login-card h1{font-size:27px!important;font-weight:800!important;letter-spacing:-.03em!important}.subtitle{font-size:14px!important}.form-group{margin-bottom:15px!important}.form-group label{font-weight:600!important}.form-group input{padding:15px 16px!important;border-radius:14px!important;border:1.5px solid #E5E7EB!important;font-size:16px!important;background:#F9FAFB!important;transition:all .15s ease!important}.form-group input:focus{border-color:#059669!important;box-shadow:0 0 0 4px rgba(5,150,105,.14)!important;background:#fff!important;outline:none!important}.btn-submit{background:linear-gradient(140deg,#10B981,#059669)!important;border:0!important;border-radius:14px!important;padding:16px!important;font-size:16px!important;font-weight:750!important;box-shadow:0 16px 30px -12px rgba(5,150,105,.65),inset 0 1px 0 rgba(255,255,255,.3)!important;letter-spacing:.01em!important}.forgot-link{color:#059669!important;font-weight:600!important}.footer-note a{color:#059669!important;font-weight:600!important}.error-box{border-radius:12px!important}'; (document.head||document.documentElement).appendChild(s);}catch(e){} return true; })(); true;";
+
 const OPEN_MENU_JS = `
 (function(){ try {
   var sb = document.getElementById('sidebar');
@@ -2800,6 +2803,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           onLoadEnd={() => {
             setLoading(false);
             const u = lastUrl.current || '';
+            if (/\/(connexion|login|signup|mot-de-passe|verifier-email)/.test(u)) {
+              inject(LOGIN_CSS);
+            }
             if (/\/(connexion|login)/.test(u)) {
               inject(CAPTURE_CREDS_JS);
               if (autoCreds && !autoLoginTried.current) { autoLoginTried.current = true; inject(autoLoginJS(autoCreds.email, autoCreds.password)); }
@@ -3191,9 +3197,9 @@ const styles = StyleSheet.create({
 
   /* Fiches détail natives */
   detailWrap: { flex: 1, backgroundColor: '#F4F6FA' },
-  dHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEF2F6' },
-  dBack: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  dTitle: { flex: 1, textAlign: 'center', fontSize: 16.5, fontWeight: '700', color: INK },
+  dHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F4', shadowColor: '#0B3B2A', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2, zIndex: 2 },
+  dBack: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#F3F6F5', alignItems: 'center', justifyContent: 'center' },
+  dTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '750', color: INK, letterSpacing: -0.2 },
   detailContent: { padding: 18, paddingBottom: 40 },
   dName: { fontSize: 24, fontWeight: '800', color: INK, letterSpacing: -0.4 },
   dFolder: { fontSize: 14, color: MUTE, marginTop: 4 },
