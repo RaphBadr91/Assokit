@@ -15,7 +15,8 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 
 $user = function_exists('current_user') ? current_user() : null;
-$is_founder = !empty($user['is_founder']);
+$FOUNDER_EMAILS = ['psiwaneraph@gmail.com'];
+$is_founder = !empty($user['is_founder']) || in_array(strtolower(trim((string) ($user['email'] ?? ''))), $FOUNDER_EMAILS, true);
 $is_sa = $is_founder || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
 if (!$is_sa) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 

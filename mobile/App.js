@@ -181,6 +181,18 @@ const STATUS_META = {
   done: { label: 'Terminé', color: '#2563EB', bg: '#EFF6FF' },
 };
 
+// Assombrit une couleur hex (#RRGGBB) pour un dégradé d'icône premium
+function shade(hex, f) {
+  f = f == null ? 0.78 : f;
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = Math.round(((n >> 16) & 255) * f);
+  const g = Math.round(((n >> 8) & 255) * f);
+  const b = Math.round((n & 255) * f);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
 function fmtEuro(n) {
   n = Number(n) || 0;
   if (n >= 1000) return (n / 1000).toFixed(1).replace('.', ',') + ' k€';
@@ -327,6 +339,108 @@ function WelcomeScreen({ onLogin, onSignup }) {
 }
 
 /* ================================================================== */
+/*  CONNEXION NATIVE (formulaire natif — conforme App Store)           */
+/* ================================================================== */
+function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId, hasFaceId }) {
+  const [email, setEmail] = useState('');
+  const [pass, setPass] = useState('');
+  const [show, setShow] = useState(false);
+  const canSubmit = email.trim().length > 2 && pass.length > 0 && !busy;
+  return (
+    <View style={styles.lgWrap}>
+      <LinearGradient colors={['#E9F7F1', '#F4FAF8', '#E7F5EF']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+      <View style={[styles.lgBlob, styles.lgBlob1]} />
+      <View style={[styles.lgBlob, styles.lgBlob2]} />
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={{ flex: 1 }}>
+        <TouchableOpacity style={styles.lgBack} activeOpacity={0.8} onPress={onBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="chevron-back" size={20} color="#0F172A" />
+          <Text style={styles.lgBackTxt}>Retour</Text>
+        </TouchableOpacity>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={styles.lgScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <View style={styles.lgCard}>
+              <View style={styles.lgBrandRow}>
+                <Text style={styles.lgBrand}>asso<Text style={styles.lgBrandKit}>kit</Text><Text style={styles.lgBrandDot}>.</Text></Text>
+              </View>
+              <Text style={styles.lgTagline}>L'art de mener vos projets</Text>
+
+              <Text style={styles.lgTitle}>Bienvenue</Text>
+              <Text style={styles.lgSub}>Connectez-vous à votre espace Assokit</Text>
+
+              <Text style={styles.lgLabel}>Email</Text>
+              <TextInput
+                style={styles.lgInput}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="vous@association.fr"
+                placeholderTextColor="#9AA7A1"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="username"
+                returnKeyType="next"
+                editable={!busy}
+              />
+
+              <Text style={styles.lgLabel}>Mot de passe</Text>
+              <View style={styles.lgPassRow}>
+                <TextInput
+                  style={styles.lgPassInput}
+                  value={pass}
+                  onChangeText={setPass}
+                  placeholder="••••••••"
+                  placeholderTextColor="#9AA7A1"
+                  secureTextEntry={!show}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType="password"
+                  returnKeyType="go"
+                  onSubmitEditing={() => canSubmit && onSubmit(email.trim(), pass)}
+                  editable={!busy}
+                />
+                <TouchableOpacity onPress={() => setShow((s) => !s)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Ionicons name={show ? 'eye-off' : 'eye'} size={20} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+
+              {error ? (
+                <View style={styles.lgError}>
+                  <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                  <Text style={styles.lgErrorTxt}>{error}</Text>
+                </View>
+              ) : null}
+
+              <TouchableOpacity style={[styles.lgBtn, !canSubmit && styles.lgBtnOff]} activeOpacity={0.9}
+                onPress={() => canSubmit && onSubmit(email.trim(), pass)} disabled={!canSubmit}>
+                {busy ? <ActivityIndicator color="#fff" /> : <><Text style={styles.lgBtnTxt}>Se connecter</Text><Ionicons name="arrow-forward" size={18} color="#fff" /></>}
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={onForgot} activeOpacity={0.7} style={{ alignSelf: 'center', paddingVertical: 6 }}>
+                <Text style={styles.lgForgot}>Mot de passe oublié ?</Text>
+              </TouchableOpacity>
+
+              {hasFaceId ? (
+                <TouchableOpacity style={styles.lgFace} activeOpacity={0.85} onPress={onFaceId}>
+                  <Ionicons name="finger-print" size={19} color="#059669" />
+                  <Text style={styles.lgFaceTxt}>Se connecter avec Face ID</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              <View style={styles.lgDivider} />
+              <Text style={styles.lgFooter}>
+                Pas encore de compte ? <Text style={styles.lgLink} onPress={onDemo}>Créer ma démo</Text>
+              </Text>
+            </View>
+            <Text style={styles.lgHosted}>🇫🇷 Hébergé en France · Conforme RGPD</Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+/* ================================================================== */
 /*  ACCUEIL NATIF (KPIs premium)                                       */
 /* ================================================================== */
 function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
@@ -442,9 +556,9 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
                 <LinearGradient colors={c.g} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.kpiCard}>
                   <View style={styles.kpiGloss} />
                   <View style={styles.kpiTop}>
-                    <View style={[styles.kpiIcon, { backgroundColor: '#fff' }]}>
-                      <Ionicons name={c.icon} size={19} color={c.color} />
-                    </View>
+                    <LinearGradient colors={[c.color, shade(c.color)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.kpiIcon}>
+                      <Ionicons name={c.icon} size={20} color="#fff" />
+                    </LinearGradient>
                     <View style={[styles.kpiDot, { backgroundColor: c.color }]} />
                   </View>
                   <Text style={styles.kpiValue}>{c.value}</Text>
@@ -2449,7 +2563,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const founderInit = useRef(false);
   const autoLoginTried = useRef(false);
   const pendingCreds = useRef(null);
+  const loginAttempted = useRef(false);
+  const authedRef = useRef(false);
   const lastUrl = useRef('');
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginErr, setLoginErr] = useState('');
   const [pdfBusy, setPdfBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -2464,7 +2582,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [invoices, setInvoices] = useState(null);
   const [invLoading, setInvLoading] = useState(false);
-  const [webMode, setWebMode] = useState(false);
+  const [webMode, setWebMode] = useState(startPath === '/signup');
   const [stack, setStack] = useState([]); // pile de fiches détail natives
   const [form, setForm] = useState(null); // { type } formulaire natif ouvert
   const [formErr, setFormErr] = useState('');
@@ -2877,9 +2995,40 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     setCanGoBack(nav.canGoBack);
     const u = nav.url || '';
     lastUrl.current = u;
-    if (/\/(connexion|signup|deconnexion|login|mot-de-passe|verifier-email)/.test(u)) setAuthed(false);
-    else if (u.indexOf('assokit.fr') !== -1) setAuthed(true);
+    const isLogin = /\/(connexion|signup|deconnexion|login|mot-de-passe|verifier-email)/.test(u);
+    if (isLogin) {
+      setAuthed(false);
+      // Retour sur /connexion après une tentative native = identifiants refusés
+      if (loginAttempted.current && /\/connexion/.test(u)) {
+        loginAttempted.current = false;
+        setLoginBusy(false);
+        setLoginErr('Email ou mot de passe incorrect.');
+      }
+    } else if (u.indexOf('assokit.fr') !== -1) {
+      setAuthed(true);
+      loginAttempted.current = false;
+      setLoginBusy(false);
+      setLoginErr('');
+    }
   };
+
+  // Connexion native : remplit + soumet le formulaire web (même session/cookies)
+  const submitLogin = useCallback((email, password) => {
+    pendingCreds.current = { email, password };
+    loginAttempted.current = true;
+    setLoginErr('');
+    setLoginBusy(true);
+    inject(autoLoginJS(email, password));
+    setTimeout(() => {
+      if (!authedRef.current && loginAttempted.current) {
+        loginAttempted.current = false;
+        setLoginBusy(false);
+        setLoginErr('Connexion impossible. Vérifie ta connexion et réessaie.');
+      }
+    }, 9000);
+  }, [inject]);
+
+  useEffect(() => { authedRef.current = authed; if (authed) { setLoginBusy(false); setLoginErr(''); } }, [authed]);
 
   const onMessage = (e) => {
     try {
@@ -3276,9 +3425,23 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             <Text style={styles.floatBackTxt}>Retour</Text>
           </TouchableOpacity>
         )}
+        {!authed && !webMode && (
+          <View style={styles.homeOverlay}>
+            <NativeLogin
+              onSubmit={submitLogin}
+              busy={loginBusy}
+              error={loginErr}
+              onBack={onExitToWelcome}
+              onForgot={() => { setLoginErr(''); openWeb('/mot-de-passe-oublie'); }}
+              onDemo={() => { setLoginErr(''); openWeb('/signup'); }}
+              hasFaceId={!!autoCreds}
+              onFaceId={() => autoCreds && submitLogin(autoCreds.email, autoCreds.password)}
+            />
+          </View>
+        )}
       </View>
 
-      {isFounder && menuScreen !== 'founder' && menuScreen !== 'fdorgs' && !webMode && (
+      {authed && isFounder && menuScreen !== 'founder' && menuScreen !== 'fdorgs' && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
@@ -3291,6 +3454,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         </TouchableOpacity>
       )}
 
+      {authed && (
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
           if (tab.key === 'add') {
@@ -3315,6 +3479,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           );
         })}
       </View>
+      )}
 
       <Modal visible={quickOpen} transparent animationType="fade" onRequestClose={() => setQuickOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setQuickOpen(false)}>
@@ -3944,4 +4109,37 @@ const styles = StyleSheet.create({
   btnGlass: { paddingVertical: 16, alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.45)', borderRadius: 16, overflow: 'hidden' },
   btnGhostTxt: { color: '#fff', fontSize: 16, fontWeight: '700' },
   wFooter: { color: 'rgba(255,255,255,0.9)', fontSize: 12.5, textAlign: 'center', marginTop: 18 },
+
+  /* ===== Connexion native ===== */
+  lgWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#EAF6F1', overflow: 'hidden' },
+  lgBlob: { position: 'absolute', borderRadius: 300 },
+  lgBlob1: { width: 320, height: 320, backgroundColor: 'rgba(12,203,143,0.12)', top: -120, right: -90 },
+  lgBlob2: { width: 300, height: 300, backgroundColor: 'rgba(5,150,105,0.10)', bottom: -110, left: -100 },
+  lgBack: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 14, marginTop: 6, marginLeft: 16 },
+  lgBackTxt: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  lgScroll: { flexGrow: 1, justifyContent: 'center', padding: 20, paddingBottom: 40 },
+  lgCard: { backgroundColor: '#fff', borderRadius: 26, padding: 24, shadowColor: '#0B3B2A', shadowOpacity: 0.1, shadowRadius: 30, shadowOffset: { width: 0, height: 16 }, elevation: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
+  lgBrandRow: { alignItems: 'center' },
+  lgBrand: { fontSize: 27, fontWeight: '800', color: '#111827', letterSpacing: -0.5 },
+  lgBrandKit: { color: '#059669' },
+  lgBrandDot: { color: '#059669' },
+  lgTagline: { fontSize: 13.5, color: '#94A3B8', textAlign: 'center', marginTop: 4, marginBottom: 22 },
+  lgTitle: { fontSize: 30, fontWeight: '800', color: '#0F172A', letterSpacing: -0.6 },
+  lgSub: { fontSize: 14.5, color: '#64748B', marginTop: 4, marginBottom: 22 },
+  lgLabel: { fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 8, marginTop: 4 },
+  lgInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 14, paddingHorizontal: 15, paddingVertical: 14, fontSize: 15.5, color: '#0F172A', marginBottom: 16 },
+  lgPassRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 14, paddingHorizontal: 15, marginBottom: 6 },
+  lgPassInput: { flex: 1, paddingVertical: 14, fontSize: 15.5, color: '#0F172A' },
+  lgError: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#FEF2F2', borderRadius: 11, padding: 11, marginTop: 12, borderWidth: 1, borderColor: '#FECACA' },
+  lgErrorTxt: { flex: 1, fontSize: 13, color: '#B91C1C', fontWeight: '600' },
+  lgBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#059669', borderRadius: 14, paddingVertical: 16, marginTop: 18, shadowColor: '#047857', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+  lgBtnOff: { opacity: 0.55 },
+  lgBtnTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  lgForgot: { color: '#059669', fontSize: 14, fontWeight: '700', marginTop: 12 },
+  lgFace: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6, paddingVertical: 13, borderRadius: 13, borderWidth: 1, borderColor: '#D1FAE5', backgroundColor: '#F0FDF9' },
+  lgFaceTxt: { color: '#059669', fontSize: 14.5, fontWeight: '700' },
+  lgDivider: { height: 1, backgroundColor: '#EEF2F1', marginVertical: 18 },
+  lgFooter: { fontSize: 13.5, color: '#64748B', textAlign: 'center' },
+  lgLink: { color: '#059669', fontWeight: '800' },
+  lgHosted: { fontSize: 12.5, color: '#64748B', textAlign: 'center', marginTop: 18 },
 });

@@ -23,6 +23,11 @@ try {
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
     $first_name = trim((string) ($user['first_name'] ?? ''));
 
+    // Fondateur : forcé pour le compte fondateur (app-only, aucun impact site).
+    $FOUNDER_EMAILS = ['psiwaneraph@gmail.com'];
+    $u_email = strtolower(trim((string) ($user['email'] ?? '')));
+    $is_founder = !empty($user['is_founder']) || in_array($u_email, $FOUNDER_EMAILS, true);
+
     // Organisation
     $stmt = $pdo->prepare("SELECT name FROM organizations WHERE id = ? LIMIT 1");
     $stmt->execute([$org_id]);
@@ -157,8 +162,8 @@ try {
         'ok'           => true,
         'profile'      => $profile,
         'role'         => (string) ($user['role'] ?? 'member'),
-        'is_founder'   => !empty($user['is_founder']),
-        'is_super_admin' => (!empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin'),
+        'is_founder'   => $is_founder,
+        'is_super_admin' => ($is_founder || !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin'),
         'notif_unread' => $notif_unread,
         'msg_unread'   => $msg_unread,
         'support_unread' => $support_unread,

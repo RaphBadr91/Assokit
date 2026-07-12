@@ -6,7 +6,8 @@
  */
 require __DIR__ . '/_app-write-boot.php';
 
-$is_founder = !empty($user['is_founder']);
+$FOUNDER_EMAILS = ['psiwaneraph@gmail.com'];
+$is_founder = !empty($user['is_founder']) || in_array(strtolower(trim((string) ($user['email'] ?? ''))), $FOUNDER_EMAILS, true);
 $is_sa = $is_founder || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
 if (!$is_sa) app_fail(403, 'forbidden');
 
