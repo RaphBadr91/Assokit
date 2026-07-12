@@ -408,9 +408,9 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
             ))}
           </View>
 
-          <TouchableOpacity style={styles.openFull} activeOpacity={0.8} onPress={() => onGoto('/dashboard')}>
+          <TouchableOpacity style={styles.openFull} activeOpacity={0.85} onPress={() => onGoto('/dashboard')}>
             <Text style={styles.openFullTxt}>Ouvrir le tableau de bord complet</Text>
-            <Ionicons name="arrow-forward" size={18} color={BRAND} />
+            <Ionicons name="arrow-forward" size={18} color="#fff" />
           </TouchableOpacity>
         </>
       )}
@@ -3123,7 +3123,7 @@ const styles = StyleSheet.create({
   /* Accueil natif */
   homeScroll: { flex: 1 },
   homeContent: { paddingBottom: 28 },
-  hHeader: { paddingTop: 26, paddingBottom: 26, paddingHorizontal: 22, borderBottomLeftRadius: 26, borderBottomRightRadius: 26 },
+  hHeader: { paddingTop: 26, paddingBottom: 30, paddingHorizontal: 22, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, shadowColor: '#047857', shadowOpacity: 0.28, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
   hHeaderRow: { flexDirection: 'row', alignItems: 'center' },
   hHello: { color: 'rgba(255,255,255,0.9)', fontSize: 16, fontWeight: '500' },
   hName: { color: '#fff', fontSize: 26, fontWeight: '800', letterSpacing: -0.4, marginTop: 2 },
@@ -3135,7 +3135,7 @@ const styles = StyleSheet.create({
   homeLoaderTxt: { color: MUTE, marginTop: 12, fontSize: 14 },
 
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: -14 },
-  kpiCard: { width: '48%', backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 14, shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4, position: 'relative', overflow: 'hidden' },
+  kpiCard: { width: '48%', backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.07, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 4, position: 'relative', overflow: 'hidden' },
   kpiAccent: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
   kpiTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   kpiIcon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
@@ -3143,14 +3143,14 @@ const styles = StyleSheet.create({
   kpiLabel: { fontSize: 14, fontWeight: '600', color: '#334155', marginTop: 2 },
   kpiSub: { fontSize: 12, color: MUTE, marginTop: 3 },
 
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: INK, marginTop: 8, marginBottom: 12, marginHorizontal: 20 },
+  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#94A3B8', marginTop: 10, marginBottom: 12, marginHorizontal: 20, textTransform: 'uppercase', letterSpacing: 0.7 },
   shortcuts: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
-  shortcut: { width: '48%', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 14, marginBottom: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
-  shortcutIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  shortcut: { width: '48%', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 14, marginBottom: 12, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  shortcutIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 12, borderWidth: 1, borderColor: '#D1FAE5' },
   shortcutTxt: { fontSize: 14.5, fontWeight: '600', color: INK },
 
-  openFull: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8, marginHorizontal: 16, paddingVertical: 15, borderRadius: 16, borderWidth: 1.5, borderColor: '#D1FAE5', backgroundColor: '#F0FDF9' },
-  openFullTxt: { fontSize: 15, fontWeight: '700', color: BRAND },
+  openFull: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, marginHorizontal: 16, paddingVertical: 16, borderRadius: 16, backgroundColor: '#059669', shadowColor: '#047857', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+  openFullTxt: { fontSize: 15, fontWeight: '750', color: '#fff' },
   hAvatarImg: { width: 50, height: 50, borderRadius: 15 },
 
   /* Projets natifs */
@@ -3160,7 +3160,7 @@ const styles = StyleSheet.create({
   projSub: { fontSize: 13.5, color: MUTE, marginTop: 2 },
   projNewBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: BRAND, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   projNewTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  projCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, paddingLeft: 20, marginBottom: 12, shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3, position: 'relative', overflow: 'hidden' },
+  projCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, paddingLeft: 20, marginBottom: 12, borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 7 }, elevation: 3, position: 'relative', overflow: 'hidden' },
   projAccent: { position: 'absolute', top: 0, bottom: 0, left: 0, width: 4 },
   projCardTop: { flexDirection: 'row', alignItems: 'flex-start' },
   projName: { fontSize: 16, fontWeight: '700', color: INK },
@@ -3293,7 +3293,7 @@ const styles = StyleSheet.create({
   agSub: { fontSize: 12.5, color: MUTE, marginTop: 2 },
 
   /* Canaux */
-  chanCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  chanCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 15, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
   chanIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginRight: 13 },
   chanName: { fontSize: 15.5, fontWeight: '700', color: INK },
   chanSub: { fontSize: 12.5, color: MUTE, marginTop: 2 },
@@ -3324,14 +3324,14 @@ const styles = StyleSheet.create({
   moreAvatarTxt: { fontSize: 19, fontWeight: '800', color: BRAND },
   moreOrg: { fontSize: 18, fontWeight: '800', color: INK },
   moreSub: { fontSize: 13, color: MUTE, marginTop: 2 },
-  moreGroupTitle: { fontSize: 13, fontWeight: '700', color: '#64748B', marginLeft: 2 },
+  moreGroupTitle: { fontSize: 11, fontWeight: '700', color: '#94A3B8', marginLeft: 2, textTransform: 'uppercase', letterSpacing: 0.6 },
   moreGroupHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   adminTag: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2 },
   adminTagCorner: { position: 'absolute', top: 6, right: 6, backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1, zIndex: 2 },
   adminTagTxt: { fontSize: 9, fontWeight: '800', color: '#B45309', letterSpacing: 0.2 },
   moreGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  moreItem: { width: '31%', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 6, alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
-  moreItemIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  moreItem: { width: '31%', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 6, alignItems: 'center', borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  moreItemIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: '#D1FAE5' },
   moreItemTxt: { fontSize: 12, fontWeight: '600', color: INK, textAlign: 'center' },
   founderBlock: { marginBottom: 22 },
   founderBanner: { flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#1F1804', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(252,211,77,0.35)', paddingVertical: 15, paddingHorizontal: 16, marginBottom: 12 },
@@ -3363,7 +3363,7 @@ const styles = StyleSheet.create({
   barLbl: { fontSize: 10.5, color: MUTE, marginTop: 6 },
 
   /* Notifications */
-  notifCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff', borderRadius: 14, padding: 13, marginBottom: 8, shadowColor: '#0F172A', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
+  notifCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff', borderRadius: 15, padding: 14, marginBottom: 9, borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.045, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 1 },
   notifUnread: { backgroundColor: '#F7FFFC', borderWidth: 1, borderColor: '#D1FAE5' },
   notifIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   notifTitle: { fontSize: 14, fontWeight: '600', color: INK, lineHeight: 19 },
