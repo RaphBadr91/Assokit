@@ -27,6 +27,10 @@ $ROLE_LABELS = [
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    // Seuls les admins (ou fondateur/super-admin) voient les coordonnées des membres.
+    $is_admin = (($user['role'] ?? '') === 'admin')
+        || !empty($user['is_super_admin']) || !empty($user['is_founder'])
+        || (($user['role'] ?? '') === 'super_admin');
 
     $stmt = $pdo->prepare("
         SELECT u.id, u.first_name, u.last_name, u.email, u.role,
@@ -67,10 +71,10 @@ try {
         $role = (string) ($r['role'] ?? 'member');
         $members[] = [
             'id'       => (int) $r['id'],
-            'name'     => $full !== '' ? $full : (string) $r['email'],
+            'name'     => $full !== '' ? $full : ($is_admin ? (string) $r['email'] : 'Membre'),
             'initials' => $ini,
-            'email'    => (string) ($r['email'] ?? ''),
-            'city'     => (string) ($r['city'] ?? ''),
+            'email'    => $is_admin ? (string) ($r['email'] ?? '') : '',
+            'city'     => $is_admin ? (string) ($r['city'] ?? '') : '',
             'role'     => $role,
             'role_label' => $ROLE_LABELS[$role] ?? ucfirst($role),
             'color'    => function_exists('folder_color_hex') ? folder_color_hex((string) ($r['avatar_color'] ?? 'blue')) : '#3B82F6',
@@ -78,7 +82,7 @@ try {
         ];
     }
 
-    echo json_encode(['ok' => true, 'members' => $members], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'admin' => $is_admin, 'members' => $members], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-members] ' . $e->getMessage());
     http_response_code(500);

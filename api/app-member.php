@@ -28,6 +28,11 @@ function fdate($v) {
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    $is_admin = (($user['role'] ?? '') === 'admin')
+        || !empty($user['is_super_admin']) || !empty($user['is_founder'])
+        || (($user['role'] ?? '') === 'super_admin');
+    // Un membre peut toujours consulter sa propre fiche complète.
+    $self = ((int) ($user['id'] ?? 0) === (int) ($_GET['id'] ?? 0));
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
 
@@ -80,15 +85,17 @@ try {
     } catch (Throwable $e) {}
 
     $role = (string) ($m['role'] ?? 'member');
+    $can = $is_admin || $self;
     echo json_encode([
         'ok' => true,
+        'admin' => $can,
         'member' => [
             'id'          => (int) $m['id'],
-            'name'        => trim($fn . ' ' . $ln) ?: (string) $m['email'],
+            'name'        => trim($fn . ' ' . $ln) ?: ($can ? (string) $m['email'] : 'Membre'),
             'initials'    => $ini,
-            'email'       => (string) ($m['email'] ?? ''),
-            'phone'       => (string) ($m['phone'] ?? ''),
-            'city'        => (string) ($m['city'] ?? ''),
+            'email'       => $can ? (string) ($m['email'] ?? '') : '',
+            'phone'       => $can ? (string) ($m['phone'] ?? '') : '',
+            'city'        => $can ? (string) ($m['city'] ?? '') : '',
             'role'        => $role,
             'role_label'  => $ROLE_LABELS[$role] ?? ucfirst($role),
             'color'       => function_exists('folder_color_hex') ? folder_color_hex((string) ($m['avatar_color'] ?? 'blue')) : '#3B82F6',

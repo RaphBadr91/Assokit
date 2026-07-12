@@ -34,6 +34,9 @@ function fd($v) {
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    $is_admin = (($user['role'] ?? '') === 'admin')
+        || !empty($user['is_super_admin']) || !empty($user['is_founder'])
+        || (($user['role'] ?? '') === 'super_admin');
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
 
@@ -44,6 +47,25 @@ try {
 
     $name = trim((string) ($c['display_name'] ?? '')) ?: (string) ($c['email'] ?? 'Client');
     $ini = strtoupper(function_exists('mb_substr') ? mb_substr($name, 0, 2) : substr($name, 0, 2));
+
+    // Membre non-admin : accès au nom uniquement, aucune coordonnée ni facturation.
+    if (!$is_admin) {
+        echo json_encode([
+            'ok' => true,
+            'admin' => false,
+            'client' => [
+                'id'       => (int) $c['id'],
+                'name'     => $name,
+                'initials' => $ini !== '' ? $ini : '?',
+                'type'     => (string) ($c['client_type'] ?? 'company'),
+                'email'    => '', 'phone' => '', 'city' => '', 'address' => '',
+                'siren'    => '', 'vat_number' => '',
+            ],
+            'stats'    => ['nb' => 0, 'total' => 0, 'paid' => 0, 'pending' => 0, 'overdue' => 0],
+            'invoices' => [],
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     // Adresse composee
     $addr = array_filter([
@@ -84,6 +106,7 @@ try {
 
     echo json_encode([
         'ok' => true,
+        'admin' => true,
         'client' => [
             'id'         => (int) $c['id'],
             'name'       => $name,

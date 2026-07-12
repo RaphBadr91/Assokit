@@ -332,18 +332,40 @@ function WelcomeScreen({ onLogin, onSignup }) {
 function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
   const k = (data && data.kpis) || {};
   const isTpe = profile === 'tpe';
+
+  // Métrique vedette (spotlight) — cœur du dashboard, effet verre liquide
+  const spot = isTpe
+    ? {
+        label: 'Chiffre d\'affaires encaissé',
+        value: fmtEuro(k.ca_paid),
+        icon: 'trending-up',
+        path: '/mon-asso-factures',
+        pct: (() => { const t = (k.ca_paid || 0) + (k.impayes || 0); return t > 0 ? Math.round(((k.ca_paid || 0) / t) * 100) : 0; })(),
+        barLabel: fmtEuro(k.impayes) + ' en attente',
+        chip: (k.factures ?? 0) + ' facture' + ((k.factures ?? 0) > 1 ? 's' : ''),
+      }
+    : {
+        label: 'Budget engagé',
+        value: fmtEuro(k.budget_used),
+        icon: 'wallet',
+        path: '/projets',
+        pct: (k.budget_planned > 0 ? Math.min(100, Math.round(((k.budget_used || 0) / k.budget_planned) * 100)) : 0),
+        barLabel: 'sur ' + fmtEuro(k.budget_planned) + ' prévus',
+        chip: (k.projets_actifs ?? 0) + ' projet' + ((k.projets_actifs ?? 0) > 1 ? 's' : '') + ' actif' + ((k.projets_actifs ?? 0) > 1 ? 's' : ''),
+      };
+
   const cards = isTpe
     ? [
-        { icon: 'briefcase', color: '#2563EB', bg: '#EFF6FF', label: 'Clients', value: String(k.clients ?? 0), sub: 'au total', path: '/mon-asso-clients' },
-        { icon: 'document-text', color: '#059669', bg: '#ECFDF5', label: 'Devis en cours', value: String(k.devis_encours ?? 0), sub: 'à relancer', path: '/mon-asso-devis' },
-        { icon: 'wallet', color: '#7C3AED', bg: '#F5F3FF', label: 'CA encaissé', value: fmtEuro(k.ca_paid), sub: (k.factures ?? 0) + ' facture' + ((k.factures ?? 0) > 1 ? 's' : ''), path: '/mon-asso-factures' },
-        { icon: 'alert-circle', color: '#D97706', bg: '#FFFBEB', label: 'Impayés', value: fmtEuro(k.impayes), sub: 'à recouvrer', path: '/mon-asso-factures' },
+        { icon: 'briefcase', color: '#2563EB', g: ['#EFF6FF', '#DCEAFE'], label: 'Clients', value: String(k.clients ?? 0), sub: 'au total', path: '/mon-asso-clients' },
+        { icon: 'document-text', color: '#059669', g: ['#ECFDF5', '#D1FAE5'], label: 'Devis en cours', value: String(k.devis_encours ?? 0), sub: 'à relancer', path: '/mon-asso-devis' },
+        { icon: 'card', color: '#7C3AED', g: ['#F5F3FF', '#E9E2FE'], label: 'Factures', value: String(k.factures ?? 0), sub: 'émises', path: '/mon-asso-factures' },
+        { icon: 'alert-circle', color: '#D97706', g: ['#FFFBEB', '#FEF0C7'], label: 'Impayés', value: fmtEuro(k.impayes), sub: 'à recouvrer', path: '/mon-asso-factures' },
       ]
     : [
-        { icon: 'folder', color: '#059669', bg: '#ECFDF5', label: 'Projets actifs', value: String(k.projets_actifs ?? 0), sub: 'en cours', path: '/projets' },
-        { icon: 'people', color: '#2563EB', bg: '#EFF6FF', label: 'Membres', value: String(k.membres ?? 0), sub: (k.membres_nouveaux > 0 ? '+' + k.membres_nouveaux + ' en 30j' : 'actifs'), path: '/adherents' },
-        { icon: 'calendar', color: '#D97706', bg: '#FFFBEB', label: 'Événements', value: String(k.evenements ?? 0), sub: 'à venir', path: '/agenda' },
-        { icon: 'wallet', color: '#7C3AED', bg: '#F5F3FF', label: 'Budget engagé', value: fmtEuro(k.budget_used), sub: 'sur ' + fmtEuro(k.budget_planned), path: '/projets' },
+        { icon: 'folder', color: '#059669', g: ['#ECFDF5', '#D1FAE5'], label: 'Projets actifs', value: String(k.projets_actifs ?? 0), sub: 'en cours', path: '/projets' },
+        { icon: 'people', color: '#2563EB', g: ['#EFF6FF', '#DCEAFE'], label: 'Membres', value: String(k.membres ?? 0), sub: (k.membres_nouveaux > 0 ? '+' + k.membres_nouveaux + ' en 30j' : 'actifs'), path: '/adherents' },
+        { icon: 'calendar', color: '#D97706', g: ['#FFFBEB', '#FEF0C7'], label: 'Événements', value: String(k.evenements ?? 0), sub: 'à venir', path: '/agenda' },
+        { icon: 'sparkles', color: '#7C3AED', g: ['#F5F3FF', '#E9E2FE'], label: 'Nouveaux', value: String(k.membres_nouveaux ?? 0), sub: 'ce mois-ci', path: '/adherents' },
       ];
   const shortcuts = isTpe ? SHORTCUTS_TPE : SHORTCUTS_ASSO;
 
@@ -354,27 +376,35 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
     >
-      <LinearGradient
-        colors={['#0BBE85', '#059669', '#036B4E']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.hHeader}
-      >
-        <View style={styles.hHeaderRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.hHello}>{greeting()}{data && data.first_name ? ',' : ''}</Text>
-            {data && data.first_name ? <Text style={styles.hName}>{data.first_name} 👋</Text> : null}
-            <Text style={styles.hOrg}>{(data && data.org_name) || ' '}</Text>
+      <View style={styles.hHeaderWrap}>
+        <LinearGradient
+          colors={['#0CCB8F', '#059669', '#025138']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hHeader}
+        >
+          {/* Orbes décoratifs — profondeur "4D" */}
+          <View style={styles.hOrb1} />
+          <View style={styles.hOrb2} />
+          <View style={styles.hHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.hHello}>{greeting()}{data && data.first_name ? ',' : ''}</Text>
+              {data && data.first_name ? <Text style={styles.hName}>{data.first_name} 👋</Text> : null}
+              <View style={styles.hOrgPill}>
+                <View style={styles.hOrgDot} />
+                <Text style={styles.hOrg} numberOfLines={1}>{(data && data.org_name) || ' '}</Text>
+              </View>
+            </View>
+            <View style={styles.hAvatar}>
+              {data && data.org_logo ? (
+                <Image source={{ uri: data.org_logo }} style={styles.hAvatarImg} resizeMode="cover" />
+              ) : (
+                <Text style={styles.hAvatarTxt}>{(data && data.org_initials) || '·'}</Text>
+              )}
+            </View>
           </View>
-          <View style={styles.hAvatar}>
-            {data && data.org_logo ? (
-              <Image source={{ uri: data.org_logo }} style={styles.hAvatarImg} resizeMode="cover" />
-            ) : (
-              <Text style={styles.hAvatarTxt}>{(data && data.org_initials) || '·'}</Text>
-            )}
-          </View>
-        </View>
-      </LinearGradient>
+        </LinearGradient>
+      </View>
 
       {!data ? (
         <View style={styles.homeLoader}>
@@ -383,18 +413,44 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
         </View>
       ) : (
         <>
+          {/* Carte vedette en verre liquide, flottant sur le header */}
+          <TouchableOpacity activeOpacity={0.9} onPress={() => onGoto(spot.path)} style={styles.spotShadow}>
+            <BlurView intensity={38} tint="light" style={styles.spotCard}>
+              <View style={styles.spotGloss} />
+              <View style={styles.spotTopRow}>
+                <View style={styles.spotIconWrap}>
+                  <Ionicons name={spot.icon} size={17} color="#065F46" />
+                </View>
+                <Text style={styles.spotLabel}>{spot.label}</Text>
+                <View style={styles.spotChip}><Text style={styles.spotChipTxt}>{spot.chip}</Text></View>
+              </View>
+              <Text style={styles.spotValue}>{spot.value}</Text>
+              <View style={styles.spotBarTrack}>
+                <LinearGradient colors={['#0CCB8F', '#059669']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={[styles.spotBarFill, { width: Math.max(6, spot.pct) + '%' }]} />
+              </View>
+              <View style={styles.spotBarMeta}>
+                <Text style={styles.spotBarPct}>{spot.pct}%</Text>
+                <Text style={styles.spotBarLabel}>{spot.barLabel}</Text>
+              </View>
+            </BlurView>
+          </TouchableOpacity>
+
           <View style={styles.kpiGrid}>
             {cards.map((c) => (
-              <TouchableOpacity key={c.label} style={styles.kpiCard} activeOpacity={0.85} onPress={() => onGoto(c.path)}>
-                <View style={[styles.kpiAccent, { backgroundColor: c.color }]} />
-                <View style={styles.kpiTop}>
-                  <View style={[styles.kpiIcon, { backgroundColor: c.bg }]}>
-                    <Ionicons name={c.icon} size={20} color={c.color} />
+              <TouchableOpacity key={c.label} style={styles.kpiShadow} activeOpacity={0.88} onPress={() => onGoto(c.path)}>
+                <LinearGradient colors={c.g} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.kpiCard}>
+                  <View style={styles.kpiGloss} />
+                  <View style={styles.kpiTop}>
+                    <View style={[styles.kpiIcon, { backgroundColor: '#fff' }]}>
+                      <Ionicons name={c.icon} size={19} color={c.color} />
+                    </View>
+                    <View style={[styles.kpiDot, { backgroundColor: c.color }]} />
                   </View>
-                </View>
-                <Text style={styles.kpiValue}>{c.value}</Text>
-                <Text style={styles.kpiLabel}>{c.label}</Text>
-                <Text style={styles.kpiSub}>{c.sub}</Text>
+                  <Text style={styles.kpiValue}>{c.value}</Text>
+                  <Text style={styles.kpiLabel}>{c.label}</Text>
+                  <Text style={styles.kpiSub}>{c.sub}</Text>
+                </LinearGradient>
               </TouchableOpacity>
             ))}
           </View>
@@ -407,13 +463,16 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
                   <Ionicons name={s.icon} size={22} color={BRAND} />
                 </View>
                 <Text style={styles.shortcutTxt}>{s.label}</Text>
+                <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
               </TouchableOpacity>
             ))}
           </View>
 
-          <TouchableOpacity style={styles.openFull} activeOpacity={0.85} onPress={() => onGoto('/dashboard')}>
-            <Text style={styles.openFullTxt}>Ouvrir le tableau de bord complet</Text>
-            <Ionicons name="arrow-forward" size={18} color="#fff" />
+          <TouchableOpacity style={styles.openFullShadow} activeOpacity={0.9} onPress={() => onGoto('/dashboard')}>
+            <LinearGradient colors={['#0CCB8F', '#047857']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.openFull}>
+              <Text style={styles.openFullTxt}>Ouvrir le tableau de bord complet</Text>
+              <Ionicons name="arrow-forward" size={18} color="#fff" />
+            </LinearGradient>
           </TouchableOpacity>
         </>
       )}
@@ -827,19 +886,28 @@ function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) 
           </View>
         </View>
 
-        <Text style={styles.dSection}>Contact</Text>
-        <View style={styles.dCard}>
-          <InfoRow icon="mail" label="Email" value={m.email} onPress={m.email ? () => onWeb('mailto:' + m.email) : null} />
-          <InfoRow icon="call" label="Téléphone" value={m.phone} />
-          <InfoRow icon="location" label="Ville" value={m.city} />
-        </View>
+        {d.admin === false ? (
+          <View style={styles.dLockCard}>
+            <Ionicons name="lock-closed" size={18} color="#94A3B8" />
+            <Text style={styles.dLockTxt}>Les coordonnées des membres sont réservées aux administrateurs de l'association.</Text>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.dSection}>Contact</Text>
+            <View style={styles.dCard}>
+              <InfoRow icon="mail" label="Email" value={m.email} onPress={m.email ? () => onWeb('mailto:' + m.email) : null} />
+              <InfoRow icon="call" label="Téléphone" value={m.phone} />
+              <InfoRow icon="location" label="Ville" value={m.city} />
+            </View>
 
-        <Text style={styles.dSection}>Adhésion</Text>
-        <View style={styles.dCard}>
-          <InfoRow icon="calendar" label="Adhérent depuis" value={m.adhesion_since} />
-          <InfoRow icon="time" label="Valide jusqu'au" value={m.adhesion_until} />
-          <InfoRow icon="log-in" label="Dernière connexion" value={m.last_login} />
-        </View>
+            <Text style={styles.dSection}>Adhésion</Text>
+            <View style={styles.dCard}>
+              <InfoRow icon="calendar" label="Adhérent depuis" value={m.adhesion_since} />
+              <InfoRow icon="time" label="Valide jusqu'au" value={m.adhesion_until} />
+              <InfoRow icon="log-in" label="Dernière connexion" value={m.last_login} />
+            </View>
+          </>
+        )}
 
         {d.projects && d.projects.length > 0 && (
           <>
@@ -861,10 +929,12 @@ function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) 
           </>
         )}
 
-        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/adherent?id=' + m.id)}>
-          <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
-          <Ionicons name="open-outline" size={18} color={BRAND} />
-        </TouchableOpacity>
+        {d.admin === false ? null : (
+          <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/adherent?id=' + m.id)}>
+            <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
+            <Ionicons name="open-outline" size={18} color={BRAND} />
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </View>
   );
@@ -887,6 +957,13 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
           <Text style={styles.dFolder}>{c.type === 'individual' ? 'Particulier' : 'Entreprise'}</Text>
         </View>
 
+        {d.admin === false ? (
+          <View style={styles.dLockCard}>
+            <Ionicons name="lock-closed" size={18} color="#94A3B8" />
+            <Text style={styles.dLockTxt}>Le fichier client (coordonnées et facturation) est réservé aux administrateurs.</Text>
+          </View>
+        ) : (
+        <>
         <View style={styles.miniKpiRow}>
           <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé</Text></View>
           <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#B45309' }]}>{fmtEuro((s.pending || 0) + (s.overdue || 0))}</Text><Text style={styles.miniKpiLbl}>En attente</Text></View>
@@ -901,8 +978,10 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
           <InfoRow icon="business" label="SIREN" value={c.siren} />
           <InfoRow icon="pricetag" label="N° TVA" value={c.vat_number} />
         </View>
+        </>
+        )}
 
-        {d.invoices && d.invoices.length > 0 && (
+        {d.admin !== false && d.invoices && d.invoices.length > 0 && (
           <>
             <Text style={styles.dSection}>Factures</Text>
             {d.invoices.map((inv) => {
@@ -923,10 +1002,12 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
           </>
         )}
 
-        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-client-detail?id=' + c.id)}>
-          <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
-          <Ionicons name="open-outline" size={18} color={BRAND} />
-        </TouchableOpacity>
+        {d.admin === false ? null : (
+          <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-client-detail?id=' + c.id)}>
+            <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
+            <Ionicons name="open-outline" size={18} color={BRAND} />
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </View>
   );
@@ -1692,7 +1773,7 @@ const FD_KPI = [
   { key: 'ia_nb', label: 'Générations IA', color: '#60A5FA', glow: ['#93C5FD', '#3B82F6'], icon: 'sparkles', fmt: (k) => String(k.ia_nb ?? 0), sub: (k) => fmtEuro(k.ia_cost) + ' dépensés' },
 ];
 
-function NativeFounder({ data, loading, onRefresh, onBack, onOpenWeb }) {
+function NativeFounder({ data, loading, onRefresh, onBack, onOpenWeb, hasAsso, onGotoAsso }) {
   const k = (data && data.kpis) || {};
   const sig = (data && data.signals) || {};
   const orgs = (data && data.orgs) || [];
@@ -1710,7 +1791,13 @@ function NativeFounder({ data, loading, onRefresh, onBack, onOpenWeb }) {
             <Ionicons name="chevron-back" size={20} color="#EAF2EE" />
           </TouchableOpacity>
           <Text style={styles.fdTopTitle}>Espace Fondateur</Text>
-          <View style={{ width: 36 }} />
+          {hasAsso ? (
+            <TouchableOpacity style={styles.fdAssoBtn} activeOpacity={0.85} onPress={onGotoAsso}>
+              <Ionicons name="business" size={13} color="#0B0F0D" />
+              <Text style={styles.fdAssoTxt}>Mon asso</Text>
+              <Ionicons name="arrow-forward" size={13} color="#0B0F0D" />
+            </TouchableOpacity>
+          ) : <View style={{ width: 40 }} />}
         </View>
       </SafeAreaView>
       {!data ? (
@@ -2223,6 +2310,7 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
 function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, onLogout, onExitToWelcome }) {
   const webRef = useRef(null);
   const pushRegistered = useRef(false);
+  const founderInit = useRef(false);
   const autoLoginTried = useRef(false);
   const pendingCreds = useRef(null);
   const lastUrl = useRef('');
@@ -2560,6 +2648,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (authed && !csrf) inject(FETCH_CSRF_JS);
   }, [authed, csrf, inject]);
 
+  // Le Fondateur atterrit directement sur son cockpit natif (une seule fois au lancement)
+  useEffect(() => {
+    if (authed && kpi && kpi.is_founder && !founderInit.current) {
+      founderInit.current = true;
+      openMenuScreen('founder');
+    }
+  }, [authed, kpi, openMenuScreen]);
+
   // Enregistre le token de notifications push une fois connecté
   useEffect(() => {
     if (authed && csrf && pushToken && !pushRegistered.current) {
@@ -2778,6 +2874,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     }
   };
 
+  // Déconnexion propre : on ferme la session côté serveur en arrière-plan
+  // puis on revient à l'écran d'accueil natif (jamais le site à l'écran).
+  const doLogout = useCallback(() => {
+    if (onClearCreds) onClearCreds();
+    autoLoginTried.current = true;
+    setMenuScreen(null); setOpenChannel(null); clearDetail(); closeForm(); setWebMode(false);
+    inject(gotoJS('/deconnexion.php'));
+    setTimeout(() => { if (onExitToWelcome) onExitToWelcome(); }, 400);
+  }, [onClearCreds, inject, onExitToWelcome, clearDetail, closeForm]);
+
   const openProject = (id) => pushDetail('project', id);
   const openInvoice = (id) => pushDetail('invoice', id);
   const openPerson = (id) => pushDetail(isTpe ? 'client' : 'member', id);
@@ -2924,7 +3030,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'settings' ? (
               <NativeSettings data={account} onBack={() => setMenuScreen(null)} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
                 onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb}
-                onLogout={() => { if (onClearCreds) onClearCreds(); setMenuScreen(null); setActive('accueil'); setWebMode(true); autoLoginTried.current = true; inject(gotoJS('/deconnexion.php')); }} />
+                onLogout={doLogout} />
             ) : menuScreen === 'messages' ? (
               openChannel ? (
                 <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg}
@@ -2933,7 +3039,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 <NativeChannels data={channels} loading={channelsLoading} onRefresh={fetchChannels} onOpen={openChannelFn} onBack={() => setMenuScreen(null)} />
               )
             ) : menuScreen === 'founder' ? (
-              <NativeFounder data={founderData} loading={founderLoading} onRefresh={fetchFounder} onBack={() => setMenuScreen(null)} onOpenWeb={openWeb} />
+              <NativeFounder data={founderData} loading={founderLoading} onRefresh={fetchFounder} onBack={() => { setMenuScreen(null); setActive('accueil'); }} onOpenWeb={openWeb} hasAsso={!!(kpi && kpi.org_name)} onGotoAsso={() => { setMenuScreen(null); setActive('accueil'); }} />
             ) : (
               <NativeMore
                 orgName={kpi && kpi.org_name}
@@ -2943,7 +3049,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 isAdmin={!!(kpi && (kpi.role === 'admin' || kpi.is_founder))}
                 counts={{ msg: kpi && kpi.msg_unread, support: kpi && kpi.support_unread, notif: kpi && kpi.notif_unread }}
                 onNav={onMoreNav}
-                onLogout={() => { setMenuScreen(null); setWebMode(true); inject(gotoJS('/deconnexion.php')); }}
+                onLogout={doLogout}
               />
             )}
           </View>
@@ -3129,35 +3235,59 @@ const styles = StyleSheet.create({
   /* Accueil natif */
   homeScroll: { flex: 1 },
   homeContent: { paddingBottom: 28 },
-  hHeader: { paddingTop: 26, paddingBottom: 30, paddingHorizontal: 22, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, shadowColor: '#047857', shadowOpacity: 0.28, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
+  hHeaderWrap: { borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', shadowColor: '#047857', shadowOpacity: 0.30, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
+  hHeader: { paddingTop: 28, paddingBottom: 54, paddingHorizontal: 22, position: 'relative', overflow: 'hidden' },
+  hOrb1: { position: 'absolute', top: -60, right: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.14)' },
+  hOrb2: { position: 'absolute', bottom: -70, left: -50, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(3,81,56,0.35)' },
   hHeaderRow: { flexDirection: 'row', alignItems: 'center' },
-  hHello: { color: 'rgba(255,255,255,0.9)', fontSize: 16, fontWeight: '500' },
-  hName: { color: '#fff', fontSize: 26, fontWeight: '800', letterSpacing: -0.4, marginTop: 2 },
-  hOrg: { color: 'rgba(255,255,255,0.9)', fontSize: 14, marginTop: 6, fontWeight: '500' },
-  hAvatar: { width: 50, height: 50, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
+  hHello: { color: 'rgba(255,255,255,0.92)', fontSize: 16, fontWeight: '500' },
+  hName: { color: '#fff', fontSize: 27, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
+  hOrgPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: 999, paddingVertical: 5, paddingHorizontal: 11, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', maxWidth: '92%' },
+  hOrgDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#6EE7B7' },
+  hOrg: { color: '#fff', fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  hAvatar: { width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
   hAvatarTxt: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  hAvatarImg: { width: 52, height: 52, borderRadius: 16 },
 
   homeLoader: { paddingTop: 60, alignItems: 'center' },
   homeLoaderTxt: { color: MUTE, marginTop: 12, fontSize: 14 },
 
-  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: -14 },
-  kpiCard: { width: '48%', backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.07, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 4, position: 'relative', overflow: 'hidden' },
-  kpiAccent: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
+  /* Carte vedette — verre liquide */
+  spotShadow: { marginHorizontal: 16, marginTop: -34, borderRadius: 24, shadowColor: '#025138', shadowOpacity: 0.20, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 9 },
+  spotCard: { borderRadius: 24, padding: 18, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
+  spotGloss: { position: 'absolute', top: 0, left: 0, right: 0, height: 46, backgroundColor: 'rgba(255,255,255,0.35)' },
+  spotTopRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  spotIconWrap: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#D1FAE5', alignItems: 'center', justifyContent: 'center' },
+  spotLabel: { flex: 1, fontSize: 12.5, fontWeight: '700', color: '#065F46', letterSpacing: 0.2 },
+  spotChip: { backgroundColor: 'rgba(5,150,105,0.12)', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+  spotChipTxt: { fontSize: 10.5, fontWeight: '700', color: '#047857' },
+  spotValue: { fontSize: 34, fontWeight: '800', color: '#052E23', letterSpacing: -1, marginTop: 12 },
+  spotBarTrack: { height: 9, borderRadius: 6, backgroundColor: 'rgba(6,95,70,0.10)', marginTop: 14, overflow: 'hidden' },
+  spotBarFill: { height: 9, borderRadius: 6 },
+  spotBarMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  spotBarPct: { fontSize: 13, fontWeight: '800', color: '#047857' },
+  spotBarLabel: { fontSize: 12, fontWeight: '500', color: '#64748B' },
+
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: 18 },
+  kpiShadow: { width: '48%', marginBottom: 14, borderRadius: 22, shadowColor: '#0B3B2A', shadowOpacity: 0.10, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
+  kpiCard: { borderRadius: 22, padding: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)' },
+  kpiGloss: { position: 'absolute', top: 0, left: 0, right: 0, height: 40, backgroundColor: 'rgba(255,255,255,0.45)' },
   kpiTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  kpiIcon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  kpiValue: { fontSize: 30, fontWeight: '800', color: INK, marginTop: 12, letterSpacing: -0.5 },
-  kpiLabel: { fontSize: 14, fontWeight: '600', color: '#334155', marginTop: 2 },
-  kpiSub: { fontSize: 12, color: MUTE, marginTop: 3 },
+  kpiIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', shadowColor: '#0B3B2A', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  kpiDot: { width: 8, height: 8, borderRadius: 5 },
+  kpiValue: { fontSize: 30, fontWeight: '800', color: INK, marginTop: 14, letterSpacing: -0.5 },
+  kpiLabel: { fontSize: 14, fontWeight: '700', color: '#1E293B', marginTop: 2 },
+  kpiSub: { fontSize: 12, color: '#64748B', marginTop: 3, fontWeight: '500' },
 
-  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#94A3B8', marginTop: 10, marginBottom: 12, marginHorizontal: 20, textTransform: 'uppercase', letterSpacing: 0.7 },
+  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#94A3B8', marginTop: 14, marginBottom: 12, marginHorizontal: 20, textTransform: 'uppercase', letterSpacing: 0.7 },
   shortcuts: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
-  shortcut: { width: '48%', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 14, marginBottom: 12, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  shortcutIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 12, borderWidth: 1, borderColor: '#D1FAE5' },
-  shortcutTxt: { fontSize: 14.5, fontWeight: '600', color: INK },
+  shortcut: { width: '48%', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 15, paddingHorizontal: 13, marginBottom: 12, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  shortcutIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 10, borderWidth: 1, borderColor: '#D1FAE5' },
+  shortcutTxt: { flex: 1, fontSize: 14, fontWeight: '600', color: INK },
 
-  openFull: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, marginHorizontal: 16, paddingVertical: 16, borderRadius: 16, backgroundColor: '#059669', shadowColor: '#047857', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+  openFullShadow: { marginTop: 10, marginHorizontal: 16, borderRadius: 16, shadowColor: '#047857', shadowOpacity: 0.32, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+  openFull: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16 },
   openFullTxt: { fontSize: 15, fontWeight: '750', color: '#fff' },
-  hAvatarImg: { width: 50, height: 50, borderRadius: 15 },
 
   /* Projets natifs */
   projWrap: { flex: 1, backgroundColor: '#F4F6FA' },
@@ -3209,6 +3339,8 @@ const styles = StyleSheet.create({
   dCardStrong: { fontSize: 14.5, fontWeight: '800', color: INK },
   dSteps: { fontSize: 12.5, color: MUTE, marginTop: 8 },
   dSection: { fontSize: 15, fontWeight: '700', color: INK, marginTop: 22, marginBottom: 2 },
+  dLockCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F1F5F9', borderRadius: 16, padding: 16, marginTop: 18, borderWidth: 1, borderColor: '#E2E8F0' },
+  dLockTxt: { flex: 1, fontSize: 13, lineHeight: 19, color: '#64748B', fontWeight: '500' },
   dText: { fontSize: 14.5, color: '#334155', lineHeight: 21, marginTop: 8 },
   stepRow: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff', borderRadius: 14, padding: 14, marginTop: 8 },
   stepTitle: { fontSize: 14.5, fontWeight: '600', color: INK },
@@ -3451,6 +3583,8 @@ const styles = StyleSheet.create({
   fdTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
   fdBack: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#18211C', alignItems: 'center', justifyContent: 'center' },
   fdTopTitle: { fontSize: 15, fontWeight: '700', color: '#EAF2EE' },
+  fdAssoBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FCD34D', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  fdAssoTxt: { fontSize: 12, fontWeight: '800', color: '#0B0F0D', letterSpacing: 0.2 },
   fdHelloRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   fdHello: { fontSize: 24, fontWeight: '800', color: '#EAF2EE', letterSpacing: -0.5 },
   fdSeal: { backgroundColor: '#FCD34D', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },

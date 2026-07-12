@@ -20,6 +20,10 @@ if (empty($_SESSION['user_id'])) {
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    // Seuls les admins (ou fondateur/super-admin) accèdent aux coordonnées du fichier client.
+    $is_admin = (($user['role'] ?? '') === 'admin')
+        || !empty($user['is_super_admin']) || !empty($user['is_founder'])
+        || (($user['role'] ?? '') === 'super_admin');
 
     $stmt = $pdo->prepare("
         SELECT c.id, c.display_name, c.email, c.city, c.client_type,
@@ -42,14 +46,14 @@ try {
             'id'         => (int) $r['id'],
             'name'       => $name,
             'initials'   => $ini !== '' ? $ini : '?',
-            'email'      => (string) ($r['email'] ?? ''),
-            'city'       => (string) ($r['city'] ?? ''),
+            'email'      => $is_admin ? (string) ($r['email'] ?? '') : '',
+            'city'       => $is_admin ? (string) ($r['city'] ?? '') : '',
             'type'       => (string) ($r['client_type'] ?? 'company'),
-            'total_paid' => ((int) ($r['total_paid_cents'] ?? 0)) / 100,
+            'total_paid' => $is_admin ? (((int) ($r['total_paid_cents'] ?? 0)) / 100) : null,
         ];
     }
 
-    echo json_encode(['ok' => true, 'clients' => $clients], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'admin' => $is_admin, 'clients' => $clients], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-clients] ' . $e->getMessage());
     http_response_code(500);
