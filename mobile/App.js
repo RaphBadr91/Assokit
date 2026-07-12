@@ -1794,7 +1794,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, onOpenWeb, hasAsso, o
           {hasAsso ? (
             <TouchableOpacity style={styles.fdAssoBtn} activeOpacity={0.85} onPress={onGotoAsso}>
               <Ionicons name="business" size={13} color="#0B0F0D" />
-              <Text style={styles.fdAssoTxt}>Mon asso</Text>
+              <Text style={styles.fdAssoTxt}>Mode Asso</Text>
               <Ionicons name="arrow-forward" size={13} color="#0B0F0D" />
             </TouchableOpacity>
           ) : <View style={{ width: 40 }} />}
@@ -3105,15 +3105,15 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {isFounder && (
+      {isFounder && menuScreen !== 'founder' && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
           onPress={() => { setOpenChannel(null); openMenuScreen('founder'); }}
         >
           <View style={styles.founderStripStar}><Ionicons name="star" size={15} color="#78350F" /></View>
-          <Text style={styles.founderStripTxt}>Espace Fondateur</Text>
-          <Text style={styles.founderStripHint}>Piloter la plateforme</Text>
+          <Text style={styles.founderStripTxt}>Mode Fondateur</Text>
+          <Text style={styles.founderStripHint}>Revenir au pilotage</Text>
           <Ionicons name="chevron-forward" size={16} color="#FCD34D" />
         </TouchableOpacity>
       )}
