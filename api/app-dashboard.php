@@ -23,10 +23,9 @@ try {
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
     $first_name = trim((string) ($user['first_name'] ?? ''));
 
-    // Fondateur : forcé pour le compte fondateur (app-only, aucun impact site).
-    $FOUNDER_EMAILS = ['psiwaneraph@gmail.com'];
-    $u_email = strtolower(trim((string) ($user['email'] ?? '')));
-    $is_founder = !empty($user['is_founder']) || in_array($u_email, $FOUNDER_EMAILS, true);
+    // Fondateur : détection robuste (relit la base) — app-only, aucun impact site.
+    require_once __DIR__ . '/_app-founder.php';
+    $is_founder = app_is_founder($pdo, $user);
 
     // Organisation
     $stmt = $pdo->prepare("SELECT name FROM organizations WHERE id = ? LIMIT 1");
