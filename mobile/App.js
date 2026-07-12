@@ -2384,6 +2384,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [invAILoading, setInvAILoading] = useState(false);
   const [statsCockpit, setStatsCockpit] = useState(null);
   const [statsCockpitLoading, setStatsCockpitLoading] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
@@ -2888,15 +2889,19 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     // Empêche tout ré-atterrissage automatique (fondateur / auto-login) pendant le démontage
     autoLoginTried.current = true;
     founderInit.current = true;
-    setMenuScreen(null); setOpenChannel(null); clearDetail(); closeForm();
-    setWebMode(false); setAuthed(false); setKpi(null);
+    // IMPORTANT : on NE bascule PAS authed=false ici. Sinon tous les écrans natifs
+    // disparaissent et la WebView (qui charge /deconnexion.php) apparaît en clair
+    // → c'est ce "flash de page web fondateur" que tu voyais. On couvre plutôt tout
+    // avec un voile natif "Déconnexion…" pendant qu'on ferme la session côté serveur.
+    setLoggingOut(true);
+    setMenuScreen(null); setOpenChannel(null); clearDetail(); closeForm(); setWebMode(false);
     inject(gotoJS('/deconnexion.php'));
     // Teardown complet côté racine : efface SecureStore + autoCreds + retour Welcome.
     // (onLogout fait clearCreds + setAutoCreds(null) + setPath(null) ; fallback si absent)
     setTimeout(() => {
       if (onLogout) onLogout();
       else { if (onClearCreds) onClearCreds(); if (onExitToWelcome) onExitToWelcome(); }
-    }, 350);
+    }, 450);
   }, [onLogout, onClearCreds, inject, onExitToWelcome, clearDetail, closeForm]);
 
   const openProject = (id) => pushDetail('project', id);
@@ -3160,6 +3165,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           </Pressable>
         </Pressable>
       </Modal>
+
+      {loggingOut && (
+        <View style={styles.logoutVeil} pointerEvents="auto">
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={styles.logoutVeilTxt}>Déconnexion…</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -3243,6 +3255,8 @@ export default function App() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
   webWrap: { flex: 1, backgroundColor: '#fff' },
+  logoutVeil: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center', zIndex: 999, elevation: 999 },
+  logoutVeilTxt: { color: '#fff', fontSize: 15, fontWeight: '700', marginTop: 14, letterSpacing: 0.3 },
   web: { flex: 1, backgroundColor: '#ffffff' },
   loader: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.65)' },
   homeOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#F4F6FA' },
