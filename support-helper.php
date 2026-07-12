@@ -110,10 +110,6 @@ function support_notify_new_message(int $ticket_id, int $author_user_id, string 
 
     $body_preview = mb_substr(strip_tags($body), 0, 200);
 
-    // Notifs in-app + push mobile (via cron qui lit user_notifications)
-    @require_once __DIR__ . '/notification-helpers.php';
-    $has_notif = function_exists('ak_notif_create');
-
     if ($author_side === 'org') {
         // Le cote ASSO a ecrit → notifier support
         $recipients = [];
@@ -138,7 +134,7 @@ function support_notify_new_message(int $ticket_id, int $author_user_id, string 
         }
 
         foreach ($recipients as $r) {
-            // Notification in-app (panel super-admin web)
+            // Notification in-app
             if (function_exists('sa_notify')) {
                 sa_notify(
                     (int) $r['id'],
@@ -148,18 +144,6 @@ function support_notify_new_message(int $ticket_id, int $author_user_id, string 
                     '/super-admin/support?id=' . $ticket_id,
                     (int) $ticket['org_id']
                 );
-            }
-            // Notification in-app + PUSH mobile (fondateur / SA)
-            if ($has_notif) {
-                try {
-                    ak_notif_create(
-                        $pdo, (int) $r['id'], 'support',
-                        '💬 Support — ' . $ticket['title'],
-                        $ticket['org_name'] . ' : ' . $body_preview,
-                        '/super-admin/support?id=' . $ticket_id,
-                        null, null, null, $author_user_id
-                    );
-                } catch (Throwable $e) {}
             }
             // Email Resend
             if (function_exists('send_transactional_email')) {
@@ -188,19 +172,7 @@ function support_notify_new_message(int $ticket_id, int $author_user_id, string 
             $org_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             foreach ($org_users as $u) {
-                // Notification in-app + PUSH mobile pour l'asso / TPE
-                if ($has_notif) {
-                    try {
-                        ak_notif_create(
-                            $pdo, (int) $u['id'], 'support',
-                            '💬 Réponse du support — ' . $ticket['title'],
-                            $body_preview,
-                            '/support/ticket/' . $ticket_id,
-                            null, null, null, $author_user_id
-                        );
-                    } catch (Throwable $e) {}
-                }
-                // Email Resend
+                // Email Resend uniquement (notifs in-app seulement pour SA/Fondateur dans cette V1)
                 if (function_exists('send_transactional_email')) {
                     try {
                         send_transactional_email(

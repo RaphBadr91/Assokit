@@ -127,16 +127,30 @@ try {
 
     $initials = strtoupper(function_exists('mb_substr') ? mb_substr($org_name, 0, 2) : substr($org_name, 0, 2));
 
-    // Compteurs de notifications non lues (messages internes + support technique)
+    // Compteurs de notifications non lues (endpoint dédié app — aucun impact site)
     $notif_unread = 0; $msg_unread = 0; $support_unread = 0;
+    // Notifications internes (messages + mentions) depuis user_notifications
     try {
-        $nst = $pdo->prepare("SELECT notification_type AS t, COUNT(*) AS c FROM user_notifications WHERE user_id = ? AND is_read = 0 GROUP BY notification_type");
+        $nst = $pdo->prepare("SELECT COUNT(*) FROM user_notifications WHERE user_id = ? AND is_read = 0 AND notification_type IN ('message','mention')");
         $nst->execute([(int) ($user['id'] ?? 0)]);
-        foreach ($nst->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $c = (int) $row['c']; $notif_unread += $c;
-            if ($row['t'] === 'message' || $row['t'] === 'mention') $msg_unread += $c;
-            elseif ($row['t'] === 'support') $support_unread += $c;
-        }
+        $msg_unread = (int) $nst->fetchColumn();
+    } catch (Throwable $e) {}
+    // Toutes les notifs non lues (pour le badge global)
+    try {
+        $nst = $pdo->prepare("SELECT COUNT(*) FROM user_notifications WHERE user_id = ? AND is_read = 0");
+        $nst->execute([(int) ($user['id'] ?? 0)]);
+        $notif_unread = (int) $nst->fetchColumn();
+    } catch (Throwable $e) {}
+    // Support : messages du support non lus par l'org (calcul direct, comme la sidebar web)
+    try {
+        $sst = $pdo->prepare("
+            SELECT COUNT(DISTINCT t.id)
+            FROM support_tickets t
+            JOIN support_messages m ON m.ticket_id = t.id
+            WHERE t.org_id = ? AND m.author_side = 'support' AND m.read_by_org = 0 AND m.is_internal_note = 0
+        ");
+        $sst->execute([$org_id]);
+        $support_unread = (int) $sst->fetchColumn();
     } catch (Throwable $e) {}
 
     echo json_encode([
