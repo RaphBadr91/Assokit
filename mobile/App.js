@@ -27,7 +27,7 @@ import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Constants from 'expo-constants';
 
@@ -2257,7 +2257,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   // Capture/sélection d'une photo + envoi à l'IA (scan de facture)
   const runScan = useCallback(async (source, projectId) => {
     try {
-      const opts = { mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.5 };
+      const opts = { mediaTypes: ['images'], base64: true, quality: 0.5 };
       let res;
       if (source === 'camera') {
         const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -2360,7 +2360,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) { setSettingsErr('Autorisez l\'accès aux photos.'); return; }
-      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.7 });
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], base64: true, quality: 0.7 });
       if (res.canceled || !res.assets || !res.assets[0] || !res.assets[0].base64) return;
       if (!csrf) { inject(FETCH_CSRF_JS); return; }
       setLogoBusy(true);
