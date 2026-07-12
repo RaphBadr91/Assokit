@@ -1773,7 +1773,7 @@ const FD_KPI = [
   { key: 'ia_nb', label: 'Générations IA', color: '#60A5FA', glow: ['#93C5FD', '#3B82F6'], icon: 'sparkles', fmt: (k) => String(k.ia_nb ?? 0), sub: (k) => fmtEuro(k.ia_cost) + ' dépensés' },
 ];
 
-function NativeFounder({ data, loading, onRefresh, onBack, onOpenWeb, hasAsso, onGotoAsso }) {
+function NativeFounder({ data, loading, onRefresh, onBack, onOpenWeb, hasAsso, onGotoAsso, onLogout }) {
   const k = (data && data.kpis) || {};
   const sig = (data && data.signals) || {};
   const orgs = (data && data.orgs) || [];
@@ -1861,6 +1861,13 @@ function NativeFounder({ data, loading, onRefresh, onBack, onOpenWeb, hasAsso, o
               </TouchableOpacity>
             ))}
           </View>
+
+          {onLogout ? (
+            <TouchableOpacity style={styles.fdLogout} activeOpacity={0.85} onPress={onLogout}>
+              <Ionicons name="log-out-outline" size={19} color="#FCA5A5" />
+              <Text style={styles.fdLogoutTxt}>Se déconnecter</Text>
+            </TouchableOpacity>
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -2874,15 +2881,23 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     }
   };
 
-  // Déconnexion propre : on ferme la session côté serveur en arrière-plan
-  // puis on revient à l'écran d'accueil natif (jamais le site à l'écran).
+  // Déconnexion propre : on ferme la session côté serveur en arrière-plan,
+  // on efface TOUT (identifiants mémorisés + état auto-login) puis on revient
+  // à l'écran d'accueil natif (jamais le site à l'écran, jamais de re-connexion auto).
   const doLogout = useCallback(() => {
-    if (onClearCreds) onClearCreds();
+    // Empêche tout ré-atterrissage automatique (fondateur / auto-login) pendant le démontage
     autoLoginTried.current = true;
-    setMenuScreen(null); setOpenChannel(null); clearDetail(); closeForm(); setWebMode(false);
+    founderInit.current = true;
+    setMenuScreen(null); setOpenChannel(null); clearDetail(); closeForm();
+    setWebMode(false); setAuthed(false); setKpi(null);
     inject(gotoJS('/deconnexion.php'));
-    setTimeout(() => { if (onExitToWelcome) onExitToWelcome(); }, 400);
-  }, [onClearCreds, inject, onExitToWelcome, clearDetail, closeForm]);
+    // Teardown complet côté racine : efface SecureStore + autoCreds + retour Welcome.
+    // (onLogout fait clearCreds + setAutoCreds(null) + setPath(null) ; fallback si absent)
+    setTimeout(() => {
+      if (onLogout) onLogout();
+      else { if (onClearCreds) onClearCreds(); if (onExitToWelcome) onExitToWelcome(); }
+    }, 350);
+  }, [onLogout, onClearCreds, inject, onExitToWelcome, clearDetail, closeForm]);
 
   const openProject = (id) => pushDetail('project', id);
   const openInvoice = (id) => pushDetail('invoice', id);
@@ -3039,7 +3054,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 <NativeChannels data={channels} loading={channelsLoading} onRefresh={fetchChannels} onOpen={openChannelFn} onBack={() => setMenuScreen(null)} />
               )
             ) : menuScreen === 'founder' ? (
-              <NativeFounder data={founderData} loading={founderLoading} onRefresh={fetchFounder} onBack={() => { setMenuScreen(null); setActive('accueil'); }} onOpenWeb={openWeb} hasAsso={!!(kpi && kpi.org_name)} onGotoAsso={() => { setMenuScreen(null); setActive('accueil'); }} />
+              <NativeFounder data={founderData} loading={founderLoading} onRefresh={fetchFounder} onBack={() => { setMenuScreen(null); setActive('accueil'); }} onOpenWeb={openWeb} hasAsso={!!(kpi && kpi.org_name)} onGotoAsso={() => { setMenuScreen(null); setActive('accueil'); }} onLogout={doLogout} />
             ) : (
               <NativeMore
                 orgName={kpi && kpi.org_name}
@@ -3614,6 +3629,8 @@ const styles = StyleSheet.create({
   fdShortcut: { width: '30%', flexGrow: 1, backgroundColor: '#131A16', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(252,211,77,0.18)', paddingVertical: 15, alignItems: 'center' },
   fdShortcutIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(252,211,77,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   fdShortcutTxt: { fontSize: 11.5, fontWeight: '700', color: '#EAF2EE', textAlign: 'center' },
+  fdLogout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 24, paddingVertical: 15, borderRadius: 14, backgroundColor: 'rgba(220,38,38,0.10)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.28)' },
+  fdLogoutTxt: { fontSize: 15, fontWeight: '700', color: '#FCA5A5' },
 
   /* Quick actions sheet */
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
