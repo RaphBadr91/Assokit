@@ -1,4 +1,4 @@
-#!/usr/bin/php
+#!/usr/local/bin/php
 <?php
 /**
  * api/pipe-inbound-contact.php — Réception des réponses prospects via un filtre cPanel "pipe".
