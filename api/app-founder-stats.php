@@ -45,6 +45,20 @@ try {
     $ia = ['nb' => 0, 'cost' => 0.0];
     try { $ia = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(ai_cost_euros),0) AS cost FROM communication_campaigns WHERE ai_generated=1")->fetch(PDO::FETCH_ASSOC) ?: $ia; } catch (Throwable $e) {}
 
+    // Emails & SMS envoyés — plateforme (semaine / mois / trimestre / année)
+    $periods = [
+        'week'    => "created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
+        'month'   => "created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
+        'quarter' => "created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)",
+        'year'    => "created_at >= DATE_SUB(NOW(), INTERVAL 365 DAY)",
+    ];
+    $emails = ['week' => 0, 'month' => 0, 'quarter' => 0, 'year' => 0];
+    $sms    = ['week' => 0, 'month' => 0, 'quarter' => 0, 'year' => 0];
+    foreach ($periods as $k => $cond) {
+        $emails[$k] = (int) $scalar("SELECT COUNT(*) FROM email_log WHERE $cond");
+        $sms[$k]    = (int) $scalar("SELECT COUNT(*) FROM sms_log WHERE $cond");
+    }
+
     // Courbe : associations créées par mois (6 derniers mois)
     $curve = [];
     try {
@@ -61,6 +75,8 @@ try {
         'users' => ['total' => $users_total, 'new30' => $users_new30],
         'revenue' => ['mrr' => round($mrr, 2), 'ca_paid' => round($ca_paid, 2), 'ca_paid_30' => round($ca_paid_30, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb],
         'ia' => ['nb' => (int) $ia['nb'], 'cost' => round((float) $ia['cost'], 2)],
+        'emails' => $emails,
+        'sms' => $sms,
         'curve' => $curve,
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {

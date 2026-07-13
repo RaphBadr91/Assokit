@@ -1899,12 +1899,12 @@ const MORE_GROUPS = [
 ];
 
 const FOUNDER_SHORTCUTS = [
-  { label: 'Associations', icon: 'business', web: '/super-admin/associations' },
-  { label: 'Abonnements', icon: 'card', web: '/super-admin/abonnements' },
-  { label: 'Support', icon: 'chatbubbles', web: '/super-admin/support' },
-  { label: 'Stats', icon: 'stats-chart', web: '/super-admin/stats' },
-  { label: 'Super admins', icon: 'shield-checkmark', web: '/super-admin/super-admins' },
-  { label: 'Pilotage', icon: 'grid', web: '/fondateur-pilotage' },
+  { label: 'Associations', icon: 'business', fk: 'associations' },
+  { label: 'Abonnements', icon: 'card', fk: 'billing' },
+  { label: 'Support', icon: 'chatbubbles', fk: 'support' },
+  { label: 'Statistiques', icon: 'stats-chart', fk: 'stats' },
+  { label: 'Blog SEO', icon: 'newspaper', fk: 'blog' },
+  { label: 'Pilotage', icon: 'grid', fk: 'cockpit' },
 ];
 
 function NativeMore({ orgName, initials, logo, isFounder, isAdmin, counts, onNav, onLogout }) {
@@ -1933,7 +1933,7 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, counts, onNav
             </TouchableOpacity>
             <View style={styles.founderGrid}>
               {FOUNDER_SHORTCUTS.map((it) => (
-                <TouchableOpacity key={it.label} style={styles.founderItem} activeOpacity={0.8} onPress={() => onNav({ web: it.web })}>
+                <TouchableOpacity key={it.label} style={styles.founderItem} activeOpacity={0.8} onPress={() => onNav({ founder: it.fk })}>
                   <View style={styles.founderItemIcon}><Ionicons name={it.icon} size={20} color="#B45309" /></View>
                   <Text style={styles.founderItemTxt} numberOfLines={1}>{it.label}</Text>
                 </TouchableOpacity>
@@ -1990,7 +1990,9 @@ const FC_TILES = [
   { key: 'associations', icon: 'business', color: '#059669', bg: '#ECFDF5', title: 'Associations', desc: 'Gérer · valider · suspendre' },
   { key: 'billing', icon: 'card', color: '#2563EB', bg: '#EFF6FF', title: 'Abonnements', desc: 'MRR · impayés · relances' },
   { key: 'support', icon: 'chatbubbles', color: '#7C3AED', bg: '#F5F3FF', title: 'Support', desc: 'Tickets & messages' },
-  { key: 'stats', icon: 'stats-chart', color: '#0891B2', bg: '#ECFEFF', title: 'Statistiques', desc: 'Croissance & revenus' },
+  { key: 'contacts', icon: 'mail', color: '#DB2777', bg: '#FDF2F8', title: 'Contacts', desc: 'Demandes du site · prospects' },
+  { key: 'stats', icon: 'stats-chart', color: '#0891B2', bg: '#ECFEFF', title: 'Statistiques', desc: 'Croissance · emails · SMS' },
+  { key: 'blog', icon: 'newspaper', color: '#D97706', bg: '#FFFBEB', title: 'Blog SEO', desc: 'Générer & programmer' },
 ];
 
 function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, onLogout, onTile, onNotifs, notifCount }) {
@@ -2134,14 +2136,6 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity style={styles.fcBlogTile} activeOpacity={0.9} onPress={() => onTile('blog', 'all')}>
-              <View style={styles.fcBlogIc}><Ionicons name="newspaper" size={22} color="#D97706" /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fcTileTitle}>Blog SEO — articles auto</Text>
-                <Text style={styles.fcTileDesc}>Voir ce que le site génère automatiquement</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
-            </TouchableOpacity>
 
             {/* Dernières associations */}
             <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12 }]}>DERNIÈRES ASSOCIATIONS</Text>
@@ -2336,9 +2330,33 @@ function NativeFounderStats({ data, loading, onBack, onRefresh }) {
                 </View>
               </>
             )}
+
+            <PeriodStat title="Emails envoyés — plateforme" icon="mail" color="#7C3AED" bg="#F5F3FF" data={data.emails} />
+            <PeriodStat title="SMS envoyés — plateforme" icon="chatbox" color="#059669" bg="#ECFDF5" data={data.sms} />
           </>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+function PeriodStat({ title, icon, color, bg, data }) {
+  const d = data || {};
+  const cells = [['Semaine', d.week], ['Mois', d.month], ['Trimestre', d.quarter], ['Année', d.year]];
+  return (
+    <View style={styles.periodCard}>
+      <View style={styles.periodHead}>
+        <View style={[styles.fcMiniIc, { backgroundColor: bg, marginBottom: 0 }]}><Ionicons name={icon} size={15} color={color} /></View>
+        <Text style={styles.periodTitle}>{title}</Text>
+      </View>
+      <View style={styles.periodRow}>
+        {cells.map(([lb, v], i) => (
+          <View key={i} style={styles.periodCell}>
+            <Text style={styles.periodCellLb}>{lb.toUpperCase()}</Text>
+            <Text style={[styles.periodCellVal, { color }]}>{v ?? 0}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -2691,6 +2709,80 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/* Fondateur — Demandes de contact (prospects) : liste + réponse par email, natif */
+function NativeFounderContacts({ data, loading, onBack, onRefresh, onReply, replyBusy, replyResult, onClearReply }) {
+  const list = data ? (data.contacts || []) : null;
+  const [open, setOpen] = useState(null);
+  const [body, setBody] = useState('');
+  const closeSheet = () => { if (replyBusy) return; setOpen(null); setBody(''); if (onClearReply) onClearReply(); };
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Demandes de contact" onBack={onBack} />
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : list.length === 0 ? (
+        <View style={styles.emptyBox}><Ionicons name="mail-outline" size={42} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune demande</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          {list.map((c) => (
+            <TouchableOpacity key={c.id} style={styles.ctcCard} activeOpacity={0.85} onPress={() => { setOpen(c); setBody(''); }}>
+              <View style={styles.ctcTop}>
+                <View style={[styles.ctcAv, { backgroundColor: c.is_new ? '#EFF6FF' : '#F1F5F9' }]}><Ionicons name="person" size={17} color={c.is_new ? '#2563EB' : '#94A3B8'} /></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.fcOrgName} numberOfLines={1}>{c.name}{c.is_new ? '  🔵' : ''}</Text>
+                  <Text style={styles.fcOrgSub} numberOfLines={1}>{[c.org, c.date].filter(Boolean).join(' · ')}</Text>
+                </View>
+                {c.replied ? <View style={[styles.fcChip, { backgroundColor: '#D1FAE5' }]}><Text style={[styles.fcChipTxt, { color: '#047857' }]}>Répondu</Text></View> : null}
+              </View>
+              {c.subject ? <Text style={styles.ctcSubject} numberOfLines={1}>{c.subject}</Text> : null}
+              <Text style={styles.ctcMsg} numberOfLines={2}>{c.message}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      <Modal visible={!!open} transparent animationType="slide" onRequestClose={closeSheet}>
+        <View style={styles.blogModalWrap}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <View style={styles.blogModal}>
+              <View style={styles.blogModalHandle} />
+              {open ? (
+                replyResult && replyResult.ok ? (
+                  <View style={styles.blogBusy}>
+                    <View style={styles.blogOkIc}><Ionicons name="checkmark" size={30} color="#fff" /></View>
+                    <Text style={styles.blogBusyTxt}>Réponse envoyée !</Text>
+                    <Text style={styles.blogBusySub}>Un email a été envoyé à {open.email}.</Text>
+                    <TouchableOpacity style={[styles.blogPrimBtn, { marginTop: 16 }]} onPress={closeSheet}><Text style={styles.blogPrimTxt}>Terminé</Text></TouchableOpacity>
+                  </View>
+                ) : (
+                  <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                    <View style={styles.blogModalHead}>
+                      <Text style={styles.blogModalTitle} numberOfLines={1}>{open.name}</Text>
+                      <TouchableOpacity onPress={closeSheet} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close" size={22} color="#94A3B8" /></TouchableOpacity>
+                    </View>
+                    <Text style={styles.ctcDetailMeta}>{open.email}{open.org ? ' · ' + open.org : ''}</Text>
+                    {open.subject ? <Text style={styles.ctcDetailSubject}>{open.subject}</Text> : null}
+                    <View style={styles.ctcDetailBox}><Text style={styles.ctcDetailMsg}>{open.message}</Text></View>
+                    {replyResult && !replyResult.ok ? <View style={styles.lgError}><Ionicons name="alert-circle" size={16} color="#DC2626" /><Text style={styles.lgErrorTxt}>{replyResult.error}</Text></View> : null}
+                    <Text style={styles.blogLabel}>Votre réponse (par email)</Text>
+                    <TextInput style={[styles.blogInput, { minHeight: 100, textAlignVertical: 'top' }]} value={body} onChangeText={setBody} placeholder={'Bonjour ' + (open.name || '') + ',\n\n…'} placeholderTextColor="#9AA7A1" multiline />
+                    <TouchableOpacity style={[styles.blogGenBtn, { marginTop: 14, backgroundColor: BRAND }, (body.trim().length < 2 || replyBusy) && { opacity: 0.5 }]} activeOpacity={0.9}
+                      disabled={body.trim().length < 2 || replyBusy} onPress={() => onReply(open.id, body.trim())}>
+                      {replyBusy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="send" size={17} color="#fff" /><Text style={styles.blogGenTxt}>Envoyer la réponse par email</Text></>}
+                    </TouchableOpacity>
+                    <Text style={styles.blogHint}>La réponse part directement à l'email du prospect ({open.email}).</Text>
+                  </ScrollView>
+                )
+              ) : null}
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -3215,6 +3307,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [fdCreateBusy, setFdCreateBusy] = useState(false);
   const [fdCreateResult, setFdCreateResult] = useState(null);
   const [fdCreateErr, setFdCreateErr] = useState('');
+  const [fdContacts, setFdContacts] = useState(null);
+  const [fdContactsLoading, setFdContactsLoading] = useState(false);
+  const [fdCtcReplyBusy, setFdCtcReplyBusy] = useState(false);
+  const [fdCtcReplyResult, setFdCtcReplyResult] = useState(null);
   const [notifsLoading, setNotifsLoading] = useState(false);
   const [coti, setCoti] = useState(null);
   const [cotiLoading, setCotiLoading] = useState(false);
@@ -3402,6 +3498,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const fetchFdPlans = useCallback(() => { inject(fetchJS('/api/app-founder-create-org.php', '__akfdplans')); }, [inject]);
   const openFdCreateOrg = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdCreateResult(null); setFdCreateErr(''); setMenuScreen('fdcreateorg'); if (!fdPlans) fetchFdPlans(); }, [clearDetail, closeForm, fetchFdPlans, fdPlans]);
   const doCreateOrg = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdCreateBusy(true); setFdCreateErr(''); inject(postJS('/api/app-founder-create-org.php', { ...payload, csrf }, '__akfdcreate')); }, [csrf, inject]);
+  const fetchFdContacts = useCallback(() => { setFdContactsLoading(true); inject(fetchJS('/api/app-founder-contacts.php', '__akfdcontacts')); }, [inject]);
+  const openFdContacts = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdContacts(null); setFdCtcReplyResult(null); setMenuScreen('fdcontacts'); fetchFdContacts(); }, [clearDetail, closeForm, fetchFdContacts]);
+  const doContactReply = useCallback((contactId, body) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdCtcReplyBusy(true); setFdCtcReplyResult(null); inject(postJS('/api/app-founder-contact-reply.php', { contact_id: contactId, body, csrf }, '__akfdctcreply')); }, [csrf, inject]);
   const fetchCoti = useCallback(() => { setCotiLoading(true); inject(fetchJS('/api/app-cotisations.php', '__akcoti')); }, [inject]);
   const fetchGrants = useCallback(() => { setGrantsLoading(true); inject(fetchJS('/api/app-grants.php', '__akgrants')); }, [inject]);
   const fetchAssemblies = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-assemblies.php', '__akassemblies')); }, [inject]);
@@ -3439,7 +3538,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (key === 'support') openFdSupport('open');
     else if (key === 'stats') openFdStats();
     else if (key === 'blog') openFdBlog();
-  }, [openFdOrgs, openFdCreateOrg, openFdBilling, openFdSupport, openFdStats, openFdBlog]);
+    else if (key === 'contacts') openFdContacts();
+  }, [openFdOrgs, openFdCreateOrg, openFdBilling, openFdSupport, openFdStats, openFdBlog, openFdContacts]);
 
   const onAnalyzeInvoices = useCallback(() => { setInvAILoading(true); inject(fetchJS('/api/app-invoices-ai.php', '__akinvai')); }, [inject]);
   const onCockpit = useCallback(() => { setStatsCockpitLoading(true); inject(fetchJS('/api/app-stats-ai.php', '__akstatsai')); }, [inject]);
@@ -3487,6 +3587,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   const onMoreNav = useCallback((nav) => {
     if (!nav) return;
+    if (nav.founder) { if (nav.founder === 'cockpit') openMenuScreen('founder'); else onFounderTile(nav.founder); return; }
     if (nav.screen) { openMenuScreen(nav.screen); return; }
     if (nav.tab) {
       clearDetail(); closeForm(); setMenuScreen(null);
@@ -3495,7 +3596,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       setActive(nav.tab); setWebMode(false); return;
     }
     if (nav.web) { clearDetail(); closeForm(); setWebMode(true); inject(gotoJS(nav.web)); }
-  }, [openMenuScreen, clearDetail, closeForm, inject]);
+  }, [openMenuScreen, onFounderTile, clearDetail, closeForm, inject]);
 
   const saveAccount = useCallback((f) => {
     if (!csrf) { setSettingsErr('Session en préparation, réessayez.'); inject(FETCH_CSRF_JS); return; }
@@ -3733,6 +3834,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         const r = msg.__akfdreply;
         if (r && r.ok) { fetchFdThread(r.ticket_id); }
         else { Alert.alert('Support', (r && r.message) || 'Envoi impossible.'); }
+      }
+      if (msg && msg.__akfdcontacts) { setFdContacts(msg.__akfdcontacts); setFdContactsLoading(false); }
+      if (msg && msg.__akfdctcreply) {
+        setFdCtcReplyBusy(false);
+        const r = msg.__akfdctcreply;
+        if (r && r.ok) { setFdCtcReplyResult({ ok: true }); fetchFdContacts(); }
+        else { setFdCtcReplyResult({ ok: false, error: (r && r.message) || 'Envoi impossible.' }); }
       }
       if (msg && msg.__akfdplans) { setFdPlans((msg.__akfdplans && msg.__akfdplans.plans) || []); }
       if (msg && msg.__akfdcreate) {
@@ -4067,6 +4175,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 onSubmit={doCreateOrg} onBack={() => openMenuScreen('founder')}
                 onCopy={(txt) => Alert.alert('Identifiants', txt + '\n\n(Maintiens appuyé sur le texte pour le copier.)')}
                 onDone={() => { setFdCreateResult(null); openFdOrgs('all'); }} />
+            ) : menuScreen === 'fdcontacts' ? (
+              <NativeFounderContacts data={fdContacts} loading={fdContactsLoading} onRefresh={fetchFdContacts} onBack={() => openMenuScreen('founder')}
+                onReply={doContactReply} replyBusy={fdCtcReplyBusy} replyResult={fdCtcReplyResult} onClearReply={() => setFdCtcReplyResult(null)} />
             ) : (
               <NativeMore
                 orgName={kpi && kpi.org_name}
@@ -4131,7 +4242,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {authed && isFounder && !['founder', 'fdorgs', 'fdbilling', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg'].includes(menuScreen) && !webMode && (
+      {authed && isFounder && !['founder', 'fdorgs', 'fdbilling', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts'].includes(menuScreen) && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
@@ -4873,6 +4984,26 @@ const styles = StyleSheet.create({
   supInputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12, borderTopWidth: 1, borderTopColor: '#EEF2F1', backgroundColor: '#fff' },
   supInput: { flex: 1, maxHeight: 110, backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 11, fontSize: 15, color: INK },
   supSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' },
+
+  /* Contacts / prospects */
+  ctcCard: { backgroundColor: '#fff', borderRadius: 15, padding: 14, marginBottom: 11, borderWidth: 1, borderColor: '#E7EDEA' },
+  ctcTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  ctcAv: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  ctcSubject: { fontSize: 13, fontWeight: '700', color: '#334155', marginTop: 10 },
+  ctcMsg: { fontSize: 13, color: '#64748B', marginTop: 4, lineHeight: 18 },
+  ctcDetailMeta: { fontSize: 13, color: '#64748B', marginTop: 2 },
+  ctcDetailSubject: { fontSize: 15, fontWeight: '800', color: INK, marginTop: 12 },
+  ctcDetailBox: { backgroundColor: '#F8FAFC', borderRadius: 13, padding: 14, marginTop: 10, borderWidth: 1, borderColor: '#EEF2F1' },
+  ctcDetailMsg: { fontSize: 14.5, color: '#1E293B', lineHeight: 21 },
+
+  /* Emails / SMS — périodes */
+  periodCard: { backgroundColor: '#fff', borderRadius: 17, padding: 15, marginTop: 16, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  periodHead: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 13 },
+  periodTitle: { fontSize: 13.5, fontWeight: '800', color: INK },
+  periodRow: { flexDirection: 'row', gap: 8 },
+  periodCell: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#EEF2F1' },
+  periodCellLb: { fontSize: 9, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.4 },
+  periodCellVal: { fontSize: 22, fontWeight: '800', marginTop: 5, letterSpacing: -0.5 },
 
   /* Quick actions sheet */
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
