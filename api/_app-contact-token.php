@@ -10,7 +10,7 @@
  *     envoie l'email au script api/pipe-inbound-contact.php.
  */
 
-if (!defined('AK_CONTACT_REPLY_MAILBOX')) define('AK_CONTACT_REPLY_MAILBOX', 'reponses'); // partie locale de la boîte
+if (!defined('AK_CONTACT_REPLY_MAILBOX')) define('AK_CONTACT_REPLY_MAILBOX', 'reponse'); // partie locale de la boîte (reponse@assokit.fr)
 if (!defined('AK_CONTACT_REPLY_DOMAIN'))  define('AK_CONTACT_REPLY_DOMAIN', 'assokit.fr'); // domaine (mail déjà reçu ici)
 
 if (!function_exists('ak_contact_secret')) {
