@@ -6,6 +6,7 @@
  */
 require __DIR__ . '/_app-write-boot.php';
 require_once __DIR__ . '/_app-founder.php';
+require_once __DIR__ . '/_app-contact-token.php';
 @require_once __DIR__ . '/../resend-helper.php';
 
 $is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
@@ -31,7 +32,13 @@ try {
     $html  = "<p>Bonjour " . ($first !== '' ? $first : '') . ",</p>"
            . "<div style='white-space:pre-wrap;line-height:1.6'>" . nl2br(htmlspecialchars($body)) . "</div>"
            . "<p style='margin-top:18px'>— L'équipe Assokit · <a href='https://assokit.fr'>assokit.fr</a></p>";
-    send_transactional_email($to, $subj, $html, ['tag' => 'founder_contact_reply']);
+    // Reply-To à jeton : la réponse du prospect revient dans l'app (via inbound-contact.php)
+    $reply_to = ak_contact_reply_address($id, $to);
+    send_transactional_email($to, $subj, $html, ['tag' => 'founder_contact_reply', 'reply_to' => $reply_to]);
+
+    // Historise la réponse du fondateur dans le fil
+    ak_contact_thread_ensure($pdo);
+    try { $pdo->prepare("INSERT INTO asso_contact_thread (contact_id, direction, body, from_email, read_by_founder, created_at) VALUES (?, 'out', ?, ?, 1, NOW())")->execute([$id, $body, 'support']); } catch (Throwable $e) {}
 
     // Marque comme répondu (si la colonne existe)
     try { $pdo->prepare("UPDATE asso_contact_messages SET status = 'replied' WHERE id = ?")->execute([$id]); } catch (Throwable $e) {}

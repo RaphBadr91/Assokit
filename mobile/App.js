@@ -2713,11 +2713,8 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
 }
 
 /* Fondateur — Demandes de contact (prospects) : liste + réponse par email, natif */
-function NativeFounderContacts({ data, loading, onBack, onRefresh, onReply, replyBusy, replyResult, onClearReply }) {
+function NativeFounderContacts({ data, loading, onBack, onRefresh, onOpen }) {
   const list = data ? (data.contacts || []) : null;
-  const [open, setOpen] = useState(null);
-  const [body, setBody] = useState('');
-  const closeSheet = () => { if (replyBusy) return; setOpen(null); setBody(''); if (onClearReply) onClearReply(); };
   return (
     <View style={styles.detailWrap}>
       <DetailHeader title="Demandes de contact" onBack={onBack} />
@@ -2729,7 +2726,7 @@ function NativeFounderContacts({ data, loading, onBack, onRefresh, onReply, repl
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           {list.map((c) => (
-            <TouchableOpacity key={c.id} style={styles.ctcCard} activeOpacity={0.85} onPress={() => { setOpen(c); setBody(''); }}>
+            <TouchableOpacity key={c.id} style={styles.ctcCard} activeOpacity={0.85} onPress={() => onOpen(c)}>
               <View style={styles.ctcTop}>
                 <View style={[styles.ctcAv, { backgroundColor: c.is_new ? '#EFF6FF' : '#F1F5F9' }]}><Ionicons name="person" size={17} color={c.is_new ? '#2563EB' : '#94A3B8'} /></View>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -2744,45 +2741,47 @@ function NativeFounderContacts({ data, loading, onBack, onRefresh, onReply, repl
           ))}
         </ScrollView>
       )}
-
-      <Modal visible={!!open} transparent animationType="slide" onRequestClose={closeSheet}>
-        <View style={styles.blogModalWrap}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.blogModal}>
-              <View style={styles.blogModalHandle} />
-              {open ? (
-                replyResult && replyResult.ok ? (
-                  <View style={styles.blogBusy}>
-                    <View style={styles.blogOkIc}><Ionicons name="checkmark" size={30} color="#fff" /></View>
-                    <Text style={styles.blogBusyTxt}>Réponse envoyée !</Text>
-                    <Text style={styles.blogBusySub}>Un email a été envoyé à {open.email}.</Text>
-                    <TouchableOpacity style={[styles.blogPrimBtn, { marginTop: 16 }]} onPress={closeSheet}><Text style={styles.blogPrimTxt}>Terminé</Text></TouchableOpacity>
-                  </View>
-                ) : (
-                  <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                    <View style={styles.blogModalHead}>
-                      <Text style={styles.blogModalTitle} numberOfLines={1}>{open.name}</Text>
-                      <TouchableOpacity onPress={closeSheet} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close" size={22} color="#94A3B8" /></TouchableOpacity>
-                    </View>
-                    <Text style={styles.ctcDetailMeta}>{open.email}{open.org ? ' · ' + open.org : ''}</Text>
-                    {open.subject ? <Text style={styles.ctcDetailSubject}>{open.subject}</Text> : null}
-                    <View style={styles.ctcDetailBox}><Text style={styles.ctcDetailMsg}>{open.message}</Text></View>
-                    {replyResult && !replyResult.ok ? <View style={styles.lgError}><Ionicons name="alert-circle" size={16} color="#DC2626" /><Text style={styles.lgErrorTxt}>{replyResult.error}</Text></View> : null}
-                    <Text style={styles.blogLabel}>Votre réponse (par email)</Text>
-                    <TextInput style={[styles.blogInput, { minHeight: 100, textAlignVertical: 'top' }]} value={body} onChangeText={setBody} placeholder={'Bonjour ' + (open.name || '') + ',\n\n…'} placeholderTextColor="#9AA7A1" multiline />
-                    <TouchableOpacity style={[styles.blogGenBtn, { marginTop: 14, backgroundColor: BRAND }, (body.trim().length < 2 || replyBusy) && { opacity: 0.5 }]} activeOpacity={0.9}
-                      disabled={body.trim().length < 2 || replyBusy} onPress={() => onReply(open.id, body.trim())}>
-                      {replyBusy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="send" size={17} color="#fff" /><Text style={styles.blogGenTxt}>Envoyer la réponse par email</Text></>}
-                    </TouchableOpacity>
-                    <Text style={styles.blogHint}>La réponse part directement à l'email du prospect ({open.email}).</Text>
-                  </ScrollView>
-                )
-              ) : null}
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
     </View>
+  );
+}
+
+/* Fondateur — Fil d'échange avec un prospect (double-sens) : messages + réponse email */
+function NativeFounderContactThread({ data, loading, onBack, onRefresh, onReply, replyBusy }) {
+  const c = data ? data.contact : null;
+  const msgs = (data && data.messages) || [];
+  const [body, setBody] = useState('');
+  const send = () => { if (body.trim().length < 2 || replyBusy) return; onReply(c.id, body.trim()); setBody(''); };
+  return (
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <DetailHeader title="Prospect" onBack={onBack} />
+      {!data || !c ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : (
+        <>
+          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 16 }} showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+            <View style={styles.supHead}>
+              <Text style={styles.supTitle}>{c.name}</Text>
+              <Text style={styles.supMeta}>{c.email}{c.org ? ' · ' + c.org : ''}{c.subject ? ' · ' + c.subject : ''}</Text>
+            </View>
+            {msgs.map((m, i) => (
+              <View key={i} style={[styles.supMsgRow, m.side === 'out' ? styles.supMsgRight : styles.supMsgLeft]}>
+                <View style={[styles.supBubble, m.side === 'out' ? styles.supBubbleMe : styles.supBubbleOrg]}>
+                  <Text style={[styles.supBody, m.side === 'out' ? { color: '#fff' } : null]}>{m.body}</Text>
+                  <Text style={[styles.supAt, m.side === 'out' ? { color: 'rgba(255,255,255,0.7)' } : null]}>{m.at}</Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+          <View style={styles.supInputBar}>
+            <TextInput style={styles.supInput} value={body} onChangeText={setBody} placeholder="Répondre par email…" placeholderTextColor="#9AA7A1" multiline />
+            <TouchableOpacity style={[styles.supSend, (body.trim().length < 2 || replyBusy) && { opacity: 0.5 }]} onPress={send} disabled={body.trim().length < 2 || replyBusy}>
+              {replyBusy ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={18} color="#fff" />}
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -3310,7 +3309,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [fdContacts, setFdContacts] = useState(null);
   const [fdContactsLoading, setFdContactsLoading] = useState(false);
   const [fdCtcReplyBusy, setFdCtcReplyBusy] = useState(false);
-  const [fdCtcReplyResult, setFdCtcReplyResult] = useState(null);
+  const [fdCtcThread, setFdCtcThread] = useState(null);
+  const [fdCtcThreadLoading, setFdCtcThreadLoading] = useState(false);
   const [notifsLoading, setNotifsLoading] = useState(false);
   const [coti, setCoti] = useState(null);
   const [cotiLoading, setCotiLoading] = useState(false);
@@ -3499,8 +3499,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const openFdCreateOrg = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdCreateResult(null); setFdCreateErr(''); setMenuScreen('fdcreateorg'); if (!fdPlans) fetchFdPlans(); }, [clearDetail, closeForm, fetchFdPlans, fdPlans]);
   const doCreateOrg = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdCreateBusy(true); setFdCreateErr(''); inject(postJS('/api/app-founder-create-org.php', { ...payload, csrf }, '__akfdcreate')); }, [csrf, inject]);
   const fetchFdContacts = useCallback(() => { setFdContactsLoading(true); inject(fetchJS('/api/app-founder-contacts.php', '__akfdcontacts')); }, [inject]);
-  const openFdContacts = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdContacts(null); setFdCtcReplyResult(null); setMenuScreen('fdcontacts'); fetchFdContacts(); }, [clearDetail, closeForm, fetchFdContacts]);
-  const doContactReply = useCallback((contactId, body) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdCtcReplyBusy(true); setFdCtcReplyResult(null); inject(postJS('/api/app-founder-contact-reply.php', { contact_id: contactId, body, csrf }, '__akfdctcreply')); }, [csrf, inject]);
+  const openFdContacts = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdContacts(null); setMenuScreen('fdcontacts'); fetchFdContacts(); }, [clearDetail, closeForm, fetchFdContacts]);
+  const fetchFdCtcThread = useCallback((id) => { setFdCtcThreadLoading(true); inject(fetchJS('/api/app-founder-contact-thread.php?id=' + id, '__akfdctcthread')); }, [inject]);
+  const openFdCtcThread = useCallback((contact) => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setFdCtcThread(null); setMenuScreen('fdctcthread'); fetchFdCtcThread(contact.id); }, [clearDetail, closeForm, fetchFdCtcThread]);
+  const doContactReply = useCallback((contactId, body) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdCtcReplyBusy(true); inject(postJS('/api/app-founder-contact-reply.php', { contact_id: contactId, body, csrf }, '__akfdctcreply')); }, [csrf, inject]);
   const fetchCoti = useCallback(() => { setCotiLoading(true); inject(fetchJS('/api/app-cotisations.php', '__akcoti')); }, [inject]);
   const fetchGrants = useCallback(() => { setGrantsLoading(true); inject(fetchJS('/api/app-grants.php', '__akgrants')); }, [inject]);
   const fetchAssemblies = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-assemblies.php', '__akassemblies')); }, [inject]);
@@ -3836,11 +3838,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         else { Alert.alert('Support', (r && r.message) || 'Envoi impossible.'); }
       }
       if (msg && msg.__akfdcontacts) { setFdContacts(msg.__akfdcontacts); setFdContactsLoading(false); }
+      if (msg && msg.__akfdctcthread) { setFdCtcThread(msg.__akfdctcthread); setFdCtcThreadLoading(false); }
       if (msg && msg.__akfdctcreply) {
         setFdCtcReplyBusy(false);
         const r = msg.__akfdctcreply;
-        if (r && r.ok) { setFdCtcReplyResult({ ok: true }); fetchFdContacts(); }
-        else { setFdCtcReplyResult({ ok: false, error: (r && r.message) || 'Envoi impossible.' }); }
+        if (r && r.ok) { fetchFdCtcThread(r.contact_id); }
+        else { Alert.alert('Contact', (r && r.message) || 'Envoi impossible.'); }
       }
       if (msg && msg.__akfdplans) { setFdPlans((msg.__akfdplans && msg.__akfdplans.plans) || []); }
       if (msg && msg.__akfdcreate) {
@@ -4176,8 +4179,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 onCopy={(txt) => Alert.alert('Identifiants', txt + '\n\n(Maintiens appuyé sur le texte pour le copier.)')}
                 onDone={() => { setFdCreateResult(null); openFdOrgs('all'); }} />
             ) : menuScreen === 'fdcontacts' ? (
-              <NativeFounderContacts data={fdContacts} loading={fdContactsLoading} onRefresh={fetchFdContacts} onBack={() => openMenuScreen('founder')}
-                onReply={doContactReply} replyBusy={fdCtcReplyBusy} replyResult={fdCtcReplyResult} onClearReply={() => setFdCtcReplyResult(null)} />
+              <NativeFounderContacts data={fdContacts} loading={fdContactsLoading} onRefresh={fetchFdContacts} onBack={() => openMenuScreen('founder')} onOpen={openFdCtcThread} />
+            ) : menuScreen === 'fdctcthread' ? (
+              <NativeFounderContactThread data={fdCtcThread} loading={fdCtcThreadLoading} onRefresh={() => fdCtcThread && fetchFdCtcThread(fdCtcThread.contact.id)}
+                onBack={openFdContacts} onReply={doContactReply} replyBusy={fdCtcReplyBusy} />
             ) : (
               <NativeMore
                 orgName={kpi && kpi.org_name}
@@ -4242,7 +4247,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {authed && isFounder && !['founder', 'fdorgs', 'fdbilling', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts'].includes(menuScreen) && !webMode && (
+      {authed && isFounder && !['founder', 'fdorgs', 'fdbilling', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
