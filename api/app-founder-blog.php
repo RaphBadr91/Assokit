@@ -27,27 +27,35 @@ try {
     $last30    = (int) $scalar("SELECT COUNT(*) FROM asso_blog_articles WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
     $topics    = (int) $scalar("SELECT COUNT(*) FROM asso_blog_topics");
 
+    $filter = (string) ($_GET['filter'] ?? 'all');
+    $wArt = '1=1';
+    if ($filter === 'published') $wArt = 'is_published = 1';
+    elseif ($filter === 'draft') $wArt = '(is_published = 0 OR is_published IS NULL)';
+
     $rows = [];
     try {
         $st = $pdo->query("
             SELECT id, title, slug, category, is_published, reading_time_min, created_at, published_at
-            FROM asso_blog_articles ORDER BY created_at DESC LIMIT 40");
+            FROM asso_blog_articles WHERE $wArt ORDER BY created_at DESC LIMIT 60");
         $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch (Throwable $e) {
-        try { $st = $pdo->query("SELECT id, title, slug, category, is_published, created_at FROM asso_blog_articles ORDER BY created_at DESC LIMIT 40"); $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: []; } catch (Throwable $e2) {}
+        try { $st = $pdo->query("SELECT id, title, slug, category, is_published, created_at FROM asso_blog_articles WHERE $wArt ORDER BY created_at DESC LIMIT 60"); $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: []; } catch (Throwable $e2) {}
     }
 
     $articles = [];
     foreach ($rows as $r) {
         $slug = (string) ($r['slug'] ?? '');
+        $pub = !empty($r['is_published']);
+        $pubAt = !empty($r['published_at']) && $r['published_at'] !== '0000-00-00 00:00:00' ? strtotime($r['published_at']) : null;
         $articles[] = [
-            'id'        => (int) $r['id'],
-            'title'     => (string) ($r['title'] ?? 'Article'),
-            'category'  => (string) ($r['category'] ?? ''),
-            'published' => !empty($r['is_published']),
-            'reading'   => (int) ($r['reading_time_min'] ?? 0),
-            'date'      => !empty($r['created_at']) ? date('d/m/Y', strtotime($r['created_at'])) : '',
-            'url'       => $slug !== '' ? ('https://assokit.fr/blog/' . $slug) : '',
+            'id'         => (int) $r['id'],
+            'title'      => (string) ($r['title'] ?? 'Article'),
+            'category'   => (string) ($r['category'] ?? ''),
+            'published'  => $pub,
+            'reading'    => (int) ($r['reading_time_min'] ?? 0),
+            'date'       => !empty($r['created_at']) ? date('d/m/Y', strtotime($r['created_at'])) : '',
+            'pub_date'   => $pubAt ? date('d/m/Y', $pubAt) : ($pub && !empty($r['created_at']) ? date('d/m/Y', strtotime($r['created_at'])) : ''),
+            'url'        => $slug !== '' ? ('https://assokit.fr/blog/' . $slug) : '',
         ];
     }
 

@@ -1897,6 +1897,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
   const k = (data && data.kpis) || {};
   const sig = (data && data.signals) || {};
   const orgs = (data && data.orgs) || [];
+  const mo = (data && data.month) || {};
   const signals = [];
   if (sig.pending > 0) signals.push({ tone: '#B45309', bg: '#FEF3C7', icon: 'construct', t: sig.pending + ' validation' + (sig.pending > 1 ? 's' : '') + ' en attente', filter: 'pending' });
   if (sig.unpaid_nb > 0) signals.push({ tone: '#B91C1C', bg: '#FEE2E2', icon: 'cash', t: sig.unpaid_nb + ' impayé' + (sig.unpaid_nb > 1 ? 's' : '') + ' · ' + fmtEuro(sig.unpaid_total), filter: 'unpaid' });
@@ -1991,6 +1992,18 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
                   <Text style={styles.fcMiniSub} numberOfLines={1}>{m.sub(k)}</Text>
                 </View>
               ))}
+            </View>
+
+            {/* Ce mois-ci */}
+            <View style={styles.fcMonthCard}>
+              <Text style={styles.fcMonthTitle}>📅 Ce mois-ci</Text>
+              <View style={styles.fcMonthRow}>
+                <View style={styles.fcMonthItem}><Text style={[styles.fcMonthVal, { color: '#059669' }]}>+{mo.new_orgs ?? 0}</Text><Text style={styles.fcMonthLb}>nouvelles assos</Text></View>
+                <View style={styles.fcMonthSep} />
+                <View style={styles.fcMonthItem}><Text style={[styles.fcMonthVal, { color: '#2563EB' }]}>+{mo.new_users ?? 0}</Text><Text style={styles.fcMonthLb}>utilisateurs</Text></View>
+                <View style={styles.fcMonthSep} />
+                <View style={styles.fcMonthItem}><Text style={[styles.fcMonthVal, { color: '#B45309' }]}>{fmtEuro(mo.ca_paid)}</Text><Text style={styles.fcMonthLb}>encaissé</Text></View>
+              </View>
             </View>
 
             {/* Signaux à traiter */}
@@ -2239,17 +2252,21 @@ const BLOG_CATS = [
   { key: 'communication', label: '📣 Communication' },
   { key: 'gestion', label: '📋 Gestion' },
 ];
-function NativeFounderBlog({ data, loading, onBack, onRefresh, onWeb, onGenerate, onProgram, onDeleteTopic, genBusy, genMsg, topicBusy, onClearMsg }) {
+const BLOG_ART_FILTERS = [{ key: 'all', label: 'Tous' }, { key: 'published', label: 'Publiés' }, { key: 'draft', label: 'Brouillons' }];
+const BLOG_QTY = [1, 5, 10, 15, 20];
+function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh, onWeb, onGenerate, onBulk, onProgram, onDeleteTopic, genBusy, genMsg, topicBusy, onClearMsg }) {
   const s = (data && data.stats) || {};
   const list = data ? (data.articles || []) : null;
   const queue = (data && data.queue) || [];
   const [open, setOpen] = useState(false);
+  const [qty, setQty] = useState(1);
   const [subject, setSubject] = useState('');
   const [cat, setCat] = useState('associations');
   const [keywords, setKeywords] = useState('');
   const [publishNow, setPublishNow] = useState(false);
-  const canSubmit = subject.trim().length > 4;
-  const close = () => { if (genBusy || topicBusy) return; setOpen(false); setSubject(''); setKeywords(''); setPublishNow(false); if (onClearMsg) onClearMsg(); };
+  const bulk = qty > 1;
+  const canSubmit = subject.trim().length > (bulk ? 2 : 4);
+  const close = () => { if (genBusy || topicBusy) return; setOpen(false); setQty(1); setSubject(''); setKeywords(''); setPublishNow(false); if (onClearMsg) onClearMsg(); };
 
   return (
     <View style={styles.detailWrap}>
@@ -2285,22 +2302,30 @@ function NativeFounderBlog({ data, loading, onBack, onRefresh, onWeb, onGenerate
           </>
         )}
 
-        <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 10, color: '#64748B' }]}>DERNIERS ARTICLES</Text>
+        <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 10, color: '#64748B' }]}>ARTICLES</Text>
+        <View style={styles.fcFilters2}>
+          {BLOG_ART_FILTERS.map((f) => (
+            <TouchableOpacity key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
+              <Text style={[styles.fcFilterTxt, filter === f.key && styles.fcFilterTxtOn]}>{f.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         {!list ? (
           <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
         ) : list.length === 0 ? (
           <View style={styles.emptyBox}><Ionicons name="newspaper-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun article</Text></View>
         ) : list.map((a) => (
-          <TouchableOpacity key={a.id} style={styles.fcArtCard} activeOpacity={a.url ? 0.85 : 1} onPress={() => a.url && onWeb(a.url)}>
+          <TouchableOpacity key={a.id} style={[styles.fcArtCard, { marginTop: 10 }]} activeOpacity={a.url ? 0.85 : 1} onPress={() => a.url && onWeb(a.url)}>
             <View style={[styles.fcArtIc, { backgroundColor: a.published ? '#ECFDF5' : '#F1F5F9' }]}>
               <Ionicons name={a.published ? 'newspaper' : 'document-text-outline'} size={18} color={a.published ? '#059669' : '#94A3B8'} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.fcOrgName} numberOfLines={2}>{a.title}</Text>
-              <Text style={styles.fcOrgSub} numberOfLines={1}>{[a.category, a.date, a.reading ? a.reading + ' min' : ''].filter(Boolean).join(' · ')}</Text>
+              <Text style={styles.fcOrgSub} numberOfLines={1}>{[a.category, a.reading ? a.reading + ' min' : ''].filter(Boolean).join(' · ')}</Text>
+              <Text style={styles.blogArtDate}>{a.published ? ('📅 Publié le ' + (a.pub_date || a.date)) : ('✏️ Créé le ' + a.date)}</Text>
             </View>
-            <View style={[styles.fcChip, { backgroundColor: a.published ? '#D1FAE5' : '#F1F5F9' }]}>
-              <Text style={[styles.fcChipTxt, { color: a.published ? '#047857' : '#64748B' }]}>{a.published ? 'Publié' : 'Brouillon'}</Text>
+            <View style={[styles.fcChip, { backgroundColor: a.published ? '#D1FAE5' : '#FEF3C7' }]}>
+              <Text style={[styles.fcChipTxt, { color: a.published ? '#047857' : '#B45309' }]}>{a.published ? 'Publié' : 'Brouillon'}</Text>
             </View>
           </TouchableOpacity>
         ))}
@@ -2319,14 +2344,23 @@ function NativeFounderBlog({ data, loading, onBack, onRefresh, onWeb, onGenerate
               {genBusy ? (
                 <View style={styles.blogBusy}>
                   <ActivityIndicator size="large" color={BRAND} />
-                  <Text style={styles.blogBusyTxt}>Rédaction de l'article par l'IA…</Text>
-                  <Text style={styles.blogBusySub}>Cela peut prendre jusqu'à 2 minutes, ne ferme pas l'app.</Text>
+                  <Text style={styles.blogBusyTxt}>{bulk ? 'Recherche de ' + qty + ' sujets par l\'IA…' : 'Rédaction de l\'article par l\'IA…'}</Text>
+                  <Text style={styles.blogBusySub}>{bulk ? 'Les articles seront ensuite rédigés automatiquement.' : 'Cela peut prendre jusqu\'à 2 minutes, ne ferme pas l\'app.'}</Text>
                 </View>
               ) : genMsg && genMsg.ok ? (
                 <View style={styles.blogBusy}>
                   <View style={styles.blogOkIc}><Ionicons name="checkmark" size={30} color="#fff" /></View>
-                  <Text style={styles.blogBusyTxt}>Article {genMsg.published ? 'publié' : 'créé (brouillon)'} !</Text>
-                  <Text style={styles.blogBusySub} numberOfLines={2}>{genMsg.title}</Text>
+                  {genMsg.bulk ? (
+                    <>
+                      <Text style={styles.blogBusyTxt}>{genMsg.added} article{genMsg.added > 1 ? 's' : ''} programmé{genMsg.added > 1 ? 's' : ''} !</Text>
+                      <Text style={styles.blogBusySub}>Ils seront rédigés automatiquement par l'IA et apparaîtront en brouillon dans la liste.</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.blogBusyTxt}>Article {genMsg.published ? 'publié' : 'créé (brouillon)'} !</Text>
+                      <Text style={styles.blogBusySub} numberOfLines={2}>{genMsg.title}</Text>
+                    </>
+                  )}
                   <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
                     {genMsg.url ? <TouchableOpacity style={styles.blogSecBtn} onPress={() => onWeb(genMsg.url)}><Text style={styles.blogSecTxt}>Voir</Text></TouchableOpacity> : null}
                     <TouchableOpacity style={styles.blogPrimBtn} onPress={close}><Text style={styles.blogPrimTxt}>Terminé</Text></TouchableOpacity>
@@ -2337,9 +2371,17 @@ function NativeFounderBlog({ data, loading, onBack, onRefresh, onWeb, onGenerate
                   {genMsg && !genMsg.ok ? (
                     <View style={styles.lgError}><Ionicons name="alert-circle" size={16} color="#DC2626" /><Text style={styles.lgErrorTxt}>{genMsg.error}</Text></View>
                   ) : null}
-                  <Text style={styles.blogLabel}>Sujet de l'article</Text>
-                  <TextInput style={styles.blogInput} value={subject} onChangeText={setSubject} placeholder="Ex : Comment déclarer une association loi 1901 en 2026" placeholderTextColor="#9AA7A1" multiline />
-                  <Text style={styles.blogLabel}>Catégorie</Text>
+                  <Text style={styles.blogLabel}>Nombre d'articles</Text>
+                  <View style={styles.blogCats}>
+                    {BLOG_QTY.map((q) => (
+                      <TouchableOpacity key={q} style={[styles.blogQty, qty === q && styles.blogQtyOn]} activeOpacity={0.8} onPress={() => setQty(q)}>
+                        <Text style={[styles.blogQtyTxt, qty === q && styles.blogQtyTxtOn]}>{q}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.blogLabel}>{bulk ? 'Thème (l\'IA trouvera les sujets)' : 'Sujet de l\'article'}</Text>
+                  <TextInput style={styles.blogInput} value={subject} onChangeText={setSubject} placeholder={bulk ? 'Ex : financement et subventions des associations' : 'Ex : Comment déclarer une association loi 1901 en 2026'} placeholderTextColor="#9AA7A1" multiline />
+                  <Text style={styles.blogLabel}>Catégorie{bulk ? ' (optionnel)' : ''}</Text>
                   <View style={styles.blogCats}>
                     {BLOG_CATS.map((c) => (
                       <TouchableOpacity key={c.key} style={[styles.blogCat, cat === c.key && styles.blogCatOn]} activeOpacity={0.8} onPress={() => setCat(c.key)}>
@@ -2347,26 +2389,43 @@ function NativeFounderBlog({ data, loading, onBack, onRefresh, onWeb, onGenerate
                       </TouchableOpacity>
                     ))}
                   </View>
-                  <Text style={styles.blogLabel}>Mots-clés SEO <Text style={{ color: '#94A3B8', fontWeight: '400' }}>(optionnel)</Text></Text>
-                  <TextInput style={styles.blogInput} value={keywords} onChangeText={setKeywords} placeholder="séparés par des virgules" placeholderTextColor="#9AA7A1" autoCapitalize="none" />
-                  <View style={styles.blogSwitchRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.blogSwitchTitle}>Publier tout de suite</Text>
-                      <Text style={styles.blogSwitchSub}>Sinon, l'article est créé en brouillon</Text>
-                    </View>
-                    <Switch value={publishNow} onValueChange={setPublishNow} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
-                  </View>
+                  {!bulk && (
+                    <>
+                      <Text style={styles.blogLabel}>Mots-clés SEO <Text style={{ color: '#94A3B8', fontWeight: '400' }}>(optionnel)</Text></Text>
+                      <TextInput style={styles.blogInput} value={keywords} onChangeText={setKeywords} placeholder="séparés par des virgules" placeholderTextColor="#9AA7A1" autoCapitalize="none" />
+                      <View style={styles.blogSwitchRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.blogSwitchTitle}>Publier tout de suite</Text>
+                          <Text style={styles.blogSwitchSub}>Sinon, l'article est créé en brouillon</Text>
+                        </View>
+                        <Switch value={publishNow} onValueChange={setPublishNow} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
+                      </View>
+                    </>
+                  )}
 
-                  <TouchableOpacity style={[styles.blogGenBtn, { marginTop: 18 }, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
-                    disabled={!canSubmit} onPress={() => onGenerate({ topic_title: subject.trim(), category: cat, keywords: keywords.trim(), is_published: publishNow ? 1 : 0 })}>
-                    <Ionicons name="sparkles" size={18} color="#fff" />
-                    <Text style={styles.blogGenTxt}>Générer maintenant</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.blogProgBtn, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
-                    disabled={!canSubmit || topicBusy} onPress={() => { onProgram({ topic_title: subject.trim(), category: cat, keywords: keywords.trim(), priority: 5 }); close(); }}>
-                    {topicBusy ? <ActivityIndicator color={BRAND} /> : <><Ionicons name="time" size={17} color={BRAND} /><Text style={styles.blogProgTxt}>Programmer (généré auto plus tard)</Text></>}
-                  </TouchableOpacity>
-                  <Text style={styles.blogHint}>« Programmer » ajoute le sujet à la file : le site le rédige automatiquement ensuite, comme la génération planifiée.</Text>
+                  {bulk ? (
+                    <>
+                      <TouchableOpacity style={[styles.blogGenBtn, { marginTop: 18 }, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
+                        disabled={!canSubmit} onPress={() => onBulk({ theme: subject.trim(), count: qty, category: cat })}>
+                        <Ionicons name="sparkles" size={18} color="#fff" />
+                        <Text style={styles.blogGenTxt}>Créer {qty} articles</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.blogHint}>L'IA propose {qty} sujets sur ce thème et les met en file : le site rédige ensuite chaque article automatiquement (ils apparaissent en brouillon).</Text>
+                    </>
+                  ) : (
+                    <>
+                      <TouchableOpacity style={[styles.blogGenBtn, { marginTop: 18 }, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
+                        disabled={!canSubmit} onPress={() => onGenerate({ topic_title: subject.trim(), category: cat, keywords: keywords.trim(), is_published: publishNow ? 1 : 0 })}>
+                        <Ionicons name="sparkles" size={18} color="#fff" />
+                        <Text style={styles.blogGenTxt}>Générer maintenant</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.blogProgBtn, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
+                        disabled={!canSubmit || topicBusy} onPress={() => { onProgram({ topic_title: subject.trim(), category: cat, keywords: keywords.trim(), priority: 5 }); close(); }}>
+                        {topicBusy ? <ActivityIndicator color={BRAND} /> : <><Ionicons name="time" size={17} color={BRAND} /><Text style={styles.blogProgTxt}>Programmer (généré auto plus tard)</Text></>}
+                      </TouchableOpacity>
+                      <Text style={styles.blogHint}>« Programmer » ajoute le sujet à la file : le site le rédige automatiquement ensuite.</Text>
+                    </>
+                  )}
                 </ScrollView>
               )}
             </View>
@@ -3044,6 +3103,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [blogGenBusy, setBlogGenBusy] = useState(false);
   const [blogGenMsg, setBlogGenMsg] = useState(null);
   const [blogTopicBusy, setBlogTopicBusy] = useState(false);
+  const [fdBlogFilter, setFdBlogFilter] = useState('all');
   const [fdSupport, setFdSupport] = useState(null);
   const [fdSupportLoading, setFdSupportLoading] = useState(false);
   const [fdSupportFilter, setFdSupportFilter] = useState('open');
@@ -3227,9 +3287,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const doFounderPay = useCallback((invId) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdBillBusy(invId); inject(postJS('/api/app-founder-billing-action.php', { invoice_id: invId, action: 'mark_paid', csrf }, '__akfdpay')); }, [csrf, inject]);
   const fetchFdStats = useCallback(() => { setFdStatsLoading(true); inject(fetchJS('/api/app-founder-stats.php', '__akfdstats')); }, [inject]);
   const openFdStats = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdStats(null); setMenuScreen('fdstats'); fetchFdStats(); }, [clearDetail, closeForm, fetchFdStats]);
-  const fetchFdBlog = useCallback(() => { setFdBlogLoading(true); inject(fetchJS('/api/app-founder-blog.php', '__akfdblog')); }, [inject]);
-  const openFdBlog = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBlog(null); setBlogGenMsg(null); setMenuScreen('fdblog'); fetchFdBlog(); }, [clearDetail, closeForm, fetchFdBlog]);
+  const fetchFdBlog = useCallback((filter) => { setFdBlogLoading(true); inject(fetchJS('/api/app-founder-blog.php?filter=' + encodeURIComponent(filter || 'all'), '__akfdblog')); }, [inject]);
+  const openFdBlog = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBlog(null); setBlogGenMsg(null); setFdBlogFilter('all'); setMenuScreen('fdblog'); fetchFdBlog('all'); }, [clearDetail, closeForm, fetchFdBlog]);
   const doBlogGenerate = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setBlogGenBusy(true); setBlogGenMsg(null); inject(postJS('/api/app-founder-blog-generate.php', { ...payload, csrf }, '__akfdbloggen')); }, [csrf, inject]);
+  const doBlogBulk = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setBlogGenBusy(true); setBlogGenMsg(null); inject(postJS('/api/app-founder-blog-bulk.php', { ...payload, csrf }, '__akfdblogbulk')); }, [csrf, inject]);
   const doBlogProgram = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setBlogTopicBusy(true); inject(postJS('/api/app-founder-blog-topic.php', { action: 'add', ...payload, csrf }, '__akfdblogtopic')); }, [csrf, inject]);
   const doBlogDeleteTopic = useCallback((id) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } inject(postJS('/api/app-founder-blog-topic.php', { action: 'delete', id, csrf }, '__akfdblogtopic')); }, [csrf, inject]);
   const fetchFdSupport = useCallback((filter) => { setFdSupportLoading(true); inject(fetchJS('/api/app-founder-support.php?filter=' + encodeURIComponent(filter || 'open'), '__akfdsup')); }, [inject]);
@@ -3548,13 +3609,19 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akfdbloggen) {
         setBlogGenBusy(false);
         const r = msg.__akfdbloggen;
-        if (r && r.ok) { setBlogGenMsg({ ok: true, title: r.title, url: r.url, published: r.published }); fetchFdBlog(); }
+        if (r && r.ok) { setBlogGenMsg({ ok: true, title: r.title, url: r.url, published: r.published }); fetchFdBlog(fdBlogFilter); }
+        else { setBlogGenMsg({ ok: false, error: (r && r.message) || 'Génération impossible.' }); }
+      }
+      if (msg && msg.__akfdblogbulk) {
+        setBlogGenBusy(false);
+        const r = msg.__akfdblogbulk;
+        if (r && r.ok) { setBlogGenMsg({ ok: true, bulk: true, added: r.added, requested: r.requested }); fetchFdBlog(fdBlogFilter); }
         else { setBlogGenMsg({ ok: false, error: (r && r.message) || 'Génération impossible.' }); }
       }
       if (msg && msg.__akfdblogtopic) {
         setBlogTopicBusy(false);
         const r = msg.__akfdblogtopic;
-        if (r && r.ok) { fetchFdBlog(); }
+        if (r && r.ok) { fetchFdBlog(fdBlogFilter); }
         else { Alert.alert('Programmation', (r && r.message) || 'Action impossible.'); }
       }
       if (msg && msg.__akfdsup) { setFdSupport(msg.__akfdsup); setFdSupportLoading(false); }
@@ -3881,8 +3948,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'fdstats' ? (
               <NativeFounderStats data={fdStats} loading={fdStatsLoading} onRefresh={fetchFdStats} onBack={() => openMenuScreen('founder')} />
             ) : menuScreen === 'fdblog' ? (
-              <NativeFounderBlog data={fdBlog} loading={fdBlogLoading} onRefresh={fetchFdBlog} onBack={() => openMenuScreen('founder')} onWeb={openWeb}
-                onGenerate={doBlogGenerate} onProgram={doBlogProgram} onDeleteTopic={doBlogDeleteTopic}
+              <NativeFounderBlog data={fdBlog} loading={fdBlogLoading} onRefresh={() => fetchFdBlog(fdBlogFilter)} onBack={() => openMenuScreen('founder')} onWeb={openWeb}
+                filter={fdBlogFilter} onFilter={(f) => { setFdBlogFilter(f); setFdBlog(null); fetchFdBlog(f); }}
+                onGenerate={doBlogGenerate} onBulk={doBlogBulk} onProgram={doBlogProgram} onDeleteTopic={doBlogDeleteTopic}
                 genBusy={blogGenBusy} genMsg={blogGenMsg} topicBusy={blogTopicBusy} onClearMsg={() => setBlogGenMsg(null)} />
             ) : menuScreen === 'fdsupport' ? (
               <NativeFounderSupport data={fdSupport} loading={fdSupportLoading} filter={fdSupportFilter}
@@ -4548,6 +4616,13 @@ const styles = StyleSheet.create({
   fcMiniVal: { fontSize: 21, fontWeight: '800', color: INK, letterSpacing: -0.5 },
   fcMiniLb: { fontSize: 11.5, fontWeight: '700', color: '#334155', marginTop: 1 },
   fcMiniSub: { fontSize: 9.5, color: '#8A9A92', marginTop: 2 },
+  fcMonthCard: { backgroundColor: '#fff', borderRadius: 17, padding: 15, marginTop: 12, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  fcMonthTitle: { fontSize: 12.5, fontWeight: '800', color: '#334155', marginBottom: 12 },
+  fcMonthRow: { flexDirection: 'row', alignItems: 'center' },
+  fcMonthItem: { flex: 1, alignItems: 'center' },
+  fcMonthVal: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
+  fcMonthLb: { fontSize: 10, color: '#8A9A92', marginTop: 2, fontWeight: '600', textAlign: 'center' },
+  fcMonthSep: { width: 1, height: 30, backgroundColor: '#EEF2F1' },
 
   fcSecRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 22, marginBottom: 10 },
   fcSec: { fontSize: 11.5, fontWeight: '800', color: '#8A9A92', letterSpacing: 0.7 },
@@ -4649,6 +4724,11 @@ const styles = StyleSheet.create({
   blogProgBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, paddingVertical: 14, marginTop: 10, borderWidth: 1.5, borderColor: '#D1FAE5', backgroundColor: '#F0FDF9' },
   blogProgTxt: { color: BRAND, fontSize: 14.5, fontWeight: '800' },
   blogHint: { fontSize: 12, color: '#94A3B8', marginTop: 12, lineHeight: 17, textAlign: 'center' },
+  blogArtDate: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
+  blogQty: { minWidth: 50, alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 12, paddingVertical: 11, paddingHorizontal: 14, borderWidth: 1.5, borderColor: '#E2E8F0' },
+  blogQtyOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
+  blogQtyTxt: { fontSize: 16, fontWeight: '800', color: '#64748B' },
+  blogQtyTxtOn: { color: '#fff' },
 
   /* Créer org — plans + identifiants */
   planChip: { backgroundColor: '#F8FAFC', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1.5, borderColor: '#E2E8F0' },

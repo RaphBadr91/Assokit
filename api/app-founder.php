@@ -27,6 +27,9 @@ try {
     $nb_orgs_active = (int) $scalar("SELECT COUNT(*) FROM organizations WHERE status='active' AND deleted_at IS NULL");
     $nb_orgs_trial = (int) $scalar("SELECT COUNT(*) FROM organizations WHERE status='trial' AND deleted_at IS NULL");
     $nb_users = (int) $scalar("SELECT COUNT(*) FROM users WHERE role NOT IN ('super_admin') AND is_active=1 AND deleted_at IS NULL");
+    $nb_orgs_30 = (int) $scalar("SELECT COUNT(*) FROM organizations WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND deleted_at IS NULL");
+    $nb_users_30 = (int) $scalar("SELECT COUNT(*) FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND is_active=1 AND deleted_at IS NULL");
+    $ca_paid_30 = (float) $scalar("SELECT COALESCE(SUM(amount_ttc),0) FROM subscription_invoices WHERE status='paid' AND paid_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
 
     $mrr = 0.0;
     try {
@@ -78,6 +81,11 @@ try {
             'users' => $nb_users,
             'ia_nb' => (int) $ia['nb'],
             'ia_cost' => round((float) $ia['cost'], 2),
+        ],
+        'month' => [
+            'new_orgs' => $nb_orgs_30,
+            'new_users' => $nb_users_30,
+            'ca_paid' => round($ca_paid_30, 2),
         ],
         'signals' => [
             'pending' => $nb_pending,
