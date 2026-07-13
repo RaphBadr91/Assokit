@@ -2230,10 +2230,27 @@ function NativeFounderStats({ data, loading, onBack, onRefresh }) {
   );
 }
 
-/* Fondateur — Blog SEO auto (natif) */
-function NativeFounderBlog({ data, loading, onBack, onRefresh, onWeb }) {
+/* Fondateur — Blog SEO auto (natif) + génération IA & programmation */
+const BLOG_CATS = [
+  { key: 'associations', label: '🏛️ Associations' },
+  { key: 'tpe', label: '🛠️ TPE & indépendants' },
+  { key: 'comptabilite', label: '📊 Comptabilité' },
+  { key: 'juridique', label: '⚖️ Juridique' },
+  { key: 'communication', label: '📣 Communication' },
+  { key: 'gestion', label: '📋 Gestion' },
+];
+function NativeFounderBlog({ data, loading, onBack, onRefresh, onWeb, onGenerate, onProgram, onDeleteTopic, genBusy, genMsg, topicBusy, onClearMsg }) {
   const s = (data && data.stats) || {};
   const list = data ? (data.articles || []) : null;
+  const queue = (data && data.queue) || [];
+  const [open, setOpen] = useState(false);
+  const [subject, setSubject] = useState('');
+  const [cat, setCat] = useState('associations');
+  const [keywords, setKeywords] = useState('');
+  const [publishNow, setPublishNow] = useState(false);
+  const canSubmit = subject.trim().length > 4;
+  const close = () => { if (genBusy || topicBusy) return; setOpen(false); setSubject(''); setKeywords(''); setPublishNow(false); if (onClearMsg) onClearMsg(); };
+
   return (
     <View style={styles.detailWrap}>
       <DetailHeader title="Blog SEO" onBack={onBack} />
@@ -2242,8 +2259,33 @@ function NativeFounderBlog({ data, loading, onBack, onRefresh, onWeb }) {
         <View style={styles.miniKpiRow}>
           <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.total ?? 0}</Text><Text style={styles.miniKpiLbl}>Articles</Text></View>
           <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#047857' }]}>{s.published ?? 0}</Text><Text style={styles.miniKpiLbl}>Publiés</Text></View>
-          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.last30 ?? 0}</Text><Text style={styles.miniKpiLbl}>30 jours</Text></View>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.queue ?? 0}</Text><Text style={styles.miniKpiLbl}>Programmés</Text></View>
         </View>
+
+        <TouchableOpacity style={styles.blogGenBtn} activeOpacity={0.9} onPress={() => setOpen(true)}>
+          <Ionicons name="sparkles" size={18} color="#fff" />
+          <Text style={styles.blogGenTxt}>Générer un article IA</Text>
+        </TouchableOpacity>
+
+        {queue.length > 0 && (
+          <>
+            <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 10, color: '#64748B' }]}>PROGRAMMÉS · FILE D'ATTENTE</Text>
+            {queue.map((t) => (
+              <View key={t.id} style={styles.blogQueueRow}>
+                <View style={styles.blogQueueIc}><Ionicons name="time" size={15} color="#B45309" /></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.fcOrgName} numberOfLines={2}>{t.title}</Text>
+                  <Text style={styles.fcOrgSub}>{[t.category, 'priorité ' + t.priority].filter(Boolean).join(' · ')}</Text>
+                </View>
+                <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={() => onDeleteTopic(t.id)}>
+                  <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </>
+        )}
+
+        <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 10, color: '#64748B' }]}>DERNIERS ARTICLES</Text>
         {!list ? (
           <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
         ) : list.length === 0 ? (
@@ -2263,6 +2305,74 @@ function NativeFounderBlog({ data, loading, onBack, onRefresh, onWeb }) {
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      <Modal visible={open} transparent animationType="slide" onRequestClose={close}>
+        <View style={styles.blogModalWrap}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <View style={styles.blogModal}>
+              <View style={styles.blogModalHandle} />
+              <View style={styles.blogModalHead}>
+                <Text style={styles.blogModalTitle}>✨ Génération IA</Text>
+                <TouchableOpacity onPress={close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close" size={22} color="#94A3B8" /></TouchableOpacity>
+              </View>
+
+              {genBusy ? (
+                <View style={styles.blogBusy}>
+                  <ActivityIndicator size="large" color={BRAND} />
+                  <Text style={styles.blogBusyTxt}>Rédaction de l'article par l'IA…</Text>
+                  <Text style={styles.blogBusySub}>Cela peut prendre jusqu'à 2 minutes, ne ferme pas l'app.</Text>
+                </View>
+              ) : genMsg && genMsg.ok ? (
+                <View style={styles.blogBusy}>
+                  <View style={styles.blogOkIc}><Ionicons name="checkmark" size={30} color="#fff" /></View>
+                  <Text style={styles.blogBusyTxt}>Article {genMsg.published ? 'publié' : 'créé (brouillon)'} !</Text>
+                  <Text style={styles.blogBusySub} numberOfLines={2}>{genMsg.title}</Text>
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                    {genMsg.url ? <TouchableOpacity style={styles.blogSecBtn} onPress={() => onWeb(genMsg.url)}><Text style={styles.blogSecTxt}>Voir</Text></TouchableOpacity> : null}
+                    <TouchableOpacity style={styles.blogPrimBtn} onPress={close}><Text style={styles.blogPrimTxt}>Terminé</Text></TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                  {genMsg && !genMsg.ok ? (
+                    <View style={styles.lgError}><Ionicons name="alert-circle" size={16} color="#DC2626" /><Text style={styles.lgErrorTxt}>{genMsg.error}</Text></View>
+                  ) : null}
+                  <Text style={styles.blogLabel}>Sujet de l'article</Text>
+                  <TextInput style={styles.blogInput} value={subject} onChangeText={setSubject} placeholder="Ex : Comment déclarer une association loi 1901 en 2026" placeholderTextColor="#9AA7A1" multiline />
+                  <Text style={styles.blogLabel}>Catégorie</Text>
+                  <View style={styles.blogCats}>
+                    {BLOG_CATS.map((c) => (
+                      <TouchableOpacity key={c.key} style={[styles.blogCat, cat === c.key && styles.blogCatOn]} activeOpacity={0.8} onPress={() => setCat(c.key)}>
+                        <Text style={[styles.blogCatTxt, cat === c.key && styles.blogCatTxtOn]}>{c.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.blogLabel}>Mots-clés SEO <Text style={{ color: '#94A3B8', fontWeight: '400' }}>(optionnel)</Text></Text>
+                  <TextInput style={styles.blogInput} value={keywords} onChangeText={setKeywords} placeholder="séparés par des virgules" placeholderTextColor="#9AA7A1" autoCapitalize="none" />
+                  <View style={styles.blogSwitchRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.blogSwitchTitle}>Publier tout de suite</Text>
+                      <Text style={styles.blogSwitchSub}>Sinon, l'article est créé en brouillon</Text>
+                    </View>
+                    <Switch value={publishNow} onValueChange={setPublishNow} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
+                  </View>
+
+                  <TouchableOpacity style={[styles.blogGenBtn, { marginTop: 18 }, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
+                    disabled={!canSubmit} onPress={() => onGenerate({ topic_title: subject.trim(), category: cat, keywords: keywords.trim(), is_published: publishNow ? 1 : 0 })}>
+                    <Ionicons name="sparkles" size={18} color="#fff" />
+                    <Text style={styles.blogGenTxt}>Générer maintenant</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.blogProgBtn, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
+                    disabled={!canSubmit || topicBusy} onPress={() => { onProgram({ topic_title: subject.trim(), category: cat, keywords: keywords.trim(), priority: 5 }); close(); }}>
+                    {topicBusy ? <ActivityIndicator color={BRAND} /> : <><Ionicons name="time" size={17} color={BRAND} /><Text style={styles.blogProgTxt}>Programmer (généré auto plus tard)</Text></>}
+                  </TouchableOpacity>
+                  <Text style={styles.blogHint}>« Programmer » ajoute le sujet à la file : le site le rédige automatiquement ensuite, comme la génération planifiée.</Text>
+                </ScrollView>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2816,6 +2926,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [fdStatsLoading, setFdStatsLoading] = useState(false);
   const [fdBlog, setFdBlog] = useState(null);
   const [fdBlogLoading, setFdBlogLoading] = useState(false);
+  const [blogGenBusy, setBlogGenBusy] = useState(false);
+  const [blogGenMsg, setBlogGenMsg] = useState(null);
+  const [blogTopicBusy, setBlogTopicBusy] = useState(false);
   const [fdSupport, setFdSupport] = useState(null);
   const [fdSupportLoading, setFdSupportLoading] = useState(false);
   const [fdSupportFilter, setFdSupportFilter] = useState('open');
@@ -2993,7 +3106,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const fetchFdStats = useCallback(() => { setFdStatsLoading(true); inject(fetchJS('/api/app-founder-stats.php', '__akfdstats')); }, [inject]);
   const openFdStats = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdStats(null); setMenuScreen('fdstats'); fetchFdStats(); }, [clearDetail, closeForm, fetchFdStats]);
   const fetchFdBlog = useCallback(() => { setFdBlogLoading(true); inject(fetchJS('/api/app-founder-blog.php', '__akfdblog')); }, [inject]);
-  const openFdBlog = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBlog(null); setMenuScreen('fdblog'); fetchFdBlog(); }, [clearDetail, closeForm, fetchFdBlog]);
+  const openFdBlog = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBlog(null); setBlogGenMsg(null); setMenuScreen('fdblog'); fetchFdBlog(); }, [clearDetail, closeForm, fetchFdBlog]);
+  const doBlogGenerate = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setBlogGenBusy(true); setBlogGenMsg(null); inject(postJS('/api/app-founder-blog-generate.php', { ...payload, csrf }, '__akfdbloggen')); }, [csrf, inject]);
+  const doBlogProgram = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setBlogTopicBusy(true); inject(postJS('/api/app-founder-blog-topic.php', { action: 'add', ...payload, csrf }, '__akfdblogtopic')); }, [csrf, inject]);
+  const doBlogDeleteTopic = useCallback((id) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } inject(postJS('/api/app-founder-blog-topic.php', { action: 'delete', id, csrf }, '__akfdblogtopic')); }, [csrf, inject]);
   const fetchFdSupport = useCallback((filter) => { setFdSupportLoading(true); inject(fetchJS('/api/app-founder-support.php?filter=' + encodeURIComponent(filter || 'open'), '__akfdsup')); }, [inject]);
   const openFdSupport = useCallback((filter) => { const f = filter || 'open'; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdSupport(null); setFdSupportFilter(f); setMenuScreen('fdsupport'); fetchFdSupport(f); }, [clearDetail, closeForm, fetchFdSupport]);
   const fetchCoti = useCallback(() => { setCotiLoading(true); inject(fetchJS('/api/app-cotisations.php', '__akcoti')); }, [inject]);
@@ -3300,6 +3416,18 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       if (msg && msg.__akfdstats) { setFdStats(msg.__akfdstats); setFdStatsLoading(false); }
       if (msg && msg.__akfdblog) { setFdBlog(msg.__akfdblog); setFdBlogLoading(false); }
+      if (msg && msg.__akfdbloggen) {
+        setBlogGenBusy(false);
+        const r = msg.__akfdbloggen;
+        if (r && r.ok) { setBlogGenMsg({ ok: true, title: r.title, url: r.url, published: r.published }); fetchFdBlog(); }
+        else { setBlogGenMsg({ ok: false, error: (r && r.message) || 'Génération impossible.' }); }
+      }
+      if (msg && msg.__akfdblogtopic) {
+        setBlogTopicBusy(false);
+        const r = msg.__akfdblogtopic;
+        if (r && r.ok) { fetchFdBlog(); }
+        else { Alert.alert('Programmation', (r && r.message) || 'Action impossible.'); }
+      }
       if (msg && msg.__akfdsup) { setFdSupport(msg.__akfdsup); setFdSupportLoading(false); }
       if (msg && msg.__aknotifread && msg.__aknotifread.ok) {
         const r = msg.__aknotifread;
@@ -3610,7 +3738,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'fdstats' ? (
               <NativeFounderStats data={fdStats} loading={fdStatsLoading} onRefresh={fetchFdStats} onBack={() => openMenuScreen('founder')} />
             ) : menuScreen === 'fdblog' ? (
-              <NativeFounderBlog data={fdBlog} loading={fdBlogLoading} onRefresh={fetchFdBlog} onBack={() => openMenuScreen('founder')} onWeb={openWeb} />
+              <NativeFounderBlog data={fdBlog} loading={fdBlogLoading} onRefresh={fetchFdBlog} onBack={() => openMenuScreen('founder')} onWeb={openWeb}
+                onGenerate={doBlogGenerate} onProgram={doBlogProgram} onDeleteTopic={doBlogDeleteTopic}
+                genBusy={blogGenBusy} genMsg={blogGenMsg} topicBusy={blogTopicBusy} onClearMsg={() => setBlogGenMsg(null)} />
             ) : menuScreen === 'fdsupport' ? (
               <NativeFounderSupport data={fdSupport} loading={fdSupportLoading} filter={fdSupportFilter}
                 onFilter={(f) => { setFdSupport(null); setFdSupportFilter(f); fetchFdSupport(f); }}
@@ -4336,6 +4466,38 @@ const styles = StyleSheet.create({
   fcTicketCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 15, padding: 14, marginTop: 11, borderWidth: 1, borderColor: '#E7EDEA' },
   fcUnread: { backgroundColor: '#EF4444', borderRadius: 999, minWidth: 20, paddingHorizontal: 6, paddingVertical: 1, alignItems: 'center' },
   fcUnreadTxt: { color: '#fff', fontSize: 10.5, fontWeight: '900' },
+
+  /* Blog — génération IA & programmation */
+  blogGenBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#7C3AED', borderRadius: 14, paddingVertical: 15, marginTop: 16, shadowColor: '#6D28D9', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 3 },
+  blogGenTxt: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  blogQueueRow: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#fff', borderRadius: 14, padding: 13, marginBottom: 9, borderWidth: 1, borderColor: '#F1E4C7' },
+  blogQueueIc: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center' },
+  blogModalWrap: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
+  blogModal: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, paddingBottom: 30, maxHeight: '90%' },
+  blogModalHandle: { width: 42, height: 5, borderRadius: 3, backgroundColor: '#E2E8F0', alignSelf: 'center', marginBottom: 14 },
+  blogModalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  blogModalTitle: { fontSize: 19, fontWeight: '800', color: INK },
+  blogBusy: { alignItems: 'center', paddingVertical: 30 },
+  blogBusyTxt: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 16, textAlign: 'center' },
+  blogBusySub: { fontSize: 13, color: '#64748B', marginTop: 6, textAlign: 'center', paddingHorizontal: 20, lineHeight: 18 },
+  blogOkIc: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center' },
+  blogSecBtn: { paddingVertical: 13, paddingHorizontal: 22, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  blogSecTxt: { fontSize: 15, fontWeight: '700', color: '#334155' },
+  blogPrimBtn: { paddingVertical: 13, paddingHorizontal: 28, borderRadius: 12, backgroundColor: BRAND },
+  blogPrimTxt: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  blogLabel: { fontSize: 14, fontWeight: '700', color: '#334155', marginTop: 12, marginBottom: 8 },
+  blogInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: INK, minHeight: 48 },
+  blogCats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  blogCat: { backgroundColor: '#F1F5F9', borderRadius: 999, paddingHorizontal: 13, paddingVertical: 9, borderWidth: 1, borderColor: '#E2E8F0' },
+  blogCatOn: { backgroundColor: '#EDE9FE', borderColor: '#7C3AED' },
+  blogCatTxt: { fontSize: 12.5, fontWeight: '600', color: '#64748B' },
+  blogCatTxtOn: { color: '#6D28D9', fontWeight: '800' },
+  blogSwitchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 18, backgroundColor: '#F8FAFC', borderRadius: 13, padding: 14, borderWidth: 1, borderColor: '#E7EDEA' },
+  blogSwitchTitle: { fontSize: 14.5, fontWeight: '700', color: INK },
+  blogSwitchSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  blogProgBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, paddingVertical: 14, marginTop: 10, borderWidth: 1.5, borderColor: '#D1FAE5', backgroundColor: '#F0FDF9' },
+  blogProgTxt: { color: BRAND, fontSize: 14.5, fontWeight: '800' },
+  blogHint: { fontSize: 12, color: '#94A3B8', marginTop: 12, lineHeight: 17, textAlign: 'center' },
 
   /* Quick actions sheet */
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },

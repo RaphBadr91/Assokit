@@ -51,10 +51,36 @@ try {
         ];
     }
 
+    // File d'attente (sujets programmés, non encore générés)
+    $queue = [];
+    try {
+        $st = $pdo->query("SELECT id, topic_title, category, priority, created_at FROM asso_blog_topics WHERE status='pending' ORDER BY priority ASC, created_at ASC LIMIT 40");
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $t) {
+            $queue[] = [
+                'id'       => (int) $t['id'],
+                'title'    => (string) $t['topic_title'],
+                'category' => (string) ($t['category'] ?? ''),
+                'priority' => (int) ($t['priority'] ?? 5),
+                'date'     => !empty($t['created_at']) ? date('d/m/Y', strtotime($t['created_at'])) : '',
+            ];
+        }
+    } catch (Throwable $e) {}
+
+    $categories = [
+        ['key' => 'associations',  'label' => 'Associations'],
+        ['key' => 'tpe',           'label' => 'TPE & indépendants'],
+        ['key' => 'comptabilite',  'label' => 'Comptabilité'],
+        ['key' => 'juridique',     'label' => 'Juridique'],
+        ['key' => 'communication', 'label' => 'Communication'],
+        ['key' => 'gestion',       'label' => 'Gestion'],
+    ];
+
     echo json_encode([
         'ok' => true,
-        'stats' => ['total' => $total, 'published' => $published, 'drafts' => $drafts, 'last30' => $last30, 'topics' => $topics],
+        'stats' => ['total' => $total, 'published' => $published, 'drafts' => $drafts, 'last30' => $last30, 'topics' => $topics, 'queue' => count($queue)],
         'articles' => $articles,
+        'queue' => $queue,
+        'categories' => $categories,
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-founder-blog] ' . $e->getMessage());
