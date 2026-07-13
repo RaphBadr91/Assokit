@@ -89,10 +89,24 @@ try {
         $stmt_step->execute([$new_id, $i + 1, $title]);
     }
 
-    if ($referent_id > 0) {
+    // Équipe du projet : membres sélectionnés + référent (comme le site)
+    $member_ids = [];
+    foreach ((array) ($input['member_ids'] ?? []) as $m) {
+        $mid = (int) $m;
+        if ($mid > 0) $member_ids[] = $mid;
+    }
+    if ($referent_id > 0 && !in_array($referent_id, $member_ids, true)) $member_ids[] = $referent_id;
+    if (!empty($member_ids)) {
+        // Vérifie l'appartenance à l'org avant insertion
+        $in = implode(',', array_fill(0, count($member_ids), '?'));
+        $chk = $pdo->prepare("SELECT id FROM users WHERE org_id = ? AND id IN ($in)");
+        $chk->execute(array_merge([$org_id], $member_ids));
+        $valid = array_map('intval', $chk->fetchAll(PDO::FETCH_COLUMN));
         try {
-            $pdo->prepare("INSERT IGNORE INTO project_members (project_id, user_id, role_in_project, joined_at) VALUES (?, ?, 'referent', NOW())")
-                ->execute([$new_id, $referent_id]);
+            $ins_mem = $pdo->prepare("INSERT IGNORE INTO project_members (project_id, user_id, role_in_project, joined_at) VALUES (?, ?, ?, NOW())");
+            foreach ($valid as $mid) {
+                $ins_mem->execute([$new_id, $mid, ($mid === $referent_id ? 'referent' : 'member')]);
+            }
         } catch (Throwable $e) {}
     }
 

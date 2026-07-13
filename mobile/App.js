@@ -1403,7 +1403,8 @@ function BillingForm({ mode, onBack, onSubmit, submitting, error, clients }) {
   );
 }
 
-function ProjectForm({ onBack, onSubmit, submitting, error, folders }) {
+const PROJ_REF_ROLES = ['admin', 'coordinator', 'referent'];
+function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) {
   const [name, setName] = useState('');
   const [folderId, setFolderId] = useState(0);
   const [newFolder, setNewFolder] = useState('');
@@ -1411,6 +1412,15 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders }) {
   const [steps, setSteps] = useState(['Préparation', 'Organisation', 'Réalisation', 'Bilan']);
   const [description, setDescription] = useState('');
   const [budget, setBudget] = useState('');
+  const [referentId, setReferentId] = useState(0);
+  const [teamIds, setTeamIds] = useState([]);
+  const [refPickerOpen, setRefPickerOpen] = useState(false);
+  const [teamPickerOpen, setTeamPickerOpen] = useState(false);
+
+  const allMembers = members || [];
+  const referents = allMembers.filter((m) => PROJ_REF_ROLES.includes(m.role));
+  const selReferent = allMembers.find((m) => m.id === referentId);
+  const toggleTeam = (id) => setTeamIds((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
 
   const setStep = (i, v) => setSteps((s) => s.map((x, j) => (j === i ? v : x)));
   const addStep = () => setSteps((s) => [...s, '']);
@@ -1423,6 +1433,8 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders }) {
       steps: steps.map((t) => ({ title: t })).filter((x) => x.title.trim() !== ''),
       description,
       budget_planned: budget,
+      referent_id: referentId || 0,
+      member_ids: teamIds,
     };
     if (folderId > 0) payload.folder_id = folderId; else payload.new_folder = newFolder;
     onSubmit(payload);
@@ -1463,8 +1475,96 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders }) {
       </TouchableOpacity>
 
       <View style={{ height: 18 }} />
+
+      {/* Référent du projet */}
+      <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Référent du projet</Text>
+        {referents.length > 0 && <TouchableOpacity onPress={() => setRefPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>{selReferent ? 'Changer' : 'Choisir'}</Text></TouchableOpacity>}
+      </View>
+      {selReferent ? (
+        <View style={styles.pickedClient}>
+          <View style={[styles.projPersonAv, { backgroundColor: selReferent.color || BRAND }]}><Text style={styles.projPersonAvTxt}>{selReferent.initials}</Text></View>
+          <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selReferent.name}</Text><Text style={styles.projPersonRole}>{selReferent.role_label || 'Référent'}</Text></View>
+          <TouchableOpacity onPress={() => setReferentId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.projPickBtn} activeOpacity={0.8} onPress={() => referents.length ? setRefPickerOpen(true) : null}>
+          <Ionicons name="star-outline" size={18} color={BRAND} />
+          <Text style={styles.projPickTxt}>{referents.length ? 'Désigner un référent' : 'Aucun référent disponible'}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Équipe du projet */}
+      <View style={[styles.formCardHead, { marginTop: 20 }]}><Text style={styles.formCardTitle}>Équipe du projet</Text>
+        {allMembers.length > 0 && <TouchableOpacity onPress={() => setTeamPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>Ajouter</Text></TouchableOpacity>}
+      </View>
+      {teamIds.length === 0 ? (
+        <TouchableOpacity style={styles.projPickBtn} activeOpacity={0.8} onPress={() => allMembers.length ? setTeamPickerOpen(true) : null}>
+          <Ionicons name="people-outline" size={18} color={BRAND} />
+          <Text style={styles.projPickTxt}>{allMembers.length ? 'Ajouter des participants' : 'Aucun membre disponible'}</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.projTeamWrap}>
+          {teamIds.map((id) => {
+            const m = allMembers.find((x) => x.id === id);
+            if (!m) return null;
+            return (
+              <TouchableOpacity key={id} style={styles.projTeamChip} activeOpacity={0.8} onPress={() => toggleTeam(id)}>
+                <View style={[styles.projTeamAv, { backgroundColor: m.color || BRAND }]}><Text style={styles.projTeamAvTxt}>{m.initials}</Text></View>
+                <Text style={styles.projTeamName}>{m.name}</Text>
+                <Ionicons name="close" size={15} color="#94A3B8" />
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      <View style={{ height: 18 }} />
       <Field label="Description" value={description} onChangeText={setDescription} multiline numberOfLines={3} style={[styles.fInput, { height: 90, textAlignVertical: 'top' }]} />
       <Field label="Budget prévu (€)" value={budget} onChangeText={setBudget} keyboardType="decimal-pad" />
+
+      {/* Picker référent */}
+      <Modal visible={refPickerOpen} transparent animationType="slide" onRequestClose={() => setRefPickerOpen(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setRefPickerOpen(false)}>
+          <Pressable style={[styles.sheet, { maxHeight: '70%' }]}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Référent du projet</Text>
+            <ScrollView>
+              {referents.map((m) => (
+                <TouchableOpacity key={m.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => { setReferentId(m.id); setRefPickerOpen(false); }}>
+                  <View style={[styles.projPersonAv, { backgroundColor: m.color || BRAND, marginRight: 12 }]}><Text style={styles.projPersonAvTxt}>{m.initials}</Text></View>
+                  <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{m.name}</Text><Text style={styles.projPersonRole}>{m.role_label || m.role}</Text></View>
+                  {referentId === m.id && <Ionicons name="checkmark-circle" size={22} color={BRAND} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Picker équipe (multi) */}
+      <Modal visible={teamPickerOpen} transparent animationType="slide" onRequestClose={() => setTeamPickerOpen(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setTeamPickerOpen(false)}>
+          <Pressable style={[styles.sheet, { maxHeight: '75%' }]}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Équipe du projet</Text>
+            <ScrollView>
+              {allMembers.map((m) => {
+                const on = teamIds.includes(m.id);
+                return (
+                  <TouchableOpacity key={m.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => toggleTeam(m.id)}>
+                    <View style={[styles.projPersonAv, { backgroundColor: m.color || BRAND, marginRight: 12 }]}><Text style={styles.projPersonAvTxt}>{m.initials}</Text></View>
+                    <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{m.name}</Text><Text style={styles.projPersonRole}>{m.role_label || m.role}</Text></View>
+                    <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? BRAND : '#CBD5E1'} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={styles.projTeamDone} activeOpacity={0.9} onPress={() => setTeamPickerOpen(false)}>
+              <Text style={styles.projTeamDoneTxt}>Valider ({teamIds.length})</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setPickerOpen(false)}>
@@ -3067,6 +3167,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [csrf, setCsrf] = useState('');
   const [pickClients, setPickClients] = useState([]);
   const [folders, setFolders] = useState([]);
+  const [projMembers, setProjMembers] = useState([]);
   const [scanData, setScanData] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [expenseProject, setExpenseProject] = useState(0);
@@ -3214,7 +3315,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     setForm({ type });
     inject(FETCH_CSRF_JS);
     if (type === 'invoice' || type === 'quote') inject(fetchJS('/api/app-clients.php', '__akpick'));
-    if (type === 'project') inject(fetchJS('/api/app-folders.php', '__akfolders'));
+    if (type === 'project') { inject(fetchJS('/api/app-folders.php', '__akfolders')); inject(fetchJS('/api/app-members.php', '__akprojmembers')); }
     if (type === 'expense') {
       setScanData(null);
       setScanning(false);
@@ -3571,6 +3672,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akcsrf && msg.__akcsrf.ok) setCsrf(msg.__akcsrf.csrf);
       if (msg && msg.__akpick && msg.__akpick.ok) setPickClients(msg.__akpick.clients || []);
       if (msg && msg.__akfolders && msg.__akfolders.ok) setFolders(msg.__akfolders.folders || []);
+      if (msg && msg.__akprojmembers && msg.__akprojmembers.ok) setProjMembers(msg.__akprojmembers.members || []);
       if (msg && msg.__akbilan) {
         setStack((s) => {
           if (!s.length) return s;
@@ -3864,7 +3966,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <BillingForm mode={form.type} onBack={closeForm} onSubmit={(d) => submitForm(form.type, d)} submitting={submitting} error={formErr} clients={pickClients} />
             )}
             {form.type === 'project' && (
-              <ProjectForm onBack={closeForm} onSubmit={(d) => submitForm('project', d)} submitting={submitting} error={formErr} folders={folders} />
+              <ProjectForm onBack={closeForm} onSubmit={(d) => submitForm('project', d)} submitting={submitting} error={formErr} folders={folders} members={projMembers} />
             )}
             {form.type === 'expense' && (
               <ExpenseForm onBack={closeForm} onSubmit={(d) => submitForm('expense', d)} submitting={submitting} error={formErr}
@@ -4339,8 +4441,20 @@ const styles = StyleSheet.create({
   formCardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   formCardTitle: { fontSize: 15, fontWeight: '700', color: INK, marginBottom: 10 },
   formLink: { fontSize: 13.5, fontWeight: '600', color: BRAND },
-  pickedClient: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FDF9', borderWidth: 1, borderColor: '#D1FAE5', borderRadius: 12, padding: 14 },
+  pickedClient: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F0FDF9', borderWidth: 1, borderColor: '#D1FAE5', borderRadius: 12, padding: 14 },
   pickedName: { fontSize: 15, fontWeight: '700', color: INK },
+  projPickBtn: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 15 },
+  projPickTxt: { fontSize: 14.5, fontWeight: '600', color: '#64748B' },
+  projPersonAv: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  projPersonAvTxt: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  projPersonRole: { fontSize: 12, color: '#94A3B8', marginTop: 1 },
+  projTeamWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  projTeamChip: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#F0FDF9', borderWidth: 1, borderColor: '#D1FAE5', borderRadius: 999, paddingLeft: 4, paddingRight: 11, paddingVertical: 4 },
+  projTeamAv: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  projTeamAvTxt: { color: '#fff', fontSize: 10.5, fontWeight: '800' },
+  projTeamName: { fontSize: 13, fontWeight: '700', color: INK },
+  projTeamDone: { backgroundColor: BRAND, borderRadius: 13, paddingVertical: 15, alignItems: 'center', marginTop: 10 },
+  projTeamDoneTxt: { color: '#fff', fontSize: 15, fontWeight: '800' },
   pickedMail: { fontSize: 12.5, color: MUTE, marginTop: 2 },
   lineCard: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#EEF2F6', borderRadius: 14, padding: 14, marginBottom: 12 },
   lineCardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
