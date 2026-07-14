@@ -57,6 +57,11 @@
           "faceIDPermission": "Assokit utilise Face ID pour déverrouiller l'application en toute sécurité."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "dae894d1-666e-4f15-9a5b-12819abd97e4"
+      }
+    }
   }
 }
