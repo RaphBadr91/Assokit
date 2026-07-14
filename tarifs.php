@@ -16,11 +16,54 @@ $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Tarifs',  'url' => '/tarifs'],
 ]);
 
+// Schema Product/Offer : les prix des formules peuvent apparaître dans Google
+$product_schema = [
+    '@context'    => 'https://schema.org',
+    '@type'       => 'Product',
+    'name'        => 'Assokit — Logiciel de gestion association & TPE',
+    'description' => "Logiciel tout-en-un pour associations loi 1901 et TPE : adhérents, cotisations, facturation, devis, comptabilité analytique, projets et IA.",
+    'brand'       => ['@type' => 'Brand', 'name' => 'Assokit'],
+    'offers'      => [
+        '@type'         => 'AggregateOffer',
+        'priceCurrency' => 'EUR',
+        'lowPrice'      => '29.99',
+        'highPrice'     => '149.00',
+        'offerCount'    => '3',
+        'offers'        => [
+            ['@type' => 'Offer', 'name' => 'Essentiel',  'price' => '29.99',  'priceCurrency' => 'EUR', 'url' => 'https://assokit.fr/tarifs#offre-essentiel',  'availability' => 'https://schema.org/InStock'],
+            ['@type' => 'Offer', 'name' => 'Pro',        'price' => '49.99',  'priceCurrency' => 'EUR', 'url' => 'https://assokit.fr/tarifs#offre-pro',        'availability' => 'https://schema.org/InStock'],
+            ['@type' => 'Offer', 'name' => 'Sur-mesure', 'price' => '149.00', 'priceCurrency' => 'EUR', 'url' => 'https://assokit.fr/tarifs#offre-sur-mesure', 'availability' => 'https://schema.org/InStock'],
+        ],
+    ],
+];
+
+// FAQPage : reprend mot pour mot les questions visibles plus bas (éligible aux rich results Google)
+$tarifs_faqs = [
+    ['Le plan Démarrage est vraiment gratuit ?', "Oui, vraiment. Gratuit, sans carte bancaire, sans limite de durée. Mais il est volontairement très limité (3 adhérents, 10 factures, 5 devis, 5 IA/mois) pour vous permettre de découvrir Assokit. Dès que votre activité grandit, le plan Assokit (49,99€ HT) prend le relais."],
+    ['Y a-t-il un engagement de durée ?', "Non. Vous payez au mois, vous arrêtez quand vous voulez. L'abonnement annuel offre 15% de réduction mais reste résiliable à tout moment (avec proratisation pour les mois non utilisés)."],
+    ['Que se passe-t-il si je dépasse mes générations IA ?', "Vous êtes prévenu·e à 80% et 100% du quota. Au-delà, vous pouvez attendre le mois suivant ou passer au plan supérieur. Aucun débit automatique non sollicité."],
+    ['Puis-je changer de plan en cours d\'abonnement ?', "Oui, à tout moment. Si vous montez en gamme, c'est immédiat (au prorata). Si vous descendez, le changement prend effet au prochain cycle de facturation."],
+    ['Que se passe-t-il si j\'atteins la limite d\'adhérents ?', "Sur le plan Démarrage (3 adhérents) ou Assokit (400 adhérents), vous recevez une alerte à 80% puis à 100%. Au-delà, l'ajout de nouveaux adhérents est temporairement bloqué jusqu'à upgrade. Vos données existantes restent intactes."],
+    ['Mes données sont-elles vraiment hébergées en France ?', "Oui, 100%. Nos serveurs sont chez O2Switch, un hébergeur français basé à Clermont-Ferrand. Aucune donnée ne sort du territoire européen. Conformité RGPD garantie par contrat."],
+    ['Y a-t-il une démo gratuite ?', "Oui. Réservez 30 minutes en visio avec notre équipe. On vous fait découvrir Assokit en direct, en se concentrant sur vos besoins concrets. Aucun engagement."],
+    ['Puis-je récupérer mes données si je quitte Assokit ?', "Évidemment. Vos données vous appartiennent. Export complet en un clic (CSV, JSON, PDF) à tout moment. Conservation 30 jours après résiliation pour vous laisser le temps de tout récupérer."],
+    ['Le support est-il vraiment humain ?', "100%. Aucun bot. Email et chat tenus par notre équipe française. Réponse en moins de 24h sur tous les plans, moins de 4h en Sur-mesure. Réponses utiles, jamais des copier-coller de FAQ."],
+];
+$faq_schema = [
+    '@context'   => 'https://schema.org',
+    '@type'      => 'FAQPage',
+    'mainEntity' => array_map(fn($qa) => [
+        '@type'          => 'Question',
+        'name'           => $qa[0],
+        'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]],
+    ], $tarifs_faqs),
+];
+
 render_public_head([
-    'title'       => 'Tarifs · Des prix justes pour les associations et les TPE',
-    'description' => 'Découvrez les tarifs Assokit adaptés aux associations loi 1901 et aux TPE. Plan Démarrage gratuit, plan Assokit complet, plan Sur-mesure sur devis.',
+    'title'       => 'Tarifs Assokit · Logiciel association & TPE dès 29,99 €/mois',
+    'description' => 'Tarifs Assokit pour associations loi 1901 et TPE : Essentiel à 29,99 €, Pro à 49,99 €/mois, ou Sur-mesure. Essai gratuit, sans engagement. Comptabilité analytique incluse.',
     'path'        => '/tarifs',
-    'schema_jsonld' => [$breadcrumb],
+    'schema_jsonld' => [$breadcrumb, $product_schema, $faq_schema],
 ]);
 
 render_public_nav('tarifs');
