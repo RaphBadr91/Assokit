@@ -50,12 +50,18 @@ $breadcrumb = build_breadcrumb_jsonld([
     ['name' => $article['title'], 'url' => '/blog/' . $article['slug']],
 ]);
 
+// Image de l'article : cover dédiée si disponible, sinon visuel de marque par défaut (1200x630)
+$article_image = !empty($article['og_image'])
+    ? (preg_match('#^https?://#', $article['og_image']) ? $article['og_image'] : AK_PUBLIC_DOMAIN . '/' . ltrim($article['og_image'], '/'))
+    : AK_PUBLIC_DOMAIN . '/assets/og-assokit-home.png';
+
 // Schema Article
 $article_jsonld = [
     '@context' => 'https://schema.org',
     '@type'    => 'Article',
     'headline' => $article['title'],
     'description' => $article['excerpt'],
+    'image' => [$article_image],
     'datePublished' => $article['published_at'],
     'dateModified'  => $article['updated_at'] ?: $article['published_at'],
     'author' => [
