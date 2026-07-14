@@ -9,6 +9,46 @@
  */
 require_once __DIR__ . '/includes-public.php';
 
+// === FAQ (source unique : alimente le schema FAQPage ET la section visible) ===
+$home_faqs = [
+    [
+        'q' => "Qu'est-ce qu'Assokit ?",
+        'a' => "Assokit est un logiciel de gestion tout-en-un pour les associations loi 1901 et les TPE. Il réunit dans un seul outil les adhérents, les cotisations, la facturation, les devis, la comptabilité analytique, le suivi de projets, la communication et l'intelligence artificielle.",
+    ],
+    [
+        'q' => "Assokit convient-il aux associations loi 1901 ?",
+        'a' => "Oui. Assokit gère les adhérents, les cotisations, les assemblées générales, l'émargement, les subventions et la communication, avec un coach IA dédié à la vie associative — sans plug-in ni paperasse.",
+    ],
+    [
+        'q' => "Assokit fonctionne-t-il aussi pour les TPE et les indépendants ?",
+        'a' => "Oui. Les TPE, PME et indépendants profitent de la facturation, des devis, du suivi des paiements et de la comptabilité analytique, le tout sans avoir besoin d'un logiciel supplémentaire.",
+    ],
+    [
+        'q' => "Combien coûte Assokit ?",
+        'a' => "Assokit propose un plan gratuit pour démarrer, puis des formules Essentiel et Pro adaptées à votre activité. Vous pouvez tester la solution gratuitement, sans engagement et sans carte bancaire.",
+    ],
+    [
+        'q' => "La comptabilité analytique est-elle incluse ?",
+        'a' => "Oui, la comptabilité analytique est incluse dès l'offre Pro, soit environ 900 € d'économie par an par rapport à un expert-comptable. Votre comptable n'intervient plus que pour valider les comptes.",
+    ],
+    [
+        'q' => "Mes données sont-elles sécurisées et hébergées en France ?",
+        'a' => "Oui. Vos données sont hébergées en France, conformes au RGPD, protégées par la double authentification (2FA) et sauvegardées régulièrement.",
+    ],
+    [
+        'q' => "Existe-t-il une application mobile Assokit ?",
+        'a' => "Oui, Assokit dispose d'une application mobile qui vous permet de piloter votre association ou votre TPE directement depuis votre téléphone.",
+    ],
+];
+$faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => []];
+foreach ($home_faqs as $f) {
+    $faq_schema['mainEntity'][] = [
+        '@type' => 'Question',
+        'name'  => $f['q'],
+        'acceptedAnswer' => ['@type' => 'Answer', 'text' => $f['a']],
+    ];
+}
+
 render_public_head([
     // === SEO HOMEPAGE — VALIDÉ ===
     // Title  (54 chars) : Assokit · Logiciel Association & TPE Tout-en-Un · IA
@@ -38,6 +78,7 @@ render_public_head([
                 'bestRating' => '5',
             ],
         ],
+        $faq_schema,
     ],
 ]);
 
@@ -1436,6 +1477,44 @@ render_public_nav('');
     </div>
   </div>
 </section>
+
+<!-- ============================================================ -->
+<!-- FAQ (rich results Google : FAQPage) -->
+<!-- ============================================================ -->
+<section class="pub-section pub-section-creme ak-faq" id="faq">
+  <div class="pub-container">
+    <div class="pub-section-head">
+      <span class="pub-section-eyebrow">Questions fréquentes</span>
+      <h2 class="pub-h2">Tout ce que vous devez savoir sur Assokit</h2>
+      <p class="pub-section-lead">Logiciel association loi 1901 et TPE, tarifs, sécurité, application mobile : les réponses aux questions les plus posées.</p>
+    </div>
+    <div class="ak-faq-list">
+      <?php foreach ($home_faqs as $i => $f): ?>
+      <details class="ak-faq-item"<?= $i === 0 ? ' open' : '' ?>>
+        <summary class="ak-faq-q"><?= pub_h($f['q']) ?><span class="ak-faq-chevron" aria-hidden="true">›</span></summary>
+        <div class="ak-faq-a"><p><?= pub_h($f['a']) ?></p></div>
+      </details>
+      <?php endforeach; ?>
+    </div>
+    <p class="ak-faq-more">Une autre question ? <a href="/contact">Contactez-nous</a> — réponse sous 24 h.</p>
+  </div>
+</section>
+
+<style>
+.ak-faq-list { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.ak-faq-item { background: #fff; border: 1px solid #E7EDEA; border-radius: 16px; padding: 4px 20px; box-shadow: 0 6px 18px -14px rgba(11,59,42,.25); transition: border-color .2s; }
+.ak-faq-item[open] { border-color: #A7F3D0; }
+.ak-faq-q { cursor: pointer; list-style: none; font-size: 17px; font-weight: 700; color: #064E3B; padding: 16px 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; letter-spacing: -.01em; }
+.ak-faq-q::-webkit-details-marker { display: none; }
+.ak-faq-chevron { font-size: 26px; line-height: 1; color: #059669; transform: rotate(90deg); transition: transform .2s; flex: none; }
+.ak-faq-item[open] .ak-faq-chevron { transform: rotate(-90deg); }
+.ak-faq-a { padding: 0 0 18px; }
+.ak-faq-a p { margin: 0; font-size: 15.5px; line-height: 1.7; color: #475569; }
+.ak-faq-more { text-align: center; margin: 30px 0 0; font-size: 15px; color: #6b7280; }
+.ak-faq-more a { color: #059669; font-weight: 700; text-decoration: none; }
+.ak-faq-more a:hover { text-decoration: underline; }
+@media (max-width: 640px) { .ak-faq-q { font-size: 15.5px; } .ak-faq-item { padding: 2px 16px; } }
+</style>
 
 <!-- ============================================================ -->
 <!-- CTA FINAL -->
