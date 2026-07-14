@@ -266,6 +266,7 @@ if (!function_exists('render_public_footer')) {
               <div class="pub-footer-col">
                 <h4>Entreprise</h4>
                 <a href="/a-propos">À propos</a>
+                <a href="/avis">Avis clients</a>
                 <a href="/contact">Contact</a>
                 <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>
               </div>

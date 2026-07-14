@@ -25,6 +25,7 @@ $pages = [
     ['/comptabilite-analytique',   '0.8', 'monthly'],
     ['/pour-organismes',           '0.7', 'monthly'],
     ['/a-propos',                  '0.6', 'monthly'],
+    ['/avis',                      '0.7', 'monthly'],
     ['/application',               '0.6', 'monthly'],
     ['/contact',                   '0.7', 'monthly'],
     ['/blog',                      '0.9', 'daily'],
