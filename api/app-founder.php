@@ -48,6 +48,13 @@ try {
     try { $unpaid = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(amount_ttc),0) AS total FROM subscription_invoices WHERE status IN ('sent','overdue')")->fetch(PDO::FETCH_ASSOC) ?: $unpaid; } catch (Throwable $e) {}
     $nb_expiring = (int) $scalar("SELECT COUNT(*) FROM organizations WHERE status='trial' AND trial_ends_at BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)");
 
+    // Demandes de contact non lues (nouvelles demandes + réponses entrantes du double-sens :
+    // le pipe repasse le statut à 'new' à chaque réponse d'un prospect)
+    $contacts_unread = 0;
+    try {
+        $contacts_unread = (int) $scalar("SELECT COUNT(*) FROM asso_contact_messages WHERE COALESCE(status,'new') NOT IN ('read','replied','closed','archived')");
+    } catch (Throwable $e) {}
+
     // Dernières associations
     $orgs = [];
     try {
@@ -92,6 +99,7 @@ try {
             'unpaid_nb' => (int) $unpaid['nb'],
             'unpaid_total' => round((float) $unpaid['total'], 2),
             'expiring' => $nb_expiring,
+            'contacts_unread' => $contacts_unread,
         ],
         'orgs' => $orgs,
     ], JSON_UNESCAPED_UNICODE);

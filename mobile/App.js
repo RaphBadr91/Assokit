@@ -2004,6 +2004,8 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
   if (sig.pending > 0) signals.push({ tone: '#B45309', bg: '#FEF3C7', icon: 'construct', t: sig.pending + ' validation' + (sig.pending > 1 ? 's' : '') + ' en attente', filter: 'pending' });
   if (sig.unpaid_nb > 0) signals.push({ tone: '#B91C1C', bg: '#FEE2E2', icon: 'cash', t: sig.unpaid_nb + ' impayé' + (sig.unpaid_nb > 1 ? 's' : '') + ' · ' + fmtEuro(sig.unpaid_total), filter: 'unpaid' });
   if (sig.expiring > 0) signals.push({ tone: '#6D28D9', bg: '#EDE9FE', icon: 'time', t: sig.expiring + ' essai' + (sig.expiring > 1 ? 's' : '') + ' expire' + (sig.expiring > 1 ? 'nt' : '') + ' sous 7j', filter: 'trial' });
+  const ctcUnread = sig.contacts_unread || 0;
+  if (ctcUnread > 0) signals.push({ tone: '#BE185D', bg: '#FCE7F3', icon: 'mail-unread', t: ctcUnread + ' nouveau' + (ctcUnread > 1 ? 'x' : '') + ' message' + (ctcUnread > 1 ? 's' : '') + ' de contact', screen: 'contacts', filter: 'all' });
 
   const active = k.orgs_active ?? 0, trial = k.orgs_trial ?? 0;
   const tot = Math.max(1, active + trial);
@@ -2116,7 +2118,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
                   <View style={styles.fcSecN}><Text style={styles.fcSecNTxt}>{signals.length}</Text></View>
                 </View>
                 {signals.map((s, i) => (
-                  <TouchableOpacity key={i} style={styles.fcSignal} activeOpacity={0.85} onPress={() => onTile('associations', s.filter)}>
+                  <TouchableOpacity key={i} style={styles.fcSignal} activeOpacity={0.85} onPress={() => onTile(s.screen || 'associations', s.filter)}>
                     <View style={[styles.fcSignalIc, { backgroundColor: s.bg }]}><Ionicons name={s.icon} size={16} color={s.tone} /></View>
                     <Text style={styles.fcSignalTxt} numberOfLines={2}>{s.t}</Text>
                     <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
@@ -2128,13 +2130,17 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
             {/* Centre de contrôle */}
             <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12 }]}>CENTRE DE CONTRÔLE</Text>
             <View style={styles.fcTiles}>
-              {FC_TILES.map((t) => (
+              {FC_TILES.map((t) => {
+                const tileBadge = t.key === 'contacts' ? ctcUnread : 0;
+                return (
                 <TouchableOpacity key={t.key} style={styles.fcTile} activeOpacity={0.88} onPress={() => onTile(t.key, t.key === 'billing' ? 'unpaid' : 'all')}>
                   <View style={[styles.fcTileIc, { backgroundColor: t.bg }]}><Ionicons name={t.icon} size={21} color={t.color} /></View>
+                  {tileBadge > 0 ? <View style={styles.fcTileBadge}><Text style={styles.fcTileBadgeTxt}>{tileBadge > 99 ? '99+' : tileBadge}</Text></View> : null}
                   <Text style={styles.fcTileTitle}>{t.title}</Text>
                   <Text style={styles.fcTileDesc} numberOfLines={1}>{t.desc}</Text>
                 </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>
 
             {/* Dernières associations */}
@@ -2604,13 +2610,14 @@ function NativeFounderSupportThread({ data, loading, onBack, onRefresh, onReply,
   const [body, setBody] = useState('');
   const send = () => { if (body.trim().length < 2 || replyBusy) return; onReply(t.id, body.trim()); setBody(''); };
   return (
-    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
       <DetailHeader title="Ticket support" onBack={onBack} />
       {!data || !t ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : (
         <>
-          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 16 }} showsVerticalScrollIndicator={false}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 16 }} showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
             <View style={styles.supHead}>
               <Text style={styles.supTitle}>{t.title}</Text>
@@ -2752,13 +2759,14 @@ function NativeFounderContactThread({ data, loading, onBack, onRefresh, onReply,
   const [body, setBody] = useState('');
   const send = () => { if (body.trim().length < 2 || replyBusy) return; onReply(c.id, body.trim()); setBody(''); };
   return (
-    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
       <DetailHeader title="Prospect" onBack={onBack} />
       {!data || !c ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : (
         <>
-          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 16 }} showsVerticalScrollIndicator={false}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 16 }} showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
             <View style={styles.supHead}>
               <Text style={styles.supTitle}>{c.name}</Text>
@@ -4260,7 +4268,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         </TouchableOpacity>
       )}
 
-      {authed && (
+      {authed && !['fdctcthread', 'fdthread'].includes(menuScreen) && (
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
           if (tab.key === 'add') {
@@ -4865,6 +4873,8 @@ const styles = StyleSheet.create({
   fcTiles: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   fcTile: { width: '48%', backgroundColor: '#fff', borderRadius: 18, padding: 15, marginBottom: 12, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
   fcTileIc: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  fcTileBadge: { position: 'absolute', top: 12, right: 12, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, borderWidth: 1.5, borderColor: '#fff' },
+  fcTileBadgeTxt: { color: '#fff', fontSize: 11, fontWeight: '800' },
   fcTileTitle: { fontSize: 14.5, fontWeight: '800', color: INK },
   fcTileDesc: { fontSize: 11, color: '#8A9A92', marginTop: 2 },
 
