@@ -11,11 +11,28 @@ $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Comptabilité analytique', 'url' => '/comptabilite-analytique'],
 ]);
 
+// FAQPage : reprend les questions visibles plus bas (rich results Google)
+$ca_faqs = [
+    ['Dois-je vraiment garder un expert-comptable ?', "Oui. AssoKit remplace la prestation de comptabilité analytique (la ventilation par projet et poste, que vous payiez en plus). Votre expert-comptable, lui, conserve son rôle : il contrôle et valide les comptes. Vous lui transmettez simplement un dossier déjà prêt."],
+    ['Quelles offres incluent la compta analytique illimitée ?', "Les offres Pro et Sur-mesure incluent le bilan analytique illimité. L'offre Essentiel inclut 1 bilan pour découvrir la fonctionnalité."],
+    ['Puis-je tout exporter pour mon comptable ?', "Oui : le bilan analytique s'exporte en PDF et Excel, avec les pièces justificatives rattachées. En Sur-mesure, vous obtenez aussi des exports de données comptables avancés."],
+    ['Combien vais-je réellement économiser ?', "Une prestation de compta analytique externalisée tourne autour de 900 €/an. Avec l'offre Pro (~600 €/an), vous gardez jusqu'à 300 €/an — davantage si votre prestation actuelle coûte plus cher ou en facturation annuelle."],
+];
+$ca_faq_schema = [
+    '@context'   => 'https://schema.org',
+    '@type'      => 'FAQPage',
+    'mainEntity' => array_map(fn($qa) => [
+        '@type'          => 'Question',
+        'name'           => $qa[0],
+        'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]],
+    ], $ca_faqs),
+];
+
 render_public_head([
     'title'         => 'Comptabilité analytique incluse · AssoKit · sans comptable',
     'description'   => 'La comptabilité analytique coûte environ 900 euros par an chez un comptable. Avec AssoKit, elle est incluse dès l\'offre Pro : bilan par projet et par poste, export PDF et Excel, validation par votre expert-comptable.',
     'path'          => '/comptabilite-analytique',
-    'schema_jsonld' => [$breadcrumb],
+    'schema_jsonld' => [$breadcrumb, $ca_faq_schema],
 ]);
 
 render_public_nav('');

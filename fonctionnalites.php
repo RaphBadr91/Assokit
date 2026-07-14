@@ -17,11 +17,31 @@ $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Fonctionnalités', 'url' => '/fonctionnalites'],
 ]);
 
+// FAQ (contenu factuel, repris dans la section visible plus bas) + schéma FAQPage pour Google
+$feat_faqs = [
+    ['Assokit convient-il aux associations comme aux TPE ?', "Oui. Assokit réunit dans un seul outil les besoins des associations loi 1901 (adhérents, cotisations, bénévoles, projets) et ceux des TPE, PME et indépendants (devis, factures, suivi des paiements, comptabilité analytique). Mêmes fonctionnalités, mêmes prix justes."],
+    ['Puis-je gérer adhérents, cotisations et facturation au même endroit ?', "Oui. Annuaire des adhérents avec rôles personnalisés, relances de cotisations automatiques, devis et factures directement dans la plateforme, suivi des dépenses par projet et export comptable : tout est réuni, sans tableur à maintenir."],
+    ['La comptabilité analytique est-elle vraiment incluse ?', "Oui, la comptabilité analytique est incluse dès l'offre Pro : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Cela représente environ 900 € d'économie par an par rapport à une prestation externalisée. Votre expert-comptable n'intervient plus que pour valider les comptes."],
+    ['Puis-je utiliser mon propre nom de domaine (marque blanche) ?', "Oui. Avec l'option white-label, vos adhérents accèdent à votre plateforme via votre propre adresse, avec vos couleurs et votre logo, pour un rendu 100 % professionnel."],
+    ['Mes données sont-elles hébergées en France ?', "Oui, 100 %. L'hébergement est français (O2Switch, Clermont-Ferrand), avec double authentification, journal des actions et conformité RGPD. Vos données restent les vôtres et ne sortent pas du territoire européen."],
+    ['Existe-t-il une application mobile ?', "Oui. Assokit s'installe sur iPhone et Android en quelques secondes depuis assokit.fr : icône sur l'écran d'accueil, plein écran, accès rapide à vos projets, adhérents et factures — même hors-ligne."],
+    ['Faut-il des compétences techniques pour utiliser Assokit ?', "Non. Assokit est pensé pour être pris en main sans formation. Et si vous avez une question, notre équipe française répond en moins de 24 h — de vraies réponses, jamais un bot."],
+];
+$feat_faq_schema = [
+    '@context'   => 'https://schema.org',
+    '@type'      => 'FAQPage',
+    'mainEntity' => array_map(fn($qa) => [
+        '@type'          => 'Question',
+        'name'           => $qa[0],
+        'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]],
+    ], $feat_faqs),
+];
+
 render_public_head([
     'title'       => 'Fonctionnalités · Tout ce qu\'il faut, réuni au même endroit',
     'description' => 'Découvrez les modules d\'Assokit : suivi de projets, facturation, IA communication, emailing, tableau de bord, adhérents. Conçu pour les associations loi 1901 et les TPE.',
     'path'        => '/fonctionnalites',
-    'schema_jsonld' => [$breadcrumb],
+    'schema_jsonld' => [$breadcrumb, $feat_faq_schema],
 ]);
 
 render_public_nav('fonctionnalites');
@@ -604,7 +624,7 @@ render_public_nav('fonctionnalites');
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#FCE7F3;color:#9D174D;">💰</div>
         <h3>Trésorerie & comptabilité</h3>
-        <p>Devis et factures dans la plateforme, relances auto, suivi des dépenses par projet, export comptable. Plus jamais de tableur cassé.</p>
+        <p>Devis et factures dans la plateforme, relances auto, suivi des dépenses par projet, export comptable. La <a href="/comptabilite-analytique">comptabilité analytique</a> est incluse dès l'offre Pro. Plus jamais de tableur cassé.</p>
       </div>
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#FEF3C7;color:#92400E;">📨</div>
@@ -851,6 +871,28 @@ render_public_nav('fonctionnalites');
 
       </div>
 
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="pub-section pub-section-creme">
+  <div class="pub-container">
+    <div class="pub-section-head">
+      <span class="pub-section-eyebrow">Questions fréquentes</span>
+      <h2 class="pub-h2">Vos questions sur <em>les fonctionnalités</em>.</h2>
+    </div>
+    <div class="pub-faq">
+<?php foreach ($feat_faqs as $i => $qa): ?>
+      <details class="pub-faq-item"<?= $i === 0 ? ' open' : '' ?>>
+        <summary><?= pub_h($qa[0]) ?></summary>
+        <div class="pub-faq-item-body"><?= pub_h($qa[1]) ?></div>
+      </details>
+<?php endforeach; ?>
+    </div>
+    <div class="pub-text-center" style="margin-top:26px;">
+      <a href="/tarifs" class="pub-btn pub-btn-ghost">Voir les tarifs</a>
+      <a href="/comptabilite-analytique" class="pub-btn pub-btn-ghost">La compta analytique incluse</a>
     </div>
   </div>
 </section>
