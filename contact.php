@@ -108,6 +108,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $form_message = '⚠️ Votre email ne semble pas valide.';
     } else {
         try {
+            // === Persistance en base : le message arrive dans l'app Fondateur + active le double-sens ===
+            // (table asso_contact_messages créée par migration v45 ; échec DB non bloquant pour l'email)
+            try {
+                if (isset($pdo) && $pdo instanceof PDO) {
+                    $name_parts = preg_split('/\s+/', trim($name), 2);
+                    $ct_first = $name_parts[0] ?? $name;
+                    $ct_last  = $name_parts[1] ?? '';
+                    $ct_msg   = $message . ($phone !== '' ? "\n\nTéléphone : " . $phone : '');
+                    $st = $pdo->prepare("INSERT INTO asso_contact_messages
+                        (firstname, lastname, email, organization, type, subject, message, ip, user_agent, created_at)
+                        VALUES (:f, :l, :e, :o, :t, :s, :m, :ip, :ua, NOW())");
+                    $st->execute([
+                        ':f' => $ct_first, ':l' => $ct_last, ':e' => $email,
+                        ':o' => '', ':t' => '', ':s' => $subject_final, ':m' => $ct_msg,
+                        ':ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+                        ':ua' => mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
+                    ]);
+                }
+            } catch (Throwable $eDb) {
+                error_log('[contact save] ' . $eDb->getMessage());
+            }
             if (function_exists('send_transactional_email')) {
                 $body_html = '<h2>Nouveau message contact Assokit</h2>';
                 $body_html .= '<p><strong>De :</strong> ' . htmlspecialchars($name) . ' (' . htmlspecialchars($email) . ')</p>';
