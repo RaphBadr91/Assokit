@@ -5,10 +5,16 @@
  */
 require_once __DIR__ . '/includes-public.php';
 
+$breadcrumb = build_breadcrumb_jsonld([
+    ['name' => 'Accueil',      'url' => '/'],
+    ['name' => 'Application',   'url' => '/application'],
+]);
+
 render_public_head([
     'title'       => 'L\'application Assokit',
     'description' => 'Installez Assokit sur votre iPhone ou Android : acc&egrave;s rapide, plein &eacute;cran, m&ecirc;me hors-ligne. G&eacute;rez votre association depuis votre t&eacute;l&eacute;phone.',
     'path'        => '/application',
+    'schema_jsonld' => [$breadcrumb],
 ]);
 render_public_nav('');
 ?>
