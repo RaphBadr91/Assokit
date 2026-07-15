@@ -59,7 +59,11 @@ $first_name = trim((string) ($input['first_name'] ?? ''));
 $last_name  = trim((string) ($input['last_name'] ?? ''));
 $plan_id    = (int) ($input['plan_id'] ?? 0);
 $send_email = !empty($input['send_welcome_email']);
-$period_days = 30;
+$period_days = max(1, (int) ($input['period_days'] ?? 30));
+$payment_mode = (string) ($input['payment_mode'] ?? 'free_grant');
+if (!in_array($payment_mode, ['free_grant', 'manual', 'wire_transfer', 'stripe'], true)) $payment_mode = 'free_grant';
+$with_addon_domain = !empty($input['with_addon_domain']);
+$custom_password = trim((string) ($input['custom_password'] ?? ''));
 
 if ($org_name === '') oorg_fail(400, 'org_name', 'Nom de l\'organisation obligatoire.');
 if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) oorg_fail(400, 'email', 'Email invalide.');
@@ -78,7 +82,7 @@ try {
     $cs->execute([$slug]);
     if ((int) $cs->fetchColumn() > 0) $slug .= '-' . substr(md5(microtime()), 0, 4);
 
-    $password_plain = bin2hex(random_bytes(6));
+    $password_plain = $custom_password !== '' ? $custom_password : bin2hex(random_bytes(6));
     $password_hash  = password_hash($password_plain, PASSWORD_BCRYPT);
 
     $chosen = null;
@@ -86,7 +90,8 @@ try {
     if (!$chosen) oorg_fail(400, 'plan', 'Plan introuvable.');
     $is_trial = !empty($chosen['is_trial']);
     $chosen_slug = $chosen['slug'] ?? null;
-    $sub_status = $is_trial ? 'trial' : 'active';
+    // Statut : essai brdié -> trial ; stripe -> en attente de paiement ; sinon actif
+    $sub_status = $is_trial ? 'trial' : ($payment_mode === 'stripe' ? 'pending_payment' : 'active');
     $period_end = date('Y-m-d H:i:s', strtotime('+' . max(1, $period_days) . ' days'));
 
     $pdo->beginTransaction();
@@ -98,11 +103,22 @@ try {
                    VALUES (?, ?, ?, ?, ?, 'admin', 1, NOW())")
         ->execute([$new_org_id, $email, $password_hash, $first_name, $last_name]);
 
+    $new_sub_id = 0;
     try {
         $pdo->prepare("INSERT INTO asso_subscriptions (org_id, plan_id, payment_mode, status, current_period_end, created_at, updated_at)
-                       VALUES (?, ?, 'manual', ?, ?, NOW(), NOW())")
-            ->execute([$new_org_id, $plan_id, $sub_status, $period_end]);
+                       VALUES (?, ?, ?, ?, ?, NOW(), NOW())")
+            ->execute([$new_org_id, $plan_id, $payment_mode, $sub_status, $period_end]);
+        $new_sub_id = (int) $pdo->lastInsertId();
     } catch (Throwable $e) {}
+
+    // Add-on domaine personnalisé si demandé (10 €/mois), comme sur le web
+    if ($with_addon_domain && $new_sub_id > 0) {
+        try {
+            $pdo->prepare("INSERT INTO asso_subscription_addons (subscription_id, org_id, addon_type, addon_name, price_cents_monthly, status)
+                           VALUES (?, ?, 'custom_domain', 'Domaine personnalisé', 1000, 'active')")
+                ->execute([$new_sub_id, $new_org_id]);
+        } catch (Throwable $e) {}
+    }
 
     if ($is_trial) {
         $pdo->prepare("UPDATE organizations SET plan = ?, status = 'trial', trial_ends_at = ? WHERE id = ?")

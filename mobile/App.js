@@ -2650,13 +2650,27 @@ function NativeFounderSupportThread({ data, loading, onBack, onRefresh, onReply,
   );
 }
 
-/* Fondateur — Créer une association / TPE (natif) */
+/* Fondateur — Créer une association / TPE (natif) — parité complète avec le web */
+const PAY_MODES = [
+  { key: 'free_grant', label: 'Subvention gratuite', sub: 'Accès offert, aucun paiement' },
+  { key: 'manual', label: 'Paiement manuel', sub: 'Encaissé hors plateforme' },
+  { key: 'wire_transfer', label: 'Virement bancaire', sub: 'En attente du virement' },
+  { key: 'stripe', label: 'Stripe (le client paie)', sub: 'Activation après paiement' },
+];
+const PERIODS = [
+  { d: 14, label: '14 j' }, { d: 30, label: '30 j' }, { d: 40, label: '40 j' },
+  { d: 90, label: '3 mois' }, { d: 180, label: '6 mois' }, { d: 365, label: '1 an' }, { d: 3650, label: 'Illimité' },
+];
 function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, onCopy, onDone }) {
   const [name, setName] = useState('');
   const [first, setFirst] = useState('');
   const [last, setLast] = useState('');
   const [email, setEmail] = useState('');
   const [planId, setPlanId] = useState(0);
+  const [pass, setPass] = useState('');
+  const [payMode, setPayMode] = useState('free_grant');
+  const [periodDays, setPeriodDays] = useState(30);
+  const [addonDomain, setAddonDomain] = useState(false);
   const [sendMail, setSendMail] = useState(true);
   const list = plans || [];
   const canSubmit = name.trim().length > 1 && first.trim().length > 0 && /\S+@\S+\.\S+/.test(email) && planId > 0 && !busy;
@@ -2698,6 +2712,9 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
         </View>
         <Text style={styles.blogLabel}>Email du responsable</Text>
         <TextInput style={styles.blogInput} value={email} onChangeText={setEmail} placeholder="responsable@asso.fr" placeholderTextColor="#9AA7A1" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+        <Text style={styles.blogLabel}>Mot de passe <Text style={{ color: '#9AA7A1', fontWeight: '400' }}>(optionnel)</Text></Text>
+        <TextInput style={styles.blogInput} value={pass} onChangeText={setPass} placeholder="Laisser vide = généré automatiquement" placeholderTextColor="#9AA7A1" autoCapitalize="none" autoCorrect={false} />
+
         <Text style={styles.blogLabel}>Formule</Text>
         <View style={styles.blogCats}>
           {list.map((p) => (
@@ -2707,12 +2724,39 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
             </TouchableOpacity>
           ))}
         </View>
+
+        <Text style={styles.blogLabel}>Mode de paiement</Text>
+        <View style={{ gap: 8 }}>
+          {PAY_MODES.map((m) => (
+            <TouchableOpacity key={m.key} style={[styles.payRow, payMode === m.key && styles.payRowOn]} activeOpacity={0.85} onPress={() => setPayMode(m.key)}>
+              <Ionicons name={payMode === m.key ? 'radio-button-on' : 'radio-button-off'} size={20} color={payMode === m.key ? BRAND : '#B8C4C0'} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.payLbl, payMode === m.key && { color: BRAND }]}>{m.label}</Text>
+                <Text style={styles.paySub}>{m.sub}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.blogLabel}>Durée d'activation</Text>
+        <View style={styles.blogCats}>
+          {PERIODS.map((pr) => (
+            <TouchableOpacity key={pr.d} style={[styles.planChip, periodDays === pr.d && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPeriodDays(pr.d)}>
+              <Text style={[styles.planChipName, periodDays === pr.d && { color: '#fff' }]}>{pr.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.blogSwitchRow}>
+          <View style={{ flex: 1 }}><Text style={styles.blogSwitchTitle}>Domaine personnalisé</Text><Text style={styles.blogSwitchSub}>Add-on marque blanche · +10 €/mois</Text></View>
+          <Switch value={addonDomain} onValueChange={setAddonDomain} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
+        </View>
         <View style={styles.blogSwitchRow}>
           <View style={{ flex: 1 }}><Text style={styles.blogSwitchTitle}>Envoyer l'email de bienvenue</Text><Text style={styles.blogSwitchSub}>Avec les identifiants de connexion</Text></View>
           <Switch value={sendMail} onValueChange={setSendMail} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
         </View>
         <TouchableOpacity style={[styles.lgBtn, !canSubmit && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSubmit}
-          onPress={() => onSubmit({ org_name: name.trim(), first_name: first.trim(), last_name: last.trim(), billing_email: email.trim(), plan_id: planId, send_welcome_email: sendMail ? 1 : 0 })}>
+          onPress={() => onSubmit({ org_name: name.trim(), first_name: first.trim(), last_name: last.trim(), billing_email: email.trim(), plan_id: planId, custom_password: pass.trim(), payment_mode: payMode, period_days: periodDays, with_addon_domain: addonDomain ? 1 : 0, send_welcome_email: sendMail ? 1 : 0 })}>
           {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="add-circle" size={18} color="#fff" /><Text style={styles.lgBtnTxt}>Créer l'organisation</Text></>}
         </TouchableOpacity>
       </ScrollView>
@@ -4976,6 +5020,10 @@ const styles = StyleSheet.create({
   planChipOn: { backgroundColor: BRAND, borderColor: BRAND },
   planChipName: { fontSize: 13.5, fontWeight: '800', color: INK },
   planChipPrice: { fontSize: 11, color: '#64748B', marginTop: 1 },
+  payRow: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#F8FAFC', borderRadius: 13, padding: 13, borderWidth: 1.5, borderColor: '#E2E8F0' },
+  payRowOn: { backgroundColor: '#ECFDF5', borderColor: BRAND },
+  payLbl: { fontSize: 14, fontWeight: '700', color: INK },
+  paySub: { fontSize: 12, color: '#64748B', marginTop: 1 },
   credCard: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: '#E2E8F0' },
   credLbl: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
   credVal: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 3 },
