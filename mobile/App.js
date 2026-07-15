@@ -2011,17 +2011,18 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
   const tot = Math.max(1, active + trial);
 
   return (
-    <View style={styles.fcWrap}>
+    <View style={[styles.fcWrap, Platform.OS === 'ios' && { top: -Constants.statusBarHeight }]}>
       <StatusBar barStyle="light-content" />
       <ScrollView style={styles.fcScroll} contentContainerStyle={{ paddingBottom: 34 }} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor="#059669" colors={['#059669']} />}>
 
-        {/* Header premium vert + halo doré fondateur */}
+        {/* Header premium vert + halo doré fondateur — le vert remonte jusqu'en haut (notch) */}
         <View style={styles.fcHeaderWrap}>
-          <LinearGradient colors={['#0CCB8F', '#059669', '#025138']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fcHeader}>
+          <LinearGradient colors={['#0CCB8F', '#059669', '#025138']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={[styles.fcHeader, Platform.OS === 'ios' && { paddingTop: Constants.statusBarHeight + 10 }]}>
             <View style={styles.fcOrbGold} />
             <View style={styles.fcOrbDark} />
-            <SafeAreaView>
+            <View>
               <View style={styles.fcTopRow}>
                 <TouchableOpacity style={styles.fcBack} activeOpacity={0.8} onPress={onBack}>
                   <Ionicons name="chevron-back" size={19} color="#EAF2EE" />
@@ -2043,7 +2044,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
                 <View style={styles.fcLive} />
                 <Text style={styles.fcSub}>Pilotage de la plateforme Assokit · en direct</Text>
               </View>
-            </SafeAreaView>
+            </View>
           </LinearGradient>
         </View>
 
