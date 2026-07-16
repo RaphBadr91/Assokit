@@ -216,8 +216,6 @@ RewriteRule ^cookies/?$ cookies.php [L,QSA]
 RewriteRule ^plans/?$              /tarifs                     [R=301,L]
 RewriteRule ^login/?$              /connexion                  [R=301,L]
 RewriteRule ^inscription/?$        /tarifs                     [R=301,L]
-RewriteRule ^pour-associations/?$  /                           [R=301,L]
-RewriteRule ^pour-tpe/?$           /                           [R=301,L]
 RewriteRule ^cgv/?$                /cgu                        [R=301,L]
 RewriteRule ^rgpd/?$               /politique-confidentialite  [R=301,L]
 

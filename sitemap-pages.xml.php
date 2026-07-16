@@ -22,6 +22,8 @@ $pages = [
     ['/',                          '1.0', 'weekly'],
     ['/tarifs',                    '0.9', 'monthly'],
     ['/fonctionnalites',           '0.8', 'monthly'],
+    ['/pour-associations',         '0.8', 'monthly'],
+    ['/pour-tpe',                  '0.8', 'monthly'],
     ['/comptabilite-analytique',   '0.8', 'monthly'],
     ['/pour-organismes',           '0.7', 'monthly'],
     ['/a-propos',                  '0.6', 'monthly'],

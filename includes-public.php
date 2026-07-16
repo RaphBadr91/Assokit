@@ -247,6 +247,8 @@ if (!function_exists('render_public_footer')) {
               <div class="pub-footer-col">
                 <h4>Produit</h4>
                 <a href="/fonctionnalites">Fonctionnalités</a>
+                <a href="/pour-associations">Pour les associations</a>
+                <a href="/pour-tpe">Pour les TPE &amp; PME</a>
                 <a href="/comptabilite-analytique">Comptabilité analytique</a>
                 <a href="/pour-organismes">Collectivités</a>
                 <a href="/tarifs">Tarifs</a>
