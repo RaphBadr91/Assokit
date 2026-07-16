@@ -1996,6 +1996,7 @@ const FC_TILES = [
   { key: 'projects', icon: 'folder-open', color: '#4F46E5', bg: '#EEF2FF', title: 'Projets', desc: 'Toutes les orgs' },
   { key: 'activity', icon: 'pulse', color: '#0284C7', bg: '#F0F9FF', title: 'Activité', desc: 'Journal de la plateforme' },
   { key: 'blog', icon: 'newspaper', color: '#D97706', bg: '#FFFBEB', title: 'Blog SEO', desc: 'Générer & programmer' },
+  { key: 'settings', icon: 'business', color: '#475569', bg: '#F1F5F9', title: 'Société', desc: 'Infos légales · TVA · IBAN' },
 ];
 
 function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, onLogout, onTile, onNotifs, notifCount }) {
@@ -2542,6 +2543,58 @@ function NativeFounderActivity({ data, loading, onRefresh, onBack }) {
         </ScrollView>
       )}
     </View>
+  );
+}
+
+/* Fondateur — Paramètres société (company_settings) */
+const SETTINGS_SECTIONS = [
+  { title: 'Identité légale', fields: [['legal_name', 'Raison sociale', 'default'], ['legal_form', 'Forme juridique', 'default'], ['siren', 'SIREN', 'default'], ['siret', 'SIRET', 'default'], ['ape_code', 'Code APE', 'default']] },
+  { title: 'TVA', fields: [['vat_subject', 'Assujetti à la TVA', 'switch'], ['vat_number', 'N° TVA intracom.', 'default'], ['vat_rate', 'Taux TVA (%)', 'decimal']] },
+  { title: 'Adresse', fields: [['address_street', 'Rue', 'default'], ['address_zip', 'Code postal', 'default'], ['address_city', 'Ville', 'default']] },
+  { title: 'Contacts', fields: [['email_billing', 'Email facturation', 'email'], ['email_support', 'Email support', 'email'], ['phone', 'Téléphone', 'phone'], ['website', 'Site web', 'url']] },
+  { title: 'Coordonnées bancaires', fields: [['iban', 'IBAN', 'default'], ['bic', 'BIC', 'default'], ['bank_name', 'Banque', 'default']] },
+  { title: 'Représentant légal', fields: [['legal_rep_first_name', 'Prénom', 'default'], ['legal_rep_last_name', 'Nom', 'default'], ['legal_rep_role', 'Fonction', 'default']] },
+];
+function NativeFounderSettings({ data, loading, busy, onRefresh, onBack, onSave }) {
+  const [form, setForm] = useState(null);
+  const loaded = useRef(false);
+  useEffect(() => {
+    if (data && data.settings && !loaded.current) { loaded.current = true; setForm({ ...data.settings }); }
+  }, [data]);
+  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  if (!data || !form) return <DetailLoading title="Paramètres société" onBack={onBack} />;
+  const kb = { email: 'email-address', phone: 'phone-pad', url: 'url', decimal: 'decimal-pad', default: 'default' };
+  return (
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <DetailHeader title="Paramètres société" onBack={onBack} />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        {SETTINGS_SECTIONS.map((sec) => (
+          <View key={sec.title} style={{ marginBottom: 8 }}>
+            <Text style={styles.setSec}>{sec.title}</Text>
+            {sec.fields.map(([key, label, type]) => (
+              type === 'switch' ? (
+                <View key={key} style={styles.blogSwitchRow}>
+                  <Text style={[styles.blogSwitchTitle, { flex: 1 }]}>{label}</Text>
+                  <Switch value={!!form[key]} onValueChange={(v) => setF(key, v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
+                </View>
+              ) : (
+                <View key={key}>
+                  <Text style={styles.blogLabel}>{label}</Text>
+                  <TextInput style={styles.blogInput} value={String(form[key] ?? '')} onChangeText={(v) => setF(key, v)}
+                    placeholder={label} placeholderTextColor="#9AA7A1" keyboardType={kb[type] || 'default'}
+                    autoCapitalize={(type === 'email' || type === 'url') ? 'none' : 'sentences'} autoCorrect={false} />
+                </View>
+              )
+            ))}
+          </View>
+        ))}
+        <TouchableOpacity style={[styles.lgBtn, busy && styles.lgBtnOff]} activeOpacity={0.9} disabled={busy}
+          onPress={() => { const p = { ...form }; p.vat_subject = form.vat_subject ? 1 : 0; onSave(p); }}>
+          {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>Enregistrer</Text></>}
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -3655,6 +3708,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [fdProjFilter, setFdProjFilter] = useState('');
   const [fdActivity, setFdActivity] = useState(null);
   const [fdActivityLoading, setFdActivityLoading] = useState(false);
+  const [fdSettings, setFdSettings] = useState(null);
+  const [fdSettingsLoading, setFdSettingsLoading] = useState(false);
+  const [fdSettingsBusy, setFdSettingsBusy] = useState(false);
   const [fdBusyId, setFdBusyId] = useState(0);
   const [fdBilling, setFdBilling] = useState(null);
   const [fdBillingLoading, setFdBillingLoading] = useState(false);
@@ -3870,6 +3926,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const openFdProjects = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdProjects(null); setFdProjFilter(''); setMenuScreen('fdprojects'); fetchFdProjects(''); }, [clearDetail, closeForm, fetchFdProjects]);
   const fetchFdActivity = useCallback(() => { setFdActivityLoading(true); inject(fetchJS('/api/app-founder-activity.php', '__akfdactiv')); }, [inject]);
   const openFdActivity = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdActivity(null); setMenuScreen('fdactivity'); fetchFdActivity(); }, [clearDetail, closeForm, fetchFdActivity]);
+  const fetchFdSettings = useCallback(() => { setFdSettingsLoading(true); inject(fetchJS('/api/app-founder-settings.php', '__akfdset')); }, [inject]);
+  const openFdSettings = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdSettings(null); setMenuScreen('fdsettings'); fetchFdSettings(); }, [clearDetail, closeForm, fetchFdSettings]);
+  const doSaveSettings = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdSettingsBusy(true); inject(postJS('/api/app-founder-settings.php', { ...payload, csrf }, '__akfdsetsave')); }, [csrf, inject]);
   // Fondateur : pages natives dédiées (paiements, stats, blog, support)
   const fetchFdBilling = useCallback((filter) => { setFdBillingLoading(true); inject(fetchJS('/api/app-founder-billing.php?filter=' + encodeURIComponent(filter || 'all'), '__akfdbill')); }, [inject]);
   const openFdBilling = useCallback((filter) => { const f = filter || 'all'; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBilling(null); setFdBillingFilter(f); setMenuScreen('fdbilling'); fetchFdBilling(f); }, [clearDetail, closeForm, fetchFdBilling]);
@@ -3932,11 +3991,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (key === 'plans') openFdPlansM();
     else if (key === 'projects') openFdProjects();
     else if (key === 'activity') openFdActivity();
+    else if (key === 'settings') openFdSettings();
     else if (key === 'support') openFdSupport('open');
     else if (key === 'stats') openFdStats();
     else if (key === 'blog') openFdBlog();
     else if (key === 'contacts') openFdContacts();
-  }, [openFdOrgs, openFdCreateOrg, openFdBilling, openFdPlansM, openFdProjects, openFdActivity, openFdSupport, openFdStats, openFdBlog, openFdContacts]);
+  }, [openFdOrgs, openFdCreateOrg, openFdBilling, openFdPlansM, openFdProjects, openFdActivity, openFdSettings, openFdSupport, openFdStats, openFdBlog, openFdContacts]);
 
   const onAnalyzeInvoices = useCallback(() => { setInvAILoading(true); inject(fetchJS('/api/app-invoices-ai.php', '__akinvai')); }, [inject]);
   const onCockpit = useCallback(() => { setStatsCockpitLoading(true); inject(fetchJS('/api/app-stats-ai.php', '__akstatsai')); }, [inject]);
@@ -4208,6 +4268,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       if (msg && msg.__akfdproj) { setFdProjects(msg.__akfdproj); setFdProjectsLoading(false); }
       if (msg && msg.__akfdactiv) { setFdActivity(msg.__akfdactiv); setFdActivityLoading(false); }
+      if (msg && msg.__akfdset) { setFdSettings(msg.__akfdset); setFdSettingsLoading(false); }
+      if (msg && msg.__akfdsetsave) {
+        setFdSettingsBusy(false);
+        if (msg.__akfdsetsave.ok) Alert.alert('Enregistré', 'Paramètres société mis à jour.');
+        else Alert.alert('Erreur', msg.__akfdsetsave.message || 'Enregistrement impossible.');
+      }
       if (msg && msg.__akfdplansm) { setFdPlansM(msg.__akfdplansm); setFdPlansMLoading(false); }
       if (msg && msg.__akfdplanact) {
         setFdPlansMBusy(false);
@@ -4602,6 +4668,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'fdactivity' ? (
               <NativeFounderActivity data={fdActivity} loading={fdActivityLoading}
                 onRefresh={fetchFdActivity} onBack={() => openMenuScreen('founder')} />
+            ) : menuScreen === 'fdsettings' ? (
+              <NativeFounderSettings data={fdSettings} loading={fdSettingsLoading} busy={fdSettingsBusy}
+                onRefresh={fetchFdSettings} onBack={() => openMenuScreen('founder')} onSave={doSaveSettings} />
             ) : menuScreen === 'fdcreateorg' ? (
               <NativeFounderCreateOrg plans={fdPlans} busy={fdCreateBusy} result={fdCreateResult} error={fdCreateErr}
                 onSubmit={doCreateOrg} onBack={() => openMenuScreen('founder')}
@@ -4676,7 +4745,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdplans', 'fdprojects', 'fdactivity', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
+      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdplans', 'fdprojects', 'fdactivity', 'fdsettings', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
@@ -4689,7 +4758,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         </TouchableOpacity>
       )}
 
-      {authed && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans'].includes(menuScreen) && (
+      {authed && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans', 'fdsettings'].includes(menuScreen) && (
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
           if (tab.key === 'add') {
@@ -5429,6 +5498,7 @@ const styles = StyleSheet.create({
   actIc: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   actLbl: { fontSize: 14, color: INK, fontWeight: '600' },
   actMeta: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  setSec: { fontSize: 12, fontWeight: '800', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 16, marginBottom: 4 },
   credCard: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: '#E2E8F0' },
   credLbl: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
   credVal: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 3 },
