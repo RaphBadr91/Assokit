@@ -1993,6 +1993,8 @@ const FC_TILES = [
   { key: 'support', icon: 'chatbubbles', color: '#7C3AED', bg: '#F5F3FF', title: 'Support', desc: 'Tickets & messages' },
   { key: 'contacts', icon: 'mail', color: '#DB2777', bg: '#FDF2F8', title: 'Contacts', desc: 'Demandes du site · prospects' },
   { key: 'stats', icon: 'stats-chart', color: '#0891B2', bg: '#ECFEFF', title: 'Statistiques', desc: 'Croissance · emails · SMS' },
+  { key: 'projects', icon: 'folder-open', color: '#4F46E5', bg: '#EEF2FF', title: 'Projets', desc: 'Toutes les orgs' },
+  { key: 'activity', icon: 'pulse', color: '#0284C7', bg: '#F0F9FF', title: 'Activité', desc: 'Journal de la plateforme' },
   { key: 'blog', icon: 'newspaper', color: '#D97706', bg: '#FFFBEB', title: 'Blog SEO', desc: 'Générer & programmer' },
 ];
 
@@ -2470,6 +2472,72 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
                 <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginTop: 3 }} />
               </View>
             </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+/* Fondateur — Vue globale des projets (lecture seule) */
+const FC_PROJ_FILTERS = [{ key: '', label: 'Tous' }, { key: 'in_progress', label: 'En cours' }, { key: 'completed', label: 'Terminés' }, { key: 'planned', label: 'À venir' }];
+function NativeFounderProjects({ data, loading, filter, onFilter, onRefresh, onBack }) {
+  const list = data ? (data.projects || []) : null;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Projets · toutes les orgs" onBack={onBack} />
+      <View style={styles.fcFilters}>
+        {FC_PROJ_FILTERS.map((f) => (
+          <TouchableOpacity key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
+            <Text style={[styles.fcFilterTxt, filter === f.key && styles.fcFilterTxtOn]}>{f.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : list.length === 0 ? (
+        <View style={styles.emptyBox}><Ionicons name="folder-open-outline" size={42} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun projet</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          <Text style={styles.fdCountLine}>{data.count} projet{data.count > 1 ? 's' : ''}</Text>
+          {list.map((p) => (
+            <View key={p.id} style={styles.plnCard}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.plnName} numberOfLines={1}>{p.name}</Text>
+                <Text style={styles.plnSub} numberOfLines={1}>{p.org} · {p.created}{p.budget > 0 ? ' · ' + fmtEuro(p.used) + '/' + fmtEuro(p.budget) : ''}</Text>
+                <View style={styles.fdProgTrack}><View style={[styles.fdProgFill, { width: Math.max(3, Math.min(100, p.progress)) + '%' }]} /></View>
+              </View>
+              <Text style={styles.plnPrice}>{p.progress}%</Text>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+/* Fondateur — Journal d'activité de la plateforme (lecture seule) */
+function NativeFounderActivity({ data, loading, onRefresh, onBack }) {
+  const list = data ? (data.activity || []) : null;
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Activité de la plateforme" onBack={onBack} />
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : list.length === 0 ? (
+        <View style={styles.emptyBox}><Ionicons name="pulse-outline" size={42} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune activité récente</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          {list.map((a, i) => (
+            <View key={i} style={styles.actRow}>
+              <View style={[styles.actIc, { backgroundColor: a.color + '22' }]}><Text style={{ fontSize: 15 }}>{a.icon}</Text></View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.actLbl} numberOfLines={1}><Text style={{ color: a.color, fontWeight: '800' }}>{a.label}</Text>{a.org ? ' · ' + a.org : ''}</Text>
+                <Text style={styles.actMeta} numberOfLines={1}>{[a.actor, a.detail, a.when].filter(Boolean).join(' · ')}</Text>
+              </View>
+            </View>
           ))}
         </ScrollView>
       )}
@@ -3582,6 +3650,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [fdPlansMLoading, setFdPlansMLoading] = useState(false);
   const [fdPlansMBusy, setFdPlansMBusy] = useState(false);
   const fdPlanCloseRef = useRef(null);
+  const [fdProjects, setFdProjects] = useState(null);
+  const [fdProjectsLoading, setFdProjectsLoading] = useState(false);
+  const [fdProjFilter, setFdProjFilter] = useState('');
+  const [fdActivity, setFdActivity] = useState(null);
+  const [fdActivityLoading, setFdActivityLoading] = useState(false);
   const [fdBusyId, setFdBusyId] = useState(0);
   const [fdBilling, setFdBilling] = useState(null);
   const [fdBillingLoading, setFdBillingLoading] = useState(false);
@@ -3792,6 +3865,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const openFdPlansM = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdPlansM(null); setMenuScreen('fdplans'); fetchFdPlansM(); }, [clearDetail, closeForm, fetchFdPlansM]);
   const doPlanSave = useCallback((payload, cb) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } fdPlanCloseRef.current = cb || null; setFdPlansMBusy(true); inject(postJS('/api/app-founder-plans.php', { ...payload, csrf }, '__akfdplanact')); }, [csrf, inject]);
   const doPlanDelete = useCallback((id, cb) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } fdPlanCloseRef.current = cb || null; setFdPlansMBusy(true); inject(postJS('/api/app-founder-plans.php', { action: 'delete', plan_id: id, csrf }, '__akfdplanact')); }, [csrf, inject]);
+  // Fondateur : projets globaux + activité (lecture seule)
+  const fetchFdProjects = useCallback((f) => { setFdProjectsLoading(true); inject(fetchJS('/api/app-founder-projects.php?status=' + encodeURIComponent(f || ''), '__akfdproj')); }, [inject]);
+  const openFdProjects = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdProjects(null); setFdProjFilter(''); setMenuScreen('fdprojects'); fetchFdProjects(''); }, [clearDetail, closeForm, fetchFdProjects]);
+  const fetchFdActivity = useCallback(() => { setFdActivityLoading(true); inject(fetchJS('/api/app-founder-activity.php', '__akfdactiv')); }, [inject]);
+  const openFdActivity = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdActivity(null); setMenuScreen('fdactivity'); fetchFdActivity(); }, [clearDetail, closeForm, fetchFdActivity]);
   // Fondateur : pages natives dédiées (paiements, stats, blog, support)
   const fetchFdBilling = useCallback((filter) => { setFdBillingLoading(true); inject(fetchJS('/api/app-founder-billing.php?filter=' + encodeURIComponent(filter || 'all'), '__akfdbill')); }, [inject]);
   const openFdBilling = useCallback((filter) => { const f = filter || 'all'; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBilling(null); setFdBillingFilter(f); setMenuScreen('fdbilling'); fetchFdBilling(f); }, [clearDetail, closeForm, fetchFdBilling]);
@@ -3852,11 +3930,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (key === 'create') openFdCreateOrg();
     else if (key === 'billing') openFdBilling(filter || 'all');
     else if (key === 'plans') openFdPlansM();
+    else if (key === 'projects') openFdProjects();
+    else if (key === 'activity') openFdActivity();
     else if (key === 'support') openFdSupport('open');
     else if (key === 'stats') openFdStats();
     else if (key === 'blog') openFdBlog();
     else if (key === 'contacts') openFdContacts();
-  }, [openFdOrgs, openFdCreateOrg, openFdBilling, openFdPlansM, openFdSupport, openFdStats, openFdBlog, openFdContacts]);
+  }, [openFdOrgs, openFdCreateOrg, openFdBilling, openFdPlansM, openFdProjects, openFdActivity, openFdSupport, openFdStats, openFdBlog, openFdContacts]);
 
   const onAnalyzeInvoices = useCallback(() => { setInvAILoading(true); inject(fetchJS('/api/app-invoices-ai.php', '__akinvai')); }, [inject]);
   const onCockpit = useCallback(() => { setStatsCockpitLoading(true); inject(fetchJS('/api/app-stats-ai.php', '__akstatsai')); }, [inject]);
@@ -4126,6 +4206,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           fetchFdOrgs(fdOrgsFilter); fetchFounder();
         } else { Alert.alert('Action impossible', msg.__akfdorgedit.message || 'Réessaie dans un instant.'); }
       }
+      if (msg && msg.__akfdproj) { setFdProjects(msg.__akfdproj); setFdProjectsLoading(false); }
+      if (msg && msg.__akfdactiv) { setFdActivity(msg.__akfdactiv); setFdActivityLoading(false); }
       if (msg && msg.__akfdplansm) { setFdPlansM(msg.__akfdplansm); setFdPlansMLoading(false); }
       if (msg && msg.__akfdplanact) {
         setFdPlansMBusy(false);
@@ -4513,6 +4595,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeFounderPlans data={fdPlansM} loading={fdPlansMLoading} busy={fdPlansMBusy}
                 onRefresh={fetchFdPlansM} onBack={() => openMenuScreen('founder')}
                 onSave={doPlanSave} onDelete={doPlanDelete} />
+            ) : menuScreen === 'fdprojects' ? (
+              <NativeFounderProjects data={fdProjects} loading={fdProjectsLoading} filter={fdProjFilter}
+                onFilter={(f) => { setFdProjects(null); setFdProjFilter(f); fetchFdProjects(f); }}
+                onRefresh={() => fetchFdProjects(fdProjFilter)} onBack={() => openMenuScreen('founder')} />
+            ) : menuScreen === 'fdactivity' ? (
+              <NativeFounderActivity data={fdActivity} loading={fdActivityLoading}
+                onRefresh={fetchFdActivity} onBack={() => openMenuScreen('founder')} />
             ) : menuScreen === 'fdcreateorg' ? (
               <NativeFounderCreateOrg plans={fdPlans} busy={fdCreateBusy} result={fdCreateResult} error={fdCreateErr}
                 onSubmit={doCreateOrg} onBack={() => openMenuScreen('founder')}
@@ -4587,7 +4676,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdplans', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
+      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdplans', 'fdprojects', 'fdactivity', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
@@ -5333,6 +5422,13 @@ const styles = StyleSheet.create({
   plnPanel: { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E7EDEA', paddingHorizontal: 14, marginTop: 10 },
   plnFeat: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11 },
   plnFeatLbl: { fontSize: 14, color: INK, flex: 1 },
+  fdCountLine: { fontSize: 12.5, color: '#94A3B8', marginBottom: 10, fontWeight: '600' },
+  fdProgTrack: { height: 5, borderRadius: 3, backgroundColor: '#EEF2F6', marginTop: 8, overflow: 'hidden' },
+  fdProgFill: { height: '100%', borderRadius: 3, backgroundColor: BRAND },
+  actRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  actIc: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  actLbl: { fontSize: 14, color: INK, fontWeight: '600' },
+  actMeta: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
   credCard: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: '#E2E8F0' },
   credLbl: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
   credVal: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 3 },
