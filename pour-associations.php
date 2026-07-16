@@ -49,6 +49,14 @@ require __DIR__ . '/_landing-premium.php';
         <div class="lp-trust reveal">
           <span>✓ Essai gratuit</span><span>✓ Sans engagement</span><span>🇫🇷 Hébergé en France</span><span>🔒 RGPD</span>
         </div>
+        <a href="/comptabilite-analytique" class="lp-glass reveal" style="display:flex;align-items:center;gap:14px;margin-top:20px;padding:15px 18px;border-radius:16px;text-decoration:none;max-width:520px;">
+          <span style="width:44px;height:44px;flex:none;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;background:linear-gradient(135deg,#FEF3C7,#FDE68A);box-shadow:0 8px 18px rgba(245,158,11,.2);">📊</span>
+          <span style="min-width:0;">
+            <span style="display:block;font-size:14.5px;font-weight:800;color:var(--c-encre);">Comptabilité analytique incluse dès le départ</span>
+            <span style="display:block;font-size:13px;color:var(--c-text-2);margin-top:1px;">Bilan par projet · ~900 €/an économisés · votre comptable n'a plus qu'à valider</span>
+          </span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--c-emeraude-dark)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-left:auto;"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
       </div>
       <!-- Mockup produit -->
       <div class="lp-mock-wrap reveal">
@@ -104,7 +112,7 @@ require __DIR__ . '/_landing-premium.php';
     </div>
     <ul class="lp-checks reveal">
       <?php
-      $feats = ['Adhérents & bénévoles avec rôles', 'Cotisations & relances auto', 'Assemblées générales & PV', 'Projets & suivi de subventions', 'Comptabilité analytique', 'Devis & factures', 'Diffusion email ciblée', 'IA de rédaction intégrée', 'Espace membre dédié', 'Application mobile', 'Hébergement France · RGPD', 'Export de vos données'];
+      $feats = ['Comptabilité analytique incluse', 'Adhérents & bénévoles avec rôles', 'Cotisations & relances auto', 'Assemblées générales & PV', 'Projets & suivi de subventions', 'Devis & factures', 'Diffusion email ciblée', 'IA de rédaction intégrée', 'Espace membre dédié', 'Application mobile', 'Hébergement France · RGPD', 'Export de vos données'];
       foreach ($feats as $f): ?>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><?= pub_h($f) ?></li>
       <?php endforeach; ?>
