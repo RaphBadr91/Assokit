@@ -2184,7 +2184,7 @@ const FC_ORG_FILTERS = [
   { key: 'unpaid', label: 'Impayés' },
   { key: 'trial', label: 'Essais' },
 ];
-function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack, onAction, busyId }) {
+function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack, onAction, onOpen, busyId }) {
   const orgs = data ? (data.orgs || []) : null;
   return (
     <View style={styles.detailWrap}>
@@ -2207,7 +2207,7 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
             const busy = busyId === o.id;
             return (
               <View key={o.id} style={styles.fcOrgCard}>
-                <View style={styles.fcOrgCardTop}>
+                <TouchableOpacity style={styles.fcOrgCardTop} activeOpacity={0.7} onPress={() => onOpen && onOpen(o.id)}>
                   <View style={styles.fcOrgAv}><Text style={styles.fcOrgAvTxt}>{o.initials}</Text></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.fcOrgName} numberOfLines={1}>{o.name}</Text>
@@ -2215,8 +2215,10 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
                   </View>
                   {o.pending ? <View style={[styles.fcChip, { backgroundColor: '#EDE9FE' }]}><Text style={[styles.fcChipTxt, { color: '#6D28D9' }]}>À valider</Text></View>
                     : o.status === 'suspended' ? <View style={[styles.fcChip, { backgroundColor: '#FEE2E2' }]}><Text style={[styles.fcChipTxt, { color: '#B91C1C' }]}>Suspendue</Text></View>
+                    : o.status === 'cancelled' ? <View style={[styles.fcChip, { backgroundColor: '#F1F5F9' }]}><Text style={[styles.fcChipTxt, { color: '#64748B' }]}>Résiliée</Text></View>
                     : <View style={[styles.fcChip, { backgroundColor: o.status === 'active' ? '#D1FAE5' : '#F1F5F9' }]}><Text style={[styles.fcChipTxt, { color: o.status === 'active' ? '#047857' : '#64748B' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginLeft: 4 }} />
+                </TouchableOpacity>
                 {o.unpaid_nb > 0 && <Text style={styles.fcOrgUnpaid}>⚠︎ {o.unpaid_nb} impayé{o.unpaid_nb > 1 ? 's' : ''} · {fmtEuro(o.unpaid_total)}</Text>}
                 <View style={styles.fcOrgActions}>
                   {busy ? <ActivityIndicator size="small" color={BRAND} style={{ paddingVertical: 6 }} /> : o.pending ? (
@@ -2236,6 +2238,110 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
         </ScrollView>
       )}
     </View>
+  );
+}
+
+/* Fondateur — Fiche détaillée d'une association : éditer, changer de plan, résilier, note */
+function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit, onAction }) {
+  const o = data ? data.org : null;
+  const plans = (data && data.plans) || [];
+  const members = (data && data.members) || [];
+  const canNote = !!(data && data.can_note);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [plan, setPlan] = useState('');
+  const [note, setNote] = useState('');
+  const loadedId = useRef(null);
+  useEffect(() => {
+    if (o && loadedId.current !== o.id) {
+      loadedId.current = o.id;
+      setName(o.name || ''); setEmail(o.billing_email || ''); setPlan(o.plan || ''); setNote(o.note || '');
+    }
+  }, [o]);
+  if (!o) return <DetailLoading title="Association" onBack={onBack} />;
+  const dirty = o && (name.trim() !== (o.name || '') || email.trim() !== (o.billing_email || '') || plan !== (o.plan || '') || note !== (o.note || ''));
+  const canSave = name.trim().length > 1 && !busy && dirty;
+  return (
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <DetailHeader title="Association" onBack={onBack} />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+
+        <View style={styles.odHead}>
+          <View style={styles.fcOrgAv}><Text style={styles.fcOrgAvTxt}>{(o.name || '?').slice(0, 2).toUpperCase()}</Text></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.odTitle} numberOfLines={1}>{o.name}</Text>
+            <Text style={styles.odMeta}>{o.status === 'active' ? 'Active' : o.status === 'trial' ? 'Essai' : o.status === 'suspended' ? 'Suspendue' : o.status === 'cancelled' ? 'Résiliée' : o.status} · {o.nb_users} membre{o.nb_users > 1 ? 's' : ''}{o.created ? ' · créée le ' + o.created : ''}{o.trial_ends ? ' · essai → ' + o.trial_ends : ''}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.blogLabel}>Nom de l'organisation</Text>
+        <TextInput style={styles.blogInput} value={name} onChangeText={setName} placeholder="Nom" placeholderTextColor="#9AA7A1" />
+        <Text style={styles.blogLabel}>Email de facturation</Text>
+        <TextInput style={styles.blogInput} value={email} onChangeText={setEmail} placeholder="contact@asso.fr" placeholderTextColor="#9AA7A1" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+
+        {plans.length > 0 && (
+          <>
+            <Text style={styles.blogLabel}>Formule</Text>
+            <View style={styles.blogCats}>
+              {plans.map((p) => (
+                <TouchableOpacity key={p.slug} style={[styles.planChip, plan === p.slug && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPlan(p.slug)}>
+                  <Text style={[styles.planChipName, plan === p.slug && { color: '#fff' }]}>{p.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
+
+        {canNote && (
+          <>
+            <Text style={styles.blogLabel}>Note interne <Text style={{ color: '#9AA7A1', fontWeight: '400' }}>(privée)</Text></Text>
+            <TextInput style={[styles.blogInput, { height: 90, textAlignVertical: 'top' }]} value={note} onChangeText={setNote} placeholder="Commentaires privés sur cette asso…" placeholderTextColor="#9AA7A1" multiline />
+          </>
+        )}
+
+        <TouchableOpacity style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave}
+          onPress={() => onEdit({ org_id: o.id, action: 'edit', name: name.trim(), billing_email: email.trim(), plan, note })}>
+          {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>Enregistrer</Text></>}
+        </TouchableOpacity>
+
+        {/* Actions rapides */}
+        <View style={styles.odActions}>
+          {o.status === 'suspended' ? (
+            <TouchableOpacity style={[styles.odBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]} activeOpacity={0.85} onPress={() => onAction(o.id, 'activate')}>
+              <Ionicons name="play" size={16} color="#047857" /><Text style={[styles.odBtnTxt, { color: '#047857' }]}>Réactiver</Text>
+            </TouchableOpacity>
+          ) : o.status !== 'cancelled' ? (
+            <TouchableOpacity style={[styles.odBtn, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]} activeOpacity={0.85} onPress={() => onAction(o.id, 'suspend')}>
+              <Ionicons name="pause" size={16} color="#B45309" /><Text style={[styles.odBtnTxt, { color: '#B45309' }]}>Suspendre</Text>
+            </TouchableOpacity>
+          ) : null}
+          {o.status !== 'cancelled' && (
+            <TouchableOpacity style={[styles.odBtn, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]} activeOpacity={0.85}
+              onPress={() => Alert.alert('Résilier ?', 'L\'association passera en statut « résiliée ». Confirmer ?', [{ text: 'Annuler', style: 'cancel' }, { text: 'Résilier', style: 'destructive', onPress: () => onAction(o.id, 'resiliate') }])}>
+              <Ionicons name="close-circle" size={16} color="#B91C1C" /><Text style={[styles.odBtnTxt, { color: '#B91C1C' }]}>Résilier</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {members.length > 0 && (
+          <>
+            <Text style={[styles.blogLabel, { marginTop: 22 }]}>Membres ({members.length})</Text>
+            <View style={styles.odPanel}>
+              {members.map((m, i) => (
+                <View key={i} style={[styles.odMember, i > 0 && styles.odMemberBorder]}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.odMemberName} numberOfLines={1}>{m.name}</Text>
+                    <Text style={styles.odMemberMail} numberOfLines={1}>{m.email}</Text>
+                  </View>
+                  {m.role === 'admin' && <View style={[styles.fcChip, { backgroundColor: '#EDE9FE' }]}><Text style={[styles.fcChipTxt, { color: '#6D28D9' }]}>Admin</Text></View>}
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -3336,6 +3442,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [fdOrgs, setFdOrgs] = useState(null);
   const [fdOrgsLoading, setFdOrgsLoading] = useState(false);
   const [fdOrgsFilter, setFdOrgsFilter] = useState('all');
+  const [fdOrgDetail, setFdOrgDetail] = useState(null);
+  const [fdOrgDetailLoading, setFdOrgDetailLoading] = useState(false);
+  const [fdOrgEditBusy, setFdOrgEditBusy] = useState(false);
+  const fdOrgDetailIdRef = useRef(0);
   const [fdBusyId, setFdBusyId] = useState(0);
   const [fdBilling, setFdBilling] = useState(null);
   const [fdBillingLoading, setFdBillingLoading] = useState(false);
@@ -3530,6 +3640,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (!csrf) { inject(FETCH_CSRF_JS); return; }
     setFdBusyId(orgId);
     inject(postJS('/api/app-founder-action.php', { org_id: orgId, action, csrf }, '__akfdaction'));
+  }, [csrf, inject]);
+  const fetchFdOrgDetail = useCallback((id) => { setFdOrgDetailLoading(true); inject(fetchJS('/api/app-founder-org-detail.php?id=' + id, '__akfdorgdet')); }, [inject]);
+  const openFdOrgDetail = useCallback((id) => {
+    setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null);
+    fdOrgDetailIdRef.current = id; setFdOrgDetail(null); setMenuScreen('fdorgdetail'); fetchFdOrgDetail(id);
+  }, [clearDetail, closeForm, fetchFdOrgDetail]);
+  const doOrgEdit = useCallback((payload) => {
+    if (!csrf) { inject(FETCH_CSRF_JS); return; }
+    setFdOrgEditBusy(true);
+    inject(postJS('/api/app-founder-action.php', { ...payload, csrf }, '__akfdorgedit'));
   }, [csrf, inject]);
   // Fondateur : pages natives dédiées (paiements, stats, blog, support)
   const fetchFdBilling = useCallback((filter) => { setFdBillingLoading(true); inject(fetchJS('/api/app-founder-billing.php?filter=' + encodeURIComponent(filter || 'all'), '__akfdbill')); }, [inject]);
@@ -3855,6 +3975,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         setFdBusyId(0);
         if (msg.__akfdaction.ok) { fetchFdOrgs(fdOrgsFilter); fetchFounder(); }
         else { Alert.alert('Action impossible', 'Réessaie dans un instant.'); }
+      }
+      if (msg && msg.__akfdorgdet) { setFdOrgDetail(msg.__akfdorgdet); setFdOrgDetailLoading(false); }
+      if (msg && msg.__akfdorgedit) {
+        setFdOrgEditBusy(false);
+        if (msg.__akfdorgedit.ok) {
+          if (fdOrgDetailIdRef.current) fetchFdOrgDetail(fdOrgDetailIdRef.current);
+          fetchFdOrgs(fdOrgsFilter); fetchFounder();
+        } else { Alert.alert('Action impossible', msg.__akfdorgedit.message || 'Réessaie dans un instant.'); }
       }
       if (msg && msg.__akfdbill) { setFdBilling(msg.__akfdbill); setFdBillingLoading(false); }
       if (msg && msg.__akfdpay) {
@@ -4205,7 +4333,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeFounderOrgs data={fdOrgs} loading={fdOrgsLoading} filter={fdOrgsFilter}
                 onFilter={(f) => { setFdOrgs(null); setFdOrgsFilter(f); fetchFdOrgs(f); }}
                 onRefresh={() => fetchFdOrgs(fdOrgsFilter)} onBack={() => openMenuScreen('founder')}
-                onAction={doFounderAction} busyId={fdBusyId} />
+                onAction={doFounderAction} onOpen={openFdOrgDetail} busyId={fdBusyId} />
+            ) : menuScreen === 'fdorgdetail' ? (
+              <NativeFounderOrgDetail data={fdOrgDetail} loading={fdOrgDetailLoading} busy={fdOrgEditBusy}
+                onBack={() => openFdOrgs(fdOrgsFilter)} onRefresh={() => fdOrgDetailIdRef.current && fetchFdOrgDetail(fdOrgDetailIdRef.current)}
+                onEdit={doOrgEdit} onAction={(id, action) => doOrgEdit({ org_id: id, action })} />
             ) : menuScreen === 'fdbilling' ? (
               <NativeFounderBilling data={fdBilling} loading={fdBillingLoading} filter={fdBillingFilter}
                 onFilter={(f) => { setFdBilling(null); setFdBillingFilter(f); fetchFdBilling(f); }}
@@ -4300,7 +4432,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {authed && isFounder && !['founder', 'fdorgs', 'fdbilling', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
+      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
@@ -4313,7 +4445,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         </TouchableOpacity>
       )}
 
-      {authed && !['fdctcthread', 'fdthread'].includes(menuScreen) && (
+      {authed && !['fdctcthread', 'fdthread', 'fdorgdetail'].includes(menuScreen) && (
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
           if (tab.key === 'add') {
@@ -5024,6 +5156,17 @@ const styles = StyleSheet.create({
   payRowOn: { backgroundColor: '#ECFDF5', borderColor: BRAND },
   payLbl: { fontSize: 14, fontWeight: '700', color: INK },
   paySub: { fontSize: 12, color: '#64748B', marginTop: 1 },
+  odHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  odTitle: { fontSize: 19, fontWeight: '800', color: INK },
+  odMeta: { fontSize: 12.5, color: '#64748B', marginTop: 2 },
+  odActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
+  odBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5 },
+  odBtnTxt: { fontSize: 13.5, fontWeight: '700' },
+  odPanel: { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E7EDEA', paddingHorizontal: 14 },
+  odMember: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+  odMemberBorder: { borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  odMemberName: { fontSize: 14, fontWeight: '700', color: INK },
+  odMemberMail: { fontSize: 12, color: '#94A3B8', marginTop: 1 },
   credCard: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: '#E2E8F0' },
   credLbl: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
   credVal: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 3 },

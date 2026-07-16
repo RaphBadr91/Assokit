@@ -14,7 +14,7 @@ if (!$is_sa) app_fail(403, 'forbidden');
 $target = (int) ($input['org_id'] ?? 0);
 $action = (string) ($input['action'] ?? '');
 if ($target <= 0) app_fail(400, 'org_id');
-if (!in_array($action, ['validate', 'reject', 'suspend', 'activate'], true)) app_fail(400, 'action');
+if (!in_array($action, ['validate', 'reject', 'suspend', 'activate', 'resiliate', 'edit'], true)) app_fail(400, 'action');
 
 try {
     // Vérifie que l'org existe
@@ -32,7 +32,28 @@ try {
     } elseif ($action === 'suspend') {
         $pdo->prepare("UPDATE organizations SET status='suspended' WHERE id=?")->execute([$target]);
     } elseif ($action === 'activate') {
-        $pdo->prepare("UPDATE organizations SET status='active' WHERE id=?")->execute([$target]);
+        $pdo->prepare("UPDATE organizations SET status='active', suspended_reason=NULL WHERE id=?")->execute([$target]);
+    } elseif ($action === 'resiliate') {
+        $pdo->prepare("UPDATE organizations SET status='cancelled' WHERE id=?")->execute([$target]);
+    } elseif ($action === 'edit') {
+        // Édition : nom, email de facturation, plan (slug), note interne — comme le web
+        $name  = trim((string) ($input['name'] ?? ''));
+        $mail  = trim((string) ($input['billing_email'] ?? ''));
+        $plan  = trim((string) ($input['plan'] ?? ''));
+        $note  = (string) ($input['note'] ?? '');
+        if ($name === '') app_fail(400, 'name', 'Nom obligatoire.');
+        if ($mail !== '' && !filter_var($mail, FILTER_VALIDATE_EMAIL)) app_fail(400, 'billing_email', 'Email invalide.');
+        // Construit dynamiquement selon les colonnes présentes
+        $sets = ['name = ?']; $params = [$name];
+        $colExists = function ($col) use ($pdo) {
+            try { $s = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='organizations' AND COLUMN_NAME=?"); $s->execute([$col]); return (int) $s->fetchColumn() > 0; }
+            catch (Throwable $e) { return false; }
+        };
+        if ($plan !== '') { $sets[] = 'plan = ?'; $params[] = $plan; }
+        if ($mail !== '' && $colExists('billing_email')) { $sets[] = 'billing_email = ?'; $params[] = $mail; }
+        if ($colExists('notes_superadmin')) { $sets[] = 'notes_superadmin = ?'; $params[] = $note; }
+        $params[] = $target;
+        $pdo->prepare("UPDATE organizations SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
     }
 
     // Journalise si une fonction dédiée existe (aucune erreur si absente)
