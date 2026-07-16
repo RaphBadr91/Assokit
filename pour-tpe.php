@@ -14,7 +14,7 @@ $faqs = [
     ['Assokit est-il adapté à une TPE ou un indépendant ?', "Oui, totalement. Artisans, commerçants, indépendants, petites entreprises : vous pilotez devis, factures, paiements, projets/chantiers et comptabilité depuis un seul outil, sans logiciel comptable en plus."],
     ['Puis-je faire mes devis et factures avec ?', "Oui : devis et factures professionnels, relances de paiement automatiques, suivi des encaissements en temps réel, et scan de facture par IA pour la saisie. Conforme à la facturation française."],
     ['Comment ça marche pour suivre mes chantiers / projets ?', "Chaque client ou chantier devient un projet : étapes, budget alloué vs dépensé, factures rattachées, collègues assignés. Vous savez en un coup d'œil où en est chaque affaire."],
-    ['La comptabilité analytique, c\'est utile pour moi ?', "Beaucoup : vous voyez la rentabilité réelle par chantier/projet, poste par poste. Incluse dès l'offre Pro — environ 900 € d'économie par an face à une prestation externalisée."],
+    ['La comptabilité analytique, c\'est utile pour moi ?', "Énormément : vous voyez la rentabilité réelle de chaque chantier/projet, poste par poste, et vous savez quelles affaires vous rapportent. Incluse dès l'offre Pro. Elle ne remplace pas votre comptable — au contraire, elle lui prépare un dossier propre et daté, prêt à valider."],
     ['Mes rendez-vous et mon agenda sont-ils gérés ?', "Oui : notez vos rendez-vous directement dans l'outil, avec rappels. Plus besoin de jongler entre dix applis — tout est centralisé et visible."],
 ];
 $faq_schema = [
@@ -79,7 +79,7 @@ require __DIR__ . '/_landing-premium.php';
         ['🧾', 'Les devis et factures qui traînent', 'Devis et factures pro en 2 minutes, relances de paiement automatiques, suivi des encaissements.'],
         ['📸', 'La saisie des factures fournisseurs', 'Scannez, l\'IA lit et pré-remplit. Vos justificatifs sont rattachés au bon projet.'],
         ['🏗️', 'Les chantiers difficiles à suivre', 'Un projet par client/chantier : étapes, budget, factures, collègues assignés. Tout est clair.'],
-        ['📊', 'La rentabilité qu\'on devine', 'Comptabilité analytique par chantier : vous savez ce qui rapporte vraiment. ~900 €/an économisés.'],
+        ['📊', 'La rentabilité qu\'on devine', 'Comptabilité analytique par chantier : vous voyez enfin, poste par poste, ce que chaque affaire vous rapporte vraiment.'],
         ['📅', 'Les rendez-vous dispersés', 'Agenda intégré : vos RDV notés au même endroit que vos clients et vos affaires.'],
         ['📱', 'Le bureau qu\'on n\'a jamais sur soi', 'Application mobile : gérez tout depuis votre téléphone, même sur le terrain.'],
       ];
@@ -116,9 +116,15 @@ require __DIR__ . '/_landing-premium.php';
 <section class="pub-section pub-section-creme">
   <div class="pub-container">
     <div class="lp-stat reveal">
-      <div class="big">−900 € / an</div>
-      <p>La comptabilité analytique par projet est <strong>incluse dès l'offre Pro</strong>. Une vision claire de la rentabilité réelle de chaque chantier — sans expert-comptable pour la ventilation.</p>
-      <a href="/comptabilite-analytique" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Voir comment
+      <span class="pub-section-eyebrow" style="position:relative;color:#A7F3D0;">Votre trésorerie, sous contrôle</span>
+      <div class="big" style="font-size:clamp(34px,7vw,60px);">Soyez payé plus vite</div>
+      <p>Relances de paiement <strong>automatiques</strong>, encaissements suivis en temps réel, et la <strong>rentabilité réelle de chaque chantier</strong> sous les yeux. Vous pilotez votre entreprise — pas juste sa paperasse. Et votre comptable reçoit un dossier propre et daté, prêt à valider.</p>
+      <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:4px 0 22px;">
+        <span class="lp-badge" style="background:rgba(255,255,255,.14);border-color:rgba(167,243,208,.5);color:#fff;">💶 Moins d'impayés</span>
+        <span class="lp-badge" style="background:rgba(255,255,255,.14);border-color:rgba(167,243,208,.5);color:#fff;">📈 Marges par chantier</span>
+        <span class="lp-badge" style="background:rgba(255,255,255,.14);border-color:rgba(167,243,208,.5);color:#fff;">⏱️ Des heures gagnées</span>
+      </div>
+      <a href="/fonctionnalites" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Voir comment
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
     </div>
   </div>

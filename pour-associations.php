@@ -117,8 +117,13 @@ require __DIR__ . '/_landing-premium.php';
 <section class="pub-section pub-section-creme">
   <div class="pub-container">
     <div class="lp-stat reveal">
+      <span class="pub-section-eyebrow" style="position:relative;color:#A7F3D0;">De l'argent rendu à vos actions</span>
       <div class="big">−900 € / an</div>
-      <p>La comptabilité analytique par projet est <strong>incluse dès l'offre Pro</strong>. Votre expert-comptable n'intervient plus que pour valider — pas pour tout ressaisir.</p>
+      <p>C'est ce que coûte une comptabilité analytique chez un prestataire. Chez vous, elle est <strong>incluse dès l'offre Pro</strong> — soit près de <strong>2&nbsp;700&nbsp;€ sur 3&nbsp;ans</strong> qui repartent dans vos projets, vos bénévoles et vos adhérents. <span style="opacity:.85;">Pas dans la paperasse.</span></p>
+      <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:4px 0 22px;">
+        <span class="lp-badge" style="background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22);color:#fff;"><span style="text-decoration:line-through;opacity:.75;">Externalisée&nbsp;: ~900&nbsp;€/an</span></span>
+        <span class="lp-badge" style="background:rgba(255,255,255,.16);border-color:rgba(167,243,208,.5);color:#fff;">✓ Avec Assokit&nbsp;: 0&nbsp;€, incluse</span>
+      </div>
       <a href="/comptabilite-analytique" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Comment on fait ça
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
     </div>
