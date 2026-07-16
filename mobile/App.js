@@ -1996,6 +1996,7 @@ const FC_TILES = [
   { key: 'projects', icon: 'folder-open', color: '#4F46E5', bg: '#EEF2FF', title: 'Projets', desc: 'Toutes les orgs' },
   { key: 'activity', icon: 'pulse', color: '#0284C7', bg: '#F0F9FF', title: 'Activité', desc: 'Journal de la plateforme' },
   { key: 'blog', icon: 'newspaper', color: '#D97706', bg: '#FFFBEB', title: 'Blog SEO', desc: 'Générer & programmer' },
+  { key: 'prospects', icon: 'rocket', color: '#DB2777', bg: '#FDF2F8', title: 'Prospection', desc: 'Emailing ciblé · relances' },
   { key: 'settings', icon: 'business', color: '#475569', bg: '#F1F5F9', title: 'Société', desc: 'Infos légales · TVA · IBAN' },
 ];
 
@@ -2595,6 +2596,102 @@ function NativeFounderSettings({ data, loading, busy, onRefresh, onBack, onSave 
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/* Fondateur — Prospection conforme (natif) : import, séquences, suivi */
+const PROSPECT_STATUS = {
+  new: { label: 'Nouveau', color: '#64748B', bg: '#F1F5F9' },
+  queued: { label: 'En file', color: '#B45309', bg: '#FEF3C7' },
+  contacted: { label: 'Contacté', color: '#2563EB', bg: '#EFF6FF' },
+  engaged: { label: 'Engagé', color: '#7C3AED', bg: '#F5F3FF' },
+  replied: { label: 'A répondu', color: '#047857', bg: '#D1FAE5' },
+  booked: { label: 'RDV pris', color: '#047857', bg: '#D1FAE5' },
+  unsubscribed: { label: 'Désinscrit', color: '#94A3B8', bg: '#F1F5F9' },
+  bounced: { label: 'Rejeté', color: '#B91C1C', bg: '#FEE2E2' },
+};
+function NativeFounderProspects({ data, loading, busy, onRefresh, onBack, onImport, onQueue, onStatus, onDelete }) {
+  const list = data ? (data.prospects || []) : null;
+  const st = (data && data.stats) || {};
+  const [text, setText] = useState('');
+  const [type, setType] = useState('asso');
+  const [showImport, setShowImport] = useState(false);
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Prospection" onBack={onBack} />
+      {!list ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+
+          {/* Bandeau conformité / état d'envoi */}
+          <View style={[styles.prBanner, { backgroundColor: st.sending_enabled ? '#ECFDF5' : '#FFFBEB', borderColor: st.sending_enabled ? '#A7F3D0' : '#FDE68A' }]}>
+            <Ionicons name={st.sending_enabled ? 'checkmark-circle' : 'pause-circle'} size={18} color={st.sending_enabled ? '#047857' : '#B45309'} />
+            <Text style={[styles.prBannerTxt, { color: st.sending_enabled ? '#047857' : '#B45309' }]}>
+              {st.sending_enabled ? `Envoi actif · ${st.sent_today || 0}/${st.daily_cap} aujourd'hui` : 'Envoi en pause (mode test) — à activer après domaine dédié + warm-up'}
+            </Text>
+          </View>
+
+          {/* Stats */}
+          <View style={styles.miniKpiRow}>
+            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{st.total || 0}</Text><Text style={styles.miniKpiLbl}>Prospects</Text></View>
+            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{(st.events && st.events.sent) || 0}</Text><Text style={styles.miniKpiLbl}>Emails</Text></View>
+            <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#047857' }]}>{(st.by_status && (st.by_status.replied + st.by_status.booked)) || 0}</Text><Text style={styles.miniKpiLbl}>Réponses</Text></View>
+          </View>
+
+          {/* Actions */}
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+            <TouchableOpacity style={[styles.projNewBtn, { flex: 1, justifyContent: 'center' }]} activeOpacity={0.85} onPress={() => setShowImport((v) => !v)}>
+              <Ionicons name="cloud-upload" size={17} color="#fff" /><Text style={styles.projNewTxt}>Importer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.odBtn, { flex: 1, justifyContent: 'center', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]} activeOpacity={0.85}
+              onPress={() => Alert.alert('Mettre en file ?', 'Les prospects « Nouveau » entreront dans la séquence de relance. (Aucun email tant que l\'envoi n\'est pas activé.)', [{ text: 'Annuler', style: 'cancel' }, { text: 'Mettre en file', onPress: onQueue }])}>
+              <Ionicons name="play-forward" size={16} color="#2563EB" /><Text style={[styles.odBtnTxt, { color: '#2563EB' }]}>Lancer la séquence</Text>
+            </TouchableOpacity>
+          </View>
+
+          {showImport && (
+            <View style={styles.prImport}>
+              <Text style={styles.blogLabel}>Cible</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                <TouchableOpacity style={[styles.planChip, type === 'asso' && styles.planChipOn]} onPress={() => setType('asso')}><Text style={[styles.planChipName, type === 'asso' && { color: '#fff' }]}>Associations</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.planChip, type === 'tpe' && styles.planChipOn]} onPress={() => setType('tpe')}><Text style={[styles.planChipName, type === 'tpe' && { color: '#fff' }]}>TPE / PME</Text></TouchableOpacity>
+              </View>
+              <Text style={styles.blogLabel}>Contacts <Text style={{ color: '#9AA7A1', fontWeight: '400' }}>(1 par ligne : email ou email;nom;organisation;ville)</Text></Text>
+              <TextInput style={[styles.blogInput, { height: 120, textAlignVertical: 'top' }]} value={text} onChangeText={setText} placeholder={"contact@asso-exemple.fr\nemail;Nom;Organisation;Ville"} placeholderTextColor="#9AA7A1" multiline autoCapitalize="none" autoCorrect={false} />
+              <Text style={styles.prHint}>⚖️ N'importez que des contacts que vous avez le droit de démarcher (B2B pertinent). Chaque email inclut un lien de désinscription.</Text>
+              <TouchableOpacity style={[styles.lgBtn, (busy || text.trim().length < 5) && styles.lgBtnOff]} activeOpacity={0.9} disabled={busy || text.trim().length < 5}
+                onPress={() => onImport(text.trim(), type, () => { setText(''); setShowImport(false); })}>
+                {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="add-circle" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>Importer les contacts</Text></>}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Liste */}
+          {list.length === 0 ? (
+            <View style={styles.emptyBox}><Ionicons name="people-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun prospect — importez vos contacts</Text></View>
+          ) : list.map((p) => {
+            const s = PROSPECT_STATUS[p.status] || PROSPECT_STATUS.new;
+            return (
+              <View key={p.id} style={styles.plnCard}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.plnName} numberOfLines={1}>{p.org || p.name || p.email}</Text>
+                  <Text style={styles.plnSub} numberOfLines={1}>{p.email}{p.city ? ' · ' + p.city : ''} · {p.type === 'tpe' ? 'TPE' : 'Asso'}{p.step > 0 ? ' · étape ' + p.step : ''}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                  <View style={[styles.fcChip, { backgroundColor: s.bg }]}><Text style={[styles.fcChipTxt, { color: s.color }]}>{s.label}</Text></View>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity onPress={() => onStatus(p.id, 'booked')}><Ionicons name="calendar" size={17} color="#047857" /></TouchableOpacity>
+                    <TouchableOpacity onPress={() => Alert.alert('Supprimer ?', p.email, [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: () => onDelete(p.id) }])}><Ionicons name="trash-outline" size={17} color="#B91C1C" /></TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
@@ -3711,6 +3808,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [fdSettings, setFdSettings] = useState(null);
   const [fdSettingsLoading, setFdSettingsLoading] = useState(false);
   const [fdSettingsBusy, setFdSettingsBusy] = useState(false);
+  const [fdProspects, setFdProspects] = useState(null);
+  const [fdProspectsLoading, setFdProspectsLoading] = useState(false);
+  const [fdProspectsBusy, setFdProspectsBusy] = useState(false);
+  const fdProspectCloseRef = useRef(null);
   const [fdBusyId, setFdBusyId] = useState(0);
   const [fdBilling, setFdBilling] = useState(null);
   const [fdBillingLoading, setFdBillingLoading] = useState(false);
@@ -3929,6 +4030,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const fetchFdSettings = useCallback(() => { setFdSettingsLoading(true); inject(fetchJS('/api/app-founder-settings.php', '__akfdset')); }, [inject]);
   const openFdSettings = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdSettings(null); setMenuScreen('fdsettings'); fetchFdSettings(); }, [clearDetail, closeForm, fetchFdSettings]);
   const doSaveSettings = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdSettingsBusy(true); inject(postJS('/api/app-founder-settings.php', { ...payload, csrf }, '__akfdsetsave')); }, [csrf, inject]);
+  // Fondateur : prospection
+  const fetchFdProspects = useCallback(() => { setFdProspectsLoading(true); inject(fetchJS('/api/app-founder-prospects.php', '__akfdpros')); }, [inject]);
+  const openFdProspects = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdProspects(null); setMenuScreen('fdprospects'); fetchFdProspects(); }, [clearDetail, closeForm, fetchFdProspects]);
+  const doProspectImport = useCallback((text, type, cb) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } fdProspectCloseRef.current = cb || null; setFdProspectsBusy(true); inject(postJS('/api/app-founder-prospects.php', { action: 'import', text, type, csrf }, '__akfdprosact')); }, [csrf, inject]);
+  const doProspectQueue = useCallback(() => { if (!csrf) { inject(FETCH_CSRF_JS); return; } inject(postJS('/api/app-founder-prospects.php', { action: 'queue', csrf }, '__akfdprosact')); }, [csrf, inject]);
+  const doProspectStatus = useCallback((id, status) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } inject(postJS('/api/app-founder-prospects.php', { action: 'status', id, status, csrf }, '__akfdprosact')); }, [csrf, inject]);
+  const doProspectDelete = useCallback((id) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } inject(postJS('/api/app-founder-prospects.php', { action: 'delete', id, csrf }, '__akfdprosact')); }, [csrf, inject]);
   // Fondateur : pages natives dédiées (paiements, stats, blog, support)
   const fetchFdBilling = useCallback((filter) => { setFdBillingLoading(true); inject(fetchJS('/api/app-founder-billing.php?filter=' + encodeURIComponent(filter || 'all'), '__akfdbill')); }, [inject]);
   const openFdBilling = useCallback((filter) => { const f = filter || 'all'; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBilling(null); setFdBillingFilter(f); setMenuScreen('fdbilling'); fetchFdBilling(f); }, [clearDetail, closeForm, fetchFdBilling]);
@@ -3992,11 +4100,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (key === 'projects') openFdProjects();
     else if (key === 'activity') openFdActivity();
     else if (key === 'settings') openFdSettings();
+    else if (key === 'prospects') openFdProspects();
     else if (key === 'support') openFdSupport('open');
     else if (key === 'stats') openFdStats();
     else if (key === 'blog') openFdBlog();
     else if (key === 'contacts') openFdContacts();
-  }, [openFdOrgs, openFdCreateOrg, openFdBilling, openFdPlansM, openFdProjects, openFdActivity, openFdSettings, openFdSupport, openFdStats, openFdBlog, openFdContacts]);
+  }, [openFdOrgs, openFdCreateOrg, openFdBilling, openFdPlansM, openFdProjects, openFdActivity, openFdSettings, openFdProspects, openFdSupport, openFdStats, openFdBlog, openFdContacts]);
 
   const onAnalyzeInvoices = useCallback(() => { setInvAILoading(true); inject(fetchJS('/api/app-invoices-ai.php', '__akinvai')); }, [inject]);
   const onCockpit = useCallback(() => { setStatsCockpitLoading(true); inject(fetchJS('/api/app-stats-ai.php', '__akstatsai')); }, [inject]);
@@ -4268,6 +4377,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       if (msg && msg.__akfdproj) { setFdProjects(msg.__akfdproj); setFdProjectsLoading(false); }
       if (msg && msg.__akfdactiv) { setFdActivity(msg.__akfdactiv); setFdActivityLoading(false); }
+      if (msg && msg.__akfdpros) { setFdProspects(msg.__akfdpros); setFdProspectsLoading(false); }
+      if (msg && msg.__akfdprosact) {
+        setFdProspectsBusy(false);
+        const r = msg.__akfdprosact;
+        if (r && r.ok) {
+          fetchFdProspects();
+          if (fdProspectCloseRef.current) { fdProspectCloseRef.current(); fdProspectCloseRef.current = null; }
+          if (r.added !== undefined) Alert.alert('Import terminé', r.added + ' ajouté(s), ' + r.skipped + ' ignoré(s) (doublons/invalides).');
+        } else { Alert.alert('Opération impossible', (r && r.message) || 'Réessaie.'); }
+      }
       if (msg && msg.__akfdset) { setFdSettings(msg.__akfdset); setFdSettingsLoading(false); }
       if (msg && msg.__akfdsetsave) {
         setFdSettingsBusy(false);
@@ -4671,6 +4790,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'fdsettings' ? (
               <NativeFounderSettings data={fdSettings} loading={fdSettingsLoading} busy={fdSettingsBusy}
                 onRefresh={fetchFdSettings} onBack={() => openMenuScreen('founder')} onSave={doSaveSettings} />
+            ) : menuScreen === 'fdprospects' ? (
+              <NativeFounderProspects data={fdProspects} loading={fdProspectsLoading} busy={fdProspectsBusy}
+                onRefresh={fetchFdProspects} onBack={() => openMenuScreen('founder')}
+                onImport={doProspectImport} onQueue={doProspectQueue} onStatus={doProspectStatus} onDelete={doProspectDelete} />
             ) : menuScreen === 'fdcreateorg' ? (
               <NativeFounderCreateOrg plans={fdPlans} busy={fdCreateBusy} result={fdCreateResult} error={fdCreateErr}
                 onSubmit={doCreateOrg} onBack={() => openMenuScreen('founder')}
@@ -4745,7 +4868,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdplans', 'fdprojects', 'fdactivity', 'fdsettings', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
+      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdplans', 'fdprojects', 'fdactivity', 'fdsettings', 'fdprospects', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
@@ -4758,7 +4881,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         </TouchableOpacity>
       )}
 
-      {authed && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans', 'fdsettings'].includes(menuScreen) && (
+      {authed && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans', 'fdsettings', 'fdprospects'].includes(menuScreen) && (
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
           if (tab.key === 'add') {
@@ -5499,6 +5622,10 @@ const styles = StyleSheet.create({
   actLbl: { fontSize: 14, color: INK, fontWeight: '600' },
   actMeta: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
   setSec: { fontSize: 12, fontWeight: '800', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 16, marginBottom: 4 },
+  prBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 14 },
+  prBannerTxt: { flex: 1, fontSize: 12.5, fontWeight: '600', lineHeight: 17 },
+  prImport: { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E7EDEA', padding: 14, marginBottom: 16 },
+  prHint: { fontSize: 11.5, color: '#94A3B8', lineHeight: 16, marginTop: 6, marginBottom: 10 },
   credCard: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: '#E2E8F0' },
   credLbl: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
   credVal: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 3 },
