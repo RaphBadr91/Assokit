@@ -1989,6 +1989,7 @@ const FC_MINI = [
 const FC_TILES = [
   { key: 'associations', icon: 'business', color: '#059669', bg: '#ECFDF5', title: 'Associations', desc: 'Gérer · valider · suspendre' },
   { key: 'billing', icon: 'card', color: '#2563EB', bg: '#EFF6FF', title: 'Abonnements', desc: 'MRR · impayés · relances' },
+  { key: 'plans', icon: 'pricetags', color: '#0D9488', bg: '#F0FDFA', title: 'Plans tarifaires', desc: 'Prix · quotas · options' },
   { key: 'support', icon: 'chatbubbles', color: '#7C3AED', bg: '#F5F3FF', title: 'Support', desc: 'Tickets & messages' },
   { key: 'contacts', icon: 'mail', color: '#DB2777', bg: '#FDF2F8', title: 'Contacts', desc: 'Demandes du site · prospects' },
   { key: 'stats', icon: 'stats-chart', color: '#0891B2', bg: '#ECFEFF', title: 'Statistiques', desc: 'Croissance · emails · SMS' },
@@ -2342,6 +2343,137 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
         )}
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/* Fondateur — Gestion des plans tarifaires (natif) : liste + créer/éditer/supprimer */
+const PLAN_QUOTAS = [
+  { key: 'limit_adherents', label: 'Adhérents' }, { key: 'limit_users', label: 'Utilisateurs' },
+  { key: 'limit_invoices_total', label: 'Factures' }, { key: 'limit_quotes_total', label: 'Devis' },
+  { key: 'limit_contacts', label: 'Contacts' }, { key: 'limit_ai_text_per_month', label: 'IA texte/mois' },
+  { key: 'limit_ai_image_per_month', label: 'IA image/mois' }, { key: 'limit_emails_per_month', label: 'Emails/mois' },
+];
+const PLAN_FEATURES = [
+  { key: 'feature_recurring_invoices', label: 'Factures récurrentes' }, { key: 'feature_signature_quotes', label: 'Devis signés' },
+  { key: 'feature_email_diffusion', label: 'Diffusion email' }, { key: 'feature_advanced_stats', label: 'Stats avancées' },
+  { key: 'feature_priority_support', label: 'Support prioritaire' }, { key: 'feature_custom_domain', label: 'Domaine perso' },
+  { key: 'feature_dedicated_support', label: 'Support dédié' },
+];
+function blankPlan() {
+  const p = { id: 0, slug: '', name: '', tagline: '', price_eur: '', price_label: '', is_custom_quote: false, is_featured: false, is_visible: true, display_order: 0 };
+  PLAN_QUOTAS.forEach((q) => { p[q.key] = ''; });
+  PLAN_FEATURES.forEach((f) => { p[f.key] = false; });
+  return p;
+}
+function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, onDelete, onToggle }) {
+  const plans = data ? (data.plans || []) : null;
+  const [form, setForm] = useState(null); // null = liste ; objet = édition/création
+  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Édition d'un plan existant
+  const openEdit = (p) => {
+    const f = { ...blankPlan(), ...p };
+    PLAN_QUOTAS.forEach((q) => { f[q.key] = (p[q.key] === null || p[q.key] === undefined) ? '' : String(p[q.key]); });
+    f.price_eur = p.price_eur != null ? String(p.price_eur) : '';
+    setForm(f);
+  };
+
+  if (form) {
+    const isNew = !form.id;
+    const canSave = form.slug.trim().length > 0 && form.name.trim().length > 0 && !busy;
+    return (
+      <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+        <DetailHeader title={isNew ? 'Nouveau plan' : 'Modifier le plan'} onBack={() => setForm(null)} />
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1.3 }}><Text style={styles.blogLabel}>Nom</Text><TextInput style={styles.blogInput} value={form.name} onChangeText={(v) => setF('name', v)} placeholder="Ex : Association" placeholderTextColor="#9AA7A1" /></View>
+            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Slug</Text><TextInput style={styles.blogInput} value={form.slug} onChangeText={(v) => setF('slug', v.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="association" placeholderTextColor="#9AA7A1" autoCapitalize="none" /></View>
+          </View>
+          <Text style={styles.blogLabel}>Accroche</Text>
+          <TextInput style={styles.blogInput} value={form.tagline} onChangeText={(v) => setF('tagline', v)} placeholder="Ex : Pour les assos qui grandissent" placeholderTextColor="#9AA7A1" />
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Prix (€/mois HT)</Text><TextInput style={styles.blogInput} value={form.price_eur} onChangeText={(v) => setF('price_eur', v.replace(/[^0-9.,]/g, '').replace(',', '.'))} placeholder="49.99" placeholderTextColor="#9AA7A1" keyboardType="decimal-pad" /></View>
+            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Libellé prix</Text><TextInput style={styles.blogInput} value={form.price_label} onChangeText={(v) => setF('price_label', v)} placeholder="Sur devis…" placeholderTextColor="#9AA7A1" /></View>
+          </View>
+
+          <Text style={[styles.blogLabel, { marginTop: 16 }]}>Quotas <Text style={{ color: '#9AA7A1', fontWeight: '400' }}>(vide = illimité)</Text></Text>
+          <View style={styles.plnGrid}>
+            {PLAN_QUOTAS.map((q) => (
+              <View key={q.key} style={styles.plnQuota}>
+                <Text style={styles.plnQuotaLbl}>{q.label}</Text>
+                <TextInput style={styles.plnQuotaInp} value={String(form[q.key] ?? '')} onChangeText={(v) => setF(q.key, v.replace(/[^0-9]/g, ''))} placeholder="∞" placeholderTextColor="#B8C4C0" keyboardType="number-pad" />
+              </View>
+            ))}
+          </View>
+
+          <Text style={[styles.blogLabel, { marginTop: 16 }]}>Fonctionnalités incluses</Text>
+          <View style={styles.plnPanel}>
+            {PLAN_FEATURES.map((ft, i) => (
+              <View key={ft.key} style={[styles.plnFeat, i > 0 && styles.odMemberBorder]}>
+                <Text style={styles.plnFeatLbl}>{ft.label}</Text>
+                <Switch value={!!form[ft.key]} onValueChange={(v) => setF(ft.key, v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.plnPanel}>
+            <View style={styles.plnFeat}><Text style={styles.plnFeatLbl}>Visible sur la page tarifs</Text><Switch value={!!form.is_visible} onValueChange={(v) => setF('is_visible', v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} /></View>
+            <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Plan mis en avant</Text><Switch value={!!form.is_featured} onValueChange={(v) => setF('is_featured', v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} /></View>
+            <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Sur devis (prix masqué)</Text><Switch value={!!form.is_custom_quote} onValueChange={(v) => setF('is_custom_quote', v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} /></View>
+          </View>
+
+          <TouchableOpacity style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave}
+            onPress={() => {
+              const payload = { action: isNew ? 'create' : 'update', plan_id: form.id || undefined, slug: form.slug.trim(), name: form.name.trim(), tagline: form.tagline.trim(), price_eur: parseFloat(form.price_eur) || 0, price_label: form.price_label.trim(), is_custom_quote: form.is_custom_quote ? 1 : 0, is_featured: form.is_featured ? 1 : 0, is_visible: form.is_visible ? 1 : 0, display_order: form.display_order || 0 };
+              PLAN_QUOTAS.forEach((q) => { payload[q.key] = form[q.key] === '' ? '' : parseInt(form[q.key], 10); });
+              PLAN_FEATURES.forEach((f) => { payload[f.key] = form[f.key] ? 1 : 0; });
+              onSave(payload, () => setForm(null));
+            }}>
+            {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>{isNew ? 'Créer le plan' : 'Enregistrer'}</Text></>}
+          </TouchableOpacity>
+          {!isNew && (
+            <TouchableOpacity style={{ alignSelf: 'center', paddingVertical: 14 }} activeOpacity={0.7}
+              onPress={() => Alert.alert('Supprimer ce plan ?', 'Action définitive (impossible si des orgs l\'utilisent).', [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: () => onDelete(form.id, () => setForm(null)) }])}>
+              <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 14 }}>Supprimer le plan</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Plans tarifaires" onBack={onBack} />
+      {!plans ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          <TouchableOpacity style={[styles.projNewBtn, { alignSelf: 'flex-start', marginBottom: 14 }]} activeOpacity={0.85} onPress={() => setForm(blankPlan())}>
+            <Ionicons name="add" size={18} color="#fff" /><Text style={styles.projNewTxt}>Nouveau plan</Text>
+          </TouchableOpacity>
+          {plans.length === 0 ? (
+            <View style={styles.emptyBox}><Ionicons name="pricetags-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun plan</Text></View>
+          ) : plans.map((p) => (
+            <TouchableOpacity key={p.id} style={styles.plnCard} activeOpacity={0.85} onPress={() => openEdit(p)}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.plnName} numberOfLines={1}>{p.name}</Text>
+                  {p.is_featured && <View style={[styles.fcChip, { backgroundColor: '#FEF3C7' }]}><Text style={[styles.fcChipTxt, { color: '#B45309' }]}>Mis en avant</Text></View>}
+                  {!p.is_visible && <View style={[styles.fcChip, { backgroundColor: '#F1F5F9' }]}><Text style={[styles.fcChipTxt, { color: '#64748B' }]}>Masqué</Text></View>}
+                </View>
+                <Text style={styles.plnSub} numberOfLines={1}>{p.slug} · {p.adoption} org{p.adoption > 1 ? 's' : ''}{p.tagline ? ' · ' + p.tagline : ''}</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.plnPrice}>{p.is_custom_quote ? 'Sur devis' : (p.price_eur > 0 ? fmtEuro(p.price_eur) : 'Gratuit')}</Text>
+                <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginTop: 3 }} />
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
@@ -3446,6 +3578,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [fdOrgDetailLoading, setFdOrgDetailLoading] = useState(false);
   const [fdOrgEditBusy, setFdOrgEditBusy] = useState(false);
   const fdOrgDetailIdRef = useRef(0);
+  const [fdPlansM, setFdPlansM] = useState(null);
+  const [fdPlansMLoading, setFdPlansMLoading] = useState(false);
+  const [fdPlansMBusy, setFdPlansMBusy] = useState(false);
+  const fdPlanCloseRef = useRef(null);
   const [fdBusyId, setFdBusyId] = useState(0);
   const [fdBilling, setFdBilling] = useState(null);
   const [fdBillingLoading, setFdBillingLoading] = useState(false);
@@ -3651,6 +3787,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     setFdOrgEditBusy(true);
     inject(postJS('/api/app-founder-action.php', { ...payload, csrf }, '__akfdorgedit'));
   }, [csrf, inject]);
+  // Fondateur : gestion des plans tarifaires
+  const fetchFdPlansM = useCallback(() => { setFdPlansMLoading(true); inject(fetchJS('/api/app-founder-plans.php', '__akfdplansm')); }, [inject]);
+  const openFdPlansM = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdPlansM(null); setMenuScreen('fdplans'); fetchFdPlansM(); }, [clearDetail, closeForm, fetchFdPlansM]);
+  const doPlanSave = useCallback((payload, cb) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } fdPlanCloseRef.current = cb || null; setFdPlansMBusy(true); inject(postJS('/api/app-founder-plans.php', { ...payload, csrf }, '__akfdplanact')); }, [csrf, inject]);
+  const doPlanDelete = useCallback((id, cb) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } fdPlanCloseRef.current = cb || null; setFdPlansMBusy(true); inject(postJS('/api/app-founder-plans.php', { action: 'delete', plan_id: id, csrf }, '__akfdplanact')); }, [csrf, inject]);
   // Fondateur : pages natives dédiées (paiements, stats, blog, support)
   const fetchFdBilling = useCallback((filter) => { setFdBillingLoading(true); inject(fetchJS('/api/app-founder-billing.php?filter=' + encodeURIComponent(filter || 'all'), '__akfdbill')); }, [inject]);
   const openFdBilling = useCallback((filter) => { const f = filter || 'all'; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBilling(null); setFdBillingFilter(f); setMenuScreen('fdbilling'); fetchFdBilling(f); }, [clearDetail, closeForm, fetchFdBilling]);
@@ -3710,11 +3851,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (key === 'associations') openFdOrgs(filter || 'all');
     else if (key === 'create') openFdCreateOrg();
     else if (key === 'billing') openFdBilling(filter || 'all');
+    else if (key === 'plans') openFdPlansM();
     else if (key === 'support') openFdSupport('open');
     else if (key === 'stats') openFdStats();
     else if (key === 'blog') openFdBlog();
     else if (key === 'contacts') openFdContacts();
-  }, [openFdOrgs, openFdCreateOrg, openFdBilling, openFdSupport, openFdStats, openFdBlog, openFdContacts]);
+  }, [openFdOrgs, openFdCreateOrg, openFdBilling, openFdPlansM, openFdSupport, openFdStats, openFdBlog, openFdContacts]);
 
   const onAnalyzeInvoices = useCallback(() => { setInvAILoading(true); inject(fetchJS('/api/app-invoices-ai.php', '__akinvai')); }, [inject]);
   const onCockpit = useCallback(() => { setStatsCockpitLoading(true); inject(fetchJS('/api/app-stats-ai.php', '__akstatsai')); }, [inject]);
@@ -3983,6 +4125,15 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           if (fdOrgDetailIdRef.current) fetchFdOrgDetail(fdOrgDetailIdRef.current);
           fetchFdOrgs(fdOrgsFilter); fetchFounder();
         } else { Alert.alert('Action impossible', msg.__akfdorgedit.message || 'Réessaie dans un instant.'); }
+      }
+      if (msg && msg.__akfdplansm) { setFdPlansM(msg.__akfdplansm); setFdPlansMLoading(false); }
+      if (msg && msg.__akfdplanact) {
+        setFdPlansMBusy(false);
+        const r = msg.__akfdplanact;
+        if (r && r.ok) {
+          if (r.plans) setFdPlansM({ ok: true, plans: r.plans });
+          if (fdPlanCloseRef.current) { fdPlanCloseRef.current(); fdPlanCloseRef.current = null; }
+        } else { Alert.alert('Opération impossible', (r && r.message) || 'Réessaie dans un instant.'); }
       }
       if (msg && msg.__akfdbill) { setFdBilling(msg.__akfdbill); setFdBillingLoading(false); }
       if (msg && msg.__akfdpay) {
@@ -4358,6 +4509,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'fdthread' ? (
               <NativeFounderSupportThread data={fdTicket} loading={fdTicketLoading} onRefresh={() => fdTicket && fetchFdThread(fdTicket.ticket.id)}
                 onBack={() => openFdSupport(fdSupportFilter)} onReply={doSupportReply} replyBusy={fdReplyBusy} />
+            ) : menuScreen === 'fdplans' ? (
+              <NativeFounderPlans data={fdPlansM} loading={fdPlansMLoading} busy={fdPlansMBusy}
+                onRefresh={fetchFdPlansM} onBack={() => openMenuScreen('founder')}
+                onSave={doPlanSave} onDelete={doPlanDelete} />
             ) : menuScreen === 'fdcreateorg' ? (
               <NativeFounderCreateOrg plans={fdPlans} busy={fdCreateBusy} result={fdCreateResult} error={fdCreateErr}
                 onSubmit={doCreateOrg} onBack={() => openMenuScreen('founder')}
@@ -4432,7 +4587,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
+      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdplans', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
@@ -4445,7 +4600,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         </TouchableOpacity>
       )}
 
-      {authed && !['fdctcthread', 'fdthread', 'fdorgdetail'].includes(menuScreen) && (
+      {authed && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans'].includes(menuScreen) && (
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
           if (tab.key === 'add') {
@@ -5167,6 +5322,17 @@ const styles = StyleSheet.create({
   odMemberBorder: { borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   odMemberName: { fontSize: 14, fontWeight: '700', color: INK },
   odMemberMail: { fontSize: 12, color: '#94A3B8', marginTop: 1 },
+  plnCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 14, padding: 15, marginBottom: 10, borderWidth: 1, borderColor: '#E7EDEA' },
+  plnName: { fontSize: 15, fontWeight: '800', color: INK },
+  plnSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  plnPrice: { fontSize: 14, fontWeight: '800', color: BRAND },
+  plnGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  plnQuota: { width: '48%', backgroundColor: '#F8FAFC', borderRadius: 11, padding: 10, borderWidth: 1, borderColor: '#E7EDEA' },
+  plnQuotaLbl: { fontSize: 11.5, color: '#64748B', marginBottom: 4 },
+  plnQuotaInp: { fontSize: 15, fontWeight: '700', color: INK, padding: 0 },
+  plnPanel: { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E7EDEA', paddingHorizontal: 14, marginTop: 10 },
+  plnFeat: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11 },
+  plnFeatLbl: { fontSize: 14, color: INK, flex: 1 },
   credCard: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: '#E2E8F0' },
   credLbl: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
   credVal: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 3 },
