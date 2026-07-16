@@ -1,7 +1,7 @@
 <?php
 /**
- * pour-tpe.php — Landing marketing dédiée aux TPE, PME et indépendants.
- * Route : /pour-tpe (301 retiré dans .htaccess). SEO + FAQPage + Breadcrumb.
+ * pour-tpe.php — Landing marketing premium dédiée aux TPE, PME et indépendants.
+ * Route : /pour-tpe. SEO + FAQPage + Breadcrumb. Style glass/4D via _landing-premium.php.
  */
 require_once __DIR__ . '/includes-public.php';
 
@@ -29,29 +29,51 @@ render_public_head([
     'schema_jsonld' => [$breadcrumb, $faq_schema],
 ]);
 render_public_nav('');
+require __DIR__ . '/_landing-premium.php';
 ?>
-<section class="pub-hero" style="padding:60px 0 34px;">
+<!-- ===== HERO ===== -->
+<section class="lp-hero">
+  <span class="lp-orb o1"></span><span class="lp-orb o2"></span>
   <div class="pub-container">
-    <div class="pub-breadcrumb"><a href="/">Accueil</a><span class="pub-breadcrumb-sep">›</span><strong style="color:var(--c-encre);">Pour les TPE &amp; PME</strong></div>
-    <span class="pub-eyebrow">🛠️ Pensé pour les TPE, PME &amp; indépendants</span>
-    <h1 class="pub-h1" style="max-width:840px;">Pilotez votre entreprise <em>sans paperasse</em> — devis, factures, chantiers et compta réunis.</h1>
-    <p class="pub-tagline" style="max-width:680px;">Artisan, commerçant, indépendant, petite entreprise : arrêtez de jongler entre dix outils. <strong>Devis, factures, projets, rendez-vous et comptabilité analytique</strong> dans une seule appli, boostée par l'IA.</p>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:22px;">
-      <a href="/contact" class="pub-btn pub-btn-primary pub-btn-lg">Réserver une démo gratuite</a>
-      <a href="/tarifs" class="pub-btn pub-btn-ghost pub-btn-lg">Voir les tarifs</a>
+    <div class="pub-breadcrumb reveal"><a href="/">Accueil</a><span class="pub-breadcrumb-sep">›</span><strong style="color:var(--c-encre);">Pour les TPE &amp; PME</strong></div>
+    <div class="lp-hero-grid" style="display:grid;grid-template-columns:1.05fr .95fr;gap:52px;align-items:center;">
+      <div>
+        <span class="lp-badge reveal"><span class="dot"></span> Pensé pour les TPE, PME &amp; indépendants</span>
+        <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:620px;">Pilotez votre entreprise <span class="lp-grad">sans paperasse</span> — devis, factures, chantiers, compta réunis.</h1>
+        <p class="pub-tagline reveal" style="max-width:560px;">Artisan, commerçant, indépendant : arrêtez de jongler entre dix outils. <strong>Devis, factures, projets, rendez-vous et comptabilité analytique</strong> dans une seule appli, boostée par l'IA.</p>
+        <div class="lp-hero-cta reveal">
+          <a href="/contact" class="lp-btn lp-btn-primary">Réserver une démo gratuite
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+          <a href="/tarifs" class="lp-btn lp-btn-glass">Voir les tarifs</a>
+        </div>
+        <div class="lp-trust reveal">
+          <span>✓ Essai gratuit</span><span>✓ Sans engagement</span><span>🇫🇷 Hébergé en France</span><span>🔒 RGPD</span>
+        </div>
+      </div>
+      <!-- Mockup produit -->
+      <div class="lp-mock-wrap reveal">
+        <div class="lp-mock lp-glass" style="transform:perspective(1400px) rotateY(-7deg) rotateX(3deg);">
+          <div class="lp-mock-bar"><span class="lp-mock-dot" style="background:#F87171"></span><span class="lp-mock-dot" style="background:#FBBF24"></span><span class="lp-mock-dot" style="background:#34D399"></span><span class="lp-mock-title">Assokit — Mon entreprise</span></div>
+          <div class="lp-mock-body">
+            <div class="lp-mrow"><span class="ic" style="background:#DBEAFE">🧾</span><div style="flex:1"><div class="t">Facture #2026-041</div><div class="s">Client Dupont · échéance 15j</div></div><span class="v">1 250 €</span></div>
+            <div class="lp-mrow"><span class="ic" style="background:#EDE9FE">🏗️</span><div style="flex:1"><div class="t">Chantier Villa Sud</div><div class="s">Budget suivi · 3 factures liées</div></div><span class="lp-chip" style="background:#DBEAFE;color:#1D4ED8">62%</span></div>
+            <div class="lp-mrow"><span class="ic" style="background:#FEF3C7">📸</span><div style="flex:1"><div class="t">Scan facture fournisseur</div><div class="s">Lu &amp; pré-rempli par l'IA</div></div><span class="lp-chip" style="background:#D1FAE5;color:#047857">Auto</span></div>
+            <div class="lp-mrow"><span class="ic" style="background:#DCFCE7">📅</span><div style="flex:1"><div class="t">RDV client 14h30</div><div class="s">Rappel activé</div></div><span class="lp-chip" style="background:#F1F5F9;color:#475569">Aujourd'hui</span></div>
+          </div>
+        </div>
+      </div>
     </div>
-    <p style="font-size:13.5px;color:var(--c-text-2);margin-top:14px;">✓ Essai gratuit &nbsp;·&nbsp; ✓ Sans engagement &nbsp;·&nbsp; ✓ Hébergé en France 🇫🇷</p>
   </div>
 </section>
 
-<!-- Douleurs → solutions -->
+<!-- ===== DOULEURS → SOLUTIONS ===== -->
 <section class="pub-section pub-section-creme">
   <div class="pub-container">
-    <div class="pub-section-head">
+    <div class="pub-section-head reveal">
       <span class="pub-section-eyebrow">Ce qui change</span>
       <h2 class="pub-h2">Moins d'administratif, <em>plus de chiffre d'affaires.</em></h2>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;max-width:980px;margin:0 auto;">
+    <div class="lp-grid">
       <?php
       $pains = [
         ['🧾', 'Les devis et factures qui traînent', 'Devis et factures pro en 2 minutes, relances de paiement automatiques, suivi des encaissements.'],
@@ -62,58 +84,51 @@ render_public_nav('');
         ['📱', 'Le bureau qu\'on n\'a jamais sur soi', 'Application mobile : gérez tout depuis votre téléphone, même sur le terrain.'],
       ];
       foreach ($pains as $p): ?>
-        <div style="background:#fff;border:1px solid var(--c-border);border-radius:16px;padding:24px;">
-          <div style="font-size:28px;margin-bottom:10px;"><?= $p[0] ?></div>
-          <h3 style="font-size:16px;margin:0 0 6px;color:var(--c-encre);"><?= pub_h($p[1]) ?></h3>
-          <p style="font-size:14px;color:var(--c-text-2);line-height:1.55;margin:0;"><?= pub_h($p[2]) ?></p>
+        <div class="lp-card reveal">
+          <div class="lp-ic"><?= $p[0] ?></div>
+          <h3><?= pub_h($p[1]) ?></h3>
+          <p><?= pub_h($p[2]) ?></p>
         </div>
       <?php endforeach; ?>
     </div>
   </div>
 </section>
 
-<!-- Fonctionnalités clés -->
+<!-- ===== TOUT INCLUS ===== -->
 <section class="pub-section">
   <div class="pub-container">
-    <div class="pub-section-head">
+    <div class="pub-section-head reveal">
       <span class="pub-section-eyebrow">Tout inclus</span>
       <h2 class="pub-h2">Le tout-en-un qui remplace <em>vos 10 outils</em></h2>
     </div>
-    <ul class="pub-features-checklist" style="max-width:720px;margin:0 auto;columns:2;column-gap:32px;">
-      <li>✓ Devis &amp; factures pro</li>
-      <li>✓ Relances de paiement auto</li>
-      <li>✓ Scan de factures par IA</li>
-      <li>✓ Projets / chantiers</li>
-      <li>✓ Comptabilité analytique</li>
-      <li>✓ Suivi de trésorerie</li>
-      <li>✓ Agenda &amp; rendez-vous</li>
-      <li>✓ Clients &amp; contacts</li>
-      <li>✓ Équipe &amp; rôles</li>
-      <li>✓ Application mobile</li>
-      <li>✓ Hébergement France · RGPD</li>
-      <li>✓ Export de vos données</li>
+    <ul class="lp-checks reveal">
+      <?php
+      $feats = ['Devis & factures pro', 'Relances de paiement auto', 'Scan de factures par IA', 'Projets / chantiers', 'Comptabilité analytique', 'Suivi de trésorerie', 'Agenda & rendez-vous', 'Clients & contacts', 'Équipe & rôles', 'Application mobile', 'Hébergement France · RGPD', 'Export de vos données'];
+      foreach ($feats as $f): ?>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><?= pub_h($f) ?></li>
+      <?php endforeach; ?>
     </ul>
-    <div class="pub-text-center" style="margin-top:28px;">
-      <a href="/fonctionnalites" class="pub-btn pub-btn-ghost">Découvrir toutes les fonctionnalités</a>
+    <div class="pub-text-center reveal" style="margin-top:30px;"><a href="/fonctionnalites" class="lp-btn lp-btn-glass">Découvrir toutes les fonctionnalités</a></div>
+  </div>
+</section>
+
+<!-- ===== ÉCONOMIE ===== -->
+<section class="pub-section pub-section-creme">
+  <div class="pub-container">
+    <div class="lp-stat reveal">
+      <div class="big">−900 € / an</div>
+      <p>La comptabilité analytique par projet est <strong>incluse dès l'offre Pro</strong>. Une vision claire de la rentabilité réelle de chaque chantier — sans expert-comptable pour la ventilation.</p>
+      <a href="/comptabilite-analytique" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Voir comment
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
     </div>
   </div>
 </section>
 
-<!-- Économie compta -->
-<section class="pub-section pub-section-creme">
-  <div class="pub-container" style="text-align:center;">
-    <span class="pub-section-eyebrow">Le bon calcul</span>
-    <h2 class="pub-h2">Connaissez la rentabilité <em>réelle</em> de chaque chantier</h2>
-    <p class="pub-section-lead" style="max-width:620px;margin:0 auto 24px;">La comptabilité analytique par projet est incluse dès l'offre Pro. Jusqu'à 900 € par an économisés sur votre comptabilité, et une vision claire de ce qui vous rapporte.</p>
-    <a href="/comptabilite-analytique" class="pub-btn pub-btn-primary pub-btn-lg">Voir comment</a>
-  </div>
-</section>
-
-<!-- FAQ -->
+<!-- ===== FAQ ===== -->
 <section class="pub-section">
   <div class="pub-container">
-    <div class="pub-section-head"><span class="pub-section-eyebrow">Questions fréquentes</span><h2 class="pub-h2">Vos questions, <em>nos réponses</em>.</h2></div>
-    <div class="pub-faq">
+    <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Questions fréquentes</span><h2 class="pub-h2">Vos questions, <em>nos réponses</em>.</h2></div>
+    <div class="pub-faq reveal">
       <?php foreach ($faqs as $i => $qa): ?>
         <details class="pub-faq-item"<?= $i === 0 ? ' open' : '' ?>>
           <summary><?= pub_h($qa[0]) ?></summary>
@@ -124,15 +139,15 @@ render_public_nav('');
   </div>
 </section>
 
-<!-- CTA -->
+<!-- ===== CTA ===== -->
 <section class="pub-section pub-section-creme">
   <div class="pub-container">
-    <div class="pub-cta-section">
-      <h2>Prêt à piloter votre entreprise sereinement ?</h2>
+    <div class="lp-stat reveal" style="background:linear-gradient(135deg,#0f172a,#065f46);">
+      <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Prêt à piloter votre entreprise sereinement ?</h2>
       <p>30 minutes en visio, on regarde ensemble si Assokit est fait pour votre activité. Sans engagement.</p>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:6px;">
-        <a href="/contact" class="pub-btn pub-btn-primary pub-btn-lg">Réserver une démo</a>
-        <a href="/avis" class="pub-btn pub-btn-ghost pub-btn-lg">Lire les avis clients</a>
+      <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+        <a href="/contact" class="lp-btn lp-btn-primary">Réserver une démo</a>
+        <a href="/avis" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Lire les avis clients</a>
       </div>
     </div>
   </div>
