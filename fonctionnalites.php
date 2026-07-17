@@ -71,6 +71,10 @@ render_public_nav('fonctionnalites');
       <a href="#asso" class="ak-toggle-chip is-active" id="ak-chip-asso">🏛️ Vue Association</a>
       <a href="#tpe" class="ak-toggle-chip" id="ak-chip-tpe">🛠️ Vue TPE / Indé</a>
     </div>
+    <div class="ak-toggle-links">
+      <a href="/pour-associations" class="ak-toggle-page" id="ak-page-asso">🏛️ Voir la page dédiée aux associations <span aria-hidden="true">→</span></a>
+      <a href="/pour-tpe" class="ak-toggle-page" id="ak-page-tpe">🛠️ Voir la page dédiée aux TPE&nbsp;/&nbsp;PME <span aria-hidden="true">→</span></a>
+    </div>
   </div>
   <style>
   .ak-toggle-sec { padding: 14px 0 0; }
@@ -79,14 +83,20 @@ render_public_nav('fonctionnalites');
   .ak-toggle-chip { padding: 9px 18px; background: #fff; border: 1.5px solid #e5e7eb; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: #4b5563; text-decoration: none; transition: all 0.2s; }
   .ak-toggle-chip:hover { border-color: #10B981; color: #10B981; }
   .ak-toggle-chip.is-active { background: #10B981; color: #fff; border-color: #10B981; }
+  .ak-toggle-links { display: flex; gap: 10px 20px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+  .ak-toggle-page { font-size: 13.5px; font-weight: 600; color: #6b7280; text-decoration: none; padding: 6px 12px; border-radius: 999px; transition: all 0.18s; border: 1px solid transparent; }
+  .ak-toggle-page:hover { color: #059669; background: #ECFDF5; }
+  .ak-toggle-page.is-hot { color: #059669; background: #ECFDF5; border-color: #A7F3D0; }
   </style>
   <script>
   (function(){
     function update(){
-      var hash = location.hash || "#asso";
+      var hash = location.hash === "#tpe" ? "tpe" : "asso";
       document.querySelectorAll(".ak-toggle-chip").forEach(c=>c.classList.remove("is-active"));
-      var el = document.getElementById("ak-chip-" + hash.replace("#",""));
+      var el = document.getElementById("ak-chip-" + hash);
       if (el) el.classList.add("is-active");
+      var pa = document.getElementById("ak-page-asso"), pt = document.getElementById("ak-page-tpe");
+      if (pa && pt){ pa.classList.toggle("is-hot", hash==="asso"); pt.classList.toggle("is-hot", hash==="tpe"); }
     }
     window.addEventListener("hashchange", update);
     update();
