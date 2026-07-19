@@ -121,6 +121,55 @@ require __DIR__ . '/_landing-premium.php';
   </div>
 </section>
 
+<!-- ===== TYPES D'ASSOCIATIONS ===== -->
+<section class="pub-section">
+  <div class="pub-container">
+    <div class="pub-section-head reveal">
+      <span class="pub-section-eyebrow">Toutes les associations</span>
+      <h2 class="pub-h2">Quel que soit votre <em>domaine</em>, Assokit s'adapte</h2>
+      <p class="pub-section-lead">Sportive, culturelle, sociale, environnementale… la nomenclature officielle du Répertoire National des Associations compte des dizaines de familles. Assokit les gère toutes, avec les mêmes outils.</p>
+    </div>
+    <style>
+    .lp-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;max-width:1000px;margin:0 auto}
+    .lp-cat{display:flex;align-items:flex-start;gap:12px;background:#fff;border:1px solid var(--c-border);border-radius:15px;padding:15px 16px;transition:transform .18s,box-shadow .18s,border-color .18s}
+    .lp-cat:hover{transform:translateY(-3px);box-shadow:0 14px 30px rgba(6,78,59,.10);border-color:rgba(5,150,105,.28)}
+    .lp-cat .e{font-size:22px;line-height:1;flex:none;margin-top:1px}
+    .lp-cat .n{font-size:14px;font-weight:800;color:var(--c-encre);line-height:1.2}
+    .lp-cat .b{font-size:12px;color:var(--c-text-2);margin-top:3px;line-height:1.4}
+    </style>
+    <div class="lp-cats reveal">
+      <?php
+      $cats = [
+        ['🏅', 'Sportives', 'Licences, plannings, convocations, cotisations'],
+        ['🎭', 'Culturelles & artistiques', 'Adhérents, événements, spectacles, com'],
+        ['🎵', 'Musique & spectacle', 'Membres, répétitions, billetterie'],
+        ['🤝', 'Sociales & caritatives', 'Bénévoles, dons, projets, suivi'],
+        ['🌍', 'Solidarité internationale', 'Projets, dons, subventions'],
+        ['🌱', 'Environnement & nature', 'Projets, mobilisation, subventions'],
+        ['📚', 'Éducation & jeunesse', 'Membres, ateliers, plannings'],
+        ['🎓', 'Amicales & anciens élèves', 'Annuaire, cotisations, événements'],
+        ['🎲', 'Loisirs & clubs', 'Adhérents, activités, agenda'],
+        ['🏥', 'Santé & entraide', 'Membres, prévention, événements'],
+        ['👨‍👩‍👧', 'Familles & parents d\'élèves', 'Adhérents, événements, cotisations'],
+        ['🎖️', 'Anciens combattants & mémoire', 'Adhérents, cérémonies, cotisations'],
+        ['🎣', 'Chasse & pêche', 'Cartes, licences, cotisations'],
+        ['⚖️', 'Défense de droits', 'Adhérents, actions, communication'],
+        ['🏘️', 'Comités de quartier', 'Adhérents, événements, com locale'],
+        ['🚑', 'Secourisme & protection civile', 'Membres, formations, plannings'],
+        ['🎨', 'Patrimoine & histoire', 'Membres, événements, projets'],
+        ['💼', 'Professionnelles & économie', 'Membres, cotisations, réseau'],
+      ];
+      foreach ($cats as $c): ?>
+        <div class="lp-cat">
+          <span class="e"><?= $c[0] ?></span>
+          <span style="min-width:0;"><span class="n"><?= pub_h($c[1]) ?></span><span class="b" style="display:block;"><?= pub_h($c[2]) ?></span></span>
+        </div>
+      <?php endforeach; ?>
+    </div>
+    <p class="pub-text-center reveal" style="margin-top:22px;color:var(--c-text-3);font-size:13.5px;">…et toutes les autres. Une association, un besoin&nbsp;? <a href="/contact" style="color:var(--c-emeraude-dark);font-weight:700;">Parlons-en</a>.</p>
+  </div>
+</section>
+
 <!-- ===== ÉCONOMIE ===== -->
 <section class="pub-section pub-section-creme">
   <div class="pub-container">
