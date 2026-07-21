@@ -135,11 +135,29 @@ render_public_nav('blog');
         </div>
       <?php endif; ?>
 
-      <!-- Bloc CTA in-article -->
+      <?php
+      // Maillage interne contextuel : CTA + liens vers les pages produit selon l'audience de l'article
+      $blog_is_tpe = (stripos((string)$article['category'], 'tpe') !== false)
+                  || (stripos((string)$article['category'], 'entreprise') !== false)
+                  || (stripos((string)$article['title'], 'TPE') !== false)
+                  || (stripos((string)$article['title'], 'auto-entrepreneur') !== false);
+      $blog_land   = $blog_is_tpe ? '/pour-tpe' : '/pour-associations';
+      $blog_aud    = $blog_is_tpe ? 'votre entreprise' : 'votre association';
+      $blog_aud2   = $blog_is_tpe ? 'TPE, PME et indépendants' : 'associations loi 1901';
+      ?>
+      <!-- Bloc CTA in-article (maillage interne contextuel) -->
       <div style="background:linear-gradient(135deg,var(--c-encre),var(--c-emeraude-dark));border-radius:var(--radius-lg);padding:32px;margin-top:40px;color:white;text-align:center;">
-        <h3 style="margin:0 0 10px;color:white;font-size:20px;">Vous gérez une asso ou une TPE ?</h3>
-        <p style="color:rgba(255,255,255,0.85);margin:0 0 20px;font-size:15px;">Découvrez Assokit, l'outil pensé pour vous faire gagner du temps au quotidien.</p>
-        <a href="/contact" style="display:inline-block;background:var(--c-ambre);color:var(--c-encre);padding:12px 24px;border-radius:var(--radius-md);text-decoration:none;font-weight:600;">Réserver une démo →</a>
+        <h3 style="margin:0 0 10px;color:white;font-size:21px;">Gérez <?= pub_h($blog_aud) ?> sans paperasse</h3>
+        <p style="color:rgba(255,255,255,0.85);margin:0 0 22px;font-size:15px;line-height:1.6;">Assokit réunit adhérents, cotisations, facturation, <a href="/comptabilite-analytique" style="color:#FCD34D;font-weight:600;">comptabilité analytique</a>, projets et communication — l'outil tout-en-un pensé pour les <?= pub_h($blog_aud2) ?>.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+          <a href="<?= $blog_land ?>" style="display:inline-block;background:var(--c-ambre);color:var(--c-encre);padding:12px 24px;border-radius:var(--radius-md);text-decoration:none;font-weight:700;">Découvrir Assokit pour <?= $blog_is_tpe ? 'les TPE' : 'les assos' ?> →</a>
+          <a href="/contact" style="display:inline-block;background:rgba(255,255,255,0.14);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:12px 24px;border-radius:var(--radius-md);text-decoration:none;font-weight:600;">Réserver une démo</a>
+        </div>
+        <div style="margin-top:18px;font-size:13px;">
+          <a href="/fonctionnalites" style="color:rgba(255,255,255,0.75);margin:0 8px;">Fonctionnalités</a>·
+          <a href="/tarifs" style="color:rgba(255,255,255,0.75);margin:0 8px;">Tarifs</a>·
+          <a href="<?= $blog_land ?>" style="color:rgba(255,255,255,0.75);margin:0 8px;"><?= $blog_is_tpe ? 'Pour les TPE/PME' : 'Pour les associations' ?></a>
+        </div>
       </div>
     </article>
 

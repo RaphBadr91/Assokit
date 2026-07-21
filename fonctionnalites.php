@@ -38,8 +38,8 @@ $feat_faq_schema = [
 ];
 
 render_public_head([
-    'title'       => 'Fonctionnalités · Tout ce qu\'il faut, réuni au même endroit',
-    'description' => 'Découvrez les modules d\'Assokit : suivi de projets, facturation, IA communication, emailing, tableau de bord, adhérents. Conçu pour les associations loi 1901 et les TPE.',
+    'title'       => 'Fonctionnalités du logiciel Assokit · Gestion association & TPE',
+    'description' => 'Toutes les fonctionnalités du logiciel Assokit pour gérer votre association loi 1901 ou votre TPE : adhérents, cotisations, facturation, comptabilité analytique, projets, emailing et IA. Essai gratuit, hébergé en France.',
     'path'        => '/fonctionnalites',
     'schema_jsonld' => [$breadcrumb, $feat_faq_schema],
 ]);
