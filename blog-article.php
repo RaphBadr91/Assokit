@@ -168,10 +168,12 @@ render_public_nav('blog');
       $ak_cards = $AK_CTA[$ak_theme] ?? $AK_CTA['asso'];
 
       $ak_render_card = function (array $c) {
-          $h  = '<div class="bm-cta"><div class="bm-cta-h"><span class="bm-cta-ic">' . $c['ic'] . '</span><span class="bm-cta-t">' . htmlspecialchars($c['t']) . '</span></div>';
+          $arrow = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+          $h  = '<div class="bm-cta"><span class="bm-cta-eb"><span class="bm-cta-dot"></span>Avec Assokit</span>';
+          $h .= '<h3 class="bm-cta-t">' . htmlspecialchars($c['t']) . '</h3>';
           $h .= '<p>' . $c['p'] . '</p><div class="bm-cta-btns">';
-          $h .= '<a class="bm-cta-btn primary" href="' . $c['a'][0] . '">' . htmlspecialchars($c['a'][1]) . ' →</a>';
-          $h .= '<a class="bm-cta-btn ghost" href="' . $c['b'][0] . '">' . htmlspecialchars($c['b'][1]) . '</a>';
+          $h .= '<a class="bm-cta-btn primary" href="' . $c['a'][0] . '">' . htmlspecialchars($c['a'][1]) . $arrow . '</a>';
+          $h .= '<a class="bm-cta-btn link" href="' . $c['b'][0] . '">' . htmlspecialchars($c['b'][1]) . ' ' . $arrow . '</a>';
           return $h . '</div></div>';
       };
 
@@ -194,18 +196,21 @@ render_public_nav('blog');
       $ak_html = $ak_inject($ak_html, $ak_cards);
       ?>
       <style>
-      .bm-cta{position:relative;margin:34px 0;border-radius:18px;padding:22px 24px 22px 28px;background:linear-gradient(135deg,#ECFDF5,#F0FDFA);border:1px solid #A7F3D0;overflow:hidden;box-shadow:0 10px 30px rgba(6,78,59,.07)}
-      .bm-cta::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#0CCB8F,#059669)}
-      .bm-cta-h{display:flex;align-items:center;gap:12px;margin-bottom:9px}
-      .bm-cta-ic{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;background:#fff;box-shadow:0 6px 16px rgba(5,150,105,.16);flex:none}
-      .bm-cta-t{font-size:17px;font-weight:800;color:#0F172A;line-height:1.25}
-      .bm-cta p{font-size:14.5px !important;color:#334155 !important;line-height:1.6 !important;margin:0 0 16px !important}
-      .bm-cta-btns{display:flex;gap:10px;flex-wrap:wrap}
-      .bm-cta-btn{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:11px;font-weight:700;font-size:14px;text-decoration:none;transition:transform .15s,box-shadow .15s}
-      .bm-cta-btn.primary{background:linear-gradient(135deg,#059669,#047857);color:#fff;box-shadow:0 8px 18px rgba(5,150,105,.28)}
-      .bm-cta-btn.primary:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(5,150,105,.36)}
-      .bm-cta-btn.ghost{background:#fff;color:#047857;border:1px solid #A7F3D0}
-      .bm-cta-btn.ghost:hover{background:#F0FDF4}
+      .bm-cta{position:relative;margin:40px 0;border-radius:22px;padding:28px 30px;background:linear-gradient(180deg,#FFFFFF 0%,#F5FBF8 100%);border:1px solid #E5F1EB;overflow:hidden;box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 18px 44px rgba(6,78,59,.09)}
+      .bm-cta::after{content:"";position:absolute;top:-50px;right:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(16,203,143,.16),transparent 70%);pointer-events:none}
+      .bm-cta-eb{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#059669;margin-bottom:13px}
+      .bm-cta-dot{width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg,#0CCB8F,#059669);box-shadow:0 0 0 4px rgba(5,150,105,.14)}
+      .bm-cta-t{font-size:20px !important;font-weight:800 !important;color:#0F172A !important;line-height:1.28 !important;margin:0 0 9px !important;letter-spacing:-.01em}
+      .bm-cta p{font-size:15px !important;color:#475569 !important;line-height:1.62 !important;margin:0 0 20px !important;max-width:60ch}
+      .bm-cta-btns{display:flex;align-items:center;gap:18px;flex-wrap:wrap;position:relative}
+      .bm-cta-btn{display:inline-flex;align-items:center;gap:8px;text-decoration:none;font-weight:700;transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s,color .18s}
+      .bm-cta-btn svg{transition:transform .18s cubic-bezier(.2,.8,.2,1)}
+      .bm-cta-btn.primary{padding:13px 24px;border-radius:13px;font-size:14.5px;color:#fff;background:linear-gradient(135deg,#0CCB8F,#059669);box-shadow:0 12px 24px rgba(5,150,105,.30)}
+      .bm-cta-btn.primary:hover{transform:translateY(-2px);box-shadow:0 18px 34px rgba(5,150,105,.42)}
+      .bm-cta-btn.primary:hover svg{transform:translateX(4px)}
+      .bm-cta-btn.link{font-size:14.5px;color:#059669}
+      .bm-cta-btn.link:hover{color:#047857}
+      .bm-cta-btn.link:hover svg{transform:translateX(4px)}
       </style>
       <?= $ak_html ?>
 
