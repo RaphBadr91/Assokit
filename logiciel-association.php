@@ -100,8 +100,8 @@ require __DIR__ . '/_landing-premium.php';
     </ul>
     <div class="pub-text-center reveal" style="margin-top:30px;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
       <a href="/pour-associations" class="lp-btn lp-btn-glass">Assokit pour les associations</a>
-      <a href="/fonctionnalites" class="lp-btn lp-btn-glass">Toutes les fonctionnalités</a>
-      <a href="/comptabilite-analytique" class="lp-btn lp-btn-glass">La comptabilité incluse</a>
+      <a href="/logiciel-cotisation-association" class="lp-btn lp-btn-glass">Gérer les cotisations</a>
+      <a href="/logiciel-comptabilite-association" class="lp-btn lp-btn-glass">La comptabilité</a>
     </div>
   </div>
 </section>

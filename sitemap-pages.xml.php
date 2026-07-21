@@ -24,6 +24,7 @@ $pages = [
     ['/fonctionnalites',           '0.8', 'monthly'],
     ['/logiciel-association',      '0.9', 'monthly'],
     ['/logiciel-comptabilite-association', '0.8', 'monthly'],
+    ['/logiciel-cotisation-association', '0.8', 'monthly'],
     ['/pour-associations',         '0.8', 'monthly'],
     ['/pour-tpe',                  '0.8', 'monthly'],
     ['/comptabilite-analytique',   '0.8', 'monthly'],
