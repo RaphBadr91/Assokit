@@ -124,15 +124,90 @@ render_public_nav('blog');
     <article class="pub-article-content" style="margin-top:-20px;position:relative;">
       <?= render_blog_markdown_css() ?>
       <?php
-      // Retire les sections répétitives de fin de contenu (« Articles liés », « Prêt à passer
-      // à l'action ») : le template fournit des versions premium stylées juste en dessous
-      // (cartes « À lire aussi » + bloc CTA). Évite le doublon et le rendu brut.
+      // === Nettoyage du contenu généré ===
       $ak_body = (string) $article['content_md'];
+      // 1) retire les sections répétitives de fin (« Articles liés », « Prêt à passer à l'action »)
       if (preg_match('/\n\s*(?:[-*_]{3,}\s*\n)?\s*#{1,4}[^\n]*(?:Articles?\s+li[ée]s|Pr[êe]t\s+à\s+passer\s+à\s+l[\'’]action|Passez\s+à\s+l[\'’]action)/iu', $ak_body, $ak_m, PREG_OFFSET_CAPTURE)) {
           $ak_body = rtrim(substr($ak_body, 0, $ak_m[0][1]));
       }
+      // 2) retire le callout Assokit brut (citation « ### 💡 Comment Assokit… » mal rendue)
+      $ak_body = preg_replace_callback('/(?:^[ \t]*>[^\n]*\n?)+/m', function ($m) {
+          return (stripos($m[0], 'Comment Assokit') !== false) ? "\n" : $m[0];
+      }, $ak_body);
+
+      // === CTA contextuels selon le thème de l'article ===
+      $ak_theme = 'asso';
+      $cat_l = strtolower((string) $article['category'] . ' ' . $article['title']);
+      if (preg_match('/tpe|entreprise|auto-?entrepreneur|ind[ée]pendant|artisan/u', $cat_l)) $ak_theme = 'tpe';
+      elseif (preg_match('/compta|factur|tva|bilan|fiscal|tr[ée]sor/u', $cat_l)) $ak_theme = 'compta';
+      elseif (preg_match('/juridiqu|statut|rgpd|l[ée]gal|obligation|d[ée]claration/u', $cat_l)) $ak_theme = 'juridique';
+      elseif (preg_match('/communic|newsletter|r[ée]seau|email/u', $cat_l)) $ak_theme = 'communication';
+
+      $AK_CTA = [
+        'compta' => [
+          ['ic'=>'📊','t'=>'La compta de votre association, sans y passer vos soirées','p'=>'Assokit construit votre comptabilité analytique <strong>automatiquement</strong> au fil de votre activité : factures, cotisations, dépenses catégorisées, justificatifs centralisés. Bilan par projet inclus dès l\'offre Pro.','a'=>['/comptabilite-analytique','La compta analytique incluse'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'✅','t'=>'Un dossier propre et daté pour votre expert-comptable','p'=>'Fini la ressaisie de fin d\'année. Vos comptes se préparent tout seuls, exportables en PDF et Excel — votre comptable n\'a plus qu\'à valider.','a'=>['/pour-associations','Découvrir pour les assos'],'b'=>['/contact','Réserver une démo']],
+        ],
+        'tpe' => [
+          ['ic'=>'🧾','t'=>'Devis, factures et relances : arrêtez de courir après vos paiements','p'=>'Assokit crée vos devis et factures pro en 2 minutes, envoie les <strong>relances automatiquement</strong> et suit votre trésorerie en temps réel. Vous récupérez plusieurs heures par semaine.','a'=>['/pour-tpe','Assokit pour les TPE/PME'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'🏗️','t'=>'Sachez enfin quel chantier vous rapporte vraiment','p'=>'Un projet par client/chantier : budget, factures rattachées, rentabilité réelle poste par poste. Le pilotage clair de votre activité, sur mobile comme au bureau.','a'=>['/fonctionnalites','Voir les fonctionnalités'],'b'=>['/contact','Réserver une démo']],
+        ],
+        'juridique' => [
+          ['ic'=>'🛡️','t'=>'Restez conforme sans y penser','p'=>'Registres tenus automatiquement, traçabilité des décisions, RGPD natif, archivage horodaté. Avec Assokit, votre conformité est <strong>construite par défaut</strong>, pas rattrapée en catastrophe.','a'=>['/pour-associations','Découvrir Assokit'],'b'=>['/fonctionnalites','Les fonctionnalités']],
+          ['ic'=>'📁','t'=>'Toutes vos pièces au même endroit, retrouvables en 2 clics','p'=>'Statuts, PV, contrats, justificatifs : centralisés et sécurisés, hébergés en France. En cas de contrôle ou de passation, tout est prêt.','a'=>['/pour-associations','Pour les associations'],'b'=>['/contact','Réserver une démo']],
+        ],
+        'communication' => [
+          ['ic'=>'✍️','t'=>'Vos contenus rédigés en 30 secondes','p'=>'Newsletter, compte-rendu, lettre aux adhérents, post réseaux : les <strong>outils IA d\'Assokit</strong> pré-rédigent, vous gardez la main. Le temps de com divisé par 10.','a'=>['/fonctionnalites','Voir l\'IA intégrée'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'📣','t'=>'Touchez le bon public, au bon moment','p'=>'Diffusion email ciblée par rôle ou par équipe, suivi des ouvertures, listes toujours à jour. Votre communication devient simple et mesurable.','a'=>['/pour-associations','Découvrir Assokit'],'b'=>['/contact','Réserver une démo']],
+        ],
+        'asso' => [
+          ['ic'=>'🤝','t'=>'La gestion de votre association, sans la paperasse','p'=>'Adhérents, cotisations, projets, événements et communication réunis dans <strong>un seul outil pensé pour les assos loi 1901</strong>. Le temps bénévole retourne à votre vraie mission.','a'=>['/pour-associations','Assokit pour les associations'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'💸','t'=>'Ne courez plus après les cotisations','p'=>'Relances automatiques, reçus générés, paiement en ligne, suivi en temps réel. Vos cotisations rentrent, sans effort et sans tableur cassé.','a'=>['/fonctionnalites','Voir les fonctionnalités'],'b'=>['/contact','Réserver une démo']],
+        ],
+      ];
+      $ak_cards = $AK_CTA[$ak_theme] ?? $AK_CTA['asso'];
+
+      $ak_render_card = function (array $c) {
+          $h  = '<div class="bm-cta"><div class="bm-cta-h"><span class="bm-cta-ic">' . $c['ic'] . '</span><span class="bm-cta-t">' . htmlspecialchars($c['t']) . '</span></div>';
+          $h .= '<p>' . $c['p'] . '</p><div class="bm-cta-btns">';
+          $h .= '<a class="bm-cta-btn primary" href="' . $c['a'][0] . '">' . htmlspecialchars($c['a'][1]) . ' →</a>';
+          $h .= '<a class="bm-cta-btn ghost" href="' . $c['b'][0] . '">' . htmlspecialchars($c['b'][1]) . '</a>';
+          return $h . '</div></div>';
+      };
+
+      // Rend le HTML puis injecte les cartes CTA à ~40% et ~75% (après une fin de paragraphe)
+      $ak_html = render_blog_markdown($ak_body);
+      $ak_inject = function (string $html, array $cards) use ($ak_render_card) {
+          if (!preg_match_all('/<\/p>/', $html, $mm, PREG_OFFSET_CAPTURE)) return $html . $ak_render_card($cards[0]);
+          $ends = array_map(fn($x) => $x[1] + 4, $mm[0]);
+          $n = count($ends);
+          $spots = [];
+          foreach ([0.40, 0.75] as $i => $frac) {
+              if (!isset($cards[$i])) break;
+              $idx = min($n - 1, max(0, (int) round($frac * $n)));
+              $spots[$ends[$idx]] = $ak_render_card($cards[$i]);
+          }
+          krsort($spots); // insère de la fin vers le début pour garder les offsets valides
+          foreach ($spots as $pos => $card) $html = substr($html, 0, $pos) . $card . substr($html, $pos);
+          return $html;
+      };
+      $ak_html = $ak_inject($ak_html, $ak_cards);
       ?>
-      <?= render_blog_markdown($ak_body) ?>
+      <style>
+      .bm-cta{position:relative;margin:34px 0;border-radius:18px;padding:22px 24px 22px 28px;background:linear-gradient(135deg,#ECFDF5,#F0FDFA);border:1px solid #A7F3D0;overflow:hidden;box-shadow:0 10px 30px rgba(6,78,59,.07)}
+      .bm-cta::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#0CCB8F,#059669)}
+      .bm-cta-h{display:flex;align-items:center;gap:12px;margin-bottom:9px}
+      .bm-cta-ic{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;background:#fff;box-shadow:0 6px 16px rgba(5,150,105,.16);flex:none}
+      .bm-cta-t{font-size:17px;font-weight:800;color:#0F172A;line-height:1.25}
+      .bm-cta p{font-size:14.5px !important;color:#334155 !important;line-height:1.6 !important;margin:0 0 16px !important}
+      .bm-cta-btns{display:flex;gap:10px;flex-wrap:wrap}
+      .bm-cta-btn{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:11px;font-weight:700;font-size:14px;text-decoration:none;transition:transform .15s,box-shadow .15s}
+      .bm-cta-btn.primary{background:linear-gradient(135deg,#059669,#047857);color:#fff;box-shadow:0 8px 18px rgba(5,150,105,.28)}
+      .bm-cta-btn.primary:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(5,150,105,.36)}
+      .bm-cta-btn.ghost{background:#fff;color:#047857;border:1px solid #A7F3D0}
+      .bm-cta-btn.ghost:hover{background:#F0FDF4}
+      </style>
+      <?= $ak_html ?>
 
       <?php if (!empty($tags)): ?>
         <hr style="border:none;border-top:1px solid var(--c-border);margin:36px 0 20px;">
