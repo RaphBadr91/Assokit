@@ -247,16 +247,23 @@ if (!function_exists('render_public_footer')) {
               <div class="pub-footer-col">
                 <h4>Produit</h4>
                 <a href="/fonctionnalites">Fonctionnalités</a>
-                <a href="/logiciel-association">Logiciel association</a>
                 <a href="/pour-associations">Pour les associations</a>
                 <a href="/pour-tpe">Pour les TPE &amp; PME</a>
-                <a href="/logiciel-comptabilite-association">Logiciel comptabilité asso</a>
                 <a href="/comptabilite-analytique">Comptabilité analytique</a>
                 <a href="/pour-organismes">Collectivités</a>
                 <a href="/tarifs">Tarifs</a>
                 <a href="/application">Application mobile</a>
-                <a href="/contact">Réserver une démo</a>
                 <a href="/connexion">Connexion</a>
+              </div>
+
+              <div class="pub-footer-col">
+                <h4>Solutions</h4>
+                <a href="/logiciel-association">Logiciel association</a>
+                <a href="/logiciel-gestion-tpe">Logiciel gestion TPE</a>
+                <a href="/logiciel-facturation">Logiciel de facturation</a>
+                <a href="/logiciel-adherents">Gestion des adhérents</a>
+                <a href="/logiciel-cotisation-association">Cotisations en ligne</a>
+                <a href="/logiciel-comptabilite-association">Comptabilité association</a>
               </div>
 
               <div class="pub-footer-col">
