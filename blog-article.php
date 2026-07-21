@@ -123,7 +123,16 @@ render_public_nav('blog');
   <div class="pub-container-narrow">
     <article class="pub-article-content" style="margin-top:-20px;position:relative;">
       <?= render_blog_markdown_css() ?>
-      <?= render_blog_markdown((string)$article['content_md']) ?>
+      <?php
+      // Retire les sections répétitives de fin de contenu (« Articles liés », « Prêt à passer
+      // à l'action ») : le template fournit des versions premium stylées juste en dessous
+      // (cartes « À lire aussi » + bloc CTA). Évite le doublon et le rendu brut.
+      $ak_body = (string) $article['content_md'];
+      if (preg_match('/\n\s*(?:[-*_]{3,}\s*\n)?\s*#{1,4}[^\n]*(?:Articles?\s+li[ée]s|Pr[êe]t\s+à\s+passer\s+à\s+l[\'’]action|Passez\s+à\s+l[\'’]action)/iu', $ak_body, $ak_m, PREG_OFFSET_CAPTURE)) {
+          $ak_body = rtrim(substr($ak_body, 0, $ak_m[0][1]));
+      }
+      ?>
+      <?= render_blog_markdown($ak_body) ?>
 
       <?php if (!empty($tags)): ?>
         <hr style="border:none;border-top:1px solid var(--c-border);margin:36px 0 20px;">
