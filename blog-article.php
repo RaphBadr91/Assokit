@@ -124,16 +124,25 @@ render_public_nav('blog');
     <article class="pub-article-content" style="margin-top:-20px;position:relative;">
       <?= render_blog_markdown_css() ?>
       <?php
-      // === Nettoyage du contenu généré ===
+      // === Nettoyage du contenu généré (retire tous les blocs promo/CTA bruts) ===
       $ak_body = (string) $article['content_md'];
-      // 1) retire les sections répétitives de fin (« Articles liés », « Prêt à passer à l'action »)
-      if (preg_match('/\n\s*(?:[-*_]{3,}\s*\n)?\s*#{1,4}[^\n]*(?:Articles?\s+li[ée]s|Pr[êe]t\s+à\s+passer\s+à\s+l[\'’]action|Passez\s+à\s+l[\'’]action)/iu', $ak_body, $ak_m, PREG_OFFSET_CAPTURE)) {
-          $ak_body = rtrim(substr($ak_body, 0, $ak_m[0][1]));
-      }
-      // 2) retire le callout Assokit brut (citation « ### 💡 Comment Assokit… » mal rendue)
+      // 1) retire les citations « callout » Assokit (> ### 💡 Comment Assokit … — mal rendues)
       $ak_body = preg_replace_callback('/(?:^[ \t]*>[^\n]*\n?)+/m', function ($m) {
           return (stripos($m[0], 'Comment Assokit') !== false) ? "\n" : $m[0];
       }, $ak_body);
+      // 2) retire chaque section promotionnelle : le titre + son contenu jusqu'au titre suivant
+      //    (s'arrête aux titres comme « ## FAQ » -> la FAQ n'est jamais supprimée)
+      foreach ([
+          'Pr[êe]t\s+à\s+passer\s+à\s+l[\'’]action', 'Passez\s+à\s+l[\'’]action',
+          'Articles?\s+li[ée]s', 'À\s+lire\s+aussi', 'Avec\s+Assokit',
+          'gagnez\s+du\s+temps', 'Pourquoi\s+(?:choisir\s+)?Assokit', 'D[ée]couvrez\s+Assokit',
+      ] as $ak_p) {
+          $ak_body = preg_replace('/\n[ \t]*(?:[-*_]{3,}[ \t]*\n)?#{1,4}[ \t]*[^\n]*(?:' . $ak_p . ')[^\n]*(?:\n(?![ \t]*#{1,4}[ \t]).*)*/iu', '', $ak_body);
+      }
+      // 3) retire la signature « > *Article rédigé par l'équipe Assokit…* » + séparateurs orphelins
+      $ak_body = preg_replace('/\n[ \t]*>[^\n]*Article r[ée]dig[ée][^\n]*(?:\n[ \t]*>[^\n]*)*/iu', '', $ak_body);
+      $ak_body = preg_replace('/\n{3,}/', "\n\n", (string) $ak_body);
+      $ak_body = preg_replace('/(?:\n[ \t]*[-*_]{3,}[ \t]*)+\s*$/', '', rtrim((string) $ak_body));
 
       // === CTA contextuels selon le thème de l'article ===
       $ak_theme = 'asso';
