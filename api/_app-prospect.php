@@ -176,12 +176,20 @@ if (!function_exists('ak_prospect_tables_ensure')) {
                 INDEX idx_next (next_send_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         } catch (Throwable $e) {}
-        // Migration douce : colonne 'category' (héritée de l'annuaire) pour la personnalisation.
-        try {
-            $has = $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS
-                                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'asso_prospects' AND COLUMN_NAME = 'category'")->fetchColumn();
-            if (!$has) $pdo->exec("ALTER TABLE asso_prospects ADD COLUMN category VARCHAR(40) DEFAULT NULL AFTER type");
-        } catch (Throwable $e) {}
+        // Migrations douces : colonnes de personnalisation / localisation.
+        $addCol = function (string $col, string $ddl) use ($pdo) {
+            try {
+                $has = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS
+                                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'asso_prospects' AND COLUMN_NAME = ?");
+                $has->execute([$col]);
+                if (!(int) $has->fetchColumn()) $pdo->exec("ALTER TABLE asso_prospects ADD COLUMN $ddl");
+            } catch (Throwable $e) {}
+        };
+        $addCol('category', "category VARCHAR(40) DEFAULT NULL AFTER type");
+        $addCol('dept_code', "dept_code VARCHAR(3) DEFAULT NULL AFTER city");
+        $addCol('dept_name', "dept_name VARCHAR(80) DEFAULT NULL AFTER dept_code");
+        $addCol('region', "region VARCHAR(80) DEFAULT NULL AFTER dept_name");
+        $addCol('enriched_at', "enriched_at DATETIME DEFAULT NULL");
         try {
             $pdo->exec("CREATE TABLE IF NOT EXISTS asso_prospect_events (
                 id INT AUTO_INCREMENT PRIMARY KEY,

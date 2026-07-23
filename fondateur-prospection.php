@@ -11,6 +11,7 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-permissions.php';
 require_once __DIR__ . '/api/_app-prospect.php';
+require_once __DIR__ . '/api/_app-directory.php';
 @require_once __DIR__ . '/resend-helper.php';
 
 require_login();
@@ -170,6 +171,8 @@ try { foreach ($pdo->query("SELECT type, COUNT(*) n FROM asso_prospect_events GR
 $sendingOn = defined('AK_PROSPECT_SENDING_ENABLED') && AK_PROSPECT_SENDING_ENABLED;
 $cap = defined('AK_PROSPECT_DAILY_CAP') ? AK_PROSPECT_DAILY_CAP : 40;
 
+$CAT_LABELS = [];
+foreach (ak_directory_categories() as $k => $v) $CAT_LABELS[$k] = $v['label'];
 function pr_h($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 function pr_date($d) { return $d ? date('d/m/Y', strtotime($d)) : '—'; }
 
@@ -273,6 +276,19 @@ select.pr-mini,input.pr-mini{background:var(--sa-bg-3);border:1px solid var(--sa
   </div>
 </div>
 
+<?php
+$toEnrich = 0;
+try { $toEnrich = (int) $pdo->query("SELECT COUNT(*) FROM asso_prospects WHERE enriched_at IS NULL")->fetchColumn(); } catch (Throwable $e) {}
+if ($toEnrich > 0): ?>
+<div class="pr-panel">
+  <h3>🌍 Localisation &amp; annuaire</h3>
+  <p style="font-size:13px;color:var(--sa-ink-3);margin:0 0 12px;line-height:1.55;">
+    <strong style="color:var(--sa-ink);"><?= $toEnrich ?> prospect(s)</strong> sans localisation. L'enrichissement retrouve automatiquement le <strong>nom officiel, la ville, le département et la région</strong> de chaque structure (données publiques de l'État), corrige les colonnes mélangées à l'import, et référence tout dans l'annuaire (région → département → catégorie).
+  </p>
+  <div class="pr-note warn" style="margin:0;"><span>💻</span><div>Lancez en SSH (le serveur a accès internet) :<br><code style="color:var(--sa-ink);font-size:13px;">php founder-prospects-enrich.php</code><br>ou dans le navigateur : <code style="font-size:12px;">/founder-prospects-enrich.php?key=assokit-enrich-5c2b90</code> (affiche la progression en direct).</div></div>
+</div>
+<?php endif; ?>
+
 <div class="pr-toolbar">
   <div class="pr-tabs">
     <a href="/fondateur-prospection" class="pr-tab <?= $filter === '' ? 'active' : '' ?>">Tous (<?= $total ?>)</a>
@@ -301,7 +317,17 @@ select.pr-mini,input.pr-mini{background:var(--sa-bg-3);border:1px solid var(--sa
         $canSend = !in_array($p['status'], ['unsubscribed','replied','booked'], true);
     ?>
       <tr>
-        <td><div class="pr-org"><?= pr_h($p['org_name'] ?: '—') ?></div><div class="pr-meta"><?= pr_h($p['name'] ?: '') ?><?= $p['city'] ? ($p['name'] ? ' · ' : '') . pr_h($p['city']) : '' ?><?= $p['category'] ? ' · ' . pr_h($p['category']) : '' ?></div></td>
+        <td>
+          <div class="pr-org"><?= pr_h($p['org_name'] ?: ($p['name'] ?: '—')) ?></div>
+          <?php
+            $loc = [];
+            if (!empty($p['city'])) $loc[] = pr_h($p['city']);
+            if (!empty($p['dept_code'])) $loc[] = pr_h($p['dept_code'] . (empty($p['dept_name']) ? '' : ' · ' . $p['dept_name']));
+          ?>
+          <?php if ($loc): ?><div class="pr-meta">📍 <?= implode(' · ', $loc) ?><?= !empty($p['region']) ? ' · <span style="color:var(--sa-ink-4)">' . pr_h($p['region']) . '</span>' : '' ?></div><?php endif; ?>
+          <?php if (!empty($p['category']) && isset($CAT_LABELS[$p['category']])): ?><div class="pr-meta"><span class="pr-badge" style="color:#0369A1;background:rgba(3,105,161,.12);"><?= pr_h($CAT_LABELS[$p['category']]) ?></span></div><?php endif; ?>
+          <?php if (empty($p['enriched_at'])): ?><div class="pr-meta" style="color:var(--sa-ink-4);font-style:italic;">localisation à enrichir</div><?php endif; ?>
+        </td>
         <td style="font-size:12.5px;"><?= pr_h($p['email']) ?></td>
         <td><span class="pr-badge" style="color:<?= $sm[1] ?>;background:<?= $sm[2] ?>;"><?= $sm[0] ?></span></td>
         <td style="font-size:12px;color:var(--sa-ink-3);"><?= pr_h($lbl) ?><div class="pr-meta"><?= $stp + 1 ?>/<?= $LAST_STEP + 1 ?></div></td>
