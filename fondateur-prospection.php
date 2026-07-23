@@ -201,7 +201,7 @@ sa_render_sidebar('fondateur-pilotage');
 .pr-search{margin-left:auto;display:flex;gap:8px;}
 .pr-search input{background:var(--sa-bg-3);border:1px solid var(--sa-border);border-radius:10px;padding:8px 12px;color:var(--sa-ink);font-size:13px;min-width:200px;}
 .pr-tablewrap{overflow-x:auto;border:1px solid var(--sa-border);border-radius:14px;background:var(--sa-bg-2);}
-table.pr-table{width:100%;border-collapse:collapse;font-size:13px;min-width:1000px;}
+table.pr-table{width:100%;border-collapse:collapse;font-size:13px;min-width:1180px;}
 .pr-table th{text-align:left;padding:12px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--sa-ink-4);font-weight:700;border-bottom:1px solid var(--sa-border);white-space:nowrap;}
 .pr-table td{padding:12px 14px;border-bottom:1px solid var(--sa-border);vertical-align:middle;}
 .pr-table tr:last-child td{border-bottom:none;}
@@ -305,12 +305,12 @@ if ($toEnrich > 0): ?>
 <div class="pr-tablewrap">
   <table class="pr-table">
     <thead><tr>
-      <th>Association / Contact</th><th>Email</th><th>Statut</th><th>Étape</th>
+      <th>Association / Contact</th><th>Email</th><th>Ville</th><th>Département</th><th>Statut</th><th>Étape</th>
       <th>Ajouté</th><th>Dernier envoi</th><th>Prochaine relance</th><th>Suivi</th><th>Actions</th>
     </tr></thead>
     <tbody>
     <?php if (!$rows): ?>
-      <tr><td colspan="9"><div class="pr-empty">Aucun prospect ici. Importez des contacts ci-dessus, ou promouvez des associations depuis l'annuaire de l'app.</div></td></tr>
+      <tr><td colspan="11"><div class="pr-empty">Aucun prospect ici. Importez des contacts ci-dessus, ou promouvez des associations depuis l'annuaire de l'app.</div></td></tr>
     <?php else: foreach ($rows as $p):
         $id = (int) $p['id']; $sm = $STATUS_META[$p['status']] ?? $STATUS_META['new'];
         $e = $ev[$id] ?? []; $stp = (int) $p['step']; $lbl = $seq[$stp]['label'] ?? '—';
@@ -319,16 +319,20 @@ if ($toEnrich > 0): ?>
       <tr>
         <td>
           <div class="pr-org"><?= pr_h($p['org_name'] ?: ($p['name'] ?: '—')) ?></div>
-          <?php
-            $loc = [];
-            if (!empty($p['city'])) $loc[] = pr_h($p['city']);
-            if (!empty($p['dept_code'])) $loc[] = pr_h($p['dept_code'] . (empty($p['dept_name']) ? '' : ' · ' . $p['dept_name']));
-          ?>
-          <?php if ($loc): ?><div class="pr-meta">📍 <?= implode(' · ', $loc) ?><?= !empty($p['region']) ? ' · <span style="color:var(--sa-ink-4)">' . pr_h($p['region']) . '</span>' : '' ?></div><?php endif; ?>
-          <?php if (!empty($p['category']) && isset($CAT_LABELS[$p['category']])): ?><div class="pr-meta"><span class="pr-badge" style="color:#0369A1;background:rgba(3,105,161,.12);"><?= pr_h($CAT_LABELS[$p['category']]) ?></span></div><?php endif; ?>
-          <?php if (empty($p['enriched_at'])): ?><div class="pr-meta" style="color:var(--sa-ink-4);font-style:italic;">localisation à enrichir</div><?php endif; ?>
+          <?php if (!empty($p['category']) && isset($CAT_LABELS[$p['category']])): ?><div class="pr-meta" style="margin-top:5px;"><span class="pr-badge" style="color:#0369A1;background:rgba(3,105,161,.12);"><?= pr_h($CAT_LABELS[$p['category']]) ?></span></div><?php endif; ?>
         </td>
         <td style="font-size:12.5px;"><?= pr_h($p['email']) ?></td>
+        <td style="font-size:12.5px;"><?= !empty($p['city']) ? pr_h($p['city']) : '<span style="color:var(--sa-ink-4)">—</span>' ?></td>
+        <td style="font-size:12.5px;white-space:nowrap;">
+          <?php if (!empty($p['dept_code'])): ?>
+            <span style="font-weight:700;color:var(--sa-ink);"><?= pr_h($p['dept_code']) ?></span><?= !empty($p['dept_name']) ? ' · ' . pr_h($p['dept_name']) : '' ?>
+            <?php if (!empty($p['region'])): ?><div class="pr-meta" style="margin-top:1px;"><?= pr_h($p['region']) ?></div><?php endif; ?>
+          <?php elseif (empty($p['enriched_at'])): ?>
+            <span style="color:var(--sa-ink-4);font-style:italic;font-size:11.5px;">à enrichir</span>
+          <?php else: ?>
+            <span style="color:var(--sa-ink-4)">—</span>
+          <?php endif; ?>
+        </td>
         <td><span class="pr-badge" style="color:<?= $sm[1] ?>;background:<?= $sm[2] ?>;"><?= $sm[0] ?></span></td>
         <td style="font-size:12px;color:var(--sa-ink-3);"><?= pr_h($lbl) ?><div class="pr-meta"><?= $stp + 1 ?>/<?= $LAST_STEP + 1 ?></div></td>
         <td style="font-size:12px;"><?= pr_date($p['created_at']) ?></td>
