@@ -175,6 +175,7 @@ $CAT_LABELS = [];
 foreach (ak_directory_categories() as $k => $v) $CAT_LABELS[$k] = $v['label'];
 function pr_h($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 function pr_date($d) { return $d ? date('d/m/Y', strtotime($d)) : '—'; }
+function pr_ds($d) { return $d ? date('d/m/y', strtotime($d)) : '—'; }
 
 sa_render_head('Prospection — Emailing rentrée');
 sa_render_sidebar('fondateur-pilotage');
@@ -201,20 +202,29 @@ sa_render_sidebar('fondateur-pilotage');
 .pr-search{margin-left:auto;display:flex;gap:8px;}
 .pr-search input{background:var(--sa-bg-3);border:1px solid var(--sa-border);border-radius:10px;padding:8px 12px;color:var(--sa-ink);font-size:13px;min-width:200px;}
 .pr-tablewrap{overflow-x:auto;border:1px solid var(--sa-border);border-radius:14px;background:var(--sa-bg-2);}
-table.pr-table{width:100%;border-collapse:collapse;font-size:13px;min-width:1180px;}
-.pr-table th{text-align:left;padding:12px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--sa-ink-4);font-weight:700;border-bottom:1px solid var(--sa-border);white-space:nowrap;}
-.pr-table td{padding:12px 14px;border-bottom:1px solid var(--sa-border);vertical-align:middle;}
+table.pr-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:1080px;table-layout:fixed;}
+.pr-table th{text-align:left;padding:10px 11px;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--sa-ink-4);font-weight:700;border-bottom:1px solid var(--sa-border);white-space:nowrap;}
+.pr-table td{padding:9px 11px;border-bottom:1px solid var(--sa-border);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
 .pr-table tr:last-child td{border-bottom:none;}
-.pr-org{font-weight:700;color:var(--sa-ink);}
-.pr-meta{font-size:11.5px;color:var(--sa-ink-3);margin-top:2px;}
-.pr-badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;}
-.pr-track{display:flex;gap:10px;font-size:11.5px;color:var(--sa-ink-3);}
+/* Largeurs de colonnes (table-layout:fixed) */
+.pr-c-asso{width:19%;} .pr-c-mail{width:15%;} .pr-c-ville{width:9%;} .pr-c-dept{width:12%;}
+.pr-c-stat{width:8%;} .pr-c-etape{width:5%;} .pr-c-dates{width:10%;} .pr-c-suivi{width:7%;} .pr-c-act{width:12%;}
+.pr-org{font-weight:700;color:var(--sa-ink);font-size:12.5px;line-height:1.25;}
+.pr-meta{font-size:11px;color:var(--sa-ink-3);margin-top:2px;}
+.pr-badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;}
+.pr-dates{font-size:11px;line-height:1.5;color:var(--sa-ink-2);}
+.pr-dates .l{display:inline-block;width:52px;color:var(--sa-ink-4);}
+.pr-track{display:flex;gap:8px;font-size:11px;color:var(--sa-ink-3);}
 .pr-track b{color:var(--sa-ink);}
-.pr-actions{display:flex;gap:5px;flex-wrap:wrap;}
-.pr-ic{border:1px solid var(--sa-border);background:var(--sa-bg-3);color:var(--sa-ink-2);border-radius:8px;padding:5px 9px;font-size:12px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:4px;}
+.pr-actions{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
+.pr-ic{border:1px solid var(--sa-border);background:var(--sa-bg-3);color:var(--sa-ink-2);border-radius:7px;padding:5px 7px;font-size:12px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:4px;line-height:1;}
 .pr-ic:hover{border-color:var(--sa-ink-3);}
-.pr-ic.send{background:#059669;border-color:#059669;color:#fff;}
+.pr-ic.send{background:#059669;border-color:#059669;color:#fff;padding:6px 9px;}
 .pr-ic.danger:hover{border-color:#EF4444;color:#F87171;}
+details.pr-rel{display:inline-block;position:relative;}
+details.pr-rel>summary{list-style:none;cursor:pointer;}
+details.pr-rel>summary::-webkit-details-marker{display:none;}
+details.pr-rel .pop{position:absolute;z-index:20;top:calc(100% + 5px);right:0;background:var(--sa-bg-2);border:1px solid var(--sa-border);border-radius:10px;padding:9px;display:flex;gap:5px;box-shadow:0 12px 30px -8px rgba(0,0,0,.7);}
 textarea.pr-bulk{width:100%;min-height:110px;background:var(--sa-bg-3);border:1px solid var(--sa-border);border-radius:10px;padding:11px 13px;color:var(--sa-ink);font-size:13px;font-family:ui-monospace,monospace;resize:vertical;}
 .pr-empty{text-align:center;padding:44px;color:var(--sa-ink-3);}
 select.pr-mini,input.pr-mini{background:var(--sa-bg-3);border:1px solid var(--sa-border);border-radius:8px;padding:5px 8px;color:var(--sa-ink);font-size:12px;}
@@ -304,13 +314,17 @@ if ($toEnrich > 0): ?>
 
 <div class="pr-tablewrap">
   <table class="pr-table">
+    <colgroup>
+      <col class="pr-c-asso"><col class="pr-c-mail"><col class="pr-c-ville"><col class="pr-c-dept">
+      <col class="pr-c-stat"><col class="pr-c-etape"><col class="pr-c-dates"><col class="pr-c-suivi"><col class="pr-c-act">
+    </colgroup>
     <thead><tr>
-      <th>Association / Contact</th><th>Email</th><th>Ville</th><th>Département</th><th>Statut</th><th>Étape</th>
-      <th>Ajouté</th><th>Dernier envoi</th><th>Prochaine relance</th><th>Suivi</th><th>Actions</th>
+      <th>Association</th><th>Email</th><th>Ville</th><th>Département</th><th>Statut</th><th>Étape</th>
+      <th>Dates</th><th>Suivi</th><th>Actions</th>
     </tr></thead>
     <tbody>
     <?php if (!$rows): ?>
-      <tr><td colspan="11"><div class="pr-empty">Aucun prospect ici. Importez des contacts ci-dessus, ou promouvez des associations depuis l'annuaire de l'app.</div></td></tr>
+      <tr><td colspan="9"><div class="pr-empty">Aucun prospect ici. Importez des contacts ci-dessus, ou promouvez des associations depuis l'annuaire de l'app.</div></td></tr>
     <?php else: foreach ($rows as $p):
         $id = (int) $p['id']; $sm = $STATUS_META[$p['status']] ?? $STATUS_META['new'];
         $e = $ev[$id] ?? []; $stp = (int) $p['step']; $lbl = $seq[$stp]['label'] ?? '—';
@@ -321,36 +335,41 @@ if ($toEnrich > 0): ?>
           <div class="pr-org"><?= pr_h($p['org_name'] ?: ($p['name'] ?: '—')) ?></div>
           <?php if (!empty($p['category']) && isset($CAT_LABELS[$p['category']])): ?><div class="pr-meta" style="margin-top:5px;"><span class="pr-badge" style="color:#0369A1;background:rgba(3,105,161,.12);"><?= pr_h($CAT_LABELS[$p['category']]) ?></span></div><?php endif; ?>
         </td>
-        <td style="font-size:12.5px;"><?= pr_h($p['email']) ?></td>
-        <td style="font-size:12.5px;"><?= !empty($p['city']) ? pr_h($p['city']) : '<span style="color:var(--sa-ink-4)">—</span>' ?></td>
-        <td style="font-size:12.5px;white-space:nowrap;">
+        <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?= pr_h($p['email']) ?>"><?= pr_h($p['email']) ?></td>
+        <td style="font-size:12px;"><?= !empty($p['city']) ? pr_h($p['city']) : '<span style="color:var(--sa-ink-4)">—</span>' ?></td>
+        <td style="font-size:12px;">
           <?php if (!empty($p['dept_code'])): ?>
             <span style="font-weight:700;color:var(--sa-ink);"><?= pr_h($p['dept_code']) ?></span><?= !empty($p['dept_name']) ? ' · ' . pr_h($p['dept_name']) : '' ?>
             <?php if (!empty($p['region'])): ?><div class="pr-meta" style="margin-top:1px;"><?= pr_h($p['region']) ?></div><?php endif; ?>
           <?php elseif (empty($p['enriched_at'])): ?>
-            <span style="color:var(--sa-ink-4);font-style:italic;font-size:11.5px;">à enrichir</span>
+            <span style="color:var(--sa-ink-4);font-style:italic;font-size:11px;">à enrichir</span>
           <?php else: ?>
             <span style="color:var(--sa-ink-4)">—</span>
           <?php endif; ?>
         </td>
         <td><span class="pr-badge" style="color:<?= $sm[1] ?>;background:<?= $sm[2] ?>;"><?= $sm[0] ?></span></td>
-        <td style="font-size:12px;color:var(--sa-ink-3);"><?= pr_h($lbl) ?><div class="pr-meta"><?= $stp + 1 ?>/<?= $LAST_STEP + 1 ?></div></td>
-        <td style="font-size:12px;"><?= pr_date($p['created_at']) ?></td>
-        <td style="font-size:12px;"><?= pr_date($p['last_sent_at']) ?></td>
-        <td style="font-size:12px;"><?= pr_date($p['next_send_at']) ?></td>
-        <td><div class="pr-track"><span>📤 <b><?= $e['sent'] ?? 0 ?></b></span><span>👆 <b><?= $e['click'] ?? 0 ?></b></span><span>💬 <b><?= $e['reply'] ?? 0 ?></b></span></div></td>
+        <td style="font-size:12px;color:var(--sa-ink-2);white-space:nowrap;" title="<?= pr_h($lbl) ?>"><?= $stp + 1 ?>/<?= $LAST_STEP + 1 ?></td>
+        <td class="pr-dates">
+          <div><span class="l">Ajout</span><?= pr_ds($p['created_at']) ?></div>
+          <div><span class="l">Envoi</span><?= pr_ds($p['last_sent_at']) ?></div>
+          <div><span class="l">Relance</span><?= pr_ds($p['next_send_at']) ?></div>
+        </td>
+        <td><div class="pr-track"><span title="Envoyés">📤 <b><?= $e['sent'] ?? 0 ?></b></span><span title="Clics">👆 <b><?= $e['click'] ?? 0 ?></b></span><span title="Réponses">💬 <b><?= $e['reply'] ?? 0 ?></b></span></div></td>
         <td>
           <div class="pr-actions">
             <?php if ($canSend): ?>
             <form method="post" onsubmit="return confirm('Envoyer l\'email de prospection (étape <?= $stp + 1 ?>) à <?= pr_h($p['email']) ?> ?');">
               <input type="hidden" name="csrf" value="<?= pr_h($CSRF) ?>"><input type="hidden" name="action" value="send"><input type="hidden" name="id" value="<?= $id ?>">
-              <button class="pr-ic send" type="submit">✉️ Envoyer</button>
+              <button class="pr-ic send" type="submit" title="Envoyer l'email">✉️</button>
             </form>
-            <form method="post" style="display:flex;gap:3px;align-items:center;">
-              <input type="hidden" name="csrf" value="<?= pr_h($CSRF) ?>"><input type="hidden" name="action" value="relance"><input type="hidden" name="id" value="<?= $id ?>">
-              <input class="pr-mini" type="date" name="date" value="<?= $p['next_send_at'] ? date('Y-m-d', strtotime($p['next_send_at'])) : '' ?>">
-              <button class="pr-ic" type="submit" title="Planifier la relance">🗓️</button>
-            </form>
+            <details class="pr-rel">
+              <summary class="pr-ic" title="Planifier une relance">🗓️</summary>
+              <form method="post" class="pop">
+                <input type="hidden" name="csrf" value="<?= pr_h($CSRF) ?>"><input type="hidden" name="action" value="relance"><input type="hidden" name="id" value="<?= $id ?>">
+                <input class="pr-mini" type="date" name="date" value="<?= $p['next_send_at'] ? date('Y-m-d', strtotime($p['next_send_at'])) : '' ?>">
+                <button class="pr-ic" type="submit">OK</button>
+              </form>
+            </details>
             <?php endif; ?>
             <form method="post" onsubmit="return confirm('Marquer comme « A répondu » ?');">
               <input type="hidden" name="csrf" value="<?= pr_h($CSRF) ?>"><input type="hidden" name="action" value="status"><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="value" value="replied">
