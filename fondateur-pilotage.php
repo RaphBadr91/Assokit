@@ -55,6 +55,7 @@ $groups = [
         'label' => 'Croissance & acquisition',
         'accent' => '#A78BFA',
         'items' => [
+            ['ic' => '🚀', 'title' => 'Prospection',           'desc' => 'Emailing rentrée · relances · suivi',        'url' => '/fondateur-prospection', 'tag' => 'EMAILING'],
             ['ic' => '🌱', 'title' => 'Créer un compte',       'desc' => 'Nouvelle organisation en création directe', 'url' => '/fondateur-create-organization'],
             ['ic' => '🏛️', 'title' => 'Collectivités & Mairies', 'desc' => 'Mairies, CAF, départements…',              'url' => '/super-admin-mairies', 'tag' => 'MULTI-ASSO'],
             ['ic' => '🌐', 'title' => 'Domaines',              'desc' => 'Sous-domaines et domaines personnalisés',   'url' => '/fondateur-domains'],

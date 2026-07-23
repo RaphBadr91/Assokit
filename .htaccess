@@ -169,7 +169,8 @@ RewriteRule ^([a-f0-9]{32})\.txt$ indexnow-key.php?key=$1 [L,QSA]
    RewriteRule ^fondateur-create-organization/?$ fondateur-create-organization.php [L,QSA]
    RewriteRule ^fondateur-domains/?$ fondateur-domains.php [L,QSA]
    RewriteRule ^fondateur-stripe-config/?$ fondateur-stripe-config.php [L,QSA]
-   
+   RewriteRule ^fondateur-prospection/?$ fondateur-prospection.php [L,QSA]
+
    # Redirections 301 anciennes URLs (SEO + bookmarks)
    RewriteRule ^admin-plans/?$ /fondateur-plans [R=301,L]
    RewriteRule ^admin-create-organization/?$ /fondateur-create-organization [R=301,L]

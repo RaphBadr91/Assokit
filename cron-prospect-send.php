@@ -57,73 +57,11 @@ try {
 
 $log(count($due) . ' prospect(s) à traiter.');
 
-/** Génère (IA si dispo, sinon gabarit) le sujet + corps HTML personnalisés pour une étape. */
-function prospect_email(array $p, int $step, array $seq): array {
-    $type = ($p['type'] ?? 'asso') === 'tpe' ? 'tpe' : 'asso';
-    $who  = $type === 'tpe' ? 'votre entreprise' : 'votre association';
-    $name = trim((string) ($p['name'] ?? ''));
-    $org  = trim((string) ($p['org_name'] ?? ''));
-    $city = trim((string) ($p['city'] ?? ''));
-    $angle = ak_prospect_angle($p['category'] ?? null);      // rentrée : label / hook / pain par catégorie
-    // Accroche personnalisée : nom de l'asso + ville si connus
-    $orgBit = $org !== '' ? $org : ('votre ' . $angle['label']);
-    $cityBit = $city !== '' ? " à $city" : '';
-    $hello = $name !== '' ? "Bonjour $name," : "Bonjour,";
-    $link  = ak_prospect_link((int) $p['id'], (string) $p['email']);
-    $unsub = ak_prospect_unsub_link((int) $p['id'], (string) $p['email']);
-
-    // --- Personnalisation IA Claude si un helper est disponible ---
-    $body_txt = null;
-    if (class_exists('ClaudeAPI') && method_exists('ClaudeAPI', 'callMessages')) {
-        try {
-            $sys = "Tu écris un email de prospection B2B court, humain et chaleureux en français pour Assokit, "
-                 . "logiciel tout-en-un pour " . ($type === 'tpe' ? 'TPE/PME et indépendants' : 'associations loi 1901') . ". "
-                 . "CONTEXTE SAISONNIER : c'est la RENTRÉE (septembre), le pic d'activité. "
-                 . "3-5 phrases max, ton respectueux, pas de superlatifs racoleurs, une seule idée + un appel à l'action doux (découvrir la page / réserver 20 min). "
-                 . "Ne mets NI objet, NI formule de politesse d'ouverture, NI signature : juste le corps.";
-            $u = "Étape : " . ($seq[$step]['label'] ?? 'contact') . ". Destinataire : " . $orgBit . $cityBit . ". "
-               . "Angle rentrée : " . $angle['hook'] . ". Douleur à soulager : " . $angle['pain'] . ".";
-            $body_txt = trim((string) ClaudeAPI::callMessages($sys, $u, 400));
-        } catch (Throwable $e) { $body_txt = null; }
-    }
-    if (!$body_txt) {
-        // Gabarit de secours par étape — SPÉCIAL RENTRÉE, personnalisé catégorie/ville
-        $templates = [
-            0 => "À l'approche de " . $angle['hook'] . ", je me permets de contacter " . $orgBit . $cityBit . " : c'est souvent la période la plus chargée pour " . $angle['pain'] . ". Assokit réunit tout ça dans un seul outil simple, pour aborder la rentrée sans paperasse. J'ai pensé que ça pourrait vous faire gagner un temps précieux ce mois-ci.",
-            1 => "Je reviens vers vous : en pleine rentrée, beaucoup de structures comme la vôtre nous disent gagner plusieurs heures par semaine sur " . $angle['pain'] . " grâce à Assokit. Cela vaut peut-être un coup d'œil avant que le rush ne s'installe ?",
-            2 => "Petit rappel amical — si simplifier " . $angle['pain'] . " pour cette rentrée vous parle, je serais ravi de vous montrer concrètement Assokit en 20 minutes, adapté à " . $orgBit . ".",
-            3 => "Je ne voudrais pas vous déranger inutilement en cette période chargée. Si ce n'est pas le bon moment, dites-le moi simplement. Sinon, la page ci-dessous résume tout en 2 minutes.",
-            4 => "Dernier message de ma part : je vous laisse la page de présentation, à consulter quand vous voulez. Et si la gestion de " . $who . " devient un casse-tête cette saison, vous saurez où nous trouver !",
-        ];
-        $body_txt = $templates[$step] ?? $templates[0];
-    }
-
-    $subjects = [
-        0 => "Une rentrée plus simple pour " . $orgBit,
-        1 => "Re: gagner du temps pour la rentrée",
-        2 => "20 min pour alléger votre rentrée ?",
-        3 => "Est-ce le bon moment ?",
-        4 => "Je vous laisse ça pour la rentrée",
-    ];
-    $subject = $subjects[$step] ?? "Assokit — " . $who;
-
-    $html = "<div style=\"font-family:system-ui,Arial,sans-serif;max-width:560px;margin:0 auto;color:#0F172A;line-height:1.6;font-size:15px;\">"
-        . "<p>" . htmlspecialchars($hello) . "</p>"
-        . "<p>" . nl2br(htmlspecialchars($body_txt)) . "</p>"
-        . "<p><a href=\"" . htmlspecialchars($link) . "\" style=\"display:inline-block;background:#059669;color:#fff;text-decoration:none;padding:11px 20px;border-radius:9px;font-weight:600;\">Découvrir Assokit en 2 minutes</a></p>"
-        . "<p style=\"margin-top:18px;\">Bien à vous,<br>Raphael · Assokit<br><a href=\"https://assokit.fr\" style=\"color:#059669;\">assokit.fr</a></p>"
-        . "<hr style=\"border:none;border-top:1px solid #E2E8F0;margin:20px 0;\">"
-        . "<p style=\"font-size:11px;color:#94A3B8;\">Vous recevez cet email professionnel car votre structure pourrait être concernée. "
-        . "Pour ne plus être contacté·e : <a href=\"" . htmlspecialchars($unsub) . "\" style=\"color:#94A3B8;\">se désinscrire</a>.</p>"
-        . "</div>";
-    return ['subject' => $subject, 'html' => $html];
-}
-
 $done = 0;
 foreach ($due as $p) {
     $pid = (int) $p['id'];
     $step = (int) $p['step'];
-    $mail = prospect_email($p, $step, $seq);
+    $mail = ak_prospect_build_email($p, $step, $seq);
 
     if ($DRY) {
         $log("[DRY] would send step $step to {$p['email']} — « {$mail['subject']} »");
