@@ -40,19 +40,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     else try {
         if ($action === 'import') {
             $type = (($_POST['type'] ?? 'asso') === 'tpe') ? 'tpe' : 'asso';
-            $lines = preg_split('/[\r\n]+/', (string) ($_POST['bulk'] ?? ''));
+            // Source 1 : texte collé. Source 2 : fichier CSV/TXT uploadé.
+            $raw = (string) ($_POST['bulk'] ?? '');
+            if (!empty($_FILES['file']['tmp_name']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
+                $content = (string) @file_get_contents($_FILES['file']['tmp_name']);
+                // UTF-8 : retire un éventuel BOM et convertit depuis ISO-8859-1 si besoin
+                $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+                if (!mb_check_encoding($content, 'UTF-8')) $content = mb_convert_encoding($content, 'UTF-8', 'ISO-8859-1');
+                $raw .= "\n" . $content;
+            }
+            $lines = preg_split('/[\r\n]+/', $raw);
             $added = 0; $skipped = 0;
             $ins = $pdo->prepare("INSERT INTO asso_prospects (name, org_name, type, email, city, source, status, created_at)
                                   VALUES (?, ?, ?, ?, ?, 'web_import', 'new', NOW()) ON DUPLICATE KEY UPDATE id = id");
             foreach ($lines as $line) {
                 $line = trim($line); if ($line === '') continue;
-                $parts = preg_split('/[;,\t]/', $line);
-                $email = strtolower(trim($parts[0] ?? ''));
-                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { $skipped++; continue; }
-                $ins->execute([trim($parts[1] ?? '') ?: null, trim($parts[2] ?? '') ?: null, $type, $email, trim($parts[3] ?? '') ?: null]);
+                // Split tolérant (; , tabulation) + retrait des guillemets CSV
+                $cells = array_map(fn($c) => trim(trim($c), "\"'"), preg_split('/[;,\t]/', $line));
+                // Trouve l'email où qu'il soit dans la ligne (pas forcément en 1re colonne)
+                $emailIdx = -1;
+                foreach ($cells as $i => $c) { if (filter_var(strtolower($c), FILTER_VALIDATE_EMAIL)) { $emailIdx = $i; break; } }
+                if ($emailIdx < 0) { $skipped++; continue; }   // ligne d'en-tête ou sans email → ignorée
+                $email = strtolower($cells[$emailIdx]);
+                // Les autres cellules non vides (dans l'ordre) → nom, association, ville
+                $rest = [];
+                foreach ($cells as $i => $c) { if ($i !== $emailIdx && $c !== '') $rest[] = $c; }
+                $ins->execute([($rest[0] ?? '') ?: null, ($rest[1] ?? '') ?: null, $type, $email, ($rest[2] ?? '') ?: null]);
                 if ($ins->rowCount() > 0) $added++; else $skipped++;
             }
-            $msg = "Import terminé : $added ajouté(s), $skipped ignoré(s).";
+            $msg = "Import terminé : $added ajouté(s), $skipped ignoré(s) (doublons, en-têtes ou lignes sans email).";
         } elseif ($action === 'send') {
             $id = (int) ($_POST['id'] ?? 0);
             $st = $pdo->prepare("SELECT * FROM asso_prospects WHERE id = ? LIMIT 1"); $st->execute([$id]);
@@ -224,15 +240,24 @@ select.pr-mini,input.pr-mini{background:var(--sa-bg-3);border:1px solid var(--sa
 <div class="pr-panel">
   <h3>📥 Importer des contacts</h3>
   <div class="pr-note warn" style="margin-bottom:12px;"><span>🛡️</span><div>N'importez que des adresses <strong>professionnelles publiées</strong> (contact@ de la structure) que vous avez le droit de démarcher (intérêt légitime B2B). Chaque email contient un lien de désinscription. Jamais d'adresses personnelles achetées ou scrapées.</div></div>
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="csrf" value="<?= pr_h($CSRF) ?>">
     <input type="hidden" name="action" value="import">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:11px;padding:12px;border:1px dashed var(--sa-border);border-radius:10px;background:var(--sa-bg-3);">
+      <span style="font-size:20px;">📄</span>
+      <div style="flex:1;min-width:180px;">
+        <div style="font-weight:700;font-size:13px;">Importer un fichier CSV</div>
+        <div style="font-size:11.5px;color:var(--sa-ink-3);">Colonnes : email · nom · association · ville (Excel : « Enregistrer sous → CSV »)</div>
+      </div>
+      <input type="file" name="file" accept=".csv,.txt" style="font-size:12px;color:var(--sa-ink-2);">
+    </div>
+    <div style="text-align:center;font-size:11px;color:var(--sa-ink-4);margin-bottom:9px;">— OU colle les contacts ci-dessous —</div>
     <textarea class="pr-bulk" name="bulk" placeholder="Un contact par ligne :&#10;email;prénom nom;nom association;ville&#10;contact@club-sport.fr;Marie Dupont;Club Sportif de Palaiseau;Palaiseau&#10;contact@asso-culture.fr;;Association Culturelle;Massy"></textarea>
     <div style="display:flex;gap:10px;align-items:center;margin-top:11px;flex-wrap:wrap;">
       <label style="font-size:12.5px;color:var(--sa-ink-3);">Type :
         <select class="pr-mini" name="type"><option value="asso">Association</option><option value="tpe">TPE / PME</option></select>
       </label>
-      <button type="submit" class="sa-btn sa-btn-primary sa-btn-sm">Importer les contacts</button>
+      <button type="submit" class="sa-btn sa-btn-primary sa-btn-sm">Importer (fichier + texte)</button>
       <span style="flex:1"></span>
       <form method="post" style="display:inline" onsubmit="return confirm('Mettre tous les prospects « Nouveau » en séquence automatique de relance ?');">
         <input type="hidden" name="csrf" value="<?= pr_h($CSRF) ?>"><input type="hidden" name="action" value="queue_all">
