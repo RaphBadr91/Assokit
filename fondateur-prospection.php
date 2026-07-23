@@ -42,6 +42,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $type = (($_POST['type'] ?? 'asso') === 'tpe') ? 'tpe' : 'asso';
             // Source 1 : texte collé. Source 2 : fichier CSV/TXT uploadé.
             $raw = (string) ($_POST['bulk'] ?? '');
+            $upErr = (int) ($_FILES['file']['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($upErr === UPLOAD_ERR_INI_SIZE || $upErr === UPLOAD_ERR_FORM_SIZE) {
+                throw new RuntimeException('Fichier trop volumineux pour le serveur. Découpez-le, ou collez les lignes dans la zone de texte.');
+            }
             if (!empty($_FILES['file']['tmp_name']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
                 $content = (string) @file_get_contents($_FILES['file']['tmp_name']);
                 // UTF-8 : retire un éventuel BOM et convertit depuis ISO-8859-1 si besoin
@@ -259,12 +263,14 @@ select.pr-mini,input.pr-mini{background:var(--sa-bg-3);border:1px solid var(--sa
       </label>
       <button type="submit" class="sa-btn sa-btn-primary sa-btn-sm">Importer (fichier + texte)</button>
       <span style="flex:1"></span>
-      <form method="post" style="display:inline" onsubmit="return confirm('Mettre tous les prospects « Nouveau » en séquence automatique de relance ?');">
-        <input type="hidden" name="csrf" value="<?= pr_h($CSRF) ?>"><input type="hidden" name="action" value="queue_all">
-        <button type="submit" class="sa-btn sa-btn-ghost sa-btn-sm">⚡ Tout mettre en séquence auto</button>
-      </form>
     </div>
   </form>
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--sa-border);text-align:right;">
+    <form method="post" style="display:inline" onsubmit="return confirm('Mettre tous les prospects « Nouveau » en séquence automatique de relance ?');">
+      <input type="hidden" name="csrf" value="<?= pr_h($CSRF) ?>"><input type="hidden" name="action" value="queue_all">
+      <button type="submit" class="sa-btn sa-btn-ghost sa-btn-sm">⚡ Tout mettre en séquence auto</button>
+    </form>
+  </div>
 </div>
 
 <div class="pr-toolbar">
