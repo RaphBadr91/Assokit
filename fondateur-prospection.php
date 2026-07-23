@@ -63,7 +63,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             else {
                 $step = (int) $p['step'];
                 $mail = ak_prospect_build_email($p, $step, $seq);
-                send_transactional_email((string) $p['email'], $mail['subject'], $mail['html'], ['tag' => 'prospect_web_' . $step, 'reply_to' => 'contact@assokit.fr']);
+                send_transactional_email((string) $p['email'], $mail['subject'], $mail['html'], [
+                    'tag' => 'prospect_web_' . $step,
+                    'from_email' => AK_PROSPECT_FROM, 'from_name' => AK_PROSPECT_FROM_NAME,
+                    'reply_to' => AK_PROSPECT_REPLY_TO,
+                ]);
                 ak_prospect_event($pdo, $id, 'sent', $step, $mail['subject']);
                 $nextStep = $step + 1;
                 if ($nextStep > $LAST_STEP) {

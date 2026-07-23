@@ -68,8 +68,11 @@ foreach ($due as $p) {
     } else {
         if (!function_exists('send_transactional_email')) { $log('send_transactional_email indisponible, arrêt.'); break; }
         try {
-            $reply = 'contact@assokit.fr';
-            send_transactional_email((string) $p['email'], $mail['subject'], $mail['html'], ['tag' => 'prospect_seq_' . $step, 'reply_to' => $reply]);
+            send_transactional_email((string) $p['email'], $mail['subject'], $mail['html'], [
+                'tag' => 'prospect_seq_' . $step,
+                'from_email' => AK_PROSPECT_FROM, 'from_name' => AK_PROSPECT_FROM_NAME,
+                'reply_to' => AK_PROSPECT_REPLY_TO,
+            ]);
             ak_prospect_event($pdo, $pid, 'sent', $step, $mail['subject']);
         } catch (Throwable $e) { $log("send fail {$p['email']}: " . $e->getMessage()); continue; }
     }

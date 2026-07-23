@@ -14,7 +14,13 @@
 // d'un domaine d'envoi dédié + warm-up. Tant que false, le cron tourne en DRY-RUN (aucun email).
 if (!defined('AK_PROSPECT_SENDING_ENABLED')) define('AK_PROSPECT_SENDING_ENABLED', false);
 if (!defined('AK_PROSPECT_DAILY_CAP'))       define('AK_PROSPECT_DAILY_CAP', 40);   // plafond/jour (warm-up : monter doucement)
-if (!defined('AK_PROSPECT_DOMAIN'))          define('AK_PROSPECT_DOMAIN', 'assokit.fr');
+if (!defined('AK_PROSPECT_DOMAIN'))          define('AK_PROSPECT_DOMAIN', 'assokit.fr');       // domaine des liens (site : /p/ , /desinscription/)
+// Adresse d'expédition DÉDIÉE à la prospection (sous-domaine isolé, pour protéger
+// la réputation du domaine principal). À configurer après validation du sous-domaine
+// dans Resend + DNS. La réponse revient sur l'inbox principale (reply_to ci-dessous).
+if (!defined('AK_PROSPECT_FROM'))            define('AK_PROSPECT_FROM', 'contact@send.assokit.fr');
+if (!defined('AK_PROSPECT_FROM_NAME'))       define('AK_PROSPECT_FROM_NAME', 'Raphael · Assokit');
+if (!defined('AK_PROSPECT_REPLY_TO'))        define('AK_PROSPECT_REPLY_TO', 'contact@assokit.fr');
 
 /** Séquence : étape => délai (jours) avant la relance suivante. 5 contacts max, ~2-3 semaines d'écart. */
 if (!function_exists('ak_prospect_sequence')) {
