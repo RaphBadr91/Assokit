@@ -1996,6 +1996,7 @@ const FC_TILES = [
   { key: 'projects', icon: 'folder-open', color: '#4F46E5', bg: '#EEF2FF', title: 'Projets', desc: 'Toutes les orgs' },
   { key: 'activity', icon: 'pulse', color: '#0284C7', bg: '#F0F9FF', title: 'Activité', desc: 'Journal de la plateforme' },
   { key: 'blog', icon: 'newspaper', color: '#D97706', bg: '#FFFBEB', title: 'Blog SEO', desc: 'Générer & programmer' },
+  { key: 'annuaire', icon: 'map', color: '#0369A1', bg: '#F0F9FF', title: 'Annuaire France', desc: 'Assos par région · dept · catégorie' },
   { key: 'prospects', icon: 'rocket', color: '#DB2777', bg: '#FDF2F8', title: 'Prospection', desc: 'Emailing ciblé · relances' },
   { key: 'settings', icon: 'business', color: '#475569', bg: '#F1F5F9', title: 'Société', desc: 'Infos légales · TVA · IBAN' },
 ];
@@ -2596,6 +2597,142 @@ function NativeFounderSettings({ data, loading, busy, onRefresh, onBack, onSave 
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/* Fondateur — Annuaire national des associations (natif) : Région → Département → Catégorie */
+function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, onOpenRegion, onOpenDept, onBackRoot, onBackRegion, onSetEmail, onToProspect }) {
+  const view = data ? data.view : null;
+  const catLabels = (data && data.categories) || {};
+
+  const promptEmail = (a) => {
+    Alert.prompt
+      ? Alert.prompt('Email légitime', 'Adresse contact@ publiée par l\'association (base « intérêt légitime B2B », avec lien de désinscription).', [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Enregistrer', onPress: (val) => { const e = (val || '').trim(); if (e) onSetEmail(a.id, e); } },
+        ], 'plain-text', a.email || '')
+      : Alert.alert('Ajouter un email', 'La saisie d\'email n\'est pas disponible sur cet appareil.');
+  };
+
+  const crumb = () => {
+    if (view === 'list') return (nav.dept_name || 'Département') + (nav.category ? ' · ' + (catLabels[nav.category] || nav.category) : '');
+    if (view === 'region') return nav.region || 'Région';
+    return 'Annuaire France';
+  };
+
+  return (
+    <View style={[styles.fcWrap, Platform.OS === 'ios' && { top: -Constants.statusBarHeight }]}>
+      <StatusBar barStyle="light-content" />
+      <View style={styles.fcHeaderWrap}>
+        <LinearGradient colors={['#0369A1', '#075985', '#0C4A6E']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={[styles.fcHeader, Platform.OS === 'ios' && { paddingTop: Constants.statusBarHeight + 10 }]}>
+          <View style={styles.fcTopRow}>
+            <TouchableOpacity style={styles.fcBack} activeOpacity={0.8}
+              onPress={view === 'list' ? onBackRegion : view === 'region' ? onBackRoot : onBack}>
+              <Ionicons name="chevron-back" size={19} color="#EAF2EE" />
+            </TouchableOpacity>
+            <Text style={styles.fcTopTitle} numberOfLines={1}>Annuaire France</Text>
+            <TouchableOpacity style={{ width: 40, alignItems: 'flex-end' }} activeOpacity={0.8} onPress={onRefresh}>
+              <Ionicons name="refresh" size={18} color="#EAF2EE" />
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.fcSub, { marginTop: 8 }]} numberOfLines={1}>📍 {crumb()}</Text>
+        </LinearGradient>
+      </View>
+
+      {!data ? (
+        <View style={[styles.homeLoader, { flex: 1, paddingTop: 50 }]}><ActivityIndicator size="large" color="#0369A1" /></View>
+      ) : (
+        <ScrollView style={styles.fcScroll} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor="#0369A1" colors={['#0369A1']} />}>
+
+          {/* Vue racine : régions */}
+          {view === 'root' && (
+            <>
+              <View style={styles.dirBanner}>
+                <Text style={styles.dirBannerBig}>{(data.total || 0).toLocaleString('fr-FR')}</Text>
+                <Text style={styles.dirBannerLbl}>associations · {data.with_email || 0} avec email</Text>
+              </View>
+              {(!data.regions || !data.regions.length) ? (
+                <View style={styles.dirEmpty}>
+                  <Ionicons name="cloud-download-outline" size={34} color="#94A3B8" />
+                  <Text style={styles.dirEmptyT}>Annuaire vide</Text>
+                  <Text style={styles.dirEmptyS}>Lance sur le serveur :{"\n"}php founder-annuaire-france.php</Text>
+                </View>
+              ) : data.regions.map((r) => (
+                <TouchableOpacity key={r.region} style={styles.dirRow} activeOpacity={0.85} onPress={() => onOpenRegion(r.region)}>
+                  <View style={[styles.dirIco, { backgroundColor: '#F0F9FF' }]}><Ionicons name="map" size={18} color="#0369A1" /></View>
+                  <Text style={styles.dirRowT}>{r.region}</Text>
+                  <View style={styles.dirCount}><Text style={styles.dirCountT}>{r.total.toLocaleString('fr-FR')}</Text></View>
+                  <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+
+          {/* Vue région : départements */}
+          {view === 'region' && (
+            (!data.depts || !data.depts.length) ? (
+              <View style={styles.dirEmpty}><Text style={styles.dirEmptyS}>Aucun département indexé pour cette région.</Text></View>
+            ) : data.depts.map((d) => (
+              <View key={d.code} style={styles.dirDeptCard}>
+                <TouchableOpacity style={styles.dirDeptHead} activeOpacity={0.85} onPress={() => onOpenDept(d.code, d.name, '')}>
+                  <View style={[styles.dirIco, { backgroundColor: '#EFF6FF' }]}><Text style={styles.dirDeptCode}>{d.code}</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.dirRowT}>{d.name}</Text>
+                    <Text style={styles.dirRowS}>{d.total.toLocaleString('fr-FR')} associations</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                </TouchableOpacity>
+                <View style={styles.dirChips}>
+                  {Object.entries(d.by_cat || {}).map(([c, n]) => (
+                    <TouchableOpacity key={c} style={styles.dirChip} activeOpacity={0.8} onPress={() => onOpenDept(d.code, d.name, c)}>
+                      <Text style={styles.dirChipT}>{catLabels[c] || c}</Text>
+                      <Text style={styles.dirChipN}>{n}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ))
+          )}
+
+          {/* Vue liste : associations */}
+          {view === 'list' && (
+            <>
+              <Text style={styles.dirListCount}>{(data.total || 0).toLocaleString('fr-FR')} associations</Text>
+              {(!data.assos || !data.assos.length) ? (
+                <View style={styles.dirEmpty}><Text style={styles.dirEmptyS}>Aucune association ici.</Text></View>
+              ) : data.assos.map((a) => (
+                <View key={a.id} style={styles.dirAsso}>
+                  <Text style={styles.dirAssoName}>{a.org}</Text>
+                  <Text style={styles.dirAssoMeta}>{a.cat_label} · {a.city} {a.zip}</Text>
+                  {a.email ? (
+                    <View style={styles.dirEmailRow}><Ionicons name="mail" size={13} color="#047857" /><Text style={styles.dirEmailTxt}>{a.email}</Text></View>
+                  ) : null}
+                  <View style={styles.dirAssoActions}>
+                    <TouchableOpacity style={styles.dirActBtn} activeOpacity={0.85} disabled={busy} onPress={() => promptEmail(a)}>
+                      <Ionicons name="create-outline" size={15} color="#0369A1" />
+                      <Text style={styles.dirActTxt}>{a.email ? 'Modifier email' : 'Ajouter email'}</Text>
+                    </TouchableOpacity>
+                    {a.email ? (
+                      <TouchableOpacity style={[styles.dirActBtn, styles.dirActBtnP]} activeOpacity={0.85} disabled={busy} onPress={() => onToProspect(a.id)}>
+                        <Ionicons name="rocket" size={15} color="#fff" />
+                        <Text style={[styles.dirActTxt, { color: '#fff' }]}>Prospecter</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </>
+          )}
+
+          <View style={styles.dirLegal}>
+            <Ionicons name="shield-checkmark-outline" size={15} color="#0369A1" />
+            <Text style={styles.dirLegalTxt}>Données publiques (RNA/INSEE), sans email. N'ajoute que des adresses contact@ publiées, avec lien de désinscription (RGPD · intérêt légitime B2B).</Text>
+          </View>
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
@@ -3812,6 +3949,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [fdProspectsLoading, setFdProspectsLoading] = useState(false);
   const [fdProspectsBusy, setFdProspectsBusy] = useState(false);
   const fdProspectCloseRef = useRef(null);
+  const [fdDir, setFdDir] = useState(null);
+  const [fdDirLoading, setFdDirLoading] = useState(false);
+  const [fdDirBusy, setFdDirBusy] = useState(false);
+  const [fdDirNav, setFdDirNav] = useState({ region: '', dept: '', dept_name: '', category: '', page: 1 });
   const [fdBusyId, setFdBusyId] = useState(0);
   const [fdBilling, setFdBilling] = useState(null);
   const [fdBillingLoading, setFdBillingLoading] = useState(false);
@@ -4037,6 +4178,26 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const doProspectQueue = useCallback(() => { if (!csrf) { inject(FETCH_CSRF_JS); return; } inject(postJS('/api/app-founder-prospects.php', { action: 'queue', csrf }, '__akfdprosact')); }, [csrf, inject]);
   const doProspectStatus = useCallback((id, status) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } inject(postJS('/api/app-founder-prospects.php', { action: 'status', id, status, csrf }, '__akfdprosact')); }, [csrf, inject]);
   const doProspectDelete = useCallback((id) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } inject(postJS('/api/app-founder-prospects.php', { action: 'delete', id, csrf }, '__akfdprosact')); }, [csrf, inject]);
+
+  // --- Annuaire national des associations (Fondateur) ---
+  const fetchFdDir = useCallback((params) => {
+    setFdDirLoading(true);
+    const qs = params && Object.keys(params).length
+      ? '?' + Object.entries(params).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&')
+      : '';
+    inject(fetchJS('/api/app-founder-directory.php' + qs, '__akfddir'));
+  }, [inject]);
+  const openFdDirectory = useCallback(() => {
+    setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null);
+    setFdDir(null); setFdDirNav({ region: '', dept: '', dept_name: '', category: '', page: 1 });
+    setMenuScreen('fddir'); fetchFdDir({});
+  }, [clearDetail, closeForm, fetchFdDir]);
+  const dirOpenRegion = useCallback((region) => { setFdDirNav({ region, dept: '', dept_name: '', category: '', page: 1 }); setFdDir(null); fetchFdDir({ region }); }, [fetchFdDir]);
+  const dirOpenDept = useCallback((dept, dept_name, category) => { setFdDirNav((n) => ({ ...n, dept, dept_name, category: category || '', page: 1 })); setFdDir(null); fetchFdDir({ dept, category: category || '', page: 1 }); }, [fetchFdDir]);
+  const dirBackRoot = useCallback(() => { setFdDirNav({ region: '', dept: '', dept_name: '', category: '', page: 1 }); setFdDir(null); fetchFdDir({}); }, [fetchFdDir]);
+  const dirBackRegion = useCallback(() => { setFdDirNav((n) => ({ ...n, dept: '', dept_name: '', category: '', page: 1 })); setFdDir(null); fetchFdDir({ region: fdDirNav.region }); }, [fetchFdDir, fdDirNav.region]);
+  const doDirSetEmail = useCallback((id, email) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdDirBusy(true); inject(postJS('/api/app-founder-directory.php', { action: 'set_email', id, email, csrf }, '__akfddiract')); }, [csrf, inject]);
+  const doDirToProspect = useCallback((id) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdDirBusy(true); inject(postJS('/api/app-founder-directory.php', { action: 'to_prospect', id, csrf }, '__akfddiract')); }, [csrf, inject]);
   // Fondateur : pages natives dédiées (paiements, stats, blog, support)
   const fetchFdBilling = useCallback((filter) => { setFdBillingLoading(true); inject(fetchJS('/api/app-founder-billing.php?filter=' + encodeURIComponent(filter || 'all'), '__akfdbill')); }, [inject]);
   const openFdBilling = useCallback((filter) => { const f = filter || 'all'; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdBilling(null); setFdBillingFilter(f); setMenuScreen('fdbilling'); fetchFdBilling(f); }, [clearDetail, closeForm, fetchFdBilling]);
@@ -4101,6 +4262,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (key === 'activity') openFdActivity();
     else if (key === 'settings') openFdSettings();
     else if (key === 'prospects') openFdProspects();
+    else if (key === 'annuaire') openFdDirectory();
     else if (key === 'support') openFdSupport('open');
     else if (key === 'stats') openFdStats();
     else if (key === 'blog') openFdBlog();
@@ -4385,6 +4547,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           fetchFdProspects();
           if (fdProspectCloseRef.current) { fdProspectCloseRef.current(); fdProspectCloseRef.current = null; }
           if (r.added !== undefined) Alert.alert('Import terminé', r.added + ' ajouté(s), ' + r.skipped + ' ignoré(s) (doublons/invalides).');
+        } else { Alert.alert('Opération impossible', (r && r.message) || 'Réessaie.'); }
+      }
+      if (msg && msg.__akfddir) { setFdDir(msg.__akfddir); setFdDirLoading(false); }
+      if (msg && msg.__akfddiract) {
+        setFdDirBusy(false);
+        const r = msg.__akfddiract;
+        if (r && r.ok) {
+          if (r.promoted !== undefined) Alert.alert(r.promoted ? 'Ajouté à la prospection' : 'Déjà présent', r.promoted ? 'L\'association est dans la file de prospection conforme.' : 'Cette association était déjà dans la prospection.');
+          // rafraîchit la liste courante
+          if (fdDirNav.dept) fetchFdDir({ dept: fdDirNav.dept, category: fdDirNav.category || '', page: fdDirNav.page || 1 });
         } else { Alert.alert('Opération impossible', (r && r.message) || 'Réessaie.'); }
       }
       if (msg && msg.__akfdset) { setFdSettings(msg.__akfdset); setFdSettingsLoading(false); }
@@ -4794,6 +4966,15 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeFounderProspects data={fdProspects} loading={fdProspectsLoading} busy={fdProspectsBusy}
                 onRefresh={fetchFdProspects} onBack={() => openMenuScreen('founder')}
                 onImport={doProspectImport} onQueue={doProspectQueue} onStatus={doProspectStatus} onDelete={doProspectDelete} />
+            ) : menuScreen === 'fddir' ? (
+              <NativeFounderDirectory data={fdDir} loading={fdDirLoading} busy={fdDirBusy} nav={fdDirNav}
+                onBack={() => openMenuScreen('founder')} onRefresh={() => {
+                  if (fdDirNav.dept) fetchFdDir({ dept: fdDirNav.dept, category: fdDirNav.category || '', page: fdDirNav.page || 1 });
+                  else if (fdDirNav.region) fetchFdDir({ region: fdDirNav.region });
+                  else fetchFdDir({});
+                }}
+                onOpenRegion={dirOpenRegion} onOpenDept={dirOpenDept} onBackRoot={dirBackRoot} onBackRegion={dirBackRegion}
+                onSetEmail={doDirSetEmail} onToProspect={doDirToProspect} />
             ) : menuScreen === 'fdcreateorg' ? (
               <NativeFounderCreateOrg plans={fdPlans} busy={fdCreateBusy} result={fdCreateResult} error={fdCreateErr}
                 onSubmit={doCreateOrg} onBack={() => openMenuScreen('founder')}
@@ -4868,7 +5049,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
       </View>
 
-      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdplans', 'fdprojects', 'fdactivity', 'fdsettings', 'fdprospects', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
+      {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdplans', 'fdprojects', 'fdactivity', 'fdsettings', 'fdprospects', 'fddir', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
         <TouchableOpacity
           style={styles.founderStrip}
           activeOpacity={0.9}
@@ -4881,7 +5062,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         </TouchableOpacity>
       )}
 
-      {authed && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans', 'fdsettings', 'fdprospects'].includes(menuScreen) && (
+      {authed && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans', 'fdsettings', 'fdprospects', 'fddir'].includes(menuScreen) && (
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
           if (tab.key === 'add') {
@@ -5421,6 +5602,38 @@ const styles = StyleSheet.create({
   /* ===== Cockpit Fondateur — clair & premium ===== */
   fcWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#EDF1F0' },
   fcScroll: { flex: 1, backgroundColor: '#EDF1F0' },
+  // Annuaire national (fondateur)
+  dirBanner: { backgroundColor: '#0369A1', borderRadius: 18, padding: 18, marginBottom: 16, alignItems: 'center' },
+  dirBannerBig: { color: '#fff', fontSize: 30, fontWeight: '800' },
+  dirBannerLbl: { color: '#BAE6FD', fontSize: 13, marginTop: 2, fontWeight: '600' },
+  dirRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  dirIco: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  dirRowT: { flex: 1, fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  dirRowS: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  dirCount: { backgroundColor: '#F0F9FF', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 4, marginRight: 6 },
+  dirCountT: { color: '#0369A1', fontWeight: '800', fontSize: 13 },
+  dirDeptCard: { backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 12, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  dirDeptHead: { flexDirection: 'row', alignItems: 'center' },
+  dirDeptCode: { color: '#2563EB', fontWeight: '800', fontSize: 14 },
+  dirChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 11 },
+  dirChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 6 },
+  dirChipT: { fontSize: 12, color: '#334155', fontWeight: '600' },
+  dirChipN: { fontSize: 11, color: '#0369A1', fontWeight: '800' },
+  dirListCount: { fontSize: 13, color: '#64748B', fontWeight: '700', marginBottom: 10 },
+  dirAsso: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  dirAssoName: { fontSize: 14.5, fontWeight: '700', color: '#0F172A' },
+  dirAssoMeta: { fontSize: 12, color: '#64748B', marginTop: 3 },
+  dirEmailRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 7 },
+  dirEmailTxt: { fontSize: 12.5, color: '#047857', fontWeight: '600' },
+  dirAssoActions: { flexDirection: 'row', gap: 9, marginTop: 12 },
+  dirActBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F0F9FF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  dirActBtnP: { backgroundColor: '#0369A1' },
+  dirActTxt: { fontSize: 12.5, fontWeight: '700', color: '#0369A1' },
+  dirEmpty: { alignItems: 'center', paddingVertical: 44, gap: 8 },
+  dirEmptyT: { fontSize: 16, fontWeight: '700', color: '#334155' },
+  dirEmptyS: { fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 19 },
+  dirLegal: { flexDirection: 'row', gap: 9, backgroundColor: '#EFF6FF', borderRadius: 12, padding: 13, marginTop: 16, alignItems: 'flex-start' },
+  dirLegalTxt: { flex: 1, fontSize: 11.5, color: '#475569', lineHeight: 17 },
   fcHeaderWrap: { borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', shadowColor: '#047857', shadowOpacity: 0.3, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
   fcHeader: { paddingTop: 8, paddingHorizontal: 16, paddingBottom: 52, position: 'relative', overflow: 'hidden' },
   fcOrbGold: { position: 'absolute', top: -50, right: -30, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(252,211,77,0.18)' },
