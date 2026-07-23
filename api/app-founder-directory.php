@@ -116,16 +116,16 @@ try {
         ak_prospect_tables_ensure($pdo);
         $id = (int) ($input['id'] ?? 0);
         if ($id <= 0) dir_fail(400, 'id');
-        $st = $pdo->prepare("SELECT org_name, email, city FROM asso_directory WHERE id = ? LIMIT 1");
+        $st = $pdo->prepare("SELECT org_name, email, city, category FROM asso_directory WHERE id = ? LIMIT 1");
         $st->execute([$id]);
         $d = $st->fetch(PDO::FETCH_ASSOC);
         if (!$d) dir_fail(404, 'not_found');
         $email = strtolower(trim((string) ($d['email'] ?? '')));
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) dir_fail(400, 'no_email', 'Renseigne d\'abord un email légitime pour cette association.');
-        $ins = $pdo->prepare("INSERT INTO asso_prospects (name, org_name, type, email, city, source, status, created_at)
-                              VALUES (?, ?, 'asso', ?, ?, 'annuaire', 'new', NOW())
-                              ON DUPLICATE KEY UPDATE id = id");
-        $ins->execute([null, (string) $d['org_name'], $email, (string) ($d['city'] ?? '')]);
+        $ins = $pdo->prepare("INSERT INTO asso_prospects (name, org_name, type, category, email, city, source, status, created_at)
+                              VALUES (?, ?, 'asso', ?, ?, ?, 'annuaire', 'new', NOW())
+                              ON DUPLICATE KEY UPDATE category = VALUES(category)");
+        $ins->execute([null, (string) $d['org_name'], (string) ($d['category'] ?? null), $email, (string) ($d['city'] ?? '')]);
         echo json_encode(['ok' => true, 'promoted' => $ins->rowCount() > 0], JSON_UNESCAPED_UNICODE);
         exit;
     }

@@ -29,6 +29,29 @@ if (!function_exists('ak_prospect_sequence')) {
     }
 }
 
+/**
+ * Angle de personnalisation « rentrée » selon la catégorie d'association.
+ * Renvoie ['label' => .., 'hook' => .., 'pain' => ..] pour nourrir l'email.
+ */
+if (!function_exists('ak_prospect_angle')) {
+    function ak_prospect_angle(?string $category): array {
+        $map = [
+            'sport'         => ['label' => 'club sportif', 'hook' => 'la reprise sportive et les inscriptions de septembre', 'pain' => 'les licences, les cotisations et les plannings d\'entraînement'],
+            'culture'       => ['label' => 'association culturelle', 'hook' => 'la reprise des ateliers et la nouvelle saison', 'pain' => 'les inscriptions aux cours et le suivi des adhérents'],
+            'social'        => ['label' => 'association', 'hook' => 'la reprise des activités et l\'accueil des bénévoles', 'pain' => 'le suivi des adhérents, des bénévoles et des actions'],
+            'sante'         => ['label' => 'association', 'hook' => 'la reprise d\'activité de rentrée', 'pain' => 'le suivi des adhérents et la gestion administrative'],
+            'education'     => ['label' => 'association', 'hook' => 'la rentrée et la vague d\'inscriptions', 'pain' => 'les inscriptions, les cotisations et la communication aux familles'],
+            'environnement' => ['label' => 'association', 'hook' => 'la reprise des projets de rentrée', 'pain' => 'la coordination des bénévoles et le suivi des projets'],
+            'loisirs'       => ['label' => 'association', 'hook' => 'la reprise des activités de septembre', 'pain' => 'les inscriptions et les cotisations des adhérents'],
+            'citoyennete'   => ['label' => 'association', 'hook' => 'la reprise de rentrée', 'pain' => 'le suivi des adhérents et l\'organisation des actions'],
+            'culte'         => ['label' => 'association', 'hook' => 'la reprise de rentrée', 'pain' => 'le suivi des membres et des dons'],
+            'professionnel' => ['label' => 'structure', 'hook' => 'la rentrée', 'pain' => 'le suivi des membres et la comptabilité'],
+        ];
+        $c = strtolower(trim((string) $category));
+        return $map[$c] ?? ['label' => 'association', 'hook' => 'la rentrée et les inscriptions de septembre', 'pain' => 'les adhérents, les cotisations et la comptabilité'];
+    }
+}
+
 if (!function_exists('ak_prospect_secret')) {
     function ak_prospect_secret(): string {
         if (defined('AK_CONTACT_SECRET') && AK_CONTACT_SECRET) return (string) AK_CONTACT_SECRET;
@@ -81,6 +104,12 @@ if (!function_exists('ak_prospect_tables_ensure')) {
                 INDEX idx_status (status),
                 INDEX idx_next (next_send_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {}
+        // Migration douce : colonne 'category' (héritée de l'annuaire) pour la personnalisation.
+        try {
+            $has = $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS
+                                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'asso_prospects' AND COLUMN_NAME = 'category'")->fetchColumn();
+            if (!$has) $pdo->exec("ALTER TABLE asso_prospects ADD COLUMN category VARCHAR(40) DEFAULT NULL AFTER type");
         } catch (Throwable $e) {}
         try {
             $pdo->exec("CREATE TABLE IF NOT EXISTS asso_prospect_events (
