@@ -62,87 +62,128 @@ if (!function_exists('ak_prospect_angle')) {
  * Gabarit HTML premium d'email (compatible clients mail : tables + styles inline).
  * Header dégradé émeraude, titre accrocheur, bouton 3D en relief, bande de bénéfices.
  */
+if (!function_exists('ak_prospect_mockup')) {
+    /** Mockup produit (fenêtre app) en HTML email-safe, thématisé asso/TPE. */
+    function ak_prospect_mockup(string $type, string $font): string {
+        $title = $type === 'tpe' ? 'Assokit &#183; Tableau de bord' : 'Assokit &#183; Adhérents';
+        $rows = $type === 'tpe' ? [
+            ['&#129534;', '#DBEAFE', 'Factures du mois', '6 payées &#183; 2 en attente', '8 400 &#8364;', '#065F46', '#D1FAE5'],
+            ['&#127959;&#65039;', '#EDE9FE', 'Chantier Villa Sud', 'Budget suivi &#183; 3 factures', '62%', '#5B21B6', '#EDE9FE'],
+            ['&#128176;', '#FEF3C7', 'Trésorerie', 'Relances automatiques', 'Saine', '#047857', '#D1FAE5'],
+        ] : [
+            ['&#128101;', '#DCFCE7', '248 adhérents', 'Annuaire à jour', '+12', '#047857', '#D1FAE5'],
+            ['&#128179;', '#FCE7F3', 'Cotisations', 'Statut par adhérent', '94%', '#047857', '#D1FAE5'],
+            ['&#129534;', '#DBEAFE', 'Facture 2026-014', 'Émise le 2 sept.', 'Payée', '#1D4ED8', '#DBEAFE'],
+        ];
+        $body = '';
+        foreach ($rows as $i => $r) {
+            $bt = $i > 0 ? 'border-top:1px solid #F1F5F4;' : '';
+            $body .= '<tr><td style="padding:13px 18px;' . $bt . '"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
+                . '<td valign="middle" style="width:40px;"><div style="width:36px;height:36px;border-radius:10px;background:' . $r[1] . ';text-align:center;line-height:36px;font-size:17px;">' . $r[0] . '</div></td>'
+                . '<td valign="middle" style="padding-left:12px;font-family:' . $font . ';">'
+                . '<div style="font-size:14px;font-weight:700;color:#0F172A;">' . $r[2] . '</div>'
+                . '<div style="font-size:12px;color:#94A3B8;margin-top:2px;">' . $r[3] . '</div></td>'
+                . '<td valign="middle" align="right"><span style="display:inline-block;font-family:' . $font . ';font-size:12.5px;font-weight:800;color:' . $r[5] . ';background:' . $r[6] . ';padding:5px 11px;border-radius:999px;">' . $r[4] . '</span></td>'
+                . '</tr></table></td></tr>';
+        }
+        return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 26px;background:#ffffff;border:1px solid #E8EEEC;border-radius:16px;overflow:hidden;box-shadow:0 16px 34px -18px rgba(15,23,42,.22);">'
+            // barre fenêtre
+            . '<tr><td style="background:#F8FAFB;border-bottom:1px solid #EEF2F0;padding:12px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
+            . '<td style="width:52px;"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#F87171;"></span> <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#FBBF24;"></span> <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#34D399;"></span></td>'
+            . '<td align="center" style="font-family:' . $font . ';font-size:12px;font-weight:700;color:#64748B;">' . $title . '</td>'
+            . '<td style="width:52px;">&nbsp;</td>'
+            . '</tr></table></td></tr>'
+            . $body
+            . '</table>';
+    }
+}
+
 if (!function_exists('ak_prospect_html_template')) {
     function ak_prospect_html_template(array $d): string {
+        $FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+        $logo = (defined('AK_PUBLIC_DOMAIN') ? rtrim(AK_PUBLIC_DOMAIN, '/') : 'https://assokit.fr') . '/assets/logo-assokit.png';
         $hello = htmlspecialchars((string) ($d['hello'] ?? 'Bonjour,'));
         $head  = htmlspecialchars((string) ($d['headline'] ?? 'La rentrée, simplifiée.'));
         $body  = nl2br(htmlspecialchars((string) ($d['body'] ?? '')));
         $link  = htmlspecialchars((string) ($d['link'] ?? 'https://assokit.fr'));
         $unsub = htmlspecialchars((string) ($d['unsub'] ?? 'https://assokit.fr'));
         $type  = ($d['type'] ?? 'asso') === 'tpe' ? 'tpe' : 'asso';
-        $offer = !array_key_exists('offer', $d) || !empty($d['offer']);   // offre 1 mois par défaut
-        $cta   = htmlspecialchars((string) ($d['cta'] ?? ($offer ? 'Activer mon mois gratuit' : 'Découvrir Assokit en 2 min')));
-        $pre   = htmlspecialchars(($offer ? '🎁 1 mois offert, sans engagement — ' : '') . mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags((string) ($d['body'] ?? '')))), 0, 90));
+        $offer = !array_key_exists('offer', $d) || !empty($d['offer']);
+        $cta   = htmlspecialchars((string) ($d['cta'] ?? ($offer ? 'Activer mon mois gratuit' : 'Découvrir Assokit')));
+        $pre   = htmlspecialchars(($offer ? '1 mois offert, sans engagement — ' : '') . mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags((string) ($d['body'] ?? '')))), 0, 90));
 
         $benefits = $type === 'tpe'
             ? ['Devis &amp; factures créés en 2 minutes', 'Trésorerie suivie, relances automatiques', 'Application mobile incluse']
             : ['Adhérents &amp; cotisations centralisés', 'Comptabilité et factures simplifiées', 'Application mobile incluse'];
-
         $benefitRows = '';
         foreach ($benefits as $b) {
             $benefitRows .= '<tr>'
-                . '<td valign="top" style="padding:7px 12px 7px 0;width:28px;">'
-                . '<div style="width:24px;height:24px;border-radius:50%;background:#D1FAE5;color:#047857;font-weight:800;font-size:14px;line-height:24px;text-align:center;font-family:Arial,sans-serif;">&#10003;</div>'
+                . '<td valign="top" style="padding:7px 12px 7px 0;width:26px;">'
+                . '<div style="width:22px;height:22px;border-radius:50%;background:#D1FAE5;color:#047857;font-weight:800;font-size:13px;line-height:22px;text-align:center;font-family:' . $FONT . ';">&#10003;</div>'
                 . '</td>'
-                . '<td valign="middle" style="padding:7px 0;font-family:Arial,Helvetica,sans-serif;font-size:14.5px;color:#334155;font-weight:500;">' . $b . '</td>'
+                . '<td valign="middle" style="padding:7px 0;font-family:' . $FONT . ';font-size:14.5px;color:#334155;font-weight:500;">' . $b . '</td>'
                 . '</tr>';
         }
 
-        // ---- Bloc offre 1 mois gratuit (accent doré) ----
+        // ---- Offre 1 mois (accent doré de la charte) ----
         $offerBlock = '';
         if ($offer) {
-            $offerBlock = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:2px 0 22px;"><tr>'
-                . '<td style="background:#FFFBEB;background:linear-gradient(135deg,#FEF3C7 0%,#FDE68A 100%);border:1.5px solid #FBBF24;border-radius:16px;padding:18px 22px;">'
+            $offerBlock = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 24px;"><tr>'
+                . '<td style="background:#FFFDF5;border:1px solid #FDE68A;border-left:4px solid #F59E0B;border-radius:12px;padding:16px 20px;">'
                 . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
-                . '<td valign="middle" style="font-size:34px;line-height:1;width:46px;">&#127873;</td>'
-                . '<td valign="middle" style="font-family:Arial,Helvetica,sans-serif;">'
-                . '<div style="font-size:18px;font-weight:800;color:#78350F;letter-spacing:.2px;">1 mois gratuit &#8212; offert pour la rentrée</div>'
-                . '<div style="font-size:13px;color:#92400E;margin-top:3px;font-weight:600;">Sans engagement &#183; sans carte bancaire &#183; résiliable en 1 clic</div>'
+                . '<td valign="middle" style="width:40px;font-size:26px;line-height:1;">&#127873;</td>'
+                . '<td valign="middle" style="font-family:' . $FONT . ';">'
+                . '<div style="font-size:16px;font-weight:800;color:#0F172A;">1 mois gratuit, offert pour la rentrée</div>'
+                . '<div style="font-size:12.5px;color:#92400E;margin-top:2px;font-weight:600;">Sans engagement &#183; sans carte bancaire &#183; résiliable en 1 clic</div>'
                 . '</td></tr></table></td></tr></table>';
         }
 
         return '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             . '<meta name="color-scheme" content="light"></head>'
-            . '<body style="margin:0;padding:0;background:#F1F5F4;">'
-            // preheader caché (texte d'aperçu dans la boîte de réception)
+            . '<body style="margin:0;padding:0;background:#EEF2F1;">'
             . '<div style="display:none;max-height:0;overflow:hidden;opacity:0;">' . $pre . '&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;</div>'
-            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F4;padding:26px 12px;"><tr><td align="center">'
-            . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 20px 60px -22px rgba(4,101,63,.35);">'
-            // ---- Header dégradé + halo ----
-            . '<tr><td style="background:#059669;background:linear-gradient(120deg,#0CCB8F 0%,#059669 52%,#047857 100%);padding:28px 30px 26px;">'
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEF2F1;padding:28px 12px;"><tr><td align="center">'
+            . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 22px 60px -24px rgba(15,23,42,.30);">'
+            // ---- Header marque : logo réel + wordmark ----
+            . '<tr><td style="background:#047857;background:linear-gradient(125deg,#059669 0%,#047857 100%);padding:24px 30px;">'
             . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
-            . '<td style="font-family:Arial,Helvetica,sans-serif;font-size:21px;font-weight:800;color:#ffffff;letter-spacing:.2px;">&#127807; Assokit</td>'
-            . '<td align="right"><span style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:800;color:#78350F;background:#FCD34D;padding:5px 11px;border-radius:999px;letter-spacing:.4px;text-transform:uppercase;">&#127881; Spécial rentrée</span></td>'
+            . '<td valign="middle" style="width:40px;"><img src="' . $logo . '" width="34" height="34" alt="Assokit" style="display:block;width:34px;height:34px;border-radius:9px;"></td>'
+            . '<td valign="middle" style="padding-left:11px;font-family:' . $FONT . ';font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-.2px;">Assokit</td>'
+            . '<td align="right" valign="middle"><span style="display:inline-block;font-family:' . $FONT . ';font-size:10.5px;font-weight:700;color:#ffffff;background:rgba(255,255,255,.16);padding:5px 12px;border-radius:999px;letter-spacing:.5px;text-transform:uppercase;">Rentrée 2026</span></td>'
             . '</tr></table></td></tr>'
-            // fine barre d'accent dorée
-            . '<tr><td style="height:4px;background:linear-gradient(90deg,#FCD34D,#FBBF24,#F59E0B);font-size:0;line-height:0;">&nbsp;</td></tr>'
+            . '<tr><td style="height:3px;background:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>'
             // ---- Corps ----
-            . '<tr><td style="padding:32px 32px 8px;">'
-            . '<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:800;color:#059669;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:12px;">Le logiciel des assos &amp; TPE</div>'
-            . '<h1 style="margin:0 0 20px;font-family:Georgia,\'Times New Roman\',serif;font-size:29px;line-height:1.22;color:#0F172A;font-weight:700;">' . $head . '</h1>'
-            . '<p style="margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:15.5px;line-height:1.65;color:#334155;">' . $hello . '</p>'
-            . '<p style="margin:0 0 22px;font-family:Arial,Helvetica,sans-serif;font-size:15.5px;line-height:1.72;color:#334155;">' . $body . '</p>'
+            . '<tr><td style="padding:34px 34px 8px;">'
+            . '<div style="font-family:' . $FONT . ';font-size:11.5px;font-weight:800;color:#059669;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:12px;">Le logiciel des associations &amp; TPE</div>'
+            . '<h1 style="margin:0 0 20px;font-family:' . $FONT . ';font-size:28px;line-height:1.24;color:#0F172A;font-weight:800;letter-spacing:-.5px;">' . $head . '</h1>'
+            . '<p style="margin:0 0 14px;font-family:' . $FONT . ';font-size:15.5px;line-height:1.65;color:#334155;">' . $hello . '</p>'
+            . '<p style="margin:0 0 20px;font-family:' . $FONT . ';font-size:15.5px;line-height:1.72;color:#334155;">' . $body . '</p>'
+            // ---- Mockup produit ----
+            . ak_prospect_mockup($type, $FONT)
             // ---- Offre ----
             . $offerBlock
             // ---- Bouton 3D ----
             . '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:2px 0 10px;"><tr>'
-            . '<td align="center" bgcolor="#059669" style="border-radius:14px;background:linear-gradient(180deg,#10B981 0%,#059669 100%);box-shadow:0 6px 0 #04653F, 0 18px 30px rgba(4,101,63,.42);">'
-            . '<a href="' . $link . '" style="display:inline-block;padding:17px 44px;font-family:Arial,Helvetica,sans-serif;font-size:16.5px;font-weight:800;color:#ffffff;text-decoration:none;letter-spacing:.3px;">' . $cta . ' &#8594;</a>'
+            . '<td align="center" bgcolor="#059669" style="border-radius:13px;background:linear-gradient(180deg,#10B981 0%,#059669 100%);box-shadow:0 5px 0 #04653F, 0 16px 26px rgba(4,101,63,.36);">'
+            . '<a href="' . $link . '" style="display:inline-block;padding:16px 42px;font-family:' . $FONT . ';font-size:16px;font-weight:800;color:#ffffff;text-decoration:none;letter-spacing:.2px;">' . $cta . ' &#8594;</a>'
             . '</td></tr></table>'
-            . '<p style="margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94A3B8;">Activation en 2 minutes &#183; aucune installation</p>'
-            // ---- Bande de bénéfices ----
-            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6FBF9;border:1px solid #E2F3EC;border-radius:14px;margin-bottom:22px;"><tr><td style="padding:14px 20px;">'
+            . '<p style="margin:0 0 26px;font-family:' . $FONT . ';font-size:12px;color:#94A3B8;">Activation en 2 minutes &#183; aucune installation &#183; sans carte bancaire</p>'
+            // ---- Bénéfices ----
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F7FBFA;border:1px solid #E6F0EC;border-radius:14px;margin-bottom:22px;"><tr><td style="padding:14px 20px;">'
             . '<table role="presentation" cellpadding="0" cellspacing="0">' . $benefitRows . '</table>'
             . '</td></tr></table>'
-            // ---- Preuve de confiance ----
-            . '<p style="margin:0 0 22px;font-family:Arial,Helvetica,sans-serif;font-size:12.5px;color:#64748B;text-align:center;">&#127467;&#127479; Hébergé en France &#160;&#160;&#183;&#160;&#160; &#128274; Données sécurisées &#160;&#160;&#183;&#160;&#160; &#9989; Sans engagement</p>'
+            . '<p style="margin:0 0 24px;font-family:' . $FONT . ';font-size:12.5px;color:#64748B;text-align:center;">&#127467;&#127479; Hébergé en France&#160;&#160;&#183;&#160;&#160;&#128274; Données sécurisées&#160;&#160;&#183;&#160;&#160;&#9989; Sans engagement</p>'
             // ---- Signature ----
-            . '<p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#334155;">Bien à vous,</p>'
-            . '<p style="margin:0 0 26px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#0F172A;"><strong>Raphael</strong> · Assokit<br><a href="https://assokit.fr" style="color:#059669;text-decoration:none;font-weight:600;">assokit.fr</a></p>'
+            . '<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:26px;"><tr>'
+            . '<td valign="middle" style="width:44px;"><div style="width:40px;height:40px;border-radius:50%;background:#ECFDF5;text-align:center;line-height:40px;font-family:' . $FONT . ';font-weight:800;color:#059669;font-size:15px;">R</div></td>'
+            . '<td valign="middle" style="padding-left:12px;font-family:' . $FONT . ';">'
+            . '<div style="font-size:14.5px;font-weight:700;color:#0F172A;">Raphael</div>'
+            . '<div style="font-size:12.5px;color:#64748B;">Fondateur &#183; <a href="https://assokit.fr" style="color:#059669;text-decoration:none;font-weight:600;">assokit.fr</a></div>'
+            . '</td></tr></table>'
             . '</td></tr>'
             // ---- Footer ----
-            . '<tr><td style="padding:20px 32px 28px;border-top:1px solid #EEF2F0;background:#FBFCFB;">'
-            . '<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11.5px;line-height:1.6;color:#94A3B8;">Vous recevez cet email professionnel car votre structure pourrait être concernée par nos services de gestion. '
+            . '<tr><td style="padding:18px 34px 26px;border-top:1px solid #EEF2F0;background:#FBFCFB;">'
+            . '<p style="margin:0;font-family:' . $FONT . ';font-size:11.5px;line-height:1.6;color:#94A3B8;">Vous recevez cet email professionnel car votre structure pourrait être concernée par nos services de gestion. '
             . 'Pour ne plus être contacté&#183;e : <a href="' . $unsub . '" style="color:#94A3B8;text-decoration:underline;">se désinscrire</a>.</p>'
             . '</td></tr>'
             . '</table></td></tr></table></body></html>';
