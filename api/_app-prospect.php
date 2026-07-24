@@ -178,6 +178,15 @@ if (!function_exists('ak_prospect_html_template')) {
             . '<h1 style="margin:0 0 20px;font-family:' . $FONT . ';font-size:28px;line-height:1.24;color:#0F172A;font-weight:800;letter-spacing:-.5px;">' . $head . '</h1>'
             . '<p style="margin:0 0 14px;font-family:' . $FONT . ';font-size:15.5px;line-height:1.65;color:#334155;">' . $hello . '</p>'
             . $bodyHtml
+            // ---- Argument phare : compta analytique temps réel ----
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 24px;"><tr>'
+            . '<td style="background:#F0F9FF;border:1px solid #BAE6FD;border-left:4px solid #0369A1;border-radius:12px;padding:17px 20px;">'
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
+            . '<td valign="top" style="width:38px;font-size:24px;line-height:1.2;">&#128202;</td>'
+            . '<td valign="top" style="font-family:' . $FONT . ';">'
+            . '<div style="font-size:15px;font-weight:800;color:#0F172A;margin-bottom:5px;">La comptabilité analytique en temps réel</div>'
+            . '<div style="font-size:14px;line-height:1.6;color:#334155;">Vos comptes sont <strong style="color:#0F172A;">à jour en continu, tout seuls</strong>. Fini le comptable au quotidien : un <strong style="color:#0F172A;">expert-comptable valide simplement vos documents en fin d&#039;année</strong>. Un <strong style="color:#0369A1;">gain de temps et d&#039;argent considérable</strong> &#8212; surtout par les temps qui courent.</div>'
+            . '</td></tr></table></td></tr></table>'
             // ---- Mockup produit ----
             . ak_prospect_mockup($type, $FONT)
             // ---- Offre ----
