@@ -29,8 +29,67 @@ if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_byt
 $CSRF = $_SESSION['csrf_token'];
 $seq = ak_prospect_sequence();
 $LAST_STEP = max(array_keys($seq));
+$CAT_LABELS = [];
+foreach (ak_directory_categories() as $k => $v) $CAT_LABELS[$k] = $v['label'];
 $flash = $_SESSION['flash_prospection'] ?? null;
 unset($_SESSION['flash_prospection']);
+
+// ============================ APERÇU EMAIL (maquette) ============================
+if (isset($_GET['apercu'])) {
+    $pid = (int) $_GET['apercu'];
+    $prev = null;
+    if ($pid > 0) { $st = $pdo->prepare("SELECT * FROM asso_prospects WHERE id = ? LIMIT 1"); $st->execute([$pid]); $prev = $st->fetch(PDO::FETCH_ASSOC); }
+    // Exemple générique si aucun prospect ciblé
+    if (!$prev) $prev = ['id' => 0, 'name' => '', 'org_name' => 'Club Sportif de Palaiseau', 'type' => 'asso', 'category' => 'sport', 'email' => 'contact@exemple.fr', 'city' => 'Palaiseau'];
+
+    sa_render_head('Aperçu email — ' . ($prev['org_name'] ?: 'Exemple'));
+    sa_render_sidebar('fondateur-pilotage');
+    $fromName = defined('AK_PROSPECT_FROM_NAME') ? AK_PROSPECT_FROM_NAME : 'Assokit';
+    $fromMail = defined('AK_PROSPECT_FROM') ? AK_PROSPECT_FROM : 'contact@send.assokit.fr';
+    ?>
+    <style>
+    .ap-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:8px;}
+    .ap-title{font-size:22px;font-weight:800;margin:0;}
+    .ap-sub{color:var(--sa-ink-3);font-size:13px;margin:4px 0 20px;}
+    .ap-mail{max-width:620px;margin:0 auto 26px;background:var(--sa-bg-2);border:1px solid var(--sa-border);border-radius:16px;overflow:hidden;box-shadow:0 20px 44px -24px rgba(0,0,0,.75);}
+    .ap-mail-hd{padding:14px 18px;border-bottom:1px solid var(--sa-border);background:var(--sa-bg-3);}
+    .ap-step{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.04em;color:#059669;background:rgba(16,185,129,.12);padding:3px 10px;border-radius:999px;margin-bottom:9px;}
+    .ap-row{font-size:12.5px;color:var(--sa-ink-3);margin:2px 0;}
+    .ap-row b{color:var(--sa-ink);font-weight:600;}
+    .ap-subject{font-size:15.5px;font-weight:700;color:var(--sa-ink);margin-top:7px;}
+    .ap-body{background:#fff;}
+    .ap-body iframe{width:100%;border:0;display:block;}
+    </style>
+    <div class="ap-head">
+      <div>
+        <h1 class="ap-title">✉️ Aperçu de l'emailing rentrée</h1>
+        <div class="ap-sub">Emails tels qu'ils partiront à <b><?= pr_h($prev['org_name'] ?: $prev['email']) ?></b><?= !empty($prev['city']) ? ' · ' . pr_h($prev['city']) : '' ?> — personnalisés automatiquement.</div>
+      </div>
+      <a href="/fondateur-prospection" class="sa-btn sa-btn-ghost sa-btn-sm">← Retour à la liste</a>
+    </div>
+    <?php
+    $seqLabels = $seq;
+    for ($s = 0; $s <= $LAST_STEP; $s++):
+        $m = ak_prospect_build_email($prev, $s, $seqLabels);
+        $srcdoc = htmlspecialchars('<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>body{margin:0;padding:22px;background:#fff;}</style></head><body>' . $m['html'] . '</body></html>', ENT_QUOTES, 'UTF-8');
+    ?>
+      <div class="ap-mail">
+        <div class="ap-mail-hd">
+          <span class="ap-step"><?= pr_h($seqLabels[$s]['label'] ?? ('Email ' . ($s + 1))) ?> · <?= $s + 1 ?>/<?= $LAST_STEP + 1 ?><?= $s > 0 ? ' · J+' . array_sum(array_map(fn($i) => (int) ($seqLabels[$i]['delay'] ?? 0), range(0, $s - 1))) : ' · immédiat' ?></span>
+          <div class="ap-row">De : <b><?= pr_h($fromName) ?></b> &lt;<?= pr_h($fromMail) ?>&gt;</div>
+          <div class="ap-row">À : <b><?= pr_h($prev['email']) ?></b></div>
+          <div class="ap-subject"><?= pr_h($m['subject']) ?></div>
+        </div>
+        <div class="ap-body"><iframe srcdoc="<?= $srcdoc ?>" onload="this.style.height=(this.contentWindow.document.body.scrollHeight+8)+'px';"></iframe></div>
+      </div>
+    <?php endfor; ?>
+    <p style="max-width:620px;margin:0 auto;font-size:12px;color:var(--sa-ink-4);text-align:center;">
+      Séquence de <?= $LAST_STEP + 1 ?> emails espacés automatiquement. Chaque relance ne part que si le prospect n'a pas répondu / ne s'est pas désinscrit. Personnalisation : nom, catégorie (<?= pr_h($CAT_LABELS[$prev['category']] ?? 'générique') ?>), ville, angle rentrée.
+    </p>
+    <?php
+    sa_render_foot();
+    exit;
+}
 
 // ============================ ACTIONS (POST) ============================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -171,8 +230,6 @@ try { foreach ($pdo->query("SELECT type, COUNT(*) n FROM asso_prospect_events GR
 $sendingOn = defined('AK_PROSPECT_SENDING_ENABLED') && AK_PROSPECT_SENDING_ENABLED;
 $cap = defined('AK_PROSPECT_DAILY_CAP') ? AK_PROSPECT_DAILY_CAP : 40;
 
-$CAT_LABELS = [];
-foreach (ak_directory_categories() as $k => $v) $CAT_LABELS[$k] = $v['label'];
 function pr_h($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 function pr_date($d) { return $d ? date('d/m/Y', strtotime($d)) : '—'; }
 function pr_ds($d) { return $d ? date('d/m/y', strtotime($d)) : '—'; }
@@ -235,7 +292,10 @@ select.pr-mini,input.pr-mini{background:var(--sa-bg-3);border:1px solid var(--sa
     <h1 class="pr-title">🚀 Prospection <span class="pr-seal">EMAILING RENTRÉE</span></h1>
     <div class="pr-sub">Trouvez de nouveaux clients pour la rentrée — emailing personnalisé, relances et suivi complet.</div>
   </div>
-  <a href="/fondateur-pilotage" class="sa-btn sa-btn-ghost sa-btn-sm">← Pilotage</a>
+  <div style="display:flex;gap:8px;">
+    <a href="/fondateur-prospection?apercu=0" class="sa-btn sa-btn-ghost sa-btn-sm">👁️ Voir un exemple d'email</a>
+    <a href="/fondateur-pilotage" class="sa-btn sa-btn-ghost sa-btn-sm">← Pilotage</a>
+  </div>
 </div>
 
 <?php if ($flash && !empty($flash['msg'])): ?>
@@ -357,6 +417,7 @@ if ($toEnrich > 0): ?>
         <td><div class="pr-track"><span title="Envoyés">📤 <b><?= $e['sent'] ?? 0 ?></b></span><span title="Clics">👆 <b><?= $e['click'] ?? 0 ?></b></span><span title="Réponses">💬 <b><?= $e['reply'] ?? 0 ?></b></span></div></td>
         <td>
           <div class="pr-actions">
+            <a class="pr-ic" href="/fondateur-prospection?apercu=<?= $id ?>" title="Aperçu de l'email">👁️</a>
             <?php if ($canSend): ?>
             <form method="post" onsubmit="return confirm('Envoyer l\'email de prospection (étape <?= $stp + 1 ?>) à <?= pr_h($p['email']) ?> ?');">
               <input type="hidden" name="csrf" value="<?= pr_h($CSRF) ?>"><input type="hidden" name="action" value="send"><input type="hidden" name="id" value="<?= $id ?>">
