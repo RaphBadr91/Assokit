@@ -62,6 +62,24 @@ if (!function_exists('ak_prospect_angle')) {
  * Gabarit HTML premium d'email (compatible clients mail : tables + styles inline).
  * Header dégradé émeraude, titre accrocheur, bouton 3D en relief, bande de bénéfices.
  */
+if (!function_exists('ak_prospect_format_body')) {
+    /** Met en forme le corps : échappe le HTML, gère **gras** et les mini-paragraphes (\n\n). */
+    function ak_prospect_format_body(string $raw, string $font): string {
+        $raw = trim($raw);
+        if ($raw === '') return '';
+        $paras = preg_split('/\n\s*\n/', $raw);              // paragraphes séparés par une ligne vide
+        $out = '';
+        foreach ($paras as $i => $para) {
+            $esc = htmlspecialchars(trim($para), ENT_QUOTES, 'UTF-8');
+            $esc = preg_replace('/\*\*(.+?)\*\*/s', '<strong style="color:#0F172A;font-weight:700;">$1</strong>', $esc);
+            $esc = nl2br($esc);                               // saut de ligne simple -> <br>
+            $mb = $i === count($paras) - 1 ? '20px' : '14px';
+            $out .= '<p style="margin:0 0 ' . $mb . ';font-family:' . $font . ';font-size:15.5px;line-height:1.72;color:#334155;">' . $esc . '</p>';
+        }
+        return $out;
+    }
+}
+
 if (!function_exists('ak_prospect_mockup')) {
     /** Mockup produit (fenêtre app) en HTML email-safe, thématisé asso/TPE. */
     function ak_prospect_mockup(string $type, string $font): string {
@@ -69,10 +87,12 @@ if (!function_exists('ak_prospect_mockup')) {
         $rows = $type === 'tpe' ? [
             ['&#129534;', '#DBEAFE', 'Factures du mois', '6 payées &#183; 2 en attente', '8 400 &#8364;', '#065F46', '#D1FAE5'],
             ['&#127959;&#65039;', '#EDE9FE', 'Chantier Villa Sud', 'Budget suivi &#183; 3 factures', '62%', '#5B21B6', '#EDE9FE'],
+            ['&#128202;', '#E0F2FE', 'Comptabilité analytique', 'Rentabilité par chantier', 'Live', '#0369A1', '#E0F2FE'],
             ['&#128176;', '#FEF3C7', 'Trésorerie', 'Relances automatiques', 'Saine', '#047857', '#D1FAE5'],
         ] : [
             ['&#128101;', '#DCFCE7', '248 adhérents', 'Annuaire à jour', '+12', '#047857', '#D1FAE5'],
             ['&#128179;', '#FCE7F3', 'Cotisations', 'Statut par adhérent', '94%', '#047857', '#D1FAE5'],
+            ['&#128202;', '#E0F2FE', 'Comptabilité analytique', 'Rentabilité par projet', 'Live', '#0369A1', '#E0F2FE'],
             ['&#129534;', '#DBEAFE', 'Facture 2026-014', 'Émise le 2 sept.', 'Payée', '#1D4ED8', '#DBEAFE'],
         ];
         $body = '';
@@ -104,7 +124,7 @@ if (!function_exists('ak_prospect_html_template')) {
         $logo = (defined('AK_PUBLIC_DOMAIN') ? rtrim(AK_PUBLIC_DOMAIN, '/') : 'https://assokit.fr') . '/assets/logo-assokit.png';
         $hello = htmlspecialchars((string) ($d['hello'] ?? 'Bonjour,'));
         $head  = htmlspecialchars((string) ($d['headline'] ?? 'La rentrée, simplifiée.'));
-        $body  = nl2br(htmlspecialchars((string) ($d['body'] ?? '')));
+        $bodyHtml = ak_prospect_format_body((string) ($d['body'] ?? ''), "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif");
         $link  = htmlspecialchars((string) ($d['link'] ?? 'https://assokit.fr'));
         $unsub = htmlspecialchars((string) ($d['unsub'] ?? 'https://assokit.fr'));
         $type  = ($d['type'] ?? 'asso') === 'tpe' ? 'tpe' : 'asso';
@@ -157,7 +177,7 @@ if (!function_exists('ak_prospect_html_template')) {
             . '<div style="font-family:' . $FONT . ';font-size:11.5px;font-weight:800;color:#059669;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:12px;">Le logiciel des associations &amp; TPE</div>'
             . '<h1 style="margin:0 0 20px;font-family:' . $FONT . ';font-size:28px;line-height:1.24;color:#0F172A;font-weight:800;letter-spacing:-.5px;">' . $head . '</h1>'
             . '<p style="margin:0 0 14px;font-family:' . $FONT . ';font-size:15.5px;line-height:1.65;color:#334155;">' . $hello . '</p>'
-            . '<p style="margin:0 0 20px;font-family:' . $FONT . ';font-size:15.5px;line-height:1.72;color:#334155;">' . $body . '</p>'
+            . $bodyHtml
             // ---- Mockup produit ----
             . ak_prospect_mockup($type, $FONT)
             // ---- Offre ----
@@ -215,8 +235,10 @@ if (!function_exists('ak_prospect_build_email')) {
                 $sys = "Tu écris un email de prospection B2B court, humain et chaleureux en français pour Assokit, "
                      . "logiciel tout-en-un pour " . ($type === 'tpe' ? 'TPE/PME et indépendants' : 'associations loi 1901') . ". "
                      . "CONTEXTE SAISONNIER : c'est la RENTRÉE (septembre), le pic d'activité. "
-                     . "3-5 phrases max, ton respectueux, pas de superlatifs racoleurs, une seule idée + un appel à l'action doux. "
-                     . "Ne mets NI objet, NI formule d'ouverture, NI signature : juste le corps.";
+                     . "FORMAT OBLIGATOIRE : 2 à 3 MINI-PARAGRAPHES très courts séparés par une ligne vide (\\n\\n), "
+                     . "et mets en **gras** (avec des doubles astérisques) 2 ou 3 expressions clés pour attirer l'oeil. "
+                     . "Ton respectueux, pas de superlatifs racoleurs, une seule idée forte + un appel à l'action doux. "
+                     . "Ne mets NI objet, NI formule d'ouverture (pas de 'Bonjour'), NI signature : juste le corps.";
                 $u = "Étape : " . ($seq[$step]['label'] ?? 'contact') . ". Destinataire : " . $orgBit . $cityBit . ". "
                    . "Angle rentrée : " . $angle['hook'] . ". Douleur à soulager : " . $angle['pain'] . ".";
                 $body_txt = trim((string) ClaudeAPI::callMessages($sys, $u, 400));
@@ -224,11 +246,20 @@ if (!function_exists('ak_prospect_build_email')) {
         }
         if (!$body_txt) {
             $templates = [
-                0 => "À l'approche de " . $angle['hook'] . ", je me permets de contacter " . $orgBit . $cityBit . " : c'est souvent la période la plus chargée pour " . $angle['pain'] . ". Assokit réunit tout ça dans un seul outil simple, pour aborder la rentrée sans paperasse. J'ai pensé que ça pourrait vous faire gagner un temps précieux ce mois-ci.",
-                1 => "Je reviens vers vous : en pleine rentrée, beaucoup de structures comme la vôtre nous disent gagner plusieurs heures par semaine sur " . $angle['pain'] . " grâce à Assokit. Cela vaut peut-être un coup d'œil avant que le rush ne s'installe ?",
-                2 => "Petit rappel amical — si simplifier " . $angle['pain'] . " pour cette rentrée vous parle, je serais ravi de vous montrer concrètement Assokit en 20 minutes, adapté à " . $orgBit . ".",
-                3 => "Je ne voudrais pas vous déranger inutilement en cette période chargée. Si ce n'est pas le bon moment, dites-le moi simplement. Sinon, la page ci-dessous résume tout en 2 minutes.",
-                4 => "Dernier message de ma part : je vous laisse la page de présentation, à consulter quand vous voulez. Et si la gestion de " . $who . " devient un casse-tête cette saison, vous saurez où nous trouver !",
+                0 => "À l'approche de **" . $angle['hook'] . "**, je me permets de contacter **" . $orgBit . $cityBit . "**.\n\n"
+                   . "C'est souvent la période la plus chargée pour " . $angle['pain'] . ".\n\n"
+                   . "**Assokit réunit tout ça dans un seul outil simple** — pour aborder la rentrée sans paperasse et **gagner un temps précieux** dès ce mois-ci.",
+                1 => "Je me permets de revenir vers vous en pleine rentrée.\n\n"
+                   . "Beaucoup de structures comme la vôtre nous disent **gagner plusieurs heures par semaine** sur " . $angle['pain'] . " grâce à Assokit.\n\n"
+                   . "Cela vaut peut-être un coup d'œil **avant que le rush ne s'installe** ?",
+                2 => "Petit rappel amical.\n\n"
+                   . "Si **simplifier " . $angle['pain'] . "** pour cette rentrée vous parle, je serais ravi de vous montrer concrètement Assokit **en 20 minutes**, adapté à " . $orgBit . ".",
+                3 => "Je ne voudrais pas vous déranger inutilement en cette période chargée.\n\n"
+                   . "Si ce n'est **pas le bon moment**, dites-le moi simplement.\n\n"
+                   . "Sinon, la page ci-dessous **résume tout en 2 minutes**.",
+                4 => "Dernier message de ma part.\n\n"
+                   . "Je vous laisse la page de présentation, à consulter quand vous voulez.\n\n"
+                   . "Et si la gestion de " . $who . " devient un casse-tête cette saison, **vous saurez où nous trouver** !",
             ];
             $body_txt = $templates[$step] ?? $templates[0];
         }
