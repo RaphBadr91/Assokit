@@ -59,6 +59,75 @@ if (!function_exists('ak_prospect_angle')) {
 }
 
 /**
+ * Gabarit HTML premium d'email (compatible clients mail : tables + styles inline).
+ * Header dégradé émeraude, titre accrocheur, bouton 3D en relief, bande de bénéfices.
+ */
+if (!function_exists('ak_prospect_html_template')) {
+    function ak_prospect_html_template(array $d): string {
+        $hello = htmlspecialchars((string) ($d['hello'] ?? 'Bonjour,'));
+        $head  = htmlspecialchars((string) ($d['headline'] ?? 'La rentrée, simplifiée.'));
+        $body  = nl2br(htmlspecialchars((string) ($d['body'] ?? '')));
+        $link  = htmlspecialchars((string) ($d['link'] ?? 'https://assokit.fr'));
+        $unsub = htmlspecialchars((string) ($d['unsub'] ?? 'https://assokit.fr'));
+        $type  = ($d['type'] ?? 'asso') === 'tpe' ? 'tpe' : 'asso';
+        $pre   = htmlspecialchars(mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags((string) ($d['body'] ?? '')))), 0, 110));
+
+        $benefits = $type === 'tpe'
+            ? ['Devis &amp; factures créés en 2 minutes', 'Trésorerie suivie, relances automatiques', 'Application mobile incluse']
+            : ['Adhérents &amp; cotisations centralisés', 'Comptabilité et factures simplifiées', 'Application mobile incluse'];
+
+        $benefitRows = '';
+        foreach ($benefits as $b) {
+            $benefitRows .= '<tr>'
+                . '<td valign="top" style="padding:6px 10px 6px 0;width:26px;">'
+                . '<div style="width:22px;height:22px;border-radius:50%;background:#D1FAE5;color:#047857;font-weight:800;font-size:13px;line-height:22px;text-align:center;font-family:Arial,sans-serif;">&#10003;</div>'
+                . '</td>'
+                . '<td valign="middle" style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#334155;">' . $b . '</td>'
+                . '</tr>';
+        }
+
+        return '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            . '<meta name="color-scheme" content="light"></head>'
+            . '<body style="margin:0;padding:0;background:#FAF8F5;">'
+            // preheader caché (texte d'aperçu dans la boîte de réception)
+            . '<div style="display:none;max-height:0;overflow:hidden;opacity:0;">' . $pre . '&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;</div>'
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FAF8F5;padding:24px 12px;"><tr><td align="center">'
+            . '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 18px 50px -20px rgba(4,101,63,.28);">'
+            // ---- Header dégradé ----
+            . '<tr><td style="background:#059669;background:linear-gradient(120deg,#10B981 0%,#059669 55%,#047857 100%);padding:26px 30px;">'
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
+            . '<td style="font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:800;color:#ffffff;letter-spacing:.2px;">&#127807; Assokit</td>'
+            . '<td align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;color:#D1FAE5;letter-spacing:.6px;text-transform:uppercase;">Spécial rentrée</td>'
+            . '</tr></table></td></tr>'
+            // ---- Corps ----
+            . '<tr><td style="padding:34px 30px 8px;">'
+            . '<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;color:#059669;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">Le logiciel des assos &amp; TPE</div>'
+            . '<h1 style="margin:0 0 18px;font-family:Georgia,\'Times New Roman\',serif;font-size:27px;line-height:1.25;color:#0F172A;font-weight:700;">' . $head . '</h1>'
+            . '<p style="margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#334155;">' . $hello . '</p>'
+            . '<p style="margin:0 0 22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:#334155;">' . $body . '</p>'
+            // ---- Bouton 3D ----
+            . '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 26px;"><tr>'
+            . '<td align="center" bgcolor="#059669" style="border-radius:13px;background:linear-gradient(180deg,#10B981 0%,#059669 100%);box-shadow:0 6px 0 #04653F, 0 16px 26px rgba(4,101,63,.38);">'
+            . '<a href="' . $link . '" style="display:inline-block;padding:16px 40px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:800;color:#ffffff;text-decoration:none;letter-spacing:.3px;">Découvrir Assokit en 2 min &#8594;</a>'
+            . '</td></tr></table>'
+            // ---- Bande de bénéfices ----
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6FBF9;border:1px solid #E2F3EC;border-radius:14px;padding:8px 18px;margin-bottom:24px;"><tr><td style="padding:10px 4px;">'
+            . '<table role="presentation" cellpadding="0" cellspacing="0">' . $benefitRows . '</table>'
+            . '</td></tr></table>'
+            // ---- Signature ----
+            . '<p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#334155;">Bien à vous,</p>'
+            . '<p style="margin:0 0 26px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#0F172A;"><strong>Raphael</strong> · Assokit<br><a href="https://assokit.fr" style="color:#059669;text-decoration:none;font-weight:600;">assokit.fr</a></p>'
+            . '</td></tr>'
+            // ---- Footer ----
+            . '<tr><td style="padding:20px 30px 28px;border-top:1px solid #EEF2F0;">'
+            . '<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11.5px;line-height:1.6;color:#94A3B8;">Vous recevez cet email professionnel car votre structure pourrait être concernée par nos services de gestion. '
+            . 'Pour ne plus être contacté&#183;e : <a href="' . $unsub . '" style="color:#94A3B8;text-decoration:underline;">se désinscrire</a>.</p>'
+            . '</td></tr>'
+            . '</table></td></tr></table></body></html>';
+    }
+}
+
+/**
  * Construit le sujet + corps HTML d'un email de prospection (rentrée, personnalisé
  * catégorie/ville). Utilisé par le cron ET la page fondateur web (envoi manuel).
  * Personnalisation IA Claude si le helper est présent, sinon gabarit professionnel.
@@ -110,15 +179,15 @@ if (!function_exists('ak_prospect_build_email')) {
         ];
         $subject = $subjects[$step] ?? "Assokit — " . $who;
 
-        $html = "<div style=\"font-family:system-ui,Arial,sans-serif;max-width:560px;margin:0 auto;color:#0F172A;line-height:1.6;font-size:15px;\">"
-            . "<p>" . htmlspecialchars($hello) . "</p>"
-            . "<p>" . nl2br(htmlspecialchars($body_txt)) . "</p>"
-            . "<p><a href=\"" . htmlspecialchars($link) . "\" style=\"display:inline-block;background:#059669;color:#fff;text-decoration:none;padding:11px 20px;border-radius:9px;font-weight:600;\">Découvrir Assokit en 2 minutes</a></p>"
-            . "<p style=\"margin-top:18px;\">Bien à vous,<br>Raphael · Assokit<br><a href=\"https://assokit.fr\" style=\"color:#059669;\">assokit.fr</a></p>"
-            . "<hr style=\"border:none;border-top:1px solid #E2E8F0;margin:20px 0;\">"
-            . "<p style=\"font-size:11px;color:#94A3B8;\">Vous recevez cet email professionnel car votre structure pourrait être concernée. "
-            . "Pour ne plus être contacté·e : <a href=\"" . htmlspecialchars($unsub) . "\" style=\"color:#94A3B8;\">se désinscrire</a>.</p>"
-            . "</div>";
+        $html = ak_prospect_html_template([
+            'hello'    => $hello,
+            'headline' => 'La rentrée, sans la paperasse.',
+            'body'     => $body_txt,
+            'link'     => $link,
+            'unsub'    => $unsub,
+            'type'     => $type,
+            'angle'    => $angle,
+        ]);
         return ['subject' => $subject, 'html' => $html];
     }
 }

@@ -71,7 +71,7 @@ if (isset($_GET['apercu'])) {
     $seqLabels = $seq;
     for ($s = 0; $s <= $LAST_STEP; $s++):
         $m = ak_prospect_build_email($prev, $s, $seqLabels);
-        $srcdoc = htmlspecialchars('<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>body{margin:0;padding:22px;background:#fff;}</style></head><body>' . $m['html'] . '</body></html>', ENT_QUOTES, 'UTF-8');
+        $srcdoc = htmlspecialchars($m['html'], ENT_QUOTES, 'UTF-8');
     ?>
       <div class="ap-mail">
         <div class="ap-mail-hd">
