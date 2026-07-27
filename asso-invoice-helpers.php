@@ -393,7 +393,12 @@ function ak_asso_invoice_render_pdf(PDO $pdo, int $invoice_id): string
     // Dossier upload
     $dir = __DIR__ . '/uploads/asso-invoices';
     if (!is_dir($dir)) @mkdir($dir, 0755, true);
-    $filename = $invoice['invoice_number'] . '.pdf';
+    // Nom de fichier NON DEVINABLE : on ajoute un suffixe issu de l'UUID de la facture,
+    // pour empêcher l'énumération inter-organisations des PDF (confidentialité / RGPD / PDP).
+    $num_safe = preg_replace('/[^A-Za-z0-9\-]/', '-', (string) $invoice['invoice_number']);
+    $uuid_safe = substr(preg_replace('/[^a-f0-9]/', '', (string) ($invoice['public_uuid'] ?? '')), 0, 20);
+    $base_name = $num_safe . ($uuid_safe !== '' ? '-' . $uuid_safe : '');
+    $filename = $base_name . '.pdf';
     $full_path = $dir . '/' . $filename;
 
     // Génération du XML Factur-X (norme DGFiP) si possible.
@@ -454,11 +459,11 @@ function ak_asso_invoice_render_pdf(PDO $pdo, int $invoice_id): string
     }
 
     if (!$pdf_generated) {
-        // Fallback HTML
-        $html_path = $dir . '/' . $invoice['invoice_number'] . '.html';
+        // Fallback HTML (même nom non devinable)
+        $filename = $base_name . '.html';
+        $html_path = $dir . '/' . $filename;
         file_put_contents($html_path, $html);
         $full_path = $html_path;
-        $filename = $invoice['invoice_number'] . '.html';
     }
 
     $relative_path = '/uploads/asso-invoices/' . $filename;

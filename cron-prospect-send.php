@@ -13,11 +13,6 @@
  * NE MODIFIE PAS le site.
  */
 $CLI = (PHP_SAPI === 'cli');
-if (!$CLI) {
-    // Autorise un déclenchement HTTP protégé par un secret (?key=), sinon 403.
-    $key = $_GET['key'] ?? '';
-    // (à configurer : compare à une constante AK_CRON_KEY si définie)
-}
 
 ob_start();
 require_once __DIR__ . '/config.php';
@@ -26,7 +21,16 @@ require_once __DIR__ . '/config.php';
 ob_end_clean();
 require_once __DIR__ . '/api/_app-prospect.php';
 
-if (!$CLI && defined('AK_CRON_KEY') && AK_CRON_KEY && ($_GET['key'] ?? '') !== AK_CRON_KEY) { http_response_code(403); exit("forbidden\n"); }
+// Sécurité (fail-closed) : en CLI (cron serveur) autorisé ; en HTTP, exige une clé
+// secrète CONFIGURÉE et correcte, sinon 403. Sans AK_CRON_KEY défini, l'accès HTTP
+// est refusé (on ne se repose jamais sur "constante absente = pas de contrôle").
+if (!$CLI) {
+    $provided = (string) ($_GET['key'] ?? '');
+    if (!defined('AK_CRON_KEY') || !AK_CRON_KEY || !hash_equals((string) AK_CRON_KEY, $provided)) {
+        http_response_code(403);
+        exit("forbidden\n");
+    }
+}
 
 ak_prospect_tables_ensure($pdo);
 $DRY = !AK_PROSPECT_SENDING_ENABLED;
