@@ -396,27 +396,59 @@ function ak_asso_invoice_render_pdf(PDO $pdo, int $invoice_id): string
     $filename = $invoice['invoice_number'] . '.pdf';
     $full_path = $dir . '/' . $filename;
 
+    // Génération du XML Factur-X (norme DGFiP) si possible.
+    require_once __DIR__ . '/facturx-helpers.php';
+    $facturx_xml = null;
+    if (AK_FACTURX_ENABLED) {
+        try { $facturx_xml = ak_facturx_build_xml($invoice, $emitter, $client); }
+        catch (Throwable $e) { error_log('[FACTURX] build error : ' . $e->getMessage()); }
+    }
+
+    // Fabrique le PDF (Factur-X/PDF-A3 si XML dispo, sinon PDF classique) avec repli.
+    $render_pdf = function (bool $with_facturx) use ($html, $invoice, $full_path, $facturx_xml): bool {
+        if (!class_exists('\Mpdf\Mpdf')) return false;
+        $mpdf = new \Mpdf\Mpdf([
+            'mode' => 'utf-8', 'format' => 'A4',
+            'margin_left' => 15, 'margin_right' => 15, 'margin_top' => 15, 'margin_bottom' => 15,
+            'tempDir' => sys_get_temp_dir(),
+        ]);
+        if ($with_facturx && $facturx_xml) {
+            // PDF/A-3 requis pour embarquer le XML Factur-X
+            $mpdf->PDFA = true;
+            $mpdf->PDFAauto = true;
+            if (property_exists($mpdf, 'PDFAversion')) $mpdf->PDFAversion = '3-B';
+        }
+        $mpdf->SetTitle('Facture ' . $invoice['invoice_number']);
+        $mpdf->WriteHTML($html);
+        if ($with_facturx && $facturx_xml) {
+            $mpdf->SetAssociatedFiles([[
+                'name' => 'factur-x.xml',
+                'mime' => 'text/xml',
+                'description' => 'Facture électronique Factur-X',
+                'AFRelationship' => 'Data',
+                'content' => $facturx_xml,
+            ]]);
+            if (method_exists($mpdf, 'SetAdditionalXmpRdf')) $mpdf->SetAdditionalXmpRdf(ak_facturx_xmp());
+        }
+        $mpdf->Output($full_path, \Mpdf\Output\Destination::FILE);
+        return true;
+    };
+
     $pdf_generated = false;
+    $facturx_embedded = false;
     $autoload = __DIR__ . '/vendor/autoload.php';
     if (file_exists($autoload)) {
         require_once $autoload;
         if (class_exists('\Mpdf\Mpdf')) {
-            try {
-                $mpdf = new \Mpdf\Mpdf([
-                    'mode' => 'utf-8',
-                    'format' => 'A4',
-                    'margin_left' => 15,
-                    'margin_right' => 15,
-                    'margin_top' => 15,
-                    'margin_bottom' => 15,
-                    'tempDir' => sys_get_temp_dir(),
-                ]);
-                $mpdf->SetTitle('Facture ' . $invoice['invoice_number']);
-                $mpdf->WriteHTML($html);
-                $mpdf->Output($full_path, \Mpdf\Output\Destination::FILE);
-                $pdf_generated = true;
-            } catch (Throwable $e) {
-                error_log('[ASSO INVOICE PDF] mPDF error : ' . $e->getMessage());
+            // 1) Tentative Factur-X (PDF/A-3 + XML embarqué)
+            if ($facturx_xml) {
+                try { $pdf_generated = $render_pdf(true); $facturx_embedded = $pdf_generated; }
+                catch (Throwable $e) { error_log('[FACTURX] embed error, repli PDF classique : ' . $e->getMessage()); }
+            }
+            // 2) Repli : PDF classique si Factur-X indisponible ou en échec
+            if (!$pdf_generated) {
+                try { $pdf_generated = $render_pdf(false); }
+                catch (Throwable $e) { error_log('[ASSO INVOICE PDF] mPDF error : ' . $e->getMessage()); }
             }
         }
     }
