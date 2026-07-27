@@ -27,6 +27,10 @@ $stmt = $pdo->prepare("SELECT * FROM organizations WHERE id = ? LIMIT 1");
 $stmt->execute([$org_id]);
 $org = $stmt->fetch();
 
+// Paramètres société Assokit (émetteur) pour la facturation électronique.
+$co = [];
+try { $co = $pdo->query("SELECT * FROM company_settings WHERE id = 1 LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: []; } catch (Throwable $e) {}
+
 function fpdf_date($d) { return $d ? date('d/m/Y', strtotime($d)) : '—'; }
 function fpdf_amount($a) { return number_format((float)$a, 2, ',', ' ') . ' €'; }
 function fpdf_country($code) {
@@ -121,17 +125,73 @@ table.totals td { padding: 6px 12px; font-size: 12px; }
   Facture générée par Assokit · ' . date('d/m/Y H:i') . '
 </div>';
 
-try {
+// --- Facture électronique Factur-X (DGFiP) : Assokit émetteur, l'organisation cliente ---
+require_once __DIR__ . '/facturx-helpers.php';
+$facturx_xml = null;
+if (AK_FACTURX_ENABLED) {
+    try {
+        $fx_emitter = [
+            'legal_name' => $co['legal_name'] ?? 'Assokit',
+            'name'       => $co['legal_name'] ?? 'Assokit',
+            'siren'      => $co['siren'] ?? null,
+            'siret'      => $co['siret'] ?? null,
+            'vat_subject'=> $co['vat_subject'] ?? null,
+            'vat_number' => $co['vat_number'] ?? null,
+            'billing_address_country' => $co['address_country'] ?? 'FR',
+        ];
+        $fx_client = [
+            'legal_name'   => $org['legal_name'] ?? null,
+            'display_name' => $org['name'] ?? null,
+            'siren'        => $org['siren'] ?? null,
+            'siret'        => $org['siret'] ?? null,
+            'address_country' => $org['billing_address_country'] ?? 'FR',
+        ];
+        $fx_inv = [
+            'invoice_number'  => $inv['invoice_number'],
+            'issued_at'       => $inv['issued_at'],
+            'currency'        => 'EUR',
+            'amount_ht_cents' => (int) round(((float) ($inv['amount_ht'] ?? 0)) * 100),
+            'amount_vat_cents'=> (int) round(((float) ($inv['amount_tva'] ?? 0)) * 100),
+            'amount_ttc_cents'=> (int) round(((float) ($inv['amount_ttc'] ?? 0)) * 100),
+        ];
+        $facturx_xml = ak_facturx_build_xml($fx_inv, $fx_emitter, $fx_client);
+    } catch (Throwable $e) { error_log('[FACTURX abo] build : ' . $e->getMessage()); }
+}
+
+$filename = 'facture-' . preg_replace('/[^A-Za-z0-9\-]/', '-', $inv['invoice_number']) . '.pdf';
+
+// Génère le PDF en mémoire (Factur-X si possible, sinon classique), avec repli.
+$build = function (bool $with_facturx) use ($html, $inv, $facturx_xml): string {
     $mpdf = new \Mpdf\Mpdf([
         'mode' => 'utf-8', 'format' => 'A4',
-        'margin_left' => 15, 'margin_right' => 15,
-        'margin_top' => 15, 'margin_bottom' => 15,
+        'margin_left' => 15, 'margin_right' => 15, 'margin_top' => 15, 'margin_bottom' => 15,
     ]);
+    if ($with_facturx && $facturx_xml) {
+        $mpdf->PDFA = true; $mpdf->PDFAauto = true;
+        if (property_exists($mpdf, 'PDFAversion')) $mpdf->PDFAversion = '3-B';
+    }
     $mpdf->SetTitle('Facture ' . $inv['invoice_number']);
     $mpdf->WriteHTML($html);
-    $filename = 'facture-' . preg_replace('/[^A-Za-z0-9\-]/', '-', $inv['invoice_number']) . '.pdf';
-    $mpdf->Output($filename, 'I');
-} catch (\Throwable $e) {
-    http_response_code(500);
-    die('Erreur génération PDF : ' . htmlspecialchars($e->getMessage()));
+    if ($with_facturx && $facturx_xml) {
+        $mpdf->SetAssociatedFiles([[
+            'name' => 'factur-x.xml', 'mime' => 'text/xml',
+            'description' => 'Facture électronique Factur-X', 'AFRelationship' => 'Data',
+            'content' => $facturx_xml,
+        ]]);
+        if (method_exists($mpdf, 'SetAdditionalXmpRdf')) $mpdf->SetAdditionalXmpRdf(ak_facturx_xmp());
+    }
+    return (string) $mpdf->Output('', 'S');
+};
+
+$pdf_out = null;
+if ($facturx_xml) {
+    try { $pdf_out = $build(true); } catch (Throwable $e) { error_log('[FACTURX abo] embed, repli : ' . $e->getMessage()); }
 }
+if ($pdf_out === null) {
+    try { $pdf_out = $build(false); } catch (Throwable $e) { http_response_code(500); die('Erreur génération PDF : ' . htmlspecialchars($e->getMessage())); }
+}
+
+header('Content-Type: application/pdf');
+header('Content-Disposition: inline; filename="' . $filename . '"');
+header('Content-Length: ' . strlen($pdf_out));
+echo $pdf_out;
