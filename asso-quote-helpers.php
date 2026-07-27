@@ -191,7 +191,11 @@ function ak_asso_quote_render_pdf(PDO $pdo, int $quote_id): string
 
     $dir = __DIR__ . '/uploads/asso-quotes';
     if (!is_dir($dir)) @mkdir($dir, 0755, true);
-    $filename = $quote['quote_number'] . '.pdf';
+    // Nom NON DEVINABLE (suffixe UUID) : empêche l'énumération inter-organisations.
+    $num_safe = preg_replace('/[^A-Za-z0-9\-]/', '-', (string) $quote['quote_number']);
+    $uuid_safe = substr(preg_replace('/[^a-f0-9]/', '', (string) ($quote['public_uuid'] ?? '')), 0, 20);
+    $base_name = $num_safe . ($uuid_safe !== '' ? '-' . $uuid_safe : '');
+    $filename = $base_name . '.pdf';
     $full_path = $dir . '/' . $filename;
 
     $pdf_generated = false;
@@ -217,10 +221,10 @@ function ak_asso_quote_render_pdf(PDO $pdo, int $quote_id): string
     }
 
     if (!$pdf_generated) {
-        $html_path = $dir . '/' . $quote['quote_number'] . '.html';
+        $filename = $base_name . '.html';
+        $html_path = $dir . '/' . $filename;
         file_put_contents($html_path, $html);
         $full_path = $html_path;
-        $filename = $quote['quote_number'] . '.html';
     }
 
     $relative = '/uploads/asso-quotes/' . $filename;

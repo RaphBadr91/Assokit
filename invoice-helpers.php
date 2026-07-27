@@ -193,7 +193,12 @@ function ak_render_invoice_pdf(PDO $pdo, int $invoice_id): string
     // Destination
     $dir = __DIR__ . '/uploads/invoices';
     if (!is_dir($dir)) @mkdir($dir, 0755, true);
-    $filename = $invoice['invoice_number'] . '.pdf';
+    // Nom NON DEVINABLE (suffixe UUID/aléatoire) : empêche l'énumération des factures.
+    $num_safe = preg_replace('/[^A-Za-z0-9\-]/', '-', (string) $invoice['invoice_number']);
+    $uuid_safe = substr(preg_replace('/[^a-f0-9]/', '', (string) ($invoice['public_uuid'] ?? '')), 0, 20);
+    if ($uuid_safe === '') $uuid_safe = bin2hex(random_bytes(8));
+    $base_name = $num_safe . '-' . $uuid_safe;
+    $filename = $base_name . '.pdf';
     $full_path = $dir . '/' . $filename;
 
     // Utiliser mPDF si dispo, sinon fallback HTML + wkhtmltopdf, sinon juste HTML
@@ -241,10 +246,10 @@ function ak_render_invoice_pdf(PDO $pdo, int $invoice_id): string
 
     // Fallback : sauvegarder juste le HTML si mPDF indisponible
     if (!$pdf_generated) {
-        $html_path = $dir . '/' . $invoice['invoice_number'] . '.html';
+        $filename = $base_name . '.html';
+        $html_path = $dir . '/' . $filename;
         file_put_contents($html_path, $html);
         $full_path = $html_path;
-        $filename = $invoice['invoice_number'] . '.html';
         $reason = $mpdf_error ? ('Erreur mPDF: ' . $mpdf_error) : 'mPDF non disponible';
         error_log('[INVOICE PDF] HTML fallback - ' . $reason);
     }

@@ -1,0 +1,4 @@
+# Empeche le listing des dossiers (defense en profondeur).
+# Les fichiers restent accessibles par URL directe uniquement si on connait le nom
+# (desormais non devinable : suffixe UUID). Le partage public passe par un token.
+Options -Indexes
