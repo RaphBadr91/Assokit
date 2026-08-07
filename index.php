@@ -68,15 +68,13 @@ render_public_head([
             'description' => 'Logiciel tout-en-un pour les associations loi 1901 et les TPE : facturation, trésorerie, communication IA, adhérents, suivi de projets.',
             'offers' => [
                 '@type' => 'Offer',
+                'price' => '29.99',
                 'priceCurrency' => 'EUR',
                 'availability' => 'https://schema.org/InStock',
             ],
-            'aggregateRating' => [
-                '@type' => 'AggregateRating',
-                'ratingValue' => '4.9',
-                'ratingCount' => '12',
-                'bestRating' => '5',
-            ],
+            // NB : pas d'aggregateRating ici — la page d'accueil n'affiche pas d'avis,
+            // un rating structuré non adosse a des avis visibles est non conforme (Google).
+            // La note structuree vit uniquement sur /avis ou les temoignages sont affiches.
         ],
         $faq_schema,
     ],

@@ -6,7 +6,7 @@ require_login();
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
-$is_admin = ($user['role'] === 'admin'); $is_coord = false;
+$is_admin = ($user['role'] === 'admin'); $is_coord = ($user['role'] === 'coordinator');
 $can_manage = $is_admin || $is_coord;
 
 $filter = $_GET['status'] ?? '';

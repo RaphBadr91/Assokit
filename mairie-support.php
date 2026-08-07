@@ -19,6 +19,10 @@ if (!$parent_org && !is_platform_admin($current)) {
 // Envoi message support
 $flash = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['message'])) {
+    if (!check_csrf($_POST['csrf_token'] ?? '')) {
+        http_response_code(403);
+        die('Requête invalide (jeton CSRF manquant ou expiré).');
+    }
     $subject = trim($_POST['subject'] ?? '');
     $message = trim($_POST['message'] ?? '');
     if ($subject && $message) {
@@ -30,7 +34,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['message'])) {
         // Envoi email simple si Resend dispo (silent fail)
         try {
             $to = 'contact@assokit.fr';
-            $headers = "From: " . $current['email'] . "\r\nReply-To: " . $current['email'] . "\r\nContent-Type: text/plain; charset=UTF-8\r\n";
+            // Expediteur fixe (evite l'injection d'en-tete via l'email utilisateur) ; reponse vers l'agent
+            $reply = filter_var($current['email'] ?? '', FILTER_VALIDATE_EMAIL) ?: 'contact@assokit.fr';
+            $headers = "From: Support Mairie <contact@assokit.fr>\r\nReply-To: " . $reply . "\r\nContent-Type: text/plain; charset=UTF-8\r\n";
             $body = "Mairie : " . ($parent_org['name'] ?? '—') . "\nAgent : " . $current['first_name'] . ' ' . $current['last_name'] . " (" . $current['email'] . ")\n\nObjet : $subject\n\n$message";
             @mail($to, '[Support Mairie] ' . $subject, $body, $headers);
         } catch (Exception $e) {}
@@ -79,6 +85,7 @@ render_sidebar('support');
     <p style="color:#71717A;font-size:13px;margin:0 0 18px;">Posez votre question, signalez un problème ou suggérez une amélioration.</p>
 
     <form method="POST" style="display:grid;gap:14px;">
+      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
       <div>
         <label style="display:block;font-size:12.5px;font-weight:600;color:#3F3F46;margin-bottom:6px;">Objet *</label>
         <input type="text" name="subject" required maxlength="120" placeholder="Ex: Question sur la création de campagne emailing" style="width:100%;padding:11px 14px;border:1px solid #D4D4D8;border-radius:8px;font-size:13.5px;box-sizing:border-box;">

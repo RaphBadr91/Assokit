@@ -6,6 +6,13 @@
  * --------------------------------------------------------------
  */
 
+/* Indicateur de focus clavier visible (accessibilite WCAG 2.4.7) — s'applique aux liens, boutons, champs, <summary>… */
+:focus-visible {
+  outline: 2px solid var(--c-emeraude);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 :root {
   --c-emeraude: #059669;
   --c-emeraude-dark: #047857;
@@ -22,7 +29,8 @@
 
   --c-text: #0F172A;
   --c-text-2: #475569;
-  --c-text-3: #94A3B8;
+  /* #64748B (slate-500) ~4.7:1 sur blanc : conforme WCAG AA pour le texte (l'ancien #94A3B8 etait a ~2.6:1) */
+  --c-text-3: #64748B;
   --c-border: #E2E8F0;
   --c-border-soft: #F1F5F9;
 

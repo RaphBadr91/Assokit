@@ -244,22 +244,26 @@ render_sidebar('recurrences');
                   <?php if ($r['status'] === 'active'): ?>
                     <form method="post" action="/mon-asso-recurrence-toggle" style="display:inline;">
                       <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                       <input type="hidden" name="action" value="pause">
                       <button class="rec-btn rec-btn-sm rec-btn-warn" type="submit">⏸ Pause</button>
                     </form>
                     <form method="post" action="/mon-asso-recurrence-run-now" style="display:inline;" onsubmit="return confirm('Générer une facture maintenant à partir de cette récurrence ?');">
                       <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                       <button class="rec-btn rec-btn-sm rec-btn-success" type="submit">▶ Générer</button>
                     </form>
                   <?php elseif ($r['status'] === 'paused'): ?>
                     <form method="post" action="/mon-asso-recurrence-toggle" style="display:inline;">
                       <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                       <input type="hidden" name="action" value="resume">
                       <button class="rec-btn rec-btn-sm rec-btn-success" type="submit">▶ Reprendre</button>
                     </form>
                   <?php endif; ?>
                   <form method="post" action="/mon-asso-recurrence-delete" style="display:inline;" onsubmit="return confirm('Supprimer définitivement cette récurrence ? Les factures déjà générées sont conservées.');">
                     <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                    <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                     <button class="rec-btn rec-btn-sm rec-btn-danger" type="submit">🗑</button>
                   </form>
                 </div>

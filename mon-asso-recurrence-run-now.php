@@ -17,6 +17,10 @@ if ($org_id <= 0) { header('Location: /'); exit; }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: /mon-asso-recurrences'); exit; }
 
+require_once __DIR__ . '/finance-permissions.php';
+require_finance_access();
+if (!check_csrf($_POST['csrf_token'] ?? '')) { header('Location: /mon-asso-recurrences?error=csrf'); exit; }
+
 $rec_id = (int)($_POST['id'] ?? 0);
 $rec = ak_recurrence_load($pdo, $rec_id, $org_id);
 if (!$rec) { header('Location: /mon-asso-recurrences'); exit; }

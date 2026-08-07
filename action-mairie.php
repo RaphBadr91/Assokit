@@ -175,7 +175,7 @@ try {
             // Génère un mot de passe temporaire à transmettre
             $temp_password = bin2hex(random_bytes(4)); // ex: a1b2c3d4
             $hash = password_hash($temp_password, PASSWORD_DEFAULT);
-            $pdo->prepare("INSERT INTO users (first_name, last_name, email, password_hash, role, parent_org_id, parent_org_role, created_at) VALUES (?, ?, ?, ?, 'admin', ?, ?, NOW())")
+            $pdo->prepare("INSERT INTO users (first_name, last_name, email, password_hash, role, parent_org_id, parent_org_role, is_active, created_at) VALUES (?, ?, ?, ?, 'admin', ?, ?, 1, NOW())")
                 ->execute([$fn, $ln, $email, $hash, $mid, $role]);
             $new_id = (int)$pdo->lastInsertId();
             // Ajoute le nouvel agent à tous les channels mairie existants

@@ -123,7 +123,7 @@ render_sidebar('recurrences');
     <?php endif; ?>
 
     <form method="post" action="/mon-asso-recurrence-save" id="recForm">
-      <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf'] ?? '') ?>">
+      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
 
       <div class="rcard">
         <h2>Informations générales</h2>

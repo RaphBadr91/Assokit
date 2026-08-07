@@ -18,6 +18,7 @@ import {
   Switch,
   KeyboardAvoidingView,
   Alert,
+  Linking,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -141,7 +142,8 @@ function computeTotals(lines) {
 }
 
 function gotoJS(path) {
-  return "(function(){ try { window.location.href='" + BASE + path + "'; } catch(e){} })(); true;";
+  // Echappement propre via JSON.stringify (evite la casse sur apostrophe + toute injection JS)
+  return "(function(){ try { window.location.href=" + JSON.stringify(BASE + path) + "; } catch(e){} })(); true;";
 }
 
 // Capture les identifiants à la connexion (pour "rester connecté" via Face ID)
@@ -4722,8 +4724,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   // Ouvre une page web depuis une fiche détail (PDF, édition, mailto…)
   const openWeb = (path) => {
+    // mailto:/tel: -> deleguer a l'OS (la WebView Android ne sait pas les ouvrir)
     if (/^(mailto:|tel:)/.test(path)) {
-      inject("(function(){ try { window.location.href='" + path + "'; } catch(e){} })(); true;");
+      Linking.openURL(path).catch(() => {});
+      return;
+    }
+    // Lien externe (hors assokit.fr) -> ouvrir dans le navigateur systeme
+    if (/^https?:\/\//.test(path) && path.indexOf('assokit.fr') === -1) {
+      Linking.openURL(path).catch(() => {});
       return;
     }
     clearDetail();
@@ -4731,7 +4739,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     setMenuScreen(null);
     setWebMode(true);
     if (/^https?:\/\//.test(path)) {
-      inject("(function(){ try { window.location.href='" + path + "'; } catch(e){} })(); true;");
+      inject("(function(){ try { window.location.href=" + JSON.stringify(path) + "; } catch(e){} })(); true;");
     } else {
       inject(gotoJS(path));
     }
@@ -4800,7 +4808,15 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           domStorageEnabled
           javaScriptEnabled
           sharedCookiesEnabled
-          originWhitelist={['https://*', 'http://*', 'mailto:*', 'tel:*']}
+          originWhitelist={['https://*', 'http://*']}
+          onShouldStartLoadWithRequest={(req) => {
+            const u = (req && req.url) || '';
+            // Schemas non-http (mailto:, tel:, geo:…) -> deleguer a l'OS
+            if (/^(mailto:|tel:|sms:|geo:|maps:)/i.test(u)) { Linking.openURL(u).catch(() => {}); return false; }
+            // Lien externe (hors assokit.fr) -> navigateur systeme, pas dans la WebView applicative
+            if (/^https?:\/\//i.test(u) && u.indexOf('assokit.fr') === -1) { Linking.openURL(u).catch(() => {}); return false; }
+            return true;
+          }}
           setSupportMultipleWindows={false}
           applicationNameForUserAgent="AssokitApp/1.0"
           injectedJavaScript={APP_ONLY_CSS}

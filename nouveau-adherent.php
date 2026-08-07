@@ -67,6 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     $valid_roles = ['admin', 'coordinator', 'referent', 'member', 'follower'];
     if (!in_array($form['role'], $valid_roles, true)) $form['role'] = 'member';
 
+    // Un non-admin (ex. coordinator) ne peut pas creer un compte admin
+    if (($user['role'] ?? '') !== 'admin' && $form['role'] === 'admin') {
+        $form['role'] = 'member';
+    }
+
     if ($form['first_name'] === '' || $form['last_name'] === '') {
         $error = 'Le prénom et le nom sont obligatoires.';
     } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {

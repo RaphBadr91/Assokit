@@ -37,8 +37,8 @@ if (mb_strlen($content) > 20000) $content = mb_substr($content, 0, 20000);
 
 try {
     // === Déterminer les destinataires (admins des asso liées) ===
-    if ($audience === 'selected' && is_array($org_ids) && count($org_ids) > 0) {
-        $org_ids = array_filter(array_map('intval', $org_ids));
+    if ($audience === 'selected') {
+        $org_ids = array_filter(array_map('intval', (array)$org_ids));
         if (!$org_ids) {
             $_SESSION['flash_error'] = "Aucune association valide sélectionnée.";
             header('Location: /mairie-emailing'); exit;

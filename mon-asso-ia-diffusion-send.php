@@ -19,7 +19,21 @@ $org_id  = (int)($user['org_id'] ?? 0);
 $user_id = (int)($user['id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
 
+// Envoi de masse : reserve aux admins/coordinateurs (comms officielles au nom de l'asso)
+if (!in_array(($user['role'] ?? ''), ['admin', 'coordinator'], true)) {
+    http_response_code(403);
+    $_SESSION['flash_error'] = "L'envoi de diffusions est reserve aux administrateurs et coordinateurs.";
+    header('Location: /mon-asso-ia-diffusion');
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: /mon-asso-ia-diffusion');
+    exit;
+}
+
+if (!check_csrf($_POST['csrf_token'] ?? '')) {
+    $_SESSION['flash_error'] = 'Session expiree, veuillez reessayer.';
     header('Location: /mon-asso-ia-diffusion');
     exit;
 }

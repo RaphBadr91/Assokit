@@ -40,7 +40,10 @@ $is_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (int)(
 $flash_msg = null;
 $flash_type = 'success';
 
+if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!check_csrf($_POST['csrf_token'] ?? '')) { http_response_code(403); die('Requête invalide (jeton CSRF manquant ou expiré).'); }
     $action = (string)($_POST['action'] ?? '');
 
     try {
@@ -229,6 +232,7 @@ render_sidebar('admin-stripe-config');
 
     <form method="post" action="" style="display:grid;gap:16px;">
       <input type="hidden" name="action" value="save_keys">
+      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
 
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px;">Clé publique <span style="color:#94A3B8;font-weight:400;">(publishable_key)</span></label>
@@ -261,17 +265,20 @@ render_sidebar('admin-stripe-config');
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <form method="post" action="" style="display:inline;">
         <input type="hidden" name="action" value="test_connection">
+        <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
         <button type="submit" style="background:#F1F5F9;color:#0F172A;padding:11px 20px;border:1px solid #E2E8F0;border-radius:10px;font-weight:600;cursor:pointer;font-size:14px;">🔌 Tester la connexion</button>
       </form>
 
       <?php if (!$stripe_enabled): ?>
         <form method="post" action="" style="display:inline;" onsubmit="return confirm('Activer Stripe ? Les paiements seront possibles immédiatement.');">
           <input type="hidden" name="action" value="enable_stripe">
+          <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
           <button type="submit" style="background:linear-gradient(180deg,#059669 0%,#047857 100%);color:white;padding:11px 22px;border:none;border-radius:10px;font-weight:600;cursor:pointer;font-size:14px;">🚀 Activer Stripe</button>
         </form>
       <?php else: ?>
         <form method="post" action="" style="display:inline;" onsubmit="return confirm('Désactiver Stripe ? Les boutons Régulariser basculeront sur la page contact.');">
           <input type="hidden" name="action" value="disable_stripe">
+          <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
           <button type="submit" style="background:#FEE2E2;color:#991B1B;padding:11px 22px;border:1px solid #FECACA;border-radius:10px;font-weight:600;cursor:pointer;font-size:14px;">⏸ Désactiver Stripe</button>
         </form>
       <?php endif; ?>
@@ -300,6 +307,7 @@ render_sidebar('admin-stripe-config');
           <td style="padding:12px 14px;">
             <form method="post" action="" style="display:flex;gap:6px;">
               <input type="hidden" name="action" value="save_plan_price">
+              <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
               <input type="hidden" name="plan_id" value="<?= (int)$p['id'] ?>">
               <input type="text" name="stripe_price_id" value="<?= htmlspecialchars($p['stripe_price_id_monthly'] ?? '') ?>" placeholder="price_..." style="flex:1;padding:7px 10px;border:1px solid #E2E8F0;border-radius:6px;font-family:monospace;font-size:12px;">
               <button type="submit" style="background:#059669;color:white;padding:7px 14px;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">OK</button>
@@ -315,6 +323,7 @@ render_sidebar('admin-stripe-config');
       <div style="font-weight:700;font-size:14px;color:#1E40AF;margin-bottom:6px;">🏆 Add-on : Domaine personnalisé (+10€/mois HT)</div>
       <form method="post" action="" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
         <input type="hidden" name="action" value="save_addon_price">
+        <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
         <input type="text" name="addon_domain_price_id" value="<?= htmlspecialchars($addon_price_id ?? '') ?>" placeholder="price_... (Stripe price_id pour +10€/mois HT)" style="flex:1;min-width:240px;padding:8px 12px;border:1px solid #BFDBFE;border-radius:8px;font-family:monospace;font-size:13px;background:white;">
         <button type="submit" style="background:#1E40AF;color:white;padding:8px 16px;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600;">Enregistrer</button>
       </form>
@@ -334,6 +343,7 @@ render_sidebar('admin-stripe-config');
 
     <form method="post" action="" style="display:inline;">
       <input type="hidden" name="action" value="toggle_vat">
+      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
       <button type="submit" style="background:<?= $vat_enabled ? '#FEE2E2' : '#D1FAE5' ?>;color:<?= $vat_enabled ? '#991B1B' : '#065F46' ?>;padding:10px 18px;border:1px solid <?= $vat_enabled ? '#FECACA' : '#A7F3D0' ?>;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;">
         <?= $vat_enabled ? '⏸ Désactiver TVA' : '✅ Activer TVA (20%)' ?>
       </button>

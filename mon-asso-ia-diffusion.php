@@ -13,6 +13,11 @@ require_once __DIR__ . '/asso-ai-helpers.php';
 
 require_login();
 $user = current_user();
+if (!in_array(($user['role'] ?? ''), ['admin', 'coordinator'], true)) {
+    http_response_code(403);
+    header('Location: /dashboard');
+    exit;
+}
 $org_id  = (int)($user['org_id'] ?? 0);
 $user_id = (int)($user['id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
@@ -155,6 +160,7 @@ render_sidebar('ia');
     <?php endif; ?>
 
     <form method="post" action="/mon-asso-ia-diffusion-send" id="difForm">
+      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
       <div class="dif-grid">
 
         <!-- COLONNE GAUCHE : CONTENU + DESTINATAIRES -->

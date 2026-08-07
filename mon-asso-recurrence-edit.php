@@ -16,6 +16,9 @@ $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
 
+require_once __DIR__ . '/finance-permissions.php';
+require_finance_access('recurrences', "l'edition de recurrences");
+
 $rec_id = (int)($_GET['id'] ?? 0);
 $rec = ak_recurrence_load($pdo, $rec_id, $org_id);
 if (!$rec) { header('Location: /mon-asso-recurrences'); exit; }
@@ -110,7 +113,7 @@ render_sidebar('recurrences');
 
     <form method="post" action="/mon-asso-recurrence-save">
       <input type="hidden" name="id" value="<?= (int)$rec['id'] ?>">
-      <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf'] ?? '') ?>">
+      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
 
       <div class="rcard">
         <h2>Informations générales</h2>

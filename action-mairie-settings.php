@@ -78,8 +78,8 @@ try {
             $temp_password = bin2hex(random_bytes(4));
             $hash = password_hash($temp_password, PASSWORD_DEFAULT);
             $pdo->prepare("
-                INSERT INTO users (first_name, last_name, email, password_hash, role, parent_org_id, parent_org_role, created_at)
-                VALUES (?, ?, ?, ?, 'admin', ?, ?, NOW())
+                INSERT INTO users (first_name, last_name, email, password_hash, role, parent_org_id, parent_org_role, is_active, created_at)
+                VALUES (?, ?, ?, ?, 'admin', ?, ?, 1, NOW())
             ")->execute([$fn, $ln, $email, $hash, $parent_org_id, $role]);
             $new_id = (int)$pdo->lastInsertId();
 
