@@ -445,7 +445,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
 /* ================================================================== */
 /*  ACCUEIL NATIF (KPIs premium)                                       */
 /* ================================================================== */
-function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
+function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
   const k = (data && data.kpis) || {};
   const isTpe = profile === 'tpe';
 
@@ -523,10 +523,26 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile }) {
       </View>
 
       {!data ? (
-        <View style={styles.homeLoader}>
-          <ActivityIndicator size="large" color={BRAND} />
-          <Text style={styles.homeLoaderTxt}>Chargement de vos données…</Text>
-        </View>
+        error ? (
+          <View style={styles.homeLoader}>
+            <Ionicons name="cloud-offline-outline" size={40} color={MUTE} />
+            <Text style={styles.homeLoaderTxt}>Connexion impossible. Vérifiez votre réseau.</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Réessayer le chargement"
+              onPress={onRefresh}
+              activeOpacity={0.85}
+              style={{ marginTop: 14, backgroundColor: BRAND, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 12 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Réessayer</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.homeLoader}>
+            <ActivityIndicator size="large" color={BRAND} />
+            <Text style={styles.homeLoaderTxt}>Chargement de vos données…</Text>
+          </View>
+        )
       ) : (
         <>
           {/* Carte vedette en verre liquide, flottant sur le header */}
@@ -3881,6 +3897,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const pendingCreds = useRef(null);
   const loginAttempted = useRef(false);
   const authedRef = useRef(false);
+  const pendingNotifLink = useRef(null); // lien d'une notification tapee, consomme une fois authentifie
   const lastUrl = useRef('');
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginErr, setLoginErr] = useState('');
@@ -3892,6 +3909,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [authed, setAuthed] = useState(false);
   const [kpi, setKpi] = useState(null);
   const [kpiLoading, setKpiLoading] = useState(false);
+  const [kpiError, setKpiError] = useState(false);
   const [projects, setProjects] = useState(null);
   const [projLoading, setProjLoading] = useState(false);
   const [people, setPeople] = useState(null);
@@ -4017,6 +4035,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   const fetchKpis = useCallback(() => {
     setKpiLoading(true);
+    setKpiError(false);
     inject(FETCH_KPIS_JS);
   }, [inject]);
 
@@ -4292,6 +4311,31 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     // par défaut : on reste dans l'app (jamais de bascule web)
   }, [openMenuScreen]);
 
+  // Tap sur une notification push : router vers le bon ecran (le token etait enregistre
+  // mais aucun listener ne consommait la reponse -> le tap n'ouvrait rien).
+  useEffect(() => {
+    const consume = (resp) => {
+      const link = resp?.notification?.request?.content?.data?.link
+        || resp?.notification?.request?.content?.data?.url || '';
+      if (!link) return;
+      if (authedRef.current) routeNotif(link);
+      else pendingNotifLink.current = link; // sera consomme une fois authentifie
+    };
+    const sub = Notifications.addNotificationResponseReceivedListener(consume);
+    // App demarree a froid par un tap sur notification :
+    Notifications.getLastNotificationResponseAsync().then((r) => { if (r) consume(r); }).catch(() => {});
+    return () => { try { sub.remove(); } catch (e) {} };
+  }, [routeNotif]);
+
+  // Des que la session est prete, on consomme un eventuel lien de notification en attente.
+  useEffect(() => {
+    if (authed && pendingNotifLink.current) {
+      const link = pendingNotifLink.current;
+      pendingNotifLink.current = null;
+      routeNotif(link);
+    }
+  }, [authed, routeNotif]);
+
   const onNotifPress = useCallback((n) => {
     if (!n) return;
     if (!n.read) {
@@ -4487,11 +4531,29 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const onMessage = (e) => {
     try {
       const msg = JSON.parse(e.nativeEvent.data);
-      if (msg && msg.__akkpi) { setKpi(msg.__akkpi); setKpiLoading(false); }
-      if (msg && msg.__akprojects) { setProjects(msg.__akprojects); setProjLoading(false); }
-      if (msg && msg.__akmembers) { setPeople(msg.__akmembers); setPeopleLoading(false); }
-      if (msg && msg.__akclients) { setPeople(msg.__akclients); setPeopleLoading(false); }
-      if (msg && msg.__akinvoices) { setInvoices(msg.__akinvoices); setInvLoading(false); }
+      // Les fetch injectes renvoient { ok:false } en cas d'echec reseau/session.
+      // On NE stocke PAS cet objet comme donnee (sinon ecrans a "0 EUR" trompeurs) :
+      // on coupe le loader, on marque l'erreur, et on conserve d'eventuelles donnees deja chargees.
+      if (msg && msg.__akkpi) {
+        if (msg.__akkpi.ok === false) { setKpiLoading(false); setKpiError(true); }
+        else { setKpi(msg.__akkpi); setKpiError(false); setKpiLoading(false); }
+      }
+      if (msg && msg.__akprojects) {
+        if (msg.__akprojects.ok === false) { setProjLoading(false); }
+        else { setProjects(msg.__akprojects); setProjLoading(false); }
+      }
+      if (msg && msg.__akmembers) {
+        if (msg.__akmembers.ok === false) { setPeopleLoading(false); }
+        else { setPeople(msg.__akmembers); setPeopleLoading(false); }
+      }
+      if (msg && msg.__akclients) {
+        if (msg.__akclients.ok === false) { setPeopleLoading(false); }
+        else { setPeople(msg.__akclients); setPeopleLoading(false); }
+      }
+      if (msg && msg.__akinvoices) {
+        if (msg.__akinvoices.ok === false) { setInvLoading(false); }
+        else { setInvoices(msg.__akinvoices); setInvLoading(false); }
+      }
       if (msg && msg.__akdetail) {
         setStack((s) => {
           if (!s.length) return s;
@@ -4824,7 +4886,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         />
         {showHome && (
           <View style={styles.homeOverlay}>
-            <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} profile={profile} />
+            <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} profile={profile} error={kpiError} />
           </View>
         )}
         {showProjects && (
@@ -5083,7 +5145,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         {TABS.map((tab) => {
           if (tab.key === 'add') {
             return (
-              <TouchableOpacity key={tab.key} style={styles.fabWrap} onPress={() => goTab(tab)} activeOpacity={0.85}>
+              <TouchableOpacity key={tab.key} style={styles.fabWrap} onPress={() => goTab(tab)} activeOpacity={0.85}
+                accessibilityRole="button" accessibilityLabel="Créer">
                 <View style={styles.fab}>
                   <Ionicons name="add" size={30} color="#fff" />
                 </View>
@@ -5093,7 +5156,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           const isActive = active === tab.key;
           const tabBadge = tab.key === 'menu' ? (kpi && kpi.notif_unread) || 0 : 0;
           return (
-            <TouchableOpacity key={tab.key} style={styles.tab} onPress={() => goTab(tab)} activeOpacity={0.7}>
+            <TouchableOpacity key={tab.key} style={styles.tab} onPress={() => goTab(tab)} activeOpacity={0.7}
+              accessibilityRole="tab" accessibilityState={{ selected: isActive }}
+              accessibilityLabel={tab.label + (tabBadge > 0 ? ', ' + tabBadge + ' non lus' : '')}>
               <View>
                 <Ionicons name={isActive ? tab.icon : tab.icon + '-outline'} size={23} color={isActive ? BRAND : MUTE} />
                 {tabBadge > 0 && <View style={styles.tabBadge}><Text style={styles.tabBadgeTxt}>{tabBadge > 99 ? '99+' : tabBadge}</Text></View>}
