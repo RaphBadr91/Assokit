@@ -412,14 +412,36 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
 
       <div class="form-group">
         <label for="password">Mot de passe *</label>
-        <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+        <div style="position:relative;">
+          <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password" style="padding-right:44px;">
+          <button type="button" id="togglePwd" aria-label="Afficher le mot de passe" aria-pressed="false"
+            style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:none;border:0;cursor:pointer;padding:6px;color:#64748B;font-size:14px;">👁</button>
+        </div>
         <div class="pw-hint">8 caractères minimum — choisissez un mot de passe robuste.</div>
       </div>
 
       <div class="form-group">
         <label for="password_confirm">Confirmez le mot de passe *</label>
         <input type="password" id="password_confirm" name="password_confirm" required minlength="8" autocomplete="new-password">
+        <div id="pwMatchMsg" class="pw-hint" style="display:none;color:#DC2626;">Les mots de passe ne correspondent pas.</div>
       </div>
+      <script>
+        (function(){
+          var b=document.getElementById('togglePwd'), p=document.getElementById('password'),
+              c=document.getElementById('password_confirm'), m=document.getElementById('pwMatchMsg');
+          if(b&&p){ b.addEventListener('click', function(){
+            var show=p.type==='password'; p.type=show?'text':'password';
+            b.setAttribute('aria-pressed', show?'true':'false');
+            b.setAttribute('aria-label', show?'Masquer le mot de passe':'Afficher le mot de passe');
+          }); }
+          function check(){ if(!c||!m) return;
+            var mismatch = c.value.length>0 && p.value!==c.value;
+            m.style.display = mismatch ? 'block' : 'none';
+            c.setCustomValidity(mismatch ? 'Les mots de passe ne correspondent pas.' : '');
+          }
+          if(p&&c){ p.addEventListener('input',check); c.addEventListener('input',check); }
+        })();
+      </script>
 
       <label class="cgu-row">
         <input type="checkbox" name="accept_cgu" value="1" required>

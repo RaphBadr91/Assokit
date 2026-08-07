@@ -368,7 +368,9 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .today-icon.ic-ai { background: var(--ai-light); color: var(--ai); }
 .today-icon.ic-urgent { background: #FEF3C7; color: #B45309; }
 .today-icon.ic-info { background: var(--bg-3); color: var(--ink-2); }
+/* DARK MODE DISABLED (orphelin neutralise) :
 @media (prefers-color-scheme: dark) { .today-icon.ic-urgent { background: rgba(239, 159, 39, 0.15); color: #FAC775; } }
+*/
 .today-body { flex: 1; min-width: 0; }
 .today-title { font-size: 14.5px; font-weight: 500; margin-bottom: 2px; line-height: 1.3; }
 .today-meta { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
@@ -488,7 +490,9 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .badge-ok { background: var(--acc-light); color: var(--acc-dark); }
 .badge-warn { background: #FEF3C7; color: #854F0B; }
 .badge-done { background: var(--bg-3); color: var(--ink-3); }
+/* DARK MODE DISABLED (orphelin neutralise) :
 @media (prefers-color-scheme: dark) { .badge-warn { background: rgba(239, 159, 39, 0.15); color: #FAC775; } }
+*/
 .empty-state { padding: 40px 22px; text-align: center; color: var(--ink-3); font-size: 13px; }
 
 /* ===== ADHÉRENTS / FACTURES ===== */
@@ -528,7 +532,9 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .role-coordinator { background: var(--ai-light); color: var(--ai-dark); }
 .role-referent { background: var(--acc-light); color: var(--acc-dark); }
 .role-member { background: var(--bg-3); color: var(--ink-2); }
+/* DARK MODE DISABLED (orphelin neutralise) :
 @media (prefers-color-scheme: dark) { .role-admin { background: rgba(239, 159, 39, 0.15); color: #FAC775; } }
+*/
 .adh-adh-date { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* Facture row */
@@ -544,10 +550,12 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .status-validated { background: var(--acc-light); color: var(--acc-dark); }
 .status-pending { background: #FEF3C7; color: #854F0B; }
 .status-rejected { background: rgba(185, 28, 28, 0.12); color: #B91C1C; }
+/* DARK MODE DISABLED (orphelin neutralise) :
 @media (prefers-color-scheme: dark) {
   .status-pending { background: rgba(239, 159, 39, 0.15); color: #FAC775; }
   .status-rejected { background: rgba(185, 28, 28, 0.2); color: #FCA5A5; }
 }
+*/
 
 /* Stats bar */
 .stats-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
@@ -684,7 +692,9 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .alert svg { flex-shrink: 0; margin-top: 2px; }
 .alert-error { background: rgba(185, 28, 28, 0.1); color: #B91C1C; border: 1px solid rgba(185, 28, 28, 0.2); }
 .alert-success { background: var(--acc-light); color: var(--acc-dark); border: 1px solid rgba(5, 150, 105, 0.2); }
+/* DARK MODE DISABLED (orphelin neutralise) :
 @media (prefers-color-scheme: dark) { .alert-error { background: rgba(185, 28, 28, 0.15); color: #FCA5A5; } }
+*/
 
 /* ===== ONGLETS PROJET ===== */
 .tabs { display: flex; gap: 2px; margin-bottom: 22px; border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
@@ -696,7 +706,9 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .tab.active .tab-badge { background: var(--acc-light); color: var(--acc-dark); }
 .tab-ai { color: var(--ai); }
 .tab-ai.active { border-bottom-color: var(--ai); color: var(--ai-dark); }
+/* DARK MODE DISABLED (orphelin neutralise) :
 @media (prefers-color-scheme: dark) { .tab-ai.active { color: var(--ai); } }
+*/
 
 /* ===== CHAT MESSAGES ===== */
 .chat-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; min-height: 500px; }
@@ -799,10 +811,12 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .inv-summary-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
 .inv-summary-card.primary { background: var(--acc-light); border-color: rgba(5, 150, 105, 0.2); }
 .inv-summary-card.warn { background: #FEF3C7; border-color: rgba(234, 179, 8, 0.3); }
+/* DARK MODE DISABLED (orphelin neutralise) :
 @media (prefers-color-scheme: dark) {
   .inv-summary-card.primary { background: rgba(5, 150, 105, 0.12); }
   .inv-summary-card.warn { background: rgba(239, 159, 39, 0.12); }
 }
+*/
 .inv-summary-lbl { font-size: 11px; color: var(--ink-3); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 6px; font-weight: 500; }
 .inv-summary-val { font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.1; }
 .inv-summary-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; }
@@ -875,9 +889,11 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .cal-event-pill.ev-red { background: rgba(185, 28, 28, 0.15); color: #991B1B; }
 .cal-event-pill.ev-time { font-weight: 500; }
 .cal-day-more { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; font-weight: 500; }
+/* DARK MODE DISABLED (orphelin neutralise) :
 @media (prefers-color-scheme: dark) {
   .cal-event-pill.ev-red { background: rgba(185, 28, 28, 0.2); color: #FCA5A5; }
 }
+*/
 
 /* Vue liste */
 .cal-list { display: flex; flex-direction: column; gap: 20px; }

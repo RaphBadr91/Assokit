@@ -218,12 +218,26 @@ if (empty($_SESSION['csrf_token'])) {
     </div>
     <div class="form-group">
       <label for="password">Mot de passe</label>
-      <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
+      <div style="position:relative;">
+        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••" style="padding-right:44px;">
+        <button type="button" id="togglePwd" aria-label="Afficher le mot de passe" aria-pressed="false"
+          style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:none;border:0;cursor:pointer;padding:6px;color:#64748B;font-size:13px;font-weight:600;">👁</button>
+      </div>
     </div>
+    <script>
+      (function(){
+        var b=document.getElementById('togglePwd'), p=document.getElementById('password');
+        if(b&&p){ b.addEventListener('click', function(){
+          var show=p.type==='password'; p.type=show?'text':'password';
+          b.setAttribute('aria-pressed', show?'true':'false');
+          b.setAttribute('aria-label', show?'Masquer le mot de passe':'Afficher le mot de passe');
+        }); }
+      })();
+    </script>
     <button type="submit" class="btn-submit">Se connecter</button>
   </form>
   <a href="/mot-de-passe-oublie" class="forgot-link">Mot de passe oublié ?</a>
-  <div class="footer-note">Pas encore de compte ? <a href="/signup">Créer ma démo</a> · <a href="/contact">Parler à un conseiller</a></div>
+  <div class="footer-note">Pas encore de compte ? <a href="/signup">Créer mon compte gratuit</a> · <a href="/contact">Parler à un conseiller</a></div>
 </div>
 </body>
 </html>
