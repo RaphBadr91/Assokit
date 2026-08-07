@@ -8,6 +8,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+@require_once __DIR__ . '/stripe-helpers.php';
 require_login();
 
 $current = current_user();
@@ -46,6 +47,31 @@ if ($action === 'cancel_subscription') {
     if (strlen($reason) > 500) $reason = substr($reason, 0, 500);
 
     try {
+        // === IMPORTANT : resilier reellement l'abonnement Stripe (sinon le client continue d'etre debite) ===
+        // Source de verite Stripe = asso_subscriptions ; on annule a la fin de la periode payee.
+        if (function_exists('ak_get_org_active_subscription')) {
+            $active_sub = ak_get_org_active_subscription($pdo, $org_id);
+            if ($active_sub) {
+                $stripe_sub_id = $active_sub['stripe_subscription_id'] ?? null;
+                $payment_mode  = $active_sub['payment_mode'] ?? 'manual';
+                if ($payment_mode === 'stripe' && $stripe_sub_id
+                    && function_exists('ak_stripe_is_configured') && ak_stripe_is_configured($pdo)) {
+                    $resp = ak_stripe_api_call($pdo, 'POST', '/subscriptions/' . $stripe_sub_id, [
+                        'cancel_at_period_end' => 'true',
+                    ]);
+                    if (empty($resp['ok'])) {
+                        throw new Exception('Stripe: ' . ($resp['error'] ?? 'annulation refusee'));
+                    }
+                    $pdo->prepare("UPDATE asso_subscriptions SET cancel_at_period_end = 1, cancelled_at = NOW(), updated_at = NOW() WHERE id = :id")
+                        ->execute([':id' => (int)$active_sub['id']]);
+                } else {
+                    $pdo->prepare("UPDATE asso_subscriptions SET status = 'cancelled', cancel_at_period_end = 1, cancelled_at = NOW(), updated_at = NOW() WHERE id = :id")
+                        ->execute([':id' => (int)$active_sub['id']]);
+                }
+            }
+        }
+
+        // Table legacy conservee pour l'affichage de /abonnement
         $stmt = $pdo->prepare("
             UPDATE subscriptions
             SET status = 'cancelled',
@@ -55,15 +81,11 @@ if ($action === 'cancel_subscription') {
               AND status IN ('active', 'trialing', 'past_due', 'paused')
         ");
         $stmt->execute([$reason !== '' ? $reason : null, $org_id]);
-        $n = $stmt->rowCount();
 
-        if ($n > 0) {
-            header('Location: /abonnement?tab=mon-abonnement&flash=' . urlencode('Abonnement annule') . '&ft=success');
-        } else {
-            header('Location: /abonnement?tab=danger&flash=' . urlencode('Aucun abonnement actif a annuler') . '&ft=error');
-        }
+        header('Location: /abonnement?tab=mon-abonnement&flash=' . urlencode('Abonnement annule. Vous gardez l\'acces jusqu\'a la fin de la periode payee.') . '&ft=success');
     } catch (Throwable $e) {
-        header('Location: /abonnement?tab=danger&flash=' . urlencode('Erreur : ' . $e->getMessage()) . '&ft=error');
+        error_log('[ACTION-ABONNEMENT cancel] ' . $e->getMessage());
+        header('Location: /abonnement?tab=danger&flash=' . urlencode('Une erreur technique est survenue. Merci de reessayer.') . '&ft=error');
     }
     exit;
 }
@@ -118,7 +140,8 @@ if ($action === 'delete_account') {
         exit;
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        header('Location: /abonnement?tab=danger&flash=' . urlencode('Erreur suppression : ' . $e->getMessage()) . '&ft=error');
+        error_log('[ACTION-ABONNEMENT delete] ' . $e->getMessage());
+        header('Location: /abonnement?tab=danger&flash=' . urlencode('Une erreur technique est survenue. Merci de reessayer.') . '&ft=error');
         exit;
     }
 }

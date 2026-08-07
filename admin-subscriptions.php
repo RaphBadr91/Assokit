@@ -32,6 +32,7 @@ unset($_SESSION['flash_admin_subs']);
 
 // === Actions ===
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!check_csrf($_POST['csrf_token'] ?? '')) { http_response_code(403); die('Requete invalide (jeton CSRF manquant ou expire).'); }
     $action = $_POST['action'] ?? '';
     try {
         if ($action === 'change_plan') {
@@ -236,6 +237,7 @@ render_sidebar('admin-subscriptions');
                   <div style="position:absolute;background:white;border:1px solid #E2E8F0;border-radius:10px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,0.08);margin-top:6px;min-width:280px;z-index:10;">
                     <form method="post" style="display:flex;flex-direction:column;gap:8px;">
                       <input type="hidden" name="action" value="change_plan">
+                      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                       <input type="hidden" name="org_id" value="<?= $row['org_id'] ?>">
                       <label style="font-size:12px;font-weight:600;">Plan</label>
                       <select name="plan_id" style="padding:8px;border:1px solid #E2E8F0;border-radius:6px;">
@@ -259,11 +261,13 @@ render_sidebar('admin-subscriptions');
                     <hr style="margin:10px 0;border:none;border-top:1px solid #E2E8F0;">
                     <form method="post" onsubmit="return confirm('Marquer en retard de paiement avec 15j de grâce ?');" style="margin-bottom:6px;">
                       <input type="hidden" name="action" value="mark_overdue">
+                      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                       <input type="hidden" name="org_id" value="<?= $row['org_id'] ?>">
                       <button type="submit" class="btn btn-sm" style="width:100%;color:#EA580C;">⏳ Marquer en retard (15j)</button>
                     </form>
                     <form method="post" onsubmit="return confirm('Downgrade au plan Démarrage ? L\'org perdra ses fonctionnalités premium.');">
                       <input type="hidden" name="action" value="downgrade_to_demarrage">
+                      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                       <input type="hidden" name="org_id" value="<?= $row['org_id'] ?>">
                       <button type="submit" class="btn btn-sm" style="width:100%;color:#DC2626;">↓ Downgrade Démarrage</button>
                     </form>

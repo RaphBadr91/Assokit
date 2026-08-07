@@ -95,7 +95,7 @@ try {
 } catch (Throwable $e) {
     $pdo->rollBack();
     error_log('[ASSO INVOICE PAID-CLIENT] ' . $e->getMessage());
-    $_SESSION['flash_public'] = ['type' => 'error', 'message' => 'Erreur : ' . $e->getMessage()];
+    $_SESSION['flash_public'] = ['type' => 'error', 'message' => 'Une erreur technique est survenue. Merci de réessayer.'];
 }
 
 header('Location: /facture/' . $uuid);

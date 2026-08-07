@@ -23,7 +23,7 @@ require_login();
 $user = current_user();
 
 // Restriction fondateur
-$has_access = !empty($user['is_founder']) || !empty($user['is_super_admin']) || (int)$user['org_id'] === 1;
+$has_access = !empty($user['is_founder']) || !empty($user['is_super_admin']);
 if (!$has_access) {
     http_response_code(403);
     die('Accès réservé aux fondateurs.');
@@ -41,6 +41,7 @@ try {
 
 // Traitement du POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!check_csrf($_POST['csrf_token'] ?? '')) { http_response_code(403); die('Requete invalide (jeton CSRF manquant ou expire).'); }
     try {
         $org_name = trim((string)($_POST['org_name'] ?? ''));
         $billing_email = trim((string)($_POST['billing_email'] ?? ''));
@@ -277,6 +278,7 @@ render_sidebar('admin-create-organization');
 
     <!-- ============== FORMULAIRE DE CRÉATION ============== -->
     <form method="post" action="" style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:28px;max-width:780px;">
+      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
 
       <h2 style="margin:0 0 6px;font-size:18px;">📋 Informations du client</h2>
       <p style="color:#64748B;font-size:13px;margin:0 0 22px;">Remplissez ce formulaire pour créer un compte client avec activation immédiate.</p>

@@ -12,7 +12,8 @@
 require_once __DIR__ . '/config.php';
 
 $token = $_GET['token'] ?? '';
-$expected_token = defined('CRON_TOKEN') ? CRON_TOKEN : '02a17ae0ff0911bf0a246e45307a275c5d6c8bbaba37cbe06bdf59a23e47a7ed';
+$expected_token = defined('CRON_TOKEN') ? CRON_TOKEN : '';
+if ($expected_token === '') { http_response_code(500); echo "CRON_TOKEN non configure\n"; exit; }
 if (!hash_equals($expected_token, $token)) {
     http_response_code(403);
     die('Forbidden');

@@ -42,6 +42,11 @@ $sql = "
       AND o.monthly_price_cents > 0
       AND o.deleted_at IS NULL
       AND o.slug NOT LIKE 'demo-%'
+      -- Ne pas facturer manuellement les organisations payant via Stripe (evite la double facturation)
+      AND o.id NOT IN (
+          SELECT s.org_id FROM asso_subscriptions s
+          WHERE s.payment_mode = 'stripe' AND s.status <> 'cancelled'
+      )
     ORDER BY o.current_period_end ASC
     LIMIT 500
 ";

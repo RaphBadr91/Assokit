@@ -27,7 +27,7 @@ require_login();
 $user = current_user();
 
 // Restriction fondateur
-$has_access = !empty($user['is_founder']) || !empty($user['is_super_admin']) || (int)$user['org_id'] === 1;
+$has_access = !empty($user['is_founder']) || !empty($user['is_super_admin']);
 if (!$has_access) {
     http_response_code(403);
     die('Accès réservé aux fondateurs.');

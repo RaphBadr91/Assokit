@@ -82,7 +82,8 @@ if ($is_valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } catch (Throwable $e) {
             $pdo->rollBack();
-            $error = 'Erreur technique : ' . $e->getMessage();
+            error_log('[DEFINIR-MDP] ' . $e->getMessage());
+            $error = 'Une erreur technique est survenue. Merci de réessayer.';
         }
     }
 }

@@ -46,6 +46,7 @@ function ak_get_current_plan(PDO $pdo, int $org_id): ?array {
             FROM asso_subscriptions s
             INNER JOIN asso_plans p ON p.id = s.plan_id
             WHERE s.org_id = :o
+            ORDER BY (s.status = 'active') DESC, s.id DESC
             LIMIT 1
         ");
         $st->execute([':o' => $org_id]);

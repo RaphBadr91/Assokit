@@ -102,7 +102,7 @@ try {
 
 } catch (Throwable $e) {
     error_log('[DEVIS SIGN] ' . $e->getMessage());
-    $_SESSION['flash_public'] = ['type' => 'error', 'message' => 'Erreur : ' . $e->getMessage()];
+    $_SESSION['flash_public'] = ['type' => 'error', 'message' => 'Une erreur technique est survenue. Merci de réessayer.'];
     header('Location: /devis/' . $uuid); exit;
 }
 

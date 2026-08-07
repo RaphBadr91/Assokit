@@ -18,7 +18,7 @@
  *
  * Configuration cPanel CRON jobs :
  *   Tous les jours à 8h00
- *   wget -qO- "https://assokit.fr/cron_subscriptions.php?token=02a17ae0ff09..." > /dev/null 2>&1
+ *   wget -qO- "https://assokit.fr/cron_subscriptions.php?token=VOTRE_CRON_TOKEN" > /dev/null 2>&1
  * --------------------------------------------------------------
  */
 
@@ -29,7 +29,8 @@ require_once __DIR__ . '/plan-helpers.php';
 header('Content-Type: text/plain; charset=utf-8');
 
 // === Sécurité : token obligatoire ===
-$expected = defined('CRON_TOKEN') ? CRON_TOKEN : '02a17ae0ff0911bf0a246e45307a275c5d6c8bbaba37cbe06bdf59a23e47a7ed';
+$expected = defined('CRON_TOKEN') ? CRON_TOKEN : '';
+if ($expected === '') { http_response_code(500); echo "CRON_TOKEN non configure\n"; exit; }
 $received = $_GET['token'] ?? '';
 if (!hash_equals($expected, $received)) {
     http_response_code(403);

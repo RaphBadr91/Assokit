@@ -41,6 +41,7 @@ unset($_SESSION['flash_fondateur_plans']);
 
 // === Actions POST : create / update / delete ===
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!check_csrf($_POST['csrf_token'] ?? '')) { http_response_code(403); die('Requete invalide (jeton CSRF manquant ou expire).'); }
     $action = $_POST['action'] ?? '';
     try {
         if ($action === 'create' || $action === 'update') {
@@ -209,6 +210,7 @@ render_sidebar('fondateur-plans');
                 <?php if ((int)$p['active_subs'] === 0): ?>
                   <form method="post" style="display:inline;" onsubmit="return confirm('Supprimer définitivement ce plan ?');">
                     <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                     <input type="hidden" name="plan_id" value="<?= $p['id'] ?>">
                     <button type="submit" class="btn btn-sm" style="color:#DC2626;">🗑</button>
                   </form>
@@ -229,6 +231,7 @@ render_sidebar('fondateur-plans');
 
     <form method="post" style="display:grid;gap:16px;">
       <input type="hidden" name="action" value="<?= $editing ? 'update' : 'create' ?>">
+      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
       <?php if ($editing): ?>
         <input type="hidden" name="plan_id" value="<?= $editing['id'] ?>">
       <?php endif; ?>

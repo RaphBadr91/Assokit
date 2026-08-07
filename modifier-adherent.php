@@ -130,7 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
                 exit;
 
             } catch (Throwable $e) {
-                $error = 'Erreur technique : ' . $e->getMessage();
+                error_log('[MODIFIER-ADHERENT] ' . $e->getMessage());
+                $error = 'Une erreur technique est survenue. Merci de réessayer.';
             }
         }
     }

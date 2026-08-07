@@ -128,8 +128,24 @@ if (isset($obj['metadata']['org_id'])) {
     } catch (Throwable $e) { /* skip */ }
 }
 
-// Log de l'événement
+// Log de l'événement (INSERT IGNORE -> la ligne existe désormais en 'pending' si nouvelle)
 ak_stripe_log_event($pdo, $event_id, $event_type, $event, $org_id);
+
+// Idempotence ATOMIQUE : on "revendique" l'événement en un seul UPDATE.
+// Si une livraison concurrente l'a déjà revendiqué (ou traité), rowCount = 0 -> on sort.
+try {
+    $claim = $pdo->prepare("UPDATE asso_stripe_events SET processing_status = 'processing'
+                            WHERE stripe_event_id = :eid AND processing_status IN ('pending', 'failed')");
+    $claim->execute([':eid' => $event_id]);
+    if ($claim->rowCount() === 0) {
+        http_response_code(200);
+        echo 'OK (already claimed)';
+        exit;
+    }
+} catch (Throwable $e) {
+    // Table absente / colonne manquante : on ne bloque pas le traitement (best effort)
+    error_log('[stripe-webhook] claim skip : ' . $e->getMessage());
+}
 
 // ============================================
 // 3. Traitement par type d'événement
@@ -180,9 +196,11 @@ try {
 } catch (Throwable $e) {
     error_log('[stripe-webhook] FATAL ' . $event_type . ' : ' . $e->getMessage());
     ak_stripe_mark_event_processed($pdo, $event_id, 'failed', $e->getMessage());
-    // On retourne 200 quand même pour éviter que Stripe re-tente en boucle
-    http_response_code(200);
-    echo 'Error logged';
+    // On renvoie 500 : l'événement est marqué 'failed' (donc re-revendicable) et Stripe
+    // va réessayer plus tard. L'idempotence évite tout double-traitement.
+    // (Sur une erreur transitoire — deadlock, DB indispo — c'est ce qui garantit la resync.)
+    http_response_code(500);
+    echo 'Error logged, will retry';
     exit;
 }
 

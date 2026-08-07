@@ -38,18 +38,18 @@ $nb_super_admins = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE (role = '
 $nb_founders = 0;
 try { $nb_founders = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE is_founder = 1 AND is_active = 1 AND deleted_at IS NULL")->fetchColumn(); } catch (Throwable $e) {}
 
-// MRR
+// MRR — calcule sur la source de verite Stripe (asso_subscriptions + asso_plans),
+// et non sur la table legacy `subscriptions` (jamais repassee en 'active' lors d'un paiement Stripe).
+// On ne compte que le DERNIER abonnement actif non-essai de chaque org (anti double-comptage).
 $mrr = 0.00;
 try {
     $stmt = $pdo->query("
-        SELECT COALESCE(SUM(
-            CASE
-                WHEN billing_cycle = 'monthly' THEN price_ht * (1 + tva_rate/100)
-                WHEN billing_cycle = 'yearly' THEN (price_ht * (1 + tva_rate/100)) / 12
-                ELSE 0
-            END
-        ), 0) AS mrr
-        FROM subscriptions WHERE status = 'active'
+        SELECT COALESCE(SUM(p.price_cents), 0) / 100 AS mrr
+        FROM asso_subscriptions s
+        INNER JOIN asso_plans p ON p.id = s.plan_id
+        WHERE s.status = 'active'
+          AND p.is_trial = 0
+          AND s.id = (SELECT MAX(s2.id) FROM asso_subscriptions s2 WHERE s2.org_id = s.org_id)
     ");
     $mrr = (float) $stmt->fetchColumn();
 } catch (Throwable $e) {}
@@ -174,15 +174,16 @@ try {
         SELECT COUNT(*) FROM organizations
         WHERE created_at <= :end AND (deleted_at IS NULL OR deleted_at > :end)
     ");
+    // Reconstitution MRR historique sur asso_subscriptions (source Stripe), essais exclus,
+    // pour rester coherent avec la carte MRR ci-dessus.
     $q_mrr = $pdo->prepare("
-        SELECT COALESCE(SUM(
-            CASE WHEN billing_cycle = 'yearly' THEN (price_ht * (1 + tva_rate/100)) / 12
-                 ELSE price_ht * (1 + tva_rate/100) END
-        ), 0)
-        FROM subscriptions
-        WHERE (started_at IS NULL OR started_at <= :end)
-          AND (cancelled_at IS NULL OR cancelled_at > :end)
-          AND status <> 'cancelled'
+        SELECT COALESCE(SUM(p.price_cents), 0) / 100
+        FROM asso_subscriptions s
+        INNER JOIN asso_plans p ON p.id = s.plan_id
+        WHERE (s.started_at IS NULL OR s.started_at <= :end)
+          AND (s.cancelled_at IS NULL OR s.cancelled_at > :end)
+          AND s.status <> 'cancelled'
+          AND p.is_trial = 0
     ");
     for ($i = 11; $i >= 0; $i--) {
         $end = date('Y-m-t 23:59:59', strtotime("first day of -$i month"));

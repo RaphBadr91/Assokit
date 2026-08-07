@@ -47,6 +47,11 @@ $sql = "
       AND o.deleted_at IS NULL
       AND o.slug NOT LIKE 'demo-%'
       AND o.status <> 'cancelled'
+      -- Ne pas relancer les organisations payant via Stripe (elles sont facturees automatiquement)
+      AND o.id NOT IN (
+          SELECT s.org_id FROM asso_subscriptions s
+          WHERE s.payment_mode = 'stripe' AND s.status <> 'cancelled'
+      )
     ORDER BY i.due_date ASC
     LIMIT 500
 ";
