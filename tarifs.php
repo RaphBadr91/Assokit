@@ -39,11 +39,11 @@ $product_schema = [
 
 // FAQPage : reprend mot pour mot les questions visibles plus bas (éligible aux rich results Google)
 $tarifs_faqs = [
-    ['Le plan Démarrage est vraiment gratuit ?', "Oui, vraiment. Gratuit, sans carte bancaire, sans limite de durée. Mais il est volontairement très limité (3 adhérents, 10 factures, 5 devis, 5 IA/mois) pour vous permettre de découvrir Assokit. Dès que votre activité grandit, le plan Assokit (49,99€ HT) prend le relais."],
+    ['L\'essai est-il vraiment gratuit ?', "Oui. Vous testez Assokit gratuitement pendant 14 jours, sans carte bancaire et sans engagement. À la fin de l'essai, vous choisissez le plan qui vous convient (Essentiel 29,99€ ou Pro 49,99€ HT) — ou vous vous arrêtez, tout simplement."],
     ['Y a-t-il un engagement de durée ?', "Non. Vous payez au mois, vous arrêtez quand vous voulez. L'abonnement annuel offre 15% de réduction mais reste résiliable à tout moment (avec proratisation pour les mois non utilisés)."],
     ['Que se passe-t-il si je dépasse mes générations IA ?', "Vous êtes prévenu·e à 80% et 100% du quota. Au-delà, vous pouvez attendre le mois suivant ou passer au plan supérieur. Aucun débit automatique non sollicité."],
     ['Puis-je changer de plan en cours d\'abonnement ?', "Oui, à tout moment. Si vous montez en gamme, c'est immédiat (au prorata). Si vous descendez, le changement prend effet au prochain cycle de facturation."],
-    ['Que se passe-t-il si j\'atteins la limite d\'adhérents ?', "Sur le plan Démarrage (3 adhérents) ou Assokit (400 adhérents), vous recevez une alerte à 80% puis à 100%. Au-delà, l'ajout de nouveaux adhérents est temporairement bloqué jusqu'à upgrade. Vos données existantes restent intactes."],
+    ['Que se passe-t-il si j\'atteins la limite d\'adhérents ?', "Vous recevez une alerte à 80% puis à 100% de la limite de votre plan. Au-delà, l'ajout de nouveaux adhérents est temporairement bloqué jusqu'au passage au plan supérieur. Vos données existantes restent toujours intactes."],
     ['Mes données sont-elles vraiment hébergées en France ?', "Oui, 100%. Nos serveurs sont chez O2Switch, un hébergeur français basé à Clermont-Ferrand. Aucune donnée ne sort du territoire européen. Conformité RGPD garantie par contrat."],
     ['Y a-t-il une démo gratuite ?', "Oui. Réservez 30 minutes en visio avec notre équipe. On vous fait découvrir Assokit en direct, en se concentrant sur vos besoins concrets. Aucun engagement."],
     ['Puis-je récupérer mes données si je quitte Assokit ?', "Évidemment. Vos données vous appartiennent. Export complet en un clic (CSV, JSON, PDF) à tout moment. Conservation 30 jours après résiliation pour vous laisser le temps de tout récupérer."],
@@ -106,7 +106,7 @@ render_public_nav('tarifs');
         </div>
         <p class="ak-pcard-yearly" data-yearly-note>soit <strong>305,90&nbsp;€&nbsp;HT</strong> facturé annuellement</p>
         <p class="ak-pcard-desc">L'offre simple pour centraliser la gestion quotidienne de votre association, votre TPE ou votre petite structure.</p>
-        <a href="/contact" class="ak-pcard-cta ak-pcard-cta-ghost">Choisir Essentiel</a>
+        <a href="/signup" class="ak-pcard-cta ak-pcard-cta-ghost">Démarrer gratuitement</a>
         <div class="ak-pcard-divider"></div>
         <div class="ak-pcard-feat-title">Inclus :</div>
         <ul class="ak-pcard-features">
@@ -136,7 +136,7 @@ render_public_nav('tarifs');
         </div>
         <p class="ak-pcard-yearly" data-yearly-note>soit <strong>509,90&nbsp;€&nbsp;HT</strong> facturé annuellement</p>
         <p class="ak-pcard-desc">L'offre complète pour gérer, automatiser et professionnaliser votre association ou votre TPE.</p>
-        <a href="/contact" class="ak-pcard-cta ak-pcard-cta-primary">Démarrer l'essai gratuit</a>
+        <a href="/signup" class="ak-pcard-cta ak-pcard-cta-primary">Démarrer l'essai gratuit</a>
         <div class="ak-pcard-divider"></div>
         <div class="ak-pcard-feat-title">Tout d'Essentiel, plus :</div>
         <ul class="ak-pcard-features">
@@ -422,8 +422,8 @@ render_public_nav('tarifs');
 
     <div class="pub-faq">
       <details class="pub-faq-item">
-        <summary>Le plan Démarrage est vraiment gratuit ?</summary>
-        <div class="pub-faq-item-body">Oui, vraiment. Gratuit, sans carte bancaire, sans limite de durée. Mais il est volontairement très limité (3 adhérents, 10 factures, 5 devis, 5 IA/mois) pour vous permettre de découvrir Assokit. Dès que votre activité grandit, le plan Assokit (49,99€ HT) prend le relais.</div>
+        <summary>L'essai est-il vraiment gratuit ?</summary>
+        <div class="pub-faq-item-body">Oui. Vous testez Assokit gratuitement pendant 14 jours, sans carte bancaire et sans engagement. À la fin de l'essai, vous choisissez le plan qui vous convient (Essentiel 29,99€ ou Pro 49,99€ HT) — ou vous vous arrêtez, tout simplement.</div>
       </details>
       <details class="pub-faq-item">
         <summary>Y a-t-il un engagement de durée ?</summary>
@@ -439,7 +439,7 @@ render_public_nav('tarifs');
       </details>
       <details class="pub-faq-item">
         <summary>Que se passe-t-il si j'atteins la limite d'adhérents ?</summary>
-        <div class="pub-faq-item-body">Sur le plan Démarrage (3 adhérents) ou Assokit (400 adhérents), vous recevez une alerte à 80% puis à 100%. Au-delà, l'ajout de nouveaux adhérents est temporairement bloqué jusqu'à upgrade. Vos données existantes restent intactes.</div>
+        <div class="pub-faq-item-body">Vous recevez une alerte à 80% puis à 100% de la limite de votre plan. Au-delà, l'ajout de nouveaux adhérents est temporairement bloqué jusqu'au passage au plan supérieur. Vos données existantes restent toujours intactes.</div>
       </details>
       <details class="pub-faq-item">
         <summary>Mes données sont-elles vraiment hébergées en France ?</summary>

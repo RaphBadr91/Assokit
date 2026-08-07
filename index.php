@@ -25,7 +25,7 @@ $home_faqs = [
     ],
     [
         'q' => "Combien coûte Assokit ?",
-        'a' => "Assokit propose un plan gratuit pour démarrer, puis des formules Essentiel et Pro adaptées à votre activité. Vous pouvez tester la solution gratuitement, sans engagement et sans carte bancaire.",
+        'a' => "Assokit propose un essai gratuit de 14 jours, sans carte bancaire et sans engagement, puis des formules Essentiel (29,99€) et Pro (49,99€ HT) adaptées à votre activité. Vous testez toutes les fonctionnalités avant de choisir.",
     ],
     [
         'q' => "La comptabilité analytique est-elle incluse ?",
@@ -52,9 +52,9 @@ foreach ($home_faqs as $f) {
 render_public_head([
     // === SEO HOMEPAGE — VALIDÉ ===
     // Title  (54 chars) : Assokit · Logiciel Association & TPE Tout-en-Un · IA
-    // Meta D (136 chars): Gérez votre association & TPE en un seul outil. Facturation, IA, projets, adhérents. Plus de temps pour ce qui compte. Démo Gratuite.
+    // Meta D (136 chars): Gérez votre association & TPE en un seul outil. Facturation, IA, projets, adhérents. Plus de temps pour ce qui compte. Essai gratuit 14 jours.
     'title_full'  => 'Assokit · Logiciel Association & TPE Tout-en-Un · IA',
-    'description' => 'Gérez votre association & TPE en un seul outil. Facturation, IA, projets, adhérents. Plus de temps pour ce qui compte. Démo Gratuite.',
+    'description' => 'Gérez votre association & TPE en un seul outil. Facturation, IA, projets, adhérents. Plus de temps pour ce qui compte. Essai gratuit 14 jours.',
     'path'        => '/',
     // Image OG dédiée (1200x630) pour partage WhatsApp/Facebook/LinkedIn/Twitter
     'og_image'    => 'https://assokit.fr/assets/og-assokit-home.png',
@@ -1035,7 +1035,7 @@ render_public_nav('');
         </p>
 
         <div class="pub-hero-cta">
-          <a href="/contact" class="pub-btn pub-btn-primary pub-btn-lg">Démarrer l'essai gratuit 14 jours →</a>
+          <a href="/signup" class="pub-btn pub-btn-primary pub-btn-lg">Démarrer l'essai gratuit 14 jours →</a>
           <a href="/contact?demo=1" class="pub-btn pub-btn-ghost pub-btn-lg">Réserver une démo</a>
         </div>
 
@@ -1367,7 +1367,7 @@ render_public_nav('');
     </div>
 
     <div class="pub-text-center" style="margin-top:36px;">
-      <a href="/contact" class="pub-btn pub-btn-primary pub-btn-lg">Démarrer l'essai gratuit →</a>
+      <a href="/signup" class="pub-btn pub-btn-primary pub-btn-lg">Démarrer l'essai gratuit →</a>
     </div>
   </div>
 
@@ -1527,7 +1527,7 @@ render_public_nav('');
       <h2 class="ak-cta-title">Reprenez le contrôle de votre gestion. <em>Sans complexité.</em></h2>
       <p class="ak-cta-lead">Essayez Assokit gratuitement pendant <strong>14 jours</strong> et découvrez comment votre association ou votre TPE peut gagner du temps dès la première semaine.</p>
       <div class="ak-cta-actions">
-        <a href="/contact" class="pub-btn pub-btn-primary pub-btn-lg">Démarrer l'essai gratuit →</a>
+        <a href="/signup" class="pub-btn pub-btn-primary pub-btn-lg">Démarrer l'essai gratuit →</a>
         <a href="/contact?demo=1" class="pub-btn pub-btn-ghost pub-btn-lg">Réserver une démo</a>
       </div>
       <div class="ak-cta-trust">

@@ -195,7 +195,7 @@ if (!function_exists('render_public_nav')) {
                 <a href="/dashboard" class="pub-btn pub-btn-primary">Mon tableau de bord</a>
               <?php else: ?>
                 <a href="/connexion" class="pub-btn pub-btn-ghost">Connexion</a>
-                <a href="/contact" class="pub-btn pub-btn-primary">Réserver une démo</a>
+                <a href="/signup" class="pub-btn pub-btn-primary">Essai gratuit</a>
               <?php endif; ?>
             </div>
             <button class="pub-nav-burger" id="pubBurger" aria-label="Menu" aria-expanded="false">
@@ -214,7 +214,8 @@ if (!function_exists('render_public_nav')) {
               <a href="/dashboard">Mon tableau de bord</a>
             <?php else: ?>
               <a href="/connexion">Connexion</a>
-              <a href="/contact" class="cta">Réserver une démo</a>
+              <a href="/contact">Réserver une démo</a>
+              <a href="/signup" class="cta">Essai gratuit</a>
             <?php endif; ?>
           </div>
         </header>
