@@ -324,11 +324,11 @@ function WelcomeScreen({ onLogin, onSignup }) {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity style={styles.btnPrimary} onPress={onLogin} activeOpacity={0.9}>
+          <TouchableOpacity accessibilityRole="button" style={styles.btnPrimary} onPress={onLogin} activeOpacity={0.9}>
             <Text style={styles.btnPrimaryTxt}>Se connecter</Text>
             <Ionicons name="arrow-forward" size={18} color="#047857" />
           </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.85} onPress={onSignup} style={styles.btnGlassWrap}>
+          <TouchableOpacity accessibilityRole="button" activeOpacity={0.85} onPress={onSignup} style={styles.btnGlassWrap}>
             <BlurView intensity={18} tint="light" style={styles.btnGlass}>
               <Text style={styles.btnGhostTxt}>Créer ma démo</Text>
             </BlurView>
@@ -355,7 +355,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
       <View style={[styles.lgBlob, styles.lgBlob2]} />
       <StatusBar barStyle="dark-content" />
       <SafeAreaView style={{ flex: 1 }}>
-        <TouchableOpacity style={styles.lgBack} activeOpacity={0.8} onPress={onBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity accessibilityRole="button" style={styles.lgBack} activeOpacity={0.8} onPress={onBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="chevron-back" size={20} color="#0F172A" />
           <Text style={styles.lgBackTxt}>Retour</Text>
         </TouchableOpacity>
@@ -401,7 +401,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
                   onSubmitEditing={() => canSubmit && onSubmit(email.trim(), pass)}
                   editable={!busy}
                 />
-                <TouchableOpacity onPress={() => setShow((s) => !s)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <TouchableOpacity accessibilityRole="button" onPress={() => setShow((s) => !s)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Ionicons name={show ? 'eye-off' : 'eye'} size={20} color="#94A3B8" />
                 </TouchableOpacity>
               </View>
@@ -413,17 +413,17 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
                 </View>
               ) : null}
 
-              <TouchableOpacity style={[styles.lgBtn, !canSubmit && styles.lgBtnOff]} activeOpacity={0.9}
+              <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSubmit && styles.lgBtnOff]} activeOpacity={0.9}
                 onPress={() => canSubmit && onSubmit(email.trim(), pass)} disabled={!canSubmit}>
                 {busy ? <ActivityIndicator color="#fff" /> : <><Text style={styles.lgBtnTxt}>Se connecter</Text><Ionicons name="arrow-forward" size={18} color="#fff" /></>}
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={onForgot} activeOpacity={0.7} style={{ alignSelf: 'center', paddingVertical: 6 }}>
+              <TouchableOpacity accessibilityRole="button" onPress={onForgot} activeOpacity={0.7} style={{ alignSelf: 'center', paddingVertical: 6 }}>
                 <Text style={styles.lgForgot}>Mot de passe oublié ?</Text>
               </TouchableOpacity>
 
               {hasFaceId ? (
-                <TouchableOpacity style={styles.lgFace} activeOpacity={0.85} onPress={onFaceId}>
+                <TouchableOpacity accessibilityRole="button" style={styles.lgFace} activeOpacity={0.85} onPress={onFaceId}>
                   <Ionicons name="finger-print" size={19} color="#059669" />
                   <Text style={styles.lgFaceTxt}>Se connecter avec Face ID</Text>
                 </TouchableOpacity>
@@ -546,7 +546,7 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
       ) : (
         <>
           {/* Carte vedette en verre liquide, flottant sur le header */}
-          <TouchableOpacity activeOpacity={0.9} onPress={() => onGoto(spot.path)} style={styles.spotShadow}>
+          <TouchableOpacity accessibilityRole="button" activeOpacity={0.9} onPress={() => onGoto(spot.path)} style={styles.spotShadow}>
             <BlurView intensity={38} tint="light" style={styles.spotCard}>
               <View style={styles.spotGloss} />
               <View style={styles.spotTopRow}>
@@ -570,7 +570,7 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
 
           <View style={styles.kpiGrid}>
             {cards.map((c) => (
-              <TouchableOpacity key={c.label} style={styles.kpiShadow} activeOpacity={0.88} onPress={() => onGoto(c.path)}>
+              <TouchableOpacity accessibilityRole="button" key={c.label} style={styles.kpiShadow} activeOpacity={0.88} onPress={() => onGoto(c.path)}>
                 <LinearGradient colors={c.g} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.kpiCard}>
                   <View style={styles.kpiGloss} />
                   <View style={styles.kpiTop}>
@@ -590,7 +590,7 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
           <Text style={styles.sectionTitle}>Accès rapide</Text>
           <View style={styles.shortcuts}>
             {shortcuts.map((s) => (
-              <TouchableOpacity key={s.label} style={styles.shortcut} activeOpacity={0.8} onPress={() => onGoto(s.path)}>
+              <TouchableOpacity accessibilityRole="button" key={s.label} style={styles.shortcut} activeOpacity={0.8} onPress={() => onGoto(s.path)}>
                 <View style={styles.shortcutIcon}>
                   <Ionicons name={s.icon} size={22} color={BRAND} />
                 </View>
@@ -600,7 +600,7 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
             ))}
           </View>
 
-          <TouchableOpacity style={styles.openFullShadow} activeOpacity={0.9} onPress={() => onGoto('/dashboard')}>
+          <TouchableOpacity accessibilityRole="button" style={styles.openFullShadow} activeOpacity={0.9} onPress={() => onGoto('/dashboard')}>
             <LinearGradient colors={['#0CCB8F', '#047857']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.openFull}>
               <Text style={styles.openFullTxt}>Ouvrir le tableau de bord complet</Text>
               <Ionicons name="arrow-forward" size={18} color="#fff" />
@@ -620,12 +620,12 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
   return (
     <View style={styles.projWrap}>
       <View style={styles.projHeader}>
-        {onBack && <TouchableOpacity onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
+        {onBack && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
         <View style={{ flex: 1 }}>
           <Text style={styles.projTitle}>Projets</Text>
           <Text style={styles.projSub}>{projects.length} projet{projects.length > 1 ? 's' : ''}</Text>
         </View>
-        <TouchableOpacity style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
+        <TouchableOpacity accessibilityRole="button" style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
           <Ionicons name="add" size={19} color="#fff" />
           <Text style={styles.projNewTxt}>Nouveau</Text>
         </TouchableOpacity>
@@ -636,7 +636,7 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
         <View style={styles.emptyBox}>
           <Ionicons name="folder-open-outline" size={44} color="#CBD5E1" />
           <Text style={styles.emptyTxt}>Aucun projet en cours</Text>
-          <TouchableOpacity style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}>
+          <TouchableOpacity accessibilityRole="button" style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}>
             <Text style={styles.emptyBtnTxt}>Créer un projet</Text>
           </TouchableOpacity>
         </View>
@@ -650,7 +650,7 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
             const sm = STATUS_META[p.status] || STATUS_META.active;
             const pct = Math.max(0, Math.min(100, p.progress || 0));
             return (
-              <TouchableOpacity key={p.id} style={styles.projCard} activeOpacity={0.85} onPress={() => onOpen(p.id)}>
+              <TouchableOpacity accessibilityRole="button" key={p.id} style={styles.projCard} activeOpacity={0.85} onPress={() => onOpen(p.id)}>
                 <View style={[styles.projAccent, { backgroundColor: sm.color }]} />
                 <View style={styles.projCardTop}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
@@ -688,12 +688,12 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
   return (
     <View style={styles.projWrap}>
       <View style={styles.projHeader}>
-        {onBack && <TouchableOpacity onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
+        {onBack && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
         <View style={{ flex: 1 }}>
           <Text style={styles.projTitle}>{title}</Text>
           <Text style={styles.projSub}>{(list ? list.length : 0)} {title.toLowerCase()}</Text>
         </View>
-        <TouchableOpacity style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
+        <TouchableOpacity accessibilityRole="button" style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
           <Ionicons name={isClients ? 'add' : 'person-add'} size={18} color="#fff" />
           <Text style={styles.projNewTxt}>{newLabel}</Text>
         </TouchableOpacity>
@@ -704,7 +704,7 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
         <View style={styles.emptyBox}>
           <Ionicons name={isClients ? 'briefcase-outline' : 'people-outline'} size={44} color="#CBD5E1" />
           <Text style={styles.emptyTxt}>{isClients ? 'Aucun client' : 'Aucun membre'}</Text>
-          <TouchableOpacity style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}>
+          <TouchableOpacity accessibilityRole="button" style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}>
             <Text style={styles.emptyBtnTxt}>{isClients ? 'Ajouter un client' : 'Inviter un membre'}</Text>
           </TouchableOpacity>
         </View>
@@ -715,7 +715,7 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
         >
           {list.map((p) => (
-            <TouchableOpacity key={p.id} style={styles.personCard} activeOpacity={0.85} onPress={() => onOpen(p.id)}>
+            <TouchableOpacity accessibilityRole="button" key={p.id} style={styles.personCard} activeOpacity={0.85} onPress={() => onOpen(p.id)}>
               <View style={[styles.personAvatar, { backgroundColor: (p.color || BRAND) }]}>
                 <Text style={styles.personAvatarTxt}>{p.initials}</Text>
               </View>
@@ -758,12 +758,12 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
   return (
     <View style={styles.projWrap}>
       <View style={styles.projHeader}>
-        {onBack && <TouchableOpacity onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
+        {onBack && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
         <View style={{ flex: 1 }}>
           <Text style={styles.projTitle}>Factures</Text>
           <Text style={styles.projSub}>{(list ? list.length : 0)} facture{(list && list.length > 1) ? 's' : ''}</Text>
         </View>
-        <TouchableOpacity style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
+        <TouchableOpacity accessibilityRole="button" style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
           <Ionicons name="add" size={19} color="#fff" />
           <Text style={styles.projNewTxt}>Nouvelle</Text>
         </TouchableOpacity>
@@ -785,7 +785,7 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
           <View style={styles.aiCard}>
             <View style={styles.aiHead}><Ionicons name="sparkles" size={15} color="#7C3AED" /><Text style={styles.aiTitle}>Analyse IA</Text></View>
             {aiText ? <Text style={styles.aiTxt}>{aiText}</Text> : <Text style={styles.aiMuted}>Un conseil de trésorerie personnalisé sur vos factures.</Text>}
-            <TouchableOpacity style={[styles.aiBtn, aiLoading ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={aiLoading ? undefined : onAnalyze}>
+            <TouchableOpacity accessibilityRole="button" style={[styles.aiBtn, aiLoading ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={aiLoading ? undefined : onAnalyze}>
               {aiLoading ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="sparkles" size={15} color="#7C3AED" />}
               <Text style={styles.aiBtnTxt}>{aiLoading ? 'Analyse…' : (aiText ? 'Actualiser l\'analyse' : 'Analyser via IA')}</Text>
             </TouchableOpacity>
@@ -795,12 +795,12 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
             <View style={styles.emptyBox}>
               <Ionicons name="receipt-outline" size={44} color="#CBD5E1" />
               <Text style={styles.emptyTxt}>Aucune facture</Text>
-              <TouchableOpacity style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Créer une facture</Text></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Créer une facture</Text></TouchableOpacity>
             </View>
           ) : list.map((inv) => {
             const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
             return (
-              <TouchableOpacity key={inv.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpen(inv.id)}>
+              <TouchableOpacity accessibilityRole="button" key={inv.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpen(inv.id)}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={styles.invNum} numberOfLines={1}>{inv.number}</Text>
                   <Text style={styles.invClient} numberOfLines={1}>{inv.client || '—'}{inv.date ? '  ·  ' + inv.date : ''}</Text>
@@ -826,7 +826,7 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
 function DetailHeader({ title, onBack }) {
   return (
     <View style={styles.dHeader}>
-      <TouchableOpacity onPress={onBack} style={styles.dBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.7}>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.dBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.7}>
         <Ionicons name="chevron-back" size={26} color={INK} />
       </TouchableOpacity>
       <Text style={styles.dTitle} numberOfLines={1}>{title}</Text>
@@ -851,7 +851,7 @@ function DetailError({ title, onBack, onRetry }) {
       <View style={styles.emptyBox}>
         <Ionicons name="cloud-offline-outline" size={44} color="#CBD5E1" />
         <Text style={styles.emptyTxt}>Chargement impossible. Vérifiez votre connexion.</Text>
-        <TouchableOpacity style={styles.emptyBtn} onPress={onRetry} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Réessayer</Text></TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" style={styles.emptyBtn} onPress={onRetry} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Réessayer</Text></TouchableOpacity>
       </View>
     </View>
   );
@@ -948,7 +948,7 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
           <View style={styles.upsellCard}>
             <Ionicons name="lock-closed" size={22} color="#B45309" />
             <Text style={styles.upsellTxt}>{bilan.upsell || 'Fonctionnalité incluse dans le plan Pro.'}</Text>
-            <TouchableOpacity style={styles.upsellBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-plan')}>
+            <TouchableOpacity accessibilityRole="button" style={styles.upsellBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-plan')}>
               <Text style={styles.upsellBtnTxt}>Voir les plans</Text>
             </TouchableOpacity>
           </View>
@@ -974,21 +974,21 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
 
         <Text style={styles.bilanNote}>ℹ️ Sans factures ni informations saisies, le bilan analytique sera incomplet.</Text>
         <View style={styles.pdfRow}>
-          <TouchableOpacity style={[styles.pdfBtn, pdfBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={() => !pdfBusy && onSharePdf('/download-bilan-analytique.php?project=' + p.id)}>
+          <TouchableOpacity accessibilityRole="button" style={[styles.pdfBtn, pdfBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={() => !pdfBusy && onSharePdf('/download-bilan-analytique.php?project=' + p.id)}>
             {pdfBusy ? <ActivityIndicator size="small" color="#4F46E5" /> : <Ionicons name="share-outline" size={17} color="#4F46E5" />}
             <Text style={styles.pdfBtnTxt}>{pdfBusy ? 'Préparation…' : 'Bilan analytique (PDF)'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.pdfBtn} activeOpacity={0.85} onPress={() => onWeb('/projet/' + p.id + '/bilan')}>
+          <TouchableOpacity accessibilityRole="button" style={styles.pdfBtn} activeOpacity={0.85} onPress={() => onWeb('/projet/' + p.id + '/bilan')}>
             <Ionicons name="document-text" size={17} color="#4F46E5" />
             <Text style={styles.pdfBtnTxt}>Bilan du projet</Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onAddExpense(p.id)}>
+        <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onAddExpense(p.id)}>
           <Ionicons name="camera" size={19} color="#fff" />
           <Text style={styles.dPrimaryBtnTxt}>Scanner une facture</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/projet/' + p.id)}>
+        <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/projet/' + p.id)}>
           <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
           <Ionicons name="open-outline" size={18} color={BRAND} />
         </TouchableOpacity>
@@ -1047,7 +1047,7 @@ function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) 
             {d.projects.map((p) => {
               const sm = STATUS_META[p.status] || STATUS_META.active;
               return (
-                <TouchableOpacity key={p.id} style={styles.projCard} activeOpacity={0.85} onPress={() => onOpenProject(p.id)}>
+                <TouchableOpacity accessibilityRole="button" key={p.id} style={styles.projCard} activeOpacity={0.85} onPress={() => onOpenProject(p.id)}>
                   <View style={styles.projCardTop}>
                     <View style={{ flex: 1, paddingRight: 10 }}>
                       <Text style={styles.projName} numberOfLines={1}>{p.name}</Text>
@@ -1062,7 +1062,7 @@ function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) 
         )}
 
         {d.admin === false ? null : (
-          <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/adherent?id=' + m.id)}>
+          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/adherent?id=' + m.id)}>
             <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
             <Ionicons name="open-outline" size={18} color={BRAND} />
           </TouchableOpacity>
@@ -1119,7 +1119,7 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
             {d.invoices.map((inv) => {
               const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
               return (
-                <TouchableOpacity key={inv.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpenInvoice(inv.id)}>
+                <TouchableOpacity accessibilityRole="button" key={inv.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpenInvoice(inv.id)}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={styles.invNum} numberOfLines={1}>{inv.number}</Text>
                     <Text style={styles.invClient} numberOfLines={1}>{inv.date || '—'}</Text>
@@ -1135,7 +1135,7 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
         )}
 
         {d.admin === false ? null : (
-          <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-client-detail?id=' + c.id)}>
+          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-client-detail?id=' + c.id)}>
             <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
             <Ionicons name="open-outline" size={18} color={BRAND} />
           </TouchableOpacity>
@@ -1195,12 +1195,12 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb }) {
         {!!inv.description && (<><Text style={styles.dSection}>Note</Text><Text style={styles.dText}>{inv.description}</Text></>)}
 
         {!!inv.public_uuid && (
-          <TouchableOpacity style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/devis/' : '/facture/') + inv.public_uuid)}>
+          <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/devis/' : '/facture/') + inv.public_uuid)}>
             <Ionicons name="document-text" size={18} color="#fff" />
             <Text style={styles.dPrimaryBtnTxt}>{isQuote ? 'Voir / envoyer le devis' : 'Voir / envoyer la facture'}</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/mon-asso-devis-edit?id=' : '/mon-asso-facture-edit?id=') + inv.id)}>
+        <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/mon-asso-devis-edit?id=' : '/mon-asso-facture-edit?id=') + inv.id)}>
           <Text style={styles.dWebBtnTxt}>{isQuote ? 'Modifier le devis' : 'Modifier la facture'}</Text>
           <Ionicons name="open-outline" size={18} color={BRAND} />
         </TouchableOpacity>
@@ -1232,7 +1232,7 @@ function Segmented({ options, value, onChange }) {
       {options.map((o) => {
         const on = value === o.value;
         return (
-          <TouchableOpacity key={o.value} style={[styles.segItem, on ? styles.segItemOn : null]} activeOpacity={0.8} onPress={() => onChange(o.value)}>
+          <TouchableOpacity accessibilityRole="button" key={o.value} style={[styles.segItem, on ? styles.segItemOn : null]} activeOpacity={0.8} onPress={() => onChange(o.value)}>
             <Text style={[styles.segTxt, on ? styles.segTxtOn : null]}>{o.label}</Text>
           </TouchableOpacity>
         );
@@ -1255,7 +1255,7 @@ function FormShell({ title, onBack, onSubmit, submitLabel, submitting, error, ch
         {children}
       </ScrollView>
       <View style={styles.formFooter}>
-        <TouchableOpacity style={[styles.dPrimaryBtn, { marginTop: 0 }, submitting ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={submitting ? undefined : onSubmit}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, { marginTop: 0 }, submitting ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={submitting ? undefined : onSubmit}>
           {submitting ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark-circle" size={19} color="#fff" />}
           <Text style={styles.dPrimaryBtnTxt}>{submitting ? 'Enregistrement…' : submitLabel}</Text>
         </TouchableOpacity>
@@ -1343,7 +1343,7 @@ function BillingForm({ mode, onBack, onSubmit, submitting, error, clients }) {
 
       <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Client</Text>
         {clients && clients.length > 0 && (
-          <TouchableOpacity onPress={() => setPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>Choisir un client</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" onPress={() => setPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>Choisir un client</Text></TouchableOpacity>
         )}
       </View>
       {client.id > 0 ? (
@@ -1352,7 +1352,7 @@ function BillingForm({ mode, onBack, onSubmit, submitting, error, clients }) {
             <Text style={styles.pickedName}>{client.display_name}</Text>
             <Text style={styles.pickedMail}>{client.email}</Text>
           </View>
-          <TouchableOpacity onPress={() => setClient({ id: 0, client_type: 'company', display_name: '', email: '', phone: '', address_city: '' })} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setClient({ id: 0, client_type: 'company', display_name: '', email: '', phone: '', address_city: '' })} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Ionicons name="close-circle" size={22} color="#CBD5E1" />
           </TouchableOpacity>
         </View>
@@ -1371,7 +1371,7 @@ function BillingForm({ mode, onBack, onSubmit, submitting, error, clients }) {
           <View style={styles.lineCardHead}>
             <Text style={styles.lineCardIdx}>Ligne {i + 1}</Text>
             {lines.length > 1 && (
-              <TouchableOpacity onPress={() => rmLine(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Supprimer" onPress={() => rmLine(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="trash-outline" size={18} color="#EF4444" />
               </TouchableOpacity>
             )}
@@ -1384,7 +1384,7 @@ function BillingForm({ mode, onBack, onSubmit, submitting, error, clients }) {
           </View>
         </View>
       ))}
-      <TouchableOpacity style={styles.addLineBtn} onPress={addLine} activeOpacity={0.8}>
+      <TouchableOpacity accessibilityRole="button" style={styles.addLineBtn} onPress={addLine} activeOpacity={0.8}>
         <Ionicons name="add" size={18} color={BRAND} /><Text style={styles.addLineTxt}>Ajouter une ligne</Text>
       </TouchableOpacity>
 
@@ -1408,7 +1408,7 @@ function BillingForm({ mode, onBack, onSubmit, submitting, error, clients }) {
             <Text style={styles.sheetTitle}>Clients existants</Text>
             <ScrollView>
               {(clients || []).map((c) => (
-                <TouchableOpacity key={c.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => pickClient(c)}>
+                <TouchableOpacity accessibilityRole="button" key={c.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => pickClient(c)}>
                   <View style={[styles.personAvatar, { backgroundColor: '#2563EB', width: 40, height: 40, borderRadius: 12, marginRight: 12 }]}><Text style={styles.personAvatarTxt}>{c.initials}</Text></View>
                   <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{c.name}</Text><Text style={styles.pickedMail}>{c.email}</Text></View>
                 </TouchableOpacity>
@@ -1464,13 +1464,13 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
 
       <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Dossier</Text>
         {folders && folders.length > 0 && (
-          <TouchableOpacity onPress={() => setPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>Choisir un dossier</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" onPress={() => setPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>Choisir un dossier</Text></TouchableOpacity>
         )}
       </View>
       {selFolder ? (
         <View style={styles.pickedClient}>
           <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selFolder.name}</Text></View>
-          <TouchableOpacity onPress={() => setFolderId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setFolderId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
         </View>
       ) : (
         <Field label="Nouveau dossier *" value={newFolder} onChangeText={setNewFolder} placeholder="Ex : Événements 2026" autoCapitalize="sentences" hint="Un dossier regroupe vos projets." />
@@ -1482,13 +1482,13 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
           <Text style={styles.stepEditIdx}>{i + 1}</Text>
           <TextInput style={[styles.fInput, { flex: 1 }]} value={s} onChangeText={(v) => setStep(i, v)} placeholder={'Étape ' + (i + 1)} placeholderTextColor="#B6C0CC" />
           {steps.length > 4 && (
-            <TouchableOpacity onPress={() => rmStep(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 8 }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => rmStep(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 8 }}>
               <Ionicons name="close-circle" size={22} color="#CBD5E1" />
             </TouchableOpacity>
           )}
         </View>
       ))}
-      <TouchableOpacity style={[styles.addLineBtn, { marginTop: 4 }]} onPress={addStep} activeOpacity={0.8}>
+      <TouchableOpacity accessibilityRole="button" style={[styles.addLineBtn, { marginTop: 4 }]} onPress={addStep} activeOpacity={0.8}>
         <Ionicons name="add" size={18} color={BRAND} /><Text style={styles.addLineTxt}>Ajouter une étape</Text>
       </TouchableOpacity>
 
@@ -1496,16 +1496,16 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
 
       {/* Référent du projet */}
       <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Référent du projet</Text>
-        {referents.length > 0 && <TouchableOpacity onPress={() => setRefPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>{selReferent ? 'Changer' : 'Choisir'}</Text></TouchableOpacity>}
+        {referents.length > 0 && <TouchableOpacity accessibilityRole="button" onPress={() => setRefPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>{selReferent ? 'Changer' : 'Choisir'}</Text></TouchableOpacity>}
       </View>
       {selReferent ? (
         <View style={styles.pickedClient}>
           <View style={[styles.projPersonAv, { backgroundColor: selReferent.color || BRAND }]}><Text style={styles.projPersonAvTxt}>{selReferent.initials}</Text></View>
           <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selReferent.name}</Text><Text style={styles.projPersonRole}>{selReferent.role_label || 'Référent'}</Text></View>
-          <TouchableOpacity onPress={() => setReferentId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setReferentId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
         </View>
       ) : (
-        <TouchableOpacity style={styles.projPickBtn} activeOpacity={0.8} onPress={() => referents.length ? setRefPickerOpen(true) : null}>
+        <TouchableOpacity accessibilityRole="button" style={styles.projPickBtn} activeOpacity={0.8} onPress={() => referents.length ? setRefPickerOpen(true) : null}>
           <Ionicons name="star-outline" size={18} color={BRAND} />
           <Text style={styles.projPickTxt}>{referents.length ? 'Désigner un référent' : 'Aucun référent disponible'}</Text>
         </TouchableOpacity>
@@ -1513,10 +1513,10 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
 
       {/* Équipe du projet */}
       <View style={[styles.formCardHead, { marginTop: 20 }]}><Text style={styles.formCardTitle}>Équipe du projet</Text>
-        {allMembers.length > 0 && <TouchableOpacity onPress={() => setTeamPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>Ajouter</Text></TouchableOpacity>}
+        {allMembers.length > 0 && <TouchableOpacity accessibilityRole="button" onPress={() => setTeamPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>Ajouter</Text></TouchableOpacity>}
       </View>
       {teamIds.length === 0 ? (
-        <TouchableOpacity style={styles.projPickBtn} activeOpacity={0.8} onPress={() => allMembers.length ? setTeamPickerOpen(true) : null}>
+        <TouchableOpacity accessibilityRole="button" style={styles.projPickBtn} activeOpacity={0.8} onPress={() => allMembers.length ? setTeamPickerOpen(true) : null}>
           <Ionicons name="people-outline" size={18} color={BRAND} />
           <Text style={styles.projPickTxt}>{allMembers.length ? 'Ajouter des participants' : 'Aucun membre disponible'}</Text>
         </TouchableOpacity>
@@ -1526,7 +1526,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
             const m = allMembers.find((x) => x.id === id);
             if (!m) return null;
             return (
-              <TouchableOpacity key={id} style={styles.projTeamChip} activeOpacity={0.8} onPress={() => toggleTeam(id)}>
+              <TouchableOpacity accessibilityRole="button" key={id} style={styles.projTeamChip} activeOpacity={0.8} onPress={() => toggleTeam(id)}>
                 <View style={[styles.projTeamAv, { backgroundColor: m.color || BRAND }]}><Text style={styles.projTeamAvTxt}>{m.initials}</Text></View>
                 <Text style={styles.projTeamName}>{m.name}</Text>
                 <Ionicons name="close" size={15} color="#94A3B8" />
@@ -1548,7 +1548,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
             <Text style={styles.sheetTitle}>Référent du projet</Text>
             <ScrollView>
               {referents.map((m) => (
-                <TouchableOpacity key={m.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => { setReferentId(m.id); setRefPickerOpen(false); }}>
+                <TouchableOpacity accessibilityRole="button" key={m.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => { setReferentId(m.id); setRefPickerOpen(false); }}>
                   <View style={[styles.projPersonAv, { backgroundColor: m.color || BRAND, marginRight: 12 }]}><Text style={styles.projPersonAvTxt}>{m.initials}</Text></View>
                   <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{m.name}</Text><Text style={styles.projPersonRole}>{m.role_label || m.role}</Text></View>
                   {referentId === m.id && <Ionicons name="checkmark-circle" size={22} color={BRAND} />}
@@ -1569,7 +1569,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
               {allMembers.map((m) => {
                 const on = teamIds.includes(m.id);
                 return (
-                  <TouchableOpacity key={m.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => toggleTeam(m.id)}>
+                  <TouchableOpacity accessibilityRole="button" key={m.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => toggleTeam(m.id)}>
                     <View style={[styles.projPersonAv, { backgroundColor: m.color || BRAND, marginRight: 12 }]}><Text style={styles.projPersonAvTxt}>{m.initials}</Text></View>
                     <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{m.name}</Text><Text style={styles.projPersonRole}>{m.role_label || m.role}</Text></View>
                     <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? BRAND : '#CBD5E1'} />
@@ -1577,7 +1577,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
                 );
               })}
             </ScrollView>
-            <TouchableOpacity style={styles.projTeamDone} activeOpacity={0.9} onPress={() => setTeamPickerOpen(false)}>
+            <TouchableOpacity accessibilityRole="button" style={styles.projTeamDone} activeOpacity={0.9} onPress={() => setTeamPickerOpen(false)}>
               <Text style={styles.projTeamDoneTxt}>Valider ({teamIds.length})</Text>
             </TouchableOpacity>
           </Pressable>
@@ -1591,7 +1591,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
             <Text style={styles.sheetTitle}>Dossiers</Text>
             <ScrollView>
               {(folders || []).map((fo) => (
-                <TouchableOpacity key={fo.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => { setFolderId(fo.id); setPickerOpen(false); }}>
+                <TouchableOpacity accessibilityRole="button" key={fo.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => { setFolderId(fo.id); setPickerOpen(false); }}>
                   <View style={[styles.shortcutIcon, { marginRight: 12 }]}><Ionicons name="folder" size={20} color={BRAND} /></View>
                   <Text style={styles.qaLabel}>{fo.name}</Text>
                 </TouchableOpacity>
@@ -1644,12 +1644,12 @@ function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject
   return (
     <FormShell title="Facture de projet" onBack={onBack} onSubmit={submit} submitLabel="Ajouter au projet" submitting={submitting} error={error}>
       <Text style={styles.fLabel}>Projet</Text>
-      <TouchableOpacity style={styles.selectRow} activeOpacity={0.8} onPress={() => setPickerOpen(true)}>
+      <TouchableOpacity accessibilityRole="button" style={styles.selectRow} activeOpacity={0.8} onPress={() => setPickerOpen(true)}>
         <Text style={[styles.selectVal, !selProject ? { color: '#B6C0CC' } : null]}>{selProject ? selProject.name : 'Choisir un projet…'}</Text>
         <Ionicons name="chevron-down" size={18} color={MUTE} />
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.scanBtn, (!projectId || scanning) ? { opacity: 0.5 } : null]} activeOpacity={0.85}
+      <TouchableOpacity accessibilityRole="button" style={[styles.scanBtn, (!projectId || scanning) ? { opacity: 0.5 } : null]} activeOpacity={0.85}
         onPress={() => { if (projectId && !scanning) onScan(projectId); }}>
         {scanning ? <ActivityIndicator color={BRAND} /> : <Ionicons name="camera" size={20} color={BRAND} />}
         <Text style={styles.scanBtnTxt}>{scanning ? 'Analyse en cours…' : (scanned ? 'Rescanner une photo' : 'Scanner la facture (IA)')}</Text>
@@ -1672,7 +1672,7 @@ function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject
       <Text style={styles.fLabel}>Catégorie</Text>
       <View style={styles.catWrap}>
         {EXPENSE_CATS.map((c) => (
-          <TouchableOpacity key={c} style={[styles.catChip, category === c ? styles.catChipOn : null]} activeOpacity={0.8} onPress={() => setCategory(c)}>
+          <TouchableOpacity accessibilityRole="button" key={c} style={[styles.catChip, category === c ? styles.catChipOn : null]} activeOpacity={0.8} onPress={() => setCategory(c)}>
             <Text style={[styles.catTxt, category === c ? styles.catTxtOn : null]}>{c}</Text>
           </TouchableOpacity>
         ))}
@@ -1688,7 +1688,7 @@ function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject
             <Text style={styles.sheetTitle}>Projets</Text>
             <ScrollView>
               {(projects || []).map((p) => (
-                <TouchableOpacity key={p.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => { setProjectId(p.id); setPickerOpen(false); }}>
+                <TouchableOpacity accessibilityRole="button" key={p.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => { setProjectId(p.id); setPickerOpen(false); }}>
                   <View style={[styles.shortcutIcon, { marginRight: 12 }]}><Ionicons name="folder" size={20} color={BRAND} /></View>
                   <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{p.name}</Text><Text style={styles.pickedMail}>{p.folder}</Text></View>
                 </TouchableOpacity>
@@ -1730,7 +1730,7 @@ function NativeAgenda({ data, loading, onRefresh, onOpen, onBack }) {
             <View key={g.key} style={{ marginBottom: 18 }}>
               <Text style={styles.agDay}>{g.label}</Text>
               {g.items.map((e) => (
-                <TouchableOpacity key={e.id} style={styles.agCard} activeOpacity={0.85} onPress={() => onOpen(e.id)}>
+                <TouchableOpacity accessibilityRole="button" key={e.id} style={styles.agCard} activeOpacity={0.85} onPress={() => onOpen(e.id)}>
                   <View style={[styles.agBar, { backgroundColor: e.color }]} />
                   <View style={styles.agTime}><Text style={styles.agTimeTxt}>{e.time}</Text></View>
                   <View style={{ flex: 1 }}>
@@ -1773,7 +1773,7 @@ function NativeSubInvoices({ data, loading, onRefresh, onBack, onWeb }) {
           ) : list.map((inv, i) => {
             const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
             return (
-              <TouchableOpacity key={i} style={styles.invCard} activeOpacity={inv.pdf ? 0.85 : 1} onPress={() => inv.pdf && onWeb(inv.pdf)}>
+              <TouchableOpacity accessibilityRole="button" key={i} style={styles.invCard} activeOpacity={inv.pdf ? 0.85 : 1} onPress={() => inv.pdf && onWeb(inv.pdf)}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={styles.invNum} numberOfLines={1}>{inv.number || '—'}</Text>
                   <Text style={styles.invClient} numberOfLines={1}>{inv.date}{inv.period ? '  ·  ' + inv.period : ''}</Text>
@@ -1809,7 +1809,7 @@ function NativeChannels({ data, loading, onRefresh, onOpen, onBack }) {
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           {list.map((c) => (
-            <TouchableOpacity key={c.id} style={styles.chanCard} activeOpacity={0.85} onPress={() => onOpen(c)}>
+            <TouchableOpacity accessibilityRole="button" key={c.id} style={styles.chanCard} activeOpacity={0.85} onPress={() => onOpen(c)}>
               <View style={[styles.chanIcon, { backgroundColor: (c.color || BRAND) + '22' }]}>
                 <Ionicons name={CHAN_ICON[c.type] || 'chatbubbles'} size={20} color={c.color || BRAND} />
               </View>
@@ -1862,7 +1862,7 @@ function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh
       )}
       <View style={styles.composer}>
         <TextInput style={styles.composerInput} value={text} onChangeText={setText} placeholder="Écrire un message…" placeholderTextColor="#94A3B8" multiline />
-        <TouchableOpacity style={[styles.composerBtn, (!text.trim() || sending) ? { opacity: 0.5 } : null]} onPress={submit} activeOpacity={0.85}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Envoyer" style={[styles.composerBtn, (!text.trim() || sending) ? { opacity: 0.5 } : null]} onPress={submit} activeOpacity={0.85}>
           {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="send" size={18} color="#fff" />}
         </TouchableOpacity>
       </View>
@@ -1941,7 +1941,7 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, counts, onNav
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
         {isFounder && (
           <View style={styles.founderBlock}>
-            <TouchableOpacity style={styles.founderBanner} activeOpacity={0.9} onPress={() => onNav({ screen: 'founder' })}>
+            <TouchableOpacity accessibilityRole="button" style={styles.founderBanner} activeOpacity={0.9} onPress={() => onNav({ screen: 'founder' })}>
               <View style={styles.founderStar}><Ionicons name="star" size={20} color="#78350F" /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.founderTitle}>Espace Fondateur</Text>
@@ -1951,7 +1951,7 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, counts, onNav
             </TouchableOpacity>
             <View style={styles.founderGrid}>
               {FOUNDER_SHORTCUTS.map((it) => (
-                <TouchableOpacity key={it.label} style={styles.founderItem} activeOpacity={0.8} onPress={() => onNav({ founder: it.fk })}>
+                <TouchableOpacity accessibilityRole="button" key={it.label} style={styles.founderItem} activeOpacity={0.8} onPress={() => onNav({ founder: it.fk })}>
                   <View style={styles.founderItemIcon}><Ionicons name={it.icon} size={20} color="#B45309" /></View>
                   <Text style={styles.founderItemTxt} numberOfLines={1}>{it.label}</Text>
                 </TouchableOpacity>
@@ -1972,7 +1972,7 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, counts, onNav
               {items.map((it) => {
                 const n = it.badge ? (cnt[it.badge] || 0) : 0;
                 return (
-                  <TouchableOpacity key={it.label} style={styles.moreItem} activeOpacity={0.8} onPress={() => onNav(it.nav)}>
+                  <TouchableOpacity accessibilityRole="button" key={it.label} style={styles.moreItem} activeOpacity={0.8} onPress={() => onNav(it.nav)}>
                     {it.admin && isAdmin && !g.admin ? <View style={styles.adminTagCorner}><Text style={styles.adminTagTxt}>Admin</Text></View> : null}
                     <View style={styles.moreItemIcon}>
                       <Ionicons name={it.icon} size={22} color={BRAND} />
@@ -1986,7 +1986,7 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, counts, onNav
           </View>
           );
         })}
-        <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
+        <TouchableOpacity accessibilityRole="button" style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
           <Ionicons name="log-out-outline" size={19} color="#DC2626" />
           <Text style={styles.logoutTxt}>Se déconnecter</Text>
         </TouchableOpacity>
@@ -2048,12 +2048,12 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
             <View style={styles.fcOrbDark} />
             <View>
               <View style={styles.fcTopRow}>
-                <TouchableOpacity style={styles.fcBack} activeOpacity={0.8} onPress={onBack}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" style={styles.fcBack} activeOpacity={0.8} onPress={onBack}>
                   <Ionicons name="chevron-back" size={19} color="#EAF2EE" />
                 </TouchableOpacity>
                 <Text style={styles.fcTopTitle}>Espace Fondateur</Text>
                 {hasAsso ? (
-                  <TouchableOpacity style={styles.fcAssoBtn} activeOpacity={0.85} onPress={onGotoAsso}>
+                  <TouchableOpacity accessibilityRole="button" style={styles.fcAssoBtn} activeOpacity={0.85} onPress={onGotoAsso}>
                     <Ionicons name="business" size={13} color="#3A2A08" />
                     <Text style={styles.fcAssoTxt}>Mode Asso</Text>
                     <Ionicons name="arrow-forward" size={12} color="#3A2A08" />
@@ -2077,7 +2077,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
         ) : (
           <View style={{ paddingHorizontal: 16 }}>
             {/* MRR vedette — verre liquide */}
-            <TouchableOpacity activeOpacity={0.9} onPress={() => onTile('billing', 'all')} style={styles.fcSpotShadow}>
+            <TouchableOpacity accessibilityRole="button" activeOpacity={0.9} onPress={() => onTile('billing', 'all')} style={styles.fcSpotShadow}>
               <BlurView intensity={40} tint="light" style={styles.fcSpot}>
                 <View style={styles.fcSpotGloss} />
                 <View style={styles.fcSpotTop}>
@@ -2100,12 +2100,12 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
 
             {/* Notifications + Créer */}
             <View style={styles.fcActions}>
-              <TouchableOpacity style={styles.fcNotif} activeOpacity={0.85} onPress={onNotifs}>
+              <TouchableOpacity accessibilityRole="button" style={styles.fcNotif} activeOpacity={0.85} onPress={onNotifs}>
                 <Ionicons name="notifications" size={16} color="#334155" />
                 <Text style={styles.fcNotifTxt}>Notifications</Text>
                 {notifCount > 0 ? <View style={styles.fcNotifPill}><Text style={styles.fcNotifPillTxt}>{notifCount > 99 ? '99+' : notifCount}</Text></View> : null}
               </TouchableOpacity>
-              <TouchableOpacity style={styles.fcCreate} activeOpacity={0.9} onPress={() => onTile('create')}>
+              <TouchableOpacity accessibilityRole="button" style={styles.fcCreate} activeOpacity={0.9} onPress={() => onTile('create')}>
                 <Ionicons name="add" size={17} color="#3A2A08" />
                 <Text style={styles.fcCreateTxt}>Créer une association</Text>
               </TouchableOpacity>
@@ -2143,7 +2143,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
                   <View style={styles.fcSecN}><Text style={styles.fcSecNTxt}>{signals.length}</Text></View>
                 </View>
                 {signals.map((s, i) => (
-                  <TouchableOpacity key={i} style={styles.fcSignal} activeOpacity={0.85} onPress={() => onTile(s.screen || 'associations', s.filter)}>
+                  <TouchableOpacity accessibilityRole="button" key={i} style={styles.fcSignal} activeOpacity={0.85} onPress={() => onTile(s.screen || 'associations', s.filter)}>
                     <View style={[styles.fcSignalIc, { backgroundColor: s.bg }]}><Ionicons name={s.icon} size={16} color={s.tone} /></View>
                     <Text style={styles.fcSignalTxt} numberOfLines={2}>{s.t}</Text>
                     <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
@@ -2158,7 +2158,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
               {FC_TILES.map((t) => {
                 const tileBadge = t.key === 'contacts' ? ctcUnread : 0;
                 return (
-                <TouchableOpacity key={t.key} style={styles.fcTile} activeOpacity={0.88} onPress={() => onTile(t.key, t.key === 'billing' ? 'unpaid' : 'all')}>
+                <TouchableOpacity accessibilityRole="button" key={t.key} style={styles.fcTile} activeOpacity={0.88} onPress={() => onTile(t.key, t.key === 'billing' ? 'unpaid' : 'all')}>
                   <View style={[styles.fcTileIc, { backgroundColor: t.bg }]}><Ionicons name={t.icon} size={21} color={t.color} /></View>
                   {tileBadge > 0 ? <View style={styles.fcTileBadge}><Text style={styles.fcTileBadgeTxt}>{tileBadge > 99 ? '99+' : tileBadge}</Text></View> : null}
                   <Text style={styles.fcTileTitle}>{t.title}</Text>
@@ -2172,7 +2172,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
             <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12 }]}>DERNIÈRES ASSOCIATIONS</Text>
             <View style={styles.fcPanel}>
               {orgs.map((o, i) => (
-                <TouchableOpacity key={o.id} style={[styles.fcOrgRow, i > 0 ? styles.fcOrgBorder : null]} activeOpacity={0.8} onPress={() => onTile('associations', 'all')}>
+                <TouchableOpacity accessibilityRole="button" key={o.id} style={[styles.fcOrgRow, i > 0 ? styles.fcOrgBorder : null]} activeOpacity={0.8} onPress={() => onTile('associations', 'all')}>
                   <View style={styles.fcOrgAv}><Text style={styles.fcOrgAvTxt}>{(o.name || '?').slice(0, 2).toUpperCase()}</Text></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.fcOrgName} numberOfLines={1}>{o.name}</Text>
@@ -2182,14 +2182,14 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
                     : <View style={[styles.fcChip, { backgroundColor: o.status === 'active' ? '#D1FAE5' : '#F1F5F9' }]}><Text style={[styles.fcChipTxt, { color: o.status === 'active' ? '#047857' : '#64748B' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity style={styles.fcSeeAll} activeOpacity={0.8} onPress={() => onTile('associations', 'all')}>
+              <TouchableOpacity accessibilityRole="button" style={styles.fcSeeAll} activeOpacity={0.8} onPress={() => onTile('associations', 'all')}>
                 <Text style={styles.fcSeeAllTxt}>Voir toutes les associations</Text>
                 <Ionicons name="arrow-forward" size={15} color="#059669" />
               </TouchableOpacity>
             </View>
 
             {onLogout ? (
-              <TouchableOpacity style={styles.fcLogout} activeOpacity={0.85} onPress={onLogout}>
+              <TouchableOpacity accessibilityRole="button" style={styles.fcLogout} activeOpacity={0.85} onPress={onLogout}>
                 <Ionicons name="log-out-outline" size={19} color="#DC2626" />
                 <Text style={styles.fcLogoutTxt}>Se déconnecter</Text>
               </TouchableOpacity>
@@ -2215,7 +2215,7 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
       <DetailHeader title="Associations" onBack={onBack} />
       <View style={styles.fcFilters}>
         {FC_ORG_FILTERS.map((f) => (
-          <TouchableOpacity key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
+          <TouchableOpacity accessibilityRole="button" key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
             <Text style={[styles.fcFilterTxt, filter === f.key && styles.fcFilterTxtOn]}>{f.label}</Text>
           </TouchableOpacity>
         ))}
@@ -2231,7 +2231,7 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
             const busy = busyId === o.id;
             return (
               <View key={o.id} style={styles.fcOrgCard}>
-                <TouchableOpacity style={styles.fcOrgCardTop} activeOpacity={0.7} onPress={() => onOpen && onOpen(o.id)}>
+                <TouchableOpacity accessibilityRole="button" style={styles.fcOrgCardTop} activeOpacity={0.7} onPress={() => onOpen && onOpen(o.id)}>
                   <View style={styles.fcOrgAv}><Text style={styles.fcOrgAvTxt}>{o.initials}</Text></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.fcOrgName} numberOfLines={1}>{o.name}</Text>
@@ -2247,13 +2247,13 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
                 <View style={styles.fcOrgActions}>
                   {busy ? <ActivityIndicator size="small" color={BRAND} style={{ paddingVertical: 6 }} /> : o.pending ? (
                     <>
-                      <TouchableOpacity style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'validate')}><Ionicons name="checkmark" size={15} color="#fff" /><Text style={styles.fcActGoTxt}>Valider</Text></TouchableOpacity>
-                      <TouchableOpacity style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'reject')}><Text style={styles.fcActNoTxt}>Refuser</Text></TouchableOpacity>
+                      <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'validate')}><Ionicons name="checkmark" size={15} color="#fff" /><Text style={styles.fcActGoTxt}>Valider</Text></TouchableOpacity>
+                      <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'reject')}><Text style={styles.fcActNoTxt}>Refuser</Text></TouchableOpacity>
                     </>
                   ) : o.status === 'suspended' ? (
-                    <TouchableOpacity style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'activate')}><Ionicons name="play" size={14} color="#fff" /><Text style={styles.fcActGoTxt}>Réactiver</Text></TouchableOpacity>
+                    <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'activate')}><Ionicons name="play" size={14} color="#fff" /><Text style={styles.fcActGoTxt}>Réactiver</Text></TouchableOpacity>
                   ) : (
-                    <TouchableOpacity style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'suspend')}><Ionicons name="pause" size={14} color="#B91C1C" /><Text style={styles.fcActNoTxt}>Suspendre</Text></TouchableOpacity>
+                    <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'suspend')}><Ionicons name="pause" size={14} color="#B91C1C" /><Text style={styles.fcActNoTxt}>Suspendre</Text></TouchableOpacity>
                   )}
                 </View>
               </View>
@@ -2309,7 +2309,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
             <Text style={styles.blogLabel}>Formule</Text>
             <View style={styles.blogCats}>
               {plans.map((p) => (
-                <TouchableOpacity key={p.slug} style={[styles.planChip, plan === p.slug && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPlan(p.slug)}>
+                <TouchableOpacity accessibilityRole="button" key={p.slug} style={[styles.planChip, plan === p.slug && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPlan(p.slug)}>
                   <Text style={[styles.planChipName, plan === p.slug && { color: '#fff' }]}>{p.name}</Text>
                 </TouchableOpacity>
               ))}
@@ -2324,7 +2324,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
           </>
         )}
 
-        <TouchableOpacity style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave}
+        <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave}
           onPress={() => onEdit({ org_id: o.id, action: 'edit', name: name.trim(), billing_email: email.trim(), plan, note })}>
           {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>Enregistrer</Text></>}
         </TouchableOpacity>
@@ -2332,16 +2332,16 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
         {/* Actions rapides */}
         <View style={styles.odActions}>
           {o.status === 'suspended' ? (
-            <TouchableOpacity style={[styles.odBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]} activeOpacity={0.85} onPress={() => onAction(o.id, 'activate')}>
+            <TouchableOpacity accessibilityRole="button" style={[styles.odBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]} activeOpacity={0.85} onPress={() => onAction(o.id, 'activate')}>
               <Ionicons name="play" size={16} color="#047857" /><Text style={[styles.odBtnTxt, { color: '#047857' }]}>Réactiver</Text>
             </TouchableOpacity>
           ) : o.status !== 'cancelled' ? (
-            <TouchableOpacity style={[styles.odBtn, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]} activeOpacity={0.85} onPress={() => onAction(o.id, 'suspend')}>
+            <TouchableOpacity accessibilityRole="button" style={[styles.odBtn, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]} activeOpacity={0.85} onPress={() => onAction(o.id, 'suspend')}>
               <Ionicons name="pause" size={16} color="#B45309" /><Text style={[styles.odBtnTxt, { color: '#B45309' }]}>Suspendre</Text>
             </TouchableOpacity>
           ) : null}
           {o.status !== 'cancelled' && (
-            <TouchableOpacity style={[styles.odBtn, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]} activeOpacity={0.85}
+            <TouchableOpacity accessibilityRole="button" style={[styles.odBtn, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]} activeOpacity={0.85}
               onPress={() => Alert.alert('Résilier ?', 'L\'association passera en statut « résiliée ». Confirmer ?', [{ text: 'Annuler', style: 'cancel' }, { text: 'Résilier', style: 'destructive', onPress: () => onAction(o.id, 'resiliate') }])}>
               <Ionicons name="close-circle" size={16} color="#B91C1C" /><Text style={[styles.odBtnTxt, { color: '#B91C1C' }]}>Résilier</Text>
             </TouchableOpacity>
@@ -2445,7 +2445,7 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
             <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Sur devis (prix masqué)</Text><Switch value={!!form.is_custom_quote} onValueChange={(v) => setF('is_custom_quote', v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} /></View>
           </View>
 
-          <TouchableOpacity style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave}
+          <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave}
             onPress={() => {
               const payload = { action: isNew ? 'create' : 'update', plan_id: form.id || undefined, slug: form.slug.trim(), name: form.name.trim(), tagline: form.tagline.trim(), price_eur: parseFloat(form.price_eur) || 0, price_label: form.price_label.trim(), is_custom_quote: form.is_custom_quote ? 1 : 0, is_featured: form.is_featured ? 1 : 0, is_visible: form.is_visible ? 1 : 0, display_order: form.display_order || 0 };
               PLAN_QUOTAS.forEach((q) => { payload[q.key] = form[q.key] === '' ? '' : parseInt(form[q.key], 10); });
@@ -2455,7 +2455,7 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
             {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>{isNew ? 'Créer le plan' : 'Enregistrer'}</Text></>}
           </TouchableOpacity>
           {!isNew && (
-            <TouchableOpacity style={{ alignSelf: 'center', paddingVertical: 14 }} activeOpacity={0.7}
+            <TouchableOpacity accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 14 }} activeOpacity={0.7}
               onPress={() => Alert.alert('Supprimer ce plan ?', 'Action définitive (impossible si des orgs l\'utilisent).', [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: () => onDelete(form.id, () => setForm(null)) }])}>
               <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 14 }}>Supprimer le plan</Text>
             </TouchableOpacity>
@@ -2473,13 +2473,13 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
-          <TouchableOpacity style={[styles.projNewBtn, { alignSelf: 'flex-start', marginBottom: 14 }]} activeOpacity={0.85} onPress={() => setForm(blankPlan())}>
+          <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, { alignSelf: 'flex-start', marginBottom: 14 }]} activeOpacity={0.85} onPress={() => setForm(blankPlan())}>
             <Ionicons name="add" size={18} color="#fff" /><Text style={styles.projNewTxt}>Nouveau plan</Text>
           </TouchableOpacity>
           {plans.length === 0 ? (
             <View style={styles.emptyBox}><Ionicons name="pricetags-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun plan</Text></View>
           ) : plans.map((p) => (
-            <TouchableOpacity key={p.id} style={styles.plnCard} activeOpacity={0.85} onPress={() => openEdit(p)}>
+            <TouchableOpacity accessibilityRole="button" key={p.id} style={styles.plnCard} activeOpacity={0.85} onPress={() => openEdit(p)}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={styles.plnName} numberOfLines={1}>{p.name}</Text>
@@ -2509,7 +2509,7 @@ function NativeFounderProjects({ data, loading, filter, onFilter, onRefresh, onB
       <DetailHeader title="Projets · toutes les orgs" onBack={onBack} />
       <View style={styles.fcFilters}>
         {FC_PROJ_FILTERS.map((f) => (
-          <TouchableOpacity key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
+          <TouchableOpacity accessibilityRole="button" key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
             <Text style={[styles.fcFilterTxt, filter === f.key && styles.fcFilterTxtOn]}>{f.label}</Text>
           </TouchableOpacity>
         ))}
@@ -2609,7 +2609,7 @@ function NativeFounderSettings({ data, loading, busy, onRefresh, onBack, onSave 
             ))}
           </View>
         ))}
-        <TouchableOpacity style={[styles.lgBtn, busy && styles.lgBtnOff]} activeOpacity={0.9} disabled={busy}
+        <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, busy && styles.lgBtnOff]} activeOpacity={0.9} disabled={busy}
           onPress={() => { const p = { ...form }; p.vat_subject = form.vat_subject ? 1 : 0; onSave(p); }}>
           {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>Enregistrer</Text></>}
         </TouchableOpacity>
@@ -2645,12 +2645,12 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
         <LinearGradient colors={['#0369A1', '#075985', '#0C4A6E']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
           style={[styles.fcHeader, Platform.OS === 'ios' && { paddingTop: Constants.statusBarHeight + 10 }]}>
           <View style={styles.fcTopRow}>
-            <TouchableOpacity style={styles.fcBack} activeOpacity={0.8}
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" style={styles.fcBack} activeOpacity={0.8}
               onPress={view === 'list' ? onBackRegion : view === 'region' ? onBackRoot : onBack}>
               <Ionicons name="chevron-back" size={19} color="#EAF2EE" />
             </TouchableOpacity>
             <Text style={styles.fcTopTitle} numberOfLines={1}>Annuaire France</Text>
-            <TouchableOpacity style={{ width: 40, alignItems: 'flex-end' }} activeOpacity={0.8} onPress={onRefresh}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualiser" style={{ width: 40, alignItems: 'flex-end' }} activeOpacity={0.8} onPress={onRefresh}>
               <Ionicons name="refresh" size={18} color="#EAF2EE" />
             </TouchableOpacity>
           </View>
@@ -2678,7 +2678,7 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
                   <Text style={styles.dirEmptyS}>Lance sur le serveur :{"\n"}php founder-annuaire-france.php</Text>
                 </View>
               ) : data.regions.map((r) => (
-                <TouchableOpacity key={r.region} style={styles.dirRow} activeOpacity={0.85} onPress={() => onOpenRegion(r.region)}>
+                <TouchableOpacity accessibilityRole="button" key={r.region} style={styles.dirRow} activeOpacity={0.85} onPress={() => onOpenRegion(r.region)}>
                   <View style={[styles.dirIco, { backgroundColor: '#F0F9FF' }]}><Ionicons name="map" size={18} color="#0369A1" /></View>
                   <Text style={styles.dirRowT}>{r.region}</Text>
                   <View style={styles.dirCount}><Text style={styles.dirCountT}>{r.total.toLocaleString('fr-FR')}</Text></View>
@@ -2694,7 +2694,7 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
               <View style={styles.dirEmpty}><Text style={styles.dirEmptyS}>Aucun département indexé pour cette région.</Text></View>
             ) : data.depts.map((d) => (
               <View key={d.code} style={styles.dirDeptCard}>
-                <TouchableOpacity style={styles.dirDeptHead} activeOpacity={0.85} onPress={() => onOpenDept(d.code, d.name, '')}>
+                <TouchableOpacity accessibilityRole="button" style={styles.dirDeptHead} activeOpacity={0.85} onPress={() => onOpenDept(d.code, d.name, '')}>
                   <View style={[styles.dirIco, { backgroundColor: '#EFF6FF' }]}><Text style={styles.dirDeptCode}>{d.code}</Text></View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.dirRowT}>{d.name}</Text>
@@ -2704,7 +2704,7 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
                 </TouchableOpacity>
                 <View style={styles.dirChips}>
                   {Object.entries(d.by_cat || {}).map(([c, n]) => (
-                    <TouchableOpacity key={c} style={styles.dirChip} activeOpacity={0.8} onPress={() => onOpenDept(d.code, d.name, c)}>
+                    <TouchableOpacity accessibilityRole="button" key={c} style={styles.dirChip} activeOpacity={0.8} onPress={() => onOpenDept(d.code, d.name, c)}>
                       <Text style={styles.dirChipT}>{catLabels[c] || c}</Text>
                       <Text style={styles.dirChipN}>{n}</Text>
                     </TouchableOpacity>
@@ -2728,12 +2728,12 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
                     <View style={styles.dirEmailRow}><Ionicons name="mail" size={13} color="#047857" /><Text style={styles.dirEmailTxt}>{a.email}</Text></View>
                   ) : null}
                   <View style={styles.dirAssoActions}>
-                    <TouchableOpacity style={styles.dirActBtn} activeOpacity={0.85} disabled={busy} onPress={() => promptEmail(a)}>
+                    <TouchableOpacity accessibilityRole="button" style={styles.dirActBtn} activeOpacity={0.85} disabled={busy} onPress={() => promptEmail(a)}>
                       <Ionicons name="create-outline" size={15} color="#0369A1" />
                       <Text style={styles.dirActTxt}>{a.email ? 'Modifier email' : 'Ajouter email'}</Text>
                     </TouchableOpacity>
                     {a.email ? (
-                      <TouchableOpacity style={[styles.dirActBtn, styles.dirActBtnP]} activeOpacity={0.85} disabled={busy} onPress={() => onToProspect(a.id)}>
+                      <TouchableOpacity accessibilityRole="button" style={[styles.dirActBtn, styles.dirActBtnP]} activeOpacity={0.85} disabled={busy} onPress={() => onToProspect(a.id)}>
                         <Ionicons name="rocket" size={15} color="#fff" />
                         <Text style={[styles.dirActTxt, { color: '#fff' }]}>Prospecter</Text>
                       </TouchableOpacity>
@@ -2797,10 +2797,10 @@ function NativeFounderProspects({ data, loading, busy, onRefresh, onBack, onImpo
 
           {/* Actions */}
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
-            <TouchableOpacity style={[styles.projNewBtn, { flex: 1, justifyContent: 'center' }]} activeOpacity={0.85} onPress={() => setShowImport((v) => !v)}>
+            <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, { flex: 1, justifyContent: 'center' }]} activeOpacity={0.85} onPress={() => setShowImport((v) => !v)}>
               <Ionicons name="cloud-upload" size={17} color="#fff" /><Text style={styles.projNewTxt}>Importer</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.odBtn, { flex: 1, justifyContent: 'center', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]} activeOpacity={0.85}
+            <TouchableOpacity accessibilityRole="button" style={[styles.odBtn, { flex: 1, justifyContent: 'center', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]} activeOpacity={0.85}
               onPress={() => Alert.alert('Mettre en file ?', 'Les prospects « Nouveau » entreront dans la séquence de relance. (Aucun email tant que l\'envoi n\'est pas activé.)', [{ text: 'Annuler', style: 'cancel' }, { text: 'Mettre en file', onPress: onQueue }])}>
               <Ionicons name="play-forward" size={16} color="#2563EB" /><Text style={[styles.odBtnTxt, { color: '#2563EB' }]}>Lancer la séquence</Text>
             </TouchableOpacity>
@@ -2810,13 +2810,13 @@ function NativeFounderProspects({ data, loading, busy, onRefresh, onBack, onImpo
             <View style={styles.prImport}>
               <Text style={styles.blogLabel}>Cible</Text>
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <TouchableOpacity style={[styles.planChip, type === 'asso' && styles.planChipOn]} onPress={() => setType('asso')}><Text style={[styles.planChipName, type === 'asso' && { color: '#fff' }]}>Associations</Text></TouchableOpacity>
-                <TouchableOpacity style={[styles.planChip, type === 'tpe' && styles.planChipOn]} onPress={() => setType('tpe')}><Text style={[styles.planChipName, type === 'tpe' && { color: '#fff' }]}>TPE / PME</Text></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" style={[styles.planChip, type === 'asso' && styles.planChipOn]} onPress={() => setType('asso')}><Text style={[styles.planChipName, type === 'asso' && { color: '#fff' }]}>Associations</Text></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" style={[styles.planChip, type === 'tpe' && styles.planChipOn]} onPress={() => setType('tpe')}><Text style={[styles.planChipName, type === 'tpe' && { color: '#fff' }]}>TPE / PME</Text></TouchableOpacity>
               </View>
               <Text style={styles.blogLabel}>Contacts <Text style={{ color: '#9AA7A1', fontWeight: '400' }}>(1 par ligne : email ou email;nom;organisation;ville)</Text></Text>
               <TextInput style={[styles.blogInput, { height: 120, textAlignVertical: 'top' }]} value={text} onChangeText={setText} placeholder={"contact@asso-exemple.fr\nemail;Nom;Organisation;Ville"} placeholderTextColor="#9AA7A1" multiline autoCapitalize="none" autoCorrect={false} />
               <Text style={styles.prHint}>⚖️ N'importez que des contacts que vous avez le droit de démarcher (B2B pertinent). Chaque email inclut un lien de désinscription.</Text>
-              <TouchableOpacity style={[styles.lgBtn, (busy || text.trim().length < 5) && styles.lgBtnOff]} activeOpacity={0.9} disabled={busy || text.trim().length < 5}
+              <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, (busy || text.trim().length < 5) && styles.lgBtnOff]} activeOpacity={0.9} disabled={busy || text.trim().length < 5}
                 onPress={() => onImport(text.trim(), type, () => { setText(''); setShowImport(false); })}>
                 {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="add-circle" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>Importer les contacts</Text></>}
               </TouchableOpacity>
@@ -2837,8 +2837,8 @@ function NativeFounderProspects({ data, loading, busy, onRefresh, onBack, onImpo
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <View style={[styles.fcChip, { backgroundColor: s.bg }]}><Text style={[styles.fcChipTxt, { color: s.color }]}>{s.label}</Text></View>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <TouchableOpacity onPress={() => onStatus(p.id, 'booked')}><Ionicons name="calendar" size={17} color="#047857" /></TouchableOpacity>
-                    <TouchableOpacity onPress={() => Alert.alert('Supprimer ?', p.email, [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: () => onDelete(p.id) }])}><Ionicons name="trash-outline" size={17} color="#B91C1C" /></TouchableOpacity>
+                    <TouchableOpacity accessibilityRole="button" onPress={() => onStatus(p.id, 'booked')}><Ionicons name="calendar" size={17} color="#047857" /></TouchableOpacity>
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Supprimer" onPress={() => Alert.alert('Supprimer ?', p.email, [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: () => onDelete(p.id) }])}><Ionicons name="trash-outline" size={17} color="#B91C1C" /></TouchableOpacity>
                   </View>
                 </View>
               </View>
@@ -2867,7 +2867,7 @@ function NativeFounderBilling({ data, loading, filter, onFilter, onRefresh, onBa
         </View>
         <View style={styles.fcFilters2}>
           {FC_BILL_FILTERS.map((f) => (
-            <TouchableOpacity key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
+            <TouchableOpacity accessibilityRole="button" key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
               <Text style={[styles.fcFilterTxt, filter === f.key && styles.fcFilterTxtOn]}>{f.label}</Text>
             </TouchableOpacity>
           ))}
@@ -2892,7 +2892,7 @@ function NativeFounderBilling({ data, loading, filter, onFilter, onRefresh, onBa
                 </View>
               </View>
               {inv.can_pay && (
-                <TouchableOpacity style={styles.fcPayBtn} activeOpacity={0.85} onPress={() => onPay(inv.id)} disabled={busy}>
+                <TouchableOpacity accessibilityRole="button" style={styles.fcPayBtn} activeOpacity={0.85} onPress={() => onPay(inv.id)} disabled={busy}>
                   {busy ? <ActivityIndicator size="small" color="#fff" /> : <><Ionicons name="checkmark-circle" size={16} color="#fff" /><Text style={styles.fcPayTxt}>Marquer payée</Text></>}
                 </TouchableOpacity>
               )}
@@ -3015,7 +3015,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
           <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.queue ?? 0}</Text><Text style={styles.miniKpiLbl}>Programmés</Text></View>
         </View>
 
-        <TouchableOpacity style={styles.blogGenBtn} activeOpacity={0.9} onPress={() => setOpen(true)}>
+        <TouchableOpacity accessibilityRole="button" style={styles.blogGenBtn} activeOpacity={0.9} onPress={() => setOpen(true)}>
           <Ionicons name="sparkles" size={18} color="#fff" />
           <Text style={styles.blogGenTxt}>Générer un article IA</Text>
         </TouchableOpacity>
@@ -3030,7 +3030,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
                   <Text style={styles.fcOrgName} numberOfLines={2}>{t.title}</Text>
                   <Text style={styles.fcOrgSub}>{[t.category, 'priorité ' + t.priority].filter(Boolean).join(' · ')}</Text>
                 </View>
-                <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={() => onDeleteTopic(t.id)}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Supprimer" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={() => onDeleteTopic(t.id)}>
                   <Ionicons name="trash-outline" size={18} color="#DC2626" />
                 </TouchableOpacity>
               </View>
@@ -3041,7 +3041,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
         <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 10, color: '#64748B' }]}>ARTICLES</Text>
         <View style={styles.fcFilters2}>
           {BLOG_ART_FILTERS.map((f) => (
-            <TouchableOpacity key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
+            <TouchableOpacity accessibilityRole="button" key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
               <Text style={[styles.fcFilterTxt, filter === f.key && styles.fcFilterTxtOn]}>{f.label}</Text>
             </TouchableOpacity>
           ))}
@@ -3051,7 +3051,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
         ) : list.length === 0 ? (
           <View style={styles.emptyBox}><Ionicons name="newspaper-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun article</Text></View>
         ) : list.map((a) => (
-          <TouchableOpacity key={a.id} style={[styles.fcArtCard, { marginTop: 10 }]} activeOpacity={a.url ? 0.85 : 1} onPress={() => a.url && onWeb(a.url)}>
+          <TouchableOpacity accessibilityRole="button" key={a.id} style={[styles.fcArtCard, { marginTop: 10 }]} activeOpacity={a.url ? 0.85 : 1} onPress={() => a.url && onWeb(a.url)}>
             <View style={[styles.fcArtIc, { backgroundColor: a.published ? '#ECFDF5' : '#F1F5F9' }]}>
               <Ionicons name={a.published ? 'newspaper' : 'document-text-outline'} size={18} color={a.published ? '#059669' : '#94A3B8'} />
             </View>
@@ -3074,7 +3074,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
               <View style={styles.blogModalHandle} />
               <View style={styles.blogModalHead}>
                 <Text style={styles.blogModalTitle}>✨ Génération IA</Text>
-                <TouchableOpacity onPress={close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close" size={22} color="#94A3B8" /></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close" size={22} color="#94A3B8" /></TouchableOpacity>
               </View>
 
               {genBusy ? (
@@ -3098,8 +3098,8 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
                     </>
                   )}
                   <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-                    {genMsg.url ? <TouchableOpacity style={styles.blogSecBtn} onPress={() => onWeb(genMsg.url)}><Text style={styles.blogSecTxt}>Voir</Text></TouchableOpacity> : null}
-                    <TouchableOpacity style={styles.blogPrimBtn} onPress={close}><Text style={styles.blogPrimTxt}>Terminé</Text></TouchableOpacity>
+                    {genMsg.url ? <TouchableOpacity accessibilityRole="button" style={styles.blogSecBtn} onPress={() => onWeb(genMsg.url)}><Text style={styles.blogSecTxt}>Voir</Text></TouchableOpacity> : null}
+                    <TouchableOpacity accessibilityRole="button" style={styles.blogPrimBtn} onPress={close}><Text style={styles.blogPrimTxt}>Terminé</Text></TouchableOpacity>
                   </View>
                 </View>
               ) : (
@@ -3110,7 +3110,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
                   <Text style={styles.blogLabel}>Nombre d'articles</Text>
                   <View style={styles.blogCats}>
                     {BLOG_QTY.map((q) => (
-                      <TouchableOpacity key={q} style={[styles.blogQty, qty === q && styles.blogQtyOn]} activeOpacity={0.8} onPress={() => setQty(q)}>
+                      <TouchableOpacity accessibilityRole="button" key={q} style={[styles.blogQty, qty === q && styles.blogQtyOn]} activeOpacity={0.8} onPress={() => setQty(q)}>
                         <Text style={[styles.blogQtyTxt, qty === q && styles.blogQtyTxtOn]}>{q}</Text>
                       </TouchableOpacity>
                     ))}
@@ -3120,7 +3120,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
                   <Text style={styles.blogLabel}>Catégorie{bulk ? ' (optionnel)' : ''}</Text>
                   <View style={styles.blogCats}>
                     {BLOG_CATS.map((c) => (
-                      <TouchableOpacity key={c.key} style={[styles.blogCat, cat === c.key && styles.blogCatOn]} activeOpacity={0.8} onPress={() => setCat(c.key)}>
+                      <TouchableOpacity accessibilityRole="button" key={c.key} style={[styles.blogCat, cat === c.key && styles.blogCatOn]} activeOpacity={0.8} onPress={() => setCat(c.key)}>
                         <Text style={[styles.blogCatTxt, cat === c.key && styles.blogCatTxtOn]}>{c.label}</Text>
                       </TouchableOpacity>
                     ))}
@@ -3141,7 +3141,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
 
                   {bulk ? (
                     <>
-                      <TouchableOpacity style={[styles.blogGenBtn, { marginTop: 18 }, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
+                      <TouchableOpacity accessibilityRole="button" style={[styles.blogGenBtn, { marginTop: 18 }, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
                         disabled={!canSubmit} onPress={() => onBulk({ theme: subject.trim(), count: qty, category: cat })}>
                         <Ionicons name="sparkles" size={18} color="#fff" />
                         <Text style={styles.blogGenTxt}>Créer {qty} articles</Text>
@@ -3150,12 +3150,12 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
                     </>
                   ) : (
                     <>
-                      <TouchableOpacity style={[styles.blogGenBtn, { marginTop: 18 }, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
+                      <TouchableOpacity accessibilityRole="button" style={[styles.blogGenBtn, { marginTop: 18 }, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
                         disabled={!canSubmit} onPress={() => onGenerate({ topic_title: subject.trim(), category: cat, keywords: keywords.trim(), is_published: publishNow ? 1 : 0 })}>
                         <Ionicons name="sparkles" size={18} color="#fff" />
                         <Text style={styles.blogGenTxt}>Générer maintenant</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.blogProgBtn, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
+                      <TouchableOpacity accessibilityRole="button" style={[styles.blogProgBtn, !canSubmit && { opacity: 0.5 }]} activeOpacity={0.9}
                         disabled={!canSubmit || topicBusy} onPress={() => { onProgram({ topic_title: subject.trim(), category: cat, keywords: keywords.trim(), priority: 5 }); close(); }}>
                         {topicBusy ? <ActivityIndicator color={BRAND} /> : <><Ionicons name="time" size={17} color={BRAND} /><Text style={styles.blogProgTxt}>Programmer (généré auto plus tard)</Text></>}
                       </TouchableOpacity>
@@ -3188,7 +3188,7 @@ function NativeFounderSupport({ data, loading, filter, onFilter, onBack, onRefre
         </View>
         <View style={styles.fcFilters2}>
           {FC_SUP_FILTERS.map((f) => (
-            <TouchableOpacity key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
+            <TouchableOpacity accessibilityRole="button" key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
               <Text style={[styles.fcFilterTxt, filter === f.key && styles.fcFilterTxtOn]}>{f.label}</Text>
             </TouchableOpacity>
           ))}
@@ -3200,7 +3200,7 @@ function NativeFounderSupport({ data, loading, filter, onFilter, onBack, onRefre
         ) : list.map((t) => {
           const km = INV_KIND[t.status_kind] || INV_KIND.wait;
           return (
-            <TouchableOpacity key={t.id} style={styles.fcTicketCard} activeOpacity={0.85} onPress={() => onOpen && onOpen(t)}>
+            <TouchableOpacity accessibilityRole="button" key={t.id} style={styles.fcTicketCard} activeOpacity={0.85} onPress={() => onOpen && onOpen(t)}>
               <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
                 <Text style={styles.fcOrgName} numberOfLines={1}>{t.title}</Text>
                 <Text style={styles.fcOrgSub} numberOfLines={1}>{t.org} · {t.date}</Text>
@@ -3250,7 +3250,7 @@ function NativeFounderSupportThread({ data, loading, onBack, onRefresh, onReply,
           ) : (
             <View style={styles.supInputBar}>
               <TextInput style={styles.supInput} value={body} onChangeText={setBody} placeholder="Répondre à l'association…" placeholderTextColor="#9AA7A1" multiline />
-              <TouchableOpacity style={[styles.supSend, (body.trim().length < 2 || replyBusy) && { opacity: 0.5 }]} onPress={send} disabled={body.trim().length < 2 || replyBusy}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Envoyer" style={[styles.supSend, (body.trim().length < 2 || replyBusy) && { opacity: 0.5 }]} onPress={send} disabled={body.trim().length < 2 || replyBusy}>
                 {replyBusy ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={18} color="#fff" />}
               </TouchableOpacity>
             </View>
@@ -3301,10 +3301,10 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
             <View style={styles.credDivider} />
             <Text style={styles.credLbl}>Mot de passe</Text><Text style={styles.credVal} selectable>{result.password}</Text>
           </View>
-          <TouchableOpacity style={styles.lgBtn} activeOpacity={0.9} onPress={() => onCopy(result.email + ' / ' + result.password)}>
+          <TouchableOpacity accessibilityRole="button" style={styles.lgBtn} activeOpacity={0.9} onPress={() => onCopy(result.email + ' / ' + result.password)}>
             <Ionicons name="copy" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>Copier les identifiants</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={{ alignSelf: 'center', paddingVertical: 14 }} onPress={onDone}><Text style={styles.lgForgot}>Terminé</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 14 }} onPress={onDone}><Text style={styles.lgForgot}>Terminé</Text></TouchableOpacity>
         </ScrollView>
       </View>
     );
@@ -3329,7 +3329,7 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
         <Text style={styles.blogLabel}>Formule</Text>
         <View style={styles.blogCats}>
           {list.map((p) => (
-            <TouchableOpacity key={p.id} style={[styles.planChip, planId === p.id && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPlanId(p.id)}>
+            <TouchableOpacity accessibilityRole="button" key={p.id} style={[styles.planChip, planId === p.id && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPlanId(p.id)}>
               <Text style={[styles.planChipName, planId === p.id && { color: '#fff' }]}>{p.name}</Text>
               <Text style={[styles.planChipPrice, planId === p.id && { color: 'rgba(255,255,255,0.85)' }]}>{p.is_trial ? 'Essai' : (p.price > 0 ? fmtEuro(p.price) + '/mois' : 'Gratuit')}</Text>
             </TouchableOpacity>
@@ -3339,7 +3339,7 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
         <Text style={styles.blogLabel}>Mode de paiement</Text>
         <View style={{ gap: 8 }}>
           {PAY_MODES.map((m) => (
-            <TouchableOpacity key={m.key} style={[styles.payRow, payMode === m.key && styles.payRowOn]} activeOpacity={0.85} onPress={() => setPayMode(m.key)}>
+            <TouchableOpacity accessibilityRole="button" key={m.key} style={[styles.payRow, payMode === m.key && styles.payRowOn]} activeOpacity={0.85} onPress={() => setPayMode(m.key)}>
               <Ionicons name={payMode === m.key ? 'radio-button-on' : 'radio-button-off'} size={20} color={payMode === m.key ? BRAND : '#B8C4C0'} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.payLbl, payMode === m.key && { color: BRAND }]}>{m.label}</Text>
@@ -3352,7 +3352,7 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
         <Text style={styles.blogLabel}>Durée d'activation</Text>
         <View style={styles.blogCats}>
           {PERIODS.map((pr) => (
-            <TouchableOpacity key={pr.d} style={[styles.planChip, periodDays === pr.d && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPeriodDays(pr.d)}>
+            <TouchableOpacity accessibilityRole="button" key={pr.d} style={[styles.planChip, periodDays === pr.d && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPeriodDays(pr.d)}>
               <Text style={[styles.planChipName, periodDays === pr.d && { color: '#fff' }]}>{pr.label}</Text>
             </TouchableOpacity>
           ))}
@@ -3366,7 +3366,7 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
           <View style={{ flex: 1 }}><Text style={styles.blogSwitchTitle}>Envoyer l'email de bienvenue</Text><Text style={styles.blogSwitchSub}>Avec les identifiants de connexion</Text></View>
           <Switch value={sendMail} onValueChange={setSendMail} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
         </View>
-        <TouchableOpacity style={[styles.lgBtn, !canSubmit && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSubmit}
+        <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSubmit && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSubmit}
           onPress={() => onSubmit({ org_name: name.trim(), first_name: first.trim(), last_name: last.trim(), billing_email: email.trim(), plan_id: planId, custom_password: pass.trim(), payment_mode: payMode, period_days: periodDays, with_addon_domain: addonDomain ? 1 : 0, send_welcome_email: sendMail ? 1 : 0 })}>
           {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="add-circle" size={18} color="#fff" /><Text style={styles.lgBtnTxt}>Créer l'organisation</Text></>}
         </TouchableOpacity>
@@ -3389,7 +3389,7 @@ function NativeFounderContacts({ data, loading, onBack, onRefresh, onOpen }) {
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           {list.map((c) => (
-            <TouchableOpacity key={c.id} style={styles.ctcCard} activeOpacity={0.85} onPress={() => onOpen(c)}>
+            <TouchableOpacity accessibilityRole="button" key={c.id} style={styles.ctcCard} activeOpacity={0.85} onPress={() => onOpen(c)}>
               <View style={styles.ctcTop}>
                 <View style={[styles.ctcAv, { backgroundColor: c.is_new ? '#EFF6FF' : '#F1F5F9' }]}><Ionicons name="person" size={17} color={c.is_new ? '#2563EB' : '#94A3B8'} /></View>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -3439,7 +3439,7 @@ function NativeFounderContactThread({ data, loading, onBack, onRefresh, onReply,
           </ScrollView>
           <View style={styles.supInputBar}>
             <TextInput style={styles.supInput} value={body} onChangeText={setBody} placeholder="Répondre par email…" placeholderTextColor="#9AA7A1" multiline />
-            <TouchableOpacity style={[styles.supSend, (body.trim().length < 2 || replyBusy) && { opacity: 0.5 }]} onPress={send} disabled={body.trim().length < 2 || replyBusy}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Envoyer" style={[styles.supSend, (body.trim().length < 2 || replyBusy) && { opacity: 0.5 }]} onPress={send} disabled={body.trim().length < 2 || replyBusy}>
               {replyBusy ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={18} color="#fff" />}
             </TouchableOpacity>
           </View>
@@ -3462,7 +3462,7 @@ function NativeQuotes({ data, loading, onRefresh, onOpen, onNew, onBack }) {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
-          <TouchableOpacity style={[styles.projNewBtn, { alignSelf: 'flex-start', marginBottom: 14 }]} onPress={onNew} activeOpacity={0.85}>
+          <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, { alignSelf: 'flex-start', marginBottom: 14 }]} onPress={onNew} activeOpacity={0.85}>
             <Ionicons name="add" size={18} color="#fff" /><Text style={styles.projNewTxt}>Nouveau devis</Text>
           </TouchableOpacity>
           {list.length === 0 ? (
@@ -3470,7 +3470,7 @@ function NativeQuotes({ data, loading, onRefresh, onOpen, onNew, onBack }) {
           ) : list.map((q) => {
             const km = INV_KIND[q.status_kind] || INV_KIND.wait;
             return (
-              <TouchableOpacity key={q.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpen(q.id)}>
+              <TouchableOpacity accessibilityRole="button" key={q.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpen(q.id)}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={styles.invNum} numberOfLines={1}>{q.number}</Text>
                   <Text style={styles.invClient} numberOfLines={1}>{q.client || '—'}{q.date ? '  ·  ' + q.date : ''}</Text>
@@ -3540,7 +3540,7 @@ function NativeStats({ data, loading, onRefresh, onBack, cockpit, cockpitLoading
           ) : (
             <Text style={styles.cockpitEmpty}>Une analyse complète de votre santé financière et vos actions prioritaires, par l'IA.</Text>
           )}
-          <TouchableOpacity style={[styles.cockpitBtn, cockpitLoading ? { opacity: 0.7 } : null]} activeOpacity={0.85} onPress={cockpitLoading ? undefined : onCockpit}>
+          <TouchableOpacity accessibilityRole="button" style={[styles.cockpitBtn, cockpitLoading ? { opacity: 0.7 } : null]} activeOpacity={0.85} onPress={cockpitLoading ? undefined : onCockpit}>
             {cockpitLoading ? <ActivityIndicator size="small" color="#4F46E5" /> : <Ionicons name="sparkles" size={16} color="#4F46E5" />}
             <Text style={styles.cockpitBtnTxt}>{cockpitLoading ? 'Analyse en cours…' : (cockpit ? 'Actualiser' : 'Générer mon cockpit IA')}</Text>
           </TouchableOpacity>
@@ -3596,7 +3596,7 @@ function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead,
     <View style={styles.detailWrap}>
       <DetailHeader title="Notifications" onBack={onBack} />
       {unread > 0 ? (
-        <TouchableOpacity style={styles.markAllBtn} activeOpacity={0.8} onPress={onMarkAllRead}>
+        <TouchableOpacity accessibilityRole="button" style={styles.markAllBtn} activeOpacity={0.8} onPress={onMarkAllRead}>
           <Ionicons name="checkmark-done" size={16} color={BRAND} />
           <Text style={styles.markAllTxt}>Tout marquer comme lu ({unread})</Text>
         </TouchableOpacity>
@@ -3609,7 +3609,7 @@ function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead,
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           {list.map((n) => (
-            <TouchableOpacity key={n.id} style={[styles.notifCard, !n.read ? styles.notifUnread : null]} activeOpacity={0.85} onPress={() => onPress(n)}>
+            <TouchableOpacity accessibilityRole="button" key={n.id} style={[styles.notifCard, !n.read ? styles.notifUnread : null]} activeOpacity={0.85} onPress={() => onPress(n)}>
               <View style={[styles.notifIcon, !n.read ? { backgroundColor: '#ECFDF5' } : null]}><Ionicons name={n.icon} size={18} color={!n.read ? BRAND : '#94A3B8'} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.notifTitle, !n.read ? { fontWeight: '700' } : null]} numberOfLines={2}>{n.title}</Text>
@@ -3724,7 +3724,7 @@ function NativeEventDetail({ entry, onBack, onRefresh, onWeb }) {
           <InfoRow icon="folder" label="Projet" value={e.project} />
         </View>
         {!!e.description && (<><Text style={styles.dSection}>Description</Text><Text style={styles.dText}>{e.description}</Text></>)}
-        <TouchableOpacity style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/evenement/' + e.id)}>
+        <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/evenement/' + e.id)}>
           <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
           <Ionicons name="open-outline" size={18} color={BRAND} />
         </TouchableOpacity>
@@ -3813,7 +3813,7 @@ function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack 
             )}
           </>
         )}
-        <TouchableOpacity style={[styles.dPrimaryBtn, generating ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={generating ? undefined : onGenerate}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, generating ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={generating ? undefined : onGenerate}>
           {generating ? <ActivityIndicator color="#fff" /> : <Ionicons name="sparkles" size={18} color="#fff" />}
           <Text style={styles.dPrimaryBtnTxt}>{generating ? 'Génération…' : (r ? 'Générer un nouveau rapport' : 'Générer mon rapport')}</Text>
         </TouchableOpacity>
@@ -3840,7 +3840,7 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
               <View style={styles.logoBox}>
                 {org.logo ? <Image source={{ uri: org.logo }} style={styles.logoImg} /> : <Ionicons name="image-outline" size={26} color="#CBD5E1" />}
               </View>
-              <TouchableOpacity style={[styles.scanBtn, { flex: 1 }, logoBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={logoBusy ? undefined : onLogo}>
+              <TouchableOpacity accessibilityRole="button" style={[styles.scanBtn, { flex: 1 }, logoBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={logoBusy ? undefined : onLogo}>
                 {logoBusy ? <ActivityIndicator color={BRAND} /> : <Ionicons name="cloud-upload" size={18} color="#0369A1" />}
                 <Text style={styles.scanBtnTxt}>{logoBusy ? 'Envoi…' : 'Changer le logo'}</Text>
               </TouchableOpacity>
@@ -3855,29 +3855,29 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
         <Field label="Email" value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" />
         <Field label="Téléphone" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
         <Field label="Ville" value={f.city} onChangeText={set('city')} autoCapitalize="words" />
-        <TouchableOpacity style={[styles.dPrimaryBtn, saving ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={saving ? undefined : () => onSave(f)}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, saving ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={saving ? undefined : () => onSave(f)}>
           {saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark-circle" size={18} color="#fff" />}
           <Text style={styles.dPrimaryBtnTxt}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.settingsRow} activeOpacity={0.7} onPress={() => onWeb('/parametres?tab=securite')}>
+        <TouchableOpacity accessibilityRole="button" style={styles.settingsRow} activeOpacity={0.7} onPress={() => onWeb('/parametres?tab=securite')}>
           <Ionicons name="lock-closed-outline" size={20} color="#475569" />
           <Text style={styles.settingsRowTxt}>Sécurité & mot de passe</Text>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
         </TouchableOpacity>
         {org.is_admin && (
-          <TouchableOpacity style={styles.settingsRow} activeOpacity={0.7} onPress={() => onWeb('/parametres?tab=organisation')}>
+          <TouchableOpacity accessibilityRole="button" style={styles.settingsRow} activeOpacity={0.7} onPress={() => onWeb('/parametres?tab=organisation')}>
             <Ionicons name="business-outline" size={20} color="#475569" />
             <Text style={styles.settingsRowTxt}>Infos de l'organisation</Text>
             <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
+        <TouchableOpacity accessibilityRole="button" style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
           <Ionicons name="log-out-outline" size={19} color="#DC2626" /><Text style={styles.logoutTxt}>Se déconnecter</Text>
         </TouchableOpacity>
         {a.can_delete && (
-          <TouchableOpacity style={{ marginTop: 14, alignItems: 'center' }} activeOpacity={0.7} onPress={onDelete}>
+          <TouchableOpacity accessibilityRole="button" style={{ marginTop: 14, alignItems: 'center' }} activeOpacity={0.7} onPress={onDelete}>
             <Text style={styles.deleteTxt}>Supprimer mon compte (RGPD)</Text>
           </TouchableOpacity>
         )}
@@ -5105,7 +5105,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           </View>
         )}
         {showWeb && webMode && (
-          <TouchableOpacity style={styles.floatBack} activeOpacity={0.85}
+          <TouchableOpacity accessibilityRole="button" style={styles.floatBack} activeOpacity={0.85}
             onPress={() => { if (canGoBack && webRef.current) webRef.current.goBack(); else { setWebMode(false); setMenuScreen(null); } }}>
             <Ionicons name="chevron-back" size={20} color={INK} />
             <Text style={styles.floatBackTxt}>Retour</Text>
@@ -5128,7 +5128,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       </View>
 
       {authed && isFounder && !['founder', 'fdorgs', 'fdorgdetail', 'fdbilling', 'fdplans', 'fdprojects', 'fdactivity', 'fdsettings', 'fdprospects', 'fddir', 'fdstats', 'fdblog', 'fdsupport', 'fdthread', 'fdcreateorg', 'fdcontacts', 'fdctcthread'].includes(menuScreen) && !webMode && (
-        <TouchableOpacity
+        <TouchableOpacity accessibilityRole="button"
           style={styles.founderStrip}
           activeOpacity={0.9}
           onPress={() => { setOpenChannel(null); openMenuScreen('founder'); }}
@@ -5176,7 +5176,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Créer</Text>
             {QUICK_ACTIONS.map((a) => (
-              <TouchableOpacity key={a.label} style={styles.qaRow} onPress={() => onQuick(a)} activeOpacity={0.7}>
+              <TouchableOpacity accessibilityRole="button" key={a.label} style={styles.qaRow} onPress={() => onQuick(a)} activeOpacity={0.7}>
                 <View style={[styles.qaIcon, { backgroundColor: a.color + '18' }]}>
                   <Ionicons name={a.icon} size={22} color={a.color} />
                 </View>
