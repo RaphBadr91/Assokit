@@ -17,6 +17,12 @@ DirectoryIndex index.html index.php
 RewriteEngine On
 
 # ============================================================
+# 0. DOMAINE CANONIQUE : www -> non-www (en un seul saut, force aussi HTTPS)
+# ============================================================
+RewriteCond %{HTTP_HOST} ^www\.assokit\.fr$ [NC]
+RewriteRule ^ https://assokit.fr%{REQUEST_URI} [L,R=301]
+
+# ============================================================
 # 1. FORCER LE HTTPS
 # ============================================================
 RewriteCond %{HTTPS} !=on
