@@ -15,11 +15,29 @@ $cats       = blog_categories();
 
 if ($cat_filter && !isset($cats[$cat_filter])) $cat_filter = '';
 
-$articles = blog_list($pdo, $cat_filter ?: null, $q ?: null, 50);
+$per_page = 12;
+$page     = max(1, (int)($_GET['page'] ?? 1));
+$total    = blog_count($pdo, $cat_filter ?: null, $q ?: null);
+$last_page = max(1, (int)ceil($total / $per_page));
+if ($page > $last_page) $page = $last_page;
+$articles = blog_list($pdo, $cat_filter ?: null, $q ?: null, $per_page, ($page - 1) * $per_page);
 
 $page_title = 'Blog';
 if ($cat_filter) $page_title = 'Blog · ' . $cats[$cat_filter]['label'];
 elseif ($q)      $page_title = 'Blog · Recherche "' . $q . '"';
+if ($page > 1)   $page_title .= ' — Page ' . $page;
+
+// Chemin canonique : on garde categorie + page (self-canonical pour que les pages 2+ soient explorées),
+// mais PAS le paramètre de recherche interne (?q=), lui mis en noindex.
+$canon_path = '/blog';
+$qp = [];
+if ($cat_filter) $qp[] = 'categorie=' . rawurlencode($cat_filter);
+if ($page > 1)   $qp[] = 'page=' . $page;
+if ($qp) $canon_path .= '?' . implode('&', $qp);
+
+$blog_desc = $cat_filter
+    ? ('Nos guides et conseils « ' . $cats[$cat_filter]['label'] . ' » pour les associations loi 1901, les TPE et les indépendants.')
+    : 'Le blog Assokit : conseils, guides et bonnes pratiques pour les associations loi 1901, les TPE et les indépendants. Pensé pour vous faire gagner du temps.';
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],
@@ -28,8 +46,9 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 render_public_head([
     'title'       => $page_title,
-    'description' => 'Le blog Assokit : conseils, guides et bonnes pratiques pour les associations loi 1901, les TPE et les indépendants. Pensé pour vous faire gagner du temps.',
-    'path'        => '/blog' . ($cat_filter ? '?categorie=' . $cat_filter : ''),
+    'description' => $blog_desc,
+    'path'        => $canon_path,
+    'noindex'     => ($q !== ''), // les résultats de recherche interne ne sont pas indexés
     'schema_jsonld' => [$breadcrumb],
 ]);
 render_public_nav('blog');
@@ -112,6 +131,24 @@ render_public_nav('blog');
           </article>
         <?php endforeach; ?>
       </div>
+
+      <?php if ($last_page > 1): ?>
+      <nav class="pub-pagination" aria-label="Pagination du blog" style="display:flex;gap:6px;justify-content:center;margin-top:34px;flex-wrap:wrap;">
+        <?php
+          $base_q = [];
+          if ($cat_filter) $base_q[] = 'categorie=' . rawurlencode($cat_filter);
+          $mk = function($p) use ($base_q) {
+              $q = $base_q; if ($p > 1) $q[] = 'page=' . $p;
+              return '/blog' . ($q ? '?' . implode('&', $q) : '');
+          };
+        ?>
+        <?php if ($page > 1): ?><a href="<?= pub_h($mk($page - 1)) ?>" class="pub-btn pub-btn-ghost" style="padding:6px 12px;font-size:13px;" rel="prev">← Précédent</a><?php endif; ?>
+        <?php for ($p = 1; $p <= $last_page; $p++): ?>
+          <a href="<?= pub_h($mk($p)) ?>" class="pub-btn <?= $p === $page ? 'pub-btn-primary' : 'pub-btn-ghost' ?>" style="padding:6px 12px;font-size:13px;" <?= $p === $page ? 'aria-current="page"' : '' ?>><?= $p ?></a>
+        <?php endfor; ?>
+        <?php if ($page < $last_page): ?><a href="<?= pub_h($mk($page + 1)) ?>" class="pub-btn pub-btn-ghost" style="padding:6px 12px;font-size:13px;" rel="next">Suivant →</a><?php endif; ?>
+      </nav>
+      <?php endif; ?>
     <?php endif; ?>
   </div>
 </section>

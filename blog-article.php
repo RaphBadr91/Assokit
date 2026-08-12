@@ -55,24 +55,28 @@ $article_image = !empty($article['og_image'])
     ? (preg_match('#^https?://#', $article['og_image']) ? $article['og_image'] : AK_PUBLIC_DOMAIN . '/' . ltrim($article['og_image'], '/'))
     : AK_PUBLIC_DOMAIN . '/assets/og-assokit-home.png';
 
-// Schema Article
+// Comptage de mots (approx.) depuis le markdown, pour le schema
+$word_count = str_word_count(strip_tags((string)$article['content_md']));
+
+// Schema BlogPosting (Article enrichi E-E-A-T)
 $article_jsonld = [
     '@context' => 'https://schema.org',
-    '@type'    => 'Article',
-    'headline' => $article['title'],
+    '@type'    => 'BlogPosting',
+    'headline' => mb_substr($article['title'], 0, 110),
     'description' => $article['excerpt'],
     'image' => [$article_image],
     'datePublished' => $article['published_at'],
     'dateModified'  => $article['updated_at'] ?: $article['published_at'],
     'author' => [
-        '@type' => 'Organization',
+        '@type' => 'Person',
         'name'  => $article['author'] ?: 'L\'équipe Assokit',
-        'url'   => AK_PUBLIC_DOMAIN,
+        'url'   => AK_PUBLIC_DOMAIN . '/a-propos',
     ],
     'publisher' => [
         '@type' => 'Organization',
+        '@id'   => AK_PUBLIC_DOMAIN . '/#organization',
         'name'  => 'Assokit',
-        'logo'  => ['@type' => 'ImageObject', 'url' => AK_PUBLIC_DOMAIN . '/assets/logo-assokit.png'],
+        'logo'  => ['@type' => 'ImageObject', 'url' => AK_PUBLIC_DOMAIN . '/assets/logo-assokit.png', 'width' => 512, 'height' => 512],
     ],
     'mainEntityOfPage' => [
         '@type' => 'WebPage',
@@ -80,13 +84,39 @@ $article_jsonld = [
     ],
     'articleSection' => $cat['label'],
     'keywords' => implode(', ', $tags),
+    'wordCount' => $word_count,
+    'inLanguage' => 'fr-FR',
+    'isAccessibleForFree' => true,
 ];
+
+// FAQPage : extraction automatique depuis une section « ## FAQ » du markdown (si présente).
+// Valide + réutilisé par les AI Overviews. Conditionnel : les vieux articles sans FAQ sont ignorés.
+$faq_jsonld = null;
+if (preg_match('/^##\s+(?:FAQ|Questions?\s+fr[ée]quentes|Foire\s+aux\s+questions)\b.*$/im', (string)$article['content_md'], $mh, PREG_OFFSET_CAPTURE)) {
+    $rest    = substr($article['content_md'], $mh[0][1] + strlen($mh[0][0]));
+    $section = preg_split('/\n##\s+/', $rest, 2)[0]; // jusqu'au prochain H2 (ou fin)
+    $qa = [];
+    if (preg_match_all('/\*\*(.+?)\*\*\s*\n+(.*?)(?=\n\s*\*\*|\z)/s', $section, $mm, PREG_SET_ORDER)) {
+        foreach ($mm as $m) {
+            $q = trim(preg_replace('/\s+/', ' ', $m[1]));
+            $a = preg_replace('/\[([^\]]+)\]\([^)]+\)/', '$1', $m[2]);   // liens markdown → texte
+            $a = trim(preg_replace('/\s+/', ' ', str_replace(['**', '*', '`', '#'], '', strip_tags($a))));
+            if ($q !== '' && $a !== '') {
+                $qa[] = ['@type' => 'Question', 'name' => $q, 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $a]];
+            }
+        }
+    }
+    if (count($qa) >= 2) { // Google exige ≥ 2 Q/R utiles
+        $faq_jsonld = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => $qa];
+    }
+}
 
 render_public_head([
     'title'       => $article['meta_title'] ?: $article['title'],
     'description' => $article['meta_description'] ?: $article['excerpt'],
     'path'        => '/blog/' . $article['slug'],
     'og_type'     => 'article',
+    'og_image'    => $article_image,
     'article_data' => [
         'published_time' => $article['published_at'],
         'modified_time'  => $article['updated_at'],
@@ -94,7 +124,7 @@ render_public_head([
         'section'        => $cat['label'],
         'tags'           => $tags,
     ],
-    'schema_jsonld' => [$breadcrumb, $article_jsonld],
+    'schema_jsonld' => array_values(array_filter([$breadcrumb, $article_jsonld, $faq_jsonld])),
 ]);
 render_public_nav('blog');
 ?>
@@ -154,11 +184,11 @@ render_public_nav('blog');
 
       $AK_CTA = [
         'compta' => [
-          ['ic'=>'📊','t'=>'La compta de votre association, sans y passer vos soirées','p'=>'Assokit construit votre comptabilité analytique <strong>automatiquement</strong> au fil de votre activité : factures, cotisations, dépenses catégorisées, justificatifs centralisés. Bilan par projet inclus dès l\'offre Pro.','a'=>['/comptabilite-analytique','La compta analytique incluse'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'📊','t'=>'La compta de votre association, sans y passer vos soirées','p'=>'Assokit construit votre comptabilité analytique <strong>automatiquement</strong> au fil de votre activité : factures, cotisations, dépenses catégorisées, justificatifs centralisés. Bilan par projet inclus dès l\'offre Pro.','a'=>['/logiciel-comptabilite-association','Logiciel de comptabilité association'],'b'=>['/tarifs','Voir les tarifs']],
           ['ic'=>'✅','t'=>'Un dossier propre et daté pour votre expert-comptable','p'=>'Fini la ressaisie de fin d\'année. Vos comptes se préparent tout seuls, exportables en PDF et Excel — votre comptable n\'a plus qu\'à valider.','a'=>['/pour-associations','Découvrir pour les assos'],'b'=>['/contact','Réserver une démo']],
         ],
         'tpe' => [
-          ['ic'=>'🧾','t'=>'Devis, factures et relances : arrêtez de courir après vos paiements','p'=>'Assokit crée vos devis et factures pro en 2 minutes, envoie les <strong>relances automatiquement</strong> et suit votre trésorerie en temps réel. Vous récupérez plusieurs heures par semaine.','a'=>['/pour-tpe','Assokit pour les TPE/PME'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'🧾','t'=>'Devis, factures et relances : arrêtez de courir après vos paiements','p'=>'Assokit crée vos devis et factures pro en 2 minutes, envoie les <strong>relances automatiquement</strong> et suit votre trésorerie en temps réel. Vous récupérez plusieurs heures par semaine.','a'=>['/logiciel-gestion-tpe','Logiciel de gestion pour TPE'],'b'=>['/tarifs','Voir les tarifs']],
           ['ic'=>'🏗️','t'=>'Sachez enfin quel chantier vous rapporte vraiment','p'=>'Un projet par client/chantier : budget, factures rattachées, rentabilité réelle poste par poste. Le pilotage clair de votre activité, sur mobile comme au bureau.','a'=>['/fonctionnalites','Voir les fonctionnalités'],'b'=>['/contact','Réserver une démo']],
         ],
         'juridique' => [
@@ -234,7 +264,33 @@ render_public_nav('blog');
       <?php endif; ?>
 
       <?php
-      // Maillage interne contextuel : CTA + liens vers les pages produit selon l'audience de l'article
+      // Maillage interne montant : article → pages produit (money pages) selon le thème détecté ($ak_theme)
+      $AK_SOLUTIONS = [
+        'compta'        => [['/logiciel-comptabilite-association', 'Logiciel de comptabilité pour association'],
+                            ['/comptabilite-analytique', 'La comptabilité analytique par projet']],
+        'asso'          => [['/logiciel-association', 'Logiciel de gestion d\'association loi 1901'],
+                            ['/logiciel-cotisation-association', 'Gérer les cotisations en ligne'],
+                            ['/logiciel-adherents', 'Gérer et fidéliser vos adhérents']],
+        'juridique'     => [['/logiciel-association', 'Registres, statuts et AG sans paperasse'],
+                            ['/logiciel-adherents', 'Logiciel de gestion des adhérents']],
+        'communication' => [['/logiciel-adherents', 'Communiquer avec vos adhérents'],
+                            ['/fonctionnalites', 'Les outils de communication intégrés']],
+        'tpe'           => [['/logiciel-gestion-tpe', 'Logiciel de gestion pour TPE'],
+                            ['/logiciel-facturation', 'Devis & factures pro en 2 minutes']],
+      ];
+      $ak_sol = $AK_SOLUTIONS[$ak_theme ?? 'asso'] ?? $AK_SOLUTIONS['asso'];
+      ?>
+      <div style="border:1px solid var(--c-border);border-radius:var(--radius-lg);padding:22px 24px;margin-top:32px;background:var(--c-creme-2);">
+        <h3 style="margin:0 0 12px;font-size:16px;color:var(--c-encre);">🧩 Les outils Assokit sur ce sujet</h3>
+        <ul style="margin:0;padding-left:18px;line-height:1.9;">
+          <?php foreach ($ak_sol as $s): ?>
+            <li><a href="<?= $s[0] ?>" style="color:var(--c-emeraude-dark);font-weight:600;"><?= pub_h($s[1]) ?></a></li>
+          <?php endforeach; ?>
+        </ul>
+      </div>
+
+      <?php
+      // CTA d'audience (persona) — complémentaire du bloc "Solutions" ci-dessus
       $blog_is_tpe = (stripos((string)$article['category'], 'tpe') !== false)
                   || (stripos((string)$article['category'], 'entreprise') !== false)
                   || (stripos((string)$article['title'], 'TPE') !== false)

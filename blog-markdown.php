@@ -56,7 +56,9 @@ function render_blog_markdown(string $md): string
     $md = preg_replace('/^####\s+(.+)$/m',   '<h4 class="bm-h4">$1</h4>', $md);
     $md = preg_replace('/^###\s+(.+)$/m',    '<h3 class="bm-h3">$1</h3>', $md);
     $md = preg_replace('/^##\s+(.+)$/m',     '<h2 class="bm-h2">$1</h2>', $md);
-    $md = preg_replace('/^#\s+(.+)$/m',      '<h1 class="bm-h1">$1</h1>', $md);
+    // Le H1 appartient au titre de la page (hero de blog-article.php). Un « # » dans le
+    // corps devient donc un H2 pour éviter deux H1 sur la même page (SEO : structure Hn unique).
+    $md = preg_replace('/^#\s+(.+)$/m',      '<h2 class="bm-h2">$1</h2>', $md);
     
     // 5. Hr
     $md = preg_replace('/^[\s]*[-\*]{3,}[\s]*$/m', '<hr class="bm-hr">', $md);

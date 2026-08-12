@@ -25,17 +25,38 @@ if (!function_exists('render_public_head')) {
         $title       = trim((string)($seo['title'] ?? 'Assokit'));
         // Si title_full est fourni, on l'utilise tel quel (pour SEO précis homepage)
         // Sinon, on construit avec " · Assokit" en suffixe
+        $AK_TITLE_MAX = 60; // Google coupe ~600px ≈ 60 caractères
         if (!empty($seo['title_full'])) {
             $full_title = (string)$seo['title_full'];
         } elseif ($title === 'Assokit') {
-            $full_title = 'Assokit · Le logiciel tout-en-un pour piloter votre association et votre TPE sereinement';
+            $full_title = 'Assokit · Logiciel de gestion pour associations loi 1901 et TPE';
         } elseif (stripos($title, 'assokit') !== false) {
             // La marque est déjà présente dans le titre : ne pas la dupliquer.
             $full_title = $title;
-        } else {
+        } elseif (mb_strlen($title . ' · Assokit') <= $AK_TITLE_MAX) {
+            // La marque tient dans la limite : on l'ajoute.
             $full_title = "{$title} · Assokit";
+        } else {
+            // Titre déjà long (cas des articles de blog) : pas de suffixe de marque.
+            $full_title = $title;
         }
-        $desc        = trim((string)($seo['description'] ?? 'Centralisez vos projets, vos adhérents et votre communication — main dans la main avec l\'IA. Pour les associations loi 1901 et les petites entreprises engagées.'));
+        // Garde-fou : ne jamais dépasser la limite (troncature au dernier mot entier).
+        if (mb_strlen($full_title) > $AK_TITLE_MAX) {
+            $cut = mb_substr($full_title, 0, $AK_TITLE_MAX - 1);
+            $sp  = mb_strrpos($cut, ' ');
+            $full_title = ($sp !== false ? mb_substr($cut, 0, $sp) : $cut) . '…';
+        }
+
+        // Description : normalisée (espaces/retours markdown), fallback utile, tronquée à 160.
+        $desc = trim(preg_replace('/\s+/', ' ', (string)($seo['description'] ?? '')));
+        if ($desc === '') {
+            $desc = 'Centralisez adhérents, cotisations, projets et communication avec Assokit, le logiciel tout-en-un pour les associations loi 1901 et les TPE.';
+        }
+        if (mb_strlen($desc) > 160) {
+            $cut = mb_substr($desc, 0, 157);
+            $sp  = mb_strrpos($cut, ' ');
+            $desc = ($sp !== false ? mb_substr($cut, 0, $sp) : $cut) . '…';
+        }
         $path        = (string)($seo['path'] ?? '/');
         $canonical   = pub_url($path);
         $og_image    = (string)($seo['og_image'] ?? AK_PUBLIC_DOMAIN . '/assets/og-assokit-home.png');
@@ -79,6 +100,7 @@ if (!function_exists('render_public_head')) {
 
         // Twitter Card
         echo "  <meta name=\"twitter:card\" content=\"summary_large_image\">\n";
+        echo "  <meta name=\"twitter:site\" content=\"@assokit_fr\">\n";
         echo "  <meta name=\"twitter:title\" content=\"" . pub_h($full_title) . "\">\n";
         echo "  <meta name=\"twitter:description\" content=\"" . pub_h($desc) . "\">\n";
         echo "  <meta name=\"twitter:image\" content=\"" . pub_h($og_image) . "\">\n";
@@ -90,9 +112,10 @@ if (!function_exists('render_public_head')) {
         echo "  <link rel=\"apple-touch-icon\" href=\"/assets/favicon.png\">\n";
         echo "  <meta name=\"theme-color\" content=\"#059669\">\n";
 
-        // Fonts
+        // Fonts — chargées en NON-BLOQUANT (le texte s'affiche via display=swap, la font se substitue ensuite)
         echo "  <link rel=\"preconnect\" href=\"https://fonts.bunny.net\" crossorigin>\n";
-        echo "  <link rel=\"stylesheet\" href=\"https://fonts.bunny.net/css?family=geist:400,500,600,700&display=swap\">\n";
+        echo "  <link rel=\"stylesheet\" href=\"https://fonts.bunny.net/css?family=geist:400,500,600,700&display=swap\" media=\"print\" onload=\"this.media='all'\">\n";
+        echo "  <noscript><link rel=\"stylesheet\" href=\"https://fonts.bunny.net/css?family=geist:400,500,600,700&display=swap\"></noscript>\n";
 
         // CSS public
         echo "  <link rel=\"stylesheet\" href=\"/assets/public.css?v=" . @filemtime(__DIR__ . "/assets/public.css") . "\">\n";
@@ -101,11 +124,17 @@ if (!function_exists('render_public_head')) {
         $org_jsonld = [
             '@context' => 'https://schema.org',
             '@type'    => 'Organization',
+            '@id'      => AK_PUBLIC_DOMAIN . '/#organization',
             'name'     => 'Assokit',
             'url'      => AK_PUBLIC_DOMAIN,
-            'logo'     => AK_PUBLIC_DOMAIN . '/assets/logo-assokit.png',
+            'logo'     => [
+                '@type' => 'ImageObject',
+                'url'   => AK_PUBLIC_DOMAIN . '/assets/logo-assokit.png',
+                'width' => 512, 'height' => 512,
+            ],
             'description' => 'Logiciel tout-en-un pour les associations loi 1901 et les TPE',
             'foundingDate' => '2026',
+            // 'sameAs' : à renseigner avec les profils RÉELS (LinkedIn, Facebook, X…) dès leur création.
             'contactPoint' => [
                 '@type' => 'ContactPoint',
                 'contactType' => 'customer support',
@@ -120,12 +149,17 @@ if (!function_exists('render_public_head')) {
         $site_jsonld = [
             '@context' => 'https://schema.org',
             '@type' => 'WebSite',
+            '@id' => AK_PUBLIC_DOMAIN . '/#website',
             'name' => 'Assokit',
             'url' => AK_PUBLIC_DOMAIN,
             'inLanguage' => 'fr-FR',
+            'publisher' => ['@id' => AK_PUBLIC_DOMAIN . '/#organization'],
             'potentialAction' => [
                 '@type' => 'SearchAction',
-                'target' => AK_PUBLIC_DOMAIN . '/blog?q={search_term_string}',
+                'target' => [
+                    '@type' => 'EntryPoint',
+                    'urlTemplate' => AK_PUBLIC_DOMAIN . '/blog?q={search_term_string}',
+                ],
                 'query-input' => 'required name=search_term_string',
             ],
         ];
