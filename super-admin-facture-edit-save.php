@@ -89,6 +89,21 @@ if ($status === 'paid' && empty($paid_at)) {
     $paid_at = null;
 }
 
+// [PISTE D'AUDIT FIABLE] Une facture finalisée (non brouillon) est inaltérable dans
+// son contenu (montants, description, TVA, période, échéance) — art. 289 CGI / facture
+// électronique. On n'autorise plus que le cycle de vie : statut, règlement, notes internes.
+// Toute correction du contenu doit passer par un avoir (note de crédit).
+if ((string)($invoice['status'] ?? '') !== 'draft') {
+    $description      = $invoice['description'];
+    $amount_ht_cents  = (int)$invoice['amount_ht_cents'];
+    $amount_vat_cents = (int)$invoice['amount_vat_cents'];
+    $amount_ttc_cents = (int)$invoice['amount_ttc_cents'];
+    $vat_rate_db      = $invoice['vat_rate'];
+    $period_start     = $invoice['period_start'];
+    $period_end       = $invoice['period_end'];
+    $due_at           = $invoice['due_at'];
+}
+
 try {
     $stmt = $pdo->prepare("
         UPDATE invoices SET

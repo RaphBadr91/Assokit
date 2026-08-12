@@ -78,9 +78,19 @@ if (!function_exists('ak_recurrence_get_org_slug')) {
 // --------------------------------------------------------------
 if (!function_exists('ak_recurrence_generate_invoice_number')) {
     function ak_recurrence_generate_invoice_number(PDO $pdo, int $org_id, int $year): array {
-        $slug = ak_recurrence_get_org_slug($pdo, $org_id);
+        // Source de vérité UNIQUE : le compteur atomique org_invoice_settings
+        // (piste d'audit fiable — même numérotation que la voie manuelle,
+        //  séquence continue sans trou ni doublon).
+        if (!function_exists('ak_asso_invoice_next_number_parts') && is_file(__DIR__ . '/asso-invoice-helpers.php')) {
+            require_once __DIR__ . '/asso-invoice-helpers.php';
+        }
+        if (function_exists('ak_asso_invoice_next_number_parts')) {
+            $p = ak_asso_invoice_next_number_parts($pdo, $org_id);
+            return ['number' => $p['number'], 'sequence' => $p['sequence']];
+        }
 
-        // Cherche le max sequence pour cette org × année
+        // Fallback (ne devrait pas être atteint) — ancienne logique MAX+1
+        $slug = ak_recurrence_get_org_slug($pdo, $org_id);
         $next_seq = 1;
         try {
             $st = $pdo->prepare("SELECT MAX(invoice_sequence) FROM asso_invoices WHERE org_id = :o AND invoice_year = :y");

@@ -106,6 +106,18 @@ try {
         $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$invoice) throw new RuntimeException('Facture introuvable.');
 
+        // [PISTE D'AUDIT FIABLE] Une facture finalisée est inaltérable (art. 289 CGI /
+        // facture électronique). Seul un brouillon peut être modifié. Toute correction
+        // d'une facture émise passe par un avoir (note de crédit).
+        if ((string)($invoice['status'] ?? '') !== 'draft') {
+            $_SESSION['flash_asso_factures'] = [
+                'type' => 'error',
+                'message' => 'La facture ' . ($invoice['invoice_number'] ?? '') . ' est finalisée : elle ne peut plus être modifiée. Pour la corriger, émettez un avoir.',
+            ];
+            header('Location: /mon-asso-facture-edit?id=' . $invoice_id);
+            exit;
+        }
+
         $client_id = (int)($client_data['id'] ?? 0);
         if (!$client_id) {
             $client_id = ak_asso_find_or_create_client($pdo, $org_id, array_merge($client_data, ['created_by_user_id' => (int)$user['id']]));

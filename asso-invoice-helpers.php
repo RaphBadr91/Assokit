@@ -54,44 +54,80 @@ function ak_asso_ensure_slug(PDO $pdo, int $org_id): string
 }
 
 /**
- * Génère le prochain numéro de facture pour une asso.
+ * Génère le prochain numéro de facture pour une asso — version structurée.
+ *
+ * Source de vérité UNIQUE pour la numérotation (piste d'audit fiable) :
+ * le compteur atomique org_invoice_settings, verrouillé en FOR UPDATE.
+ * Toutes les voies de création de facture (manuelle, récurrence, avoir…)
+ * DOIVENT passer par ici pour garantir une séquence continue, sans trou
+ * ni doublon (exigence facture électronique / EN 16931 / art. 289 CGI).
+ *
+ * Auto-réparation : le compteur est aligné sur max(next_sequence, MAX(invoice_sequence)+1)
+ * afin de rattraper toute dérive héritée d'anciennes insertions (ex. récurrences
+ * qui n'incrémentaient pas le compteur). Couplé à la contrainte UNIQUE
+ * (org_id, invoice_year, invoice_sequence) en base, le doublon devient impossible.
+ *
+ * Réentrant : si un appel se fait déjà dans une transaction, on ne gère pas
+ * la nôtre (pas de nesting), on s'appuie sur le verrou FOR UPDATE existant.
+ *
  * Format : SLUG-2026-000001
+ * @return array{number:string, year:int, sequence:int, slug:string}
  */
-function ak_asso_invoice_next_number(PDO $pdo, int $org_id): string
+function ak_asso_invoice_next_number_parts(PDO $pdo, int $org_id): array
 {
     $year = (int) date('Y');
     $slug = ak_asso_ensure_slug($pdo, $org_id);
 
-    // Initialise / récupère la séquence
-    $pdo->beginTransaction();
+    $ownTx = !$pdo->inTransaction();
+    if ($ownTx) $pdo->beginTransaction();
     try {
         $stmt = $pdo->prepare("SELECT next_sequence, current_year FROM org_invoice_settings WHERE org_id = :id FOR UPDATE");
         $stmt->execute([':id' => $org_id]);
         $row = $stmt->fetch();
 
+        // Séquence réellement déjà utilisée cette année (garde-fou anti-doublon)
+        $mx = $pdo->prepare("SELECT COALESCE(MAX(invoice_sequence), 0) FROM asso_invoices WHERE org_id = :id AND invoice_year = :y");
+        $mx->execute([':id' => $org_id, ':y' => $year]);
+        $maxUsed = (int)$mx->fetchColumn();
+
         if (!$row) {
             // Création des paramètres pour cette asso
-            $pdo->prepare("INSERT INTO org_invoice_settings (org_id, next_sequence, current_year) VALUES (:id, 2, :y)")
-                ->execute([':id' => $org_id, ':y' => $year]);
-            $current = 1;
+            $current = $maxUsed + 1;
+            $pdo->prepare("INSERT INTO org_invoice_settings (org_id, next_sequence, current_year) VALUES (:id, :next, :y)")
+                ->execute([':id' => $org_id, ':next' => $current + 1, ':y' => $year]);
         } elseif ((int)$row['current_year'] !== $year) {
-            // Nouvelle année → reset séquence à 1
-            $pdo->prepare("UPDATE org_invoice_settings SET next_sequence = 2, current_year = :y WHERE org_id = :id")
-                ->execute([':y' => $year, ':id' => $org_id]);
-            $current = 1;
+            // Nouvelle année → séquence repart à 1 (ou au-delà si des factures existent déjà pour l'année)
+            $current = $maxUsed + 1;
+            $pdo->prepare("UPDATE org_invoice_settings SET next_sequence = :next, current_year = :y WHERE org_id = :id")
+                ->execute([':next' => $current + 1, ':y' => $year, ':id' => $org_id]);
         } else {
-            $current = (int)$row['next_sequence'];
-            $pdo->prepare("UPDATE org_invoice_settings SET next_sequence = next_sequence + 1 WHERE org_id = :id")
-                ->execute([':id' => $org_id]);
+            // Auto-heal : ne jamais réutiliser une séquence déjà émise
+            $current = max((int)$row['next_sequence'], $maxUsed + 1);
+            $pdo->prepare("UPDATE org_invoice_settings SET next_sequence = :next WHERE org_id = :id")
+                ->execute([':next' => $current + 1, ':id' => $org_id]);
         }
 
-        $pdo->commit();
+        if ($ownTx) $pdo->commit();
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($ownTx && $pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
 
-    return sprintf('%s-%d-%06d', $slug, $year, $current);
+    return [
+        'number'   => sprintf('%s-%d-%06d', $slug, $year, $current),
+        'year'     => $year,
+        'sequence' => $current,
+        'slug'     => $slug,
+    ];
+}
+
+/**
+ * Génère le prochain numéro de facture pour une asso (compat : renvoie la chaîne).
+ * Format : SLUG-2026-000001
+ */
+function ak_asso_invoice_next_number(PDO $pdo, int $org_id): string
+{
+    return ak_asso_invoice_next_number_parts($pdo, $org_id)['number'];
 }
 
 /**
