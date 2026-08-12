@@ -24,7 +24,7 @@ $faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEn
 
 render_public_head([
     'title'       => 'Gérer une association loi 1901 : le guide complet',
-    'description' => 'Créer et gérer une association loi 1901 : statuts, déclaration en préfecture, bureau, assemblée générale, adhérents, cotisations, comptabilité et obligations légales. Guide complet à jour 2026.',
+    'description' => 'Créer et gérer une association loi 1901 : statuts, déclaration, bureau, assemblée générale, adhérents, cotisations et comptabilité. Guide complet à jour 2026.',
     'path'        => '/guide-association-loi-1901',
     'schema_jsonld' => [$breadcrumb, $faq_schema],
 ]);

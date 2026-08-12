@@ -325,6 +325,8 @@ if (!function_exists('render_public_footer')) {
                 <a href="/logiciel-adherents">Gestion des adhérents</a>
                 <a href="/logiciel-cotisation-association">Cotisations en ligne</a>
                 <a href="/logiciel-comptabilite-association">Comptabilité association</a>
+                <a href="/logiciel-association-gratuit">Logiciel association gratuit</a>
+                <a href="/alternative-helloasso">Alternative à HelloAsso</a>
               </div>
 
               <div class="pub-footer-col">

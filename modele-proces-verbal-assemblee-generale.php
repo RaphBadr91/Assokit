@@ -169,10 +169,10 @@ AK_MODELE;
     <div class="ak-prose reveal">
       <p>Le <strong>procès-verbal d'assemblée générale</strong> — souvent abrégé « PV d'AG » — est le compte rendu officiel des décisions prises par les membres de l'association réunis en assemblée. C'est un document court mais capital : c'est lui qui fait foi, des mois ou des années plus tard, de ce que l'assemblée a réellement voté. Approbation des comptes, élection des dirigeants, changement de cotisation, modification des statuts : sans procès-verbal, ces décisions ne laissent aucune trace opposable.</p>
 
-      <h3>À quoi sert vraiment le PV</h3>
+      <h2>À quoi sert vraiment le PV</h2>
       <p>Au-delà de la mémoire interne de l'association, le procès-verbal est réclamé par un grand nombre d'interlocuteurs. La banque l'exige pour mettre à jour les mandataires du compte après une élection. La préfecture le demande à l'appui d'une modification des statuts ou d'un changement de dirigeants. Les financeurs et les partenaires publics le joignent aux dossiers de subvention pour vérifier que les comptes ont bien été approuvés. En cas de litige interne, c'est la pièce que produira chaque partie. Autrement dit, un PV bien tenu protège l'association et ses dirigeants.</p>
 
-      <h3>Les éléments qui doivent y figurer</h3>
+      <h2>Les éléments qui doivent y figurer</h2>
       <p>Un procès-verbal complet suit toujours la même ossature, du plus formel au plus détaillé :</p>
       <ul>
         <li><strong>L'en-tête :</strong> le nom de l'association, la référence à la loi 1901, l'adresse du siège, ainsi que la nature (ordinaire ou extraordinaire), la date, l'heure et le lieu de l'assemblée.</li>
@@ -185,7 +185,7 @@ AK_MODELE;
         <li><strong>Les signatures :</strong> celles du président et du secrétaire de séance, qui authentifient le document.</li>
       </ul>
 
-      <h3>Comment utiliser ce modèle</h3>
+      <h2>Comment utiliser ce modèle</h2>
       <p>Le modèle ci-dessous est calibré pour une assemblée générale ordinaire type — rapport moral, comptes, budget, cotisation, renouvellement du conseil. Copiez-le, remplacez chaque champ entre crochets par les données réelles de votre assemblée, et complétez les résultats de vote au fil de la séance (ou juste après, à partir de vos notes). Pour une assemblée générale extraordinaire, conservez la même structure mais adaptez les résolutions aux décisions concernées (modification des statuts, dissolution) et vérifiez les règles de quorum et de majorité renforcées prévues par vos statuts. Le procès-verbal doit refléter fidèlement ce qui s'est passé : ne pré-remplissez jamais les résultats à l'avance. Pour bien préparer l'assemblée elle-même, appuyez-vous sur nos <a href="/modele-statuts-association">statuts d'association</a> (qui fixent les règles de convocation et de vote), sur notre article dédié à <a href="/blog/bureau-association-composition-role">la composition et au rôle du bureau</a>, et sur nos conseils relatifs à <a href="/blog/adhesion-association-regles-bonnes-pratiques">l'adhésion des membres</a>. Une vue complète des démarches figure dans notre <a href="/guide-association-loi-1901">guide de l'association loi 1901</a>.</p>
     </div>
   </div>

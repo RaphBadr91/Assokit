@@ -22,7 +22,7 @@ $faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEn
 
 render_public_head([
     'title'       => 'Modèle de statuts association loi 1901 (gratuit)',
-    'description' => "Modèle de statuts d'association loi 1901 gratuit, complet et commenté : 11 articles prêts à copier et à personnaliser. Dénomination, objet, membres, AG, dissolution.",
+    'description' => "Modèle de statuts d'association loi 1901 gratuit et commenté : 11 articles prêts à copier et à personnaliser. Dénomination, objet, membres, AG, dissolution.",
     'path'        => '/modele-statuts-association',
     'schema_jsonld' => [$breadcrumb, $faq_schema],
 ]);
@@ -190,10 +190,10 @@ AK_MODELE;
     <div class="ak-prose reveal">
       <p>Les <strong>statuts</strong> sont l'acte fondateur de toute association loi 1901. C'est le contrat qui lie les membres entre eux : il fixe le nom de l'association, son objet, son siège, la façon dont elle est dirigée et la manière dont les décisions sont prises. Sans statuts déclarés en préfecture, une association ne possède pas la personnalité morale et ne peut ni ouvrir un compte bancaire, ni recevoir de subvention, ni employer de salarié, ni agir en justice. Autant dire que bien rédiger ses statuts n'est pas une formalité : c'est poser les fondations de votre projet.</p>
 
-      <h3>Ce que la loi impose (et ce qu'elle laisse libre)</h3>
+      <h2>Ce que la loi impose (et ce qu'elle laisse libre)</h2>
       <p>La loi du 1<sup>er</sup> juillet 1901 est remarquablement souple. Elle n'impose qu'un très petit socle de mentions — en pratique, le titre exact de l'association, son objet et l'adresse de son siège social, que la préfecture réclame lors de la déclaration. Tout le reste relève de votre liberté d'organisation. C'est un atout, mais aussi un piège : des statuts trop vagues ou muets sur des points essentiels (mode de scrutin, durée des mandats, gestion de la dissolution) provoquent des blocages dès que survient un désaccord. Le modèle proposé plus bas couvre volontairement les onze points qui reviennent dans la quasi-totalité des associations, pour vous éviter ces angles morts.</p>
 
-      <h3>Les 11 articles indispensables</h3>
+      <h2>Les 11 articles indispensables</h2>
       <p>Un jeu de statuts solide s'articule autour de onze articles. Chacun répond à une question précise que se posera, tôt ou tard, un adhérent, un financeur ou un juge :</p>
       <ul>
         <li><strong>Article 1 — Dénomination :</strong> le nom exact et la référence à la loi de 1901. C'est l'identité juridique de l'association.</li>
@@ -209,7 +209,7 @@ AK_MODELE;
         <li><strong>Article 11 — Dissolution :</strong> comment l'association prend fin et à qui revient l'actif restant. La loi interdit de partager cet actif entre les membres.</li>
       </ul>
 
-      <h3>Comment utiliser ce modèle</h3>
+      <h2>Comment utiliser ce modèle</h2>
       <p>Copiez le texte ci-dessous, collez-le dans votre traitement de texte, puis remplacez systématiquement chaque champ entre crochets par les informations de votre association. Relisez l'ensemble à plusieurs, car ces statuts vous engageront durablement : ajustez le nombre de dirigeants, la durée des mandats ou le mode de scrutin à votre réalité. Une fois le texte figé, faites-le voter lors de votre <a href="/modele-proces-verbal-assemblee-generale">assemblée générale constitutive</a> (dont nous fournissons aussi le procès-verbal), datez-le, faites-le signer par au moins deux membres fondateurs, puis procédez à la déclaration en préfecture. Pour comprendre le rôle de chacun une fois l'association créée, consultez notre article sur <a href="/blog/bureau-association-composition-role">la composition et le rôle du bureau</a> ainsi que nos conseils sur <a href="/blog/adhesion-association-regles-bonnes-pratiques">l'adhésion et ses bonnes pratiques</a>. Pour une vue d'ensemble des démarches, notre <a href="/guide-association-loi-1901">guide de l'association loi 1901</a> vous accompagne pas à pas.</p>
     </div>
   </div>
