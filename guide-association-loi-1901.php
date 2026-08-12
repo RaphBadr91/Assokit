@@ -40,7 +40,7 @@ require __DIR__ . '/_landing-premium.php';
       <h1 class="pub-h1 reveal" style="margin-top:20px;">Gérer une association loi 1901 : <span class="lp-grad">le guide complet</span></h1>
       <p class="pub-tagline reveal" style="max-width:680px;">De la rédaction des statuts à la comptabilité, en passant par le bureau, l'assemblée générale et les cotisations : tout ce qu'il faut savoir pour <strong>créer et gérer une association loi 1901</strong>, expliqué simplement et à jour de la réglementation 2026.</p>
       <div class="lp-hero-cta reveal">
-        <a href="/signup" class="lp-btn lp-btn-primary">Créer mon compte gratuit
+        <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
         <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
       </div>
@@ -156,9 +156,9 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="lp-stat reveal" style="background:linear-gradient(135deg,#0f172a,#065f46);">
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Gérez votre association sans y passer vos soirées</h2>
-      <p>Adhérents, cotisations, comptabilité et assemblées réunis dans un seul outil, hébergé en France. Créez votre compte gratuitement pour démarrer.</p>
+      <p>Adhérents, cotisations, comptabilité et assemblées réunis dans un seul outil, hébergé en France. Essai gratuit 14 jours, sans carte bancaire, puis à partir de 29,99 €/mois.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-        <a href="/signup" class="lp-btn lp-btn-primary">Créer mon compte gratuit</a>
+        <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>
       </div>
       <p style="position:relative;margin-top:14px;font-size:13px;color:rgba(255,255,255,.75);">Sans carte bancaire · sans engagement</p>
