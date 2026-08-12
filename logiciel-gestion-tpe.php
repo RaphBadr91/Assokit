@@ -12,16 +12,16 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 $faqs = [
     ['Quel logiciel de gestion pour une TPE ou un indépendant ?', "Un bon logiciel de gestion TPE réunit devis, factures, clients, projets/chantiers, trésorerie et agenda dans un seul outil, sans logiciel comptable en plus. Assokit est conçu pour ça : simple, français, hébergé en France, utilisable sur mobile comme au bureau."],
-    ['Existe-t-il un logiciel de gestion TPE gratuit ?', "Oui : Assokit propose un essai gratuit pour démarrer (devis, factures, suivi), sans carte bancaire. Vous montez en gamme uniquement quand votre activité se développe."],
+    ['Existe-t-il un logiciel de gestion TPE gratuit ?', "Oui : Assokit propose un essai gratuit pour démarrer (devis, factures, suivi), sans carte bancaire. Vous testez toutes les fonctionnalités gratuitement pendant 14 jours, sans carte bancaire, puis vous choisissez votre formule."],
     ['Le logiciel gère-t-il les chantiers et projets ?', "Oui. Chaque client ou chantier devient un projet : étapes, budget alloué vs dépensé, factures rattachées, collègues assignés. Vous savez en un coup d'œil où en est chaque affaire."],
     ['Puis-je suivre ma trésorerie et mes rendez-vous ?', "Oui : suivi des encaissements en temps réel, relances de paiement automatiques, et agenda intégré pour vos rendez-vous — tout au même endroit."],
     ['Assokit fonctionne-t-il sur mobile ?', "Oui, application iOS et Android : gérez devis, factures, projets et RDV depuis votre téléphone, même sur le terrain."],
     ['Quel logiciel de gestion pour une TPE ?', "Le meilleur logiciel de gestion pour une TPE réunit devis, factures, clients, chantiers, trésorerie et rentabilité dans un seul outil, sans suite comptable lourde à côté. Privilégiez une solution simple à prendre en main, dotée d'une appli mobile et hébergée en France : c'est exactement le parti pris d'Assokit, avec un essai gratuit pour démarrer."],
-    ['Un indépendant a-t-il besoin d\'un logiciel de gestion ?', "Oui. Même seul, un indépendant ou un artisan doit éditer des devis et des factures conformes, relancer les impayés et suivre sa trésorerie. Un logiciel de gestion évite les tableurs dispersés et les oublis de relance, fait gagner plusieurs heures par semaine et donne une vision claire de la rentabilité de chaque client."],
+    ['Un indépendant a-t-il besoin d\'un logiciel de gestion ?', "Oui. Même seul, un indépendant ou un artisan doit éditer des devis et des factures conformes, relancer les impayés et suivre sa trésorerie. Un logiciel de gestion évite les tableurs dispersés et les oublis de relance, peut faire gagner plusieurs heures par semaine et donne une vision claire de la rentabilité de chaque client."],
     ['Peut-on suivre la rentabilité par chantier ou par client ?', "Oui, c'est le cœur d'Assokit. Chaque dépense et chaque facture est rattachée à un projet, un chantier ou un client. La comptabilité analytique intégrée calcule automatiquement la marge réelle, poste par poste : vous savez immédiatement quelle affaire rapporte et laquelle vous coûte de l'argent."],
 ];
 $faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
-$soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplication', 'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android', 'description' => "Logiciel de gestion tout-en-un pour TPE, PME et indépendants : devis, factures, projets/chantiers, trésorerie, agenda et comptabilité analytique.", 'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'EUR'], 'inLanguage' => 'fr-FR'];
+$soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplication', 'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android', 'description' => "Logiciel de gestion tout-en-un pour TPE, PME et indépendants : devis, factures, projets/chantiers, trésorerie, agenda et comptabilité analytique.", 'offers' => ['@type' => 'AggregateOffer', 'lowPrice' => '29.99', 'highPrice' => '49.99', 'priceCurrency' => 'EUR', 'offerCount' => '3'], 'inLanguage' => 'fr-FR'];
 
 render_public_head([
     'title'       => 'Logiciel de gestion pour TPE & indépendants · Assokit',
@@ -42,7 +42,7 @@ require __DIR__ . '/_landing-premium.php';
         <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:620px;">Le <span class="lp-grad">logiciel de gestion</span> tout-en-un de votre entreprise</h1>
         <p class="pub-tagline reveal" style="max-width:560px;">Devis, factures, relances, <strong>chantiers, trésorerie et agenda</strong> dans un seul outil. Arrêtez de jongler entre Excel, mails et applis — pilotez votre TPE simplement, sur mobile comme au bureau.</p>
         <div class="lp-hero-cta reveal">
-          <a href="/tarifs" class="lp-btn lp-btn-primary">Commencer gratuitement
+          <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
           <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
         </div>
@@ -116,8 +116,8 @@ require __DIR__ . '/_landing-premium.php';
             ['Suivi de trésorerie','Calculs à la main','Module payant en plus','Encaissements en temps réel'],
             ['Rentabilité par projet/client','Quasi impossible','Paramétrage long','Comptabilité analytique intégrée'],
             ['Relances de paiement','Oubliées','Automatisables (option)','Automatiques, incluses'],
-            ['Application mobile','Non','Rarement fluide','iOS &amp; Android natives'],
-            ['Hébergement en France','Selon l\'outil','Souvent hors UE','🇫🇷 Oui, RGPD'],
+            ['Application mobile','Non','Rarement fluide','iOS &amp; Android'],
+            ['Hébergement en France','Selon l\'outil','Selon l\'éditeur','🇫🇷 Oui, RGPD'],
             ['Prise en main','Rapide mais limité','Plusieurs jours','Immédiate, sans formation'],
             ['Prix','Faible mais chronophage','Élevé, engagement','Essai gratuit pour démarrer'],
           ] as $j => $row): ?>
@@ -179,7 +179,7 @@ require __DIR__ . '/_landing-premium.php';
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Pilotez votre TPE sereinement</h2>
       <p>Essai gratuit pour démarrer, application mobile incluse. Sans engagement.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-        <a href="/tarifs" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+        <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>
       </div>
     </div>

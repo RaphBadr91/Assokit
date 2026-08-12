@@ -27,7 +27,7 @@ $soft_schema = [
     '@context' => 'https://schema.org', '@type' => 'SoftwareApplication',
     'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android',
     'description' => "Logiciel de gestion et de collecte des cotisations pour association loi 1901 : paiement en ligne, relances automatiques, reçus, suivi en temps réel.",
-    'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'EUR'], 'inLanguage' => 'fr-FR',
+    'offers' => ['@type' => 'AggregateOffer', 'lowPrice' => '29.99', 'highPrice' => '49.99', 'priceCurrency' => 'EUR', 'offerCount' => '3'], 'inLanguage' => 'fr-FR',
 ];
 
 render_public_head([
@@ -49,7 +49,7 @@ require __DIR__ . '/_landing-premium.php';
         <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:620px;">Collectez vos <span class="lp-grad">cotisations en ligne</span>, sans courir après personne</h1>
         <p class="pub-tagline reveal" style="max-width:560px;">Paiement par carte bancaire, <strong>relances automatiques</strong>, reçus générés, plusieurs tarifs et suivi en temps réel. Vos cotisations rentrent toutes seules — et alimentent directement votre comptabilité.</p>
         <div class="lp-hero-cta reveal">
-          <a href="/tarifs" class="lp-btn lp-btn-primary">Commencer gratuitement
+          <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
           <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
         </div>
@@ -142,7 +142,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="reveal" style="max-width:760px;margin:0 auto;font-size:16px;line-height:1.72;color:var(--c-text-2);">
       <p style="margin:0 0 18px;">Dans beaucoup d'associations loi 1901, la collecte des cotisations repose encore sur un tableur, une pile de chèques et la mémoire du trésorier. Résultat : des relances oubliées, des adhérents perdus de vue et une trésorerie difficile à projeter. Un <strong>logiciel de gestion des cotisations</strong> change la donne : chaque appel à cotisation est suivi, chaque adhérent a un statut clair (à jour, en retard, exonéré) et vous savez à tout instant combien il reste à encaisser.</p>
       <p style="margin:0 0 18px;">L'<strong>encaissement en ligne</strong> supprime le plus gros frein au paiement. Plutôt que d'attendre une réunion pour remettre un chèque, l'adhérent clique sur un lien et règle sa cotisation par carte bancaire en trente secondes — ou par virement s'il préfère. Le paiement est immédiat, le reçu part tout seul, et l'écriture remonte directement dans votre comptabilité analytique, sans double saisie ni rapprochement manuel en fin d'exercice.</p>
-      <p style="margin:0;">Enfin, les <strong>relances automatiques</strong> font le travail ingrat à votre place. Vous définissez un échéancier une fois, et le logiciel rappelle les retardataires au bon moment, lien de paiement à l'appui. Les études internes le montrent : un simple rappel automatisé suffit souvent à récupérer une large part des cotisations en souffrance. Le trésorier gagne des heures chaque trimestre, et l'association sécurise ses recettes.</p>
+      <p style="margin:0;">Enfin, les <strong>relances automatiques</strong> font le travail ingrat à votre place. Vous définissez un échéancier une fois, et le logiciel rappelle les retardataires au bon moment, lien de paiement à l'appui. En pratique, un simple rappel automatisé suffit souvent à récupérer une large part des cotisations en souffrance. Le trésorier gagne des heures chaque trimestre, et l'association sécurise ses recettes.</p>
     </div>
   </div>
 </section>
@@ -178,7 +178,7 @@ require __DIR__ . '/_landing-premium.php';
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Fini de courir après les cotisations</h2>
       <p>Mettez la collecte en pilote automatique. Essai gratuit pour démarrer, sans engagement.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-        <a href="/tarifs" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+        <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>
       </div>
     </div>

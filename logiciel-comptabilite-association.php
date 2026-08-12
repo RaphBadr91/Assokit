@@ -12,7 +12,7 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 $faqs = [
     ['Quel logiciel de comptabilité pour une association ?', "Le meilleur logiciel de comptabilité pour une association loi 1901 relie la compta au quotidien : factures, cotisations et dépenses se comptabilisent automatiquement, avec un plan comptable adapté et une comptabilité analytique par projet. C'est exactement ce que fait Assokit."],
-    ['La comptabilité analytique est-elle incluse ?', "Oui, dès l'offre Pro : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Cela remplace une prestation externalisée d'environ 900 € par an. Votre expert-comptable n'a plus qu'à valider."],
+    ['La comptabilité analytique est-elle incluse ?', "Oui, dès l'offre Pro : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Cela peut remplacer une prestation externalisée souvent estimée autour de 900 € par an. Votre expert-comptable n'a plus qu'à valider."],
     ['Faut-il des connaissances comptables pour l\'utiliser ?', "Non. Assokit est pensé pour les trésoriers bénévoles : catégorisation guidée, justificatifs centralisés, préparation automatique du bilan. Pas besoin d'être comptable."],
     ['Peut-on exporter les comptes pour l\'expert-comptable ?', "Oui : exports PDF et Excel du bilan analytique avec les pièces justificatives rattachées. Vous transmettez un dossier propre et daté, prêt à valider."],
     ['Le logiciel gère-t-il aussi la facturation et les cotisations ?', "Oui, tout est lié : devis, factures, relances de paiement, encaissement des cotisations en ligne — chaque opération alimente automatiquement votre comptabilité."],
@@ -26,7 +26,7 @@ $soft_schema = [
     '@context' => 'https://schema.org', '@type' => 'SoftwareApplication',
     'name' => 'Assokit', 'applicationCategory' => 'FinanceApplication', 'operatingSystem' => 'Web, iOS, Android',
     'description' => "Logiciel de comptabilité pour association loi 1901 : facturation, cotisations, comptabilité analytique par projet, exports pour l'expert-comptable.",
-    'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'EUR'], 'inLanguage' => 'fr-FR',
+    'offers' => ['@type' => 'AggregateOffer', 'lowPrice' => '29.99', 'highPrice' => '49.99', 'priceCurrency' => 'EUR', 'offerCount' => '3'], 'inLanguage' => 'fr-FR',
 ];
 
 render_public_head([
@@ -48,11 +48,11 @@ require __DIR__ . '/_landing-premium.php';
         <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:620px;">Le <span class="lp-grad">logiciel de comptabilité</span> pensé pour les associations</h1>
         <p class="pub-tagline reveal" style="max-width:560px;">Factures, cotisations, dépenses et <strong>comptabilité analytique par projet</strong> se construisent automatiquement au fil de votre activité. Un dossier propre pour votre expert-comptable, sans être comptable vous-même.</p>
         <div class="lp-hero-cta reveal">
-          <a href="/tarifs" class="lp-btn lp-btn-primary">Commencer gratuitement
+          <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
           <a href="/comptabilite-analytique" class="lp-btn lp-btn-glass">La compta analytique incluse</a>
         </div>
-        <div class="lp-trust reveal"><span>✓ Compta analytique incluse</span><span>💶 ~900 €/an économisés</span><span>🇫🇷 Hébergé en France</span></div>
+        <div class="lp-trust reveal"><span>✓ Compta analytique incluse</span><span>🔒 Conforme RGPD</span><span>🇫🇷 Hébergé en France</span></div>
       </div>
       <div class="lp-mock-wrap reveal">
         <div class="lp-mock lp-glass" style="transform:perspective(1400px) rotateY(-7deg) rotateX(3deg);">
@@ -61,7 +61,7 @@ require __DIR__ . '/_landing-premium.php';
             <div class="lp-mrow"><span class="ic" style="background:#FEF3C7">📊</span><div style="flex:1"><div class="t">Bilan par projet</div><div class="s">Recettes / dépenses ventilées</div></div><span class="v">Temps réel</span></div>
             <div class="lp-mrow"><span class="ic" style="background:#DBEAFE">🧾</span><div style="flex:1"><div class="t">Factures &amp; cotisations</div><div class="s">Comptabilisées automatiquement</div></div><span class="lp-chip" style="background:#D1FAE5;color:#047857">Auto</span></div>
             <div class="lp-mrow"><span class="ic" style="background:#EDE9FE">📁</span><div style="flex:1"><div class="t">Pièces justificatives</div><div class="s">Rattachées &amp; centralisées</div></div><span class="lp-chip" style="background:#EDE9FE;color:#6D28D9">Prêt</span></div>
-            <div class="lp-mrow"><span class="ic" style="background:#DCFCE7">✅</span><div style="flex:1"><div class="t">Export expert-comptable</div><div class="s">PDF &amp; Excel en 1 clic</div></div><span class="v">-900€/an</span></div>
+            <div class="lp-mrow"><span class="ic" style="background:#DCFCE7">✅</span><div style="flex:1"><div class="t">Export expert-comptable</div><div class="s">PDF &amp; Excel en 1 clic</div></div><span class="v">1 clic</span></div>
           </div>
         </div>
       </div>
@@ -116,13 +116,13 @@ require __DIR__ . '/_landing-premium.php';
 <section class="pub-section">
   <div class="pub-container">
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Comparatif logiciel comptabilité association</span><h2 class="pub-h2">Tableur, logiciel classique ou <em>Assokit</em> ?</h2>
-      <p class="pub-section-lead">Pourquoi un tableur Excel ou un logiciel comptable généraliste montrent vite leurs limites pour une association loi 1901.</p></div>
+      <p class="pub-section-lead">Pourquoi un tableur ou un logiciel comptable généraliste montrent vite leurs limites pour une association loi 1901.</p></div>
     <div class="reveal" style="overflow-x:auto;background:#fff;border:1px solid var(--c-border);border-radius:16px;">
       <table style="width:100%;border-collapse:collapse;min-width:640px;font-size:15px;">
         <thead>
           <tr>
             <th style="text-align:left;padding:16px 18px;border-bottom:2px solid var(--c-border);color:var(--c-encre);font-weight:700;">Critère</th>
-            <th style="text-align:center;padding:16px 18px;border-bottom:2px solid var(--c-border);color:var(--c-encre);font-weight:600;">Tableur Excel</th>
+            <th style="text-align:center;padding:16px 18px;border-bottom:2px solid var(--c-border);color:var(--c-encre);font-weight:600;">Tableur classique</th>
             <th style="text-align:center;padding:16px 18px;border-bottom:2px solid var(--c-border);color:var(--c-encre);font-weight:600;">Logiciel comptable classique</th>
             <th style="text-align:center;padding:16px 18px;border-bottom:2px solid #059669;background:#ECFDF5;color:#059669;font-weight:800;">Assokit</th>
           </tr>
@@ -135,7 +135,7 @@ require __DIR__ . '/_landing-premium.php';
             ['Export expert-comptable','Copier-coller','Oui, technique','PDF &amp; Excel datés'],
             ['Hébergement France / RGPD','Selon vos fichiers','Variable','Hébergé en France 🇫🇷'],
             ['Prise en main','Vous faites tout','Formation comptable','Pensé pour bénévoles'],
-            ['Prix','« Gratuit » mais chronophage','Souvent &gt; 900 €/an','Gratuit pour démarrer'],
+            ['Prix','« Gratuit » mais chronophage','Prestation externe','Gratuit pour démarrer'],
           ] as $r): ?>
           <tr>
             <td style="text-align:left;padding:14px 18px;border-bottom:1px solid var(--c-border);color:var(--c-encre);font-weight:600;"><?= $r[0] ?></td>
@@ -155,7 +155,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">En détail</span><h2 class="pub-h2">Un logiciel de comptabilité <em>vraiment</em> adapté aux associations</h2></div>
     <div class="reveal" style="max-width:760px;margin:0 auto;">
       <p style="margin:0 0 20px;color:var(--c-encre-2);line-height:1.7;">Un logiciel de comptabilité pour association ne se limite pas à additionner des recettes et des dépenses. Il doit parler le langage du secteur associatif : plan comptable associatif, ventilation des subventions, gestion des fonds dédiés et édition des reçus fiscaux. Assokit intègre nativement ces spécificités, là où un logiciel comptable généraliste oblige le trésorier à contourner un outil pensé pour les entreprises commerciales.</p>
-      <p style="margin:0 0 20px;color:var(--c-encre-2);line-height:1.7;">La comptabilité analytique par projet est au cœur de la démarche. Chaque action — un événement, un atelier, une action financée par une subvention — dispose de son propre bilan recettes/dépenses en temps réel. Cette lecture par projet, souvent facturée près de 900 € par an en prestation externalisée, est incluse dès l'offre Pro. Elle rassure les financeurs, simplifie l'assemblée générale et donne au bureau une vision claire de la santé financière de l'association.</p>
+      <p style="margin:0 0 20px;color:var(--c-encre-2);line-height:1.7;">La comptabilité analytique par projet est au cœur de la démarche. Chaque action — un événement, un atelier, une action financée par une subvention — dispose de son propre bilan recettes/dépenses en temps réel. Cette lecture par projet, souvent estimée autour de 900 € par an en prestation externalisée, est incluse dès l'offre Pro. Elle rassure les financeurs, simplifie l'assemblée générale et donne au bureau une vision claire de la santé financière de l'association.</p>
       <p style="margin:0;color:var(--c-encre-2);line-height:1.7;">Enfin, la comptabilité se relie au quotidien de la structure : cotisations encaissées en ligne, factures émises, justificatifs centralisés et échéances fiscales rappelées. Tout converge vers un dossier propre, exportable en PDF et Excel, prêt pour l'expert-comptable ou le contrôle d'un financeur. Le trésorier bénévole gagne du temps, réduit le risque d'erreur et garde une comptabilité à jour tout au long de l'exercice.</p>
     </div>
   </div>
@@ -197,7 +197,7 @@ require __DIR__ . '/_landing-premium.php';
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Simplifiez la compta de votre association</h2>
       <p>Essai gratuit pour démarrer, comptabilité analytique incluse dès l'offre Pro. Sans engagement.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-        <a href="/tarifs" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+        <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>
       </div>
     </div>
