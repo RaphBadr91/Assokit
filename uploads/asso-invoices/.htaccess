@@ -1,1 +1,13 @@
+# ============================================================
+# Dossier uploads — Sécurité
+# ============================================================
+# Bloque l'exécution de tout fichier PHP qui pourrait être uploadé par erreur
+# (empêche un attaquant d'uploader un fichier .php et de l'exécuter)
+# ============================================================
+
+<FilesMatch "\.(php|phtml|php3|php4|php5|php7|php8|pl|py|jsp|asp|htm|shtml|sh|cgi)$">
+    Require all denied
+</FilesMatch>
+
+# Pas de listing du dossier
 Options -Indexes

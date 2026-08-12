@@ -25,7 +25,7 @@ $rec_id = (int)($_POST['id'] ?? 0);
 $rec = ak_recurrence_load($pdo, $rec_id, $org_id);
 if (!$rec) { header('Location: /mon-asso-recurrences'); exit; }
 
-$result = ak_recurrence_generate_invoice($pdo, $rec_id);
+$result = ak_recurrence_generate_invoice($pdo, $rec);
 
 if ($result['ok']) {
     $msg = 'Facture ' . $result['invoice_number'] . ' générée avec succès.';

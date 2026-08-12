@@ -3,7 +3,7 @@ require_once __DIR__ . '/includes-public.php';
 
 render_public_head([
     'title'       => 'Politique cookies',
-    'description' => 'Politique des cookies utilisés par Assokit. Pas de cookies publicitaires, pas de tracking tiers.',
+    'description' => 'Politique des cookies utilisés par Assokit. Cookies de mesure d\'audience (Google Analytics) uniquement avec votre consentement. Pas de cookies publicitaires.',
     'path'        => '/cookies',
 ]);
 render_public_nav('');
@@ -19,7 +19,7 @@ render_public_nav('');
   <div class="pub-container-narrow">
     <article class="pub-article-content">
       <p style="background:var(--c-emeraude-light);border-left:4px solid var(--c-emeraude);padding:16px 20px;border-radius:8px;">
-        🍪 <strong>En une phrase</strong> : nous utilisons uniquement des cookies <em>strictement nécessaires</em>. Pas de publicitaire, pas de tracking, pas de bannière intrusive.
+        🍪 <strong>En une phrase</strong> : nous utilisons des cookies <em>strictement nécessaires</em> et, uniquement avec votre consentement, une mesure d'audience (Google Analytics, IP anonymisée). Pas de publicitaire.
       </p>
 
       <h2>Qu'est-ce qu'un cookie ?</h2>
@@ -53,7 +53,7 @@ render_public_nav('');
       <h2>Cookies que nous N'utilisons PAS</h2>
       <ul>
         <li>❌ Cookies publicitaires</li>
-        <li>❌ Cookies de tracking tiers (Google Analytics, Meta Pixel, etc.)</li>
+        <li>✅ Mesure d'audience Google Analytics (IP anonymisée) — uniquement après consentement · ❌ Pas de Meta Pixel ni de tracking publicitaire</li>
         <li>❌ Cookies de profilage marketing</li>
         <li>❌ Cookies de partage social</li>
       </ul>

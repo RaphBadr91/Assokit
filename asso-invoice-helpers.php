@@ -430,7 +430,7 @@ function ak_asso_invoice_render_pdf(PDO $pdo, int $invoice_id): string
                 'name' => 'factur-x.xml',
                 'mime' => 'text/xml',
                 'description' => 'Facture électronique Factur-X',
-                'AFRelationship' => 'Data',
+                'AFRelationship' => 'Alternative',
                 'content' => $facturx_xml,
             ]]);
             if (method_exists($mpdf, 'SetAdditionalXmpRdf')) $mpdf->SetAdditionalXmpRdf(ak_facturx_xmp());

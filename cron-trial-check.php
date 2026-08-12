@@ -10,7 +10,7 @@
 require_once __DIR__ . '/config.php';
 @require_once __DIR__ . '/resend-helper.php';
 
-$is_cli = (php_sapi_name() === 'cli') || defined('STDIN') || (empty($_SERVER['HTTP_HOST']) && empty($_SERVER['REMOTE_ADDR'])) || !empty($_SERVER['argv']);
+$is_cli = (PHP_SAPI === 'cli');
 $has_key = isset($_GET['key']) && defined('CRON_SECRET') && hash_equals(CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) { http_response_code(403); die('Forbidden'); }
 

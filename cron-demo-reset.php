@@ -21,7 +21,7 @@
 // =============================================================
 // CONFIGURATION
 // =============================================================
-$CRON_TOKEN = 'AssokitDemoReset2026Secret'; // ⚠️ CHANGE-MOI en prod
+$CRON_TOKEN = defined('CRON_TOKEN_DEMO') ? CRON_TOKEN_DEMO : (defined('CRON_TOKEN') ? CRON_TOKEN : '');
 $LOG_FILE = __DIR__ . '/cron-demo-reset.log';
 
 // Liste ORDONNÉE des fichiers SQL à exécuter (l'ordre est critique !)
@@ -43,7 +43,7 @@ sort($SQL_FILES);
 $is_cli = php_sapi_name() === 'cli';
 $token = $_GET['token'] ?? ($_SERVER['HTTP_X_CRON_TOKEN'] ?? '');
 
-if (!$is_cli && $token !== $CRON_TOKEN) {
+if (!$is_cli && ($CRON_TOKEN === '' || !hash_equals($CRON_TOKEN, (string)$token))) {
     http_response_code(403);
     die('Forbidden');
 }

@@ -26,7 +26,7 @@ require_once __DIR__ . '/google-helper.php';
 $is_cli = (php_sapi_name() === 'cli')
        || defined('STDIN')
        || (empty($_SERVER['HTTP_HOST']) && empty($_SERVER['REMOTE_ADDR']))
-       || !empty($_SERVER['argv']);
+       ;
 $has_key = isset($_GET['key']) && defined('CRON_SECRET') && hash_equals(CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) {
     http_response_code(403);

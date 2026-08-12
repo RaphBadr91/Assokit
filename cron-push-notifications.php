@@ -7,7 +7,7 @@
  */
 require_once __DIR__ . '/config.php';
 
-if (php_sapi_name() !== 'cli' && empty($_GET['cron_key'])) {
+if (PHP_SAPI !== 'cli' && !(defined('CRON_TOKEN') && CRON_TOKEN !== '' && hash_equals(CRON_TOKEN, (string)($_GET['cron_key'] ?? '')))) {
     // Protection minimale si appele en HTTP
     http_response_code(403);
     exit('CLI only');

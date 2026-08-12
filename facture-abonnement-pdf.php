@@ -175,7 +175,7 @@ $build = function (bool $with_facturx) use ($html, $inv, $facturx_xml): string {
     if ($with_facturx && $facturx_xml) {
         $mpdf->SetAssociatedFiles([[
             'name' => 'factur-x.xml', 'mime' => 'text/xml',
-            'description' => 'Facture électronique Factur-X', 'AFRelationship' => 'Data',
+            'description' => 'Facture électronique Factur-X', 'AFRelationship' => 'Alternative',
             'content' => $facturx_xml,
         ]]);
         if (method_exists($mpdf, 'SetAdditionalXmpRdf')) $mpdf->SetAdditionalXmpRdf(ak_facturx_xmp());

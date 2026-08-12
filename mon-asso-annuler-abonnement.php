@@ -38,6 +38,10 @@ $flash_type = 'success';
 
 // Traitement annulation
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!check_csrf($_POST['csrf_token'] ?? '')) {
+        $_SESSION['flash_error'] = 'Session expirée, veuillez réessayer.';
+        header('Location: /mon-asso-plan'); exit;
+    }
     $action = (string)($_POST['action'] ?? '');
     $confirm = (string)($_POST['confirm'] ?? '');
 
@@ -173,6 +177,7 @@ render_sidebar('mon-asso-plan');
 
         <!-- Confirmation -->
         <form method="post" action="" style="border-top:1px solid #E2E8F0;padding-top:22px;">
+          <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
           <input type="hidden" name="action" value="cancel_subscription">
 
           <label style="display:block;font-weight:600;font-size:14px;color:#0F172A;margin-bottom:8px;">

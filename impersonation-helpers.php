@@ -136,11 +136,18 @@ function start_impersonation(int $adminUserId, int $targetUserId, string $reason
     }
 
     // Validation 4 : la cible doit exister, être active, non supprimée
-    $stmt = $pdo->prepare("SELECT id, is_active, deleted_at, is_founder FROM users WHERE id = :id LIMIT 1");
+    $stmt = $pdo->prepare("SELECT id, is_active, deleted_at, is_founder, is_super_admin, role FROM users WHERE id = :id LIMIT 1");
     $stmt->execute([':id' => $targetUserId]);
     $target = $stmt->fetch();
     if (!$target || (int)$target['is_active'] !== 1 || !empty($target['deleted_at'])) {
         return ['success' => false, 'error' => 'Utilisateur cible introuvable ou inactif.', 'session_id' => null];
+    }
+
+    // Validation 4bis : on n'incarne JAMAIS un compte privilégié (séparation des rôles / non-répudiation — exigence PDP)
+    if ((int)($target['is_founder'] ?? 0) === 1
+        || (int)($target['is_super_admin'] ?? 0) === 1
+        || in_array((string)($target['role'] ?? ''), ['founder', 'super_admin'], true)) {
+        return ['success' => false, 'error' => 'Impossible d\'incarner un compte fondateur ou super-admin.', 'session_id' => null];
     }
 
     // Validation 5 : pas d'incarnation déjà active (anti-chaînage)
