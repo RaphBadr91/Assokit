@@ -10,7 +10,7 @@ $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Pour les organismes', 'url' => '/pour-organismes'],
 ]);
 render_public_head([
-    'title'       => 'Assokit pour les collectivités · Piloter les associations de votre territoire',
+    'title'       => 'Mairies & collectivités : suivi des associations · Assokit',
     'description' => 'Mairies, départements, préfectures, CAF : centralisez le suivi des associations de votre territoire. Annuaire, subventions, messagerie, emailing et tableau de bord en temps réel.',
     'path'        => '/pour-organismes',
     'og_image'    => AK_PUBLIC_DOMAIN . '/assets/og-organismes.jpg',
