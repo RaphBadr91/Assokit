@@ -232,6 +232,7 @@ RewriteRule ^rgpd/?$               /confidentialite            [R=301,L]
 # Redirections 301 .php → URL propre (SEO + cohérence)
 # Existait déjà en lignes 214-215 du htaccess actuel pour le dashboard.
 # Compléter avec ces redirections publiques :
+RewriteCond %{REQUEST_METHOD} !=POST
 RewriteCond %{THE_REQUEST} \s/+(fonctionnalites|tarifs|a-propos|contact|mentions-legales|cgu|confidentialite|cookies|blog|logiciel-association|logiciel-adherents|logiciel-comptabilite-association|logiciel-cotisation-association|logiciel-facturation|logiciel-gestion-tpe|pour-associations|pour-tpe|pour-organismes|comptabilite-analytique|avis|application)\.php[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
 
@@ -563,10 +564,15 @@ Options -Indexes
     ExpiresByType image/x-icon "access plus 1 year"
 </IfModule>
 
-# Cache-Control immutable pour les assets fingerprintés (versionnés par ?v=)
 <IfModule mod_headers.c>
-    <FilesMatch "\.(css|js|woff2|woff|svg|png|jpe?g|webp|avif|ico)$">
+    # Médias & polices : jamais modifiés en place -> immutable 1 an (sûr)
+    <FilesMatch "\.(woff2|woff|ttf|otf|svg|png|jpe?g|webp|avif|gif|ico)$">
         Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    # CSS/JS : tous ne sont pas versionnés (?v=filemtime) -> long cache MAIS revalidable
+    # (pas d'immutable, sinon une version modifiée resterait figée jusqu'à 1 an chez les visiteurs)
+    <FilesMatch "\.(css|js)$">
+        Header set Cache-Control "public, max-age=604800"
     </FilesMatch>
 </IfModule>
 

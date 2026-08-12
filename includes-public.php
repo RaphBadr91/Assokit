@@ -29,7 +29,7 @@ if (!function_exists('render_public_head')) {
         if (!empty($seo['title_full'])) {
             $full_title = (string)$seo['title_full'];
         } elseif ($title === 'Assokit') {
-            $full_title = 'Assokit · Logiciel de gestion pour associations loi 1901 et TPE';
+            $full_title = 'Assokit · Logiciel de gestion association et TPE';
         } elseif (stripos($title, 'assokit') !== false) {
             // La marque est déjà présente dans le titre : ne pas la dupliquer.
             $full_title = $title;

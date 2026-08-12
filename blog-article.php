@@ -65,8 +65,8 @@ $article_jsonld = [
     'headline' => mb_substr($article['title'], 0, 110),
     'description' => $article['excerpt'],
     'image' => [$article_image],
-    'datePublished' => $article['published_at'],
-    'dateModified'  => $article['updated_at'] ?: $article['published_at'],
+    'datePublished' => $article['published_at'] ? date('c', strtotime($article['published_at'])) : null,
+    'dateModified'  => ($article['updated_at'] ?: $article['published_at']) ? date('c', strtotime($article['updated_at'] ?: $article['published_at'])) : null,
     'author' => [
         '@type' => 'Person',
         'name'  => $article['author'] ?: 'L\'équipe Assokit',
@@ -100,7 +100,9 @@ if (preg_match('/^##\s+(?:FAQ|Questions?\s+fr[ée]quentes|Foire\s+aux\s+question
         foreach ($mm as $m) {
             $q = trim(preg_replace('/\s+/', ' ', $m[1]));
             $a = preg_replace('/\[([^\]]+)\]\([^)]+\)/', '$1', $m[2]);   // liens markdown → texte
-            $a = trim(preg_replace('/\s+/', ' ', str_replace(['**', '*', '`', '#'], '', strip_tags($a))));
+            $a = preg_replace('/^\s*(?:[-*+]|\d+\.)\s+/m', '', $a);      // puces / listes numérotées
+            $a = preg_replace('/^\s*>\s?/m', '', $a);                    // blockquotes
+            $a = trim(preg_replace('/\s+/', ' ', str_replace(['**', '*', '`', '~~'], '', strip_tags($a))));
             if ($q !== '' && $a !== '') {
                 $qa[] = ['@type' => 'Question', 'name' => $q, 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $a]];
             }
