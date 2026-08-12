@@ -25,7 +25,7 @@ $soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplicat
 
 render_public_head([
     'title'       => 'Logiciel de gestion pour TPE & indépendants · Assokit',
-    'description' => 'Assokit, le logiciel de gestion tout-en-un pour TPE, PME et indépendants : devis, factures, relances, projets/chantiers, trésorerie, agenda et comptabilité analytique. Essai gratuit, appli mobile, hébergé en France.',
+    'description' => 'Logiciel de gestion pour TPE, PME et indépendants : devis, factures, trésorerie, rentabilité par chantier. Essai gratuit, appli mobile, hébergé en France.',
     'path'        => '/logiciel-gestion-tpe',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);

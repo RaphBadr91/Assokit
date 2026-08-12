@@ -17,7 +17,7 @@ $faqs = [
     ['Peut-on exporter les comptes pour l\'expert-comptable ?', "Oui : exports PDF et Excel du bilan analytique avec les pièces justificatives rattachées. Vous transmettez un dossier propre et daté, prêt à valider."],
     ['Le logiciel gère-t-il aussi la facturation et les cotisations ?', "Oui, tout est lié : devis, factures, relances de paiement, encaissement des cotisations en ligne — chaque opération alimente automatiquement votre comptabilité."],
     ['Quel plan comptable pour une association ?', "Une association loi 1901 suit le plan comptable associatif issu du règlement ANC n° 2018-06, adapté aux subventions, cotisations et fonds dédiés. Assokit intègre ce plan comptable adapté et pré-catégorise vos opérations, sans que le trésorier ait à mémoriser les numéros de compte."],
-    ['Une association doit-elle tenir une comptabilité ?', "Toute association doit tenir une comptabilité, au minimum un suivi des recettes et dépenses. Elle devient obligatoire et plus formelle dès qu'il y a des subventions publiques supérieures à 23 000 €, une activité économique soumise à la TVA, ou l'émission de reçus fiscaux ouvrant droit à réduction d'impôt."],
+    ['Une association doit-elle tenir une comptabilité ?', "Toute association doit tenir une comptabilité, au minimum un suivi des recettes et dépenses. Elle devient plus formelle (comptes annuels, parfois commissaire aux comptes au-delà de certains seuils) dès qu'elle perçoit des subventions publiques importantes, exerce une activité économique soumise à la TVA, ou émet des reçus fiscaux ouvrant droit à réduction d'impôt."],
     ['Comment faire le bilan d\'une association loi 1901 ?', "Le bilan présente à une date donnée le patrimoine de l'association : actif (trésorerie, créances) et passif (dettes, fonds propres, fonds dédiés). Avec Assokit, le bilan et le compte de résultat se construisent automatiquement au fil des écritures ; vous les exportez en PDF ou Excel pour l'assemblée générale et l'expert-comptable."],
     ['Faut-il un expert-comptable pour une association ?', "Ce n'est obligatoire que pour les grandes associations (au-delà de certains seuils de subventions ou d'activité, un commissaire aux comptes peut être requis). Pour la plupart des petites structures, un trésorier bénévole outillé suffit : Assokit prépare un dossier propre et daté que l'expert-comptable n'a plus qu'à valider si vous en sollicitez un."],
 ];
@@ -31,7 +31,7 @@ $soft_schema = [
 
 render_public_head([
     'title'       => 'Logiciel de comptabilité pour association loi 1901 · Assokit',
-    'description' => 'Assokit, le logiciel de comptabilité pour association : facturation, cotisations, comptabilité analytique par projet, exports PDF/Excel pour l\'expert-comptable. Simple pour les trésoriers bénévoles, hébergé en France.',
+    'description' => 'Logiciel de comptabilité pour association loi 1901 : compta analytique par projet, reçus, export expert-comptable. Essai gratuit, hébergé en France.',
     'path'        => '/logiciel-comptabilite-association',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);
@@ -50,7 +50,7 @@ require __DIR__ . '/_landing-premium.php';
         <div class="lp-hero-cta reveal">
           <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-          <a href="/comptabilite-analytique" class="lp-btn lp-btn-glass">La compta analytique incluse</a>
+          <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
         </div>
         <div class="lp-trust reveal"><span>✓ Compta analytique incluse</span><span>🔒 Conforme RGPD</span><span>🇫🇷 Hébergé en France</span></div>
       </div>
@@ -92,8 +92,8 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="lp-stat reveal">
       <span class="pub-section-eyebrow" style="position:relative;color:#A7F3D0;">L'économie</span>
-      <div class="big">−900 € / an</div>
-      <p>Le coût d'une comptabilité analytique externalisée. Avec Assokit, elle est <strong>incluse dès l'offre Pro</strong> — l'argent retourne à vos projets, pas à la paperasse.</p>
+      <div class="big">Incluse dès Pro</div>
+      <p>La comptabilité analytique par projet, souvent externalisée à prix fort, est <strong>incluse dès l'offre Pro</strong> — l'argent retourne à vos projets, pas à la paperasse.</p>
       <a href="/comptabilite-analytique" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Comment ça marche
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
     </div>

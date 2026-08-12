@@ -32,7 +32,7 @@ $soft_schema = [
 
 render_public_head([
     'title'       => 'Gestion des cotisations d\'association en ligne · Assokit',
-    'description' => 'Gérez et collectez les cotisations de votre association en ligne : paiement par carte bancaire, relances automatiques, reçus, plusieurs tarifs et suivi en temps réel. Logiciel simple, hébergé en France.',
+    'description' => 'Cotisations d\'association en ligne : paiement par carte, relances automatiques, reçus et suivi en temps réel. Logiciel simple, essai gratuit, hébergé en France.',
     'path'        => '/logiciel-cotisation-association',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);

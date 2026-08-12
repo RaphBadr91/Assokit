@@ -16,7 +16,7 @@ $faqs = [
     ['Un logiciel association remplace-t-il Excel et les autres outils ?', "Complètement. Assokit remplace le tableur des adhérents, l'outil de facturation, l'agenda, la messagerie et le logiciel de compta — un seul outil, plus de ressaisie ni de fichiers perdus."],
     ['Le logiciel gère-t-il la comptabilité de l\'association ?', "Oui. Assokit inclut la facturation, le suivi des cotisations et la comptabilité analytique par projet (incluse dès l'offre Pro), exportable pour votre expert-comptable — soit jusqu'à ~900 € d'économie par an estimée."],
     ['Mes données sont-elles hébergées en France ?', "Oui, 100 %. Serveurs en France (Clermont-Ferrand), conformité RGPD, double authentification et export de vos données à tout moment. Vos données restent les vôtres."],
-    ['Comment gérer une association loi 1901 ?', "Gérer une association loi 1901 repose sur quelques piliers : des statuts à jour, un bureau (président, trésorier, secrétaire) qui prend les décisions, une assemblée générale annuelle, un registre spécial des modifications, le suivi des adhérents et de leurs cotisations, et une comptabilité claire pour les subventions. Un logiciel comme Assokit centralise tout cela : vous tenez l'annuaire, encaissez les cotisations, préparez vos AG et suivez le budget depuis un seul espace, sans ressaisie ni fichiers éparpillés."],
+    ['Comment gérer une association loi 1901 ?', "Gérer une association loi 1901 repose sur quelques piliers : des statuts à jour, un bureau (président, trésorier, secrétaire) qui prend les décisions, une assemblée générale annuelle, la déclaration des changements en préfecture, le suivi des adhérents et de leurs cotisations, et une comptabilité claire pour les subventions. Un logiciel comme Assokit centralise tout cela : vous tenez l'annuaire, encaissez les cotisations, préparez vos AG et suivez le budget depuis un seul espace, sans ressaisie ni fichiers éparpillés."],
     ['Quel logiciel pour gérer une petite association ?', "Pour une petite association, mieux vaut un outil simple et abordable qui couvre l'essentiel sans usine à gaz. Assokit propose un essai gratuit, sans carte bancaire, qui gère déjà adhérents, cotisations et factures. Vous testez tout gratuitement pendant 14 jours, sans carte bancaire, puis vous choisissez votre formule ; idéal ce qui en fait un choix idéal pour un club, une amicale ou une association de quartier gérée par des bénévoles."],
     ['Assokit est-il adapté aux associations sportives ou culturelles ?', "Oui. Assokit s'adapte aussi bien à un club sportif (licences, équipes, cotisations saisonnières, événements) qu'à une association culturelle (ateliers, adhésions, billetterie d'événements, subventions). La gestion des adhérents par rôles et espaces, le suivi des projets et la comptabilité analytique conviennent à tous les objets associatifs relevant de la loi 1901."],
     ['Peut-on gérer les adhérents et la comptabilité au même endroit ?', "C'est précisément l'intérêt d'un logiciel tout-en-un. Dans Assokit, une cotisation encaissée met à jour l'adhérent et alimente automatiquement la comptabilité : plus besoin de reporter les montants d'un tableur vers un logiciel de compta. Adhérents, cotisations, factures et comptabilité analytique par projet vivent dans le même outil, avec un export prêt pour votre expert-comptable."],
@@ -32,7 +32,7 @@ $soft_schema = [
 
 render_public_head([
     'title'       => 'Logiciel de gestion d\'association loi 1901 · Assokit',
-    'description' => 'Assokit, le logiciel de gestion pour association loi 1901 : adhérents, cotisations, comptabilité, projets, événements et communication réunis dans un seul outil. Essai gratuit, hébergé en France, conforme RGPD.',
+    'description' => 'Logiciel de gestion pour association loi 1901 : adhérents, cotisations, comptabilité, projets et communication en un seul outil. Essai gratuit, hébergé en France.',
     'path'        => '/logiciel-association',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);
@@ -103,7 +103,7 @@ require __DIR__ . '/_landing-premium.php';
     </div>
     <div class="lp-grid">
       <?php foreach ([
-        ['1','Créez votre association','Ouvrez votre espace en quelques minutes : nom, objet, statuts et composition du bureau (président, trésorier, secrétaire). Vos informations légales et votre registre spécial sont centralisés et prêts pour les démarches.'],
+        ['1','Créez votre association','Ouvrez votre espace en quelques minutes : nom, objet, statuts et composition du bureau (président, trésorier, secrétaire). Vos informations légales et vos statuts sont centralisés et prêts pour les démarches.'],
         ['2','Importez vos adhérents','Ajoutez vos adhérents un par un ou importez votre fichier existant. Chacun retrouve son espace, son rôle et son historique. L\'annuaire remplace définitivement le tableur partagé.'],
         ['3','Gérez cotisations, projets &amp; AG','Encaissez les cotisations en ligne avec relances automatiques, suivez le budget de vos projets et de vos subventions, préparez vos assemblées générales : convocations, émargement et procès-verbaux.'],
         ['4','Pilotez au quotidien','Suivez adhésions, trésorerie et communication depuis un tableau de bord unique. La comptabilité se met à jour à chaque cotisation et vos comptes-rendus se rédigent grâce à l\'IA intégrée.'],
@@ -138,7 +138,7 @@ require __DIR__ . '/_landing-premium.php';
             ['Projets &amp; budget','Non','Partiel','Suivi étape par étape'],
             ['AG &amp; registres','Fichiers séparés','Rarement','Convocations, votes, PV'],
             ['Communication / IA','Non','Non','Emails &amp; comptes-rendus par IA'],
-            ['Comptabilité analytique','Non','Option payante','Incluse par projet'],
+            ['Comptabilité analytique','Non','Option payante','Incluse par projet (offre Pro)'],
             ['Hébergement en France','Variable','Selon l\'éditeur','100 % France · RGPD'],
             ['Application mobile','Non','Rare','iOS &amp; Android'],
             ['Prix','« Gratuit » mais chronophage','Abonnement annuel','Dès 29,99 €/mois · essai 14 j'],
@@ -161,7 +161,7 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Pourquoi Assokit</span><h2 class="pub-h2">Le logiciel association <em>français</em>, simple et complet</h2></div>
     <ul class="lp-checks reveal">
-      <?php foreach (['Pensé pour les associations loi 1901','Essai gratuit, sans carte bancaire','Hébergé en France · conforme RGPD','Comptabilité analytique incluse','IA intégrée pour la communication','Application mobile iOS &amp; Android','Support humain français','Export de vos données à tout moment'] as $f): ?>
+      <?php foreach (['Pensé pour les associations loi 1901','Essai gratuit, sans carte bancaire','Hébergé en France · conforme RGPD','Comptabilité analytique (offre Pro)','IA intégrée pour la communication','Application mobile iOS &amp; Android','Support humain français','Export de vos données à tout moment'] as $f): ?>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><?= $f ?></li>
       <?php endforeach; ?>
     </ul>
@@ -181,7 +181,7 @@ require __DIR__ . '/_landing-premium.php';
       <h2 class="pub-h2">Moins de paperasse, <em>plus de vie associative</em></h2>
     </div>
     <div class="pub-section-lead reveal" style="max-width:820px;margin:0 auto;text-align:left;">
-      <p style="margin:0 0 18px;"><strong>Une gouvernance sans paperasse.</strong> Diriger une association loi 1901 impose un cadre : statuts à jour, décisions du bureau, tenue de l'assemblée générale et du registre spécial, justification des subventions. Un bon logiciel de gestion d'association transforme ces obligations en gestes simples. Les convocations partent en un clic, l'émargement et les votes sont horodatés, les procès-verbaux s'archivent automatiquement. Vous restez conforme sans y passer vos soirées, et vous retrouvez chaque document quand un financeur ou un contrôle le demande.</p>
+      <p style="margin:0 0 18px;"><strong>Une gouvernance sans paperasse.</strong> Diriger une association loi 1901 impose un cadre : statuts à jour, décisions du bureau, tenue de l'assemblée générale et du registre des délibérations, justification des subventions. Un bon logiciel de gestion d'association transforme ces obligations en gestes simples. Les convocations partent en un clic, l'émargement et les votes sont horodatés, les procès-verbaux s'archivent automatiquement. Vous restez conforme sans y passer vos soirées, et vous retrouvez chaque document quand un financeur ou un contrôle le demande.</p>
       <p style="margin:0 0 18px;"><strong>Un seul outil, plus de ressaisie.</strong> Le vrai coût d'une association, ce sont les dizaines d'heures perdues à recopier les mêmes informations d'un tableur d'adhérents vers un outil de facturation, puis vers un logiciel de comptabilité. Assokit réunit adhérents, cotisations, projets et compta au même endroit : une cotisation encaissée met à jour l'adhérent et alimente directement la comptabilité analytique. Fini les fichiers en double, les versions perdues et les écarts de trésorerie inexpliqués — vos chiffres sont justes en permanence.</p>
       <p style="margin:0;"><strong>Du temps bénévole rendu à l'essentiel.</strong> Dans une association, chaque heure administrative est une heure prise sur les projets, les adhérents et le terrain. En automatisant les relances de cotisations, la communication (newsletters et comptes-rendus rédigés par l'IA) et le suivi budgétaire, le logiciel libère vos bénévoles des tâches répétitives. Résultat : un bureau plus serein, des adhérents mieux suivis et une association qui consacre son énergie à sa mission plutôt qu'à sa gestion.</p>
     </div>
@@ -203,7 +203,7 @@ require __DIR__ . '/_landing-premium.php';
       <a href="/blog/rna-siren-association-tout-comprendre" class="lp-card reveal" style="text-decoration:none;"><div class="lp-ic">🔎</div><h3>RNA &amp; SIREN de l'association</h3><p>Numéro RNA, SIREN, immatriculation : tout comprendre pour les démarches et subventions.</p></a>
     </div>
     <div class="pub-text-center reveal" style="margin-top:30px;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-      <a href="/blog?categorie=associations" class="lp-btn lp-btn-primary">Tous nos articles</a>
+      <a href="/blog?categorie=associations" class="lp-btn lp-btn-glass">Tous nos articles</a>
       <a href="/logiciel-adherents" class="lp-btn lp-btn-glass">Logiciel adhérents</a>
       <a href="/logiciel-cotisation-association" class="lp-btn lp-btn-glass">Logiciel cotisations</a>
       <a href="/logiciel-comptabilite-association" class="lp-btn lp-btn-glass">Logiciel comptabilité</a>

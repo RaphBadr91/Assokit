@@ -26,7 +26,7 @@ $soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplicat
 
 render_public_head([
     'title'       => 'Logiciel de gestion des adhérents pour association · Assokit',
-    'description' => 'Assokit, le logiciel de gestion des adhérents pour association loi 1901 : annuaire intelligent, rôles personnalisés, cotisations, espaces membres, import/export et communication ciblée. Essai gratuit, hébergé en France.',
+    'description' => 'Logiciel de gestion des adhérents pour association loi 1901 : annuaire, cotisations, relances et communication ciblée. Essai gratuit, hébergé en France.',
     'path'        => '/logiciel-adherents',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);
