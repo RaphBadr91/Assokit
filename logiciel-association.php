@@ -208,6 +208,7 @@ require __DIR__ . '/_landing-premium.php';
       <a href="/blog/rna-siren-association-tout-comprendre" class="lp-card reveal" style="text-decoration:none;"><div class="lp-ic">🔎</div><h3>RNA &amp; SIREN de l'association</h3><p>Numéro RNA, SIREN, immatriculation : tout comprendre pour les démarches et subventions.</p></a>
     </div>
     <div class="pub-text-center reveal" style="margin-top:30px;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+      <a href="/guide-association-loi-1901" class="lp-btn lp-btn-glass">Guide : gérer une association loi 1901</a>
       <a href="/blog?categorie=associations" class="lp-btn lp-btn-glass">Tous nos articles</a>
       <a href="/logiciel-adherents" class="lp-btn lp-btn-glass">Logiciel adhérents</a>
       <a href="/logiciel-cotisation-association" class="lp-btn lp-btn-glass">Logiciel cotisations</a>

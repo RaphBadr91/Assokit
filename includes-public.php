@@ -333,6 +333,9 @@ if (!function_exists('render_public_footer')) {
                 <a href="/blog?categorie=associations">Pour les associations</a>
                 <a href="/blog?categorie=tpe">Pour les TPE</a>
                 <a href="/blog?categorie=comptabilite">Comptabilité</a>
+                <a href="/guide-association-loi-1901">Guide association loi 1901</a>
+                <a href="/guide-comptabilite-association">Guide comptabilité asso</a>
+                <a href="/modeles-gratuits-association">Modèles gratuits</a>
               </div>
 
               <div class="pub-footer-col">

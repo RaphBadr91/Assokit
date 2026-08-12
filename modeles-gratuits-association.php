@@ -78,16 +78,18 @@ require __DIR__ . '/_landing-premium.php';
         <a href="/modele-proces-verbal-assemblee-generale" class="lp-btn lp-btn-primary">Voir le modèle de PV</a>
       </div>
       <div class="lp-card ak-model-card reveal">
-        <span class="ak-model-badge ak-badge-soon">Bientôt</span>
+        <span class="ak-model-badge ak-badge-ready">Disponible</span>
         <div class="lp-ic">✉️</div>
         <h3>Modèle de convocation à l'AG</h3>
-        <p>Un modèle de lettre de convocation à l'assemblée générale, avec ordre du jour, date, lieu et modalités de vote et de représentation (pouvoir). En préparation.</p>
+        <p style="margin-bottom:18px;">Un modèle de lettre de convocation à l'assemblée générale, avec ordre du jour, date, lieu et modalités de vote et de représentation (pouvoir).</p>
+        <a href="/modele-convocation-assemblee-generale" class="lp-btn lp-btn-primary">Voir le modèle de convocation</a>
       </div>
       <div class="lp-card ak-model-card reveal">
-        <span class="ak-model-badge ak-badge-soon">Bientôt</span>
+        <span class="ak-model-badge ak-badge-ready">Disponible</span>
         <div class="lp-ic">🧾</div>
         <h3>Modèle de reçu fiscal (don)</h3>
-        <p>Un modèle de reçu fiscal Cerfa pour les dons ouvrant droit à réduction d'impôt, conforme aux mentions obligatoires. En préparation.</p>
+        <p style="margin-bottom:18px;">Un modèle de reçu fiscal Cerfa pour les dons ouvrant droit à réduction d'impôt, conforme aux mentions obligatoires.</p>
+        <a href="/modele-recu-fiscal-association" class="lp-btn lp-btn-primary">Voir le modèle de reçu fiscal</a>
       </div>
     </div>
   </div>

@@ -178,6 +178,7 @@ require __DIR__ . '/_landing-premium.php';
     </div>
     <p class="pub-text-center reveal" style="margin-top:28px;display:flex;gap:20px;flex-wrap:wrap;justify-content:center;">
       <a href="/blog?categorie=comptabilite" style="color:var(--c-emeraude-dark);font-weight:700;">Tous nos articles compta →</a>
+      <a href="/guide-comptabilite-association" style="color:var(--c-emeraude-dark);font-weight:700;">Guide comptabilité association →</a>
       <a href="/logiciel-cotisation-association" style="color:var(--c-emeraude-dark);font-weight:700;">Logiciel de cotisation →</a>
       <a href="/logiciel-facturation" style="color:var(--c-emeraude-dark);font-weight:700;">Logiciel de facturation →</a>
       <a href="/logiciel-association" style="color:var(--c-emeraude-dark);font-weight:700;">Logiciel de gestion complet →</a>
