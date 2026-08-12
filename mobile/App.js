@@ -35,14 +35,23 @@ import Constants from 'expo-constants';
 const BASE = 'https://assokit.fr';
 const BRAND = '#059669';
 const INK = '#0F172A';
-const MUTE = '#94A3B8';
+const MUTE = '#64748B';
+
+// Verifie qu'une URL appartient bien au domaine assokit.fr (ou un sous-domaine),
+// et non a un domaine piege du type "assokit.fr.attaquant.com" ou "evil-assokit.fr".
+function isAssokitUrl(u) {
+  try {
+    const h = new URL(String(u)).hostname.toLowerCase();
+    return h === 'assokit.fr' || h.endsWith('.assokit.fr');
+  } catch (e) { return false; }
+}
 
 const APP_ONLY_CSS = `
 (function(){ try {
   if (!document.getElementById('ak-app-only-css')) {
     var s = document.createElement('style');
     s.id = 'ak-app-only-css';
-    s.textContent = '.ak-trial-banner{display:none!important}#ak-pwa-banner{display:none!important}.sb-mobile-header{display:none!important}';
+    s.textContent = '.ak-trial-banner{display:none!important}#ak-pwa-banner{display:none!important}.sb-mobile-header{display:none!important}#demo-banner{display:none!important}';
     (document.head || document.documentElement).appendChild(s);
   }
 } catch(e){} })();
@@ -4502,7 +4511,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         setLoginBusy(false);
         setLoginErr('Email ou mot de passe incorrect.');
       }
-    } else if (u.indexOf('assokit.fr') !== -1) {
+    } else if (isAssokitUrl(u)) {
       setAuthed(true);
       loginAttempted.current = false;
       setLoginBusy(false);
@@ -4792,7 +4801,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       return;
     }
     // Lien externe (hors assokit.fr) -> ouvrir dans le navigateur systeme
-    if (/^https?:\/\//.test(path) && path.indexOf('assokit.fr') === -1) {
+    if (/^https?:\/\//.test(path) && !isAssokitUrl(path)) {
       Linking.openURL(path).catch(() => {});
       return;
     }
@@ -4870,13 +4879,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           domStorageEnabled
           javaScriptEnabled
           sharedCookiesEnabled
-          originWhitelist={['https://*', 'http://*']}
+          originWhitelist={['https://*']}
           onShouldStartLoadWithRequest={(req) => {
             const u = (req && req.url) || '';
             // Schemas non-http (mailto:, tel:, geo:…) -> deleguer a l'OS
             if (/^(mailto:|tel:|sms:|geo:|maps:)/i.test(u)) { Linking.openURL(u).catch(() => {}); return false; }
             // Lien externe (hors assokit.fr) -> navigateur systeme, pas dans la WebView applicative
-            if (/^https?:\/\//i.test(u) && u.indexOf('assokit.fr') === -1) { Linking.openURL(u).catch(() => {}); return false; }
+            if (/^https?:\/\//i.test(u) && !isAssokitUrl(u)) { Linking.openURL(u).catch(() => {}); return false; }
             return true;
           }}
           setSupportMultipleWindows={false}
@@ -5218,15 +5227,20 @@ export default function App() {
         const em = await SecureStore.getItemAsync('ak_email');
         const pw = await SecureStore.getItemAsync('ak_pass');
         if (em && pw) {
-          let ok = true;
+          // Fail-closed : on n'auto-connecte que si la biometrie reussit,
+          // ou si l'appareil n'a pas de biometrie (SecureStore reste protege
+          // par le verrou d'appareil). Toute erreur => on refuse l'auto-login.
+          let ok = false;
           try {
             const hasHw = await LocalAuthentication.hasHardwareAsync();
             const enrolled = await LocalAuthentication.isEnrolledAsync();
             if (hasHw && enrolled) {
               const r = await LocalAuthentication.authenticateAsync({ promptMessage: 'Déverrouiller Assokit', fallbackLabel: 'Code', cancelLabel: 'Annuler' });
               ok = !!r.success;
+            } else {
+              ok = true;
             }
-          } catch (e) { ok = true; }
+          } catch (e) { ok = false; }
           if (ok) { setAutoCreds({ email: em, password: pw }); setPath('/connexion'); }
         }
       } catch (e) {}

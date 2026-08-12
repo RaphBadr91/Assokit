@@ -29,7 +29,6 @@
       },
       "permissions": [
         "CAMERA",
-        "READ_EXTERNAL_STORAGE",
         "USE_BIOMETRIC",
         "USE_FINGERPRINT"
       ]

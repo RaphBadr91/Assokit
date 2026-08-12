@@ -18,6 +18,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+if (!check_csrf($_POST['csrf_token'] ?? '')) {
+    header('Location: /mon-asso-ia-historique?error=csrf');
+    exit;
+}
+
 $action = (string)($_POST['action'] ?? '');
 $id     = (int)($_POST['id'] ?? 0);
 

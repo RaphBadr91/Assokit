@@ -162,11 +162,13 @@ render_sidebar('ia');
               <a class="iah-btn-sm" href="/mon-asso-ia-diffusion?gen=<?= (int)$r['id'] ?>" title="Diffuser par email">📨</a>
               <a class="iah-btn-sm" href="/mon-asso-ia-download?id=<?= (int)$r['id'] ?>&fmt=md" target="_blank">⬇</a>
               <form method="post" action="/mon-asso-ia-action" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                 <input type="hidden" name="action" value="toggle_fav">
                 <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                 <button type="submit" class="iah-btn-sm <?= (int)$r['is_favorite']===1?'fav-on':'' ?>">⭐</button>
               </form>
               <form method="post" action="/mon-asso-ia-action" style="display:inline;" onsubmit="return confirm('Supprimer cette génération ?');">
+                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                 <button type="submit" class="iah-btn-sm del">🗑</button>

@@ -425,7 +425,7 @@ $current_user_id = (int) ($_SESSION['user_id'] ?? 0);
       fetch('/guide-onboarding-done', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '<?= h($_SESSION['csrf_token'] ?? '') ?>'},
       }).catch(() => {});
     } catch(e) {}
   }
