@@ -216,7 +216,27 @@ if (!function_exists('render_public_nav')) {
               <img src="/assets/logo-assokit.png" alt="Assokit" class="pub-logo-img">
               <span class="pub-logo-text">Assokit</span>
             </a>
+            <style>
+              .pub-nav-sol{position:relative}
+              .pub-nav-sol-t{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+              .pub-nav-sol-menu{position:absolute;top:100%;left:0;min-width:260px;background:#fff;border:1px solid var(--c-border,#E2E8F0);border-radius:12px;box-shadow:0 22px 44px -14px rgba(2,44,34,.20);padding:8px;display:none;flex-direction:column;gap:2px;z-index:1000}
+              .pub-nav-sol:hover .pub-nav-sol-menu,.pub-nav-sol:focus-within .pub-nav-sol-menu{display:flex}
+              .pub-nav-sol-menu a{padding:9px 12px;border-radius:8px;font-size:14px;color:var(--c-text-2,#475569);white-space:nowrap;text-decoration:none}
+              .pub-nav-sol-menu a:hover{background:var(--c-creme-2,#F5F2EC);color:var(--c-emeraude-dark,#047857)}
+            </style>
             <nav class="pub-nav-links" aria-label="Navigation principale">
+              <span class="pub-nav-sol">
+                <a href="/fonctionnalites" class="pub-nav-sol-t" aria-haspopup="true">Solutions
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></a>
+                <span class="pub-nav-sol-menu" role="menu">
+                  <a href="/logiciel-association" role="menuitem">Logiciel de gestion d'association</a>
+                  <a href="/logiciel-adherents" role="menuitem">Gestion des adhérents</a>
+                  <a href="/logiciel-cotisation-association" role="menuitem">Cotisations en ligne</a>
+                  <a href="/logiciel-comptabilite-association" role="menuitem">Comptabilité d'association</a>
+                  <a href="/logiciel-facturation" role="menuitem">Facturation &amp; devis</a>
+                  <a href="/logiciel-gestion-tpe" role="menuitem">Gestion TPE &amp; indépendants</a>
+                </span>
+              </span>
               <a href="/fonctionnalites" class="<?= $active === 'fonctionnalites' ? 'active' : '' ?>">Fonctionnalités</a>
               <a href="/pour-organismes" class="<?= $active === 'organismes' ? 'active' : '' ?>">Collectivités</a>
               <a href="/tarifs" class="<?= $active === 'tarifs' ? 'active' : '' ?>">Tarifs</a>
@@ -238,6 +258,12 @@ if (!function_exists('render_public_nav')) {
           </div>
           <div class="pub-nav-mobile" id="pubMobileMenu">
             <a href="/fonctionnalites">Fonctionnalités</a>
+            <a href="/logiciel-association">· Logiciel de gestion d'association</a>
+            <a href="/logiciel-adherents">· Gestion des adhérents</a>
+            <a href="/logiciel-cotisation-association">· Cotisations en ligne</a>
+            <a href="/logiciel-comptabilite-association">· Comptabilité d'association</a>
+            <a href="/logiciel-facturation">· Facturation &amp; devis</a>
+            <a href="/logiciel-gestion-tpe">· Gestion TPE &amp; indépendants</a>
             <a href="/pour-organismes">Collectivités</a>
             <a href="/tarifs">Tarifs</a>
             <a href="/blog">Blog</a>
