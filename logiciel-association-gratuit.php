@@ -187,3 +187,4 @@ require __DIR__ . '/_landing-premium.php';
 
 <?php
 render_public_footer();
+render_public_foot();
