@@ -3,15 +3,18 @@
 # Logiciel de gestion d'association loi 1901 et TPE
 # https://assokit.fr
 # ============================================================
+#
+# NB : Google/Bing n'obeissent qu'au groupe le PLUS specifique qui matche
+# leur user-agent. On garde donc UN SEUL groupe "*" complet (pas de groupe
+# Googlebot/Bingbot qui annulerait ces regles).
 
-# === RÈGLES POUR TOUS LES BOTS ===
+# === REGLES POUR TOUS LES BOTS (Google & Bing inclus) ===
 User-agent: *
 
 # Pages privées (zone connectée)
 Disallow: /dashboard
 Disallow: /mon-asso-*
 Disallow: /admin-*
-Disallow: /super-admin/
 Disallow: /super-admin
 Disallow: /fondateur-*
 Disallow: /projet/
@@ -27,6 +30,7 @@ Disallow: /archives
 # Endpoints techniques
 Disallow: /api/
 Disallow: /cron/
+Disallow: /cron-*
 Disallow: /webhooks/
 Disallow: /stripe-*
 Disallow: /webhook-*
@@ -39,53 +43,29 @@ Disallow: /*.bak$
 Disallow: /*.sql$
 Disallow: /tmp/
 
-# Recherche & paramètres URL bruyants
-Disallow: /*?*utm_*
-Disallow: /*?*fbclid*
-Disallow: /*?*gclid*
-Disallow: /*?*ref=*
+# Recherche interne & paramètres URL bruyants
+Disallow: /*?*utm_
+Disallow: /*?*fbclid
+Disallow: /*?*gclid
+Disallow: /*?*ref=
+Disallow: /blog?q=
 
-# Pages d'authentification
+# Pages d'authentification / compte
 Disallow: /reset-password
+Disallow: /mot-de-passe-oublie
+Disallow: /definir-mot-de-passe
 Disallow: /verify-email
+Disallow: /verifier-email
+Disallow: /connexion
+Disallow: /signup
 Disallow: /logout
+Disallow: /deconnexion
 
-# === AUTORISATIONS EXPLICITES (URLs reelles du site) ===
-Allow: /
-Allow: /tarifs
-Allow: /fonctionnalites
-Allow: /comptabilite-analytique
-Allow: /pour-organismes
-Allow: /a-propos
-Allow: /contact
-Allow: /blog
-Allow: /mentions-legales
-Allow: /cgu
-Allow: /confidentialite
-Allow: /rgpd
-Allow: /cookies
-Allow: /asso/
+# Ressources nécessaires au rendu (à ne jamais bloquer)
 Allow: /assets/
+Allow: /asso/
 
-# === RÈGLES SPÉCIFIQUES BOTS ===
-
-# Google : politesse standard
-User-agent: Googlebot
-Crawl-delay: 1
-Disallow: /dashboard
-Disallow: /mon-asso-*
-Disallow: /admin-*
-Disallow: /super-admin/
-Disallow: /fondateur-*
-
-# Bing : politesse standard
-User-agent: Bingbot
-Crawl-delay: 1
-Disallow: /dashboard
-Disallow: /mon-asso-*
-Disallow: /admin-*
-
-# Bots agressifs : on ralentit
+# === CRAWLERS SEO AGRESSIFS : on ralentit ===
 User-agent: AhrefsBot
 Crawl-delay: 10
 
@@ -95,7 +75,7 @@ Crawl-delay: 10
 User-agent: MJ12bot
 Crawl-delay: 10
 
-# Bots IA scrapers (à toi de décider — par défaut on autorise pour visibilité)
+# === BOTS IA (autorisés pour la visibilité) ===
 User-agent: GPTBot
 Allow: /
 
@@ -114,8 +94,5 @@ Allow: /
 User-agent: PerplexityBot
 Allow: /
 
-# === SITEMAPS ===
+# === SITEMAP ===
 Sitemap: https://assokit.fr/sitemap.xml
-
-# === HOST CANONIQUE (Yandex) ===
-Host: assokit.fr

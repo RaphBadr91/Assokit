@@ -23,7 +23,7 @@ $faq_schema = [
 ];
 
 render_public_head([
-    'title'       => 'Logiciel de gestion pour association loi 1901 · Assokit',
+    'title'       => 'Gérer son association loi 1901 sans paperasse · Assokit',
     'description' => 'Assokit, le logiciel tout-en-un des associations loi 1901 : adhérents, cotisations, assemblées générales, projets, subventions, comptabilité analytique et communication. Essai gratuit, hébergé en France.',
     'path'        => '/pour-associations',
     'schema_jsonld' => [$breadcrumb, $faq_schema],

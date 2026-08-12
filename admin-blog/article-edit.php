@@ -39,6 +39,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Nouvel article : enrichissement complet
             $result = save_article($data);
             admin_log('article_created_manual', "Slug: {$result['slug']}", 'success');
+            // IndexNow : soumission immédiate à Bing/Yandex si l'article est publié
+            if ((int)$data['is_published'] === 1 && !empty($result['slug'])) {
+                require_once __DIR__ . '/includes/seo-notifier.php';
+                try { notify_seo_new_article(SITE_URL . '/blog/' . $result['slug']); } catch (Throwable $e) {}
+            }
             header("Location: /admin-blog/article-edit.php?slug=" . urlencode($result['slug']) . "&saved=1");
             exit;
         } else {
@@ -66,6 +71,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]
             );
             admin_log('article_updated', "Slug: {$slug}", 'success');
+            // IndexNow : re-soumission à la mise à jour d'un article publié
+            if ((int)$data['is_published'] === 1 && !empty($slug)) {
+                require_once __DIR__ . '/includes/seo-notifier.php';
+                try { notify_seo_new_article(SITE_URL . '/blog/' . $slug); } catch (Throwable $e) {}
+            }
             header("Location: /admin-blog/article-edit.php?slug=" . urlencode($slug) . "&saved=1");
             exit;
         }

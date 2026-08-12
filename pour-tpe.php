@@ -23,7 +23,7 @@ $faq_schema = [
 ];
 
 render_public_head([
-    'title'       => 'Logiciel de gestion pour TPE, PME & indépendants · Assokit',
+    'title'       => 'Gérer sa TPE & PME au quotidien sans paperasse · Assokit',
     'description' => 'Assokit, le logiciel tout-en-un des TPE, PME et indépendants : devis, factures, relances, suivi de chantiers/projets, comptabilité analytique, agenda et scan de factures par IA. Essai gratuit, hébergé en France.',
     'path'        => '/pour-tpe',
     'schema_jsonld' => [$breadcrumb, $faq_schema],

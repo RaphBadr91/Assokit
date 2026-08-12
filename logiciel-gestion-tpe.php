@@ -21,7 +21,7 @@ $faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEn
 $soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplication', 'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android', 'description' => "Logiciel de gestion tout-en-un pour TPE, PME et indépendants : devis, factures, projets/chantiers, trésorerie, agenda et comptabilité analytique.", 'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'EUR'], 'inLanguage' => 'fr-FR'];
 
 render_public_head([
-    'title'       => 'Logiciel de gestion pour TPE, PME & indépendants · Assokit',
+    'title'       => 'Logiciel de gestion pour TPE & indépendants · Assokit',
     'description' => 'Assokit, le logiciel de gestion tout-en-un pour TPE, PME et indépendants : devis, factures, relances, projets/chantiers, trésorerie, agenda et comptabilité analytique. Offre gratuite, appli mobile, hébergé en France.',
     'path'        => '/logiciel-gestion-tpe',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],

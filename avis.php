@@ -55,24 +55,21 @@ $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Avis clients', 'url' => '/avis'],
 ]);
 
-// Schéma Product + AggregateRating + Reviews (les avis sont bien affichés sur cette page)
+// Schéma SoftwareApplication + Reviews TEXTUELS (les témoignages sont réels et affichés).
+// NB : on n'expose NI aggregateRating NI reviewRating tant que la note n'est pas RÉELLEMENT
+// fournie par chaque client (une note attribuée par le site = rich result « fabriqué »,
+// passible d'une action manuelle Google). À rétablir dès qu'une vraie note est collectée par avis.
 $review_schema = [
     '@context'    => 'https://schema.org',
-    '@type'       => 'Product',
+    '@type'       => 'SoftwareApplication',
     'name'        => 'Assokit — Logiciel de gestion association & TPE',
+    'applicationCategory' => 'BusinessApplication',
+    'operatingSystem' => 'Web, iOS, Android',
     'description' => "Logiciel tout-en-un pour associations loi 1901 et TPE : adhérents, cotisations, facturation, comptabilité analytique, suivi de projets, communication et IA.",
-    'brand'       => ['@type' => 'Brand', 'name' => 'Assokit'],
-    'aggregateRating' => [
-        '@type'       => 'AggregateRating',
-        'ratingValue' => (string) $rating_avg,
-        'reviewCount' => (string) $rating_count,
-        'bestRating'  => '5',
-        'worstRating' => '1',
-    ],
+    'offers'      => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'EUR'],
     'review' => array_map(fn($r) => [
         '@type'         => 'Review',
         'author'        => ['@type' => 'Person', 'name' => $r['name'] . ' — ' . $r['org']],
-        'reviewRating'  => ['@type' => 'Rating', 'ratingValue' => (string) $r['rating'], 'bestRating' => '5', 'worstRating' => '1'],
         'reviewBody'    => $r['quote'],
     ], $reviews),
 ];
