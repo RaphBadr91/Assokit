@@ -131,6 +131,11 @@ require __DIR__ . '/_landing-premium.php';
         </tbody>
       </table>
     </div>
+    <div class="pub-text-center reveal" style="margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+      <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+      <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
+    </div>
+    <p class="pub-text-center" style="margin-top:10px;font-size:13px;color:var(--c-text-3);">Sans carte bancaire · sans engagement</p>
   </div>
 </section>
 
@@ -158,7 +163,7 @@ require __DIR__ . '/_landing-premium.php';
   </div>
 </section>
 
-<section class="pub-section">
+<section class="pub-section pub-section-creme">
   <div class="pub-container">
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Questions fréquentes</span><h2 class="pub-h2">Choisir son <em>logiciel de gestion TPE</em></h2></div>
     <div class="pub-faq reveal">
@@ -167,13 +172,13 @@ require __DIR__ . '/_landing-premium.php';
       <?php endforeach; ?>
     </div>
     <p class="pub-text-center reveal" style="margin-top:24px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center;">
-      <a href="/pour-tpe" style="color:var(--c-emeraude-dark);font-weight:700;">Assokit pour les TPE/PME →</a>
-      <a href="/logiciel-facturation" style="color:var(--c-emeraude-dark);font-weight:700;">Logiciel de facturation →</a>
+      <a href="/pour-tpe" style="color:var(--c-emeraude-dark);font-weight:700;">Découvrir Assokit pour les indépendants →</a>
+      <a href="/logiciel-facturation" style="color:var(--c-emeraude-dark);font-weight:700;">Éditer devis &amp; factures →</a>
     </p>
   </div>
 </section>
 
-<section class="pub-section pub-section-creme">
+<section class="pub-section">
   <div class="pub-container">
     <div class="lp-stat reveal" style="background:linear-gradient(135deg,#0f172a,#065f46);">
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Pilotez votre TPE sereinement</h2>

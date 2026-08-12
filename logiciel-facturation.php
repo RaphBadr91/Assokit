@@ -127,6 +127,11 @@ require __DIR__ . '/_landing-premium.php';
         </tbody>
       </table>
     </div>
+    <div class="pub-text-center reveal" style="margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+      <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+      <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
+    </div>
+    <p class="pub-text-center" style="margin-top:10px;font-size:13px;color:var(--c-text-3);">Sans carte bancaire · sans engagement</p>
   </div>
 </section>
 
