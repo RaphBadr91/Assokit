@@ -142,6 +142,33 @@ function get_related_articles(string $category, ?string $exclude_slug = null, in
     return DB::fetchAll($sql, $params);
 }
 
+/**
+ * Candidats au maillage interne fournis à l'IA : articles publiés de la même
+ * catégorie en priorité, complétés par d'autres catégories si besoin.
+ * Sert à générer des liens internes contextuels vers de vraies URL existantes.
+ */
+function get_internal_link_candidates(string $category, ?string $exclude_slug = null, int $limit = 8): array
+{
+    $out = [];
+    // Priorité : même catégorie
+    $sql = 'SELECT slug, title, category FROM asso_blog_articles WHERE is_published = 1 AND category = ?';
+    $params = [$category];
+    if ($exclude_slug) { $sql .= ' AND slug != ?'; $params[] = $exclude_slug; }
+    $sql .= ' ORDER BY published_at DESC LIMIT ' . (int) $limit;
+    try { $out = DB::fetchAll($sql, $params) ?: []; } catch (Throwable $e) { $out = []; }
+
+    // Complément : autres catégories (transversal), si on n'a pas assez de candidats
+    if (count($out) < $limit) {
+        $need = $limit - count($out);
+        $sql2 = 'SELECT slug, title, category FROM asso_blog_articles WHERE is_published = 1 AND category != ?';
+        $params2 = [$category];
+        if ($exclude_slug) { $sql2 .= ' AND slug != ?'; $params2[] = $exclude_slug; }
+        $sql2 .= ' ORDER BY published_at DESC LIMIT ' . (int) $need;
+        try { $out = array_merge($out, DB::fetchAll($sql2, $params2) ?: []); } catch (Throwable $e) {}
+    }
+    return $out;
+}
+
 function build_related_section(string $category, ?string $exclude_slug = null): string
 {
     $related = get_related_articles($category, $exclude_slug, 4);
