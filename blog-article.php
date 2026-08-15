@@ -90,28 +90,8 @@ $article_jsonld = [
 ];
 
 // FAQPage : extraction automatique depuis une section « ## FAQ » du markdown (si présente).
-// Valide + réutilisé par les AI Overviews. Conditionnel : les vieux articles sans FAQ sont ignorés.
-$faq_jsonld = null;
-if (preg_match('/^##\s+(?:FAQ|Questions?\s+fr[ée]quentes|Foire\s+aux\s+questions)\b.*$/im', (string)$article['content_md'], $mh, PREG_OFFSET_CAPTURE)) {
-    $rest    = substr($article['content_md'], $mh[0][1] + strlen($mh[0][0]));
-    $section = preg_split('/\n##\s+/', $rest, 2)[0]; // jusqu'au prochain H2 (ou fin)
-    $qa = [];
-    if (preg_match_all('/\*\*(.+?)\*\*\s*\n+(.*?)(?=\n\s*\*\*|\z)/s', $section, $mm, PREG_SET_ORDER)) {
-        foreach ($mm as $m) {
-            $q = trim(preg_replace('/\s+/', ' ', $m[1]));
-            $a = preg_replace('/\[([^\]]+)\]\([^)]+\)/', '$1', $m[2]);   // liens markdown → texte
-            $a = preg_replace('/^\s*(?:[-*+]|\d+\.)\s+/m', '', $a);      // puces / listes numérotées
-            $a = preg_replace('/^\s*>\s?/m', '', $a);                    // blockquotes
-            $a = trim(preg_replace('/\s+/', ' ', str_replace(['**', '*', '`', '~~'], '', strip_tags($a))));
-            if ($q !== '' && $a !== '') {
-                $qa[] = ['@type' => 'Question', 'name' => $q, 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $a]];
-            }
-        }
-    }
-    if (count($qa) >= 2) { // Google exige ≥ 2 Q/R utiles
-        $faq_jsonld = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => $qa];
-    }
-}
+// Valide + réutilisé par les AI Overviews. Conditionnel : les articles sans FAQ sont ignorés.
+$faq_jsonld = blog_extract_faq_jsonld((string)$article['content_md']);
 
 render_public_head([
     'title'       => $article['meta_title'] ?: $article['title'],

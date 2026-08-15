@@ -179,3 +179,51 @@ if (!function_exists('blog_format_date_fr')) {
         return date('j', $ts) . ' ' . $months[(int)date('n', $ts)] . ' ' . date('Y', $ts);
     }
 }
+
+if (!function_exists('blog_extract_faq_jsonld')) {
+    /**
+     * Extrait un objet Schema.org FAQPage depuis une section « ## FAQ » d'un Markdown.
+     * Format attendu (celui produit par l'IA) : questions en gras **… ?** suivies
+     * d'une réponse en texte, sous un titre H2 FAQ.
+     *
+     * Durci : accepte un emoji/symbole devant le mot FAQ (« ## ❓ FAQ »), les
+     * variantes « Questions fréquentes » / « Foire aux questions », et H2 ou H3.
+     * Renvoie null si moins de 2 Q/R exploitables (Google exige ≥ 2).
+     *
+     * @return array<string,mixed>|null
+     */
+    function blog_extract_faq_jsonld(?string $markdown): ?array {
+        $markdown = (string) $markdown;
+        // Titre FAQ (H2 ou H3), emoji/ponctuation optionnels avant le libellé
+        $heading = '/^#{2,3}\s+[^\p{L}\n]*\s*(?:FAQ|Questions?\s+fr[ée]quentes|Foire\s+aux\s+questions)\b.*$/imu';
+        if (!preg_match($heading, $markdown, $mh, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+        $rest    = substr($markdown, $mh[0][1] + strlen($mh[0][0]));
+        // Jusqu'au prochain titre de même niveau ou supérieur (## ou ###)
+        $section = preg_split('/\n#{2,3}\s+/', $rest, 2)[0];
+
+        $qa = [];
+        if (preg_match_all('/\*\*(.+?)\*\*\s*\n+(.*?)(?=\n\s*\*\*|\z)/s', $section, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $m) {
+                $q = trim(preg_replace('/\s+/', ' ', $m[1]));
+                $a = preg_replace('/\[([^\]]+)\]\([^)]+\)/', '$1', $m[2]);   // liens markdown → texte
+                $a = preg_replace('/^\s*(?:[-*+]|\d+\.)\s+/m', '', $a);      // puces / listes numérotées
+                $a = preg_replace('/^\s*>\s?/m', '', $a);                    // blockquotes
+                $a = trim(preg_replace('/\s+/', ' ', str_replace(['**', '*', '`', '~~'], '', strip_tags((string) $a))));
+                if ($q !== '' && $a !== '') {
+                    $qa[] = ['@type' => 'Question', 'name' => $q, 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $a]];
+                }
+            }
+        }
+        if (count($qa) < 2) {
+            return null;
+        }
+        return [
+            '@context'   => 'https://schema.org',
+            '@type'      => 'FAQPage',
+            'inLanguage' => 'fr-FR',
+            'mainEntity' => $qa,
+        ];
+    }
+}
