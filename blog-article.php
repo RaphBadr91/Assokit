@@ -138,6 +138,8 @@ render_public_nav('blog');
       <?php
       // === Nettoyage du contenu généré (retire tous les blocs promo/CTA bruts) ===
       $ak_body = (string) $article['content_md'];
+      // 0) retire le H1 en tête (le titre est déjà affiché dans le hero) — évite un doublon de titre
+      $ak_body = preg_replace('/\A(?:\xEF\xBB\xBF)?\s*#[ \t]+[^\n]+\n+/', '', $ak_body, 1);
       // 1) retire les citations « callout » Assokit (> ### 💡 Comment Assokit … — mal rendues)
       $ak_body = preg_replace_callback('/(?:^[ \t]*>[^\n]*\n?)+/m', function ($m) {
           return (stripos($m[0], 'Comment Assokit') !== false) ? "\n" : $m[0];
