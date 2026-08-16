@@ -51,7 +51,9 @@ const APP_ONLY_CSS = `
   if (!document.getElementById('ak-app-only-css')) {
     var s = document.createElement('style');
     s.id = 'ak-app-only-css';
-    s.textContent = '.ak-trial-banner{display:none!important}#ak-pwa-banner{display:none!important}.sb-mobile-header{display:none!important}#demo-banner{display:none!important}';
+    s.textContent = '.ak-trial-banner{display:none!important}#ak-pwa-banner{display:none!important}.sb-mobile-header{display:none!important}#demo-banner{display:none!important}'
+      /* Conformité stores : aucune mention de paiement / abonnement Assokit dans l\'app */
+      + 'a[href*="/tarifs"],a[href*="/mon-asso-plan"],a[href*="/mon-asso-abonnement"],a[href*="/mon-asso-annuler-abonnement"],a[href*="/upgrade"],.ak-upsell,.ak-upgrade,.ak-pricing,[data-upsell]{display:none!important}';
     (document.head || document.documentElement).appendChild(s);
   }
 } catch(e){} })();
@@ -959,10 +961,7 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
         ) : bilan.allowed === false ? (
           <View style={styles.upsellCard}>
             <Ionicons name="lock-closed" size={22} color="#B45309" />
-            <Text style={styles.upsellTxt}>{bilan.upsell || 'Fonctionnalité incluse dans le plan Pro.'}</Text>
-            <TouchableOpacity accessibilityRole="button" style={styles.upsellBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-plan')}>
-              <Text style={styles.upsellBtnTxt}>Voir les plans</Text>
-            </TouchableOpacity>
+            <Text style={styles.upsellTxt}>Cette fonctionnalité n'est pas disponible pour votre organisation.</Text>
           </View>
         ) : (bilan.count || 0) === 0 ? (
           <View style={styles.dCard}><Text style={styles.dMuted}>Aucune dépense enregistrée. Scannez une facture pour l'ajouter au projet.</Text></View>
@@ -1911,7 +1910,6 @@ const MORE_GROUPS = [
       { label: 'Devis', icon: 'document-text', nav: { screen: 'devis' }, admin: true },
       { label: 'Clients', icon: 'briefcase', nav: { screen: 'clients' }, admin: true },
       { label: 'Statistiques', icon: 'stats-chart', nav: { screen: 'stats' }, admin: true },
-      { label: 'Mon abonnement', icon: 'card-outline', nav: { screen: 'subinvoices' }, admin: true },
     ],
   },
   {
@@ -4907,6 +4905,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             if (/^(mailto:|tel:|sms:|geo:|maps:)/i.test(u)) { Linking.openURL(u).catch(() => {}); return false; }
             // Lien externe (hors assokit.fr) -> navigateur systeme, pas dans la WebView applicative
             if (/^https?:\/\//i.test(u) && !isAssokitUrl(u)) { Linking.openURL(u).catch(() => {}); return false; }
+            // Conformité stores (Apple 3.1.1 / Google) : on ne charge JAMAIS une page
+            // de tarifs / d'abonnement Assokit dans l'app -> redirection vers le dashboard.
+            if (/\/(tarifs|mon-asso-plan|mon-asso-abonnement|mon-asso-annuler-abonnement)(\b|\/|\?|$)/i.test(u)) {
+              inject(gotoJS('/dashboard'));
+              return false;
+            }
             return true;
           }}
           setSupportMultipleWindows={false}

@@ -157,7 +157,8 @@ try {
         $plan = $pdo->query("SELECT id, slug FROM asso_plans WHERE is_visible = 1 OR is_trial = 1 ORDER BY is_trial ASC, price_cents ASC LIMIT 1")
                     ->fetch(PDO::FETCH_ASSOC);
         if ($plan) {
-            $period_end = date('Y-m-d H:i:s', strtotime('+1 year'));
+            // Compte de démo PERMANENT : échéance très lointaine → ne s'expire jamais.
+            $period_end = '2099-12-31 23:59:59';
             $pdo->prepare("INSERT INTO asso_subscriptions (org_id, plan_id, payment_mode, status, current_period_end, created_at, updated_at)
                            VALUES (?, ?, 'free_grant', 'active', ?, NOW(), NOW())")
                 ->execute([$org_id, (int) $plan['id'], $period_end]);
