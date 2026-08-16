@@ -121,12 +121,15 @@ function postJS(endpoint, payload, key) {
 // Envoi d'une photo de facture au moteur IA (multipart, dans la WebView = même session)
 function scanJS(base64, mime, projectId, csrf) {
   return "(function(){ try {"
+    + " var mime=" + JSON.stringify(mime) + ";"
+    + " var extMap={ 'image/png':'png','image/jpeg':'jpg','image/jpg':'jpg','image/webp':'webp','image/heic':'heic','image/heif':'heif','application/pdf':'pdf' };"
+    + " var ext=extMap[mime] || 'jpg';"
     + " var b64=" + JSON.stringify(base64) + ";"
     + " var bin=atob(b64); var arr=new Uint8Array(bin.length);"
     + " for (var i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);"
-    + " var blob=new Blob([arr], { type: " + JSON.stringify(mime) + " });"
+    + " var blob=new Blob([arr], { type: mime });"
     + " var fd=new FormData();"
-    + " fd.append('invoice_file', blob, 'facture.jpg');"
+    + " fd.append('invoice_file', blob, 'facture.' + ext);"
     + " fd.append('project_id', " + JSON.stringify(String(projectId)) + ");"
     + " fd.append('csrf_token', " + JSON.stringify(csrf) + ");"
     + " fetch('/action-scan-facture.php', { method:'POST', credentials:'include', body: fd })"
@@ -410,7 +413,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
                   onSubmitEditing={() => canSubmit && onSubmit(email.trim(), pass)}
                   editable={!busy}
                 />
-                <TouchableOpacity accessibilityRole="button" onPress={() => setShow((s) => !s)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel={show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} onPress={() => setShow((s) => !s)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Ionicons name={show ? 'eye-off' : 'eye'} size={20} color="#94A3B8" />
                 </TouchableOpacity>
               </View>
@@ -1228,6 +1231,7 @@ function Field({ label, hint, ...props }) {
       <TextInput
         style={styles.fInput}
         placeholderTextColor="#B6C0CC"
+        accessibilityLabel={label}
         {...props}
       />
       {!!hint && <Text style={styles.fHint}>{hint}</Text>}
@@ -1296,7 +1300,7 @@ function MemberForm({ onBack, onSubmit, submitting, error, canAdmin }) {
           <Text style={styles.switchLabel}>Envoyer l'email d'invitation</Text>
           <Text style={styles.switchSub}>L'adhérent crée lui-même son mot de passe (lien sécurisé 7 j).</Text>
         </View>
-        <Switch value={f.send_email} onValueChange={set('send_email')} trackColor={{ true: BRAND }} />
+        <Switch value={f.send_email} onValueChange={set('send_email')} trackColor={{ true: BRAND }} accessibilityLabel="Envoyer par email" />
       </View>
     </FormShell>
   );
@@ -1836,11 +1840,14 @@ function NativeChannels({ data, loading, onRefresh, onOpen, onBack }) {
   );
 }
 
-function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh }) {
+function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh, sendResult }) {
   const [text, setText] = useState('');
   const msgs = data ? (data.messages || []) : null;
   const scRef = useRef(null);
-  const submit = () => { const t = text.trim(); if (!t || sending) return; onSend(channel.id, t); setText(''); };
+  const submit = () => { const t = text.trim(); if (!t || sending) return; onSend(channel.id, t); };
+  // On ne vide le champ QUE si l'envoi a réussi : en cas d'échec (canal en lecture
+  // seule, réseau…) l'utilisateur garde son message et peut réessayer.
+  useEffect(() => { if (sendResult && sendResult.ok) setText(''); }, [sendResult]);
   return (
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       <DetailHeader title={channel.name} onBack={onBack} />
@@ -1888,12 +1895,12 @@ const MORE_GROUPS = [
   {
     title: 'Association',
     items: [
-      { label: 'Adhérents', icon: 'people', nav: { screen: 'members' } },
+      { label: 'Adhérents', icon: 'people', nav: { screen: 'members' }, assoOnly: true },
       { label: 'Agenda', icon: 'calendar', nav: { screen: 'agenda' } },
-      { label: 'Cotisations', icon: 'card', nav: { screen: 'cotisations' }, admin: true },
-      { label: 'Subventions', icon: 'cash', nav: { screen: 'subventions' }, admin: true },
-      { label: 'Assemblées', icon: 'clipboard', nav: { screen: 'assemblies' }, admin: true },
-      { label: 'Émargement', icon: 'checkbox', nav: { screen: 'attendance' }, admin: true },
+      { label: 'Cotisations', icon: 'card', nav: { screen: 'cotisations' }, admin: true, assoOnly: true },
+      { label: 'Subventions', icon: 'cash', nav: { screen: 'subventions' }, admin: true, assoOnly: true },
+      { label: 'Assemblées', icon: 'clipboard', nav: { screen: 'assemblies' }, admin: true, assoOnly: true },
+      { label: 'Émargement', icon: 'checkbox', nav: { screen: 'attendance' }, admin: true, assoOnly: true },
     ],
   },
   {
@@ -1934,7 +1941,7 @@ const FOUNDER_SHORTCUTS = [
   { label: 'Pilotage', icon: 'grid', fk: 'cockpit' },
 ];
 
-function NativeMore({ orgName, initials, logo, isFounder, isAdmin, counts, onNav, onLogout }) {
+function NativeMore({ orgName, initials, logo, isFounder, isAdmin, isTpe, counts, onNav, onLogout }) {
   const cnt = counts || {};
   return (
     <View style={styles.detailWrap}>
@@ -1969,7 +1976,8 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, counts, onNav
           </View>
         )}
         {MORE_GROUPS.map((g) => {
-          const items = g.items.filter((it) => !it.admin || isAdmin);
+          // Masque les fonctions propres aux associations pour un profil TPE.
+          const items = g.items.filter((it) => (!it.admin || isAdmin) && (!it.assoOnly || !isTpe));
           if (items.length === 0) return null;
           return (
           <View key={g.title} style={{ marginBottom: 20 }}>
@@ -3946,6 +3954,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [chanMsgs, setChanMsgs] = useState(null);
   const [chanLoading, setChanLoading] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
+  const [msgSendResult, setMsgSendResult] = useState(null); // {ok, seq} — signale à NativeChat le résultat d'envoi
+  const msgSendSeq = useRef(0);
   const [subInv, setSubInv] = useState(null);
   const [subInvLoading, setSubInvLoading] = useState(false);
   const [quotes, setQuotes] = useState(null);
@@ -4138,7 +4148,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (!csrf) { setFormErr('Session en préparation, réessayez.'); inject(FETCH_CSRF_JS); return; }
       setScanning(true);
       setFormErr('');
-      inject(scanJS(res.assets[0].base64, 'image/jpeg', projectId, csrf));
+      // MIME réel (une image galerie PNG/HEIC ne doit pas être étiquetée JPEG)
+      const asset = res.assets[0];
+      const scanMime = (asset.mimeType && /^image\//.test(asset.mimeType)) ? asset.mimeType : 'image/jpeg';
+      inject(scanJS(asset.base64, scanMime, projectId, csrf));
     } catch (e) {
       setScanning(false);
       setFormErr('Impossible d\'ouvrir la caméra / photothèque.');
@@ -4737,7 +4750,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       if (msg && msg.__akmsgsent) {
         setSendingMsg(false);
-        if (msg.__akmsgsent.ok && openChannel) fetchChanMsgs(openChannel.id);
+        const r = msg.__akmsgsent;
+        setMsgSendResult({ ok: !!r.ok, seq: (msgSendSeq.current += 1) });
+        if (r.ok) {
+          if (openChannel) fetchChanMsgs(openChannel.id);
+        } else {
+          Alert.alert('Message non envoyé', r.message || 'Réessayez dans un instant. Votre message a été conservé.');
+        }
       }
       if (msg && msg.__akwrite) {
         setSubmitting(false);
@@ -4787,6 +4806,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (path === '/adherents' && !isTpe) { setMenuScreen(null); setActive('people'); setWebMode(false); return; }
     if (path === '/mon-asso-clients' && isTpe) { setMenuScreen(null); setActive('people'); setWebMode(false); return; }
     if (path === '/mon-asso-factures') { setMenuScreen(null); setActive('factures'); setWebMode(false); return; }
+    if (path === '/mon-asso-devis') { openMenuScreen('devis'); return; }
+    if (path === '/mon-asso-stats') { openMenuScreen('stats'); return; }
     if (path === '/agenda') { openMenuScreen('agenda'); return; }
     if (path === '/messages') { openMenuScreen('messages'); return; }
     setWebMode(true);
@@ -4995,7 +5016,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 onLogout={doLogout} />
             ) : menuScreen === 'messages' ? (
               openChannel ? (
-                <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg}
+                <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg} sendResult={msgSendResult}
                   onBack={() => { setOpenChannel(null); }} onSend={sendMessage} onRefresh={() => fetchChanMsgs(openChannel.id)} />
               ) : (
                 <NativeChannels data={channels} loading={channelsLoading} onRefresh={fetchChannels} onOpen={openChannelFn} onBack={() => setMenuScreen(null)} />
@@ -5079,6 +5100,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 logo={kpi && kpi.org_logo}
                 isFounder={!!(kpi && kpi.is_founder)}
                 isAdmin={!!(kpi && (kpi.role === 'admin' || kpi.is_founder))}
+                isTpe={isTpe}
                 counts={{ msg: kpi && kpi.msg_unread, support: kpi && kpi.support_unread, notif: kpi && kpi.notif_unread }}
                 onNav={onMoreNav}
                 onLogout={doLogout}
