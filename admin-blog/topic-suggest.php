@@ -30,11 +30,11 @@ require_once __DIR__ . '/includes/header.php';
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
 
             <label class="form-label">
-                Thème ou sujet général
-                <input type="text" id="theme-input" name="theme" required minlength="3" maxlength="200"
+                Thème ou sujet général <span class="dim">(optionnel)</span>
+                <input type="text" id="theme-input" name="theme" maxlength="200"
                        placeholder="Ex : Stratégies de levée de fonds pour assos · Gestion comptable d'une TPE · Communication réseaux sociaux pour assos sportives"
                        autofocus>
-                <small class="dim">Plus c'est précis, meilleures sont les suggestions. Mentionne la cible (assos, TPE, secteur) si possible.</small>
+                <small class="dim">💡 <strong>Laisse vide</strong> pour que l'IA propose les meilleures opportunités SEO d'Assokit (stratégie Search Console : clusters prioritaires, quick wins, saisonnalité). Ou saisis un thème précis pour cadrer.</small>
             </label>
 
             <div class="form-row">
@@ -230,15 +230,16 @@ require_once __DIR__ . '/includes/header.php';
         const count    = parseInt(document.getElementById('count-input').value, 10) || 10;
         const csrf     = form.querySelector('[name=_csrf]').value;
 
-        if (theme.length < 3) return;
+        if (theme.length > 0 && theme.length < 3) return;
 
         // Loading state
+        const loadingScope = theme ? `sur "${escapeHtml(theme)}"` : 'à partir de la stratégie SEO Assokit';
         submitBtn.disabled = true;
         submitBtn.innerHTML = '⏳ Claude réfléchit...';
         resultsZone.innerHTML = `
             <div class="suggest-loading">
                 <div class="suggest-spinner"></div>
-                <p>Claude génère ${count} sujets sur "${escapeHtml(theme)}"...<br>
+                <p>Claude génère ${count} sujets ${loadingScope}...<br>
                 <small>Patiente 10-30 secondes</small></p>
             </div>`;
 

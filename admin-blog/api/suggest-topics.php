@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/article-helper.php';
 require_once __DIR__ . '/../includes/claude.php';
+require_once __DIR__ . '/../includes/seo-context.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -38,7 +39,9 @@ $theme    = trim((string)($input['theme'] ?? ''));
 $category = trim((string)($input['category'] ?? ''));
 $count    = max(1, min(20, (int)($input['count'] ?? 10)));
 
-if (mb_strlen($theme) < 3) {
+// Thème OPTIONNEL : s'il est vide, l'IA propose les meilleures opportunités
+// directement depuis la stratégie SEO / Search Console.
+if ($theme !== '' && mb_strlen($theme) < 3) {
     echo json_encode(['success' => false, 'error' => 'Thème trop court (3 caractères minimum)']);
     exit;
 }
@@ -76,10 +79,14 @@ if (!empty($exclude_list)) {
     $exclude_block = "\n\nSUJETS DÉJÀ TRAITÉS (ne pas dupliquer, ne pas faire des variantes proches) :\n- " . implode("\n- ", array_map('strval', $exclude_list));
 }
 
+$seo_context = ak_seo_strategy_context();
+
 $system_prompt = <<<PROMPT
 Tu es un expert en stratégie de contenu SEO B2B francophone, spécialisé dans les associations loi 1901 et les TPE françaises (chiffre d'affaires < 2M€).
 
-Tu vas proposer {$count} idées d'articles de blog à fort potentiel SEO sur un thème donné par l'utilisateur.
+Tu vas proposer {$count} idées d'articles de blog à fort potentiel SEO.
+
+{$seo_context}
 
 CONTRAINTES DE SORTIE — TRÈS IMPORTANT :
 - Tu réponds UNIQUEMENT avec du JSON valide, sans aucun texte avant ou après.
@@ -103,7 +110,17 @@ DIVERSITÉ :
 Tu produis EXACTEMENT {$count} suggestions, ni plus ni moins.
 PROMPT;
 
-$user_prompt = "Thème : {$theme}\n\nProduis {$count} suggestions de sujets d'articles selon les règles. Réponds UNIQUEMENT en JSON valide.";
+if ($theme !== '') {
+    $user_prompt = "Thème imposé par l'utilisateur : {$theme}\n\n"
+        . "Reste dans ce thème, mais applique le CONTEXTE SEO ASSOKIT (clusters, intentions, quick wins, différenciation) pour choisir les angles les plus rentables.\n\n"
+        . "Produis {$count} suggestions selon les règles. Réponds UNIQUEMENT en JSON valide.";
+} else {
+    $user_prompt = "Aucun thème imposé.\n\n"
+        . "Propose les {$count} MEILLEURES opportunités SEO pour Assokit en te basant sur le CONTEXTE SEO ASSOKIT ci-dessus "
+        . "(clusters prioritaires, intentions transactionnelles, quick wins Search Console, saisonnalité du moment). "
+        . "Priorise les sujets à fort potentiel de trafic qualifié et faible concurrence, et ceux qui renforcent un cocon existant.\n\n"
+        . "Produis {$count} suggestions selon les règles. Réponds UNIQUEMENT en JSON valide.";
+}
 
 try {
     $raw = ClaudeAPI::callMessages($system_prompt, $user_prompt, 4096);
