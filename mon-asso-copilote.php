@@ -66,7 +66,7 @@ $csrf = h($_SESSION['csrf_token'] ?? '');
   var input = document.getElementById('cop-input');
   var send  = document.getElementById('cop-send');
 
-  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
   function bubble(html, who){
     var b = document.createElement('div');

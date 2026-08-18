@@ -3,6 +3,10 @@
 -- Cible : MariaDB 10.x. Idempotent (IF NOT EXISTS).
 -- On journalise la question + l'intention choisie (pas les données
 -- personnelles renvoyées → minimisation RGPD).
+-- ⚠️ RGPD : la colonne `question` (texte libre) peut contenir des données
+-- personnelles (ex. « la cotisation de Jean Dupont est-elle à jour ? »).
+-- Prévoir une PURGE périodique. Exemple de tâche (cron mensuel) :
+--   DELETE FROM copilote_audit_log WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY);
 -- ============================================================
 CREATE TABLE IF NOT EXISTS copilote_audit_log (
   id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

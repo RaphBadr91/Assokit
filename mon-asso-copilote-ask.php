@@ -8,9 +8,11 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/copilote-engine.php';
-@require_once __DIR__ . '/rate-limit-helper.php';
+require_once __DIR__ . '/rate-limit-helper.php';
 
 header('Content-Type: application/json; charset=utf-8');
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); echo json_encode(['ok'=>false,'error'=>'method']); exit; }
 
 require_login();
 $user   = current_user();
@@ -31,10 +33,10 @@ if (!is_array($body)) $body = $_POST;
 $csrf = (string)($body['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
 if (!check_csrf($csrf)) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'csrf']); exit; }
 
-// Anti-abus (20 questions / minute / utilisateur)
-if (function_exists('ak_rate_limit_or_die')) {
-    ak_rate_limit_or_die('copilote', 20, 60, (string)$uid);
-}
+// Anti-abus — fail-closed : chaque question déclenche 2 appels LLM payants.
+if (!function_exists('ak_rate_limit_or_die')) { http_response_code(500); echo json_encode(['ok'=>false,'error'=>'rl_unavailable']); exit; }
+ak_rate_limit_or_die('copilote', 20, 60, (string)$uid);          // par utilisateur
+ak_rate_limit_or_die('copilote_org', 120, 60, 'org'.$org_id);    // + plafond par organisation
 
 $question = trim((string)($body['question'] ?? ''));
 if (mb_strlen($question) < 2) { echo json_encode(['ok'=>false,'error'=>'empty']); exit; }
