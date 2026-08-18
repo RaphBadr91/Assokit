@@ -1915,6 +1915,7 @@ const MORE_GROUPS = [
   {
     title: 'Communication',
     items: [
+      { label: 'Copilote IA', icon: 'sparkles', nav: { web: '/mon-asso-copilote' }, admin: true },
       { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' }, badge: 'msg' },
       { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' }, badge: 'notif' },
       { label: 'Communication', icon: 'mail', nav: { screen: 'broadcasts' }, admin: true },
