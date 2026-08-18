@@ -73,7 +73,7 @@ if (!function_exists('ak_cop_intents')) {
                 $st->execute();
                 $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 return ['kind'=>'table','title'=>"Nouveaux adhérents ({$p['days']} j)",
-                        'columns'=>['Prénom','Nom','Email','Adhésion'],
+                        'columns'=>['Prénom','Nom','Email','Inscription'],
                         'rows'=>array_map(fn($r)=>[$r['first_name'],$r['last_name'],$r['email'],$r['d']], $rows),
                         'facts'=>'nouveaux='.count($rows)." sur {$p['days']} jours"];
             },
