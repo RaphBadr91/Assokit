@@ -20,6 +20,11 @@ if (PHP_SAPI !== 'cli' && isset($_SERVER['REQUEST_METHOD'])) { http_response_cod
 require_once __DIR__ . '/../config.php';
 if (!isset($pdo) || !($pdo instanceof PDO)) { fwrite(STDERR, "PDO indisponible (config.php).\n"); exit(1); }
 
+// La connexion de l'app est parfois en mode non-bufferisé : un SELECT laisse
+// alors le curseur ouvert et bloque les requêtes suivantes (erreur 2014).
+// On force le mode bufferisé pour le lanceur (best-effort).
+try { $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true); } catch (Throwable $e) {}
+
 $arg = $argv[1] ?? '';
 if ($arg === '') {
     echo "Usage : php migrations/run.php <fichier.sql> | --all\n";
@@ -61,7 +66,10 @@ foreach ($files as $path) {
     foreach (mig_split_sql($sql) as $stmt) {
         $label = preg_replace('/\s+/', ' ', mb_substr($stmt, 0, 60));
         try {
-            $pdo->exec($stmt);
+            // query() + closeCursor() libère tout résultat (SELECT) pour ne pas
+            // bloquer l'instruction suivante en connexion non-bufferisée.
+            $res = $pdo->query($stmt);
+            if ($res instanceof PDOStatement) { $res->closeCursor(); $res = null; }
             echo "  ✓ $label…\n";
             $totalOk++;
         } catch (Throwable $e) {
