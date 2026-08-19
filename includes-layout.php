@@ -1440,6 +1440,10 @@ function render_sidebar($active = 'accueil') {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg>
         Facturation
       </a>
+      <a href="/relances" class="sb-link <?= $active === 'relances' ? 'active' : '' ?>">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M16 3l2 2-2 2"/></svg>
+        Relances
+      </a>
       <?php endif; ?>
 
       <?php // Communication : uniquement si capacité access_marketing ?>
