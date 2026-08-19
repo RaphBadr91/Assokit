@@ -1136,10 +1136,10 @@ render_sidebar('accueil');
   .dash-logo-preview {
     width: 92px; height: 64px; flex: none; border-radius: 12px;
     background: #fff; border: 1px solid var(--border, rgba(12,40,28,0.07));
-    display: grid; place-items: center; overflow: hidden;
+    display: grid; place-items: center; overflow: hidden; padding: 7px; box-sizing: border-box;
     box-shadow: inset 0 1px 3px rgba(9,30,22,0.06);
   }
-  .dash-logo-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .dash-logo-preview img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .dash-logo-empty { color: var(--ink-4, #A6B0AA); display: grid; place-items: center; }
   .dash-logo-body { flex: 1; min-width: 0; }
   .dash-logo-title { font-size: 15px; font-weight: 750; letter-spacing: -0.01em; color: var(--ink, #0B1A13); }
