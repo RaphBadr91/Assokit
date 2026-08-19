@@ -140,7 +140,7 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
 
 /* SIDEBAR */
-.sidebar { background: var(--glass); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border-right: 1px solid var(--glass-border); padding: 18px 12px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.sidebar { background: var(--glass); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border-right: 1px solid var(--glass-border); padding: 26px 12px 18px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 .sb-logo { display: inline-flex; align-items: center; gap: 11px; font-weight: 700; font-size: 18px; letter-spacing: -0.02em; padding: 4px 10px; color: var(--ink); }
 .sb-logo i { font-style: normal; color: var(--acc); }
 .sb-search {
