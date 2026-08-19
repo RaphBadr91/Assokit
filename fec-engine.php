@@ -179,6 +179,54 @@ function fec_render(array $rows): string {
 }
 }
 
+if (!function_exists('fec_parse_amount')) {
+/** Reconvertit un montant FEC ("1200,00") en float. */
+function fec_parse_amount(string $s): float { return (float)str_replace([' ',','], ['','.'], $s); }
+}
+
+if (!function_exists('fec_balance')) {
+/**
+ * Balance comptable : agrège les lignes FEC par compte.
+ * @return array<array{compte:string,lib:string,debit:float,credit:float,solde:float}>
+ */
+function fec_balance(array $rows): array {
+    $acc = [];
+    foreach ($rows as $r) {
+        $c = $r['CompteNum'];
+        if (!isset($acc[$c])) $acc[$c] = ['compte'=>$c, 'lib'=>$r['CompteLib'], 'debit'=>0.0, 'credit'=>0.0];
+        $acc[$c]['debit']  += fec_parse_amount($r['Debit']);
+        $acc[$c]['credit'] += fec_parse_amount($r['Credit']);
+    }
+    foreach ($acc as &$a) $a['solde'] = round($a['debit'] - $a['credit'], 2);
+    unset($a);
+    ksort($acc);
+    return array_values($acc);
+}
+}
+
+if (!function_exists('fec_ledger')) {
+/**
+ * Grand livre : lignes groupées par compte, triées par date.
+ * @return array<string,array{lib:string,lines:array,debit:float,credit:float}>
+ */
+function fec_ledger(array $rows): array {
+    $led = [];
+    foreach ($rows as $r) {
+        $c = $r['CompteNum'];
+        if (!isset($led[$c])) $led[$c] = ['lib'=>$r['CompteLib'], 'lines'=>[], 'debit'=>0.0, 'credit'=>0.0];
+        $led[$c]['lines'][] = $r;
+        $led[$c]['debit']  += fec_parse_amount($r['Debit']);
+        $led[$c]['credit'] += fec_parse_amount($r['Credit']);
+    }
+    ksort($led);
+    foreach ($led as &$g) {
+        usort($g['lines'], fn($a,$b) => strcmp($a['EcritureDate'], $b['EcritureDate']));
+    }
+    unset($g);
+    return $led;
+}
+}
+
 if (!function_exists('fec_filename')) {
 /** Nom de fichier normalisé : <SIREN>FEC<AAAAMMJJ clôture>.txt */
 function fec_filename(PDO $pdo, int $org_id, int $year): string {

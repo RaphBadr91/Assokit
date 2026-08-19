@@ -1416,7 +1416,7 @@ function render_sidebar($active = 'accueil') {
       <?php // 💶 Finances : regroupe Facturation, Relances, Anomalies, Prévisions, Subventions ?>
       <?php if (can('manage_finances')):
           $is_admin_nav = (($user['role'] ?? '') === 'admin');
-          $fin_children = ['devis','factures','clients','stats','relances','anomalies','previsions','export-fec','subventions','financements'];
+          $fin_children = ['devis','factures','clients','stats','relances','anomalies','previsions','comptabilite','export-fec','subventions','financements'];
           $fin_open = in_array($active, $fin_children, true);
       ?>
       <div class="ak-collapse <?= $fin_open ? 'is-open' : '' ?>">
@@ -1443,6 +1443,10 @@ function render_sidebar($active = 'accueil') {
           <a href="/previsions" class="sb-link <?= $active === 'previsions' ? 'active' : '' ?>">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
             Prévisions
+          </a>
+          <a href="/comptabilite" class="sb-link <?= $active === 'comptabilite' ? 'active' : '' ?>">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 0 2 2h13M9 8h6"/></svg>
+            Comptabilité
           </a>
           <a href="/export-fec" class="sb-link <?= $active === 'export-fec' ? 'active' : '' ?>">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 15h6M9 12h2"/></svg>
