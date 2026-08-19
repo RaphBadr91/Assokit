@@ -1261,13 +1261,6 @@ function render_sidebar($active = 'accueil') {
         Accueil
       </a>
 
-      <?php if (can('manage_finances')): ?>
-      <a href="/mon-asso-copilote" class="sb-link <?= $active === 'mon-asso-copilote' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg>
-        Copilote IA
-      </a>
-      <?php endif; ?>
-
       <?php
       // ============ NOTIFICATIONS (cloche avec badge dynamique) ============
       // Calculer le badge initial (sera mis à jour en JS toutes les 30s)
@@ -1601,6 +1594,86 @@ function render_foot() {
 
 <!-- ========== TOAST NOTIFICATIONS (style Facebook) ========== -->
 <div id="notifToastContainer" style="position:fixed; bottom:20px; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; max-width:360px;"></div>
+
+<?php
+// ========== COPILOTE IA — lanceur flottant permanent (toutes pages) ==========
+if (function_exists('current_user') && function_exists('can')):
+    $cop_user = current_user();
+    if ($cop_user && (int)($cop_user['org_id'] ?? 0) > 0 && can('manage_finances')):
+        $cop_csrf = h($_SESSION['csrf_token'] ?? '');
+?>
+<button id="akCopFab" type="button" aria-label="Ouvrir le Copilote IA" title="Copilote IA — pose ta question">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg>
+</button>
+<div id="akCopPanel" aria-hidden="true">
+  <div class="akcop-head">
+    <div class="akcop-head-t"><span class="akcop-dot"></span> Copilote IA</div>
+    <button type="button" id="akCopClose" aria-label="Fermer">✕</button>
+  </div>
+  <div id="akCopLog" class="akcop-log">
+    <div class="akcop-hello">Pose ta question sur ton asso 👇<br><span>adhérents · cotisations · factures · trésorerie · projets · événements</span></div>
+    <div class="akcop-chips">
+      <button type="button" class="akcop-chip">Combien d'adhérents actifs ?</button>
+      <button type="button" class="akcop-chip">Quels adhérents relancer ?</button>
+      <button type="button" class="akcop-chip">Quel est mon CA cette année ?</button>
+      <button type="button" class="akcop-chip">Quelles factures sont en retard ?</button>
+    </div>
+  </div>
+  <form id="akCopForm" class="akcop-form">
+    <input id="akCopInput" type="text" autocomplete="off" maxlength="500" placeholder="Écris ta question…">
+    <button type="submit" id="akCopSend" aria-label="Envoyer">➤</button>
+  </form>
+</div>
+<style>
+#akCopFab{position:fixed;right:22px;bottom:22px;z-index:10000;width:56px;height:56px;border:none;border-radius:50%;cursor:pointer;background:linear-gradient(135deg,#0CCB8F,#059669);box-shadow:0 10px 28px rgba(5,150,105,.45);display:flex;align-items:center;justify-content:center;transition:transform .15s;}
+#akCopFab:hover{transform:translateY(-2px) scale(1.04);}
+#akCopPanel{position:fixed;right:22px;bottom:88px;z-index:10000;width:370px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 130px);background:#fff;border:1px solid #E2E8F0;border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.22);display:none;flex-direction:column;overflow:hidden;}
+#akCopPanel.open{display:flex;}
+.akcop-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(135deg,#0F172A,#065F46);color:#fff;}
+.akcop-head-t{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;}
+.akcop-dot{width:8px;height:8px;border-radius:50%;background:#0CCB8F;box-shadow:0 0 0 4px rgba(12,203,143,.25);}
+#akCopClose{background:transparent;border:none;color:#fff;font-size:16px;cursor:pointer;opacity:.8;}
+.akcop-log{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#F8FAFC;}
+.akcop-hello{color:#475569;font-size:13.5px;text-align:center;padding:6px 4px;}
+.akcop-hello span{color:#94A3B8;font-size:12px;}
+.akcop-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:4px;}
+.akcop-chip{background:#EEF2F7;border:1px solid #E2E8F0;border-radius:999px;padding:6px 11px;font-size:12px;color:#334155;cursor:pointer;}
+.akcop-me{align-self:flex-end;max-width:82%;background:#059669;color:#fff;padding:9px 12px;border-radius:13px 13px 4px 13px;font-size:13.5px;}
+.akcop-bot{align-self:flex-start;max-width:92%;background:#fff;border:1px solid #E2E8F0;color:#0F172A;padding:10px 12px;border-radius:13px 13px 13px 4px;font-size:13.5px;}
+.akcop-bot table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;}
+.akcop-bot th{text-align:left;padding:5px 7px;border-bottom:2px solid #E2E8F0;color:#64748B;}
+.akcop-bot td{padding:5px 7px;border-bottom:1px solid #F1F5F9;}
+.akcop-bot a.akcop-act{display:inline-block;margin-top:8px;background:#0F172A;color:#fff;text-decoration:none;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;}
+.akcop-form{display:flex;gap:8px;padding:10px;border-top:1px solid #E2E8F0;background:#fff;}
+#akCopInput{flex:1;border:1px solid #E2E8F0;border-radius:10px;padding:9px 11px;font-size:13.5px;outline:none;}
+#akCopSend{background:linear-gradient(135deg,#0CCB8F,#059669);color:#fff;border:none;border-radius:10px;width:42px;font-size:15px;cursor:pointer;}
+@media (max-width:900px){#akCopFab{bottom:78px;} #akCopPanel{bottom:78px;}}
+</style>
+<script>
+(function(){
+  var CSRF="<?= $cop_csrf ?>";
+  var fab=document.getElementById('akCopFab'), panel=document.getElementById('akCopPanel'),
+      log=document.getElementById('akCopLog'), form=document.getElementById('akCopForm'),
+      input=document.getElementById('akCopInput'), send=document.getElementById('akCopSend');
+  function esc(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+  function open(){panel.classList.add('open');panel.setAttribute('aria-hidden','false');setTimeout(function(){input.focus();},80);}
+  function close(){panel.classList.remove('open');panel.setAttribute('aria-hidden','true');}
+  fab.addEventListener('click',function(){panel.classList.contains('open')?close():open();});
+  document.getElementById('akCopClose').addEventListener('click',close);
+  function tbl(html,who){var b=document.createElement('div');b.className=who==='me'?'akcop-me':'akcop-bot';b.innerHTML=html;log.appendChild(b);b.scrollIntoView({block:'end'});return b;}
+  function renderTable(t){if(!t||!t.columns)return '';var h='<div style="font-weight:700;margin-bottom:2px;">'+esc(t.title||'')+'</div><table><tr>'+t.columns.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+'</tr>';(t.rows||[]).forEach(function(r){h+='<tr>'+r.map(function(c){return '<td>'+esc(c)+'</td>';}).join('')+'</tr>';});return h+'</table>';}
+  function ask(q){if(!q||!q.trim())return;tbl(esc(q),'me');input.value='';send.disabled=true;var w=tbl('<span style="color:#94A3B8;">…</span>','bot');
+    fetch('/mon-asso-copilote-ask.php',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify({question:q,csrf_token:CSRF})})
+    .then(function(r){return r.json();}).then(function(d){var html='';
+      if(d&&d.ok===false){html=esc(d.error==='forbidden'?'Accès non autorisé.':'Service momentanément indisponible.');}
+      else{html='<div>'+esc(d.answer||'')+'</div>';if(d.table)html+=renderTable(d.table);if(d.action&&d.action.route)html+='<a class="akcop-act" href="'+esc(d.action.route)+'">'+esc(d.action.label||'Ouvrir')+' →</a>';}
+      w.innerHTML=html;}).catch(function(){w.innerHTML=esc('Erreur réseau. Réessayez.');}).finally(function(){send.disabled=false;input.focus();});
+  }
+  form.addEventListener('submit',function(e){e.preventDefault();ask(input.value);});
+  log.addEventListener('click',function(e){if(e.target.classList.contains('akcop-chip'))ask(e.target.textContent);});
+})();
+</script>
+<?php endif; endif; ?>
 
 <style>
 .notif-toast {
