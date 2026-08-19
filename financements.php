@@ -26,6 +26,7 @@ $csrf = h($_SESSION['csrf_token'] ?? '');
 $schema_ready = true;
 $catalog_count = 0;
 $prof = []; $stats = []; $matches = [];
+$prefs = ['notify_new_match'=>1, 'min_match_score'=>60, 'notify_deadlines'=>1, 'channel_email'=>1, 'channel_app'=>1];
 
 $filter = $_GET['f'] ?? '';
 $valid_f = ['eligible','probable','a_verifier','saved'];
@@ -42,6 +43,15 @@ try {
     }
 
     $stats = fin_stats($pdo, $org_id);
+
+    // Préférences d'alerte (défauts si non configuré)
+    $prefs = ['notify_new_match'=>1, 'min_match_score'=>60, 'notify_deadlines'=>1, 'channel_email'=>1, 'channel_app'=>1];
+    try {
+        $ps = $pdo->prepare("SELECT * FROM grant_alert_prefs WHERE org_id = ?");
+        $ps->execute([$org_id]);
+        if ($pr = $ps->fetch()) { foreach ($prefs as $k=>$v) if (isset($pr[$k]) && $pr[$k] !== null) $prefs[$k] = (int)$pr[$k]; }
+    } catch (Throwable $e) {}
+
     $opts = [];
     if ($filter === 'saved') $opts['saved_only'] = true;
     elseif (in_array($filter, ['eligible','probable','a_verifier'], true)) $opts['eligibility'] = $filter;
@@ -141,6 +151,19 @@ echo render_sidebar('financements');
             <?php endif; ?>
           </div>
           <button type="button" class="fin-btn primary" id="finSaveProfile">Enregistrer &amp; recalculer</button>
+        </div>
+
+        <div class="fin-alerts">
+          <p class="fin-field-lbl" style="margin-top:20px;">🔔 Alertes automatiques (email + notification)</p>
+          <div class="fin-alerts-grid">
+            <label class="fin-check"><input type="checkbox" id="alNew" <?= $prefs['notify_new_match']?'checked':'' ?>> Nouvelles pistes détectées</label>
+            <label class="fin-check"><input type="checkbox" id="alDl" <?= $prefs['notify_deadlines']?'checked':'' ?>> Échéances (J-30 &amp; J-7)</label>
+            <label class="fin-check"><input type="checkbox" id="alEmail" <?= $prefs['channel_email']?'checked':'' ?>> Par email</label>
+            <label class="fin-check"><input type="checkbox" id="alApp" <?= $prefs['channel_app']?'checked':'' ?>> Dans l'app</label>
+            <label class="fin-check fin-score-pref">Score minimum : <input type="number" id="alScore" min="0" max="100" step="5" value="<?= (int)$prefs['min_match_score'] ?>"> %</label>
+          </div>
+          <button type="button" class="fin-btn ghost sm" id="finSavePrefs" style="margin-top:10px;">Enregistrer mes alertes</button>
+          <span id="finPrefsOk" style="display:none;color:#059669;font-size:12.5px;margin-left:8px;">✓ Enregistré</span>
         </div>
       </div>
     </details>
@@ -248,6 +271,11 @@ echo render_sidebar('financements');
 .fin-seg button.on { background:#0F172A; color:#fff; font-weight:650; }
 .fin-profile-foot { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-top:18px; }
 .fin-geo-note { font-size:12.5px; color:#64748B; }
+.fin-alerts { border-top:1px solid #F1F5F9; margin-top:6px; }
+.fin-alerts-grid { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; }
+.fin-check { display:inline-flex; align-items:center; gap:7px; font-size:13px; color:#475569; cursor:pointer; }
+.fin-check input[type=number] { width:58px; padding:4px 6px; border:1px solid #E2E8F0; border-radius:7px; font-family:inherit; font-size:13px; }
+.fin-score-pref { gap:6px; }
 .fin-filters { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
 .fin-chip { padding:6px 13px; background:#fff; border:1px solid #E5E7EB; border-radius:999px; font-size:12.5px; text-decoration:none; color:#475569; }
 .fin-chip:hover { background:#F8FAFC; }
@@ -320,6 +348,21 @@ echo render_sidebar('financements');
     post({action:'save-profile', sectors:sectors, is_qpv:segVal('is_qpv'), is_interet_general:segVal('is_interet_general')})
       .then(function(d){ if(d && d.ok){ location.reload(); } else { saveBtn.disabled=false; saveBtn.textContent='Enregistrer & recalculer'; alert('Erreur, réessayez.'); } })
       .catch(function(){ saveBtn.disabled=false; saveBtn.textContent='Enregistrer & recalculer'; });
+  });
+
+  var savePrefs = document.getElementById('finSavePrefs');
+  if (savePrefs) savePrefs.addEventListener('click', function(){
+    savePrefs.disabled = true;
+    post({action:'save-prefs',
+      notify_new_match: document.getElementById('alNew').checked ? 1 : 0,
+      notify_deadlines: document.getElementById('alDl').checked ? 1 : 0,
+      channel_email: document.getElementById('alEmail').checked ? 1 : 0,
+      channel_app: document.getElementById('alApp').checked ? 1 : 0,
+      min_match_score: parseInt(document.getElementById('alScore').value,10) || 0
+    }).then(function(d){
+      savePrefs.disabled = false;
+      if(d && d.ok){ var ok=document.getElementById('finPrefsOk'); ok.style.display='inline'; setTimeout(function(){ ok.style.display='none'; }, 2500); }
+    }).catch(function(){ savePrefs.disabled = false; });
   });
 
   var refresh = document.getElementById('finRefresh');

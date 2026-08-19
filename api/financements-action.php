@@ -85,6 +85,29 @@ try {
             break;
         }
 
+        case 'save-prefs': {
+            $bit = fn($v) => (!empty($v) && $v !== '0' && $v !== 'false') ? 1 : 0;
+            $score = (int)($body['min_match_score'] ?? 60);
+            if ($score < 0) $score = 0; if ($score > 100) $score = 100;
+            $st = $pdo->prepare(
+                "INSERT INTO grant_alert_prefs (org_id, notify_new_match, min_match_score, notify_deadlines, channel_email, channel_app, updated_at)
+                 VALUES (:o,:nm,:sc,:nd,:ce,:ca,NOW())
+                 ON DUPLICATE KEY UPDATE notify_new_match=VALUES(notify_new_match), min_match_score=VALUES(min_match_score),
+                   notify_deadlines=VALUES(notify_deadlines), channel_email=VALUES(channel_email),
+                   channel_app=VALUES(channel_app), updated_at=NOW()"
+            );
+            $st->execute([
+                ':o'=>$org_id,
+                ':nm'=>$bit($body['notify_new_match'] ?? 1),
+                ':sc'=>$score,
+                ':nd'=>$bit($body['notify_deadlines'] ?? 1),
+                ':ce'=>$bit($body['channel_email'] ?? 1),
+                ':ca'=>$bit($body['channel_app'] ?? 1),
+            ]);
+            echo json_encode(['ok'=>true]);
+            break;
+        }
+
         case 'save':
         case 'unsave':
         case 'dismiss':
