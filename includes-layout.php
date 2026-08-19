@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/ak-icons.php';   // jeu d'icônes maison (ak_icon, ak_icon_badge, ak_dot)
 if (!function_exists('fr_format_date')) {
     function fr_format_date($fmt, $ts) {
         $jours = ['Sunday'=>'dimanche','Monday'=>'lundi','Tuesday'=>'mardi','Wednesday'=>'mercredi','Thursday'=>'jeudi','Friday'=>'vendredi','Saturday'=>'samedi'];

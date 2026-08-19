@@ -75,7 +75,7 @@ echo render_sidebar('previsions');
   <div class="pv-page">
     <div class="pv-head">
       <div>
-        <h1 class="pv-title">📈 Tableau de bord prévisionnel</h1>
+        <h1 class="pv-title"><?= ak_icon_badge('chart', '#059669', 36) ?><span>Tableau de bord prévisionnel</span></h1>
         <p class="pv-sub">Trésorerie projetée à 6 mois, saisonnalité et tendances — à partir de vos recettes, dépenses, créances et récurrences.</p>
       </div>
     </div>
@@ -203,7 +203,7 @@ echo render_sidebar('previsions');
 <style>
 .pv-page { max-width:1040px; margin:0 auto; padding:24px 22px; }
 .pv-head { margin-bottom:16px; }
-.pv-title { font-size:24px; margin:0 0 4px; color:#0F172A; }
+.pv-title { font-size:24px; margin:0 0 4px; color:#0F172A; display:flex; align-items:center; gap:11px; }
 .pv-sub { color:#64748B; margin:0; font-size:14px; max-width:660px; }
 .pv-alerts { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
 .pv-alert { padding:10px 14px; border-radius:10px; font-size:13.5px; font-weight:600; }

@@ -70,7 +70,7 @@ echo render_sidebar('financements');
   <div class="fin-page">
     <div class="fin-head">
       <div>
-        <h1 class="fin-title">🎯 Radar de subventions</h1>
+        <h1 class="fin-title"><?= ak_icon_badge('target', '#059669', 36) ?><span>Radar de subventions</span></h1>
         <p class="fin-sub">On détecte automatiquement les financements que votre structure a le droit de demander — priorisés par éligibilité et par échéance.</p>
       </div>
       <div class="fin-head-actions">
@@ -171,10 +171,10 @@ echo render_sidebar('financements');
     <!-- ===== Filtres ===== -->
     <div class="fin-filters">
       <a href="/financements" class="fin-chip <?= $filter===''?'is-active':'' ?>">Toutes</a>
-      <a href="/financements?f=eligible" class="fin-chip <?= $filter==='eligible'?'is-active':'' ?>">✅ Éligibles</a>
-      <a href="/financements?f=probable" class="fin-chip <?= $filter==='probable'?'is-active':'' ?>">🟡 Probables</a>
-      <a href="/financements?f=a_verifier" class="fin-chip <?= $filter==='a_verifier'?'is-active':'' ?>">🔎 À vérifier</a>
-      <a href="/financements?f=saved" class="fin-chip <?= $filter==='saved'?'is-active':'' ?>">⭐ Suivies</a>
+      <a href="/financements?f=eligible" class="fin-chip <?= $filter==='eligible'?'is-active':'' ?>"><?= ak_dot('#10B981') ?> Éligibles</a>
+      <a href="/financements?f=probable" class="fin-chip <?= $filter==='probable'?'is-active':'' ?>"><?= ak_dot('#F59E0B') ?> Probables</a>
+      <a href="/financements?f=a_verifier" class="fin-chip <?= $filter==='a_verifier'?'is-active':'' ?>"><?= ak_dot('#6366F1') ?> À vérifier</a>
+      <a href="/financements?f=saved" class="fin-chip <?= $filter==='saved'?'is-active':'' ?>"><span style="display:inline-flex;color:#F59E0B;"><?= ak_icon('star',12,'2') ?></span> Suivies</a>
     </div>
 
     <!-- ===== Liste ===== -->
@@ -197,7 +197,7 @@ echo render_sidebar('financements');
         ?>
         <article class="fin-card" data-cat="<?= (int)$m['catalog_id'] ?>" data-saved="<?= (int)$m['saved'] ?>">
           <div class="fin-card-top">
-            <span class="fin-elig" style="background:<?= $em[2] ?>;color:<?= $em[1] ?>;"><?= $em[3] ?> <?= h($em[0]) ?> · <?= (int)$m['score'] ?>%</span>
+            <span class="fin-elig" style="background:<?= $em[2] ?>;color:<?= $em[1] ?>;"><?= $m['eligibility']==='eligible' ? ak_icon('check',12,'2.6') : ak_dot($em[1]) ?> <?= h($em[0]) ?> · <?= (int)$m['score'] ?>%</span>
             <?php if ($days !== null): ?>
               <span class="fin-deadline <?= $days<0?'over':($days<=15?'urgent':'') ?>">
                 <?= $days<0 ? 'Clôturé' : 'échéance J-'.$days ?> · <?= h(date('d/m/Y', strtotime($dl))) ?>
@@ -241,7 +241,7 @@ echo render_sidebar('financements');
 <style>
 .fin-page { max-width: 1080px; margin: 0 auto; padding: 24px 22px; }
 .fin-head { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
-.fin-title { font-size:24px; margin:0 0 4px; color:#0F172A; }
+.fin-title { font-size:24px; margin:0 0 4px; color:#0F172A; display:flex; align-items:center; gap:11px; }
 .fin-sub { color:#64748B; margin:0; font-size:14px; max-width:640px; }
 .fin-head-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .fin-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 15px; border-radius:9px; font-size:13px; font-weight:650; text-decoration:none; cursor:pointer; border:1px solid transparent; font-family:inherit; }
@@ -283,14 +283,14 @@ echo render_sidebar('financements');
 .fin-check input[type=number] { width:58px; padding:4px 6px; border:1px solid #E2E8F0; border-radius:7px; font-family:inherit; font-size:13px; }
 .fin-score-pref { gap:6px; }
 .fin-filters { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
-.fin-chip { padding:6px 13px; background:#fff; border:1px solid #E5E7EB; border-radius:999px; font-size:12.5px; text-decoration:none; color:#475569; }
+.fin-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 13px; background:#fff; border:1px solid #E5E7EB; border-radius:999px; font-size:12.5px; text-decoration:none; color:#475569; }
 .fin-chip:hover { background:#F8FAFC; }
 .fin-chip.is-active { background:#ECFDF5; color:#065F46; border-color:#10B981; font-weight:650; }
 .fin-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px; }
 .fin-card { background:#fff; border:1px solid #E5E7EB; border-radius:14px; padding:16px; display:flex; flex-direction:column; transition:box-shadow .15s, transform .15s; }
 .fin-card:hover { box-shadow:0 8px 24px -12px rgba(9,30,22,.22); transform:translateY(-1px); }
 .fin-card-top { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
-.fin-elig { font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; white-space:nowrap; }
+.fin-elig { font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; white-space:nowrap; display:inline-flex; align-items:center; gap:5px; }
 .fin-deadline { font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px; background:#F1F5F9; color:#64748B; white-space:nowrap; }
 .fin-deadline.soft { background:#F8FAFC; color:#94A3B8; font-weight:600; }
 .fin-deadline.urgent { background:#FEF3C7; color:#92400E; }

@@ -39,7 +39,7 @@ echo render_sidebar('anomalies');
   <div class="an-page">
     <div class="an-head">
       <div>
-        <h1 class="an-title">🔍 Détection d'anomalies</h1>
+        <h1 class="an-title"><?= ak_icon_badge('search', '#059669', 36) ?><span>Détection d'anomalies</span></h1>
         <p class="an-sub">Un audit automatique de vos factures et cotisations : doublons, TVA incohérente, trous de numérotation, statuts et dates suspects, double encaissement.</p>
       </div>
       <div class="an-head-actions">
@@ -81,7 +81,7 @@ echo render_sidebar('anomalies');
         <?php foreach ($visible as $f): $sm = ak_anom_sev_meta($f['severity']); ?>
         <div class="an-card <?= !empty($f['dismissed'])?'is-ignored':'' ?>" data-hash="<?= h($f['hash']) ?>" data-cat="<?= h($f['category']) ?>">
           <div class="an-card-left">
-            <span class="an-sev" style="background:<?= $sm[2] ?>;color:<?= $sm[1] ?>;"><?= $sm[3] ?> <?= h($sm[0]) ?></span>
+            <span class="an-sev" style="background:<?= $sm[2] ?>;color:<?= $sm[1] ?>;"><?= $f['severity']==='high' ? ak_icon('alert-tri',12,'2.2') : ak_dot($sm[1]) ?> <?= h($sm[0]) ?></span>
           </div>
           <div class="an-card-body">
             <div class="an-card-title"><?= h($f['title']) ?></div>
@@ -109,7 +109,7 @@ echo render_sidebar('anomalies');
 <style>
 .an-page { max-width:960px; margin:0 auto; padding:24px 22px; }
 .an-head { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
-.an-title { font-size:24px; margin:0 0 4px; color:#0F172A; }
+.an-title { font-size:24px; margin:0 0 4px; color:#0F172A; display:flex; align-items:center; gap:11px; }
 .an-sub { color:#64748B; margin:0; font-size:14px; max-width:640px; }
 .an-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 15px; border-radius:9px; font-size:13px; font-weight:650; cursor:pointer; border:1px solid transparent; font-family:inherit; text-decoration:none; }
 .an-btn.sm { padding:6px 11px; font-size:12.5px; }
@@ -127,7 +127,7 @@ echo render_sidebar('anomalies');
 .an-card { display:flex; gap:14px; background:#fff; border:1px solid #E5E7EB; border-radius:12px; padding:14px 16px; align-items:flex-start; }
 .an-card.is-ignored { opacity:.6; }
 .an-card-left { flex:none; }
-.an-sev { font-size:11px; font-weight:700; padding:4px 9px; border-radius:999px; white-space:nowrap; }
+.an-sev { font-size:11px; font-weight:700; padding:4px 9px; border-radius:999px; white-space:nowrap; display:inline-flex; align-items:center; gap:5px; }
 .an-card-body { flex:1; min-width:0; }
 .an-card-title { font-size:14.5px; font-weight:700; color:#0F172A; margin-bottom:3px; }
 .an-card-detail { font-size:13px; color:#475569; line-height:1.5; }

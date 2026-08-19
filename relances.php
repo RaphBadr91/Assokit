@@ -44,7 +44,7 @@ echo render_sidebar('relances');
   <div class="rel-page">
     <div class="rel-head">
       <div>
-        <h1 class="rel-title">📣 Relances intelligentes</h1>
+        <h1 class="rel-title"><?= ak_icon_badge('megaphone', '#059669', 36) ?><span>Relances intelligentes</span></h1>
         <p class="rel-sub">On repère qui relancer et à quel stade — factures impayées et cotisations expirées — et vous envoyez au bon moment, avec le bon ton.</p>
       </div>
       <?php if ($due_count > 0): ?>
@@ -173,7 +173,7 @@ echo render_sidebar('relances');
 <style>
 .rel-page { max-width:1000px; margin:0 auto; padding:24px 22px; }
 .rel-head { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
-.rel-title { font-size:24px; margin:0 0 4px; color:#0F172A; }
+.rel-title { font-size:24px; margin:0 0 4px; color:#0F172A; display:flex; align-items:center; gap:11px; }
 .rel-sub { color:#64748B; margin:0; font-size:14px; max-width:640px; }
 .rel-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 15px; border-radius:9px; font-size:13px; font-weight:650; cursor:pointer; border:1px solid transparent; font-family:inherit; text-decoration:none; }
 .rel-btn.sm { padding:6px 11px; font-size:12.5px; }
