@@ -43,19 +43,19 @@ echo render_sidebar('anomalies');
         <p class="an-sub">Un audit automatique de vos factures et cotisations : doublons, TVA incohérente, trous de numérotation, statuts et dates suspects, double encaissement.</p>
       </div>
       <div class="an-head-actions">
-        <button type="button" class="an-btn ghost" onclick="location.reload()">↻ Relancer l'audit</button>
+        <button type="button" class="an-btn ghost" onclick="location.reload()"><?= ak_icon('refresh',14) ?> Relancer l'audit</button>
       </div>
     </div>
 
 <?php if (!$ready): ?>
-    <div class="an-empty"><div class="an-empty-emoji">🛠️</div><h2>Initialisation requise</h2>
+    <div class="an-empty"><div class="an-empty-emoji"><?= ak_icon('wrench',44,'1.5') ?></div><h2>Initialisation requise</h2>
       <p>Exécutez la migration <code>2026-08-19-anomalies.sql</code> pour activer la fonction « ignorer ».</p></div>
 <?php else: ?>
 
     <div class="an-kpis">
-      <div class="an-kpi"><div class="an-kpi-lbl">🔴 Critiques</div><div class="an-kpi-val <?= $c_high>0?'an-red':'an-green' ?>"><?= $c_high ?></div></div>
-      <div class="an-kpi"><div class="an-kpi-lbl">🟠 À vérifier</div><div class="an-kpi-val <?= $c_med>0?'an-amber':'' ?>"><?= $c_med ?></div></div>
-      <div class="an-kpi"><div class="an-kpi-lbl">🔵 Infos</div><div class="an-kpi-val"><?= $c_low ?></div></div>
+      <div class="an-kpi"><div class="an-kpi-lbl"><?= ak_dot('#EF4444') ?> Critiques</div><div class="an-kpi-val <?= $c_high>0?'an-red':'an-green' ?>"><?= $c_high ?></div></div>
+      <div class="an-kpi"><div class="an-kpi-lbl"><?= ak_dot('#F59E0B') ?> À vérifier</div><div class="an-kpi-val <?= $c_med>0?'an-amber':'' ?>"><?= $c_med ?></div></div>
+      <div class="an-kpi"><div class="an-kpi-lbl"><?= ak_dot('#6366F1') ?> Infos</div><div class="an-kpi-val"><?= $c_low ?></div></div>
       <div class="an-kpi"><div class="an-kpi-lbl">Ignorées</div><div class="an-kpi-val an-muted"><?= $ignored_count ?></div></div>
     </div>
 
@@ -72,7 +72,7 @@ echo render_sidebar('anomalies');
       if (empty($visible)):
     ?>
       <div class="an-empty">
-        <div class="an-empty-emoji">✅</div>
+        <div class="an-empty-emoji" style="color:#10B981;"><?= ak_icon('check-circle',46,'1.6') ?></div>
         <h2>Aucune anomalie détectée</h2>
         <p>Vos factures et cotisations sont cohérentes. Relancez l'audit après vos prochaines saisies.</p>
       </div>
@@ -100,7 +100,7 @@ echo render_sidebar('anomalies');
       </div>
     <?php endif; ?>
 
-    <p class="an-disclaimer">ℹ️ Cet audit signale des <em>incohérences probables</em> à partir de règles comptables : il ne remplace pas votre expert-comptable. « Ignorer » masque durablement un faux positif (il réapparaîtra si un cas identique se reproduit).</p>
+    <p class="an-disclaimer"><?= ak_icon('info',13) ?> Cet audit signale des <em>incohérences probables</em> à partir de règles comptables : il ne remplace pas votre expert-comptable. « Ignorer » masque durablement un faux positif (il réapparaîtra si un cas identique se reproduit).</p>
 
 <?php endif; ?>
   </div>
@@ -117,7 +117,10 @@ echo render_sidebar('anomalies');
 .an-btn.ghost:hover { background:#F8FAFC; }
 .an-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
 .an-kpi { background:#fff; border:1px solid #E5E7EB; border-radius:12px; padding:12px 14px; }
-.an-kpi-lbl { font-size:11px; color:#64748B; font-weight:700; margin-bottom:4px; }
+.an-kpi-lbl { font-size:11px; color:#64748B; font-weight:700; margin-bottom:4px; display:inline-flex; align-items:center; gap:6px; }
+.an-empty-emoji { color:#94A3B8; }
+.an-btn svg { flex:none; }
+.an-disclaimer svg { vertical-align:-2px; margin-right:4px; }
 .an-kpi-val { font-size:22px; font-weight:750; color:#0F172A; }
 .an-red { color:#EF4444 !important; } .an-amber { color:#F59E0B !important; } .an-green { color:#10B981 !important; } .an-muted { color:#94A3B8 !important; }
 .an-toolbar { margin-bottom:12px; }

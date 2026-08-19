@@ -74,20 +74,20 @@ echo render_sidebar('financements');
         <p class="fin-sub">On détecte automatiquement les financements que votre structure a le droit de demander — priorisés par éligibilité et par échéance.</p>
       </div>
       <div class="fin-head-actions">
-        <button type="button" class="fin-btn ghost" id="finRefresh">↻ Recalculer</button>
-        <a href="/subventions" class="fin-btn ghost">📁 Mes candidatures</a>
+        <button type="button" class="fin-btn ghost" id="finRefresh"><?= ak_icon('refresh',14) ?> Recalculer</button>
+        <a href="/subventions" class="fin-btn ghost"><?= ak_icon('folder',14) ?> Mes candidatures</a>
       </div>
     </div>
 
 <?php if (!$schema_ready): ?>
     <div class="fin-empty">
-      <div class="fin-empty-emoji">🛠️</div>
+      <div class="fin-empty-emoji"><?= ak_icon('wrench',44,'1.5') ?></div>
       <h2>Base de subventions à initialiser</h2>
       <p>Exécutez la migration <code>2026-08-18-subventions-catalogue.sql</code> puis le script <code>api/seed-grants-catalog.php</code> pour amorcer le catalogue de dispositifs.</p>
     </div>
 <?php elseif ($catalog_count === 0): ?>
     <div class="fin-empty">
-      <div class="fin-empty-emoji">📥</div>
+      <div class="fin-empty-emoji"><?= ak_icon('inbox',44,'1.5') ?></div>
       <h2>Catalogue vide</h2>
       <p>Lancez <code>api/seed-grants-catalog.php</code> (en tant que fondateur) pour charger les dispositifs nationaux (FDVA, FONJEP, ANS, CAF, fondations…).</p>
     </div>
@@ -105,7 +105,7 @@ echo render_sidebar('financements');
     <!-- ===== Profil d'éligibilité ===== -->
     <details class="fin-profile" <?= empty($prof['sectors']) ? 'open' : '' ?>>
       <summary>
-        <span>⚙️ Affiner mon profil d'éligibilité</span>
+        <span class="fin-sum-lbl"><?= ak_icon('gear',15) ?> Affiner mon profil d'éligibilité</span>
         <span class="fin-profile-hint"><?= empty($prof['sectors']) ? 'Renseignez vos secteurs pour des résultats plus précis' : 'Secteurs : '.h(implode(', ', $prof['sectors'])) ?></span>
       </summary>
       <div class="fin-profile-body">
@@ -142,7 +142,7 @@ echo render_sidebar('financements');
 
         <div class="fin-profile-foot">
           <div class="fin-geo-note">
-            📍 Territoire déduit :
+            <?= ak_icon('pin',13) ?> Territoire déduit :
             <?php if ($prof['dept_code'] || $prof['region_code']): ?>
               <strong>dépt <?= h($prof['dept_code'] ?? '?') ?><?= $prof['region_code'] ? ' · région '.h($prof['region_code']) : '' ?></strong>
               <?php if ($prof['city']): ?> (<?= h($prof['city']) ?>)<?php endif; ?>
@@ -154,7 +154,7 @@ echo render_sidebar('financements');
         </div>
 
         <div class="fin-alerts">
-          <p class="fin-field-lbl" style="margin-top:20px;">🔔 Alertes automatiques (email + notification)</p>
+          <p class="fin-field-lbl" style="margin-top:20px;"><?= ak_icon('bell',14) ?> Alertes automatiques (email + notification)</p>
           <div class="fin-alerts-grid">
             <label class="fin-check"><input type="checkbox" id="alNew" <?= $prefs['notify_new_match']?'checked':'' ?>> Nouvelles pistes détectées</label>
             <label class="fin-check"><input type="checkbox" id="alDl" <?= $prefs['notify_deadlines']?'checked':'' ?>> Échéances (J-30 &amp; J-7)</label>
@@ -180,7 +180,7 @@ echo render_sidebar('financements');
     <!-- ===== Liste ===== -->
     <?php if (empty($matches)): ?>
       <div class="fin-empty">
-        <div class="fin-empty-emoji">🔍</div>
+        <div class="fin-empty-emoji"><?= ak_icon('search',44,'1.5') ?></div>
         <h2><?= $filter ? 'Aucune piste dans ce filtre' : 'Aucune piste pour ce profil' ?></h2>
         <p>Complétez votre profil ci-dessus (secteurs, territoire) puis recalculez.</p>
       </div>
@@ -224,15 +224,15 @@ echo render_sidebar('financements');
               <a href="<?= h($m['source_url']) ?>" target="_blank" rel="noopener noreferrer" class="fin-btn primary sm">En savoir plus ↗</a>
             <?php endif; ?>
             <a href="/subvention-form" class="fin-btn ghost sm">+ Suivre en dossier</a>
-            <button type="button" class="fin-icon-btn js-save" title="Suivre cette piste"><?= (int)$m['saved'] ? '⭐' : '☆' ?></button>
-            <button type="button" class="fin-icon-btn js-dismiss" title="Masquer">✕</button>
+            <button type="button" class="fin-icon-btn js-save <?= (int)$m['saved']?'on':'' ?>" title="Suivre cette piste"><?= ak_icon((int)$m['saved']?'star-fill':'star',15) ?></button>
+            <button type="button" class="fin-icon-btn js-dismiss" title="Masquer"><?= ak_icon('close',14,'2') ?></button>
           </div>
         </article>
         <?php endforeach; ?>
       </div>
     <?php endif; ?>
 
-    <p class="fin-disclaimer">ℹ️ Le radar signale des pistes à partir de critères publics : il ne garantit pas l'octroi. Vérifiez toujours les conditions exactes sur le site officiel du financeur (lien fourni). Montants indicatifs.</p>
+    <p class="fin-disclaimer"><?= ak_icon('info',13) ?> Le radar signale des pistes à partir de critères publics : il ne garantit pas l'octroi. Vérifiez toujours les conditions exactes sur le site officiel du financeur (lien fourni). Montants indicatifs.</p>
 
 <?php endif; ?>
   </div>
@@ -303,7 +303,12 @@ echo render_sidebar('financements');
 .fin-reasons li { font-size:12px; color:#475569; padding-left:16px; position:relative; }
 .fin-reasons li::before { content:"›"; position:absolute; left:4px; color:#10B981; font-weight:700; }
 .fin-card-actions { display:flex; align-items:center; gap:8px; margin-top:auto; flex-wrap:wrap; }
-.fin-icon-btn { margin-left:auto; width:32px; height:32px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; cursor:pointer; font-size:15px; line-height:1; }
+.fin-icon-btn { margin-left:auto; width:32px; height:32px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; cursor:pointer; font-size:15px; line-height:1; display:inline-flex; align-items:center; justify-content:center; color:#94A3B8; }
+.fin-icon-btn.js-save.on { color:#F59E0B; }
+.fin-empty-emoji { color:#94A3B8; }
+.fin-sum-lbl { display:inline-flex; align-items:center; gap:7px; }
+.fin-btn svg, .fin-chip svg { flex:none; }
+.fin-disclaimer svg, .fin-geo-note svg, .fin-field-lbl svg { vertical-align:-2px; margin-right:4px; }
 .fin-icon-btn.js-dismiss { margin-left:0; color:#94A3B8; }
 .fin-icon-btn:hover { background:#F8FAFC; }
 .fin-empty { text-align:center; padding:48px 20px; background:#fff; border:2px dashed #E5E7EB; border-radius:14px; }
@@ -318,6 +323,8 @@ echo render_sidebar('financements');
 <script>
 (function(){
   var CSRF = "<?= $csrf ?>";
+  var STAR = <?= json_encode(ak_icon('star',15)) ?>;
+  var STAR_FILL = <?= json_encode(ak_icon('star-fill',15)) ?>;
   function post(payload){
     return fetch('/api/financements-action.php', {
       method:'POST', credentials:'same-origin',
@@ -385,7 +392,7 @@ echo render_sidebar('financements');
     if (saveB) saveB.addEventListener('click', function(){
       var isSaved = card.getAttribute('data-saved') === '1';
       post({action: isSaved ? 'unsave' : 'save', catalog_id:cat}).then(function(d){
-        if(d && d.ok){ card.setAttribute('data-saved', isSaved?'0':'1'); saveB.textContent = isSaved ? '☆' : '⭐'; }
+        if(d && d.ok){ card.setAttribute('data-saved', isSaved?'0':'1'); saveB.innerHTML = isSaved ? STAR : STAR_FILL; saveB.classList.toggle('on', !isSaved); }
       });
     });
     if (dismB) dismB.addEventListener('click', function(){

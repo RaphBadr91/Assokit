@@ -81,15 +81,15 @@ echo render_sidebar('previsions');
     </div>
 
 <?php if (!$ready): ?>
-    <div class="pv-empty"><div class="pv-empty-emoji">🛠️</div><h2>Initialisation requise</h2>
+    <div class="pv-empty"><div class="pv-empty-emoji"><?= ak_icon('wrench',44,'1.5') ?></div><h2>Initialisation requise</h2>
       <p>Exécutez la migration <code>2026-08-19-forecast.sql</code> pour activer l'ancrage de trésorerie.</p></div>
 <?php else: ?>
 
     <?php if (!empty($alerts)): ?>
     <div class="pv-alerts">
       <?php foreach ($alerts as $a):
-        $ac = ['danger'=>['#991B1B','#FEE2E2','🔴'],'warn'=>['#92400E','#FEF3C7','🟠'],'good'=>['#065F46','#D1FAE5','🟢']][$a['level']] ?? ['#374151','#F3F4F6','•']; ?>
-        <div class="pv-alert" style="background:<?= $ac[1] ?>;color:<?= $ac[0] ?>;"><?= $ac[2] ?> <?= h($a['text']) ?></div>
+        $ac = ['danger'=>['#991B1B','#FEE2E2','#EF4444'],'warn'=>['#92400E','#FEF3C7','#F59E0B'],'good'=>['#065F46','#D1FAE5','#10B981']][$a['level']] ?? ['#374151','#F3F4F6','#94A3B8']; ?>
+        <div class="pv-alert" style="background:<?= $ac[1] ?>;color:<?= $ac[0] ?>;"><?= ak_dot($ac[2]) ?> <?= h($a['text']) ?></div>
       <?php endforeach; ?>
     </div>
     <?php endif; ?>
@@ -194,7 +194,7 @@ echo render_sidebar('previsions');
       </div>
     </div>
 
-    <p class="pv-disclaimer">ℹ️ Projections <strong>indicatives</strong> calculées sur vos données passées et vos engagements connus. Elles ne constituent ni un conseil comptable ni une garantie. Les recettes réelles dépendront de vos encaissements effectifs.</p>
+    <p class="pv-disclaimer"><?= ak_icon('info',13) ?> Projections <strong>indicatives</strong> calculées sur vos données passées et vos engagements connus. Elles ne constituent ni un conseil comptable ni une garantie. Les recettes réelles dépendront de vos encaissements effectifs.</p>
 
 <?php endif; ?>
   </div>
@@ -206,7 +206,9 @@ echo render_sidebar('previsions');
 .pv-title { font-size:24px; margin:0 0 4px; color:#0F172A; display:flex; align-items:center; gap:11px; }
 .pv-sub { color:#64748B; margin:0; font-size:14px; max-width:660px; }
 .pv-alerts { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
-.pv-alert { padding:10px 14px; border-radius:10px; font-size:13.5px; font-weight:600; }
+.pv-alert { padding:10px 14px; border-radius:10px; font-size:13.5px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.pv-empty-emoji { color:#94A3B8; }
+.pv-disclaimer svg { vertical-align:-2px; margin-right:4px; }
 .pv-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:16px; }
 .pv-kpi { background:#fff; border:1px solid #E5E7EB; border-radius:12px; padding:12px 14px; }
 .pv-kpi-lbl { font-size:10.5px; color:#64748B; text-transform:uppercase; letter-spacing:.04em; font-weight:700; margin-bottom:4px; }

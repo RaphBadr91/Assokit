@@ -48,12 +48,12 @@ echo render_sidebar('relances');
         <p class="rel-sub">On repère qui relancer et à quel stade — factures impayées et cotisations expirées — et vous envoyez au bon moment, avec le bon ton.</p>
       </div>
       <?php if ($due_count > 0): ?>
-      <button type="button" class="rel-btn primary" id="relBatch">⚡ Tout relancer (<?= $due_count ?> recommandé<?= $due_count>1?'s':'' ?>)</button>
+      <button type="button" class="rel-btn primary" id="relBatch"><?= ak_icon('bolt',15) ?> Tout relancer (<?= $due_count ?> recommandé<?= $due_count>1?'s':'' ?>)</button>
       <?php endif; ?>
     </div>
 
 <?php if (!$ready): ?>
-    <div class="rel-empty"><div class="rel-empty-emoji">🛠️</div><h2>Initialisation requise</h2>
+    <div class="rel-empty"><div class="rel-empty-emoji"><?= ak_icon('wrench',44,'1.5') ?></div><h2>Initialisation requise</h2>
       <p>Exécutez la migration <code>2026-08-19-relances.sql</code> pour activer les relances.</p></div>
 <?php else: ?>
 
@@ -66,7 +66,7 @@ echo render_sidebar('relances');
 
     <!-- Automatisation -->
     <details class="rel-auto">
-      <summary><span>🤖 Automatiser les relances</span><span class="rel-auto-hint"><?= ($prefs['auto_invoices']||$prefs['auto_memberships']) ? 'Auto activé' : 'Manuel (recommandé au démarrage)' ?></span></summary>
+      <summary><span class="rel-sum-lbl"><?= ak_icon('robot',16) ?> Automatiser les relances</span><span class="rel-auto-hint"><?= ($prefs['auto_invoices']||$prefs['auto_memberships']) ? 'Auto activé' : 'Manuel (recommandé au démarrage)' ?></span></summary>
       <div class="rel-auto-body">
         <p class="rel-note">Quand c'est activé, le cron quotidien envoie automatiquement les relances dues, dans la limite du stade choisi. Vous gardez la main : désactivez à tout moment.</p>
         <label class="rel-check"><input type="checkbox" id="autoInv" <?= $prefs['auto_invoices']?'checked':'' ?>> Factures : relances automatiques</label>
@@ -83,9 +83,9 @@ echo render_sidebar('relances');
     </details>
 
     <!-- FACTURES -->
-    <h2 class="rel-section">🧾 Factures impayées <span class="rel-count"><?= count($invoices) ?></span></h2>
+    <h2 class="rel-section"><?= ak_icon('receipt',18) ?> Factures impayées <span class="rel-count"><?= count($invoices) ?></span></h2>
     <?php if (!$invoices): ?>
-      <div class="rel-empty small"><p>Aucune facture impayée échue. 👍</p></div>
+      <div class="rel-empty small"><p>Aucune facture impayée échue.</p></div>
     <?php else: ?>
       <div class="rel-list">
         <?php foreach ($invoices as $t): $sm = ak_rel_stage_meta($t['stage']); ?>
@@ -100,10 +100,10 @@ echo render_sidebar('relances');
           </div>
           <span class="rel-stage" style="background:<?= $sm[3] ?>;color:<?= $sm[2] ?>;"><?= h($sm[0]) ?></span>
           <?php if (!$t['has_email']): ?>
-            <span class="rel-noemail" title="Pas d'email client">✉️ absent</span>
+            <span class="rel-noemail" title="Pas d'email client"><?= ak_icon('mail',12) ?> absent</span>
           <?php else: ?>
             <div class="rel-row-actions">
-              <button type="button" class="rel-btn ghost sm js-ai" title="Rédiger avec l'IA">✨ IA</button>
+              <button type="button" class="rel-btn ghost sm js-ai" title="Rédiger avec l'IA"><?= ak_icon('sparkle',13) ?> IA</button>
               <button type="button" class="rel-btn primary sm js-send"><?= $t['due_now'] ? 'Relancer' : 'Relancer quand même' ?></button>
             </div>
           <?php endif; ?>
@@ -113,9 +113,9 @@ echo render_sidebar('relances');
     <?php endif; ?>
 
     <!-- COTISATIONS -->
-    <h2 class="rel-section">🪪 Cotisations à renouveler <span class="rel-count"><?= count($members) ?></span></h2>
+    <h2 class="rel-section"><?= ak_icon('idcard',18) ?> Cotisations à renouveler <span class="rel-count"><?= count($members) ?></span></h2>
     <?php if (!$members): ?>
-      <div class="rel-empty small"><p>Aucune cotisation à relancer. 👍</p></div>
+      <div class="rel-empty small"><p>Aucune cotisation à relancer.</p></div>
     <?php else: ?>
       <div class="rel-list">
         <?php foreach ($members as $t): $sm = ak_rel_stage_meta($t['stage']); ?>
@@ -130,10 +130,10 @@ echo render_sidebar('relances');
           </div>
           <span class="rel-stage" style="background:<?= $sm[3] ?>;color:<?= $sm[2] ?>;"><?= h($sm[0]) ?></span>
           <?php if (!$t['has_email']): ?>
-            <span class="rel-noemail" title="Pas d'email">✉️ absent</span>
+            <span class="rel-noemail" title="Pas d'email"><?= ak_icon('mail',12) ?> absent</span>
           <?php else: ?>
             <div class="rel-row-actions">
-              <button type="button" class="rel-btn ghost sm js-ai" title="Rédiger avec l'IA">✨ IA</button>
+              <button type="button" class="rel-btn ghost sm js-ai" title="Rédiger avec l'IA"><?= ak_icon('sparkle',13) ?> IA</button>
               <button type="button" class="rel-btn primary sm js-send"><?= $t['due_now'] ? 'Relancer' : 'Relancer quand même' ?></button>
             </div>
           <?php endif; ?>
@@ -142,7 +142,7 @@ echo render_sidebar('relances');
       </div>
     <?php endif; ?>
 
-    <p class="rel-disclaimer">ℹ️ Cadence recommandée : rappel courtois dès l'échéance, relance ferme à J+15, mise en demeure à J+45 — avec un délai minimal entre deux envois. Vous validez chaque relance (ou l'automatisez).</p>
+    <p class="rel-disclaimer"><?= ak_icon('info',13) ?> Cadence recommandée : rappel courtois dès l'échéance, relance ferme à J+15, mise en demeure à J+45 — avec un délai minimal entre deux envois. Vous validez chaque relance (ou l'automatisez).</p>
 
 <?php endif; ?>
   </div>
@@ -156,7 +156,7 @@ echo render_sidebar('relances');
           Ton : <button type="button" class="rel-tone" data-tone="chaleureux">Chaleureux</button>
           <button type="button" class="rel-tone on" data-tone="neutre">Neutre</button>
           <button type="button" class="rel-tone" data-tone="ferme">Ferme</button>
-          <button type="button" class="rel-btn ghost sm" id="relRegen" style="margin-left:auto;">✨ Générer avec l'IA</button>
+          <button type="button" class="rel-btn ghost sm" id="relRegen" style="margin-left:auto;"><?= ak_icon('sparkle',13) ?> Générer avec l'IA</button>
         </div>
         <input type="text" id="relSubject" class="rel-input" placeholder="Objet de l'email">
         <textarea id="relBody" class="rel-textarea" rows="10" placeholder="Le message… (rédigez librement ou laissez l'IA proposer)"></textarea>
@@ -208,7 +208,11 @@ echo render_sidebar('relances');
 .rel-noemail { font-size:11.5px; color:#94A3B8; background:#F8FAFC; border:1px solid #E2E8F0; padding:5px 9px; border-radius:8px; }
 .rel-empty { text-align:center; padding:40px 20px; background:#fff; border:2px dashed #E5E7EB; border-radius:14px; }
 .rel-empty.small { padding:22px; }
-.rel-empty-emoji { font-size:42px; margin-bottom:10px; }
+.rel-empty-emoji { font-size:42px; margin-bottom:10px; color:#94A3B8; }
+.rel-sum-lbl { display:inline-flex; align-items:center; gap:7px; }
+.rel-noemail { display:inline-flex; align-items:center; gap:5px; }
+.rel-btn svg, .rel-section svg, .rel-disclaimer svg { flex:none; }
+.rel-disclaimer svg { vertical-align:-2px; margin-right:4px; }
 .rel-empty h2 { font-size:18px; margin:0 0 8px; color:#0F172A; }
 .rel-empty p { color:#64748B; margin:0; font-size:13.5px; }
 .rel-empty code { background:#F1F5F9; padding:1px 6px; border-radius:5px; }
@@ -257,7 +261,7 @@ echo render_sidebar('relances');
     batch.disabled=true; batch.textContent='Envoi en cours…';
     post({action:'batch'}).then(function(d){
       if(d&&d.ok){ alert(d.sent+' relance(s) envoyée(s)'+(d.failed?', '+d.failed+' échec(s)':'')+'.'); location.reload(); }
-      else { batch.disabled=false; batch.textContent='⚡ Tout relancer'; alert('Erreur.'); }
+      else { batch.disabled=false; batch.textContent='Tout relancer'; alert('Erreur.'); }
     }).catch(function(){ batch.disabled=false; });
   });
 
@@ -295,7 +299,7 @@ echo render_sidebar('relances');
   var regen=document.getElementById('relRegen');
   regen.addEventListener('click', function(){
     if(!curRow) return;
-    regen.disabled=true; mState.textContent='✨ Génération en cours…';
+    regen.disabled=true; mState.textContent='Génération en cours…';
     post({action:'ai-draft', target:curRow.getAttribute('data-type'), id:parseInt(curRow.getAttribute('data-id'),10),
       stage:parseInt(curRow.getAttribute('data-stage'),10), tone:curTone}).then(function(d){
       regen.disabled=false;
