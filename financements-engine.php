@@ -314,13 +314,49 @@ function fin_eligibility_meta(string $e): array {
 }
 
 if (!function_exists('fin_sectors_catalog')) {
-/** Référentiel des secteurs proposés dans le formulaire de profil. */
+/** Référentiel des secteurs proposés dans le formulaire de profil (libellés sobres, sans emoji). */
 function fin_sectors_catalog(): array {
     return [
-        'sport' => '🏅 Sport', 'culture' => '🎭 Culture', 'social' => '🤝 Social / solidarité',
-        'sante' => '❤️ Santé', 'education' => '📚 Éducation', 'jeunesse' => '🧒 Jeunesse',
-        'environnement' => '🌱 Environnement', 'famille' => '👨‍👩‍👧 Famille / parentalité',
-        'emploi' => '💼 Emploi / insertion', 'numerique' => '💻 Numérique', 'patrimoine' => '🏛️ Patrimoine',
+        'sport' => 'Sport', 'culture' => 'Culture', 'social' => 'Social / solidarité',
+        'sante' => 'Santé', 'education' => 'Éducation', 'jeunesse' => 'Jeunesse',
+        'environnement' => 'Environnement', 'famille' => 'Famille / parentalité',
+        'emploi' => 'Emploi / insertion', 'numerique' => 'Numérique', 'patrimoine' => 'Patrimoine',
     ];
+}
+}
+
+if (!function_exists('fin_sector_icon')) {
+/**
+ * Icône SVG maison d'un secteur (style « ligne », 16px, hérite de currentColor).
+ * Jeu d'icônes cohérent maison — remplace les emoji système pour un rendu pro.
+ */
+function fin_sector_icon(string $key): string {
+    $p = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
+    $paths = [
+        // Sport : médaille
+        'sport' => '<circle cx="12" cy="14" r="6"/><path d="M12 14l0 0"/><path d="M9 4l3 4 3-4M8.5 2.5l3.5 5 3.5-5"/>',
+        // Culture : masque de théâtre / note
+        'culture' => '<path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>',
+        // Social : mains / cœur partagé
+        'social' => '<path d="M20.8 8.6a3 3 0 0 0-4.2 0L12 13l-4.6-4.4a3 3 0 1 0-4.2 4.3l8.8 8.5 8.8-8.5a3 3 0 0 0 .2-4.3z"/>',
+        // Santé : croix médicale
+        'sante' => '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 9v6M9 12h6"/>',
+        // Éducation : chapeau diplômé
+        'education' => '<path d="M2 9l10-4 10 4-10 4L2 9z"/><path d="M6 11v4c0 1.5 2.7 3 6 3s6-1.5 6-3v-4"/>',
+        // Jeunesse : cerf-volant / étincelle
+        'jeunesse' => '<circle cx="12" cy="8" r="3"/><path d="M6 21c0-3.3 2.7-6 6-6s6 2.7 6 6"/>',
+        // Environnement : feuille
+        'environnement' => '<path d="M4 20s-1-9 7-13c5-2.5 9-2 9-2s.5 4-2 9c-4 8-13 7-13 7z"/><path d="M4 20L14 10"/>',
+        // Famille : deux figures + petit
+        'famille' => '<circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="7" r="2.5"/><path d="M3 20a4 4 0 0 1 8 0M13 20a4 4 0 0 1 8 0M12 13v6"/>',
+        // Emploi : mallette
+        'emploi' => '<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/>',
+        // Numérique : écran + code
+        'numerique' => '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M9 21h6M12 17v4M9.5 9l-2 2 2 2M14.5 9l2 2-2 2"/>',
+        // Patrimoine : monument à colonnes
+        'patrimoine' => '<path d="M3 21h18M4 21V10M20 21V10M8 21V10M16 21V10M12 21V10M2 10l10-6 10 6H2z"/>',
+    ];
+    $inner = $paths[$key] ?? '<circle cx="12" cy="12" r="8"/>';
+    return '<svg viewBox="0 0 24 24" width="16" height="16" '.$p.'>'.$inner.'</svg>';
 }
 }

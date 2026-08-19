@@ -114,7 +114,7 @@ echo render_sidebar('financements');
           <?php foreach ($sectors_ref as $k => $label): $on = in_array($k, $prof['sectors'], true); ?>
             <label class="fin-tag <?= $on ? 'on' : '' ?>">
               <input type="checkbox" name="sectors" value="<?= h($k) ?>" <?= $on ? 'checked' : '' ?> hidden>
-              <?= h($label) ?>
+              <span class="fin-tag-ico"><?= fin_sector_icon($k) ?></span><?= h($label) ?>
             </label>
           <?php endforeach; ?>
         </div>
@@ -262,11 +262,17 @@ echo render_sidebar('financements');
 .fin-profile-body { padding:4px 18px 18px; border-top:1px solid #F1F5F9; }
 .fin-field-lbl { font-size:12.5px; font-weight:700; color:#475569; margin:14px 0 8px; }
 .fin-sectors { display:flex; flex-wrap:wrap; gap:8px; }
-.fin-tag { display:inline-flex; align-items:center; padding:7px 13px; border-radius:999px; border:1px solid #E2E8F0; background:#F8FAFC; font-size:13px; color:#475569; cursor:pointer; user-select:none; transition:all .12s; }
+.fin-tag { display:inline-flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; border:1px solid #E2E8F0; background:#F8FAFC; font-size:13px; color:#475569; cursor:pointer; user-select:none; transition:all .12s; }
+.fin-tag:hover { border-color:#CBD5E1; background:#fff; }
 .fin-tag.on { background:#ECFDF5; border-color:#10B981; color:#065F46; font-weight:650; }
-.fin-tri-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
-.fin-seg { display:inline-flex; border:1px solid #E2E8F0; border-radius:9px; overflow:hidden; }
-.fin-seg button { border:0; background:#fff; padding:7px 12px; font-size:12.5px; color:#475569; cursor:pointer; font-family:inherit; border-right:1px solid #E2E8F0; }
+.fin-tag-ico { display:inline-flex; color:#94A3B8; transition:color .12s; }
+.fin-tag.on .fin-tag-ico { color:#10B981; }
+.fin-tri-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px; margin-top:4px; }
+.fin-tri { display:flex; flex-direction:column; gap:9px; align-items:flex-start; }
+.fin-tri .fin-field-lbl { margin:0; }
+.fin-seg { display:inline-flex; border:1px solid #E2E8F0; border-radius:10px; overflow:hidden; max-width:100%; }
+.fin-seg button { border:0; background:#fff; padding:8px 14px; font-size:12.5px; color:#475569; cursor:pointer; font-family:inherit; border-right:1px solid #E2E8F0; white-space:nowrap; transition:background .12s; }
+.fin-seg button:hover { background:#F8FAFC; }
 .fin-seg button:last-child { border-right:0; }
 .fin-seg button.on { background:#0F172A; color:#fff; font-weight:650; }
 .fin-profile-foot { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-top:18px; }

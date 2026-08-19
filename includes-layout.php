@@ -1369,26 +1369,7 @@ function render_sidebar($active = 'accueil') {
         </div>
       </div>
       <?php endif; ?>
-            <?php // Subventions : admin uniquement (Radar de financements + suivi des candidatures) ?>
-      <?php if (($user['role'] ?? '') === 'admin'): ?>
-      <?php $subv_open = in_array($active, ['subventions','financements'], true); ?>
-      <div class="ak-collapse <?= $subv_open ? 'is-open' : '' ?>">
-        <div class="ak-collapse-row">
-          <a href="/subventions" class="sb-link ak-collapse-link <?= $active === 'subventions' ? 'active' : '' ?>" style="flex:1;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            Subventions
-          </a>
-          <button type="button" class="ak-collapse-toggle" onclick="this.closest('.ak-collapse').classList.toggle('is-open')" aria-label="Déplier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-        </div>
-        <div class="ak-collapse-body">
-          <a href="/financements" class="sb-link <?= $active === 'financements' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-3.5-3.5M11 7v4l2.5 2.5"/></svg>
-            🎯 Radar de financements
-          </a>
-        </div>
-      </div>
-      <?php endif; ?>
-      <?php // Coach Assokit : admin uniquement ?>
+            <?php // Coach Assokit : admin uniquement ?>
       <?php if (($user['role'] ?? '') === 'admin'): ?>
       <a href="/coach-ia" class="sb-link <?= $active === 'coach-ia' ? 'active' : '' ?>">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="10" r=".8" fill="currentColor"/><circle cx="15" cy="10" r=".8" fill="currentColor"/><path d="M12 3v2M5 6l1.4 1.4M19 6l-1.4 1.4"/></svg>
@@ -1431,27 +1412,49 @@ function render_sidebar($active = 'accueil') {
         <?php endif; ?>
       </a>
 
-      <?php // Facturation : une seule page (onglets Factures / Devis / Clients / Statistiques) ?>
+      <?php // 💶 Finances : regroupe Facturation, Relances, Anomalies, Prévisions, Subventions ?>
       <?php if (can('manage_finances')):
-          $facturation_actives = ['devis','factures','clients','stats'];
-          $fact_active = in_array($active, $facturation_actives, true);
+          $is_admin_nav = (($user['role'] ?? '') === 'admin');
+          $fin_children = ['devis','factures','clients','stats','relances','anomalies','previsions','subventions','financements'];
+          $fin_open = in_array($active, $fin_children, true);
       ?>
-      <a href="/mon-asso-factures" class="sb-link <?= $fact_active ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg>
-        Facturation
-      </a>
-      <a href="/relances" class="sb-link <?= $active === 'relances' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M16 3l2 2-2 2"/></svg>
-        Relances
-      </a>
-      <a href="/anomalies" class="sb-link <?= $active === 'anomalies' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        Anomalies
-      </a>
-      <a href="/previsions" class="sb-link <?= $active === 'previsions' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
-        Prévisions
-      </a>
+      <div class="ak-collapse <?= $fin_open ? 'is-open' : '' ?>">
+        <div class="ak-collapse-row">
+          <a href="/mon-asso-factures" class="sb-link ak-collapse-link <?= $fin_open ? 'active' : '' ?>" style="flex:1;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h12l4 4v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M7 8h7M7 12h9M7 16h5"/></svg>
+            Finances
+          </a>
+          <button type="button" class="ak-collapse-toggle" onclick="this.closest('.ak-collapse').classList.toggle('is-open')" aria-label="Déplier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+        </div>
+        <div class="ak-collapse-body">
+          <a href="/mon-asso-factures" class="sb-link <?= in_array($active, ['devis','factures','clients','stats'], true) ? 'active' : '' ?>">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg>
+            Facturation
+          </a>
+          <a href="/relances" class="sb-link <?= $active === 'relances' ? 'active' : '' ?>">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M16 3l2 2-2 2"/></svg>
+            Relances
+          </a>
+          <a href="/anomalies" class="sb-link <?= $active === 'anomalies' ? 'active' : '' ?>">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Anomalies
+          </a>
+          <a href="/previsions" class="sb-link <?= $active === 'previsions' ? 'active' : '' ?>">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+            Prévisions
+          </a>
+          <?php if ($is_admin_nav): ?>
+          <a href="/financements" class="sb-link <?= $active === 'financements' ? 'active' : '' ?>">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-3.5-3.5M11 7v4l2.5 2.5"/></svg>
+            Radar subventions
+          </a>
+          <a href="/subventions" class="sb-link <?= $active === 'subventions' ? 'active' : '' ?>">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Mes candidatures
+          </a>
+          <?php endif; ?>
+        </div>
+      </div>
       <?php endif; ?>
 
       <?php // Communication : uniquement si capacité access_marketing ?>
