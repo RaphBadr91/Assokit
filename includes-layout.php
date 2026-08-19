@@ -140,8 +140,8 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
 
 /* SIDEBAR */
-.sidebar { background: var(--glass); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border-right: 1px solid var(--glass-border); padding: 26px 12px 18px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-.sb-backto-sa:first-child { margin-top: 6px; }
+.sidebar { background: var(--glass); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border-right: 1px solid var(--glass-border); padding: 28px 12px 18px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.sb-backto-sa:first-child { margin-top: 10px; }
 .sb-logo { display: inline-flex; align-items: center; gap: 11px; font-weight: 700; font-size: 18px; letter-spacing: -0.02em; padding: 4px 10px; color: var(--ink); }
 .sb-logo i { font-style: normal; color: var(--acc); }
 .sb-search {
@@ -169,11 +169,11 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .sb-logo-mark::after { content: ""; position: absolute; right: 6px; bottom: 6px; width: 8px; height: 8px; background: #fff; border-radius: 50%; opacity: 0.95; }
 
 /* ===== Bandeau retour cockpit (Super Admin / Fondateur) ===== */
-.sb-backto-sa { display: block; margin: 0 14px; padding: 9px 11px; border-radius: 10px; text-decoration: none; transition: transform 0.15s, box-shadow 0.15s; position: relative; overflow: hidden; }
+.sb-backto-sa { display: block; margin: 0 14px; padding: 10px 11px; border-radius: 10px; text-decoration: none; transition: transform 0.15s, box-shadow 0.15s; position: relative; overflow: visible; line-height: 1.35; }
 .sb-backto-sa:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 .sb-backto-sa--founder { background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border: 1px solid #FCD34D; }
 .sb-backto-sa--sa { background: linear-gradient(135deg, #EEEDFE 0%, #E0DDFC 100%); border: 1px solid #C4B5FD; }
-.sb-backto-sa-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-backto-sa-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.6; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: visible; }
 .sb-backto-sa--founder .sb-backto-sa-label { color: #92400E; }
 .sb-backto-sa--sa .sb-backto-sa-label { color: #5B52A6; }
 .sb-backto-sa-title { font-size: 11.5px; font-weight: 500; margin-top: 2px; display: flex; align-items: center; justify-content: space-between; gap: 6px; white-space: nowrap; overflow: hidden; }
