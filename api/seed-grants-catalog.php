@@ -23,7 +23,19 @@ if (!$cli) {
     require_once __DIR__ . '/../includes-layout.php';
     require_login();
     $u = current_user();
-    if (empty($u['is_super_admin']) && empty($u['is_founder'])) {
+    // is_founder / is_super_admin ne sont pas toujours portés par current_user() :
+    // on retombe sur la table users, comme le fait le layout.
+    $is_priv = !empty($u['is_super_admin']) || !empty($u['is_founder']);
+    if (!$is_priv) {
+        try {
+            $st = $pdo->prepare("SELECT is_super_admin, is_founder FROM users WHERE id = ?");
+            $st->execute([(int)($u['id'] ?? 0)]);
+            if ($row = $st->fetch()) {
+                $is_priv = ((int)($row['is_super_admin'] ?? 0) === 1) || ((int)($row['is_founder'] ?? 0) === 1);
+            }
+        } catch (Throwable $e) {}
+    }
+    if (!$is_priv) {
         http_response_code(403);
         exit('Réservé au fondateur.');
     }
