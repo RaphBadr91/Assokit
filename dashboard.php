@@ -1338,7 +1338,7 @@ render_sidebar('accueil');
     <div class="dash-card">
       <div class="dash-card-head">
         <div>
-          <div class="dash-card-title">📈 Activité de l'association</div>
+          <div class="dash-card-title"><?= ak_icon('trending-up',18) ?> Activité de l'association</div>
           <div class="dash-card-sub">30 derniers jours</div>
         </div>
         <div class="dash-card-actions"><?= $total_activity ?> actions</div>
@@ -1407,7 +1407,7 @@ render_sidebar('accueil');
     <div class="dash-card">
       <div class="dash-card-head">
         <div>
-          <div class="dash-card-title">🎯 Répartition projets</div>
+          <div class="dash-card-title"><?= ak_icon('target',18) ?> Répartition projets</div>
           <div class="dash-card-sub">par statut</div>
         </div>
       </div>
@@ -2045,7 +2045,7 @@ render_sidebar('accueil');
   <div class="dash-card" style="margin-top:24px;">
     <div class="dash-card-head">
       <div>
-        <div class="dash-card-title">⚡ Dernière activité</div>
+        <div class="dash-card-title"><?= ak_icon('bolt',18) ?> Dernière activité</div>
         <div class="dash-card-sub">Ce qui s'est passé récemment dans vos projets</div>
       </div>
     </div>

@@ -61,7 +61,7 @@ render_sidebar('factures');
 
         <!-- ────── CLIENT ────── -->
         <div class="card" style="padding:22px; margin-bottom:16px;">
-            <h3 style="margin:0 0 16px 0; font-size:15px;">👤 Client</h3>
+            <h3 style="margin:0 0 16px 0; font-size:15px; display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('user',18) ?>Client</h3>
 
             <?php if (!empty($clients)): ?>
                 <div style="margin-bottom:14px;">
@@ -163,7 +163,7 @@ render_sidebar('factures');
 
         <!-- ────── RÉCAP ────── -->
         <div class="card" style="padding:18px; margin-bottom:16px; background:#F9FAFB;">
-            <h3 style="margin:0 0 12px 0; font-size:14px; color:#6B7280; text-transform:uppercase;">📊 Total facture</h3>
+            <h3 style="margin:0 0 12px 0; font-size:14px; color:#6B7280; text-transform:uppercase; display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('chart',16) ?>Total facture</h3>
             <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
                 <div>
                     <div style="font-size:11px; color:#6B7280;">Total HT</div>
@@ -182,7 +182,7 @@ render_sidebar('factures');
 
         <!-- ────── DATES + DESC ────── -->
         <div class="card" style="padding:22px; margin-bottom:16px;">
-            <h3 style="margin:0 0 16px 0; font-size:15px;">📅 Dates et notes</h3>
+            <h3 style="margin:0 0 16px 0; font-size:15px; display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('calendar',18) ?>Dates et notes</h3>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
                 <div>
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Date d'émission</label>

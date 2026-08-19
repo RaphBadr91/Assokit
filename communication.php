@@ -65,7 +65,7 @@ try {
 $catalog = [
     'ag' => [
         'label' => 'Vie associative',
-        'icon'  => '🏛️',
+        'icon'  => ak_icon('building', 18),
         'desc'  => 'Documents officiels lies a la gouvernance',
         'items' => [
             'convocation_ag_ordinaire' => ['title' => 'Convocation AG ordinaire', 'desc' => 'Lettre formelle conforme loi 1901 avec ordre du jour'],
@@ -77,7 +77,7 @@ $catalog = [
     ],
     'dons' => [
         'label' => 'Dons & donateurs',
-        'icon'  => '💰',
+        'icon'  => ak_icon('euro', 18),
         'desc'  => 'Collecte de dons et relation donateurs',
         'items' => [
             'appel_dons'            => ['title' => 'Appel a dons', 'desc' => 'Campagne de financement participatif'],
@@ -86,7 +86,7 @@ $catalog = [
     ],
     'adherents' => [
         'label' => 'Adherents & Benevoles',
-        'icon'  => '👥',
+        'icon'  => ak_icon('users', 18),
         'desc'  => 'Communication avec votre communaute',
         'items' => [
             'appel_benevoles'        => ['title' => 'Appel a benevoles', 'desc' => 'Cible par competence ou dispo'],
@@ -98,7 +98,7 @@ $catalog = [
     ],
     'reseaux_sociaux' => [
         'label' => 'Reseaux sociaux',
-        'icon'  => '📣',
+        'icon'  => ak_icon('megaphone', 18),
         'desc'  => 'Posts optimises pour chaque plateforme',
         'items' => [
             'post_facebook'       => ['title' => 'Post Facebook', 'desc' => '3 variantes : emotion, info, CTA'],
@@ -110,7 +110,7 @@ $catalog = [
     ],
     'rapport' => [
         'label' => 'Rapports annuels',
-        'icon'  => '📊',
+        'icon'  => ak_icon('chart', 18),
         'desc'  => 'Syntheses pour AG et financeurs',
         'items' => [
             'rapport_activite'  => ['title' => '✨ Rapport d\'activite annuel', 'desc' => 'Depuis vos projets et evenements'],
@@ -120,7 +120,7 @@ $catalog = [
     ],
     'courriers' => [
         'label' => 'Courriers officiels',
-        'icon'  => '✉️',
+        'icon'  => ak_icon('mail', 18),
         'desc'  => 'Correspondance institutionnelle et presse',
         'items' => [
             'courrier_mairie'        => ['title' => 'Courrier Mairie', 'desc' => 'Demande salle, soutien, RDV...'],
@@ -437,7 +437,7 @@ render_sidebar('communication');
 
     <?php if (empty($tpls)): ?>
       <div class="empty-state" style="padding:60px 20px">
-        <div style="font-size:56px;opacity:.35;margin-bottom:10px">📚</div>
+        <div style="margin-bottom:10px;color:#94A3B8"><?= ak_icon('book', 44, '1.5') ?></div>
         <div style="font-size:17px;color:var(--ink);font-weight:500;margin-bottom:6px">Votre bibliothèque est vide</div>
         <div style="max-width:460px;margin:0 auto 18px;line-height:1.55">
           Quand vous générez un document qui vous plaît, cliquez sur <strong>« Sauvegarder »</strong> pour le réutiliser plus tard.
@@ -474,7 +474,7 @@ render_sidebar('communication');
 .comm-section { margin-bottom: 36px; }
 .comm-section-head { margin-bottom: 14px; }
 .comm-section-title { font-size: 16px; font-weight: 600; margin: 0 0 3px; display: inline-flex; align-items: center; gap: 9px; letter-spacing: -0.01em; }
-.comm-section-icon { font-size: 20px; }
+.comm-section-icon { display: inline-flex; align-items: center; }
 .comm-section-desc { font-size: 12.5px; color: var(--ink-3); }
 
 .comm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 10px; }

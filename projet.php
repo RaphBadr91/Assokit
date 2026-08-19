@@ -770,8 +770,8 @@ render_sidebar('projets');
               <?php endif; ?>
             </div>
             <div class="ck-share-actions">
-              <a href="<?= $proj_share_token ? '/projet-public.php?t=' . h($proj_share_token['token']) : '#' ?>" target="_blank" class="ck-btn-ghost">👁️ Aperçu</a>
-              <button type="button" class="ck-btn-ghost ck-share-revoke" id="ck-share-revoke">🗑️ Révoquer</button>
+              <a href="<?= $proj_share_token ? '/projet-public.php?t=' . h($proj_share_token['token']) : '#' ?>" target="_blank" class="ck-btn-ghost"><?= ak_icon('eye',14) ?>Aperçu</a>
+              <button type="button" class="ck-btn-ghost ck-share-revoke" id="ck-share-revoke"><?= ak_icon('trash',14) ?>Révoquer</button>
             </div>
           </div>
         </div>
@@ -938,7 +938,7 @@ render_sidebar('projets');
   .ck-share-copy.copied { background: #10B981; }
   .ck-share-stats { font-size: 11px; color: #6b7280; margin-bottom: 12px; }
   .ck-share-actions { display: flex; gap: 6px; }
-  .ck-share-actions .ck-btn-ghost { flex: 1; text-align: center; text-decoration: none; }
+  .ck-share-actions .ck-btn-ghost { flex: 1; text-align: center; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
   .ck-share-revoke { color: #DC2626 !important; }
   .ck-share-revoke:hover { background: #FEF2F2 !important; border-color: #DC2626 !important; }
 
@@ -998,7 +998,7 @@ render_sidebar('projets');
     padding: 16px 18px;
   }
   .ck-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-  .ck-card-title { font-size: 13px; font-weight: 700; color: #111827; }
+  .ck-card-title { font-size: 13px; font-weight: 700; color: #111827; display: inline-flex; align-items: center; gap: 8px; }
   .ck-card-sub { font-size: 11px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
   .ck-card-empty { text-align: center; color: #6b7280; font-size: 12px; padding: 16px 8px; }
 
@@ -1307,7 +1307,7 @@ render_sidebar('projets');
           <!-- TEAM PULSE -->
           <div class="ck-card">
             <div class="ck-card-head">
-              <div class="ck-card-title">👥 Engagement de l'équipe</div>
+              <div class="ck-card-title"><?= ak_icon('users',16) ?>Engagement de l'équipe</div>
               <div class="ck-card-sub">30 derniers jours</div>
             </div>
             <?php if (empty($proj_team)): ?>
@@ -1337,7 +1337,7 @@ render_sidebar('projets');
           <!-- NUDGES INCITATIFS POUR BILAN -->
           <div class="ck-card ck-nudges-card" id="ck-nudges">
             <div class="ck-card-head">
-              <div class="ck-card-title">📋 Pour un bilan complet</div>
+              <div class="ck-card-title"><?= ak_icon('clipboard',16) ?>Pour un bilan complet</div>
               <div class="ck-card-sub"><?= empty($proj_missing) ? '✅ Prêt' : count($proj_missing) . ' à compléter' ?></div>
             </div>
             <?php if (empty($proj_missing)): ?>
@@ -1380,7 +1380,7 @@ render_sidebar('projets');
         <?php if ($can_edit_project): ?>
         <a href="/modifier-projet/<?= (int)$project['id'] ?>" class="ov2-card ov2-card-empty-link">
           <div class="ov2-card-head">
-            <span class="ov2-card-icon" style="background:#f3f4f6;color:#6b7280;">📝</span>
+            <span class="ov2-card-icon" style="background:#f3f4f6;color:#6b7280;"><?= ak_icon('edit',14) ?></span>
             <span class="ov2-card-title" style="color:#6b7280;">Aucune description — clique pour en ajouter une</span>
           </div>
         </a>
@@ -1391,7 +1391,7 @@ render_sidebar('projets');
         <?php if ($project['objective']): ?>
         <div class="ov2-card ov2-objective">
           <div class="ov2-card-head">
-            <span class="ov2-card-icon" style="background:linear-gradient(135deg,#d1fae5,#a7f3d0);color:#065f46;">🎯</span>
+            <span class="ov2-card-icon" style="background:linear-gradient(135deg,#d1fae5,#a7f3d0);color:#065f46;"><?= ak_icon('target',14) ?></span>
             <span class="ov2-card-title">Objectif</span>
           </div>
           <div class="ov2-card-text ov2-objective-text"><?= nl2br(h($project['objective'])) ?></div>
@@ -1400,7 +1400,7 @@ render_sidebar('projets');
         <?php if ($can_edit_project): ?>
         <a href="/modifier-projet/<?= (int)$project['id'] ?>" class="ov2-card ov2-card-empty-link">
           <div class="ov2-card-head">
-            <span class="ov2-card-icon" style="background:#f3f4f6;color:#6b7280;">🎯</span>
+            <span class="ov2-card-icon" style="background:#f3f4f6;color:#6b7280;"><?= ak_icon('target',14) ?></span>
             <span class="ov2-card-title" style="color:#6b7280;">Aucun objectif défini — précise ce que tu veux atteindre</span>
           </div>
         </a>
@@ -1418,7 +1418,7 @@ render_sidebar('projets');
               <span class="ov2-step-counter"><?= $done_steps ?> / <?= $total_steps ?></span>
             <?php endif; ?>
             <?php if ($can_edit_steps): ?>
-              <a href="/modifier-etapes?id=<?= (int)$project['id'] ?>" class="ov2-card-action">⚙️ Modifier</a>
+              <a href="/modifier-etapes?id=<?= (int)$project['id'] ?>" class="ov2-card-action"><?= ak_icon('gear',13) ?>Modifier</a>
             <?php endif; ?>
           </div>
           <?php if ($total_steps > 0): ?>
@@ -1625,6 +1625,7 @@ render_sidebar('projets');
     }
     .ov2-card-action {
       font-size: 11px; color: #6b7280; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 6px;
       padding: 4px 10px; border-radius: 6px;
       transition: background 0.15s ease, color 0.15s ease;
     }
@@ -2025,7 +2026,7 @@ render_sidebar('projets');
     <!-- Formulaire d'ajout -->
     <?php if ($can_add): ?>
     <div class="inv-add-form">
-      <h3 class="inv-add-title">➕ Ajouter une facture à ce projet</h3>
+      <h3 class="inv-add-title" style="display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('plus',18) ?>Ajouter une facture à ce projet</h3>
 
       <!-- Zone scan IA (visible si l'IA est configurée) -->
       <?php if ($ai_ready): ?>
@@ -2334,27 +2335,27 @@ render_sidebar('projets');
       <input type="hidden" name="mode" value="generate">
       <div class="ai-actions-grid">
         <button type="submit" name="doc_type" value="bilan_ag" class="ai-action-card" <?= !$ai_ready ? 'disabled' : '' ?>>
-          <span class="ai-action-emoji">📊</span>
+          <span class="ai-action-emoji"><?= ak_icon('chart',20) ?></span>
           <span class="ai-action-title">Bilan pour l'AG</span>
           <span class="ai-action-desc">Rapport pour l'Assemblée Générale</span>
         </button>
         <button type="submit" name="doc_type" value="email_parents" class="ai-action-card" <?= !$ai_ready ? 'disabled' : '' ?>>
-          <span class="ai-action-emoji">✉️</span>
+          <span class="ai-action-emoji"><?= ak_icon('mail',20) ?></span>
           <span class="ai-action-title">Email aux parents</span>
           <span class="ai-action-desc">Message d'information aux familles</span>
         </button>
         <button type="submit" name="doc_type" value="rapport_subvention" class="ai-action-card" <?= !$ai_ready ? 'disabled' : '' ?>>
-          <span class="ai-action-emoji">📋</span>
+          <span class="ai-action-emoji"><?= ak_icon('clipboard',20) ?></span>
           <span class="ai-action-title">Rapport de subvention</span>
           <span class="ai-action-desc">Pour un financeur public</span>
         </button>
         <button type="submit" name="doc_type" value="fiche_com" class="ai-action-card" <?= !$ai_ready ? 'disabled' : '' ?>>
-          <span class="ai-action-emoji">📣</span>
+          <span class="ai-action-emoji"><?= ak_icon('megaphone',20) ?></span>
           <span class="ai-action-title">Fiche de com'</span>
           <span class="ai-action-desc">Pour vos réseaux sociaux</span>
         </button>
         <button type="submit" name="doc_type" value="synthese_etape" class="ai-action-card" <?= !$ai_ready ? 'disabled' : '' ?>>
-          <span class="ai-action-emoji">📌</span>
+          <span class="ai-action-emoji"><?= ak_icon('pin',20) ?></span>
           <span class="ai-action-title">Synthèse d'avancement</span>
           <span class="ai-action-desc">Point interne rapide</span>
         </button>
@@ -2628,7 +2629,7 @@ render_sidebar('projets');
       <!-- Timeline -->
       <?php if (empty($activities)): ?>
         <div class="history-empty">
-          <div style="font-size: 40px; margin-bottom: 10px;">📭</div>
+          <div style="color:#94A3B8; margin-bottom: 10px;"><?= ak_icon('inbox',44,'1.5') ?></div>
           <div style="font-size: 15px; color: var(--ink-2); margin-bottom: 4px;">Aucune activité à afficher</div>
           <div style="font-size: 13px; color: var(--ink-3);">Essayez d'ajuster les filtres ou reviens plus tard.</div>
         </div>

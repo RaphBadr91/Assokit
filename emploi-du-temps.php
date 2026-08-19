@@ -254,7 +254,7 @@ render_sidebar('emploi-du-temps');
 <style>
 .edt-page { padding: 24px; }
 .edt-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-.edt-head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.edt-head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; display: flex; align-items: center; gap: 11px; }
 .edt-head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .edt-toolbar { background: #fff; border: 1px solid var(--c-border, #e7e5e4); border-radius: 14px; padding: 14px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
@@ -351,7 +351,7 @@ render_sidebar('emploi-du-temps');
 
 <div class="edt-head">
     <div>
-        <h1>📅 Emploi du temps</h1>
+        <h1><?= ak_icon_badge('calendar','#059669',36) ?><span>Emploi du temps</span></h1>
         <div style="color: #78716c; font-size: 13px; margin-top: 4px;">
             Planning des membres de <?= h($user['org_name'] ?? 'votre association') ?>
         </div>
@@ -442,7 +442,7 @@ render_sidebar('emploi-du-temps');
                  style="top: 0; height: 100%; background: <?= $abs_info['color'] ?>15; border-left-color: <?= $abs_info['color'] ?>; opacity: 0.7;"
                  onclick="event.stopPropagation(); editAbsence(<?= (int)$abs['id'] ?>)">
                 <div class="edt-slot-title"><?= h($abs_info['label']) ?></div>
-                <div class="edt-slot-user">👤 <?= h($abs['first_name']) ?> <?= h(mb_substr($abs['last_name'], 0, 1)) ?>.</div>
+                <div class="edt-slot-user"><?= ak_icon('user',11,'2') ?> <?= h($abs['first_name']) ?> <?= h(mb_substr($abs['last_name'], 0, 1)) ?>.</div>
             </div>
             <?php endforeach; ?>
             
@@ -459,7 +459,7 @@ render_sidebar('emploi-du-temps');
                  onclick="event.stopPropagation(); editSlot(<?= (int)$slot['id'] ?>)">
                 <div class="edt-slot-title"><?= h($slot['title'] ?: $type_info['label']) ?></div>
                 <div class="edt-slot-time"><?= format_time($slot['start_time']) ?> - <?= format_time($slot['end_time']) ?></div>
-                <div class="edt-slot-user">👤 <?= h($slot['first_name']) ?></div>
+                <div class="edt-slot-user"><?= ak_icon('user',11,'2') ?> <?= h($slot['first_name']) ?></div>
             </div>
             <?php endforeach; ?>
         </div>

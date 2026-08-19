@@ -31,7 +31,7 @@ if (!$can_view_finances) {
     render_head('Accès refusé');
     render_sidebar('recurrences');
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
-    echo '<div style="font-size:54px;margin-bottom:14px;">🔒</div>';
+    echo '<div style="color:#94A3B8;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
     echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">Les factures récurrentes sont strictement réservées aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
@@ -145,7 +145,7 @@ render_sidebar('recurrences');
 
     <div class="rec-header">
       <div class="rec-title">
-        <div class="icon">🔄</div>
+        <div class="icon"><?= ak_icon('refresh',22,'2') ?></div>
         <div>
           <h1>Factures récurrentes</h1>
           <div style="color:#64748B;font-size:13px;margin-top:2px;">Automatisez vos factures régulières (cotisations, abonnements, loyers)</div>
@@ -196,7 +196,7 @@ render_sidebar('recurrences');
     <div class="table-wrap">
       <?php if (empty($recurrences) && !$page_error): ?>
         <div class="empty">
-          <div class="ico">🔄</div>
+          <div class="ico" style="color:#94A3B8;"><?= ak_icon('refresh',44,'1.5') ?></div>
           <div style="font-weight:600;font-size:16px;color:#0F172A;margin-bottom:6px;">Aucune récurrence pour le moment</div>
           <div style="margin-bottom:16px;">Créez votre première facture récurrente pour automatiser vos cotisations ou abonnements.</div>
           <a class="rec-btn rec-btn-primary" href="/mon-asso-recurrence-new">+ Créer ma première récurrence</a>
@@ -264,7 +264,7 @@ render_sidebar('recurrences');
                   <form method="post" action="/mon-asso-recurrence-delete" style="display:inline;" onsubmit="return confirm('Supprimer définitivement cette récurrence ? Les factures déjà générées sont conservées.');">
                     <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                     <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
-                    <button class="rec-btn rec-btn-sm rec-btn-danger" type="submit">🗑</button>
+                    <button class="rec-btn rec-btn-sm rec-btn-danger" type="submit"><?= ak_icon('trash',15) ?></button>
                   </form>
                 </div>
               </td>

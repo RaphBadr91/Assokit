@@ -286,7 +286,7 @@ render_sidebar('messages');
 
       <?php if (!$active_channel): ?>
         <div class="msg-empty">
-          <div class="msg-empty-icon">💬</div>
+          <div class="msg-empty-icon" style="color:#94A3B8"><?= ak_icon('message', 44, '1.5') ?></div>
           <div class="msg-empty-title">Aucun canal sélectionné</div>
           <div class="msg-empty-desc">Sélectionnez un canal dans la colonne de gauche pour voir les messages.</div>
         </div>

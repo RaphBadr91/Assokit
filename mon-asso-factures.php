@@ -27,7 +27,7 @@ if (!$can_view_finances) {
     render_head('Accès refusé');
     render_sidebar('mon-asso-factures');
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
-    echo '<div style="font-size:54px;margin-bottom:14px;">🔒</div>';
+    echo '<div style="color:#94A3B8;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
     echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">La liste des factures Stripe (montants, statuts, PDF) est strictement réservée aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
@@ -120,7 +120,7 @@ render_sidebar('mon-asso-factures');
   <div class="card" style="overflow:hidden;">
     <?php if (empty($invoices)): ?>
       <div style="padding:60px 20px;text-align:center;color:#64748B;">
-        <div style="font-size:48px;margin-bottom:12px;">📄</div>
+        <div style="color:#94A3B8;margin-bottom:12px;"><?= ak_icon('file-text',44,'1.5') ?></div>
         <div style="font-weight:600;font-size:16px;color:#0F172A;margin-bottom:6px;">Aucune facture pour le moment</div>
         <div style="font-size:13.5px;">Vos factures apparaîtront ici dès votre premier paiement.</div>
       </div>
@@ -165,10 +165,10 @@ render_sidebar('mon-asso-factures');
             <td style="padding:14px 16px;text-align:right;">
               <div style="display:flex;gap:6px;justify-content:flex-end;">
                 <?php if (!empty($inv['invoice_pdf_url'])): ?>
-                  <a href="<?= htmlspecialchars($inv['invoice_pdf_url']) ?>" target="_blank" rel="noopener" style="background:#F0FDF4;color:#047857;padding:6px 12px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;">📥 PDF</a>
+                  <a href="<?= htmlspecialchars($inv['invoice_pdf_url']) ?>" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;background:#F0FDF4;color:#047857;padding:6px 12px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('inbox',14) ?>PDF</a>
                 <?php endif; ?>
                 <?php if (!empty($inv['hosted_invoice_url']) && $inv['status'] === 'open'): ?>
-                  <a href="<?= htmlspecialchars($inv['hosted_invoice_url']) ?>" target="_blank" rel="noopener" style="background:#EA580C;color:white;padding:6px 12px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;">💳 Régulariser</a>
+                  <a href="<?= htmlspecialchars($inv['hosted_invoice_url']) ?>" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;background:#EA580C;color:white;padding:6px 12px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('credit-card',14) ?>Régulariser</a>
                 <?php endif; ?>
               </div>
             </td>

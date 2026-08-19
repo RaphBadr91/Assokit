@@ -78,12 +78,12 @@ render_sidebar('agenda');
   </nav>
 
   <?php if (isset($_GET['updated'])): ?>
-    <div class="alert alert-success">✅ Événement mis à jour<?= !empty($event['google_event_id']) ? ' et synchronisé avec Google Calendar' : '' ?>.</div>
+    <div class="alert alert-success" style="display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('check-circle',16) ?><span>Événement mis à jour<?= !empty($event['google_event_id']) ? ' et synchronisé avec Google Calendar' : '' ?>.</span></div>
   <?php elseif (isset($_GET['error'])):
     $err_labels = ['permission' => 'Droits insuffisants.', 'dates' => 'Date de fin avant date de début.', 'invalid' => 'Données invalides.', 'csrf' => 'Session expirée.'];
     $err_msg = $err_labels[$_GET['error']] ?? $_GET['error'];
   ?>
-    <div class="alert alert-error">⚠️ <?= h($err_msg) ?></div>
+    <div class="alert alert-error" style="display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('alert-tri',16) ?><span><?= h($err_msg) ?></span></div>
   <?php endif; ?>
 
   <?php if ($edit_mode): ?>
@@ -246,7 +246,7 @@ render_sidebar('agenda');
     <div class="form-section">
       <div style="display: grid; grid-template-columns: auto 1fr; gap: 14px 20px; align-items: start;">
 
-        <div style="font-size: 12.5px; color: var(--ink-3); font-weight: 500;">🗓️ Quand</div>
+        <div style="font-size: 12.5px; color: var(--ink-3); font-weight: 500; display:inline-flex; align-items:center; gap:6px;"><?= ak_icon('calendar',14) ?> Quand</div>
         <div>
           <?php if ($event['is_all_day']): ?>
             <?php if ($same_day): ?>
@@ -266,12 +266,12 @@ render_sidebar('agenda');
         </div>
 
         <?php if (!empty($event['location'])): ?>
-        <div style="font-size: 12.5px; color: var(--ink-3); font-weight: 500;">📍 Où</div>
+        <div style="font-size: 12.5px; color: var(--ink-3); font-weight: 500; display:inline-flex; align-items:center; gap:6px;"><?= ak_icon('pin',14) ?> Où</div>
         <div style="font-size: 14px;"><?= h($event['location']) ?></div>
         <?php endif; ?>
 
         <?php if (!empty($event['project_name'])): ?>
-        <div style="font-size: 12.5px; color: var(--ink-3); font-weight: 500;">📁 Projet</div>
+        <div style="font-size: 12.5px; color: var(--ink-3); font-weight: 500; display:inline-flex; align-items:center; gap:6px;"><?= ak_icon('folder',14) ?> Projet</div>
         <div>
           <a href="/projet/<?= (int)$event['project_id_ref'] ?>" style="color: var(--acc); font-weight: 500; text-decoration: none; font-size: 14px;">
             <?= h($event['folder_name']) ?> · <?= h($event['project_name']) ?>
@@ -279,7 +279,7 @@ render_sidebar('agenda');
         </div>
         <?php endif; ?>
 
-        <div style="font-size: 12.5px; color: var(--ink-3); font-weight: 500;">👁️ Visibilité</div>
+        <div style="font-size: 12.5px; color: var(--ink-3); font-weight: 500; display:inline-flex; align-items:center; gap:6px;"><?= ak_icon('eye',14) ?> Visibilité</div>
         <div style="font-size: 13px; color: var(--ink-2);">
           <?php
           $vis_labels = ['organization' => '👥 Toute l\'organisation', 'project_only' => '🔒 Équipe du projet uniquement', 'public' => '🌍 Public'];
@@ -298,7 +298,7 @@ render_sidebar('agenda');
 
     <?php if (!empty($event['description'])): ?>
     <div class="form-section">
-      <h2 class="form-section-title">📝 Description</h2>
+      <h2 class="form-section-title" style="display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('edit',18) ?> Description</h2>
       <div style="font-size: 14px; color: var(--ink-2); line-height: 1.7; white-space: pre-wrap;"><?= h($event['description']) ?></div>
     </div>
     <?php endif; ?>
@@ -306,7 +306,7 @@ render_sidebar('agenda');
     <?php if (!empty($event['google_event_id'])): ?>
     <div style="margin-top: 20px; padding: 14px 18px; background: rgba(66,133,244,0.06); border: 1px solid rgba(66,133,244,0.2); border-radius: 10px;">
       <div style="display: flex; gap: 12px; align-items: center;">
-        <span style="font-size: 18px;">📅</span>
+        <span style="display:inline-flex; color: var(--ink-2);"><?= ak_icon('calendar',18) ?></span>
         <div style="font-size: 12.5px; color: var(--ink-2); line-height: 1.5;">
           <strong>Synchronisé avec Google Calendar</strong><br>
           <?php if (!empty($event['synced_at'])): ?>Dernière sync : <?= h(date('d/m/Y H:i', strtotime($event['synced_at']))) ?><?php endif; ?>

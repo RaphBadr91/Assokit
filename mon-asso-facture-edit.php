@@ -68,7 +68,7 @@ render_sidebar('factures');
 
     <div class="main-head">
         <div>
-            <h1 class="page-title">✏️ <?= h($invoice['invoice_number']) ?></h1>
+            <h1 class="page-title" style="display:flex;align-items:center;gap:11px;"><?= ak_icon_badge('edit','#059669',36) ?><span><?= h($invoice['invoice_number']) ?></span></h1>
             <div class="page-sub">
                 Statut : <strong><?= h(ak_asso_invoice_status_label($invoice['status'])) ?></strong>
                 <?php if (!empty($invoice['sent_at'])): ?>
@@ -84,13 +84,13 @@ render_sidebar('factures');
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <?php if (!empty($invoice['pdf_path'])): ?>
-                <a href="<?= h($invoice['pdf_path']) ?>" target="_blank" class="btn btn-ghost">📥 PDF</a>
+                <a href="<?= h($invoice['pdf_path']) ?>" target="_blank" class="btn btn-ghost"><?= ak_icon('inbox',14) ?>PDF</a>
             <?php endif; ?>
             <a href="/mon-asso-recurrence-new?from_invoice=<?= (int)$invoice_id ?>"
                class="btn btn-ghost"
                title="Créer une récurrence à partir de cette facture (auto-génération mensuelle, trimestrielle…)"
                style="border-color:#059669; color:#059669;">
-                🔄 Rendre récurrente
+                <?= ak_icon('refresh',14) ?>Rendre récurrente
             </a>
             <a href="/mon-asso-factures" class="btn btn-ghost">← Retour</a>
         </div>
@@ -119,7 +119,7 @@ render_sidebar('factures');
                 </div>
             </div>
             <div style="display:flex; gap:8px;">
-                <a href="<?= h($public_link) ?>" target="_blank" class="btn btn-ghost" style="background:white;">🔗 Voir page publique</a>
+                <a href="<?= h($public_link) ?>" target="_blank" class="btn btn-ghost" style="background:white;"><?= ak_icon('link',14) ?>Voir page publique</a>
                 <form method="POST" action="/mon-asso-facture-send" style="display:inline;">
                     <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
                     <input type="hidden" name="invoice_id" value="<?= (int)$invoice_id ?>">
@@ -135,15 +135,15 @@ render_sidebar('factures');
         <div style="margin-top:14px; padding:10px 12px; background:white; border-radius:8px; display:flex; align-items:center; gap:10px; font-size:12px;">
             <span style="color:#6B7280;">🔗 Lien à partager :</span>
             <code id="public-link-text" style="flex:1; font-family:monospace; color:#059669; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><?= h($public_link) ?></code>
-            <button type="button" onclick="copyLink()" class="btn btn-ghost" style="padding:4px 10px; font-size:11px;">📋 Copier</button>
+            <button type="button" onclick="copyLink()" class="btn btn-ghost" style="padding:4px 10px; font-size:11px;"><?= ak_icon('clipboard',13) ?>Copier</button>
         </div>
     </div>
 
     <!-- ────── HISTORIQUE EMAILS ────── -->
     <?php if (!empty($emails_log)): ?>
     <details class="card" style="padding:0; margin-bottom:16px; overflow:hidden;">
-        <summary style="padding:14px 22px; cursor:pointer; font-size:14px; font-weight:600; background:#F9FAFB;">
-            📨 Historique des envois (<?= count($emails_log) ?>)
+        <summary style="padding:14px 22px; cursor:pointer; font-size:14px; font-weight:600; background:#F9FAFB; display:flex; align-items:center; gap:8px;">
+            <?= ak_icon('send',16) ?>Historique des envois (<?= count($emails_log) ?>)
         </summary>
         <table style="width:100%; border-collapse:collapse;">
             <thead style="background:#F9FAFB;">
@@ -196,7 +196,7 @@ render_sidebar('factures');
 
         <!-- Client -->
         <div class="card" style="padding:22px; margin-bottom:16px;">
-            <h3 style="margin:0 0 16px 0; font-size:15px;">👤 Client</h3>
+            <h3 style="margin:0 0 16px 0; font-size:15px; display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('user',18) ?>Client</h3>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
                 <div>
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Type</label>
@@ -265,7 +265,7 @@ render_sidebar('factures');
 
         <!-- Récap -->
         <div class="card" style="padding:18px; margin-bottom:16px; background:#F9FAFB;">
-            <h3 style="margin:0 0 12px 0; font-size:14px; color:#6B7280; text-transform:uppercase;">📊 Total</h3>
+            <h3 style="margin:0 0 12px 0; font-size:14px; color:#6B7280; text-transform:uppercase; display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('chart',16) ?>Total</h3>
             <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
                 <div>
                     <div style="font-size:11px; color:#6B7280;">Total HT</div>
@@ -284,7 +284,7 @@ render_sidebar('factures');
 
         <!-- Dates -->
         <div class="card" style="padding:22px; margin-bottom:16px;">
-            <h3 style="margin:0 0 16px 0; font-size:15px;">📅 Dates et statut</h3>
+            <h3 style="margin:0 0 16px 0; font-size:15px; display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('calendar',18) ?>Dates et statut</h3>
             <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
                 <div>
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Date d'émission</label>

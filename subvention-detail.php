@@ -39,7 +39,7 @@ render_head($grant['name']);
 
     <div class="gr-detail-hero">
       <div class="gr-detail-info">
-        <span class="gr-status" style="background:<?= $m[2] ?>;color:<?= $m[1] ?>;"><?= $m[3] ?> <?= h($m[0]) ?></span>
+        <span class="gr-status" style="background:<?= $m[2] ?>;color:<?= $m[1] ?>;"><?= ak_dot($m[1]) ?> <?= h($m[0]) ?></span>
         <h1 class="gr-pg-title"><?= h($grant['name']) ?></h1>
         <div class="gr-detail-meta">
           <?= h(gr_funder_label($grant['funder_type'])) ?> · <strong><?= h($grant['funder']) ?></strong>
@@ -51,7 +51,7 @@ render_head($grant['name']);
       <?php if ($can_manage): ?>
       <div class="gr-detail-actions">
         <?php if ($is_admin): ?>
-          <a href="/supprimer-subvention/<?= (int)$grant['id'] ?>" class="gr-btn-danger" title="Supprimer définitivement (confirmation requise)">🗑️ Supprimer</a>
+          <a href="/supprimer-subvention/<?= (int)$grant['id'] ?>" class="gr-btn-danger" title="Supprimer définitivement (confirmation requise)"><?= ak_icon('trash', 14) ?> Supprimer</a>
         <?php endif; ?>
         <?php if ($grant['contact_email']):
           // Template mailto auto selon statut
@@ -80,7 +80,7 @@ render_head($grant['name']);
             <button type="submit" class="gr-btn-ghost" title="Confirme que la relance a été envoyée (log + horodatage)">✓ Marquer relance envoyée</button>
           </form>
         <?php endif; ?>
-        <a href="/subvention-form?id=<?= (int)$grant['id'] ?>" class="gr-btn-ghost">✏️ Modifier</a>
+        <a href="/subvention-form?id=<?= (int)$grant['id'] ?>" class="gr-btn-ghost"><?= ak_icon('edit', 14) ?> Modifier</a>
       </div>
       <?php endif; ?>
     </div>
@@ -101,14 +101,14 @@ render_head($grant['name']);
       <div class="gr-col-main">
         <?php if ($grant['description']): ?>
         <div class="gr-card">
-          <h2>📝 Description</h2>
+          <h2><?= ak_icon('edit', 16) ?> Description</h2>
           <p style="white-space:pre-line;"><?= h($grant['description']) ?></p>
         </div>
         <?php endif; ?>
 
         <!-- Étapes / checklist -->
         <div class="gr-card">
-          <h2>✅ Étapes (<?= $done_steps ?>/<?= $total_steps ?>)</h2>
+          <h2><?= ak_icon('check-circle', 16) ?> Étapes (<?= $done_steps ?>/<?= $total_steps ?>)</h2>
           <?php if (empty($steps)): ?>
             <p class="gr-muted">Pas d'étapes définies.</p>
           <?php else: ?>
@@ -138,7 +138,7 @@ render_head($grant['name']);
 
         <?php if ($grant['notes']): ?>
         <div class="gr-card">
-          <h2>📌 Notes internes</h2>
+          <h2><?= ak_icon('pin', 16) ?> Notes internes</h2>
           <p style="white-space:pre-line;"><?= h($grant['notes']) ?></p>
         </div>
         <?php endif; ?>
@@ -162,7 +162,7 @@ render_head($grant['name']);
 
       <div class="gr-col-side">
         <div class="gr-card">
-          <h2>📅 Calendrier</h2>
+          <h2><?= ak_icon('calendar', 16) ?> Calendrier</h2>
           <?php
           $dates = [
             ['Deadline dépôt', $grant['deadline_apply']],
@@ -182,7 +182,7 @@ render_head($grant['name']);
 
         <?php if ($grant['contact_name'] || $grant['contact_email'] || $grant['contact_phone']): ?>
         <div class="gr-card">
-          <h2>📞 Contact</h2>
+          <h2><?= ak_icon('phone', 16) ?> Contact</h2>
           <?php if ($grant['contact_name']): ?><div><strong><?= h($grant['contact_name']) ?></strong></div><?php endif; ?>
           <?php if ($grant['contact_email']): ?><div><a href="mailto:<?= h($grant['contact_email']) ?>"><?= h($grant['contact_email']) ?></a></div><?php endif; ?>
           <?php if ($grant['contact_phone']): ?><div><a href="tel:<?= h($grant['contact_phone']) ?>"><?= h($grant['contact_phone']) ?></a></div><?php endif; ?>
@@ -234,7 +234,7 @@ if (!function_exists('gr_platform_label')) {
 
 <?php if ($grant['cerfa_number'] || $grant['reference']): ?>
         <div class="gr-card">
-          <h2>📋 Références</h2>
+          <h2><?= ak_icon('clipboard', 16) ?> Références</h2>
           <?php if ($grant['cerfa_number']): ?><div>CERFA : <code><?= h($grant['cerfa_number']) ?></code></div><?php endif; ?>
           <?php if ($grant['reference']): ?><div>Réf. : <code><?= h($grant['reference']) ?></code></div><?php endif; ?>
         </div>
@@ -259,7 +259,8 @@ if (!function_exists('gr_platform_label')) {
 .gr-btn-relance:hover { background: #4F46E5; }
 .gr-cols { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
 .gr-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 20px; margin-bottom: 14px; }
-.gr-card h2 { font-size: 13px; margin: 0 0 12px; color: #065F46; padding-bottom: 6px; border-bottom: 1px solid #f3f4f6; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.gr-card h2 { display: flex; align-items: center; gap: 7px; font-size: 13px; margin: 0 0 12px; color: #065F46; padding-bottom: 6px; border-bottom: 1px solid #f3f4f6; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.gr-card h2 svg { flex: none; }
 .gr-muted { color: #9ca3af; font-size: 13px; }
 .gr-steps-list { display: flex; flex-direction: column; gap: 6px; }
 .gr-step-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }

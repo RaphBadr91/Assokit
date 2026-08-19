@@ -29,7 +29,7 @@ if (!$is_admin) {
     render_head('Accès refusé');
     render_sidebar('devis');
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
-    echo '<div style="font-size:54px;margin-bottom:14px;">🔒</div>';
+    echo '<div style="color:#94A3B8;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
     echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">La liste des devis (montants prévus, conversions) est strictement réservée aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
@@ -275,7 +275,7 @@ $current_query = http_build_query($_GET);
     <?php if (empty($quotes)): ?>
         <div class="ak-table-wrap">
             <div class="ak-empty">
-                <div class="ak-empty-icon">📝</div>
+                <div class="ak-empty-icon" style="color:#94A3B8;"><?= ak_icon('edit',44,'1.5') ?></div>
                 <div class="ak-empty-text">Aucun devis trouvé</div>
                 <div class="ak-empty-sub"><?= $has_filters ? 'Essaie de modifier ou réinitialiser les filtres.' : 'Crée ton premier devis pour commencer.' ?></div>
             </div>
@@ -325,14 +325,14 @@ $current_query = http_build_query($_GET);
                         <td>
                             <div class="ak-actions-cell">
                                 <?php if (!empty($q['pdf_path'])): ?>
-                                    <a href="<?= h($q['pdf_path']) ?>" target="_blank" class="ak-icon-btn" title="Télécharger PDF">📥</a>
+                                    <a href="<?= h($q['pdf_path']) ?>" target="_blank" class="ak-icon-btn" title="Télécharger PDF"><?= ak_icon('inbox',16) ?></a>
                                 <?php endif; ?>
                                 <form method="POST" action="/mon-asso-devis-duplicate" style="display:inline;">
                                     <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
                                     <input type="hidden" name="quote_id" value="<?= (int)$q['id'] ?>">
-                                    <button type="submit" class="ak-icon-btn" title="Dupliquer">📋</button>
+                                    <button type="submit" class="ak-icon-btn" title="Dupliquer"><?= ak_icon('clipboard',16) ?></button>
                                 </form>
-                                <a href="/mon-asso-devis-edit?id=<?= (int)$q['id'] ?>" class="ak-icon-btn primary" title="Modifier">✏️</a>
+                                <a href="/mon-asso-devis-edit?id=<?= (int)$q['id'] ?>" class="ak-icon-btn primary" title="Modifier"><?= ak_icon('edit',16) ?></a>
                             </div>
                         </td>
                     </tr>

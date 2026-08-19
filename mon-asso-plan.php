@@ -37,7 +37,7 @@ if (!$can_view_finances) {
     render_head('Accès refusé');
     render_sidebar('mon-asso-plan');
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
-    echo '<div style="font-size:54px;margin-bottom:14px;">🔒</div>';
+    echo '<div style="color:#94A3B8;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
     echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">L\'abonnement et les factures sont strictement réservés aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
@@ -144,10 +144,10 @@ render_sidebar('mon-asso-plan');
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <?php if ($is_grace || $is_pending || $is_overdue): ?>
-        <a href="<?= htmlspecialchars($regularize_url) ?>" style="background:#EA580C;color:white;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">💳 Régulariser</a>
+        <a href="<?= htmlspecialchars($regularize_url) ?>" style="display:inline-flex;align-items:center;gap:7px;background:#EA580C;color:white;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('credit-card',14) ?>Régulariser</a>
       <?php endif; ?>
       <?php if ($st === 'none' || $st === 'cancelled'): ?>
-        <a href="/mon-asso-paiement?plan=assokit" style="background:linear-gradient(180deg,#059669 0%,#047857 100%);color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">⭐ Passer à Assokit</a>
+        <a href="/mon-asso-paiement?plan=assokit" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(180deg,#059669 0%,#047857 100%);color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('star-fill',14) ?>Passer à Assokit</a>
       <?php endif; ?>
     </div>
   </div>
@@ -161,7 +161,7 @@ render_sidebar('mon-asso-plan');
       <!-- Détail prix -->
       <?php if ($pricing['total_cents'] > 0): ?>
       <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px 24px;">
-        <h3 style="margin:0 0 14px;font-size:16px;">💰 Détail du tarif</h3>
+        <h3 style="margin:0 0 14px;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('euro',18) ?>Détail du tarif</h3>
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9;font-size:14px;">
           <div>Plan <?= htmlspecialchars($subscription_status['plan_name'] ?? '') ?></div>
           <div style="font-weight:600;"><?= ak_format_price_cents($pricing['plan_cents']) ?>/mois</div>
@@ -183,7 +183,7 @@ render_sidebar('mon-asso-plan');
       <?php if (!empty($recent_invoices)): ?>
       <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px 24px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-          <h3 style="margin:0;font-size:16px;">📄 Mes dernières factures</h3>
+          <h3 style="margin:0;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('file-text',18) ?>Mes dernières factures</h3>
           <a href="/mon-asso-factures" style="font-size:13px;color:#059669;text-decoration:none;font-weight:600;">Voir toutes →</a>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
@@ -219,7 +219,7 @@ render_sidebar('mon-asso-plan');
       <!-- Changer de plan -->
       <?php if (!empty($plans) && count($plans) > 1): ?>
       <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px 24px;">
-        <h3 style="margin:0 0 6px;font-size:16px;">📊 Changer de plan</h3>
+        <h3 style="margin:0 0 6px;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('chart',18) ?>Changer de plan</h3>
         <p style="color:#64748B;font-size:13px;margin:0 0 16px;">Upgrade ou downgrade selon vos besoins.</p>
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
           <?php foreach ($plans as $p):
@@ -232,9 +232,9 @@ render_sidebar('mon-asso-plan');
             <?php if ($is_current): ?>
               <div style="background:#059669;color:white;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:600;">✓ PLAN ACTUEL</div>
             <?php elseif ((int)$p['price_cents'] > (int)($current_plan_id ? $pricing['plan_cents'] : 0)): ?>
-              <a href="/mon-asso-paiement?plan=<?= htmlspecialchars($p['slug']) ?>" style="display:block;background:#059669;color:white;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;">⬆ Upgrade</a>
+              <a href="/mon-asso-paiement?plan=<?= htmlspecialchars($p['slug']) ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#059669;color:white;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('upload',14) ?>Upgrade</a>
             <?php else: ?>
-              <a href="/mon-asso-annuler-abonnement?downgrade=<?= htmlspecialchars($p['slug']) ?>" style="display:block;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;">⬇ Downgrade</a>
+              <a href="/mon-asso-annuler-abonnement?downgrade=<?= htmlspecialchars($p['slug']) ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('download',14) ?>Downgrade</a>
             <?php endif; ?>
           </div>
           <?php endforeach; ?>
@@ -249,7 +249,7 @@ render_sidebar('mon-asso-plan');
 
       <!-- Méthode paiement -->
       <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px 24px;">
-        <h3 style="margin:0 0 14px;font-size:16px;">💳 Mode de paiement</h3>
+        <h3 style="margin:0 0 14px;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('credit-card',18) ?>Mode de paiement</h3>
         <?php if ($payment_mode === 'stripe'): ?>
           <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#F0FDF4;border:1px solid #A7F3D0;border-radius:10px;margin-bottom:14px;">
             <div style="font-size:24px;">💳</div>
@@ -281,19 +281,19 @@ render_sidebar('mon-asso-plan');
         <?php endif; ?>
 
         <?php if ($has_stripe_subscription): ?>
-          <a href="/mon-asso-paiement?action=update_card" style="display:block;text-align:center;background:#F1F5F9;color:#0F172A;padding:9px;border-radius:8px;font-size:13px;text-decoration:none;font-weight:600;">🔄 Changer ma CB</a>
+          <a href="/mon-asso-paiement?action=update_card" style="display:flex;align-items:center;justify-content:center;gap:6px;text-align:center;background:#F1F5F9;color:#0F172A;padding:9px;border-radius:8px;font-size:13px;text-decoration:none;font-weight:600;"><?= ak_icon('refresh',14) ?>Changer ma CB</a>
         <?php endif; ?>
       </div>
 
       <!-- Actions -->
       <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px 24px;">
-        <h3 style="margin:0 0 14px;font-size:16px;">⚙️ Actions</h3>
+        <h3 style="margin:0 0 14px;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('gear',18) ?>Actions</h3>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <a href="/mon-asso-factures" style="background:#FAF8F5;color:#0F172A;padding:10px 14px;border-radius:8px;text-decoration:none;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px;border:1px solid #E2E8F0;">
-            📄 Mes factures
+            <?= ak_icon('file-text',16) ?>Mes factures
           </a>
           <a href="/contact?subject=billing" style="background:#FAF8F5;color:#0F172A;padding:10px 14px;border-radius:8px;text-decoration:none;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px;border:1px solid #E2E8F0;">
-            📞 Nous contacter
+            <?= ak_icon('phone',16) ?>Nous contacter
           </a>
           <?php if ($has_stripe_subscription || $st === 'active'): ?>
             <a href="/mon-asso-annuler-abonnement" style="background:#FEE2E2;color:#991B1B;padding:10px 14px;border-radius:8px;text-decoration:none;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px;border:1px solid #FECACA;margin-top:6px;">

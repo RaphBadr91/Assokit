@@ -1118,7 +1118,7 @@ render_sidebar('projets');
   <?php if (empty($folders)): ?>
     <div class="empty-state">
       <?php if ($is_follower_user): ?>
-        <div style="font-size: 40px; margin-bottom: 12px;">👁️</div>
+        <div style="color:#94A3B8; margin-bottom: 12px;"><?= ak_icon('eye',44,'1.5') ?></div>
         <div style="font-size: 15px; color: var(--ink-2); margin-bottom: 6px; font-weight: 500;">Aucun projet à suivre pour l'instant</div>
         <div style="font-size: 13px; color: var(--ink-3);">L'association vous associera aux projets qu'elle souhaite partager avec vous.</div>
       <?php else: ?>
@@ -1286,7 +1286,7 @@ render_sidebar('projets');
             <button type="button" class="pin-btn" data-folder-id="<?= (int)$f['id'] ?>" data-pinned="<?= $is_pinned ? '1' : '0' ?>"
                     style="display:inline-flex; align-items:center; gap:6px; padding:5px 11px; font-size:11.5px; color:<?= $is_pinned ? '#92400E' : 'var(--ink-2)' ?>; background:<?= $is_pinned ? '#FEF3C7' : 'transparent' ?>; border:1px solid <?= $is_pinned ? '#F59E0B' : 'var(--border)' ?>; border-radius:7px; cursor:pointer; font-weight:500; transition:all 0.15s; font-family:inherit;"
                     title="<?= $is_pinned ? 'Retirer l\'épingle' : 'Épingler ce dossier en haut' ?>">
-              📌 <span class="pin-label"><?= $is_pinned ? 'Épinglé' : 'Épingler' ?></span>
+              <?= ak_icon('pin',14) ?> <span class="pin-label"><?= $is_pinned ? 'Épinglé' : 'Épingler' ?></span>
             </button>
 
           <?php // NOUVEAU : bouton Archiver le dossier (admin only) ?>
