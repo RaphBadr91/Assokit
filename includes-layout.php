@@ -1369,12 +1369,24 @@ function render_sidebar($active = 'accueil') {
         </div>
       </div>
       <?php endif; ?>
-            <?php // Subventions : admin uniquement ?>
+            <?php // Subventions : admin uniquement (Radar de financements + suivi des candidatures) ?>
       <?php if (($user['role'] ?? '') === 'admin'): ?>
-      <a href="/subventions" class="sb-link <?= $active === 'subventions' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        Subventions
-      </a>
+      <?php $subv_open = in_array($active, ['subventions','financements'], true); ?>
+      <div class="ak-collapse <?= $subv_open ? 'is-open' : '' ?>">
+        <div class="ak-collapse-row">
+          <a href="/subventions" class="sb-link ak-collapse-link <?= $active === 'subventions' ? 'active' : '' ?>" style="flex:1;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Subventions
+          </a>
+          <button type="button" class="ak-collapse-toggle" onclick="this.closest('.ak-collapse').classList.toggle('is-open')" aria-label="Déplier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+        </div>
+        <div class="ak-collapse-body">
+          <a href="/financements" class="sb-link <?= $active === 'financements' ? 'active' : '' ?>">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-3.5-3.5M11 7v4l2.5 2.5"/></svg>
+            🎯 Radar de financements
+          </a>
+        </div>
+      </div>
       <?php endif; ?>
       <?php // Coach Assokit : admin uniquement ?>
       <?php if (($user['role'] ?? '') === 'admin'): ?>

@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS grant_catalog (
   beneficiary    VARCHAR(120) NOT NULL DEFAULT 'association',  -- CSV : association,tpe,collectivite
   amount_min     DECIMAL(12,2) NULL,
   amount_max     DECIMAL(12,2) NULL,
+  req_qpv              TINYINT(1) NOT NULL DEFAULT 0,  -- dispositif réservé aux projets en QPV
+  req_interet_general TINYINT(1) NOT NULL DEFAULT 0,  -- exige le caractère d'intérêt général (reçu fiscal)
   recurrence     ENUM('ponctuel','annuel','permanent','pluriannuel') NOT NULL DEFAULT 'annuel',
   opens_at       DATE NULL,
   deadline_apply DATE NULL,
