@@ -26,7 +26,7 @@ if (!$is_admin) {
     render_head('Accès refusé');
     render_sidebar('stats');
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
-    echo '<div style="font-size:54px;margin-bottom:14px;">🔒</div>';
+    echo '<div style="color:#94A3B8;margin-bottom:14px;">' . ak_icon('lock',44,'1.5') . '</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
     echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">Les statistiques avancées (revenus, top clients, CA) sont strictement réservées aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
@@ -85,7 +85,7 @@ render_sidebar('stats');
     <!-- Graphique CA mensuel -->
     <div class="card" style="padding:22px; margin-bottom:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 style="margin:0; font-size:16px;">📈 Chiffre d'affaires mensuel (12 derniers mois)</h3>
+            <h3 style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;"><?= ak_icon('trending-up',18) ?> Chiffre d'affaires mensuel (12 derniers mois)</h3>
             <div style="display:flex; gap:14px; font-size:11px;">
                 <span><span style="display:inline-block; width:10px; height:10px; background:#10B981; border-radius:2px; margin-right:4px;"></span>Payé</span>
                 <span><span style="display:inline-block; width:10px; height:10px; background:#F59E0B; border-radius:2px; margin-right:4px;"></span>En attente</span>
@@ -98,11 +98,11 @@ render_sidebar('stats');
     <!-- Vue annuelle N vs N-1 + Camembert statuts -->
     <div style="display:grid; grid-template-columns: 2fr 1fr; gap:14px; margin-bottom:18px;">
         <div class="card" style="padding:22px;">
-            <h3 style="margin:0 0 16px 0; font-size:16px;">📅 Comparaison <?= $yearly['current_year'] ?> vs <?= $yearly['previous_year'] ?></h3>
+            <h3 style="margin:0 0 16px 0; font-size:16px; display:flex; align-items:center; gap:8px;"><?= ak_icon('calendar',18) ?> Comparaison <?= $yearly['current_year'] ?> vs <?= $yearly['previous_year'] ?></h3>
             <canvas id="chart-yearly" style="max-height:240px;"></canvas>
         </div>
         <div class="card" style="padding:22px;">
-            <h3 style="margin:0 0 16px 0; font-size:16px;">💰 Répartition par statut</h3>
+            <h3 style="margin:0 0 16px 0; font-size:16px; display:flex; align-items:center; gap:8px;"><?= ak_icon('euro',18) ?> Répartition par statut</h3>
             <?php if (!empty($status_dist['values'])): ?>
                 <canvas id="chart-status" style="max-height:240px;"></canvas>
             <?php else: ?>
@@ -113,7 +113,7 @@ render_sidebar('stats');
 
     <!-- Top 10 clients -->
     <div class="card" style="padding:22px; margin-bottom:18px;">
-        <h3 style="margin:0 0 16px 0; font-size:16px;">🏆 Top <?= min(10, count($top_clients)) ?> clients par CA encaissé</h3>
+        <h3 style="margin:0 0 16px 0; font-size:16px; display:flex; align-items:center; gap:8px;"><?= ak_icon('trophy',18) ?> Top <?= min(10, count($top_clients)) ?> clients par CA encaissé</h3>
         <?php if (empty($top_clients)): ?>
             <div style="color:#9CA3AF; text-align:center; padding:30px 0;">Pas encore de clients facturés payés.</div>
         <?php else: ?>
@@ -162,7 +162,7 @@ render_sidebar('stats');
     <!-- Stats par tag -->
     <?php if (!empty($by_tag)): ?>
     <div class="card" style="padding:22px;">
-        <h3 style="margin:0 0 16px 0; font-size:16px;">🌟 Performance par catégorie (tags)</h3>
+        <h3 style="margin:0 0 16px 0; font-size:16px; display:flex; align-items:center; gap:8px;"><?= ak_icon('star-fill',18) ?> Performance par catégorie (tags)</h3>
         <table style="width:100%; border-collapse:collapse;">
             <thead style="background:#F9FAFB;">
                 <tr>

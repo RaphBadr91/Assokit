@@ -28,7 +28,7 @@ if (!$is_admin) {
     render_head('Accès refusé');
     render_sidebar('clients');
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
-    echo '<div style="font-size:54px;margin-bottom:14px;">🔒</div>';
+    echo '<div style="color:#94A3B8;margin-bottom:14px;">' . ak_icon('lock',44,'1.5') . '</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
     echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">La liste des clients (CA encaissé, factures, devis) est strictement réservée aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
@@ -124,7 +124,7 @@ render_sidebar('clients');
 
     <?php if (empty($clients)): ?>
         <div class="card" style="padding:40px; text-align:center; color:#6B7280;">
-            <div style="font-size:36px; margin-bottom:10px;">👥</div>Aucun client. Crée ta première facture pour ajouter un client !
+            <div style="color:#94A3B8; margin-bottom:10px;"><?= ak_icon('users',44,'1.5') ?></div>Aucun client. Crée ta première facture pour ajouter un client !
         </div>
     <?php else: ?>
         <div class="card" style="padding:0; overflow:hidden;">
@@ -145,7 +145,7 @@ render_sidebar('clients');
                     <tr style="border-top:1px solid #E5E7EB;">
                         <td style="padding:10px 14px; font-size:13px;">
                             <strong><?= h($c['display_name']) ?></strong>
-                            <span style="font-size:10px; color:#6B7280;"><?= $c['client_type'] === 'individual' ? '👤 Particulier' : '🏢 Entreprise/Asso' ?></span>
+                            <span style="font-size:10px; color:#6B7280; display:inline-flex; align-items:center; gap:3px;"><?= $c['client_type'] === 'individual' ? ak_icon('user',11).' Particulier' : ak_icon('building',11).' Entreprise/Asso' ?></span>
                             <?= ak_tag_render_chips($ctags) ?>
                         </td>
                         <td style="padding:10px 14px; font-size:13px;">

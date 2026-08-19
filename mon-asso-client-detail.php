@@ -50,7 +50,7 @@ render_sidebar('factures');
 
     <div class="main-head">
         <div>
-            <h1 class="page-title">👤 <?= h($client['display_name']) ?></h1>
+            <h1 class="page-title" style="display:flex; align-items:center; gap:11px;"><?= ak_icon_badge('user','#059669',36) ?><span><?= h($client['display_name']) ?></span></h1>
             <div class="page-sub">
                 <?php if ($client['client_type'] === 'individual'): ?>
                     <span style="background:#DBEAFE; color:#1E40AF; padding:2px 8px; border-radius:4px; font-size:11px;">Particulier</span>
@@ -78,15 +78,15 @@ render_sidebar('factures');
             </div>
         </div>
         <div class="card" style="padding:16px; background:#F0FDF4;">
-            <div style="font-size:11px; color:#065F46; text-transform:uppercase;">✅ Encaissé</div>
+            <div style="font-size:11px; color:#065F46; text-transform:uppercase; display:inline-flex; align-items:center; gap:5px;"><?= ak_icon('check-circle',12) ?> Encaissé</div>
             <div style="font-size:20px; font-weight:700; color:#10B981; margin-top:4px; font-variant-numeric:tabular-nums;">
                 <?= h(ak_asso_fmt_cents($stats['paid_ttc_cents'])) ?>
             </div>
             <div style="font-size:11px; color:#065F46; margin-top:2px;"><?= (int)$stats['nb_paid'] ?> facture(s)</div>
         </div>
         <div class="card" style="padding:16px; background:<?= $stats['nb_overdue'] > 0 ? '#FEE2E2' : '#FEF3C7' ?>;">
-            <div style="font-size:11px; color:<?= $stats['nb_overdue'] > 0 ? '#991B1B' : '#92400E' ?>; text-transform:uppercase;">
-                <?= $stats['nb_overdue'] > 0 ? '⚠ En retard' : '⏳ En attente' ?>
+            <div style="font-size:11px; color:<?= $stats['nb_overdue'] > 0 ? '#991B1B' : '#92400E' ?>; text-transform:uppercase; display:inline-flex; align-items:center; gap:5px;">
+                <?= $stats['nb_overdue'] > 0 ? ak_icon('alert-tri',12).' En retard' : ak_icon('clock',12).' En attente' ?>
             </div>
             <div style="font-size:20px; font-weight:700; color:<?= $stats['nb_overdue'] > 0 ? '#DC2626' : '#F59E0B' ?>; margin-top:4px; font-variant-numeric:tabular-nums;">
                 <?= h(ak_asso_fmt_cents($stats['nb_overdue'] > 0 ? $stats['overdue_ttc_cents'] : $stats['pending_ttc_cents'])) ?>
@@ -99,7 +99,7 @@ render_sidebar('factures');
 
     <!-- Coordonnées -->
     <div class="card" style="padding:22px; margin-bottom:16px;">
-        <h3 style="margin:0 0 16px 0; font-size:15px;">📋 Coordonnées</h3>
+        <h3 style="margin:0 0 16px 0; font-size:15px; display:flex; align-items:center; gap:8px;"><?= ak_icon('clipboard',18) ?> Coordonnées</h3>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; font-size:13px;">
             <?php if (!empty($client['legal_name'])): ?>
                 <div><strong>Raison sociale :</strong> <?= h($client['legal_name']) ?></div>
@@ -132,7 +132,7 @@ render_sidebar('factures');
 
     <!-- Historique factures -->
     <div class="card" style="padding:0; overflow:hidden;">
-        <h3 style="margin:0; padding:16px 22px; border-bottom:1px solid #E5E7EB; font-size:15px;">📜 Historique des factures</h3>
+        <h3 style="margin:0; padding:16px 22px; border-bottom:1px solid #E5E7EB; font-size:15px; display:flex; align-items:center; gap:8px;"><?= ak_icon('receipt',18) ?> Historique des factures</h3>
         <?php if (empty($invoices)): ?>
             <div style="padding:40px; text-align:center; color:#6B7280;">
                 Aucune facture émise pour ce client.
@@ -172,9 +172,9 @@ render_sidebar('factures');
                     </td>
                     <td style="padding:10px 14px; text-align:right; white-space:nowrap;">
                         <?php if (!empty($inv['pdf_path'])): ?>
-                            <a href="<?= h($inv['pdf_path']) ?>" target="_blank" class="btn btn-ghost" style="padding:4px 8px; font-size:12px; margin-right:4px;">📥</a>
+                            <a href="<?= h($inv['pdf_path']) ?>" target="_blank" class="btn btn-ghost" style="padding:4px 8px; font-size:12px; margin-right:4px; display:inline-flex; align-items:center;"><?= ak_icon('download',15) ?></a>
                         <?php endif; ?>
-                        <a href="/mon-asso-facture-edit.php?id=<?= (int)$inv['id'] ?>" class="btn btn-ghost" style="padding:4px 8px; font-size:12px; background:#FEF3C7; color:#92400E; border-color:#FCD34D;">✏️</a>
+                        <a href="/mon-asso-facture-edit.php?id=<?= (int)$inv['id'] ?>" class="btn btn-ghost" style="padding:4px 8px; font-size:12px; background:#FEF3C7; color:#92400E; border-color:#FCD34D; display:inline-flex; align-items:center;"><?= ak_icon('edit',15) ?></a>
                     </td>
                 </tr>
                 <?php endforeach; ?>

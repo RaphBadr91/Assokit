@@ -31,7 +31,7 @@ render_head('Subventions');
   <div class="gr-page">
     <div class="gr-pg-head">
       <div>
-        <h1 class="gr-pg-title">💶 Subventions</h1>
+        <h1 class="gr-pg-title" style="display:flex; align-items:center; gap:11px;"><?= ak_icon_badge('euro','#059669',36) ?><span>Subventions</span></h1>
         <p class="gr-pg-sub">Suis tes demandes de subvention de A à Z : dépôt, instruction, accord, bilan.</p>
       </div>
       <?php if ($can_manage): ?><a href="/subvention-form" class="gr-btn-primary">+ Nouvelle demande</a><?php endif; ?>
@@ -54,7 +54,7 @@ render_head('Subventions');
 
     <?php if (empty($grants)): ?>
     <div class="gr-empty">
-      <div class="gr-empty-emoji">💶</div>
+      <div class="gr-empty-emoji" style="color:#94A3B8;"><?= ak_icon('euro',44,'1.5') ?></div>
       <h2>Aucune subvention pour le moment</h2>
       <p>Crée ton premier dossier (CAF, FDVA, mairie, fondation…) pour suivre la deadline et le statut.</p>
       <?php if ($can_manage): ?><a href="/subvention-form" class="gr-btn-primary">Créer une demande</a><?php endif; ?>
@@ -73,7 +73,7 @@ render_head('Subventions');
           <div class="gr-row-name"><?= h($g['name']) ?></div>
           <div class="gr-row-meta">
             <?= h(gr_funder_label($g['funder_type'])) ?> · <?= h($g['funder']) ?>
-            <?php if ($g['project_name']): ?> · 🎯 <?= h($g['project_name']) ?><?php endif; ?>
+            <?php if ($g['project_name']): ?> · <span style="display:inline-flex; vertical-align:-2px;"><?= ak_icon('target',13) ?></span> <?= h($g['project_name']) ?><?php endif; ?>
           </div>
         </div>
         <div class="gr-row-amount">

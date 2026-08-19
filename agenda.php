@@ -320,7 +320,7 @@ render_sidebar('agenda');
                   <?php endif; ?>
                   <?php if ($e['project_name']): ?>
                     <?php if ($e['location']): ?><span class="dot">·</span><?php endif; ?>
-                    <span>📁 <?= h($e['project_name']) ?></span>
+                    <span style="display:inline-flex; align-items:center; gap:4px;"><?= ak_icon('folder',13) ?> <?= h($e['project_name']) ?></span>
                   <?php endif; ?>
                 </div>
               </div>

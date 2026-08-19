@@ -169,23 +169,23 @@ render_sidebar('ia');
     </div>
 
     <div class="ia-quicknav">
-      <a href="/mon-asso-ia-diffusion" class="primary">📨 Diffusion email</a>
-      <a href="/mon-asso-ia-historique">🗂 Historique</a>
+      <a href="/mon-asso-ia-diffusion" class="primary"><span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('send',15) ?></span> Diffusion email</a>
+      <a href="/mon-asso-ia-historique"><span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('folder',15) ?></span> Historique</a>
       <?php if ($can_administer_quotas): ?>
-        <a href="/mon-asso-ia-admin-quotas" style="background:#FEF3C7;color:#92400E;border-color:#FDE68A;">🛡️ Voir les quotas</a>
+        <a href="/mon-asso-ia-admin-quotas" style="background:#FEF3C7;color:#92400E;border-color:#FDE68A;"><span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('shield',15) ?></span> Voir les quotas</a>
       <?php endif; ?>
     </div>
 
     <?php if ($page_error): ?>
-      <div class="ia-warning">⚠️ <?= h($page_error) ?></div>
+      <div class="ia-warning"><span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('alert-tri',15) ?></span> <?= h($page_error) ?></div>
     <?php endif; ?>
     <?php if (!$tables_ready): ?>
       <div class="ia-warning">
-        ⚠️ Migration BDD <code>v43</code> non passée. Exécute <code>migration-v43-ia-folders.sql</code> dans phpMyAdmin.
+        <span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('alert-tri',15) ?></span> Migration BDD <code>v43</code> non passée. Exécute <code>migration-v43-ia-folders.sql</code> dans phpMyAdmin.
       </div>
     <?php endif; ?>
 
-    <div class="ia-section-head"><h2>📁 Dossiers thématiques</h2></div>
+    <div class="ia-section-head"><h2 style="display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('folder',18) ?> Dossiers thématiques</h2></div>
 
     <?php foreach ($folders as $key => $folder):
       $tools_in = ak_ai_tools_by_folder($key);
@@ -214,7 +214,7 @@ render_sidebar('ia');
     <?php endforeach; ?>
 
     <?php if (!empty($transverse)): ?>
-      <div class="ia-section-head"><h2>🔧 Outils transverses</h2></div>
+      <div class="ia-section-head"><h2 style="display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('wrench',18) ?> Outils transverses</h2></div>
       <div class="ia-transverse">
         <?php foreach ($transverse as $tkey => $tool): ?>
           <a href="/mon-asso-ia-tool?type=<?= h($tkey) ?>" class="ia-tool" style="--c: #475569;">
@@ -229,13 +229,13 @@ render_sidebar('ia');
     <?php endif; ?>
 
     <div class="ia-section-head">
-      <h2>✨ Générations récentes</h2>
+      <h2 style="display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('sparkle',18) ?> Générations récentes</h2>
       <?php if ($recent): ?><a href="/mon-asso-ia-historique">Tout l'historique →</a><?php endif; ?>
     </div>
     <div class="ia-recent">
       <?php if (empty($recent)): ?>
         <div class="ia-empty">
-          <div class="big">📭</div>
+          <div class="big" style="color:#94A3B8;"><?= ak_icon('inbox',44,'1.5') ?></div>
           Aucune génération pour le moment. Choisissez un outil ci-dessus pour commencer.
         </div>
       <?php else: foreach ($recent as $r): $tool = ak_ai_tool($r['tool_type']); ?>

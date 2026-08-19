@@ -49,7 +49,7 @@ render_head('Cotisations');
   <div class="ck-page">
     <div class="ck-pg-head">
       <div>
-        <h1 class="ck-pg-title">💶 Cotisations</h1>
+        <h1 class="ck-pg-title" style="display:flex; align-items:center; gap:11px;"><?= ak_icon_badge('euro','#059669',36) ?><span>Cotisations</span></h1>
         <p class="ck-pg-sub">Suis les paiements des adhérents et lance des campagnes annuelles.</p>
       </div>
       <?php if ($can_manage): ?>
@@ -67,7 +67,7 @@ render_head('Cotisations');
 
     <?php if (empty($campaigns)): ?>
     <div class="ck-empty">
-      <div class="ck-empty-emoji">💶</div>
+      <div class="ck-empty-emoji" style="color:#94A3B8;"><?= ak_icon('euro',44,'1.5') ?></div>
       <h2>Aucune campagne pour le moment</h2>
       <p>Crée ta première campagne (ex : "Adhésion 2025-2026") avec un ou plusieurs tarifs (membre, étudiant, famille…).</p>
       <?php if ($can_manage): ?><a href="/cotisation-form" class="ck-btn-primary">Créer une campagne</a><?php endif; ?>

@@ -79,7 +79,7 @@ render_sidebar('notifications');
     
     <div class="main-head">
         <div>
-            <h1 class="page-title">🔔 Notifications</h1>
+            <h1 class="page-title" style="display:flex; align-items:center; gap:11px;"><?= ak_icon_badge('bell','#059669',36) ?><span>Notifications</span></h1>
             <div class="page-sub">
                 <?= $total_unread > 0 ? "<strong>$total_unread</strong> non lue" . ($total_unread > 1 ? 's' : '') : 'Tout est à jour' ?>
             </div>
@@ -102,16 +102,16 @@ render_sidebar('notifications');
             Non lues <?= $counts['unread'] > 0 ? '<span class="tab-badge" style="background:#EF4444; color:#fff;">' . $counts['unread'] . '</span>' : '' ?>
         </a>
         <a href="/notifications?filter=mention" class="tab <?= $filter === 'mention' ? 'active' : '' ?>">
-            🏷️ Mentions <?= $counts['mention'] > 0 ? '<span class="tab-badge">' . $counts['mention'] . '</span>' : '' ?>
+            <span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('tag',15) ?></span> Mentions <?= $counts['mention'] > 0 ? '<span class="tab-badge">' . $counts['mention'] . '</span>' : '' ?>
         </a>
         <a href="/notifications?filter=message" class="tab <?= $filter === 'message' ? 'active' : '' ?>">
-            💬 Messages <?= $counts['message'] > 0 ? '<span class="tab-badge">' . $counts['message'] . '</span>' : '' ?>
+            <span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('message',15) ?></span> Messages <?= $counts['message'] > 0 ? '<span class="tab-badge">' . $counts['message'] . '</span>' : '' ?>
         </a>
         <a href="/notifications?filter=team_added" class="tab <?= $filter === 'team_added' ? 'active' : '' ?>">
-            👥 Équipe <?= $counts['team_added'] > 0 ? '<span class="tab-badge">' . $counts['team_added'] . '</span>' : '' ?>
+            <span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('users',15) ?></span> Équipe <?= $counts['team_added'] > 0 ? '<span class="tab-badge">' . $counts['team_added'] . '</span>' : '' ?>
         </a>
         <a href="/notifications?filter=step_assigned" class="tab <?= $filter === 'step_assigned' ? 'active' : '' ?>">
-            📝 Étapes <?= $counts['step_assigned'] > 0 ? '<span class="tab-badge">' . $counts['step_assigned'] . '</span>' : '' ?>
+            <span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('edit',15) ?></span> Étapes <?= $counts['step_assigned'] > 0 ? '<span class="tab-badge">' . $counts['step_assigned'] . '</span>' : '' ?>
         </a>
     </div>
     

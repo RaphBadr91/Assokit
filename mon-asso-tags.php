@@ -81,7 +81,7 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
 <div class="main">
     <div class="main-head">
         <div>
-            <h1 class="page-title">🔖 Mes tags</h1>
+            <h1 class="page-title" style="display:flex; align-items:center; gap:11px;"><?= ak_icon_badge('tag','#059669',36) ?><span>Mes tags</span></h1>
             <div class="page-sub">Catégorise tes factures, devis et clients</div>
         </div>
         <a href="/mon-asso-factures" class="btn btn-ghost">← Retour</a>
@@ -122,7 +122,7 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
     <div class="card" style="padding:0; overflow:hidden;">
         <?php if (empty($tags)): ?>
             <div style="padding:40px; text-align:center; color:#6B7280;">
-                <div style="font-size:36px; margin-bottom:10px;">🔖</div>
+                <div style="color:#94A3B8; margin-bottom:10px;"><?= ak_icon('tag',44,'1.5') ?></div>
                 Aucun tag créé. Crée ton premier tag ci-dessus !
             </div>
         <?php else: ?>
@@ -151,12 +151,12 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
                             <?php endif; ?>
                         </td>
                         <td style="padding:12px 14px; text-align:right;">
-                            <button type="button" onclick="editTag(<?= (int)$t['id'] ?>, '<?= h($t['name']) ?>', '<?= h($t['color']) ?>')" class="btn btn-ghost" style="padding:5px 10px; font-size:12px;">✏️</button>
+                            <button type="button" onclick="editTag(<?= (int)$t['id'] ?>, '<?= h($t['name']) ?>', '<?= h($t['color']) ?>')" class="btn btn-ghost" style="padding:5px 10px; font-size:12px; display:inline-flex; align-items:center;"><?= ak_icon('edit',15) ?></button>
                             <form method="POST" action="/mon-asso-tags" style="display:inline;" onsubmit="return confirm('Supprimer ce tag ? Toutes les associations seront perdues.');">
                                 <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
-                                <button type="submit" class="btn btn-ghost" style="padding:5px 10px; font-size:12px; color:#DC2626;">🗑</button>
+                                <button type="submit" class="btn btn-ghost" style="padding:5px 10px; font-size:12px; color:#DC2626; display:inline-flex; align-items:center;"><?= ak_icon('trash',15) ?></button>
                             </form>
                         </td>
                     </tr>
@@ -170,7 +170,7 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
 <!-- MODAL EDIT -->
 <div id="modal-edit" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; padding:20px;">
     <div style="background:white; border-radius:12px; padding:24px; max-width:500px; width:100%;">
-        <h3 style="margin:0 0 14px 0; font-size:16px;">✏️ Modifier le tag</h3>
+        <h3 style="margin:0 0 14px 0; font-size:16px; display:flex; align-items:center; gap:8px;"><?= ak_icon('edit',18) ?> Modifier le tag</h3>
         <form method="POST" action="/mon-asso-tags">
             <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
             <input type="hidden" name="action" value="update">

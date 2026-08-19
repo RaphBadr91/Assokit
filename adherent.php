@@ -89,7 +89,7 @@ render_sidebar('adherents');
 
   <?php if ($flash): ?>
     <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom: 18px;">
-      <span><?= $flash['type'] === 'success' ? '✅' : '⚠️' ?></span>
+      <span><?= $flash['type'] === 'success' ? ak_icon('check-circle',16) : ak_icon('alert-tri',16) ?></span>
       <div><?= h($flash['message']) ?></div>
     </div>
   <?php endif; ?>
@@ -127,14 +127,14 @@ render_sidebar('adherents');
         </button>
         <div id="msg-menu" style="display:none; position:absolute; right:0; top:calc(100% + 4px); background:var(--bg); border:1px solid var(--border); border-radius:10px; box-shadow:0 6px 20px rgba(0,0,0,0.08); min-width:200px; z-index:100; overflow:hidden;">
           <a href="/messages?user=<?= (int)$adherent['id'] ?>" style="display:flex; align-items:center; gap:10px; padding:10px 14px; text-decoration:none; color:var(--ink); font-size:13px; border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
-            <span>💬</span>
+            <span><?= ak_icon('message',18) ?></span>
             <div>
               <div style="font-weight:500;">Message interne</div>
               <div style="font-size:11px; color:var(--ink-3);">Dans Assokit</div>
             </div>
           </a>
           <a href="mailto:<?= h($adherent['email']) ?>?subject=<?= rawurlencode('Message de la part de ' . $current['first_name'] . ' ' . $current['last_name']) ?>" style="display:flex; align-items:center; gap:10px; padding:10px 14px; text-decoration:none; color:var(--ink); font-size:13px;" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
-            <span>📧</span>
+            <span><?= ak_icon('mail',18) ?></span>
             <div>
               <div style="font-weight:500;">Email direct</div>
               <div style="font-size:11px; color:var(--ink-3);">Ouvre votre app mail</div>

@@ -20,7 +20,7 @@ render_head('Émargement');
   <div class="at-page">
     <div class="at-pg-head">
       <div>
-        <h1 class="at-pg-title">✍️ Émargement</h1>
+        <h1 class="at-pg-title" style="display:flex; align-items:center; gap:11px;"><?= ak_icon_badge('edit','#059669',36) ?><span>Émargement</span></h1>
         <p class="at-pg-sub">Crée une session, partage un QR code, récupère les signatures.</p>
       </div>
       <a href="/emargement-form" class="at-btn-primary">+ Nouvelle session</a>
@@ -35,7 +35,7 @@ render_head('Émargement');
 
     <?php if (empty($sessions)): ?>
     <div class="at-empty">
-      <div style="font-size:48px;">✍️</div>
+      <div style="color:#94A3B8;"><?= ak_icon('edit',44,'1.5') ?></div>
       <h2>Aucune session d'émargement</h2>
       <p>Crée ta première session pour un cours, un entraînement, une formation ou une réunion. Partage le QR code aux participants pour qu'ils signent en 5 secondes.</p>
       <a href="/emargement-form" class="at-btn-primary">Créer une session</a>
@@ -51,10 +51,10 @@ render_head('Émargement');
         </div>
         <div class="at-row-main">
           <div class="at-row-name"><?= h($s['title']) ?></div>
-          <div class="at-row-meta"><?= $s['location'] ? '📍 '.h($s['location']).' · ' : '' ?>✍️ <?= (int)$s['nb_signed'] ?> signature<?= $s['nb_signed'] > 1 ? 's' : '' ?></div>
+          <div class="at-row-meta"><?= $s['location'] ? ak_icon('pin',13).' '.h($s['location']).' · ' : '' ?><?= ak_icon('edit',13) ?> <?= (int)$s['nb_signed'] ?> signature<?= $s['nb_signed'] > 1 ? 's' : '' ?></div>
         </div>
         <span class="at-status <?= $s['is_open'] ? 'open' : 'closed' ?>">
-          <?= $s['is_open'] ? '🟢 Ouverte' : '🔒 Fermée' ?>
+          <?= $s['is_open'] ? ak_dot('#10B981').' Ouverte' : ak_icon('lock',13).' Fermée' ?>
         </span>
       </a>
       <?php endforeach; ?>
@@ -87,7 +87,9 @@ render_head('Émargement');
 .at-row-main { flex: 1; min-width: 0; }
 .at-row-name { font-size: 15px; font-weight: 700; color: #111827; }
 .at-row-meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
-.at-status { font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 600; }
+.at-row-meta svg { vertical-align: -2px; }
+.at-status { font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
+.at-status svg { flex: none; }
 .at-status.open { background: #ECFDF5; color: #065F46; }
 .at-status.closed { background: #f3f4f6; color: #6b7280; }
 </style>

@@ -155,14 +155,14 @@ render_sidebar('adherents');
 
   <div class="main-head">
     <div>
-      <h1 class="page-title">✏️ Modifier <?= h($adherent['first_name'] . ' ' . $adherent['last_name']) ?></h1>
+      <h1 class="page-title" style="display:flex; align-items:center; gap:11px;"><?= ak_icon_badge('edit','#059669',36) ?><span>Modifier <?= h($adherent['first_name'] . ' ' . $adherent['last_name']) ?></span></h1>
       <div class="page-sub">Modifiez les informations de cet adhérent.</div>
     </div>
   </div>
 
   <?php if ($error): ?>
     <div class="alert alert-error">
-      <span>⚠️</span>
+      <span><?= ak_icon('alert-tri',16) ?></span>
       <div><?= h($error) ?></div>
     </div>
   <?php endif; ?>
@@ -195,8 +195,9 @@ render_sidebar('adherents');
       <input type="email" id="email" name="email" required maxlength="200"
              value="<?= h($form['email']) ?>"
              style="width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:14px; color:var(--ink);">
-      <div style="font-size:11.5px; color:var(--ink-4); margin-top:4px;">
-        💡 Modifier l'email changera aussi l'identifiant de connexion de cet adhérent.
+      <div style="font-size:11.5px; color:var(--ink-4); margin-top:4px; display:flex; align-items:flex-start; gap:5px;">
+        <span style="flex:none; margin-top:1px;"><?= ak_icon('lightbulb',13) ?></span>
+        <span>Modifier l'email changera aussi l'identifiant de connexion de cet adhérent.</span>
       </div>
     </div>
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:16px;">
@@ -234,7 +235,7 @@ render_sidebar('adherents');
       <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
         <input type="checkbox" name="can_create_projects" value="1" <?= $form['can_create_projects'] === '1' ? 'checked' : '' ?> style="margin-top:2px;">
         <div>
-          <div style="font-size:13px; font-weight:500;">📁 Peut créer des projets</div>
+          <div style="font-size:13px; font-weight:500; display:flex; align-items:center; gap:6px;"><?= ak_icon('folder',14) ?> Peut créer des projets</div>
           <div style="font-size:11.5px; color:var(--ink-3); margin-top:2px;">
             Autorise cet adhérent à créer de nouveaux projets dans les dossiers existants.
           </div>
@@ -245,7 +246,7 @@ render_sidebar('adherents');
       <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
         <input type="checkbox" name="can_create_folders" value="1" <?= $form['can_create_folders'] === '1' ? 'checked' : '' ?> style="margin-top:2px;">
         <div>
-          <div style="font-size:13px; font-weight:500;">🗂️ Peut créer des dossiers dans projets</div>
+          <div style="font-size:13px; font-weight:500; display:flex; align-items:center; gap:6px;"><?= ak_icon('folder',14) ?> Peut créer des dossiers dans projets</div>
           <div style="font-size:11.5px; color:var(--ink-3); margin-top:2px;">
             Autorise cet adhérent à créer de nouveaux dossiers thématiques pour organiser les projets.
           </div>
@@ -275,7 +276,7 @@ render_sidebar('adherents');
       <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
         <input type="checkbox" name="is_active" value="1" <?= $form['is_active'] === '1' ? 'checked' : '' ?> style="margin-top:2px;">
         <div>
-          <div style="font-size:13px; font-weight:500;">✅ Compte actif</div>
+          <div style="font-size:13px; font-weight:500; display:flex; align-items:center; gap:6px;"><?= ak_icon('check-circle',14) ?> Compte actif</div>
           <div style="font-size:11.5px; color:var(--ink-3); margin-top:2px;">
             Décocher pour désactiver le compte (l'adhérent ne pourra plus se connecter).
           </div>

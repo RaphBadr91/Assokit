@@ -19,7 +19,7 @@ render_head('Assemblées');
   <div class="ag-page">
     <div class="ag-pg-head">
       <div>
-        <h1 class="ag-pg-title">🏛️ Assemblées & réunions</h1>
+        <h1 class="ag-pg-title" style="display:flex; align-items:center; gap:11px;"><?= ak_icon_badge('building','#059669',36) ?><span>Assemblées &amp; réunions</span></h1>
         <p class="ag-pg-sub">Convoque, fais voter, signe et génère le PV automatiquement.</p>
       </div>
       <a href="/assemblee-form" class="ag-btn-primary">+ Nouvelle assemblée</a>
@@ -34,7 +34,7 @@ render_head('Assemblées');
 
     <?php if (empty($ags)): ?>
     <div class="ag-empty">
-      <div style="font-size:48px;">🏛️</div>
+      <div style="color:#94A3B8;"><?= ak_icon('building',44,'1.5') ?></div>
       <h2>Aucune assemblée</h2>
       <p>Crée ta première AG : convocation auto, signature électronique, votes en ligne, PV automatique.</p>
       <a href="/assemblee-form" class="ag-btn-primary">Créer une AG</a>
@@ -52,7 +52,7 @@ render_head('Assemblées');
             <div class="ag-row-name"><?= h($ag['title']) ?></div>
             <div class="ag-row-meta">
               <?= h(ag_type_label($ag['type'])) ?>
-              <?php if ($ag['location']): ?> · 📍 <?= h($ag['location']) ?><?php endif; ?>
+              <?php if ($ag['location']): ?> · <span style="display:inline-flex; vertical-align:-2px;"><?= ak_icon('pin',13) ?></span> <?= h($ag['location']) ?><?php endif; ?>
             </div>
           </div>
           <span class="ag-status" style="background:<?= $m[2] ?>;color:<?= $m[1] ?>;"><?= $m[3] ?> <?= h($m[0]) ?></span>

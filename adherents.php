@@ -153,7 +153,7 @@ render_sidebar('adherents');
 
   <?php if ($flash): ?>
     <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom: 18px;">
-      <span><?= $flash['type'] === 'success' ? '✅' : '⚠️' ?></span>
+      <span><?= $flash['type'] === 'success' ? ak_icon('check-circle',16) : ak_icon('alert-tri',16) ?></span>
       <div><?= h($flash['message']) ?></div>
     </div>
   <?php endif; ?>
@@ -164,7 +164,7 @@ render_sidebar('adherents');
       <div class="page-sub">
         <?= (int)$s['total'] ?> membre<?= $s['total'] > 1 ? 's' : '' ?> · <?= (int)$s['new_30d'] ?> nouveau<?= $s['new_30d'] > 1 ? 'x' : '' ?> ce mois
         <?php if ($nb_trash > 0): ?>
-          · <a href="/adherents-corbeille" style="color:var(--ink-3); text-decoration:underline;">🗑️ <?= $nb_trash ?> dans la corbeille</a>
+          · <a href="/adherents-corbeille" style="color:var(--ink-3); text-decoration:underline; display:inline-flex; align-items:center; gap:5px;"><?= ak_icon('trash',13) ?> <?= $nb_trash ?> dans la corbeille</a>
         <?php endif; ?>
       </div>
     </div>

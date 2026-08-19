@@ -71,7 +71,7 @@ render_sidebar('factures');
 
     <div class="main-head">
         <div>
-            <h1 class="page-title">📄 Informations de facturation</h1>
+            <h1 class="page-title" style="display:flex; align-items:center; gap:11px;"><?= ak_icon_badge('file','#059669',36) ?><span>Informations de facturation</span></h1>
             <div class="page-sub">
                 Ces infos apparaîtront sur vos factures et dans les emails d'envoi.
                 Complétez-les pour des factures 100% conformes.
