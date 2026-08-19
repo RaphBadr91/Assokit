@@ -983,7 +983,7 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
           </View>
         )}
 
-        <Text style={styles.bilanNote}>ℹ️ Sans factures ni informations saisies, le bilan analytique sera incomplet.</Text>
+        <Text style={styles.bilanNote}><Ionicons name="information-circle-outline" size={13} color="#94A3B8" /> Sans factures ni informations saisies, le bilan analytique sera incomplet.</Text>
         <View style={styles.pdfRow}>
           <TouchableOpacity accessibilityRole="button" style={[styles.pdfBtn, pdfBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={() => !pdfBusy && onSharePdf('/download-bilan-analytique.php?project=' + p.id)}>
             {pdfBusy ? <ActivityIndicator size="small" color="#4F46E5" /> : <Ionicons name="share-outline" size={17} color="#4F46E5" />}
@@ -2078,7 +2078,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
               </View>
               <View style={styles.fcHelloRow}>
                 <Text style={styles.fcHello}>Bienvenue {data && data.first_name ? data.first_name : ''} 👋</Text>
-                <View style={styles.fcSeal}><Text style={styles.fcSealTxt}>🏗️ FONDATEUR</Text></View>
+                <View style={styles.fcSeal}><Text style={styles.fcSealTxt}><Ionicons name="construct" size={10} color="#3A2A08" /> FONDATEUR</Text></View>
               </View>
               <View style={styles.fcSubRow}>
                 <View style={styles.fcLive} />
@@ -2141,7 +2141,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
 
             {/* Ce mois-ci */}
             <View style={styles.fcMonthCard}>
-              <Text style={styles.fcMonthTitle}>📅 Ce mois-ci</Text>
+              <Text style={styles.fcMonthTitle}><Ionicons name="calendar-outline" size={13} color="#334155" /> Ce mois-ci</Text>
               <View style={styles.fcMonthRow}>
                 <View style={styles.fcMonthItem}><Text style={[styles.fcMonthVal, { color: '#059669' }]}>+{mo.new_orgs ?? 0}</Text><Text style={styles.fcMonthLb}>nouvelles assos</Text></View>
                 <View style={styles.fcMonthSep} />
@@ -2670,7 +2670,7 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
               <Ionicons name="refresh" size={18} color="#EAF2EE" />
             </TouchableOpacity>
           </View>
-          <Text style={[styles.fcSub, { marginTop: 8 }]} numberOfLines={1}>📍 {crumb()}</Text>
+          <Text style={[styles.fcSub, { marginTop: 8 }]} numberOfLines={1}><Ionicons name="location-outline" size={12} color="#64748B" /> {crumb()}</Text>
         </LinearGradient>
       </View>
 
@@ -3074,7 +3074,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.fcOrgName} numberOfLines={2}>{a.title}</Text>
               <Text style={styles.fcOrgSub} numberOfLines={1}>{[a.category, a.reading ? a.reading + ' min' : ''].filter(Boolean).join(' · ')}</Text>
-              <Text style={styles.blogArtDate}>{a.published ? ('📅 Publié le ' + (a.pub_date || a.date)) : ('✏️ Créé le ' + a.date)}</Text>
+              <Text style={styles.blogArtDate}><Ionicons name={a.published ? 'calendar-outline' : 'create-outline'} size={11} color="#94A3B8" /> {a.published ? ('Publié le ' + (a.pub_date || a.date)) : ('Créé le ' + a.date)}</Text>
             </View>
             <View style={[styles.fcChip, { backgroundColor: a.published ? '#D1FAE5' : '#FEF3C7' }]}>
               <Text style={[styles.fcChipTxt, { color: a.published ? '#047857' : '#B45309' }]}>{a.published ? 'Publié' : 'Brouillon'}</Text>
@@ -3089,7 +3089,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
             <View style={styles.blogModal}>
               <View style={styles.blogModalHandle} />
               <View style={styles.blogModalHead}>
-                <Text style={styles.blogModalTitle}>✨ Génération IA</Text>
+                <Text style={styles.blogModalTitle}><Ionicons name="sparkles-outline" size={17} color={INK} /> Génération IA</Text>
                 <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close" size={22} color="#94A3B8" /></TouchableOpacity>
               </View>
 
