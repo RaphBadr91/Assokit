@@ -1261,7 +1261,14 @@ function render_sidebar($active = 'accueil') {
         Accueil
       </a>
 
-      <?php 
+      <?php if (can('manage_finances')): ?>
+      <a href="/mon-asso-copilote" class="sb-link <?= $active === 'mon-asso-copilote' ? 'active' : '' ?>">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg>
+        Copilote IA
+      </a>
+      <?php endif; ?>
+
+      <?php
       // ============ NOTIFICATIONS (cloche avec badge dynamique) ============
       // Calculer le badge initial (sera mis à jour en JS toutes les 30s)
       $notif_unread = 0;
@@ -1426,10 +1433,6 @@ function render_sidebar($active = 'accueil') {
       <a href="/mon-asso-factures" class="sb-link <?= $fact_active ? 'active' : '' ?>">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg>
         Facturation
-      </a>
-      <a href="/mon-asso-copilote" class="sb-link <?= $active === 'mon-asso-copilote' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg>
-        Copilote IA
       </a>
       <?php endif; ?>
 
