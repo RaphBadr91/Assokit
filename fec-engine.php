@@ -87,35 +87,56 @@ function fec_build(PDO $pdo, int $org_id, int $year): array {
         $tot_credit += (float)($o['credit'] ?? 0);
     };
 
+    $partial = false; // vrai si une catégorie d'écritures a échoué (n'annonce pas "prêt")
+
     // ── VENTES (asso_invoices non brouillon, émises dans l'exercice) ──
     try {
         $st = $pdo->prepare(
             "SELECT i.id, i.invoice_number, i.amount_ht_cents, i.amount_vat_cents, i.amount_ttc_cents,
-                    DATE(i.issued_at) issued, DATE(i.paid_at) paid, i.status, i.client_id,
-                    c.display_name client
+                    DATE(i.issued_at) issued, i.client_id, c.display_name client
              FROM asso_invoices i LEFT JOIN asso_clients c ON c.id = i.client_id AND c.org_id = i.org_id
              WHERE i.org_id = :o AND i.status <> 'draft' AND DATE(i.issued_at) BETWEEN :s AND :e
              ORDER BY i.issued_at ASC, i.id ASC");
         $st->execute([':o'=>$org_id, ':s'=>$start, ':e'=>$end]);
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $i) {
-            $ht = (int)$i['amount_ht_cents']/100; $tva = (int)$i['amount_vat_cents']/100; $ttc = (int)$i['amount_ttc_cents']/100;
-            if ($ttc <= 0) continue;
+            $ttc = (int)$i['amount_ttc_cents']/100;
+            if (abs($ttc) < 0.005) continue;                 // I2 : ne sauter que le zéro (les avoirs < 0 sont traités)
+            $tva = (int)$i['amount_vat_cents']/100;
+            $avoir = $ttc < 0;
+            $a_ttc = abs($ttc); $a_tva = abs($tva);
+            $a_ht = round($a_ttc - $a_tva, 2);               // I1 : HT dérivé = TTC - TVA -> écriture équilibrée par construction
+            if ($a_ht < 0) { $a_ht = $a_ttc; $a_tva = 0.0; }
             $seq['VT']++; $num = 'VT'.$seq['VT']; $nb_sales++;
             $aux = $i['client_id'] ? 'C'.(int)$i['client_id'] : '';
-            $lib = 'Facture '.$i['invoice_number'].($i['client'] ? ' - '.$i['client'] : '');
+            $lib = ($avoir ? 'Avoir ' : 'Facture ').$i['invoice_number'].($i['client'] ? ' - '.$i['client'] : '');
             $base = ['jcode'=>'VT','jlib'=>'Ventes','num'=>$num,'edate'=>$i['issued'],'pdate'=>$i['issued'],'piece'=>$i['invoice_number'],'lib'=>$lib];
-            $add($base + ['compte'=>'411000','compte_lib'=>'Clients','aux'=>$aux,'aux_lib'=>$i['client'] ?? '','debit'=>$ttc]);
-            $add($base + ['compte'=>'706000','compte_lib'=>'Prestations de services','credit'=>$ht]);
-            if ($tva > 0.001) $add($base + ['compte'=>'445710','compte_lib'=>'TVA collectée','credit'=>$tva]);
-            // Encaissement si payée dans l'exercice
-            if ($i['status'] === 'paid' && $i['paid'] && $i['paid'] >= $start && $i['paid'] <= $end) {
-                $seq['BQ']++; $bn = 'BQ'.$seq['BQ'];
-                $bb = ['jcode'=>'BQ','jlib'=>'Banque','num'=>$bn,'edate'=>$i['paid'],'pdate'=>$i['paid'],'piece'=>$i['invoice_number'],'lib'=>'Règlement '.$i['invoice_number']];
-                $add($bb + ['compte'=>'512000','compte_lib'=>'Banque','debit'=>$ttc]);
-                $add($bb + ['compte'=>'411000','compte_lib'=>'Clients','aux'=>$aux,'aux_lib'=>$i['client'] ?? '','credit'=>$ttc]);
-            }
+            // Sens normal pour une facture, inversé pour un avoir.
+            $add($base + ['compte'=>'411000','compte_lib'=>'Clients','aux'=>$aux,'aux_lib'=>$i['client'] ?? '', ($avoir?'credit':'debit')=>$a_ttc]);
+            $add($base + ['compte'=>'706000','compte_lib'=>'Prestations de services', ($avoir?'debit':'credit')=>$a_ht]);
+            if ($a_tva > 0.001) $add($base + ['compte'=>'445710','compte_lib'=>'TVA collectée', ($avoir?'debit':'credit')=>$a_tva]);
         }
-    } catch (Throwable $e) { error_log('[fec] ventes: '.$e->getMessage()); }
+    } catch (Throwable $e) { $partial = true; error_log('[fec] ventes: '.$e->getMessage()); }
+
+    // ── ENCAISSEMENTS clients (filtrés sur la date de RÈGLEMENT — B1) ──
+    try {
+        $st = $pdo->prepare(
+            "SELECT i.invoice_number, i.amount_ttc_cents, DATE(i.paid_at) paid, i.client_id, c.display_name client
+             FROM asso_invoices i LEFT JOIN asso_clients c ON c.id = i.client_id AND c.org_id = i.org_id
+             WHERE i.org_id = :o AND i.status = 'paid' AND i.paid_at IS NOT NULL
+               AND DATE(i.paid_at) BETWEEN :s AND :e
+             ORDER BY i.paid_at ASC, i.id ASC");
+        $st->execute([':o'=>$org_id, ':s'=>$start, ':e'=>$end]);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $i) {
+            $ttc = (int)$i['amount_ttc_cents']/100;
+            if (abs($ttc) < 0.005) continue;
+            $avoir = $ttc < 0; $a = abs($ttc);
+            $seq['BQ']++; $num = 'BQ'.$seq['BQ'];
+            $aux = $i['client_id'] ? 'C'.(int)$i['client_id'] : '';
+            $bb = ['jcode'=>'BQ','jlib'=>'Banque','num'=>$num,'edate'=>$i['paid'],'pdate'=>$i['paid'],'piece'=>$i['invoice_number'],'lib'=>'Règlement '.$i['invoice_number']];
+            $add($bb + ['compte'=>'512000','compte_lib'=>'Banque', ($avoir?'credit':'debit')=>$a]);
+            $add($bb + ['compte'=>'411000','compte_lib'=>'Clients','aux'=>$aux,'aux_lib'=>$i['client'] ?? '', ($avoir?'debit':'credit')=>$a]);
+        }
+    } catch (Throwable $e) { $partial = true; error_log('[fec] encaissements: '.$e->getMessage()); }
 
     // ── COTISATIONS encaissées ──
     try {
@@ -126,15 +147,16 @@ function fec_build(PDO $pdo, int $org_id, int $year): array {
              ORDER BY paid_at ASC, id ASC");
         $st->execute([':o'=>$org_id, ':s'=>$start, ':e'=>$end]);
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $p) {
-            $amt = (float)$p['amount']; if ($amt <= 0) continue;
+            $amt = (float)$p['amount']; if (abs($amt) < 0.005) continue;
+            $avoir = $amt < 0; $a = abs($amt);
             $seq['BQ']++; $num = 'BQ'.$seq['BQ']; $nb_cotis++;
             $piece = $p['reference'] ?: ('COT'.(int)$p['id']);
             $lib = 'Cotisation'.($p['payer_name'] ? ' - '.$p['payer_name'] : '');
             $bb = ['jcode'=>'BQ','jlib'=>'Banque','num'=>$num,'edate'=>$p['paid'],'pdate'=>$p['paid'],'piece'=>$piece,'lib'=>$lib];
-            $add($bb + ['compte'=>'512000','compte_lib'=>'Banque','debit'=>$amt]);
-            $add($bb + ['compte'=>'756000','compte_lib'=>'Cotisations','credit'=>$amt]);
+            $add($bb + ['compte'=>'512000','compte_lib'=>'Banque', ($avoir?'credit':'debit')=>$a]);
+            $add($bb + ['compte'=>'756000','compte_lib'=>'Cotisations', ($avoir?'debit':'credit')=>$a]);
         }
-    } catch (Throwable $e) { error_log('[fec] cotisations: '.$e->getMessage()); }
+    } catch (Throwable $e) { $partial = true; error_log('[fec] cotisations: '.$e->getMessage()); }
 
     // ── ACHATS fournisseurs (project_invoices validées) ──
     try {
@@ -145,22 +167,26 @@ function fec_build(PDO $pdo, int $org_id, int $year): array {
              ORDER BY pi.invoice_date ASC, pi.id ASC");
         $st->execute([':o'=>$org_id, ':s'=>$start, ':e'=>$end]);
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $b) {
-            $ttc = (float)$b['amount_ttc']; $ht = (float)($b['amount_ht'] ?: $b['amount_ttc']);
-            if ($ttc <= 0) continue;
-            $tva = max(0.0, round($ttc - $ht, 2));
+            $ttc = (float)$b['amount_ttc'];
+            if (abs($ttc) < 0.005) continue;
+            $ht = (float)($b['amount_ht'] ?: $b['amount_ttc']);
+            $avoir = $ttc < 0; $a_ttc = abs($ttc); $a_ht = abs($ht);
+            if ($a_ht > $a_ttc) $a_ht = $a_ttc;              // I3 : HT ne peut excéder TTC
+            $a_tva = round($a_ttc - $a_ht, 2);
             $seq['AC']++; $num = 'AC'.$seq['AC']; $nb_buy++;
-            $lib = 'Achat'.($b['supplier_name'] ? ' - '.$b['supplier_name'] : '');
+            $lib = ($avoir ? 'Avoir achat' : 'Achat').($b['supplier_name'] ? ' - '.$b['supplier_name'] : '');
             $base = ['jcode'=>'AC','jlib'=>'Achats','num'=>$num,'edate'=>$b['idate'],'pdate'=>$b['idate'],'piece'=>'FRN'.(int)$b['id'],'lib'=>$lib];
-            $add($base + ['compte'=>'606000','compte_lib'=>'Achats','debit'=>$ht]);
-            if ($tva > 0.001) $add($base + ['compte'=>'445660','compte_lib'=>'TVA déductible','debit'=>$tva]);
-            $add($base + ['compte'=>'401000','compte_lib'=>'Fournisseurs','aux'=>'F'.(int)$b['id'],'aux_lib'=>$b['supplier_name'] ?? '','credit'=>$ttc]);
+            $add($base + ['compte'=>'606000','compte_lib'=>'Achats', ($avoir?'credit':'debit')=>$a_ht]);
+            if ($a_tva > 0.001) $add($base + ['compte'=>'445660','compte_lib'=>'TVA déductible', ($avoir?'credit':'debit')=>$a_tva]);
+            $add($base + ['compte'=>'401000','compte_lib'=>'Fournisseurs','aux'=>'F'.(int)$b['id'],'aux_lib'=>$b['supplier_name'] ?? '', ($avoir?'debit':'credit')=>$a_ttc]);
         }
-    } catch (Throwable $e) { error_log('[fec] achats: '.$e->getMessage()); }
+    } catch (Throwable $e) { $partial = true; error_log('[fec] achats: '.$e->getMessage()); }
 
     return ['rows'=>$rows, 'stats'=>[
         'lines'=>count($rows), 'sales'=>$nb_sales, 'cotis'=>$nb_cotis, 'buys'=>$nb_buy,
         'debit'=>round($tot_debit,2), 'credit'=>round($tot_credit,2),
-        'balanced'=>abs($tot_debit - $tot_credit) < 0.01,
+        'partial'=>$partial,
+        'balanced'=>!$partial && abs($tot_debit - $tot_credit) < 0.01,
     ]];
 }
 }

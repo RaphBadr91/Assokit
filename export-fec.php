@@ -30,6 +30,11 @@ if (isset($_GET['download'])) {
         http_response_code(403); exit('Jeton invalide.');
     }
     $build = fec_build($pdo, $org_id, $year);
+    if (!empty($build['stats']['partial'])) {
+        http_response_code(409);
+        header('Content-Type: text/plain; charset=UTF-8');
+        exit("Export bloqué : une catégorie d'écritures n'a pas pu être lue (données incomplètes). Contactez le support pour éviter un FEC amputé.");
+    }
     $body = fec_render($build['rows']);
     $fname = fec_filename($pdo, $org_id, $year);
     header('Content-Type: text/plain; charset=UTF-8');
@@ -76,15 +81,18 @@ echo render_sidebar('export-fec');
         <div class="fec-kpi"><div class="fec-kpi-lbl">Total débit / crédit</div><div class="fec-kpi-val" style="font-size:15px;"><?= number_format($stats['debit'],2,',',' ') ?> € / <?= number_format($stats['credit'],2,',',' ') ?> €</div></div>
       </div>
 
-      <div class="fec-card <?= $stats['balanced'] ? 'fec-ok' : 'fec-warn' ?>">
-        <?php if ($stats['balanced']): ?>
+      <?php $partial = !empty($stats['partial']); ?>
+      <div class="fec-card <?= (!$partial && $stats['balanced']) ? 'fec-ok' : 'fec-warn' ?>">
+        <?php if ($partial): ?>
+          <?= ak_icon('alert-tri',16) ?> Une catégorie d'écritures n'a pas pu être lue (données incomplètes). Le téléchargement est bloqué pour ne pas produire un FEC amputé — contactez le support.
+        <?php elseif ($stats['balanced']): ?>
           <?= ak_icon('check-circle',16) ?> Écritures équilibrées (débit = crédit). Le fichier est prêt.
         <?php else: ?>
           <?= ak_icon('alert-tri',16) ?> Déséquilibre débit/crédit détecté — à faire vérifier par votre expert-comptable avant transmission.
         <?php endif; ?>
       </div>
 
-      <?php if ($stats['lines'] > 0): ?>
+      <?php if ($stats['lines'] > 0 && !$partial): ?>
         <a href="/export-fec?download=1&amp;year=<?= $year ?>&amp;t=<?= $csrf ?>" class="fec-btn"><?= ak_icon('download',15) ?> Télécharger le FEC <?= $year ?></a>
       <?php else: ?>
         <p class="fec-empty">Aucune écriture pour l'exercice <?= $year ?>.</p>

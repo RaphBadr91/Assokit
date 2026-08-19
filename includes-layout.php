@@ -1416,7 +1416,7 @@ function render_sidebar($active = 'accueil') {
       <?php // 💶 Finances : regroupe Facturation, Relances, Anomalies, Prévisions, Subventions ?>
       <?php if (can('manage_finances')):
           $is_admin_nav = (($user['role'] ?? '') === 'admin');
-          $fin_children = ['devis','factures','clients','stats','relances','anomalies','previsions','comptabilite','export-fec','subventions','financements'];
+          $fin_children = ['devis','factures','clients','stats','relances','anomalies','previsions','comptabilite','export-fec','facturx','subventions','financements'];
           $fin_open = in_array($active, $fin_children, true);
       ?>
       <div class="ak-collapse <?= $fin_open ? 'is-open' : '' ?>">
@@ -1451,6 +1451,10 @@ function render_sidebar($active = 'accueil') {
           <a href="/export-fec" class="sb-link <?= $active === 'export-fec' ? 'active' : '' ?>">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 15h6M9 12h2"/></svg>
             Export FEC
+          </a>
+          <a href="/facturx" class="sb-link <?= $active === 'facturx' ? 'active' : '' ?>">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 3v6c0 5-3.4 8.5-8 11-4.6-2.5-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg>
+            E-facture (Factur-X)
           </a>
           <?php if ($is_admin_nav): ?>
           <a href="/financements" class="sb-link <?= $active === 'financements' ? 'active' : '' ?>">
