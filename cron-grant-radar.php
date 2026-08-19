@@ -19,7 +19,9 @@ require_once __DIR__ . '/financements-engine.php';
 @require_once __DIR__ . '/notification-helpers.php';
 @require_once __DIR__ . '/resend-helper.php';
 
-$is_cli = (PHP_SAPI === 'cli');
+// CLI true si SAPI cli OU exécution hors contexte web (binaire CGI lancé en cron :
+// aucune requête HTTP -> REQUEST_METHOD absent).
+$is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
 $has_key = isset($_GET['key']) && defined('CRON_SECRET') && hash_equals(CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) { http_response_code(403); die('Forbidden'); }
 
