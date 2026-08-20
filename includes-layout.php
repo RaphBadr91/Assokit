@@ -1470,6 +1470,14 @@ function render_sidebar($active = 'accueil') {
       </div>
       <?php endif; ?>
 
+      <?php // Notes de frais : accessible à tous les membres (chacun gère les siennes) ?>
+      <?php if (!is_follower()): ?>
+      <a href="/notes-de-frais" class="sb-link <?= $active === 'notes-de-frais' ? 'active' : '' ?>">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg>
+        Notes de frais
+      </a>
+      <?php endif; ?>
+
       <?php // Communication : uniquement si capacité access_marketing ?>
       <?php if (can('access_marketing')): ?>
       <a href="/communication" class="sb-link <?= $active === 'communication' ? 'active' : '' ?>">
