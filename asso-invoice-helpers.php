@@ -264,6 +264,11 @@ function ak_asso_invoice_create(PDO $pdo, int $org_id, int $created_by_user_id, 
     $client_id = $client_data['id'] ?? null;
     if (empty($client_id)) {
         $client_id = ak_asso_find_or_create_client($pdo, $org_id, $client_data);
+    } else {
+        // Sécurité (BOLA cross-tenant) : un client fourni par id DOIT appartenir à l'organisation.
+        $chk = $pdo->prepare("SELECT id FROM asso_clients WHERE id = ? AND org_id = ? AND deleted_at IS NULL");
+        $chk->execute([(int)$client_id, $org_id]);
+        if (!$chk->fetchColumn()) throw new RuntimeException('Client introuvable pour cette organisation.');
     }
 
     // 2) Calculer les totaux
@@ -285,14 +290,11 @@ function ak_asso_invoice_create(PDO $pdo, int $org_id, int $created_by_user_id, 
     preg_match('/-(\d+)$/', $invoice_number, $m);
     $sequence = (int)($m[1] ?? 0);
 
-    // 4) UUID public
-    $public_uuid = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff),
-        mt_rand(0, 0xffff),
-        mt_rand(0, 0x0fff) | 0x4000,
-        mt_rand(0, 0x3fff) | 0x8000,
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
-    );
+    // 4) UUID public v4 via CSPRNG (mt_rand est prédictible -> lien public devinable).
+    $ub = random_bytes(16);
+    $ub[6] = chr((ord($ub[6]) & 0x0f) | 0x40);
+    $ub[8] = chr((ord($ub[8]) & 0x3f) | 0x80);
+    $public_uuid = vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($ub), 4));
 
     // 5) Snapshots
     $stmt = $pdo->prepare("SELECT * FROM organizations WHERE id = :id LIMIT 1");

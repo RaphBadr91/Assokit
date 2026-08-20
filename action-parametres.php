@@ -95,9 +95,10 @@ if ($action === 'update_organization') {
         }
         $finfo = new finfo(FILEINFO_MIME_TYPE);
         $mime = $finfo->file($_FILES['logo']['tmp_name']);
-        $allowed_mimes = ['image/png'=>'png', 'image/jpeg'=>'jpg', 'image/svg+xml'=>'svg'];
+        // SVG retiré : contenu actif (XSS stocké possible). PNG/JPG/GIF uniquement.
+        $allowed_mimes = ['image/png'=>'png', 'image/jpeg'=>'jpg', 'image/gif'=>'gif'];
         if (!isset($allowed_mimes[$mime])) {
-            header('Location: /parametres?tab=organisation&flash=' . urlencode('Format de logo non supporté (PNG/JPG/SVG uniquement).') . '&ft=error'); exit;
+            header('Location: /parametres?tab=organisation&flash=' . urlencode('Format de logo non supporté (PNG/JPG/GIF uniquement).') . '&ft=error'); exit;
         }
         $ext = $allowed_mimes[$mime];
         $dir = __DIR__ . '/uploads/logos';

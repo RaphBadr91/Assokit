@@ -78,7 +78,7 @@ try {
 // =============================================================
 // PARAMÈTRES VUE (semaine ou mois)
 // =============================================================
-$view = $_GET['view'] ?? 'week';
+$view = in_array($_GET['view'] ?? 'week', ['week','month'], true) ? $_GET['view'] : 'week'; // whitelist (anti-XSS réfléchi)
 $current_date = $_GET['date'] ?? date('Y-m-d');
 
 // Ancrer sur lundi de la semaine demandée

@@ -366,6 +366,7 @@ FORM.addEventListener('submit', async (e) => {
   try {
     const fd = new FormData(FORM);
     fd.append('tool', '<?= h($type) ?>');
+    fd.append('csrf_token', getCsrfToken());
     const r = await fetch('/mon-asso-ia-generate', { method: 'POST', body: fd });
     const data = await r.json();
     RES_LOAD.style.display = 'none';

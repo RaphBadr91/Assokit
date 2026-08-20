@@ -102,7 +102,7 @@ render_sidebar('super-admin');
   <?php if (empty($mairies)): ?>
     <div style="background:#fff;border:1px dashed #D4D4D8;border-radius:12px;padding:60px 24px;text-align:center;">
       <div style="font-size:48px;margin-bottom:12px;">🏛</div>
-      <h3 style="margin:0 0 6px;color:#0A0A0B;">Aucune mairie <?= $filter !== 'all' ? '('.$filter.')' : '' ?></h3>
+      <h3 style="margin:0 0 6px;color:#0A0A0B;">Aucune mairie <?= $filter !== 'all' ? '('.h($filter).')' : '' ?></h3>
       <p style="color:#71717A;margin:0 0 18px;">Crée la première mairie partenaire pour démarrer.</p>
       <a href="/super-admin-mairie-nouvelle" style="background:#059669;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;">+ Créer une mairie</a>
     </div>

@@ -50,6 +50,12 @@ function render_blog_markdown(string $md): string
         $md
     );
     
+    // 3bis. Neutraliser tout HTML brut restant (anti-XSS stocké) : après extraction
+    // des blocs de code/tableaux, on échappe '<' pour tuer toute balise (<script>,
+    // <img onerror>…). La syntaxe Markdown (#, *, _, [], (), >, |, `) n'utilise pas '<',
+    // et les balises légitimes sont générées APRÈS ce point.
+    $md = str_replace('<', '&lt;', $md);
+
     // 4. Headers (single-line, OK)
     $md = preg_replace('/^######\s+(.+)$/m', '<h6 class="bm-h6">$1</h6>', $md);
     $md = preg_replace('/^#####\s+(.+)$/m',  '<h5 class="bm-h5">$1</h5>', $md);
@@ -140,17 +146,24 @@ function render_blog_markdown(string $md): string
 
 function _bm_inline(string $text): string
 {
+    // Filtre de schéma d'URL (rejette javascript:/data:/vbscript:).
+    $safe_url = function(string $raw): string {
+        $raw = trim($raw);
+        if (preg_match('/^\s*(javascript|data|vbscript)\s*:/i', $raw)) return '#';
+        return $raw;
+    };
+
     // Images AVANT liens
-    $text = preg_replace_callback('/!\[([^\]]*)\]\(([^)]+)\)/', function($m) {
+    $text = preg_replace_callback('/!\[([^\]]*)\]\(([^)]+)\)/', function($m) use ($safe_url) {
         $alt = htmlspecialchars($m[1], ENT_QUOTES, 'UTF-8');
-        $src = htmlspecialchars($m[2], ENT_QUOTES, 'UTF-8');
+        $src = htmlspecialchars($safe_url($m[2]), ENT_QUOTES, 'UTF-8');
         return '<img src="' . $src . '" alt="' . $alt . '" class="bm-img" loading="lazy">';
     }, $text);
-    
+
     // Liens
-    $text = preg_replace_callback('/\[([^\]]+)\]\(([^)]+)\)/', function($m) {
-        $label = $m[1];
-        $url = htmlspecialchars($m[2], ENT_QUOTES, 'UTF-8');
+    $text = preg_replace_callback('/\[([^\]]+)\]\(([^)]+)\)/', function($m) use ($safe_url) {
+        $label = $m[1]; // déjà neutralisé (« < » échappé en amont)
+        $url = htmlspecialchars($safe_url($m[2]), ENT_QUOTES, 'UTF-8');
         $host = $_SERVER['HTTP_HOST'] ?? 'assokit.fr';
         $is_external = (preg_match('#^https?://#', $url) && strpos($url, $host) === false);
         $attr = $is_external ? ' target="_blank" rel="noopener"' : '';

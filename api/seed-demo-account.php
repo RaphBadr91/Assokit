@@ -26,16 +26,25 @@ const DEMO_CITY     = 'Paris';
 const DEMO_FIRST    = 'Camille';
 const DEMO_LAST     = 'Laurent';           // président·e / admin de la démo
 const DEMO_MEMBERS  = 120;
-const SEED_SECRET   = 'assokit-seed-8f3a91d6';   // clé pour l'accès navigateur de secours
 
-// ---- Garde d'accès -----------------------------------------------------------
+// ---- Garde d'accès : CLI, OU fondateur / super-admin connecté ----------------
+// (l'ancien secret en dur dans le code versionné a été retiré — accès web réservé
+//  aux comptes privilégiés authentifiés, comme seed-grants-catalog.php.)
 $is_cli = (PHP_SAPI === 'cli');
 if (!$is_cli) {
     header('Content-Type: text/plain; charset=utf-8');
-    if (($_GET['key'] ?? '') !== SEED_SECRET) {
-        http_response_code(403);
-        exit("403 — clé manquante ou invalide.\n");
+    if (!function_exists('require_login')) { http_response_code(403); exit("403\n"); }
+    require_login();
+    $u = current_user();
+    $priv = !empty($u['is_super_admin']) || !empty($u['is_founder']);
+    if (!$priv) {
+        try {
+            $st = $pdo->prepare("SELECT is_super_admin, is_founder FROM users WHERE id = ?");
+            $st->execute([(int)($u['id'] ?? 0)]);
+            if ($row = $st->fetch()) $priv = ((int)($row['is_super_admin'] ?? 0) === 1) || ((int)($row['is_founder'] ?? 0) === 1);
+        } catch (Throwable $e) {}
     }
+    if (!$priv) { http_response_code(403); exit("403 — réservé au fondateur.\n"); }
 }
 
 function say($m) { echo $m . "\n"; }

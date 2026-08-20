@@ -159,13 +159,14 @@ if (!empty($_FILES['logo']['name']) && $_FILES['logo']['error'] === UPLOAD_ERR_O
     $mime = finfo_file($finfo, $tmp);
     finfo_close($finfo);
 
+    // SVG retiré : contenu actif (XSS stocké possible). PNG/JPG/GIF uniquement.
     $allowed = [
         'image/png'     => 'png',
         'image/jpeg'    => 'jpg',
-        'image/svg+xml' => 'svg',
+        'image/gif'     => 'gif',
     ];
     if (!isset($allowed[$mime])) {
-        $_SESSION['flash_societe'] = ['type' => 'error', 'message' => 'Format de logo non supporté. Utilisez PNG, JPG ou SVG.'];
+        $_SESSION['flash_societe'] = ['type' => 'error', 'message' => 'Format de logo non supporté. Utilisez PNG, JPG ou GIF.'];
         header('Location: /fondateur-cockpit/societe');
         exit;
     }

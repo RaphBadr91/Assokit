@@ -157,7 +157,10 @@ if ($action === 'add') {
         if (!is_dir($uploads_dir)) mkdir($uploads_dir, 0755, true);
 
         $safe_name = preg_replace('/[^a-zA-Z0-9._\-]/', '_', pathinfo($f['name'], PATHINFO_FILENAME));
-        $stored_name = 'facture_' . substr($safe_name, 0, 40) . '_' . time() . '.' . $ext;
+        // Jeton aléatoire (CSPRNG) : rend l'URL directe non énumérable (mitigation
+        // de l'accès direct aux justificatifs — à compléter par un proxy authentifié).
+        $rand = bin2hex(random_bytes(16));
+        $stored_name = 'facture_' . substr($safe_name, 0, 40) . '_' . $rand . '.' . $ext;
         $stored_path = $uploads_dir . '/' . $stored_name;
 
         if (move_uploaded_file($f['tmp_name'], $stored_path)) {

@@ -33,6 +33,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// Anti-CSRF : cet endpoint déclenche des appels IA payants + écriture BDD.
+if (!check_csrf($_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'csrf']);
+    exit;
+}
+
 $tool = (string)($_POST['tool'] ?? '');
 $catalog = ak_ai_tools_catalog();
 if (!isset($catalog[$tool])) {
