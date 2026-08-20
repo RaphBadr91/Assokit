@@ -188,14 +188,17 @@ function facturx_cii_xml(array $data): string {
     if (!empty($inv['due_at'])) {
         $x .= '      <ram:SpecifiedTradePaymentTerms><ram:DueDateDateTime><udt:DateTimeString format="102">'.fx_date102($inv['due_at']).'</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>'."\n";
     }
+    // Totaux dérivés des lignes -> BR-CO-10/13/14/15 respectées par construction
+    // (grand total = base HT + total TVA ; insensible aux incohérences d'en-tête).
     $lineTotal = 0; foreach ($lines as $l) $lineTotal += (int)$l['amount_ht_cents'];
     $taxTotal = 0; foreach ($tax as $t) $taxTotal += $t['tax_cents'];
+    $grand = $lineTotal + $taxTotal;
     $x .= '      <ram:SpecifiedTradeSettlementHeaderMonetarySummation>'
         . '<ram:LineTotalAmount>'.fx_num($lineTotal).'</ram:LineTotalAmount>'
         . '<ram:TaxBasisTotalAmount>'.fx_num($lineTotal).'</ram:TaxBasisTotalAmount>'
         . '<ram:TaxTotalAmount currencyID="'.$cur.'">'.fx_num($taxTotal).'</ram:TaxTotalAmount>'
-        . '<ram:GrandTotalAmount>'.fx_num((int)$inv['amount_ttc_cents']).'</ram:GrandTotalAmount>'
-        . '<ram:DuePayableAmount>'.fx_num((int)$inv['amount_ttc_cents']).'</ram:DuePayableAmount>'
+        . '<ram:GrandTotalAmount>'.fx_num($grand).'</ram:GrandTotalAmount>'
+        . '<ram:DuePayableAmount>'.fx_num($grand).'</ram:DuePayableAmount>'
         . '</ram:SpecifiedTradeSettlementHeaderMonetarySummation>'."\n";
     $x .= '    </ram:ApplicableHeaderTradeSettlement>'."\n";
 
