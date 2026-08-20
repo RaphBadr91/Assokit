@@ -11,3 +11,13 @@
 
 # Pas de listing du dossier
 Options -Indexes
+
+# ============================================================
+# Fichiers de projet : accès direct HTTP INTERDIT.
+# Ils contiennent des justificatifs/factures confidentiels et sont
+# servis uniquement via /fichier-projet (login + contrôle d'org).
+# Le proxy PHP (readfile) et la génération PDF (mPDF, lecture disque)
+# ne sont PAS affectés.
+# ============================================================
+RewriteEngine On
+RewriteRule ^projet_ - [F,L]

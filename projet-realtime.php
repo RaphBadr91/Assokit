@@ -608,7 +608,7 @@ render_sidebar('projets');
             $can_delete_file = $is_admin || $is_referent || ((int)$f['uploaded_by'] === (int)$current['id']);
         ?>
         <div class="file-card" style="position:relative;">
-          <a href="/<?= h($f['filepath']) ?>" target="_blank" style="display:flex; align-items:center; gap:12px; flex:1; text-decoration:none; color:inherit;">
+          <a href="/fichier-projet?type=file&amp;id=<?= (int)$f['id'] ?>" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:12px; flex:1; text-decoration:none; color:inherit;">
             <div class="file-icon <?= $ic ?>">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
             </div>
@@ -897,7 +897,7 @@ render_sidebar('projets');
               <?php endif; ?>
               <?php if ($inv['file_path']): ?>
                 <span class="dot">·</span>
-                <a href="/<?= h($inv['file_path']) ?>" target="_blank" class="inv-file-link">
+                <a href="/fichier-projet?type=invoice&amp;id=<?= (int)$inv['id'] ?>" target="_blank" rel="noopener" class="inv-file-link">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                   PDF
                 </a>
