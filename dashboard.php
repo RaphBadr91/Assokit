@@ -1136,7 +1136,7 @@ render_sidebar('accueil');
   .dash-logo-preview {
     width: 122px; height: 96px; flex: none; border-radius: 12px;
     background: #fff; border: 1px solid var(--border, rgba(12,40,28,0.07));
-    display: grid; place-items: center; overflow: hidden; padding: 10px; box-sizing: border-box;
+    display: grid; place-items: center; overflow: hidden; padding: 17px; box-sizing: border-box;
     box-shadow: inset 0 1px 3px rgba(9,30,22,0.06);
   }
   /* width/height 100% + object-fit:contain => le logo tient PILE dans le cadre : ni coupé, ni débordant. */
