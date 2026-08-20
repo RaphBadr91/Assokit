@@ -113,8 +113,8 @@ $catalog = [
         'icon'  => ak_icon('chart', 18),
         'desc'  => 'Syntheses pour AG et financeurs',
         'items' => [
-            'rapport_activite'  => ['title' => '✨ Rapport d\'activite annuel', 'desc' => 'Depuis vos projets et evenements'],
-            'rapport_financier' => ['title' => '✨ Rapport financier simplifie', 'desc' => 'Depuis vos factures HT/TVA/TTC'],
+            'rapport_activite'  => ['title' => 'Rapport d\'activite annuel', 'desc' => 'Depuis vos projets et evenements'],
+            'rapport_financier' => ['title' => 'Rapport financier simplifie', 'desc' => 'Depuis vos factures HT/TVA/TTC'],
             'bilan_projet'      => ['title' => 'Bilan de projet', 'desc' => 'Synthese fin de projet pour financeur'],
         ],
     ],
@@ -139,7 +139,7 @@ render_sidebar('communication');
 
   <?php if ($flash): ?>
     <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom:18px;">
-      <span><?= $flash['type'] === 'success' ? '✅' : '⚠️' ?></span>
+      <span><?= $flash['type'] === 'success' ? ak_icon('check-circle',15) : ak_icon('alert-tri',15) ?></span>
       <div><?= h($flash['message']) ?></div>
     </div>
   <?php endif; ?>
@@ -158,11 +158,11 @@ render_sidebar('communication');
   </div>
 
   <div class="tabs">
-    <a href="/communication?tab=rediger" class="tab <?= $tab === 'rediger' ? 'active' : '' ?>">📝 Rédiger</a>
-    <a href="/communication?tab=diffuser" class="tab <?= $tab === 'diffuser' ? 'active' : '' ?>">📧 Diffuser<?php if ($nb_broadcasts > 0): ?> <span class="tab-badge"><?= $nb_broadcasts ?></span><?php endif; ?></a>
-    <a href="/communication?tab=evenements" class="tab <?= $tab === 'evenements' ? 'active' : '' ?>">🎪 Événements<?php if ($nb_events_upcoming > 0): ?> <span class="tab-badge"><?= $nb_events_upcoming ?></span><?php endif; ?></a>
-    <a href="/communication?tab=affiches" class="tab <?= $tab === 'affiches' ? 'active' : '' ?>">🖼️ Affiches <span class="tab-badge">V5</span></a>
-    <a href="/communication?tab=bibliotheque" class="tab <?= $tab === 'bibliotheque' ? 'active' : '' ?>">📚 Bibliothèque <?php if ($nb_templates > 0): ?><span class="tab-badge"><?= $nb_templates ?></span><?php endif; ?></a>
+    <a href="/communication?tab=rediger" class="tab <?= $tab === 'rediger' ? 'active' : '' ?>"><?= ak_icon('edit',15) ?> Rédiger</a>
+    <a href="/communication?tab=diffuser" class="tab <?= $tab === 'diffuser' ? 'active' : '' ?>"><?= ak_icon('send',15) ?> Diffuser<?php if ($nb_broadcasts > 0): ?> <span class="tab-badge"><?= $nb_broadcasts ?></span><?php endif; ?></a>
+    <a href="/communication?tab=evenements" class="tab <?= $tab === 'evenements' ? 'active' : '' ?>"><?= ak_icon('calendar',15) ?> Événements<?php if ($nb_events_upcoming > 0): ?> <span class="tab-badge"><?= $nb_events_upcoming ?></span><?php endif; ?></a>
+    <a href="/communication?tab=affiches" class="tab <?= $tab === 'affiches' ? 'active' : '' ?>"><?= ak_icon('image',15) ?> Affiches <span class="tab-badge">V5</span></a>
+    <a href="/communication?tab=bibliotheque" class="tab <?= $tab === 'bibliotheque' ? 'active' : '' ?>"><?= ak_icon('book',15) ?> Bibliothèque <?php if ($nb_templates > 0): ?><span class="tab-badge"><?= $nb_templates ?></span><?php endif; ?></a>
   </div>
 
   <?php if ($tab === 'rediger'): ?>
@@ -197,11 +197,11 @@ render_sidebar('communication');
         </div>
         <div class="comm-quick">
           <span class="lbl">Rapide&nbsp;:</span>
-          <button type="button" class="comm-qchip" data-fill="Convocation à l'assemblée générale ordinaire le [date] à [heure], [lieu], avec l'ordre du jour suivant : rapport moral, rapport financier, questions diverses.">🏛️ Convocation AG</button>
-          <button type="button" class="comm-qchip" data-fill="Appel à dons pour financer [projet]. Objectif : [montant]. Expliquer à quoi servira l'argent et rappeler la déduction fiscale de 66%.">💰 Appel à dons</button>
-          <button type="button" class="comm-qchip" data-fill="Newsletter du mois de [mois] : actualité phare, retour sur les événements passés, événements à venir et un appel à l'action.">📰 Newsletter</button>
-          <button type="button" class="comm-qchip" data-fill="Lettre de remerciement chaleureuse pour un donateur ayant donné [montant] le [date], avec mention du reçu fiscal.">🙏 Remerciement</button>
-          <button type="button" class="comm-qchip" data-fill="Message aux adhérents pour annoncer [information importante] et inviter à [action].">📢 Annonce adhérents</button>
+          <button type="button" class="comm-qchip" data-fill="Convocation à l'assemblée générale ordinaire le [date] à [heure], [lieu], avec l'ordre du jour suivant : rapport moral, rapport financier, questions diverses."><?= ak_icon('building',14) ?> Convocation AG</button>
+          <button type="button" class="comm-qchip" data-fill="Appel à dons pour financer [projet]. Objectif : [montant]. Expliquer à quoi servira l'argent et rappeler la déduction fiscale de 66%."><?= ak_icon('gift',14) ?> Appel à dons</button>
+          <button type="button" class="comm-qchip" data-fill="Newsletter du mois de [mois] : actualité phare, retour sur les événements passés, événements à venir et un appel à l'action."><?= ak_icon('mail',14) ?> Newsletter</button>
+          <button type="button" class="comm-qchip" data-fill="Lettre de remerciement chaleureuse pour un donateur ayant donné [montant] le [date], avec mention du reçu fiscal."><?= ak_icon('heart',14) ?> Remerciement</button>
+          <button type="button" class="comm-qchip" data-fill="Message aux adhérents pour annoncer [information importante] et inviter à [action]."><?= ak_icon('megaphone',14) ?> Annonce adhérents</button>
         </div>
       </form>
     </section>
@@ -213,7 +213,7 @@ render_sidebar('communication');
         $rc_sent = ($rc['status'] ?? '') === 'sent';
       ?>
         <a href="/communication?tab=bibliotheque" class="comm-recent">
-          <div class="comm-recent-t"><span class="comm-recent-i">✨</span><h4><?= h($rc['title']) ?></h4></div>
+          <div class="comm-recent-t"><span class="comm-recent-i"><?= ak_icon('sparkle',14) ?></span><h4><?= h($rc['title']) ?></h4></div>
           <p><span class="comm-recent-badge<?= $rc_sent ? '' : ' draft' ?>"><?= $rc_sent ? 'Envoyé' : 'Brouillon' ?></span> · <?= h(date('d/m/Y', strtotime($rc['created_at']))) ?></p>
         </a>
       <?php endforeach; ?>
@@ -245,7 +245,7 @@ render_sidebar('communication');
     <!-- ======= ONGLET DIFFUSER ======= -->
     <div class="main-head" style="margin-bottom: 18px;">
       <div>
-        <h2 style="font-size: 18px; font-weight: 500; margin: 0;">📧 Vos diffusions</h2>
+        <h2 style="font-size: 18px; font-weight: 500; margin: 0;"><?= ak_icon('send',18) ?> Vos diffusions</h2>
         <div class="page-sub">Envoyez des messages à vos adhérents par email</div>
       </div>
       <div>
@@ -271,7 +271,7 @@ render_sidebar('communication');
 
     <?php if (empty($broadcasts)): ?>
       <div class="empty-state" style="padding:48px 20px">
-        <div style="font-size:48px;opacity:.35;margin-bottom:10px">📧</div>
+        <div style="font-size:48px;opacity:.35;margin-bottom:10px"><?= ak_icon('send',44,'1.5') ?></div>
         <div style="font-size:16px;color:var(--ink);font-weight:500;margin-bottom:6px">Aucune diffusion pour l'instant</div>
         <div style="max-width:460px;margin:0 auto 18px;line-height:1.55; color:var(--ink-3);">
           Envoyez une newsletter, une annonce ou un appel à vos adhérents en quelques clics.
@@ -314,7 +314,7 @@ render_sidebar('communication');
     <!-- ======= ONGLET EVENEMENTS ======= -->
     <div class="main-head" style="margin-bottom: 18px;">
       <div>
-        <h2 style="font-size: 18px; font-weight: 500; margin: 0;">🎪 Vos événements</h2>
+        <h2 style="font-size: 18px; font-weight: 500; margin: 0;"><?= ak_icon('calendar',18) ?> Vos événements</h2>
         <div class="page-sub">Les événements que vous proposez à vos adhérents — avec inscription en ligne (RSVP)</div>
       </div>
       <div>
@@ -346,7 +346,7 @@ render_sidebar('communication');
 
     <?php if (empty($events)): ?>
       <div class="empty-state" style="padding:48px 20px">
-        <div style="font-size:48px;opacity:.35;margin-bottom:10px">🎪</div>
+        <div style="font-size:48px;opacity:.35;margin-bottom:10px"><?= ak_icon('calendar',44,'1.5') ?></div>
         <div style="font-size:16px;color:var(--ink);font-weight:500;margin-bottom:6px">Aucun événement pour l'instant</div>
         <div style="max-width:460px;margin:0 auto 18px;line-height:1.55; color:var(--ink-3);">
           Créez un événement avec un lien public partageable. Vos invités pourront confirmer leur venue (Oui / Non / Peut-être).
@@ -375,7 +375,7 @@ render_sidebar('communication');
             </div>
             <?php if ($e['location']): ?>
               <div style="font-size:12px; color:var(--ink-3); margin-bottom:10px;">
-                📍 <?= h($e['location']) ?>
+                <?= ak_icon('pin',13) ?> <?= h($e['location']) ?>
               </div>
             <?php endif; ?>
             <?php if ($e['rsvp_enabled']): ?>
@@ -394,18 +394,18 @@ render_sidebar('communication');
 
     <!-- ======= ONGLET AFFICHES (V5) ======= -->
     <div class="comm-coming">
-      <div class="comm-coming-icon">🖼️</div>
+      <div class="comm-coming-icon"><?= ak_icon('image',44,'1.5') ?></div>
       <h2 class="comm-coming-title">Génération d'affiches — Bientôt (V5)</h2>
       <p class="comm-coming-sub">Créez des visuels professionnels pour vos événements en quelques secondes.</p>
     </div>
     <div class="comm-grid">
       <div class="comm-preview">
-        <div class="comm-preview-icon">🎨</div>
+        <div class="comm-preview-icon"><?= ak_icon('palette',22) ?></div>
         <h3 class="comm-preview-title">Templates pré-conçus</h3>
         <p class="comm-preview-desc">Banque de modèles par type d'événement : concert, conférence, AG, vernissage, atelier...</p>
       </div>
       <div class="comm-preview">
-        <div class="comm-preview-icon">✨</div>
+        <div class="comm-preview-icon"><?= ak_icon('sparkle',22) ?></div>
         <h3 class="comm-preview-title">IA générative</h3>
         <p class="comm-preview-desc">Génération d'images d'illustration par IA à partir d'un prompt descriptif de votre événement.</p>
       </div>
@@ -415,7 +415,7 @@ render_sidebar('communication');
         <p class="comm-preview-desc">Export PDF A4/A3 pour affichage, PNG carré pour réseaux sociaux, story verticale Instagram.</p>
       </div>
       <div class="comm-preview">
-        <div class="comm-preview-icon">🔗</div>
+        <div class="comm-preview-icon"><?= ak_icon('link',22) ?></div>
         <h3 class="comm-preview-title">QR Code intégré</h3>
         <p class="comm-preview-desc">QR code automatique vers la page RSVP publique de votre événement pour inscription rapide.</p>
       </div>
@@ -449,7 +449,7 @@ render_sidebar('communication');
         <?php foreach ($tpls as $t): ?>
           <div class="comm-lib-row">
             <div class="comm-lib-main">
-              <div class="comm-lib-title"><?php if ($t['is_favorite']): ?>⭐ <?php endif; ?><?= h($t['title']) ?></div>
+              <div class="comm-lib-title"><?php if ($t['is_favorite']): ?><?= ak_icon('star-fill',13) ?> <?php endif; ?><?= h($t['title']) ?></div>
               <div class="comm-lib-meta">
                 <span class="comm-lib-cat"><?= h($t['category']) ?></span>
                 par <?= h(trim(($t['first_name'] ?? '') . ' ' . ($t['last_name'] ?? ''))) ?>
@@ -585,6 +585,14 @@ render_sidebar('communication');
 .comm-lib-row:hover{transform:translateY(-2px);box-shadow:var(--shadow-pop)}
 .comm-lib-title{font-weight:700}
 .comm-lib-cat{background:var(--ai-light,rgba(99,102,241,.1))!important;color:var(--ai)!important;border-radius:999px!important;font-weight:700}
+/* Alignement des icônes maison (onglets, chips, en-têtes, listes) */
+.tab{display:inline-flex;align-items:center;gap:6px}
+.comm-qchip{display:inline-flex;align-items:center;gap:6px}
+.comm-recent-i svg{vertical-align:-2px}
+.comm-sec-h2 svg,.comm-lib-title svg{vertical-align:-2px;margin-right:2px}
+h2 svg{vertical-align:-3px;margin-right:4px}
+.comm-coming-icon,.comm-preview-icon{color:#94A3B8}
+.comm-preview-icon{display:inline-flex}
 </style>
 
 <script>
