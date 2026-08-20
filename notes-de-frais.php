@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($spent && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $spent)) $spent = null;
             $desc = mb_substr(trim((string)($_POST['description'] ?? '')),0,255);
             if ($mode === 'mileage') {
-                $km = max(0, (int)($_POST['km'] ?? 0));
+                $km = max(0, min(100000, (int)($_POST['km'] ?? 0)));
                 $cv = max(1, min(50, (int)($_POST['vehicle_cv'] ?? 5)));
                 $amt = nf_ik_amount_cents($cv, $km);
                 $st = $pdo->prepare("INSERT INTO expense_report_lines (report_id,org_id,spent_at,mode,category,description,amount_ttc_cents,vat_cents,km,vehicle_cv) VALUES (?,?,?,?,?,?,?,0,?,?)");
@@ -88,12 +88,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($act === 'decide' && $is_manager) {
             $st = $pdo->prepare("SELECT status FROM expense_reports WHERE id=? AND org_id=?"); $st->execute([$rid,$org_id]);
-            if ($st->fetchColumn() !== false) {
+            $cur = $st->fetchColumn();
+            if ($cur !== false) {
                 $dec = $_POST['decision'] ?? '';
-                $map = ['approve'=>'approved','reject'=>'rejected','reimburse'=>'reimbursed'];
-                if (isset($map[$dec])) {
+                // Transitions autorisées uniquement (pas de saut d'état) :
+                $allowed = [
+                    'approve'   => ['from'=>['submitted'],            'to'=>'approved'],
+                    'reject'    => ['from'=>['submitted'],            'to'=>'rejected'],
+                    'reimburse' => ['from'=>['approved'],             'to'=>'reimbursed'],
+                ];
+                if (isset($allowed[$dec]) && in_array($cur, $allowed[$dec]['from'], true)) {
                     $pdo->prepare("UPDATE expense_reports SET status=?, decided_by=?, decided_at=NOW() WHERE id=? AND org_id=?")
-                        ->execute([$map[$dec],$uid,$rid,$org_id]);
+                        ->execute([$allowed[$dec]['to'],$uid,$rid,$org_id]);
                 }
             }
             header('Location: /notes-de-frais?id='.$rid); exit;
