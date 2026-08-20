@@ -45,6 +45,22 @@ echo render_sidebar('facturx');
       <p>À partir de 2026, les entreprises devront <strong>recevoir</strong> puis <strong>émettre</strong> des factures électroniques via une <strong>Plateforme Agréée (PDP)</strong>, au format Factur-X (PDF + XML) ou équivalent. Cette page produit déjà le <strong>XML structuré</strong> conforme EN 16931 : c'est le cœur technique. Restent deux étapes : l'<em>intégration PDF/A-3</em> et le <em>raccordement à une PDP</em> (choix stratégique en cours).</p>
     </div>
 
+    <?php $rd_org = facturx_org_readiness($pdo, $org_id); ?>
+    <div class="fx-ready">
+      <div class="fx-ready-h">
+        <span><?= ak_icon('shield',15) ?> Préparation e-facture 2026</span>
+        <span class="fx-ready-score <?= $rd_org['score']>=100?'ok':($rd_org['score']>=60?'mid':'low') ?>"><?= $rd_org['score'] ?>%</span>
+      </div>
+      <ul class="fx-ready-list">
+        <?php foreach ($rd_org['items'] as $it): ?>
+          <li class="<?= $it['ok']?'ok':'ko' ?>">
+            <?= $it['ok'] ? ak_icon('check-circle',15,'2.2') : ak_icon('alert-tri',15,'2') ?>
+            <span><?= h($it['label']) ?><?php if (!$it['ok']): ?> <em>— <?= h($it['hint']) ?></em><?php endif; ?></span>
+          </li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+
     <form method="GET" action="/facturx" class="fx-year">
       <label>Exercice
         <select name="year" onchange="this.form.submit()">
@@ -98,6 +114,16 @@ echo render_sidebar('facturx');
 .fx-info-h { font-weight:750; color:#3730A3; font-size:13.5px; display:flex; align-items:center; gap:6px; margin-bottom:6px; }
 .fx-info p { margin:0; font-size:13px; color:#3730A3; line-height:1.55; }
 .fx-info svg { flex:none; }
+.fx-ready { background:#fff; border:1px solid #E5E7EB; border-radius:12px; padding:14px 18px; margin-bottom:18px; }
+.fx-ready-h { display:flex; justify-content:space-between; align-items:center; font-weight:750; color:#0F172A; font-size:14px; margin-bottom:10px; }
+.fx-ready-h > span:first-child { display:inline-flex; align-items:center; gap:7px; }
+.fx-ready-score { font-size:13px; font-weight:800; padding:2px 10px; border-radius:999px; }
+.fx-ready-score.ok { background:#D1FAE5; color:#065F46; } .fx-ready-score.mid { background:#FEF3C7; color:#92400E; } .fx-ready-score.low { background:#FEE2E2; color:#991B1B; }
+.fx-ready-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:7px; }
+.fx-ready-list li { display:flex; align-items:center; gap:8px; font-size:13px; color:#334155; }
+.fx-ready-list li.ok { color:#065F46; } .fx-ready-list li.ko { color:#92400E; }
+.fx-ready-list li svg { flex:none; }
+.fx-ready-list em { color:#94A3B8; font-style:normal; }
 .fx-year { margin-bottom:14px; font-size:14px; color:#334155; }
 .fx-year select { margin-left:6px; padding:7px 10px; border:1px solid #E2E8F0; border-radius:9px; font-family:inherit; font-size:14px; }
 .fx-tablewrap { overflow-x:auto; background:#fff; border:1px solid #E5E7EB; border-radius:12px; }

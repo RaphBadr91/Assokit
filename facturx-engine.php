@@ -208,6 +208,40 @@ function facturx_cii_xml(array $data): string {
 }
 }
 
+if (!function_exists('facturx_org_readiness')) {
+/**
+ * Diagnostic de préparation e-facture au niveau de la STRUCTURE (checklist).
+ * @return array{items:array<array{ok:bool,label:string,hint:string}>, score:int}
+ */
+function facturx_org_readiness(PDO $pdo, int $org_id): array {
+    $items = [];
+    // Identité vendeur
+    $o = null;
+    try {
+        $st = $pdo->prepare("SELECT name, siret, siren, vat_number, billing_address_street, billing_address_zip, billing_address_city FROM organizations WHERE id = ?");
+        $st->execute([$org_id]); $o = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) { $o = []; }
+    $hasId = !empty($o['siret']) || !empty($o['siren']);
+    $items[] = ['ok'=>$hasId, 'label'=>'SIRET / SIREN de la structure', 'hint'=>'Paramètres → informations légales'];
+    $hasAddr = !empty($o['billing_address_street']) && !empty($o['billing_address_zip']) && !empty($o['billing_address_city']);
+    $items[] = ['ok'=>$hasAddr, 'label'=>'Adresse postale complète', 'hint'=>'Rue + code postal + ville'];
+
+    // Complétude des clients (adresse)
+    $tot = 0; $complete = 0;
+    try {
+        $st = $pdo->prepare("SELECT COUNT(*) t, SUM(address_zip IS NOT NULL AND address_zip <> '' AND address_city IS NOT NULL AND address_city <> '') c
+                             FROM asso_clients WHERE org_id = ? AND deleted_at IS NULL");
+        $st->execute([$org_id]);
+        if ($r = $st->fetch(PDO::FETCH_ASSOC)) { $tot = (int)$r['t']; $complete = (int)$r['c']; }
+    } catch (Throwable $e) {}
+    $clientsOk = ($tot === 0) || ($complete === $tot);
+    $items[] = ['ok'=>$clientsOk, 'label'=>'Adresses clients renseignées'.($tot? " ($complete/$tot)":''), 'hint'=>'Code postal + ville sur chaque fiche client'];
+
+    $ok = count(array_filter($items, fn($i)=>$i['ok']));
+    return ['items'=>$items, 'score'=>(int)round($ok / max(1,count($items)) * 100)];
+}
+}
+
 if (!function_exists('facturx_readiness')) {
 /**
  * Diagnostic de complétude des données pour une facture Factur-X conforme.
