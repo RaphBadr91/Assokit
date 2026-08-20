@@ -1134,13 +1134,14 @@ render_sidebar('accueil');
   }
   .dash-logo::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg,#34D399,#6366F1); }
   .dash-logo-preview {
-    width: 122px; height: 96px; flex: none; border-radius: 12px;
+    width: 120px; height: 106px; flex: none; border-radius: 14px;
     background: #fff; border: 1px solid var(--border, rgba(12,40,28,0.07));
-    display: grid; place-items: center; overflow: hidden; padding: 17px; box-sizing: border-box;
+    display: grid; place-items: center; overflow: hidden; padding: 0; box-sizing: border-box;
     box-shadow: inset 0 1px 3px rgba(9,30,22,0.06);
   }
-  /* width/height 100% + object-fit:contain => le logo tient PILE dans le cadre : ni coupé, ni débordant. */
-  .dash-logo-preview img { width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; }
+  /* L'image n'occupe que ~72% du cadre => marge garantie sur TOUS les côtés,
+     et object-fit:contain garde le logo entier (ni coupé, ni déformé). */
+  .dash-logo-preview img { width: 72%; height: 72%; object-fit: contain; object-position: center; display: block; }
   .dash-logo-empty { color: var(--ink-4, #A6B0AA); display: grid; place-items: center; }
   .dash-logo-body { flex: 1; min-width: 0; }
   .dash-logo-title { font-size: 15px; font-weight: 750; letter-spacing: -0.01em; color: var(--ink, #0B1A13); }
