@@ -66,15 +66,10 @@ render_public_head([
             'operatingSystem' => 'Web',
             'applicationCategory' => 'BusinessApplication',
             'description' => 'Logiciel tout-en-un pour les associations loi 1901 et les TPE : facturation, trésorerie, communication IA, adhérents, suivi de projets.',
-            'offers' => [
-                '@type' => 'Offer',
-                'price' => '29.99',
-                'priceCurrency' => 'EUR',
-                'availability' => 'https://schema.org/InStock',
-            ],
-            // NB : pas d'aggregateRating ici — la page d'accueil n'affiche pas d'avis,
-            // un rating structuré non adosse a des avis visibles est non conforme (Google).
-            // La note structuree vit uniquement sur /avis ou les temoignages sont affiches.
+            // 'offers' RETIRÉ : avec 'offers', Google classe la page en « extrait de
+            // produit » et réclame 'review'/'aggregateRating' (Search Console). Sans
+            // avis notés réels affichés, fabriquer un rating serait non conforme.
+            // Le prix reste en contenu réel sur /tarifs. Pas d'aggregateRating ici.
         ],
         $faq_schema,
     ],

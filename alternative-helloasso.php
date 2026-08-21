@@ -27,7 +27,7 @@ $soft_schema = [
     '@context' => 'https://schema.org', '@type' => 'SoftwareApplication',
     'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android',
     'description' => "Logiciel de gestion complet pour associations loi 1901 : adhérents, cotisations, comptabilité, projets et communication. Complémentaire d'une plateforme de collecte comme HelloAsso.",
-    'offers' => ['@type' => 'AggregateOffer', 'lowPrice' => '29.99', 'highPrice' => '49.99', 'priceCurrency' => 'EUR', 'offerCount' => '3'],
+    // 'offers' retiré (évite l'exigence Google review/aggregateRating sans avis notés réels) 
     'inLanguage' => 'fr-FR',
 ];
 

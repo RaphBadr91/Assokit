@@ -294,26 +294,13 @@ function ak_seo_render_software_jsonld(): void {
         'applicationCategory' => 'BusinessApplication',
         'operatingSystem' => 'Web',
         'inLanguage' => 'fr',
-        'offers' => [
-            [
-                '@type' => 'Offer',
-                'name' => 'Plan Démarrage',
-                'price' => '0',
-                'priceCurrency' => 'EUR',
-                'description' => 'Gratuit à vie pour commencer',
-            ],
-            [
-                '@type' => 'Offer',
-                'name' => 'Plan Assokit',
-                'price' => '49.99',
-                'priceCurrency' => 'EUR',
-                'description' => 'Tout inclus + sous-domaine, paiement mensuel',
-            ],
-        ],
-        // aggregateRating retire : pas d'avis reels affiches sur la page.
-        // Un AggregateRating fabrique est contraire aux consignes Google
-        // (risque d'action manuelle « rich results spammy »). A reintroduire
-        // uniquement quand de vrais avis verifiables seront affiches.
+        // 'offers' RETIRÉ volontairement : un SoftwareApplication avec 'offers'
+        // est traité par Google comme « extrait de produit » et réclame alors
+        // 'review'/'aggregateRating'. Comme nous n'affichons pas d'avis notés
+        // réels (fabriquer un rating = non conforme, risque d'action manuelle),
+        // on n'expose pas d'offers en JSON-LD. Le prix reste en contenu réel
+        // sur /tarifs. À réintroduire (offers + aggregateRating) uniquement
+        // quand de vrais avis notés et vérifiables seront affichés sur la page.
     ];
     echo "\n" . '<script type="application/ld+json">' . "\n";
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);

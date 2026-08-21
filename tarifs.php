@@ -19,22 +19,17 @@ $breadcrumb = build_breadcrumb_jsonld([
 // Schema Product/Offer : les prix des formules peuvent apparaître dans Google
 $product_schema = [
     '@context'    => 'https://schema.org',
-    '@type'       => 'Product',
+    '@type'       => 'SoftwareApplication',
     'name'        => 'Assokit — Logiciel de gestion association & TPE',
     'description' => "Logiciel tout-en-un pour associations loi 1901 et TPE : adhérents, cotisations, facturation, devis, comptabilité analytique, projets et IA.",
-    'brand'       => ['@type' => 'Brand', 'name' => 'Assokit'],
-    'offers'      => [
-        '@type'         => 'AggregateOffer',
-        'priceCurrency' => 'EUR',
-        'lowPrice'      => '29.99',
-        'highPrice'     => '149.00',
-        'offerCount'    => '3',
-        'offers'        => [
-            ['@type' => 'Offer', 'name' => 'Essentiel',  'price' => '29.99',  'priceCurrency' => 'EUR', 'url' => 'https://assokit.fr/tarifs#offre-essentiel',  'availability' => 'https://schema.org/InStock'],
-            ['@type' => 'Offer', 'name' => 'Pro',        'price' => '49.99',  'priceCurrency' => 'EUR', 'url' => 'https://assokit.fr/tarifs#offre-pro',        'availability' => 'https://schema.org/InStock'],
-            ['@type' => 'Offer', 'name' => 'Sur-mesure', 'price' => '149.00', 'priceCurrency' => 'EUR', 'url' => 'https://assokit.fr/tarifs#offre-sur-mesure', 'availability' => 'https://schema.org/InStock'],
-        ],
-    ],
+    'applicationCategory' => 'BusinessApplication',
+    'operatingSystem' => 'Web, iOS, Android',
+    'inLanguage'  => 'fr-FR',
+    // 'offers' RETIRÉ : un Product avec 'offers' est classé « extrait de produit »
+    // par Google et réclame alors review/aggregateRating. Sans avis notés réels
+    // (fabriquer = non conforme), on n'expose pas d'offers. Les prix restent
+    // affichés en contenu réel sur la page. À rétablir avec un aggregateRating
+    // réel dès que de vraies notes clients seront collectées.
 ];
 
 // FAQPage : reprend mot pour mot les questions visibles plus bas (éligible aux rich results Google)

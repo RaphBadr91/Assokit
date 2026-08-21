@@ -27,7 +27,7 @@ $soft_schema = [
     '@context' => 'https://schema.org', '@type' => 'SoftwareApplication',
     'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android',
     'description' => "Logiciel de gestion et de collecte des cotisations pour association loi 1901 : paiement en ligne, relances automatiques, reçus, suivi en temps réel.",
-    'offers' => ['@type' => 'AggregateOffer', 'lowPrice' => '29.99', 'highPrice' => '49.99', 'priceCurrency' => 'EUR', 'offerCount' => '3'], 'inLanguage' => 'fr-FR',
+    // 'offers' retiré (évite l'exigence Google review/aggregateRating sans avis notés réels)  'inLanguage' => 'fr-FR',
 ];
 
 render_public_head([

@@ -66,12 +66,12 @@ $review_schema = [
     'applicationCategory' => 'BusinessApplication',
     'operatingSystem' => 'Web, iOS, Android',
     'description' => "Logiciel tout-en-un pour associations loi 1901 et TPE : adhérents, cotisations, facturation, comptabilité analytique, suivi de projets, communication et IA.",
-    'offers'      => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'EUR'],
-    'review' => array_map(fn($r) => [
-        '@type'         => 'Review',
-        'author'        => ['@type' => 'Person', 'name' => $r['name'] . ' — ' . $r['org']],
-        'reviewBody'    => $r['quote'],
-    ], $reviews),
+    // 'offers' + 'review' structurés RETIRÉS : avec 'offers', Google classe la page
+    // en « extrait de produit » et réclame review/aggregateRating notés ; et un
+    // 'Review' sans 'reviewRating' est incomplet pour Google. Sans notes réellement
+    // collectées, on ne fabrique rien : les témoignages restent en contenu visible
+    // (honnête et conforme). À rétablir (offers + review avec reviewRating +
+    // aggregateRating) dès que de vraies notes seront collectées auprès des clients.
 ];
 
 render_public_head([

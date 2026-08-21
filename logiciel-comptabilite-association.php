@@ -26,7 +26,7 @@ $soft_schema = [
     '@context' => 'https://schema.org', '@type' => 'SoftwareApplication',
     'name' => 'Assokit', 'applicationCategory' => 'FinanceApplication', 'operatingSystem' => 'Web, iOS, Android',
     'description' => "Logiciel de comptabilité pour association loi 1901 : facturation, cotisations, comptabilité analytique par projet, exports pour l'expert-comptable.",
-    'offers' => ['@type' => 'AggregateOffer', 'lowPrice' => '29.99', 'highPrice' => '49.99', 'priceCurrency' => 'EUR', 'offerCount' => '3'], 'inLanguage' => 'fr-FR',
+    // 'offers' retiré (évite l'exigence Google review/aggregateRating sans avis notés réels)  'inLanguage' => 'fr-FR',
 ];
 
 render_public_head([
