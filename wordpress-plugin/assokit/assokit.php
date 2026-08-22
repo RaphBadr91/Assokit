@@ -2,19 +2,22 @@
 /**
  * Plugin Name: Assokit
  * Plugin URI:  https://assokit.fr
- * Description: Intègre Assokit à votre site WordPress d'association : affichez vos événements et projets publics, et un bouton vers l'espace adhérent. (v1 — l'adhésion/don en ligne arrivera avec le paiement Assokit.)
- * Version:     1.0.0
+ * Description: Intègre Assokit à votre site WordPress d'association : affichez l'espace projets (lecture seule) et vos événements/projets publics, avec un bouton de connexion individuel vers Assokit.
+ * Version:     1.1.0
  * Author:      Assokit
  * Author URI:  https://assokit.fr
  * License:     GPL-2.0-or-later
  * Text Domain: assokit
  * ------------------------------------------------------------------
  * Shortcodes :
+ *   [assokit_projets token="…" hauteur="1400"]      → espace projets (lecture seule)
  *   [assokit_evenement token="…" hauteur="1000"]   → événement public
  *   [assokit_projet token="…" hauteur="1200"]       → projet public
- *   [assokit_espace texte="Espace adhérent"]        → bouton connexion
+ *   [assokit_espace texte="Espace Assokit"]         → bouton connexion (compte individuel)
  *   [assokit_bouton url="/tarifs" texte="Découvrir Assokit"]
- * Réglages : Réglages → Assokit (URL de base, défaut https://assokit.fr).
+ * Réglages : Réglages → Assokit (URL de base + jeton « Espace projets »).
+ * Sécurité : aucune connexion automatique / usurpation d'identité. Le widget
+ * projets est en lecture seule ; chaque collaborateur se connecte à son compte.
  * ------------------------------------------------------------------
  */
 
@@ -67,6 +70,15 @@ function assokit_sc_projet($atts) {
 }
 add_shortcode('assokit_projet', 'assokit_sc_projet');
 
+/** [assokit_projets token="…" hauteur="1400"] → espace projets (lecture seule). */
+function assokit_sc_projets($atts) {
+    $a = shortcode_atts(['token' => '', 'hauteur' => 1400], $atts, 'assokit_projets');
+    $tok = assokit_clean_token($a['token']);
+    if (!$tok) return '<em>Assokit : jeton d\'espace invalide.</em>';
+    return assokit_iframe('/espace-public/' . $tok, $a['hauteur']);
+}
+add_shortcode('assokit_projets', 'assokit_sc_projets');
+
 /** [assokit_espace texte="Espace adhérent"] → bouton connexion. */
 function assokit_sc_espace($atts) {
     $a = shortcode_atts(['texte' => 'Espace adhérent'], $atts, 'assokit_espace');
@@ -96,30 +108,10 @@ add_action('admin_menu', function () {
 });
 add_action('admin_init', function () {
     register_setting('assokit', 'assokit_base_url', ['sanitize_callback' => 'esc_url_raw']);
-    register_setting('assokit', 'assokit_sso_key', ['sanitize_callback' => function ($v) {
+    register_setting('assokit', 'assokit_espace_token', ['sanitize_callback' => function ($v) {
         $v = trim((string) $v);
-        return preg_match('/^[a-f0-9]{64}$/i', $v) ? strtolower($v) : '';
+        return preg_match('/^[a-f0-9]{32,64}$/i', $v) ? strtolower($v) : '';
     }]);
-});
-
-/** Bouton "Ouvrir Assokit" : échange la clé SSO contre un jeton, puis redirige. */
-add_action('admin_post_assokit_sso_open', function () {
-    if (!current_user_can('manage_options')) wp_die('Non autorisé.');
-    check_admin_referer('assokit_sso_open');
-    $key = (string) get_option('assokit_sso_key', '');
-    if (!preg_match('/^[a-f0-9]{64}$/i', $key)) {
-        wp_redirect(admin_url('options-general.php?page=assokit&sso=nokey')); exit;
-    }
-    $resp = wp_remote_post(assokit_base_url() . '/api/sso-init.php', [
-        'timeout' => 15,
-        'headers' => ['Content-Type' => 'application/json'],
-        'body'    => wp_json_encode(['key' => $key]),
-    ]);
-    if (is_wp_error($resp)) { wp_redirect(admin_url('options-general.php?page=assokit&sso=neterr')); exit; }
-    $data = json_decode(wp_remote_retrieve_body($resp), true);
-    if (empty($data['ok']) || empty($data['url'])) { wp_redirect(admin_url('options-general.php?page=assokit&sso=fail')); exit; }
-    // Redirige le navigateur de l'admin vers Assokit (déjà connecté).
-    wp_redirect($data['url']); exit;
 });
 function assokit_settings_page() {
     if (!current_user_can('manage_options')) return;
@@ -139,35 +131,33 @@ function assokit_settings_page() {
             </td>
           </tr>
           <tr>
-            <th scope="row"><label for="assokit_sso_key">Clé SSO</label></th>
+            <th scope="row"><label for="assokit_espace_token">Jeton « Espace projets »</label></th>
             <td>
-              <input type="password" id="assokit_sso_key" name="assokit_sso_key" class="regular-text" autocomplete="off"
-                     value="<?php echo esc_attr(get_option('assokit_sso_key', '')); ?>" placeholder="Clé générée dans Assokit">
-              <p class="description">Dans Assokit : Clé SSO WordPress (/mon-asso-sso) → générez puis collez ici.</p>
+              <input type="text" id="assokit_espace_token" name="assokit_espace_token" class="regular-text" autocomplete="off"
+                     value="<?php echo esc_attr(get_option('assokit_espace_token', '')); ?>" placeholder="Jeton généré dans Assokit">
+              <p class="description">Dans Assokit : Admin → Intégration WordPress → « Activer le widget », puis copiez le jeton du shortcode <code>[assokit_projets]</code>.</p>
             </td>
           </tr>
         </table>
         <?php submit_button(); ?>
       </form>
 
-      <h2>Connexion directe</h2>
-      <?php $sso = isset($_GET['sso']) ? sanitize_key($_GET['sso']) : ''; ?>
-      <?php if ($sso === 'nokey'): ?><div class="notice notice-warning"><p>Ajoutez d'abord votre clé SSO ci-dessus.</p></div>
-      <?php elseif ($sso === 'neterr'): ?><div class="notice notice-error"><p>Connexion à Assokit impossible (réseau).</p></div>
-      <?php elseif ($sso === 'fail'): ?><div class="notice notice-error"><p>Clé SSO invalide ou révoquée.</p></div><?php endif; ?>
-      <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-        <input type="hidden" name="action" value="assokit_sso_open">
-        <?php wp_nonce_field('assokit_sso_open'); ?>
-        <button type="submit" class="button button-primary button-hero">Ouvrir Assokit (connecté) →</button>
-      </form>
+      <?php $et = assokit_clean_token(get_option('assokit_espace_token', '')); ?>
+      <?php if ($et): ?>
+      <h2>Aperçu de l'espace projets</h2>
+      <?php echo assokit_iframe('/espace-public/' . $et, 900); ?>
+      <p class="description">Pour l'afficher sur une page publique, insérez le shortcode <code>[assokit_projets token="<?php echo esc_html($et); ?>"]</code>.</p>
+      <?php endif; ?>
+
       <h2>Shortcodes</h2>
       <ul style="list-style:disc;margin-left:20px;">
+        <li><code>[assokit_projets token="LE_JETON"]</code> — <strong>espace projets (lecture seule)</strong> pour vos collaborateurs</li>
+        <li><code>[assokit_espace texte="Espace Assokit"]</code> — bouton connexion (chacun sur son propre compte)</li>
         <li><code>[assokit_evenement token="LE_JETON"]</code> — affiche un événement public</li>
         <li><code>[assokit_projet token="LE_JETON"]</code> — affiche un projet public</li>
-        <li><code>[assokit_espace texte="Espace adhérent"]</code> — bouton connexion</li>
         <li><code>[assokit_bouton url="/tarifs" texte="Découvrir"]</code> — bouton vers une page</li>
       </ul>
-      <p class="description">Le jeton public se trouve dans Assokit, sur la page de partage de l'événement / du projet.</p>
+      <p class="description">Le widget « espace projets » est en lecture seule : il n'ouvre aucune session et n'expose aucune donnée privée. Pour agir dans Assokit, chaque collaborateur se connecte à son propre compte.</p>
     </div>
     <?php
 }

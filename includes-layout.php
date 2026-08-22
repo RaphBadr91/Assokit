@@ -1501,8 +1501,8 @@ function render_sidebar($active = 'accueil') {
           Administration
         </a>
         <a href="/mon-asso-sso" class="sb-link <?= $active === 'mon-asso-sso' ? 'active' : '' ?>">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 1-7 7 5 5 0 0 1 7-7zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>
-          Connexion WordPress
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+          Intégration WordPress
         </a>
 <?php if (in_array($active, ['admin', 'archives', 'abonnement'], true)): ?>
         <a href="/archives" class="sb-link <?= $active === 'archives' ? 'active' : '' ?>">

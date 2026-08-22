@@ -89,6 +89,8 @@ RewriteRule ^cotisation/(\d+)/?$             cotisation-detail.php?id=$1 [L,QSA]
 
 # /projet-public/<token> → /projet-public.php?t=<token>
 RewriteRule ^projet-public/([a-f0-9]{32,64})/?$  projet-public.php?t=$1 [L,QSA]
+# /espace-public/<token> → /espace-public.php?t=<token> (widget WordPress lecture seule)
+RewriteRule ^espace-public/([a-f0-9]{32,64})/?$  espace-public.php?t=$1 [L,QSA]
 # Pack #6 Subventions
 RewriteRule ^fondateur-pricing/?$  fondateur-pricing.php [L,QSA]
 RewriteRule ^subvention/(\d+)/?$             subvention-detail.php?id=$1 [L,QSA]
