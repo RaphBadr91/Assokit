@@ -96,6 +96,30 @@ add_action('admin_menu', function () {
 });
 add_action('admin_init', function () {
     register_setting('assokit', 'assokit_base_url', ['sanitize_callback' => 'esc_url_raw']);
+    register_setting('assokit', 'assokit_sso_key', ['sanitize_callback' => function ($v) {
+        $v = trim((string) $v);
+        return preg_match('/^[a-f0-9]{64}$/i', $v) ? strtolower($v) : '';
+    }]);
+});
+
+/** Bouton "Ouvrir Assokit" : échange la clé SSO contre un jeton, puis redirige. */
+add_action('admin_post_assokit_sso_open', function () {
+    if (!current_user_can('manage_options')) wp_die('Non autorisé.');
+    check_admin_referer('assokit_sso_open');
+    $key = (string) get_option('assokit_sso_key', '');
+    if (!preg_match('/^[a-f0-9]{64}$/i', $key)) {
+        wp_redirect(admin_url('options-general.php?page=assokit&sso=nokey')); exit;
+    }
+    $resp = wp_remote_post(assokit_base_url() . '/api/sso-init.php', [
+        'timeout' => 15,
+        'headers' => ['Content-Type' => 'application/json'],
+        'body'    => wp_json_encode(['key' => $key]),
+    ]);
+    if (is_wp_error($resp)) { wp_redirect(admin_url('options-general.php?page=assokit&sso=neterr')); exit; }
+    $data = json_decode(wp_remote_retrieve_body($resp), true);
+    if (empty($data['ok']) || empty($data['url'])) { wp_redirect(admin_url('options-general.php?page=assokit&sso=fail')); exit; }
+    // Redirige le navigateur de l'admin vers Assokit (déjà connecté).
+    wp_redirect($data['url']); exit;
 });
 function assokit_settings_page() {
     if (!current_user_can('manage_options')) return;
@@ -114,8 +138,27 @@ function assokit_settings_page() {
               <p class="description">Domaine assokit.fr uniquement.</p>
             </td>
           </tr>
+          <tr>
+            <th scope="row"><label for="assokit_sso_key">Clé SSO</label></th>
+            <td>
+              <input type="password" id="assokit_sso_key" name="assokit_sso_key" class="regular-text" autocomplete="off"
+                     value="<?php echo esc_attr(get_option('assokit_sso_key', '')); ?>" placeholder="Clé générée dans Assokit">
+              <p class="description">Dans Assokit : Clé SSO WordPress (/mon-asso-sso) → générez puis collez ici.</p>
+            </td>
+          </tr>
         </table>
         <?php submit_button(); ?>
+      </form>
+
+      <h2>Connexion directe</h2>
+      <?php $sso = isset($_GET['sso']) ? sanitize_key($_GET['sso']) : ''; ?>
+      <?php if ($sso === 'nokey'): ?><div class="notice notice-warning"><p>Ajoutez d'abord votre clé SSO ci-dessus.</p></div>
+      <?php elseif ($sso === 'neterr'): ?><div class="notice notice-error"><p>Connexion à Assokit impossible (réseau).</p></div>
+      <?php elseif ($sso === 'fail'): ?><div class="notice notice-error"><p>Clé SSO invalide ou révoquée.</p></div><?php endif; ?>
+      <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+        <input type="hidden" name="action" value="assokit_sso_open">
+        <?php wp_nonce_field('assokit_sso_open'); ?>
+        <button type="submit" class="button button-primary button-hero">Ouvrir Assokit (connecté) →</button>
       </form>
       <h2>Shortcodes</h2>
       <ul style="list-style:disc;margin-left:20px;">
