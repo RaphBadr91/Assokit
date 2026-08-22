@@ -1500,6 +1500,10 @@ function render_sidebar($active = 'accueil') {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1l9 4v6c0 5.55-3.84 10.74-9 12-5.16-1.26-9-6.45-9-12V5l9-4z"/></svg>
           Administration
         </a>
+        <a href="/mon-asso-sso" class="sb-link <?= $active === 'mon-asso-sso' ? 'active' : '' ?>">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 1-7 7 5 5 0 0 1 7-7zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>
+          Connexion WordPress
+        </a>
 <?php if (in_array($active, ['admin', 'archives', 'abonnement'], true)): ?>
         <a href="/archives" class="sb-link <?= $active === 'archives' ? 'active' : '' ?>">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
