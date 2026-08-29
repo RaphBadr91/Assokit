@@ -53,3 +53,6 @@ Thumbs.db
 *.bak
 *.tmp
 sitemap-*.xml.gz
+
+# Plugin build artifact
+wordpress-plugin/*.zip
