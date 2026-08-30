@@ -585,7 +585,7 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
           <View style={styles.kpiGrid}>
             {cards.map((c) => (
               <TouchableOpacity accessibilityRole="button" key={c.label} style={styles.kpiShadow} activeOpacity={0.88} onPress={() => onGoto(c.path)}>
-                <LinearGradient colors={c.g} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.kpiCard}>
+                <View style={styles.kpiCard}>
                   <View style={styles.kpiGloss} />
                   <View style={styles.kpiTop}>
                     <LinearGradient colors={[c.color, shade(c.color)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.kpiIcon}>
@@ -596,7 +596,7 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
                   <Text style={styles.kpiValue}>{c.value}</Text>
                   <Text style={styles.kpiLabel}>{c.label}</Text>
                   <Text style={styles.kpiSub}>{c.sub}</Text>
-                </LinearGradient>
+                </View>
               </TouchableOpacity>
             ))}
           </View>
@@ -2092,7 +2092,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
 
         {/* Header premium vert + halo doré fondateur — le vert remonte jusqu'en haut (notch) */}
         <View style={styles.fcHeaderWrap}>
-          <LinearGradient colors={['#0CCB8F', '#059669', '#025138']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          <LinearGradient colors={['#12D3A0', '#0AA57E', '#0E7490']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             style={[styles.fcHeader, Platform.OS === 'ios' && { paddingTop: Constants.statusBarHeight + 10 }]}>
             <View style={styles.fcOrbGold} />
             <View style={styles.fcOrbDark} />
@@ -5400,7 +5400,7 @@ const styles = StyleSheet.create({
 
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: 18 },
   kpiShadow: { width: '48%', marginBottom: 14, borderRadius: 24, shadowColor: '#0B3B2A', shadowOpacity: 0.09, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 4 },
-  kpiCard: { borderRadius: 24, padding: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' },
+  kpiCard: { borderRadius: 24, padding: 16, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)' },
   kpiGloss: { position: 'absolute', top: 0, left: 0, right: 0, height: 40, backgroundColor: 'rgba(255,255,255,0.45)' },
   kpiTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   kpiIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', shadowColor: '#0B3B2A', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
@@ -5768,8 +5768,8 @@ const styles = StyleSheet.create({
   fdLogoutTxt: { fontSize: 15, fontWeight: '700', color: '#FCA5A5' },
 
   /* ===== Cockpit Fondateur — clair & premium ===== */
-  fcWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#EDF1F0' },
-  fcScroll: { flex: 1, backgroundColor: '#EDF1F0' },
+  fcWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#EEF3FA' },
+  fcScroll: { flex: 1, backgroundColor: '#EEF3FA' },
   // Annuaire national (fondateur)
   dirBanner: { backgroundColor: '#0369A1', borderRadius: 18, padding: 18, marginBottom: 16, alignItems: 'center' },
   dirBannerBig: { color: '#fff', fontSize: 30, fontWeight: '800' },
