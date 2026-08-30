@@ -59,7 +59,13 @@ $max_amount = !empty($_GET['max']) ? (float)$_GET['max'] : null;
 $sql = "SELECT q.*, c.display_name AS client_name, c.email AS client_email FROM asso_quotes q LEFT JOIN asso_clients c ON c.id = q.client_id WHERE q.org_id = :org";
 $params = [':org' => $org_id];
 
-if ($status_filter !== 'all' && in_array($status_filter, ['draft','sent','signed','refused','expired','converted','cancelled'])) {
+if ($status_filter === 'expired') {
+    // « Expiré » n'est pas un statut stocké : c'est un devis envoyé dont la date d'expiration est passée.
+    $sql .= " AND q.status = 'sent' AND q.expires_at IS NOT NULL AND q.expires_at < NOW()";
+} elseif ($status_filter === 'sent') {
+    // « Envoyés » = envoyés NON expirés (les expirés ont leur propre filtre).
+    $sql .= " AND q.status = 'sent' AND (q.expires_at IS NULL OR q.expires_at >= NOW())";
+} elseif ($status_filter !== 'all' && in_array($status_filter, ['draft','signed','refused','converted','cancelled'])) {
     $sql .= " AND q.status = :st"; $params[':st'] = $status_filter;
 }
 if ($dateStart) { $sql .= " AND q.issued_at >= :ds"; $params[':ds'] = $dateStart; }
