@@ -1421,14 +1421,14 @@ function render_sidebar($active = 'accueil') {
       ?>
       <div class="ak-collapse <?= $fin_open ? 'is-open' : '' ?>">
         <div class="ak-collapse-row">
-          <a href="/mon-asso-factures" class="sb-link ak-collapse-link <?= $fin_open ? 'active' : '' ?>" style="flex:1;">
+          <a href="/mon-asso-factures-client" class="sb-link ak-collapse-link <?= $fin_open ? 'active' : '' ?>" style="flex:1;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h12l4 4v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M7 8h7M7 12h9M7 16h5"/></svg>
             Finances
           </a>
           <button type="button" class="ak-collapse-toggle" onclick="this.closest('.ak-collapse').classList.toggle('is-open')" aria-label="Déplier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>
         </div>
         <div class="ak-collapse-body">
-          <a href="/mon-asso-factures" class="sb-link <?= in_array($active, ['devis','factures','clients','stats'], true) ? 'active' : '' ?>">
+          <a href="/mon-asso-factures-client" class="sb-link <?= in_array($active, ['devis','factures','clients','stats'], true) ? 'active' : '' ?>">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg>
             Facturation
           </a>

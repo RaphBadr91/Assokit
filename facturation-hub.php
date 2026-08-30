@@ -68,7 +68,7 @@ if (!function_exists('render_facturation_hub')) {
 
         // Onglets
         $tabs = [
-            'factures' => ['/mon-asso-factures', 'Factures',      (int)$k['total_invoices'],
+            'factures' => ['/mon-asso-factures-client', 'Factures',      (int)$k['total_invoices'],
                 '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/>'],
             'devis'    => ['/mon-asso-devis',    'Devis',         (int)$k['total_quotes'],
                 '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 12h6M9 16h6M9 8h2"/>'],
