@@ -312,7 +312,7 @@ render_sidebar('super-admin');
               <?php if ($o['billing_address_city']): ?><span style="color:#71717A;font-size:12.5px;"> · <?= h($o['billing_address_city']) ?></span><?php endif; ?>
             </div>
             <div style="display:flex;gap:6px;">
-              <a href="/admin-org?id=<?= (int)$o['id'] ?>" style="background:#F4F4F5;color:#3F3F46;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;">Voir</a>
+              <a href="/super-admin/associations?id=<?= (int)$o['id'] ?>" style="background:#F4F4F5;color:#3F3F46;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;">Voir</a>
               <form method="POST" action="/action-mairie.php" style="margin:0;" onsubmit="return confirm('Délier cette association de la mairie ?');">
                 <input type="hidden" name="action" value="unlink_org">
                 <input type="hidden" name="mairie_id" value="<?= $mairie_id ?>">

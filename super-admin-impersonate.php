@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'start
         $reason = trim($_POST['reason'] ?? '');
         $result = start_impersonation((int)$user['id'], $targetId, $reason);
         if ($result['success']) {
-            header('Location: /tableau-de-bord?impersonation_started=1');
+            header('Location: /dashboard?impersonation_started=1');
             exit;
         } else {
             $error = $result['error'];
