@@ -171,7 +171,7 @@ if (function_exists('render_head')) {
         <h1>🎫 Support — Mes tickets</h1>
         <p>Suivez vos demandes auprès de l'équipe Assokit</p>
     </div>
-    <a href="/support-new" class="st-cta">+ Nouveau ticket</a>
+    <a href="/support/nouveau" class="st-cta">+ Nouveau ticket</a>
 </div>
 
 <!-- Stats cliquables = filtres -->
