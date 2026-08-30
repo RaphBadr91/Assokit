@@ -63,7 +63,7 @@ if ($action === 'create' || $action === 'update') {
 if ($action === 'import_adherents') {
     $ag = ag_load($pdo, $id, $org_id); if (!$ag) die('AG introuvable.');
     try {
-        $stmt = $pdo->prepare("SELECT id, first_name, last_name, email FROM adherents WHERE org_id = ? AND (deleted_at IS NULL OR deleted_at = '') ORDER BY last_name, first_name");
+        $stmt = $pdo->prepare("SELECT id, first_name, last_name, email FROM users WHERE org_id = ? AND (deleted_at IS NULL OR deleted_at = '') ORDER BY last_name, first_name");
         $stmt->execute([$org_id]);
         $count = 0;
         foreach ($stmt->fetchAll() as $a) {

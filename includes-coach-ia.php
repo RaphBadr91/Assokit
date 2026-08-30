@@ -59,7 +59,7 @@ function coach_build_context(PDO $pdo, int $org_id): array {
         $stmt = $pdo->prepare("SELECT
             SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) total,
             SUM(CASE WHEN deleted_at IS NULL AND created_at >= ? THEN 1 ELSE 0 END) nouveaux
-            FROM adherents WHERE org_id = ?");
+            FROM users WHERE org_id = ?");
         $stmt->execute([$week_start, $org_id]);
         $ctx['adherents'] = $stmt->fetch() ?: [];
     } catch (Throwable $e) { $ctx['adherents'] = []; }

@@ -79,7 +79,7 @@ if (!$is_follower) {
 // === ADHÉRENTS ===
 if (!$is_follower) {
     try {
-        $stmt = $pdo->prepare("SELECT id, first_name, last_name, email FROM adherents
+        $stmt = $pdo->prepare("SELECT id, first_name, last_name, email FROM users
                                WHERE org_id = ? AND deleted_at IS NULL
                                  AND (first_name LIKE ? OR last_name LIKE ? OR email LIKE ?)
                                ORDER BY last_name, first_name LIMIT 6");

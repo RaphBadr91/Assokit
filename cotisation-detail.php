@@ -22,7 +22,7 @@ $pay_settings = ck_load_org_payment($pdo, $org_id);
 // Charge adhérents pour le select
 $adherents = [];
 try {
-    $stmt = $pdo->prepare("SELECT id, first_name, last_name, email FROM adherents WHERE org_id = ? AND deleted_at IS NULL ORDER BY last_name, first_name LIMIT 500");
+    $stmt = $pdo->prepare("SELECT id, first_name, last_name, email FROM users WHERE org_id = ? AND deleted_at IS NULL ORDER BY last_name, first_name LIMIT 500");
     $stmt->execute([$org_id]);
     $adherents = $stmt->fetchAll();
 } catch (Throwable $e) {}
