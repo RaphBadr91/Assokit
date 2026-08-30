@@ -93,10 +93,10 @@ function ak_stats_global_kpis(PDO $pdo, int $org_id): array {
             COUNT(*) AS total_invoices,
             COALESCE(SUM(CASE WHEN status='paid' THEN amount_ttc_cents ELSE 0 END),0) AS revenue_paid,
             COALESCE(SUM(CASE WHEN status IN ('pending','overdue') THEN amount_ttc_cents ELSE 0 END),0) AS revenue_pending,
-            COALESCE(SUM(CASE WHEN status='overdue' THEN amount_ttc_cents ELSE 0 END),0) AS revenue_overdue,
+            COALESCE(SUM(CASE WHEN status IN ('pending','overdue') AND due_at IS NOT NULL AND due_at < NOW() THEN amount_ttc_cents ELSE 0 END),0) AS revenue_overdue,
             SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END) AS nb_paid,
-            SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS nb_pending,
-            SUM(CASE WHEN status='overdue' THEN 1 ELSE 0 END) AS nb_overdue
+            SUM(CASE WHEN status IN ('pending','overdue') THEN 1 ELSE 0 END) AS nb_pending,
+            SUM(CASE WHEN status IN ('pending','overdue') AND due_at IS NOT NULL AND due_at < NOW() THEN 1 ELSE 0 END) AS nb_overdue
         FROM asso_invoices WHERE org_id = :org AND issued_at BETWEEN :s AND :e
     ");
     $stmt->execute([':org' => $org_id, ':s' => $start, ':e' => $end]);

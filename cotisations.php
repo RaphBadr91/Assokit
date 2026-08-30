@@ -28,13 +28,15 @@ $campaigns = $stmt->fetchAll();
 $current_year = (int)date('Y');
 $year_stats = ['paid' => 0, 'pending' => 0, 'count_payers' => 0];
 try {
+    // Exercice : « encaissé » rattaché à la date de paiement (paid_at) — cohérent avec le FEC.
+    // « En attente » (non payé) rattaché à la date de création (pas de paid_at).
     $stmt = $pdo->prepare("SELECT
-        COALESCE(SUM(CASE WHEN p.status='paid' THEN p.amount ELSE 0 END), 0) AS paid,
-        COALESCE(SUM(CASE WHEN p.status='pending' THEN p.amount ELSE 0 END), 0) AS pending,
-        COUNT(DISTINCT CASE WHEN p.status='paid' THEN COALESCE(p.adherent_id, CONCAT('e:', p.payer_email)) END) AS payers
+        COALESCE(SUM(CASE WHEN p.status='paid' AND YEAR(p.paid_at) = ? THEN p.amount ELSE 0 END), 0) AS paid,
+        COALESCE(SUM(CASE WHEN p.status='pending' AND YEAR(p.created_at) = ? THEN p.amount ELSE 0 END), 0) AS pending,
+        COUNT(DISTINCT CASE WHEN p.status='paid' AND YEAR(p.paid_at) = ? THEN COALESCE(p.adherent_id, CONCAT('e:', p.payer_email)) END) AS payers
         FROM cotisation_payments p
-        WHERE p.org_id = ? AND YEAR(p.created_at) = ?");
-    $stmt->execute([$org_id, $current_year]);
+        WHERE p.org_id = ?");
+    $stmt->execute([$current_year, $current_year, $current_year, $org_id]);
     if ($r = $stmt->fetch()) {
         $year_stats['paid'] = (float)$r['paid'];
         $year_stats['pending'] = (float)$r['pending'];

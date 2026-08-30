@@ -40,7 +40,9 @@ if (!$can_view_finances) {
 
 // Filtres
 $f_status = (string)($_GET['status'] ?? '');
-$f_year   = (int)($_GET['year'] ?? 0);
+// Vue par défaut = année en cours (cohérent avec le badge de l'onglet).
+// L'utilisateur peut sélectionner « Toutes les années » (year=«») dans le filtre.
+$f_year   = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
 $allowed_status = ['paid', 'pending', 'overdue', 'draft', 'cancelled'];
 if ($f_status !== '' && !in_array($f_status, $allowed_status, true)) $f_status = '';
 
