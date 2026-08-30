@@ -20,7 +20,7 @@ require_once __DIR__ . '/finance-permissions.php';
 require_finance_access('factures', 'l\'édition de factures');
 
 $invoice_id = (int)($_GET['id'] ?? 0);
-if ($invoice_id <= 0) { header('Location: /mon-asso-factures'); exit; }
+if ($invoice_id <= 0) { header('Location: /mon-asso-factures-client'); exit; }
 
 // Charger facture
 $stmt = $pdo->prepare("
@@ -61,7 +61,7 @@ render_sidebar('factures');
 
 <div class="main">
     <nav class="crumbs">
-        <a href="/mon-asso-factures">Mes factures</a>
+        <a href="/mon-asso-factures-client">Mes factures</a>
         <span class="sep">›</span>
         <span class="current">Modifier <?= h($invoice['invoice_number']) ?></span>
     </nav>
@@ -92,7 +92,7 @@ render_sidebar('factures');
                style="border-color:#059669; color:#059669;">
                 <?= ak_icon('refresh',14) ?>Rendre récurrente
             </a>
-            <a href="/mon-asso-factures" class="btn btn-ghost">← Retour</a>
+            <a href="/mon-asso-factures-client" class="btn btn-ghost">← Retour</a>
         </div>
     </div>
 
@@ -311,7 +311,7 @@ render_sidebar('factures');
 
         <!-- Actions -->
         <div style="display:flex; gap:10px; justify-content:flex-end; padding:18px; background:white; border:1px solid #E5E7EB; border-radius:12px; position:sticky; bottom:12px;">
-            <a href="/mon-asso-factures" class="btn btn-ghost">Annuler</a>
+            <a href="/mon-asso-factures-client" class="btn btn-ghost">Annuler</a>
             <button type="submit" class="btn btn-primary" style="padding:10px 20px;">💾 Enregistrer + régénérer PDF</button>
         </div>
     </form>

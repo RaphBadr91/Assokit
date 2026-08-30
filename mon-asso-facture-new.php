@@ -40,7 +40,7 @@ render_sidebar('factures');
 
 <div class="main">
     <nav class="crumbs">
-        <a href="/mon-asso-factures">Mes factures</a>
+        <a href="/mon-asso-factures-client">Mes factures</a>
         <span class="sep">›</span>
         <span class="current">Nouvelle facture</span>
     </nav>
@@ -51,7 +51,7 @@ render_sidebar('factures');
             <div class="page-sub">Préfixe : <strong><?= h($slug) ?>-<?= date('Y') ?>-XXXXXX</strong></div>
         </div>
         <div>
-            <a href="/mon-asso-factures" class="btn btn-ghost">← Annuler</a>
+            <a href="/mon-asso-factures-client" class="btn btn-ghost">← Annuler</a>
         </div>
     </div>
 
@@ -205,7 +205,7 @@ render_sidebar('factures');
 
         <!-- ────── ACTIONS ────── -->
         <div style="display:flex; gap:10px; justify-content:flex-end; padding:18px; background:white; border:1px solid #E5E7EB; border-radius:12px; position:sticky; bottom:12px;">
-            <a href="/mon-asso-factures" class="btn btn-ghost">Annuler</a>
+            <a href="/mon-asso-factures-client" class="btn btn-ghost">Annuler</a>
             <button type="submit" name="save_draft" value="1" class="btn btn-ghost" style="padding:10px 20px;">💾 Enregistrer en brouillon</button>
             <button type="submit" class="btn btn-primary" style="padding:10px 20px;">📤 Créer la facture</button>
         </div>

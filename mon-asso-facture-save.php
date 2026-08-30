@@ -7,6 +7,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
+require_once __DIR__ . '/finance-permissions.php';
 
 require_login();
 $user = current_user();
@@ -17,21 +18,14 @@ if (empty($user['org_id'])) {
 }
 $org_id = (int)$user['org_id'];
 
-$is_admin = false;
-try {
-    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
-    $stmt->execute([':id' => (int)$user['id']]);
-    $role = $stmt->fetchColumn();
-    $is_admin = in_array($role, ['admin', 'coordinator'], true);
-} catch (Throwable $e) {}
-
-if (!$is_admin) {
+// Même politique que l'affichage/formulaire : Admin / Founder / Super Admin.
+if (!user_can_view_finances($user)) {
     http_response_code(403);
     die('Accès réservé aux administrateurs.');
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('Location: /mon-asso-factures');
+    header('Location: /mon-asso-factures-client');
     exit;
 }
 
@@ -208,7 +202,7 @@ try {
             'pdf_link' => $result['pdf_path'],
         ];
 
-        header('Location: /mon-asso-factures');
+        header('Location: /mon-asso-factures-client');
         exit;
     }
 } catch (Throwable $e) {
