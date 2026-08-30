@@ -527,7 +527,7 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
             </View>
             <View style={styles.hAvatar}>
               {data && data.org_logo ? (
-                <Image source={{ uri: data.org_logo }} style={styles.hAvatarImg} resizeMode="cover" />
+                <Image source={{ uri: data.org_logo }} style={styles.hAvatarImg} resizeMode="contain" />
               ) : (
                 <Text style={styles.hAvatarTxt}>{(data && data.org_initials) || '·'}</Text>
               )}
@@ -634,6 +634,9 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
   const projects = (data && data.projects) || [];
   return (
     <View style={styles.projWrap}>
+      <LinearGradient colors={['#EAF7F1', '#E9F0FB', '#F2EBFB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+      <View style={styles.auroraOrbA} pointerEvents="none" />
+      <View style={styles.auroraOrbB} pointerEvents="none" />
       <View style={styles.projHeader}>
         {onBack && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
         <View style={{ flex: 1 }}>
@@ -1977,7 +1980,7 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, isTpe, counts
     <View style={styles.detailWrap}>
       <View style={styles.moreHeader}>
         <View style={styles.moreAvatar}>
-          {logo ? <Image source={{ uri: logo }} style={styles.moreAvatarImg} /> : <Text style={styles.moreAvatarTxt}>{initials || '·'}</Text>}
+          {logo ? <Image source={{ uri: logo }} style={styles.moreAvatarImg} resizeMode="contain" /> : <Text style={styles.moreAvatarTxt}>{initials || '·'}</Text>}
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.moreOrg} numberOfLines={1}>{orgName || 'Mon organisation'}</Text>
@@ -5372,9 +5375,9 @@ const styles = StyleSheet.create({
   hOrgPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.62)', borderRadius: 999, paddingVertical: 5, paddingHorizontal: 11, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', maxWidth: '92%' },
   hOrgDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#059669' },
   hOrg: { color: '#0F172A', fontSize: 13, fontWeight: '600', flexShrink: 1 },
-  hAvatar: { width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.6)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)' },
+  hAvatar: { width: 54, height: 54, borderRadius: 17, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', shadowColor: '#0F172A', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
   hAvatarTxt: { color: '#059669', fontSize: 18, fontWeight: '800' },
-  hAvatarImg: { width: 52, height: 52, borderRadius: 16 },
+  hAvatarImg: { width: 42, height: 42, borderRadius: 11 },
 
   homeLoader: { paddingTop: 60, alignItems: 'center' },
   homeLoaderTxt: { color: MUTE, marginTop: 12, fontSize: 14 },
@@ -5417,13 +5420,13 @@ const styles = StyleSheet.create({
   openFullTxt: { fontSize: 15, fontWeight: '750', color: '#fff' },
 
   /* Projets natifs */
-  projWrap: { flex: 1, backgroundColor: '#F4F6FA' },
+  projWrap: { flex: 1, backgroundColor: '#EEF3FA' },
   projHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 12 },
   projTitle: { fontSize: 26, fontWeight: '800', color: INK, letterSpacing: -0.4 },
   projSub: { fontSize: 13.5, color: MUTE, marginTop: 2 },
   projNewBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: BRAND, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   projNewTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  projCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, paddingLeft: 20, marginBottom: 12, borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 7 }, elevation: 3, position: 'relative', overflow: 'hidden' },
+  projCard: { backgroundColor: 'rgba(255,255,255,0.82)', borderRadius: 20, padding: 16, paddingLeft: 20, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#0B3B2A', shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 9 }, elevation: 3, position: 'relative', overflow: 'hidden' },
   projAccent: { position: 'absolute', top: 0, bottom: 0, left: 0, width: 4 },
   projCardTop: { flexDirection: 'row', alignItems: 'flex-start' },
   projName: { fontSize: 16, fontWeight: '700', color: INK },
@@ -5603,8 +5606,8 @@ const styles = StyleSheet.create({
 
   /* Menu Plus (hub) */
   moreHeader: { flexDirection: 'row', alignItems: 'center', padding: 18, paddingTop: 22, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEF2F6' },
-  moreAvatar: { width: 52, height: 52, borderRadius: 16, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 14, overflow: 'hidden' },
-  moreAvatarImg: { width: 52, height: 52, borderRadius: 16 },
+  moreAvatar: { width: 54, height: 54, borderRadius: 17, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 14, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  moreAvatarImg: { width: 42, height: 42, borderRadius: 11 },
   moreAvatarTxt: { fontSize: 19, fontWeight: '800', color: BRAND },
   moreOrg: { fontSize: 18, fontWeight: '800', color: INK },
   moreSub: { fontSize: 13, color: MUTE, marginTop: 2 },
