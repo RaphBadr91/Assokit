@@ -512,13 +512,8 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
         refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
       >
       <View style={styles.hHeaderWrap}>
-        <LinearGradient
-          colors={['#12D3A0', '#0AA57E', '#0E7490']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.hHeader}
-        >
-          {/* Orbes décoratifs — profondeur "4D" */}
+        <BlurView intensity={34} tint="light" style={styles.hHeader}>
+          {/* Halos aurora subtils */}
           <View style={styles.hOrb1} />
           <View style={styles.hOrb2} />
           <View style={styles.hHeaderRow}>
@@ -538,7 +533,7 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
               )}
             </View>
           </View>
-        </LinearGradient>
+        </BlurView>
       </View>
 
       {!data ? (
@@ -4880,7 +4875,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle={showHome ? 'light-content' : 'dark-content'} backgroundColor={showHome ? '#07A873' : '#fff'} />
+      <StatusBar barStyle="dark-content" backgroundColor={showHome ? '#EAF7F1' : '#fff'} />
       <View style={styles.webWrap}>
         <WebView
           ref={webRef}
@@ -5184,6 +5179,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
       {authed && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans', 'fdsettings', 'fdprospects', 'fddir'].includes(menuScreen) && (
       <View style={styles.tabBar}>
+        <BlurView intensity={26} tint="light" style={styles.tabBlur} pointerEvents="none" />
         {TABS.map((tab) => {
           if (tab.key === 'add') {
             return (
@@ -5336,18 +5332,18 @@ const styles = StyleSheet.create({
   auroraOrbB: { position: 'absolute', bottom: 40, left: -80, width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(129,140,248,0.18)' },
   homeScroll: { flex: 1, backgroundColor: 'transparent' },
   homeContent: { paddingBottom: 28 },
-  hHeaderWrap: { borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', shadowColor: '#047857', shadowOpacity: 0.30, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
-  hHeader: { paddingTop: 28, paddingBottom: 54, paddingHorizontal: 22, position: 'relative', overflow: 'hidden' },
-  hOrb1: { position: 'absolute', top: -60, right: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.16)' },
-  hOrb2: { position: 'absolute', bottom: -70, left: -50, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(99,102,241,0.26)' },
+  hHeaderWrap: { borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', shadowColor: '#1E293B', shadowOpacity: 0.10, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 6 },
+  hHeader: { paddingTop: 28, paddingBottom: 54, paddingHorizontal: 22, position: 'relative', overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.5)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.6)' },
+  hOrb1: { position: 'absolute', top: -60, right: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(45,212,191,0.18)' },
+  hOrb2: { position: 'absolute', bottom: -70, left: -50, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(129,140,248,0.20)' },
   hHeaderRow: { flexDirection: 'row', alignItems: 'center' },
-  hHello: { color: 'rgba(255,255,255,0.92)', fontSize: 16, fontWeight: '500' },
-  hName: { color: '#fff', fontSize: 27, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
-  hOrgPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: 999, paddingVertical: 5, paddingHorizontal: 11, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', maxWidth: '92%' },
-  hOrgDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#6EE7B7' },
-  hOrg: { color: '#fff', fontSize: 13, fontWeight: '600', flexShrink: 1 },
-  hAvatar: { width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
-  hAvatarTxt: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  hHello: { color: '#475569', fontSize: 16, fontWeight: '500' },
+  hName: { color: '#0F172A', fontSize: 27, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
+  hOrgPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.62)', borderRadius: 999, paddingVertical: 5, paddingHorizontal: 11, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', maxWidth: '92%' },
+  hOrgDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#059669' },
+  hOrg: { color: '#0F172A', fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  hAvatar: { width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.6)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)' },
+  hAvatarTxt: { color: '#059669', fontSize: 18, fontWeight: '800' },
   hAvatarImg: { width: 52, height: 52, borderRadius: 16 },
 
   homeLoader: { paddingTop: 60, alignItems: 'center' },
@@ -5683,7 +5679,8 @@ const styles = StyleSheet.create({
   emptyBtnTxt: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
 
   /* Tab bar */
-  tabBar: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.96)', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderTopColor: 'rgba(226,240,236,0.9)', paddingBottom: Platform.OS === 'ios' ? 22 : 10, paddingTop: 8, alignItems: 'flex-end', shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: -6 }, elevation: 14 },
+  tabBar: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.55)', marginHorizontal: 12, marginBottom: Platform.OS === 'ios' ? 6 : 10, borderRadius: 30, paddingBottom: Platform.OS === 'ios' ? 14 : 10, paddingTop: 10, paddingHorizontal: 6, alignItems: 'flex-end', shadowColor: '#0F172A', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 18 },
+  tabBlur: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 30, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.42)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 },
   tabLabel: { fontSize: 11, fontWeight: '600' },
   fabWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
