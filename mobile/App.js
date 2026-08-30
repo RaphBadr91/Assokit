@@ -887,6 +887,36 @@ function InfoRow({ icon, label, value, onPress }) {
   );
 }
 
+/* Bloc de texte riche : carte + puces + paragraphes lisibles (au lieu d'un pavé) */
+function DescBlock({ label, text, tint }) {
+  const raw = String(text || '');
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const bulletCount = lines.filter((l) => /^[-–•*·]/.test(l)).length;
+  const asBullets = bulletCount >= 2;
+  const c = tint || BRAND;
+  return (
+    <View style={styles.dInfoCard}>
+      <Text style={[styles.dEyebrow, { color: c }]}>{label}</Text>
+      {asBullets ? (
+        lines.map((l, i) => {
+          const isB = /^[-–•*·]\s?/.test(l);
+          const t = l.replace(/^[-–•*·]\s?/, '');
+          return isB ? (
+            <View key={i} style={styles.dBullet}>
+              <View style={[styles.dBulletDot, { backgroundColor: c }]} />
+              <Text style={styles.dBulletTxt}>{t}</Text>
+            </View>
+          ) : (
+            <Text key={i} style={styles.dPara}>{t}</Text>
+          );
+        })
+      ) : (
+        <Text style={styles.dPara}>{raw}</Text>
+      )}
+    </View>
+  );
+}
+
 function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, onSharePdf, pdfBusy }) {
   const d = entry.data;
   if (d && d.ok === false) return <DetailError title="Projet" onBack={onBack} onRetry={onRefresh} />;
@@ -925,8 +955,8 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
           </View>
         )}
 
-        {!!p.description && (<><Text style={styles.dSection}>Description</Text><Text style={styles.dText}>{p.description}</Text></>)}
-        {!!p.objective && (<><Text style={styles.dSection}>Objectif</Text><Text style={styles.dText}>{p.objective}</Text></>)}
+        {!!p.description && <DescBlock label="Description" text={p.description} />}
+        {!!p.objective && <DescBlock label="Objectif" text={p.objective} tint="#7C3AED" />}
 
         {p.referent && (
           <>
@@ -1204,7 +1234,7 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb }) {
           </>
         )}
 
-        {!!inv.description && (<><Text style={styles.dSection}>Note</Text><Text style={styles.dText}>{inv.description}</Text></>)}
+        {!!inv.description && <DescBlock label="Note" text={inv.description} tint="#2563EB" />}
 
         {!!inv.public_uuid && (
           <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/devis/' : '/facture/') + inv.public_uuid)}>
@@ -5423,8 +5453,8 @@ const styles = StyleSheet.create({
   invAmount: { fontSize: 16.5, fontWeight: '800', color: INK },
 
   /* Fiches détail natives */
-  detailWrap: { flex: 1, backgroundColor: '#F4F6FA' },
-  dHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F4', shadowColor: '#0B3B2A', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2, zIndex: 2 },
+  detailWrap: { flex: 1, backgroundColor: '#F2F5FB' },
+  dHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderBottomWidth: 1, borderBottomColor: 'rgba(226,232,240,0.8)', shadowColor: '#0B3B2A', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2, zIndex: 2 },
   dBack: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#F3F6F5', alignItems: 'center', justifyContent: 'center' },
   dTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '750', color: INK, letterSpacing: -0.2 },
   detailContent: { padding: 18, paddingBottom: 40 },
@@ -5435,10 +5465,17 @@ const styles = StyleSheet.create({
   dCardLabel: { fontSize: 14, fontWeight: '600', color: '#334155' },
   dCardStrong: { fontSize: 14.5, fontWeight: '800', color: INK },
   dSteps: { fontSize: 12.5, color: MUTE, marginTop: 8 },
-  dSection: { fontSize: 15, fontWeight: '700', color: INK, marginTop: 22, marginBottom: 2 },
+  dSection: { fontSize: 12, fontWeight: '800', color: '#059669', marginTop: 24, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.7 },
   dLockCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F1F5F9', borderRadius: 16, padding: 16, marginTop: 18, borderWidth: 1, borderColor: '#E2E8F0' },
   dLockTxt: { flex: 1, fontSize: 13, lineHeight: 19, color: '#64748B', fontWeight: '500' },
   dText: { fontSize: 14.5, color: '#334155', lineHeight: 21, marginTop: 8 },
+  /* Bloc description riche */
+  dInfoCard: { backgroundColor: '#fff', borderRadius: 18, padding: 18, marginTop: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
+  dEyebrow: { fontSize: 11.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+  dPara: { fontSize: 15, color: '#334155', lineHeight: 23, marginBottom: 4 },
+  dBullet: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 11 },
+  dBulletDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8, marginRight: 12 },
+  dBulletTxt: { flex: 1, fontSize: 14.5, color: '#334155', lineHeight: 22 },
   stepRow: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff', borderRadius: 14, padding: 14, marginTop: 8 },
   stepTitle: { fontSize: 14.5, fontWeight: '600', color: INK },
   stepDone: { color: '#94A3B8', textDecorationLine: 'line-through' },
