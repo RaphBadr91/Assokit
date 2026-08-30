@@ -500,15 +500,20 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
   const shortcuts = isTpe ? SHORTCUTS_TPE : SHORTCUTS_ASSO;
 
   return (
-    <ScrollView
-      style={styles.homeScroll}
-      contentContainerStyle={styles.homeContent}
-      showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
-    >
+    <View style={styles.homeAurora}>
+      {/* Fond « Aurora Glass » : dégradé doux + halos colorés */}
+      <LinearGradient colors={['#EAF7F1', '#E9F0FB', '#F2EBFB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+      <View style={styles.auroraOrbA} pointerEvents="none" />
+      <View style={styles.auroraOrbB} pointerEvents="none" />
+      <ScrollView
+        style={styles.homeScroll}
+        contentContainerStyle={styles.homeContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
+      >
       <View style={styles.hHeaderWrap}>
         <LinearGradient
-          colors={['#0CCB8F', '#059669', '#025138']}
+          colors={['#12D3A0', '#0AA57E', '#0E7490']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.hHeader}
@@ -622,7 +627,8 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
           </TouchableOpacity>
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -5325,12 +5331,15 @@ const styles = StyleSheet.create({
   homeOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#F4F6FA' },
 
   /* Accueil natif */
-  homeScroll: { flex: 1 },
+  homeAurora: { flex: 1, backgroundColor: '#EEF3FA' },
+  auroraOrbA: { position: 'absolute', top: 120, right: -70, width: 240, height: 240, borderRadius: 120, backgroundColor: 'rgba(45,212,191,0.20)' },
+  auroraOrbB: { position: 'absolute', bottom: 40, left: -80, width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(129,140,248,0.18)' },
+  homeScroll: { flex: 1, backgroundColor: 'transparent' },
   homeContent: { paddingBottom: 28 },
   hHeaderWrap: { borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', shadowColor: '#047857', shadowOpacity: 0.30, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
   hHeader: { paddingTop: 28, paddingBottom: 54, paddingHorizontal: 22, position: 'relative', overflow: 'hidden' },
-  hOrb1: { position: 'absolute', top: -60, right: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.14)' },
-  hOrb2: { position: 'absolute', bottom: -70, left: -50, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(3,81,56,0.35)' },
+  hOrb1: { position: 'absolute', top: -60, right: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.16)' },
+  hOrb2: { position: 'absolute', bottom: -70, left: -50, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(99,102,241,0.26)' },
   hHeaderRow: { flexDirection: 'row', alignItems: 'center' },
   hHello: { color: 'rgba(255,255,255,0.92)', fontSize: 16, fontWeight: '500' },
   hName: { color: '#fff', fontSize: 27, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
@@ -5361,8 +5370,8 @@ const styles = StyleSheet.create({
   spotBarLabel: { fontSize: 12, fontWeight: '500', color: '#64748B' },
 
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: 18 },
-  kpiShadow: { width: '48%', marginBottom: 14, borderRadius: 22, shadowColor: '#0B3B2A', shadowOpacity: 0.10, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
-  kpiCard: { borderRadius: 22, padding: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)' },
+  kpiShadow: { width: '48%', marginBottom: 14, borderRadius: 24, shadowColor: '#0B3B2A', shadowOpacity: 0.09, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 4 },
+  kpiCard: { borderRadius: 24, padding: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' },
   kpiGloss: { position: 'absolute', top: 0, left: 0, right: 0, height: 40, backgroundColor: 'rgba(255,255,255,0.45)' },
   kpiTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   kpiIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', shadowColor: '#0B3B2A', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
@@ -5373,8 +5382,8 @@ const styles = StyleSheet.create({
 
   sectionTitle: { fontSize: 12, fontWeight: '700', color: '#94A3B8', marginTop: 14, marginBottom: 12, marginHorizontal: 20, textTransform: 'uppercase', letterSpacing: 0.7 },
   shortcuts: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
-  shortcut: { width: '48%', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 15, paddingHorizontal: 13, marginBottom: 12, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  shortcutIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 10, borderWidth: 1, borderColor: '#D1FAE5' },
+  shortcut: { width: '48%', backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 18, paddingVertical: 15, paddingHorizontal: 13, marginBottom: 12, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#0B3B2A', shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
+  shortcutIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: 'rgba(236,253,245,0.9)', alignItems: 'center', justifyContent: 'center', marginRight: 10, borderWidth: 1, borderColor: '#D1FAE5' },
   shortcutTxt: { flex: 1, fontSize: 14, fontWeight: '600', color: INK },
 
   openFullShadow: { marginTop: 10, marginHorizontal: 16, borderRadius: 16, shadowColor: '#047857', shadowOpacity: 0.32, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
@@ -5674,7 +5683,7 @@ const styles = StyleSheet.create({
   emptyBtnTxt: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
 
   /* Tab bar */
-  tabBar: { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#EEF2F6', paddingBottom: Platform.OS === 'ios' ? 22 : 10, paddingTop: 8, alignItems: 'flex-end', shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: -3 }, elevation: 12 },
+  tabBar: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.96)', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderTopColor: 'rgba(226,240,236,0.9)', paddingBottom: Platform.OS === 'ios' ? 22 : 10, paddingTop: 8, alignItems: 'flex-end', shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: -6 }, elevation: 14 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 },
   tabLabel: { fontSize: 11, fontWeight: '600' },
   fabWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
