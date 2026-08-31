@@ -259,14 +259,14 @@ const QUICK_ACTIONS_ASSO = [
   { label: 'Scanner une facture', icon: 'camera', color: '#0EA5E9', form: 'expense' },
   { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', form: 'invoice' },
   { label: 'Nouvel adhérent', icon: 'person-add', color: '#D97706', form: 'member' },
-  { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', path: '/messages' },
+  { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', screen: 'messages' },
 ];
 
 const QUICK_ACTIONS_TPE = [
   { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', form: 'invoice' },
   { label: 'Nouveau devis', icon: 'create', color: '#059669', form: 'quote' },
   { label: 'Nouveau client', icon: 'person-add', color: '#D97706', form: 'client' },
-  { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', path: '/messages' },
+  { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', screen: 'messages' },
 ];
 
 const SHORTCUTS_ASSO = [
@@ -1551,7 +1551,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setReferentId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
         </View>
       ) : (
-        <TouchableOpacity accessibilityRole="button" style={styles.projPickBtn} activeOpacity={0.8} onPress={() => referents.length ? setRefPickerOpen(true) : null}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !referents.length && { opacity: 0.55 }]} activeOpacity={0.8} disabled={!referents.length} onPress={() => setRefPickerOpen(true)}>
           <Ionicons name="star-outline" size={18} color={BRAND} />
           <Text style={styles.projPickTxt}>{referents.length ? 'Désigner un référent' : 'Aucun référent disponible'}</Text>
         </TouchableOpacity>
@@ -1562,7 +1562,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
         {allMembers.length > 0 && <TouchableOpacity accessibilityRole="button" onPress={() => setTeamPickerOpen(true)} activeOpacity={0.7}><Text style={styles.formLink}>Ajouter</Text></TouchableOpacity>}
       </View>
       {teamIds.length === 0 ? (
-        <TouchableOpacity accessibilityRole="button" style={styles.projPickBtn} activeOpacity={0.8} onPress={() => allMembers.length ? setTeamPickerOpen(true) : null}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !allMembers.length && { opacity: 0.55 }]} activeOpacity={0.8} disabled={!allMembers.length} onPress={() => setTeamPickerOpen(true)}>
           <Ionicons name="people-outline" size={18} color={BRAND} />
           <Text style={styles.projPickTxt}>{allMembers.length ? 'Ajouter des participants' : 'Aucun membre disponible'}</Text>
         </TouchableOpacity>
@@ -4826,6 +4826,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   const onQuick = (a) => {
     if (a.form) { openForm(a.form); return; }
+    if (a.screen) { setQuickOpen(false); clearDetail(); openMenuScreen(a.screen); return; }
     setQuickOpen(false);
     clearDetail();
     setWebMode(true);
