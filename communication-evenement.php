@@ -53,17 +53,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'diffu
 
     // Créer broadcast lié
     $public_url = 'https://assokit.fr/evenement-public/' . $event['public_slug'];
-    $event_date_fr = strftime('%A %d %B %Y à %H:%M', strtotime($event['start_date']));
-    // Fallback si strftime deprecated
-    if (!$event_date_fr || $event_date_fr === strtotime($event['start_date'])) {
-        $event_date_fr = date('d/m/Y à H:i', strtotime($event['start_date']));
-    }
+    $event_date_fr = fr_format_date('%A %d %B %Y à %H:%M', strtotime($event['start_date']));
 
     $subject = 'Invitation : ' . $event['title'];
     $body = "Nous vous invitons à notre événement :\n\n" .
             "📅 " . date('d/m/Y à H:i', strtotime($event['start_date'])) . "\n" .
             ($event['location'] ? "📍 " . $event['location'] . "\n" : "") . "\n" .
-            ($event['description'] ?: '') . "\n\n" .
+            (trim(html_entity_decode(strip_tags(preg_replace('#<\s*br\s*/?>#i', "\n", (string)($event['description'] ?? ''))), ENT_QUOTES | ENT_HTML5, 'UTF-8')) . "\n\n") .
             "Pour confirmer votre venue, cliquez sur le lien ci-dessous.";
 
     $pdo->beginTransaction();
@@ -86,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'diffu
                      . '<tr><td style="padding:4px 8px;color:#78716C;width:30%">📅 Date :</td><td style="padding:4px 8px"><strong>' . date('d/m/Y à H:i', strtotime($event['start_date'])) . '</strong></td></tr>'
                      . ($event['location'] ? '<tr><td style="padding:4px 8px;color:#78716C">📍 Lieu :</td><td style="padding:4px 8px">' . h($event['location']) . '</td></tr>' : '')
                      . '</table>'
-                     . ($event['description'] ? '<div style="background:#D1FAE5;border-left:3px solid #059669;padding:12px 14px;border-radius:6px;margin:14px 0;font-size:13.5px;color:#065F46;line-height:1.6;">' . nl2br(h($event['description'])) . '</div>' : '')
+                     . ($event['description'] ? '<div style="background:#D1FAE5;border-left:3px solid #059669;padding:12px 14px;border-radius:6px;margin:14px 0;font-size:13.5px;color:#065F46;line-height:1.6;">' . ak_render_rich_text($event['description']) . '</div>' : '')
                      . '<p style="font-size:12.5px; color:#78716C;">— L\'équipe de ' . h($org_name) . '</p>';
 
             $cta_label = $event['rsvp_enabled'] ? 'Confirmer ma venue' : "Voir l'événement";
@@ -219,7 +215,7 @@ render_sidebar('communication');
       <div style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px;">Détails</div>
 
       <?php if ($event['description']): ?>
-        <div style="font-size:13.5px; line-height:1.6; margin-bottom:16px; white-space:pre-wrap;"><?= h($event['description']) ?></div>
+        <div style="font-size:13.5px; line-height:1.6; margin-bottom:16px; word-break:break-word;"><?= ak_render_rich_text($event['description']) ?></div>
       <?php endif; ?>
 
       <div style="display:grid; gap:8px; font-size:13px;">

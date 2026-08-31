@@ -1,5 +1,49 @@
 <?php
 require_once __DIR__ . '/ak-icons.php';   // jeu d'icônes maison (ak_icon, ak_icon_badge, ak_dot)
+
+if (!function_exists('ak_render_rich_text')) {
+    /**
+     * Affiche proprement un texte pouvant contenir du HTML brut issu d'une
+     * synchro (Google Calendar / Outlook) : convertit les balises de bloc en
+     * sauts de ligne, retire tout le HTML (anti-XSS), puis rend cliquables les
+     * URLs, emails et numéros de téléphone. Sûr : aucune balise d'origine ne
+     * survit (strip_tags avant échappement).
+     */
+    function ak_render_rich_text($raw): string {
+        $s = (string)$raw;
+        if ($s === '') return '';
+        // Balises de bloc / <br> -> sauts de ligne ; puces de liste
+        $s = preg_replace('#<\s*br\s*/?\s*>#i', "\n", $s);
+        $s = preg_replace('#</\s*(p|div|li|tr|h[1-6]|ul|ol)\s*>#i', "\n", $s);
+        $s = preg_replace('#<\s*li[^>]*>#i', "• ", $s);
+        // Retire toute balise restante puis décode les entités
+        $s = strip_tags($s);
+        $s = html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Nettoie les espaces/sauts multiples
+        $s = preg_replace("/[ \t]+\n/", "\n", $s);
+        $s = preg_replace("/\n{3,}/", "\n\n", $s);
+        $s = trim($s);
+        if ($s === '') return '';
+        // Échappe AVANT d'insérer nos propres liens (aucun HTML d'origine ne subsiste)
+        $s = htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+        $lnk = 'color:#059669;text-decoration:underline;';
+        // URLs
+        $s = preg_replace_callback('#\bhttps?://[^\s<]+#i', function ($m) use ($lnk) {
+            $u = rtrim($m[0], '.,);');
+            return '<a href="' . $u . '" target="_blank" rel="noopener" style="' . $lnk . '">' . $u . '</a>';
+        }, $s);
+        // Emails
+        $s = preg_replace('#(?<![\w.])([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})#', '<a href="mailto:$1" style="' . $lnk . '">$1</a>', $s);
+        // Téléphones (FR/international) — évite de matcher à l'intérieur d'un lien déjà posé
+        $s = preg_replace_callback('#(?<![\w/:=."+>])(\+?\d[\d ().\-]{7,}\d)#', function ($m) use ($lnk) {
+            $disp = $m[0];
+            $tel = preg_replace('/[^\d+]/', '', $disp);
+            return '<a href="tel:' . $tel . '" style="' . $lnk . '">' . $disp . '</a>';
+        }, $s);
+        return nl2br($s);
+    }
+}
+
 if (!function_exists('fr_format_date')) {
     function fr_format_date($fmt, $ts) {
         $jours = ['Sunday'=>'dimanche','Monday'=>'lundi','Tuesday'=>'mardi','Wednesday'=>'mercredi','Thursday'=>'jeudi','Friday'=>'vendredi','Saturday'=>'samedi'];

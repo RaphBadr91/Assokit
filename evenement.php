@@ -299,7 +299,7 @@ render_sidebar('agenda');
     <?php if (!empty($event['description'])): ?>
     <div class="form-section">
       <h2 class="form-section-title" style="display:inline-flex; align-items:center; gap:8px;"><?= ak_icon('edit',18) ?> Description</h2>
-      <div style="font-size: 14px; color: var(--ink-2); line-height: 1.7; white-space: pre-wrap;"><?= h($event['description']) ?></div>
+      <div style="font-size: 14px; color: var(--ink-2); line-height: 1.7; word-break: break-word;"><?= ak_render_rich_text($event['description']) ?></div>
     </div>
     <?php endif; ?>
 
