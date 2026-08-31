@@ -1263,10 +1263,10 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit }) {
             <Text style={styles.dPrimaryBtnTxt}>{isQuote ? 'Voir / envoyer le devis' : 'Voir / envoyer la facture'}</Text>
           </TouchableOpacity>
         )}
-        {(!isQuote && inv.status === 'draft' && onEdit) ? (
-          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onEdit(d)}>
+        {(onEdit && (isQuote ? (inv.status !== 'signed' && inv.status !== 'converted') : inv.status === 'draft')) ? (
+          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onEdit(d, !!isQuote)}>
             <Ionicons name="create-outline" size={18} color={BRAND} />
-            <Text style={styles.dWebBtnTxt}>Modifier la facture</Text>
+            <Text style={styles.dWebBtnTxt}>{isQuote ? 'Modifier le devis' : 'Modifier la facture'}</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/mon-asso-devis-edit?id=' : '/mon-asso-facture-edit?id=') + inv.id)}>
@@ -1394,8 +1394,8 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients 
   const [lines, setLines] = useState(edit && edit.lines && edit.lines.length
     ? edit.lines.map((l) => ({ designation: l.label || '', quantity: String(l.qty ?? 1), unit_price_ht: String(l.unit ?? ''), vat_rate: l.vat != null ? String(l.vat) : '' }))
     : [{ designation: '', quantity: '1', unit_price_ht: '', vat_rate: '20' }]);
-  const [status, setStatus] = useState(ei ? (ei.status === 'draft' ? 'draft' : 'pending') : (isQuote ? 'draft' : 'pending'));
-  const [dueDays, setDueDays] = useState(ei && ei.due_days ? String(ei.due_days) : '30');
+  const [status, setStatus] = useState(ei ? (ei.status === 'draft' ? 'draft' : (isQuote ? 'sent' : 'pending')) : (isQuote ? 'draft' : 'pending'));
+  const [dueDays, setDueDays] = useState(ei ? String((isQuote ? ei.validity_days : ei.due_days) || 30) : '30');
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const setC = (k) => (v) => setClient((s) => ({ ...s, [k]: v, id: 0 }));
@@ -1407,7 +1407,8 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients 
   const t = computeTotals(lines);
   const submit = () => {
     const payload = { lines, status };
-    if (!isQuote) payload.due_days = parseInt(dueDays, 10) || 30;
+    if (isQuote) payload.validity_days = parseInt(dueDays, 10) || 30;
+    else payload.due_days = parseInt(dueDays, 10) || 30;
     if (client.id > 0) payload.client_id = client.id;
     else payload.client = { client_type: client.client_type, display_name: client.display_name, email: client.email, phone: client.phone, address_city: client.address_city };
     onSubmit(payload);
@@ -1470,7 +1471,7 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients 
         <View style={[styles.dCardRow, { marginTop: 8 }]}><Text style={styles.dCardLabel}>Total TTC</Text><Text style={styles.dTotal}>{fmtEuro(t.ttc)}</Text></View>
       </View>
 
-      {!isQuote && <View style={{ marginTop: 16 }}><Field label="Échéance (jours)" value={dueDays} onChangeText={setDueDays} keyboardType="number-pad" /></View>}
+      <View style={{ marginTop: 16 }}><Field label={isQuote ? 'Validité (jours)' : 'Échéance (jours)'} value={dueDays} onChangeText={setDueDays} keyboardType="number-pad" /></View>
 
       <Text style={[styles.fLabel, { marginTop: 8 }]}>Statut</Text>
       <Segmented
@@ -4495,9 +4496,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (!csrf) { setFormErr('Session en cours de préparation, réessayez dans un instant.'); inject(FETCH_CSRF_JS); return; }
     setFormErr('');
     setSubmitting(true);
-    const editing = form && form.edit && type === 'invoice';
-    const endpoint = editing ? '/api/app-update-invoice.php' : CREATE_ENDPOINTS[type];
-    const extra = editing ? { invoice_id: form.edit.invoice.id } : {};
+    const editing = form && form.edit && (type === 'invoice' || type === 'quote');
+    const endpoint = editing
+      ? (type === 'quote' ? '/api/app-update-quote.php' : '/api/app-update-invoice.php')
+      : CREATE_ENDPOINTS[type];
+    const extra = editing
+      ? (type === 'quote' ? { quote_id: form.edit.invoice.id } : { invoice_id: form.edit.invoice.id })
+      : {};
     inject(postJS(endpoint, { ...data, ...extra, csrf }));
   }, [csrf, inject, form]);
 
@@ -4829,7 +4834,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         const w = msg.__akwrite;
         if (w.ok) {
           const created = form && form.type;
-          const editId = (form && form.edit && created === 'invoice') ? form.edit.invoice.id : 0;
+          const editId = (form && form.edit) ? form.edit.invoice.id : 0;
           closeForm();
           Alert.alert('C\'est fait ✅', w.message || 'Enregistré avec succès.');
           // Rafraîchir les données concernées
@@ -4837,7 +4842,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           if (created === 'member') fetchPeople(false);
           else if (created === 'client') fetchPeople(true);
           else if (created === 'invoice') { fetchInvoices(); if (editId) pushDetail('invoice', editId); }
-          else if (created === 'quote') fetchQuotes();
+          else if (created === 'quote') { fetchQuotes(); if (editId) pushDetail('quote', editId); }
           else if (created === 'project') fetchProjects();
           else if (created === 'expense') { fetchProjects(); if (expenseProject) pushDetail('project', expenseProject); }
         } else {
@@ -5194,10 +5199,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeClientDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onOpenInvoice={(id) => pushDetail('invoice', id)} onWeb={openWeb} />
             )}
             {detailTop.type === 'invoice' && (
-              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onEdit={(dd) => openForm('invoice', 0, { invoice: dd.invoice, lines: dd.lines })} />
+              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onEdit={(dd, q) => openForm(q ? 'quote' : 'invoice', 0, { invoice: dd.invoice, lines: dd.lines })} />
             )}
             {detailTop.type === 'quote' && (
-              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onEdit={(dd) => openForm('invoice', 0, { invoice: dd.invoice, lines: dd.lines })} />
+              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onEdit={(dd, q) => openForm(q ? 'quote' : 'invoice', 0, { invoice: dd.invoice, lines: dd.lines })} />
             )}
             {detailTop.type === 'event' && (
               <NativeEventDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
