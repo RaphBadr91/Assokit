@@ -233,8 +233,10 @@ render_sidebar('mon-asso-plan');
               <div style="background:#059669;color:white;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:600;">✓ PLAN ACTUEL</div>
             <?php elseif ((int)$p['price_cents'] > (int)($current_plan_id ? $pricing['plan_cents'] : 0)): ?>
               <a href="/mon-asso-paiement?plan=<?= htmlspecialchars($p['slug']) ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#059669;color:white;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('upload',14) ?>Upgrade</a>
+            <?php elseif ((int)$p['price_cents'] > 0): ?>
+              <a href="/mon-asso-paiement?plan=<?= htmlspecialchars($p['slug']) ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('download',14) ?>Passer à ce plan</a>
             <?php else: ?>
-              <a href="/mon-asso-annuler-abonnement?downgrade=<?= htmlspecialchars($p['slug']) ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('download',14) ?>Downgrade</a>
+              <a href="/mon-asso-annuler-abonnement" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('download',14) ?>Passer au gratuit</a>
             <?php endif; ?>
           </div>
           <?php endforeach; ?>

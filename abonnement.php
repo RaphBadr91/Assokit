@@ -8,6 +8,13 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_login();
+
+// Source unique de l'abonnement : /mon-asso-plan (PACK 6.4, table asso_subscriptions).
+// Cette ancienne page (table legacy `subscriptions`) affichait un plan pouvant
+// diverger de /mon-asso-plan → on redirige vers la page canonique.
+header('Location: /mon-asso-plan');
+exit;
+
 $current = current_user();
 $user_id = (int)$current['id'];
 $org_id  = (int)($current['org_id'] ?? 0);
