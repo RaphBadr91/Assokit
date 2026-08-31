@@ -859,14 +859,20 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
 /* ================================================================== */
 /*  FICHES DÉTAIL (natives)                                            */
 /* ================================================================== */
-function DetailHeader({ title, onBack }) {
+function DetailHeader({ title, onBack, onAction, actionIcon }) {
   return (
     <View style={styles.dHeader}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.dBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.7}>
         <Ionicons name="chevron-back" size={26} color={INK} />
       </TouchableOpacity>
       <Text style={styles.dTitle} numberOfLines={1}>{title}</Text>
-      <View style={{ width: 34 }} />
+      {onAction ? (
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ajouter" onPress={onAction} style={styles.dHeadAction} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.8}>
+          <Ionicons name={actionIcon || 'add'} size={22} color="#fff" />
+        </TouchableOpacity>
+      ) : (
+        <View style={{ width: 34 }} />
+      )}
     </View>
   );
 }
@@ -1385,6 +1391,286 @@ function ClientForm({ onBack, onSubmit, submitting, error }) {
   );
 }
 
+// Sélecteur générique en bottom-sheet (liste d'options {value,label,sub?})
+function SheetPicker({ visible, title, options, selected, onPick, onClose }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={onClose}>
+        <Pressable style={[styles.sheet, { maxHeight: '75%' }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>{title}</Text>
+          <ScrollView>
+            {options.map((o) => (
+              <TouchableOpacity accessibilityRole="button" key={String(o.value)} style={styles.qaRow} activeOpacity={0.7} onPress={() => { onPick(o.value); onClose(); }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.qaLabel}>{o.label}</Text>
+                  {!!o.sub && <Text style={styles.projPersonRole}>{o.sub}</Text>}
+                </View>
+                {selected === o.value && <Ionicons name="checkmark-circle" size={22} color={BRAND} />}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function todayISO() {
+  const d = new Date();
+  const p = (n) => (n < 10 ? '0' + n : '' + n);
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+// ── Enregistrement d'un paiement de cotisation (natif) ────────────────
+function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns, members }) {
+  const camps = campaigns || [];
+  const mbrs = members || [];
+  const [campaignId, setCampaignId] = useState(camps.length === 1 ? camps[0].id : 0);
+  const [adherentId, setAdherentId] = useState(0);
+  const [f, setF] = useState({ payer_name: '', payer_email: '', amount: '', reference: '', notes: '', paid_at: todayISO() });
+  const [method, setMethod] = useState('bank');
+  const [status, setStatus] = useState('paid');
+  const [campPicker, setCampPicker] = useState(false);
+  const [memPicker, setMemPicker] = useState(false);
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+
+  const selCamp = camps.find((c) => c.id === campaignId) || null;
+  const selMem = mbrs.find((m) => m.id === adherentId) || null;
+
+  const pickMember = (id) => {
+    setAdherentId(id);
+    const m = mbrs.find((x) => x.id === id);
+    if (m) setF((s) => ({ ...s, payer_name: m.name || s.payer_name, payer_email: m.email || s.payer_email }));
+  };
+
+  const submit = () => {
+    onSubmit({
+      campaign_id: campaignId,
+      adherent_id: adherentId || 0,
+      payer_name: f.payer_name.trim(),
+      payer_email: f.payer_email.trim(),
+      amount: f.amount,
+      payment_method: method,
+      status,
+      paid_at: f.paid_at.trim(),
+      reference: f.reference.trim(),
+      notes: f.notes.trim(),
+    });
+  };
+
+  return (
+    <FormShell title="Nouveau paiement" onBack={onBack} onSubmit={submit} submitLabel="Enregistrer le paiement" submitting={submitting} error={error}>
+      <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Campagne *</Text>
+        {camps.length > 0 && <TouchableOpacity accessibilityRole="button" onPress={() => setCampPicker(true)} activeOpacity={0.7}><Text style={styles.formLink}>Choisir</Text></TouchableOpacity>}
+      </View>
+      <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !camps.length && { opacity: 0.55 }]} activeOpacity={0.8} disabled={!camps.length} onPress={() => setCampPicker(true)}>
+        <Ionicons name="pricetag-outline" size={18} color={BRAND} />
+        <Text style={styles.projPickTxt}>{selCamp ? (selCamp.name + (selCamp.year ? ' · ' + selCamp.year : '')) : (camps.length ? 'Sélectionner une campagne' : 'Aucune campagne active')}</Text>
+      </TouchableOpacity>
+
+      <View style={[styles.formCardHead, { marginTop: 18 }]}><Text style={styles.formCardTitle}>Adhérent</Text>
+        {mbrs.length > 0 && <TouchableOpacity accessibilityRole="button" onPress={() => setMemPicker(true)} activeOpacity={0.7}><Text style={styles.formLink}>{selMem ? 'Changer' : 'Choisir'}</Text></TouchableOpacity>}
+      </View>
+      {selMem ? (
+        <View style={styles.pickedClient}>
+          <View style={[styles.projPersonAv, { backgroundColor: selMem.color || BRAND }]}><Text style={styles.projPersonAvTxt}>{selMem.initials}</Text></View>
+          <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selMem.name}</Text>{!!selMem.email && <Text style={styles.projPersonRole}>{selMem.email}</Text>}</View>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setAdherentId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !mbrs.length && { opacity: 0.55 }]} activeOpacity={0.8} disabled={!mbrs.length} onPress={() => setMemPicker(true)}>
+          <Ionicons name="person-outline" size={18} color={BRAND} />
+          <Text style={styles.projPickTxt}>{mbrs.length ? 'Rattacher à un adhérent (optionnel)' : 'Saisie libre du payeur'}</Text>
+        </TouchableOpacity>
+      )}
+
+      <View style={{ height: 18 }} />
+      <Field label="Nom du payeur *" value={f.payer_name} onChangeText={set('payer_name')} autoCapitalize="words" />
+      <Field label="Email du payeur" value={f.payer_email} onChangeText={set('payer_email')} keyboardType="email-address" autoCapitalize="none" />
+      <Field label="Montant (€) *" value={f.amount} onChangeText={set('amount')} keyboardType="decimal-pad" placeholder="Ex : 25" />
+
+      <Text style={styles.fLabel}>Méthode</Text>
+      <Segmented options={[{ value: 'bank', label: 'Virement' }, { value: 'check', label: 'Chèque' }, { value: 'cash', label: 'Espèces' }, { value: 'other', label: 'Autre' }]} value={method} onChange={setMethod} />
+      <View style={{ height: 14 }} />
+      <Text style={styles.fLabel}>Statut</Text>
+      <Segmented options={[{ value: 'paid', label: 'Payé' }, { value: 'pending', label: 'En attente' }]} value={status} onChange={setStatus} />
+      <View style={{ height: 14 }} />
+      <Field label="Date du paiement" value={f.paid_at} onChangeText={set('paid_at')} placeholder="AAAA-MM-JJ" autoCapitalize="none" hint="Format AAAA-MM-JJ." />
+      <Field label="Référence (n° chèque, virement…)" value={f.reference} onChangeText={set('reference')} />
+      <Field label="Notes" value={f.notes} onChangeText={set('notes')} multiline numberOfLines={2} style={[styles.fInput, { height: 74, textAlignVertical: 'top' }]} />
+
+      <SheetPicker visible={campPicker} title="Campagne de cotisation" onClose={() => setCampPicker(false)} selected={campaignId}
+        onPick={setCampaignId} options={camps.map((c) => ({ value: c.id, label: c.name, sub: (c.year ? c.year + ' · ' : '') + (c.active ? 'Active' : 'Clôturée') }))} />
+      <SheetPicker visible={memPicker} title="Adhérent" onClose={() => setMemPicker(false)} selected={adherentId}
+        onPick={pickMember} options={mbrs.map((m) => ({ value: m.id, label: m.name, sub: m.email || m.role_label }))} />
+    </FormShell>
+  );
+}
+
+// ── Nouvel événement d'agenda (natif) ─────────────────────────────────
+function EventForm({ onBack, onSubmit, submitting, error, projects }) {
+  const projs = projects || [];
+  const [f, setF] = useState({ title: '', location: '', description: '', start_date: todayISO(), start_time: '14:00', end_date: todayISO(), end_time: '16:00' });
+  const [allDay, setAllDay] = useState(false);
+  const [type, setType] = useState('meeting');
+  const [visibility, setVisibility] = useState('organization');
+  const [projectId, setProjectId] = useState(0);
+  const [projPicker, setProjPicker] = useState(false);
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  const selProj = projs.find((p) => p.id === projectId) || null;
+
+  const submit = () => {
+    onSubmit({
+      title: f.title.trim(),
+      location: f.location.trim(),
+      description: f.description.trim(),
+      event_type: type,
+      visibility,
+      project_id: projectId || 0,
+      is_all_day: allDay,
+      start_date: f.start_date.trim(),
+      start_time: f.start_time.trim(),
+      end_date: f.end_date.trim(),
+      end_time: f.end_time.trim(),
+    });
+  };
+
+  return (
+    <FormShell title="Nouvel événement" onBack={onBack} onSubmit={submit} submitLabel="Ajouter à l'agenda" submitting={submitting} error={error}>
+      <Field label="Titre *" value={f.title} onChangeText={set('title')} autoCapitalize="sentences" placeholder="Ex : Réunion du bureau" />
+      <Text style={styles.fLabel}>Type</Text>
+      <Segmented options={[{ value: 'meeting', label: 'Réunion' }, { value: 'workshop', label: 'Atelier' }, { value: 'deadline', label: 'Échéance' }, { value: 'other', label: 'Autre' }]} value={type} onChange={setType} />
+
+      <View style={[styles.switchRow, { marginTop: 16 }]}>
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={styles.switchLabel}>Journée entière</Text>
+          <Text style={styles.switchSub}>Sans heure précise.</Text>
+        </View>
+        <Switch value={allDay} onValueChange={setAllDay} trackColor={{ true: BRAND }} accessibilityLabel="Journée entière" />
+      </View>
+
+      <View style={styles.formRow2}>
+        <View style={{ flex: 1 }}><Field label="Date début *" value={f.start_date} onChangeText={set('start_date')} placeholder="AAAA-MM-JJ" autoCapitalize="none" /></View>
+        {!allDay && <View style={{ width: 12 }} />}
+        {!allDay && <View style={{ width: 110 }}><Field label="Heure" value={f.start_time} onChangeText={set('start_time')} placeholder="HH:MM" autoCapitalize="none" /></View>}
+      </View>
+      <View style={styles.formRow2}>
+        <View style={{ flex: 1 }}><Field label="Date fin *" value={f.end_date} onChangeText={set('end_date')} placeholder="AAAA-MM-JJ" autoCapitalize="none" /></View>
+        {!allDay && <View style={{ width: 12 }} />}
+        {!allDay && <View style={{ width: 110 }}><Field label="Heure" value={f.end_time} onChangeText={set('end_time')} placeholder="HH:MM" autoCapitalize="none" /></View>}
+      </View>
+
+      <Field label="Lieu" value={f.location} onChangeText={set('location')} autoCapitalize="sentences" placeholder="Ex : Salle des fêtes" />
+
+      <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Projet lié</Text>
+        {projs.length > 0 && <TouchableOpacity accessibilityRole="button" onPress={() => setProjPicker(true)} activeOpacity={0.7}><Text style={styles.formLink}>{selProj ? 'Changer' : 'Choisir'}</Text></TouchableOpacity>}
+      </View>
+      {selProj ? (
+        <View style={styles.pickedClient}>
+          <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selProj.name}</Text>{!!selProj.folder_name && <Text style={styles.projPersonRole}>{selProj.folder_name}</Text>}</View>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setProjectId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !projs.length && { opacity: 0.55 }]} activeOpacity={0.8} disabled={!projs.length} onPress={() => setProjPicker(true)}>
+          <Ionicons name="folder-outline" size={18} color={BRAND} />
+          <Text style={styles.projPickTxt}>{projs.length ? 'Associer à un projet (optionnel)' : 'Aucun projet'}</Text>
+        </TouchableOpacity>
+      )}
+
+      <View style={{ height: 18 }} />
+      <Text style={styles.fLabel}>Visibilité</Text>
+      <Segmented options={[{ value: 'organization', label: 'Organisation' }, { value: 'public', label: 'Public' }]} value={visibility} onChange={setVisibility} />
+      <View style={{ height: 14 }} />
+      <Field label="Description" value={f.description} onChangeText={set('description')} multiline numberOfLines={3} style={[styles.fInput, { height: 90, textAlignVertical: 'top' }]} />
+
+      <SheetPicker visible={projPicker} title="Projet lié" onClose={() => setProjPicker(false)} selected={projectId}
+        onPick={setProjectId} options={projs.map((p) => ({ value: p.id, label: p.name, sub: p.folder_name }))} />
+    </FormShell>
+  );
+}
+
+// ── Nouvelle demande de subvention (natif) ────────────────────────────
+const GRANT_FUNDERS = [
+  { value: 'etat', label: 'État' }, { value: 'region', label: 'Région' }, { value: 'departement', label: 'Département' },
+  { value: 'commune', label: 'Commune' }, { value: 'epci', label: 'EPCI (intercommunalité)' }, { value: 'caf', label: 'CAF' },
+  { value: 'fondation', label: 'Fondation' }, { value: 'entreprise', label: 'Entreprise / mécénat' }, { value: 'europe', label: 'Europe' },
+  { value: 'autre', label: 'Autre' },
+];
+function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
+  const projs = projects || [];
+  const [f, setF] = useState({ name: '', funder: '', amount_requested: '', amount_granted: '', deadline_apply: '', description: '' });
+  const [funderType, setFunderType] = useState('commune');
+  const [status, setStatus] = useState('draft');
+  const [projectId, setProjectId] = useState(0);
+  const [ftPicker, setFtPicker] = useState(false);
+  const [projPicker, setProjPicker] = useState(false);
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  const selProj = projs.find((p) => p.id === projectId) || null;
+  const selFunder = GRANT_FUNDERS.find((x) => x.value === funderType) || GRANT_FUNDERS[GRANT_FUNDERS.length - 1];
+
+  const submit = () => {
+    onSubmit({
+      name: f.name.trim(),
+      funder: f.funder.trim(),
+      funder_type: funderType,
+      status,
+      amount_requested: f.amount_requested,
+      amount_granted: status === 'granted' ? f.amount_granted : '',
+      deadline_apply: f.deadline_apply.trim(),
+      project_id: projectId || 0,
+      description: f.description.trim(),
+    });
+  };
+
+  return (
+    <FormShell title="Nouvelle subvention" onBack={onBack} onSubmit={submit} submitLabel="Créer la demande" submitting={submitting} error={error}>
+      <Field label="Nom de la demande *" value={f.name} onChangeText={set('name')} autoCapitalize="sentences" placeholder="Ex : Fonds de développement 2026" />
+      <Field label="Financeur *" value={f.funder} onChangeText={set('funder')} autoCapitalize="words" placeholder="Ex : Mairie de Lyon" />
+
+      <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Type de financeur</Text>
+        <TouchableOpacity accessibilityRole="button" onPress={() => setFtPicker(true)} activeOpacity={0.7}><Text style={styles.formLink}>Changer</Text></TouchableOpacity>
+      </View>
+      <TouchableOpacity accessibilityRole="button" style={styles.projPickBtn} activeOpacity={0.8} onPress={() => setFtPicker(true)}>
+        <Ionicons name="business-outline" size={18} color={BRAND} />
+        <Text style={styles.projPickTxt}>{selFunder.label}</Text>
+      </TouchableOpacity>
+
+      <View style={{ height: 18 }} />
+      <Text style={styles.fLabel}>Statut</Text>
+      <Segmented options={[{ value: 'draft', label: 'Brouillon' }, { value: 'submitted', label: 'Déposé' }, { value: 'granted', label: 'Accordé' }]} value={status} onChange={setStatus} />
+      <View style={{ height: 14 }} />
+
+      <Field label="Montant demandé (€)" value={f.amount_requested} onChangeText={set('amount_requested')} keyboardType="decimal-pad" />
+      {status === 'granted' && <Field label="Montant accordé (€)" value={f.amount_granted} onChangeText={set('amount_granted')} keyboardType="decimal-pad" />}
+      <Field label="Date limite de dépôt" value={f.deadline_apply} onChangeText={set('deadline_apply')} placeholder="AAAA-MM-JJ" autoCapitalize="none" hint="Format AAAA-MM-JJ (optionnel)." />
+
+      <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Projet lié</Text>
+        {projs.length > 0 && <TouchableOpacity accessibilityRole="button" onPress={() => setProjPicker(true)} activeOpacity={0.7}><Text style={styles.formLink}>{selProj ? 'Changer' : 'Choisir'}</Text></TouchableOpacity>}
+      </View>
+      {selProj ? (
+        <View style={styles.pickedClient}>
+          <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selProj.name}</Text>{!!selProj.folder_name && <Text style={styles.projPersonRole}>{selProj.folder_name}</Text>}</View>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setProjectId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !projs.length && { opacity: 0.55 }]} activeOpacity={0.8} disabled={!projs.length} onPress={() => setProjPicker(true)}>
+          <Ionicons name="folder-outline" size={18} color={BRAND} />
+          <Text style={styles.projPickTxt}>{projs.length ? 'Associer à un projet (optionnel)' : 'Aucun projet'}</Text>
+        </TouchableOpacity>
+      )}
+
+      <View style={{ height: 18 }} />
+      <Field label="Description / objet" value={f.description} onChangeText={set('description')} multiline numberOfLines={3} style={[styles.fInput, { height: 90, textAlignVertical: 'top' }]} />
+
+      <SheetPicker visible={ftPicker} title="Type de financeur" onClose={() => setFtPicker(false)} selected={funderType}
+        onPick={setFunderType} options={GRANT_FUNDERS} />
+      <SheetPicker visible={projPicker} title="Projet lié" onClose={() => setProjPicker(false)} selected={projectId}
+        onPick={setProjectId} options={projs.map((p) => ({ value: p.id, label: p.name, sub: p.folder_name }))} />
+    </FormShell>
+  );
+}
+
 function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients }) {
   const isQuote = mode === 'quote';
   const ei = edit && edit.invoice ? edit.invoice : null;
@@ -1782,7 +2068,7 @@ function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject
 /* ================================================================== */
 /*  AGENDA (natif)                                                     */
 /* ================================================================== */
-function NativeAgenda({ data, loading, onRefresh, onOpen, onBack }) {
+function NativeAgenda({ data, loading, onRefresh, onOpen, onBack, onNew }) {
   const events = data ? (data.events || []) : null;
   // Grouper par jour
   const groups = [];
@@ -1795,14 +2081,21 @@ function NativeAgenda({ data, loading, onRefresh, onOpen, onBack }) {
   }
   return (
     <View style={styles.detailWrap}>
-      <DetailHeader title="Agenda" onBack={onBack} />
+      <DetailHeader title="Agenda" onBack={onBack} onAction={onNew} actionIcon="add" />
       {!events ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : events.length === 0 ? (
-        <View style={styles.emptyBox}><Ionicons name="calendar-outline" size={44} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun événement à venir</Text></View>
+        <View style={styles.emptyBox}><Ionicons name="calendar-outline" size={44} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun événement à venir</Text>
+          <TouchableOpacity accessibilityRole="button" style={[styles.listNewBtn, { marginTop: 16 }]} activeOpacity={0.85} onPress={onNew}>
+            <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvel événement</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          <TouchableOpacity accessibilityRole="button" style={styles.listNewBtn} activeOpacity={0.85} onPress={onNew}>
+            <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvel événement</Text>
+          </TouchableOpacity>
           {groups.map((g) => (
             <View key={g.key} style={{ marginBottom: 18 }}>
               <Text style={styles.agDay}>{g.label}</Text>
@@ -3706,12 +3999,13 @@ function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead,
   );
 }
 
-function NativeCotisations({ data, loading, onRefresh, onBack }) {
+function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage }) {
   const list = data ? (data.campaigns || []) : null;
   const s = (data && data.stats) || {};
+  const hasCampaigns = !!(list && list.length);
   return (
     <View style={styles.detailWrap}>
-      <DetailHeader title="Cotisations" onBack={onBack} />
+      <DetailHeader title="Cotisations" onBack={onBack} onAction={canManage && hasCampaigns ? onNew : null} actionIcon="add" />
       {!list ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : (
@@ -3721,8 +4015,15 @@ function NativeCotisations({ data, loading, onRefresh, onBack }) {
             <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.total)}</Text><Text style={styles.miniKpiLbl}>Encaissé</Text></View>
             <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.active || 0}</Text><Text style={styles.miniKpiLbl}>Campagnes actives</Text></View>
           </View>
+          {canManage && hasCampaigns && (
+            <TouchableOpacity accessibilityRole="button" style={styles.listNewBtn} activeOpacity={0.85} onPress={onNew}>
+              <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Enregistrer un paiement</Text>
+            </TouchableOpacity>
+          )}
           {list.length === 0 ? (
-            <View style={styles.emptyBox}><Ionicons name="card-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune campagne</Text></View>
+            <View style={styles.emptyBox}><Ionicons name="card-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune campagne</Text>
+              <Text style={styles.emptySub}>Créez une campagne de cotisation sur le site pour pouvoir y enregistrer des paiements depuis l'app.</Text>
+            </View>
           ) : list.map((c) => (
             <View key={c.id} style={styles.projCard}>
               <View style={styles.projCardTop}>
@@ -3743,12 +4044,12 @@ function NativeCotisations({ data, loading, onRefresh, onBack }) {
   );
 }
 
-function NativeGrants({ data, loading, onRefresh, onBack }) {
+function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage }) {
   const list = data ? (data.grants || []) : null;
   const s = (data && data.stats) || {};
   return (
     <View style={styles.detailWrap}>
-      <DetailHeader title="Subventions" onBack={onBack} />
+      <DetailHeader title="Subventions" onBack={onBack} onAction={canManage ? onNew : null} actionIcon="add" />
       {!list ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : (
@@ -3759,6 +4060,11 @@ function NativeGrants({ data, loading, onRefresh, onBack }) {
             <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: INK }]}>{fmtEuro(s.requested)}</Text><Text style={styles.miniKpiLbl}>Demandé</Text></View>
             <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#B45309' }]}>{s.pending || 0}</Text><Text style={styles.miniKpiLbl}>En cours</Text></View>
           </View>
+          {canManage && (
+            <TouchableOpacity accessibilityRole="button" style={styles.listNewBtn} activeOpacity={0.85} onPress={onNew}>
+              <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvelle demande</Text>
+            </TouchableOpacity>
+          )}
           {list.length === 0 ? (
             <View style={styles.emptyBox}><Ionicons name="cash-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune subvention</Text></View>
           ) : list.map((g) => {
@@ -4006,6 +4312,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [pickClients, setPickClients] = useState([]);
   const [folders, setFolders] = useState([]);
   const [projMembers, setProjMembers] = useState([]);
+  const [pickCampaigns, setPickCampaigns] = useState([]);
+  const [pickMembers, setPickMembers] = useState([]);
+  const [pickProjects, setPickProjects] = useState([]);
   const [scanData, setScanData] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [expenseProject, setExpenseProject] = useState(0);
@@ -4175,6 +4484,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     quote:   '/api/app-create-quote.php',
     project: '/api/app-create-project.php',
     expense: '/api/app-create-expense.php',
+    payment: '/api/app-create-cotisation-payment.php',
+    event:   '/api/app-create-event.php',
+    grant:   '/api/app-create-grant.php',
   };
 
   const openForm = useCallback((type, preId = 0, editData = null) => {
@@ -4186,6 +4498,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     inject(FETCH_CSRF_JS);
     if (type === 'invoice' || type === 'quote') inject(fetchJS('/api/app-clients.php', '__akpick'));
     if (type === 'project') { inject(fetchJS('/api/app-folders.php', '__akfolders')); inject(fetchJS('/api/app-members.php', '__akprojmembers')); }
+    if (type === 'payment') { inject(fetchJS('/api/app-cotisations.php', '__akpickcampaigns')); inject(fetchJS('/api/app-members.php', '__akpickmembers')); }
+    if (type === 'event' || type === 'grant') { inject(fetchJS('/api/app-projects.php', '__akpickprojects')); }
     if (type === 'expense') {
       setScanData(null);
       setScanning(false);
@@ -4659,6 +4973,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akpick && msg.__akpick.ok) setPickClients(msg.__akpick.clients || []);
       if (msg && msg.__akfolders && msg.__akfolders.ok) setFolders(msg.__akfolders.folders || []);
       if (msg && msg.__akprojmembers && msg.__akprojmembers.ok) setProjMembers(msg.__akprojmembers.members || []);
+      if (msg && msg.__akpickcampaigns && msg.__akpickcampaigns.ok) setPickCampaigns(msg.__akpickcampaigns.campaigns || []);
+      if (msg && msg.__akpickmembers && msg.__akpickmembers.ok) setPickMembers(msg.__akpickmembers.members || []);
+      if (msg && msg.__akpickprojects && msg.__akpickprojects.ok) setPickProjects(msg.__akpickprojects.projects || []);
       if (msg && msg.__akbilan) {
         setStack((s) => {
           if (!s.length) return s;
@@ -4845,6 +5162,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           else if (created === 'quote') { fetchQuotes(); if (editId) pushDetail('quote', editId); }
           else if (created === 'project') fetchProjects();
           else if (created === 'expense') { fetchProjects(); if (expenseProject) pushDetail('project', expenseProject); }
+          else if (created === 'payment') { fetchCoti(); setActive('menu'); setMenuScreen('cotisations'); }
+          else if (created === 'event') { fetchEvents(); setActive('menu'); setMenuScreen('agenda'); }
+          else if (created === 'grant') { fetchGrants(); setActive('menu'); setMenuScreen('subventions'); }
         } else {
           setFormErr(w.message || 'Une erreur est survenue.');
         }
@@ -4937,6 +5257,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const openPerson = (id) => pushDetail(isTpe ? 'client' : 'member', id);
 
   const detailTop = stack.length ? stack[stack.length - 1] : null;
+  const canManageOrg = !!kpi && (kpi.role === 'admin' || kpi.role === 'coordinator');
   const showForm = !!form && authed;
   const showMenu = active === 'menu' && authed && !webMode && !detailTop && !showForm;
   const showHome = active === 'accueil' && authed && !webMode && !detailTop && !showForm;
@@ -5042,12 +5363,22 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 projects={(projects && projects.projects) || []} preProject={expenseProject}
                 scanData={scanData} scanning={scanning} onScan={pickAndScan} />
             )}
+            {form.type === 'payment' && (
+              <CotisationPaymentForm onBack={closeForm} onSubmit={(d) => submitForm('payment', d)} submitting={submitting} error={formErr}
+                campaigns={pickCampaigns} members={pickMembers} />
+            )}
+            {form.type === 'event' && (
+              <EventForm onBack={closeForm} onSubmit={(d) => submitForm('event', d)} submitting={submitting} error={formErr} projects={pickProjects} />
+            )}
+            {form.type === 'grant' && (
+              <GrantForm onBack={closeForm} onSubmit={(d) => submitForm('grant', d)} submitting={submitting} error={formErr} projects={pickProjects} />
+            )}
           </View>
         )}
         {showMenu && (
           <View style={styles.homeOverlay}>
             {menuScreen === 'agenda' ? (
-              <NativeAgenda data={events} loading={eventsLoading} onRefresh={fetchEvents} onOpen={(id) => pushDetail('event', id)} onBack={() => setMenuScreen(null)} />
+              <NativeAgenda data={events} loading={eventsLoading} onRefresh={fetchEvents} onOpen={(id) => pushDetail('event', id)} onNew={() => openForm('event')} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'subinvoices' ? (
               <NativeSubInvoices data={subInv} loading={subInvLoading} onRefresh={fetchSubInv} onBack={() => setMenuScreen(null)} onWeb={openWeb} />
             ) : menuScreen === 'devis' ? (
@@ -5064,9 +5395,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'notifications' ? (
               <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onPress={onNotifPress} onMarkAllRead={onMarkAllRead} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'cotisations' ? (
-              <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)} />
+              <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)}
+                onNew={() => openForm('payment')} canManage={canManageOrg} />
             ) : menuScreen === 'subventions' ? (
-              <NativeGrants data={grantsData} loading={grantsLoading} onRefresh={fetchGrants} onBack={() => setMenuScreen(null)} />
+              <NativeGrants data={grantsData} loading={grantsLoading} onRefresh={fetchGrants} onBack={() => setMenuScreen(null)}
+                onNew={() => openForm('grant')} canManage={canManageOrg} />
             ) : menuScreen === 'assemblies' ? (
               <GatedList title="Assemblées" data={assemblies} loading={secLoading} onRefresh={fetchAssemblies} onBack={() => setMenuScreen(null)}
                 itemsKey="items" emptyIcon="clipboard-outline" emptyLabel="Aucune assemblée"
@@ -5499,6 +5832,7 @@ const styles = StyleSheet.create({
   detailWrap: { flex: 1, backgroundColor: '#F2F5FB' },
   dHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderBottomWidth: 1, borderBottomColor: 'rgba(226,232,240,0.8)', shadowColor: '#0B3B2A', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2, zIndex: 2 },
   dBack: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#F3F6F5', alignItems: 'center', justifyContent: 'center' },
+  dHeadAction: { width: 38, height: 38, borderRadius: 12, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
   dTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '750', color: INK, letterSpacing: -0.2 },
   detailContent: { padding: 18, paddingBottom: 40 },
   dName: { fontSize: 24, fontWeight: '800', color: INK, letterSpacing: -0.4 },
@@ -5755,6 +6089,10 @@ const styles = StyleSheet.create({
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
   emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
+  emptySub: { color: '#94A3B8', fontSize: 13, marginTop: 8, textAlign: 'center', lineHeight: 19 },
+  formRow2: { flexDirection: 'row', alignItems: 'flex-start' },
+  listNewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BRAND, borderRadius: 14, paddingVertical: 13, marginBottom: 16, shadowColor: BRAND, shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+  listNewTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
   emptyBtn: { marginTop: 18, backgroundColor: BRAND, paddingVertical: 12, paddingHorizontal: 22, borderRadius: 12 },
   emptyBtnTxt: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
 
