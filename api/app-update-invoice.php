@@ -52,16 +52,17 @@ if ($client_id > 0) {
     if ($client_id <= 0) app_fail(500, 'server', 'Client impossible à enregistrer.');
 }
 
-// Lignes
+// Lignes — normalise les décimales à virgule (clavier FR) avant le cast float.
+$num = static fn($v) => (float) str_replace([' ', ','], ['', '.'], (string) $v);
 $lines = [];
 foreach ((array) ($input['lines'] ?? []) as $l) {
     $des = trim((string) ($l['designation'] ?? ''));
     if ($des === '') continue;
     $lines[] = [
         'designation'   => mb_substr($des, 0, 500),
-        'quantity'      => (float) ($l['quantity'] ?? 1),
-        'unit_price_ht' => (float) ($l['unit_price_ht'] ?? 0),
-        'vat_rate'      => (isset($l['vat_rate']) && $l['vat_rate'] !== '' && $l['vat_rate'] !== null) ? (float) $l['vat_rate'] : null,
+        'quantity'      => $num($l['quantity'] ?? 1),
+        'unit_price_ht' => $num($l['unit_price_ht'] ?? 0),
+        'vat_rate'      => (isset($l['vat_rate']) && $l['vat_rate'] !== '' && $l['vat_rate'] !== null) ? $num($l['vat_rate']) : null,
     ];
 }
 if (!$lines) app_fail(422, 'invalid', 'Ajoutez au moins une ligne.');
@@ -83,18 +84,24 @@ try {
     $issued_at = date('Y-m-d H:i:s');
     $due_at    = date('Y-m-d 23:59:59', strtotime($issued_at . ' +' . $due_days . ' days'));
 
+    // Snapshot client à jour (le PDF lit le snapshot, pas le client live).
+    $cs = $pdo->prepare("SELECT * FROM asso_clients WHERE id = ? LIMIT 1");
+    $cs->execute([$client_id]);
+    $client_full = $cs->fetch(PDO::FETCH_ASSOC) ?: null;
+    $client_snap = $client_full ? json_encode($client_full, JSON_UNESCAPED_UNICODE) : null;
+
     $pdo->beginTransaction();
 
     $pdo->prepare("
         UPDATE asso_invoices SET
             client_id = :cli, issued_at = :issued, due_at = :due,
             amount_ht_cents = :ht, amount_vat_cents = :vat, amount_ttc_cents = :ttc,
-            status = :status, updated_at = NOW()
+            status = :status, client_snapshot = COALESCE(:snap, client_snapshot), updated_at = NOW()
         WHERE id = :id AND org_id = :org
     ")->execute([
         ':cli' => $client_id, ':issued' => $issued_at, ':due' => $due_at,
         ':ht' => $total_ht, ':vat' => $total_vat, ':ttc' => $total_ttc,
-        ':status' => $status, ':id' => $invoice_id, ':org' => $org_id,
+        ':status' => $status, ':snap' => $client_snap, ':id' => $invoice_id, ':org' => $org_id,
     ]);
 
     $pdo->prepare("DELETE FROM asso_invoice_lines WHERE invoice_id = ?")->execute([$invoice_id]);

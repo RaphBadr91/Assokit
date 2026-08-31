@@ -76,6 +76,14 @@ try {
         }
     } catch (Throwable $e) {}
 
+    // Échéance en jours (pour pré-remplir l'édition native)
+    $due_days = 30;
+    if (!empty($inv['issued_at']) && !empty($inv['due_at'])) {
+        $di = strtotime((string) $inv['issued_at']);
+        $dd = strtotime((string) $inv['due_at']);
+        if ($di && $dd && $dd >= $di) $due_days = (int) round(($dd - $di) / 86400);
+    }
+
     echo json_encode([
         'ok' => true,
         'invoice' => [
@@ -84,6 +92,7 @@ try {
             'client'       => $client_name,
             'client_id'    => (int) ($inv['client_id'] ?? 0),
             'client_email' => (string) ($inv['client_email'] ?? ''),
+            'due_days'     => $due_days,
             'status'       => $status,
             'status_label' => $meta['label'],
             'status_kind'  => $meta['kind'],

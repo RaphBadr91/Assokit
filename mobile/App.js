@@ -1395,7 +1395,7 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients 
     ? edit.lines.map((l) => ({ designation: l.label || '', quantity: String(l.qty ?? 1), unit_price_ht: String(l.unit ?? ''), vat_rate: l.vat != null ? String(l.vat) : '' }))
     : [{ designation: '', quantity: '1', unit_price_ht: '', vat_rate: '20' }]);
   const [status, setStatus] = useState(ei ? (ei.status === 'draft' ? 'draft' : 'pending') : (isQuote ? 'draft' : 'pending'));
-  const [dueDays, setDueDays] = useState('30');
+  const [dueDays, setDueDays] = useState(ei && ei.due_days ? String(ei.due_days) : '30');
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const setC = (k) => (v) => setClient((s) => ({ ...s, [k]: v, id: 0 }));
