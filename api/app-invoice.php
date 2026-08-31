@@ -82,6 +82,7 @@ try {
             'id'           => (int) $inv['id'],
             'number'       => (string) ($inv['invoice_number'] ?? ('FACT-' . $inv['id'])),
             'client'       => $client_name,
+            'client_id'    => (int) ($inv['client_id'] ?? 0),
             'client_email' => (string) ($inv['client_email'] ?? ''),
             'status'       => $status,
             'status_label' => $meta['label'],

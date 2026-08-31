@@ -1208,7 +1208,7 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
   );
 }
 
-function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb }) {
+function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit }) {
   const d = entry.data;
   const isQuote = d && d.invoice && d.invoice.is_quote;
   if (d && d.ok === false) return <DetailError title="Document" onBack={onBack} onRetry={onRefresh} />;
@@ -1263,10 +1263,17 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb }) {
             <Text style={styles.dPrimaryBtnTxt}>{isQuote ? 'Voir / envoyer le devis' : 'Voir / envoyer la facture'}</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/mon-asso-devis-edit?id=' : '/mon-asso-facture-edit?id=') + inv.id)}>
-          <Text style={styles.dWebBtnTxt}>{isQuote ? 'Modifier le devis' : 'Modifier la facture'}</Text>
-          <Ionicons name="open-outline" size={18} color={BRAND} />
-        </TouchableOpacity>
+        {(!isQuote && inv.status === 'draft' && onEdit) ? (
+          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onEdit(d)}>
+            <Ionicons name="create-outline" size={18} color={BRAND} />
+            <Text style={styles.dWebBtnTxt}>Modifier la facture</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/mon-asso-devis-edit?id=' : '/mon-asso-facture-edit?id=') + inv.id)}>
+            <Text style={styles.dWebBtnTxt}>{isQuote ? 'Modifier le devis' : 'Modifier la facture'}</Text>
+            <Ionicons name="open-outline" size={18} color={BRAND} />
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </View>
   );
@@ -1378,11 +1385,16 @@ function ClientForm({ onBack, onSubmit, submitting, error }) {
   );
 }
 
-function BillingForm({ mode, onBack, onSubmit, submitting, error, clients }) {
+function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients }) {
   const isQuote = mode === 'quote';
-  const [client, setClient] = useState({ id: 0, client_type: 'company', display_name: '', email: '', phone: '', address_city: '' });
-  const [lines, setLines] = useState([{ designation: '', quantity: '1', unit_price_ht: '', vat_rate: '20' }]);
-  const [status, setStatus] = useState(isQuote ? 'draft' : 'pending');
+  const ei = edit && edit.invoice ? edit.invoice : null;
+  const [client, setClient] = useState(ei
+    ? { id: ei.client_id || 0, client_type: 'company', display_name: ei.client || '', email: ei.client_email || '', phone: '', address_city: '' }
+    : { id: 0, client_type: 'company', display_name: '', email: '', phone: '', address_city: '' });
+  const [lines, setLines] = useState(edit && edit.lines && edit.lines.length
+    ? edit.lines.map((l) => ({ designation: l.label || '', quantity: String(l.qty ?? 1), unit_price_ht: String(l.unit ?? ''), vat_rate: l.vat != null ? String(l.vat) : '' }))
+    : [{ designation: '', quantity: '1', unit_price_ht: '', vat_rate: '20' }]);
+  const [status, setStatus] = useState(ei ? (ei.status === 'draft' ? 'draft' : 'pending') : (isQuote ? 'draft' : 'pending'));
   const [dueDays, setDueDays] = useState('30');
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -1402,8 +1414,8 @@ function BillingForm({ mode, onBack, onSubmit, submitting, error, clients }) {
   };
 
   return (
-    <FormShell title={isQuote ? 'Nouveau devis' : 'Nouvelle facture'} onBack={onBack} onSubmit={submit}
-      submitLabel={isQuote ? 'Créer le devis' : 'Créer la facture'} submitting={submitting} error={error}>
+    <FormShell title={ei ? 'Modifier la facture' : (isQuote ? 'Nouveau devis' : 'Nouvelle facture')} onBack={onBack} onSubmit={submit}
+      submitLabel={ei ? 'Enregistrer les modifications' : (isQuote ? 'Créer le devis' : 'Créer la facture')} submitting={submitting} error={error}>
 
       <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Client</Text>
         {clients && clients.length > 0 && (
@@ -4164,12 +4176,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     expense: '/api/app-create-expense.php',
   };
 
-  const openForm = useCallback((type, preId = 0) => {
+  const openForm = useCallback((type, preId = 0, editData = null) => {
     setQuickOpen(false);
     clearDetail();
     setWebMode(false);
     setFormErr('');
-    setForm({ type });
+    setForm({ type, edit: editData });
     inject(FETCH_CSRF_JS);
     if (type === 'invoice' || type === 'quote') inject(fetchJS('/api/app-clients.php', '__akpick'));
     if (type === 'project') { inject(fetchJS('/api/app-folders.php', '__akfolders')); inject(fetchJS('/api/app-members.php', '__akprojmembers')); }
@@ -4483,8 +4495,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (!csrf) { setFormErr('Session en cours de préparation, réessayez dans un instant.'); inject(FETCH_CSRF_JS); return; }
     setFormErr('');
     setSubmitting(true);
-    inject(postJS(CREATE_ENDPOINTS[type], { ...data, csrf }));
-  }, [csrf, inject]);
+    const editing = form && form.edit && type === 'invoice';
+    const endpoint = editing ? '/api/app-update-invoice.php' : CREATE_ENDPOINTS[type];
+    const extra = editing ? { invoice_id: form.edit.invoice.id } : {};
+    inject(postJS(endpoint, { ...data, ...extra, csrf }));
+  }, [csrf, inject, form]);
 
   useEffect(() => {
     if (webMode || !authed) return;
@@ -4814,13 +4829,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         const w = msg.__akwrite;
         if (w.ok) {
           const created = form && form.type;
+          const editId = (form && form.edit && created === 'invoice') ? form.edit.invoice.id : 0;
           closeForm();
           Alert.alert('C\'est fait ✅', w.message || 'Enregistré avec succès.');
           // Rafraîchir les données concernées
           fetchKpis();
           if (created === 'member') fetchPeople(false);
           else if (created === 'client') fetchPeople(true);
-          else if (created === 'invoice') fetchInvoices();
+          else if (created === 'invoice') { fetchInvoices(); if (editId) pushDetail('invoice', editId); }
           else if (created === 'quote') fetchQuotes();
           else if (created === 'project') fetchProjects();
           else if (created === 'expense') { fetchProjects(); if (expenseProject) pushDetail('project', expenseProject); }
@@ -5011,7 +5027,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <ClientForm onBack={closeForm} onSubmit={(d) => submitForm('client', d)} submitting={submitting} error={formErr} />
             )}
             {(form.type === 'invoice' || form.type === 'quote') && (
-              <BillingForm mode={form.type} onBack={closeForm} onSubmit={(d) => submitForm(form.type, d)} submitting={submitting} error={formErr} clients={pickClients} />
+              <BillingForm mode={form.type} edit={form.edit} onBack={closeForm} onSubmit={(d) => submitForm(form.type, d)} submitting={submitting} error={formErr} clients={pickClients} />
             )}
             {form.type === 'project' && (
               <ProjectForm onBack={closeForm} onSubmit={(d) => submitForm('project', d)} submitting={submitting} error={formErr} folders={folders} members={projMembers} />
@@ -5178,10 +5194,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeClientDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onOpenInvoice={(id) => pushDetail('invoice', id)} onWeb={openWeb} />
             )}
             {detailTop.type === 'invoice' && (
-              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
+              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onEdit={(dd) => openForm('invoice', 0, { invoice: dd.invoice, lines: dd.lines })} />
             )}
             {detailTop.type === 'quote' && (
-              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
+              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onEdit={(dd) => openForm('invoice', 0, { invoice: dd.invoice, lines: dd.lines })} />
             )}
             {detailTop.type === 'event' && (
               <NativeEventDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
