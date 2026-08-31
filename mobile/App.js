@@ -1568,7 +1568,7 @@ function EventForm({ onBack, onSubmit, submitting, error, projects }) {
       </View>
       {selProj ? (
         <View style={styles.pickedClient}>
-          <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selProj.name}</Text>{!!selProj.folder_name && <Text style={styles.projPersonRole}>{selProj.folder_name}</Text>}</View>
+          <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selProj.name}</Text>{!!selProj.folder && <Text style={styles.projPersonRole}>{selProj.folder}</Text>}</View>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setProjectId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
         </View>
       ) : (
@@ -1585,7 +1585,7 @@ function EventForm({ onBack, onSubmit, submitting, error, projects }) {
       <Field label="Description" value={f.description} onChangeText={set('description')} multiline numberOfLines={3} style={[styles.fInput, { height: 90, textAlignVertical: 'top' }]} />
 
       <SheetPicker visible={projPicker} title="Projet lié" onClose={() => setProjPicker(false)} selected={projectId}
-        onPick={setProjectId} options={projs.map((p) => ({ value: p.id, label: p.name, sub: p.folder_name }))} />
+        onPick={setProjectId} options={projs.map((p) => ({ value: p.id, label: p.name, sub: p.folder }))} />
     </FormShell>
   );
 }
@@ -1650,7 +1650,7 @@ function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
       </View>
       {selProj ? (
         <View style={styles.pickedClient}>
-          <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selProj.name}</Text>{!!selProj.folder_name && <Text style={styles.projPersonRole}>{selProj.folder_name}</Text>}</View>
+          <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selProj.name}</Text>{!!selProj.folder && <Text style={styles.projPersonRole}>{selProj.folder}</Text>}</View>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setProjectId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
         </View>
       ) : (
@@ -1666,7 +1666,7 @@ function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
       <SheetPicker visible={ftPicker} title="Type de financeur" onClose={() => setFtPicker(false)} selected={funderType}
         onPick={setFunderType} options={GRANT_FUNDERS} />
       <SheetPicker visible={projPicker} title="Projet lié" onClose={() => setProjPicker(false)} selected={projectId}
-        onPick={setProjectId} options={projs.map((p) => ({ value: p.id, label: p.name, sub: p.folder_name }))} />
+        onPick={setProjectId} options={projs.map((p) => ({ value: p.id, label: p.name, sub: p.folder }))} />
     </FormShell>
   );
 }
