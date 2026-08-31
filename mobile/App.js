@@ -1415,7 +1415,7 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients 
   };
 
   return (
-    <FormShell title={ei ? 'Modifier la facture' : (isQuote ? 'Nouveau devis' : 'Nouvelle facture')} onBack={onBack} onSubmit={submit}
+    <FormShell title={ei ? (isQuote ? 'Modifier le devis' : 'Modifier la facture') : (isQuote ? 'Nouveau devis' : 'Nouvelle facture')} onBack={onBack} onSubmit={submit}
       submitLabel={ei ? 'Enregistrer les modifications' : (isQuote ? 'Créer le devis' : 'Créer la facture')} submitting={submitting} error={error}>
 
       <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Client</Text>

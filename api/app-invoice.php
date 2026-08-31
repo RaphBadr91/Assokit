@@ -81,7 +81,7 @@ try {
     if (!empty($inv['issued_at']) && !empty($inv['due_at'])) {
         $di = strtotime((string) $inv['issued_at']);
         $dd = strtotime((string) $inv['due_at']);
-        if ($di && $dd && $dd >= $di) $due_days = (int) round(($dd - $di) / 86400);
+        if ($di && $dd && $dd >= $di) $due_days = (int) floor(($dd - $di) / 86400);
     }
 
     echo json_encode([

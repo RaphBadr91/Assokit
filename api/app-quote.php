@@ -85,7 +85,7 @@ try {
             'validity_days' => (function () use ($q) {
                 if (empty($q['issued_at']) || empty($q['expires_at'])) return 30;
                 $a = strtotime((string) $q['issued_at']); $b = strtotime((string) $q['expires_at']);
-                return ($a && $b && $b >= $a) ? (int) round(($b - $a) / 86400) : 30;
+                return ($a && $b && $b >= $a) ? (int) floor(($b - $a) / 86400) : 30;
             })(),
             'status'       => $status,
             'status_label' => $meta['label'],
