@@ -95,7 +95,7 @@ echo render_sidebar('facturx');
                   <span class="fx-badge warn" title="<?= h(implode(' · ', $rd['missing'])) ?>"><?= ak_icon('alert-tri',12,'2.2') ?> À compléter</span>
                 <?php endif; ?>
               </td>
-              <td class="r"><a href="/facture-facturx.php?id=<?= (int)$iv['id'] ?>&amp;t=<?= $csrf ?>" class="fx-dl"><?= ak_icon('download',13) ?> XML</a></td>
+              <td class="r"><a href="/facture-facturx?id=<?= (int)$iv['id'] ?>&amp;t=<?= $csrf ?>" class="fx-dl"><?= ak_icon('download',13) ?> XML</a></td>
             </tr>
           <?php endforeach; ?>
           </tbody>
