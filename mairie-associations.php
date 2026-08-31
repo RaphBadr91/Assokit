@@ -32,7 +32,7 @@ foreach ($orgs as $o) {
     $oid = (int)$o['id'];
     $stats = ['adherents' => 0, 'grants_active' => 0, 'grants_total' => 0, 'projects_active' => 0, 'projects_total' => 0, 'budget' => 0, 'last_login' => null];
     try { $s = $pdo->prepare("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND org_id=?"); $s->execute([$oid]); $stats['adherents'] = (int)$s->fetchColumn(); } catch (Exception $e) {}
-    try { $s = $pdo->prepare("SELECT COUNT(*), SUM(CASE WHEN status IN ('in_progress','submitted','in_review') THEN 1 ELSE 0 END) FROM grants WHERE org_id=?"); $s->execute([$oid]); $r = $s->fetch(PDO::FETCH_NUM); $stats['grants_total'] = (int)$r[0]; $stats['grants_active'] = (int)$r[1]; } catch (Exception $e) {}
+    try { $s = $pdo->prepare("SELECT COUNT(*), SUM(CASE WHEN status IN ('submitted','in_review') THEN 1 ELSE 0 END) FROM grants WHERE org_id=?"); $s->execute([$oid]); $r = $s->fetch(PDO::FETCH_NUM); $stats['grants_total'] = (int)$r[0]; $stats['grants_active'] = (int)$r[1]; } catch (Exception $e) {}
     try { $s = $pdo->prepare("SELECT COUNT(*), SUM(CASE WHEN p.status IN ('active','warning') THEN 1 ELSE 0 END), COALESCE(SUM(p.budget_planned),0) FROM projects p JOIN folders f ON p.folder_id=f.id WHERE f.org_id=? AND (p.archived_at IS NULL OR p.archived_at = '0000-00-00 00:00:00')"); $s->execute([$oid]); $r = $s->fetch(PDO::FETCH_NUM); $stats['projects_total'] = (int)$r[0]; $stats['projects_active'] = (int)$r[1]; $stats['budget'] = (float)$r[2]; } catch (Exception $e) {}
     try { $s = $pdo->prepare("SELECT MAX(last_login_at) FROM users WHERE org_id=? AND last_login_at IS NOT NULL"); $s->execute([$oid]); $stats['last_login'] = $s->fetchColumn(); } catch (Exception $e) {}
 

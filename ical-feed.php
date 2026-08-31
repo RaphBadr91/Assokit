@@ -40,7 +40,7 @@ try {
                                LEFT JOIN projects p ON p.id = e.project_id
                                LEFT JOIN folders f ON f.id = p.folder_id
                                WHERE (e.org_id = ? OR f.org_id = ?)
-                               ORDER BY e.start_at DESC LIMIT 500");
+                               ORDER BY e.starts_at DESC LIMIT 500");
         $stmt->execute([$org_id, $org_id]);
     } else {
         $stmt = $pdo->prepare("SELECT e.*, p.name AS project_name FROM events e
@@ -50,14 +50,14 @@ try {
                                WHERE (e.org_id = ? OR f.org_id = ?)
                                  AND (pm.user_id IS NOT NULL OR p.referent_id = ? OR e.created_by = ?)
                                GROUP BY e.id
-                               ORDER BY e.start_at DESC LIMIT 500");
+                               ORDER BY e.starts_at DESC LIMIT 500");
         $stmt->execute([$user_id, $org_id, $org_id, $user_id, $user_id]);
     }
     $events = $stmt->fetchAll();
 } catch (Throwable $e) {
     // Si schéma diffère, fallback : org_id uniquement
     try {
-        $stmt = $pdo->prepare("SELECT * FROM events WHERE org_id = ? ORDER BY start_at DESC LIMIT 500");
+        $stmt = $pdo->prepare("SELECT * FROM events WHERE org_id = ? ORDER BY starts_at DESC LIMIT 500");
         $stmt->execute([$org_id]);
         $events = $stmt->fetchAll();
     } catch (Throwable $e2) { $events = []; }
@@ -109,7 +109,7 @@ foreach ($events as $e) {
     if (!empty($e['project_name'])) $desc = '[' . $e['project_name'] . "]\n" . $desc;
     $loc = $e['location'] ?? '';
     $all_day = !empty($e['all_day']);
-    $start = $e['start_at'] ?? null;
+    $start = $e['starts_at'] ?? null;
     $end = $e['end_at'] ?? $start;
     if (!$start) continue;
 

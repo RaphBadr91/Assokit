@@ -91,6 +91,8 @@ RewriteRule ^cotisation/(\d+)/?$             cotisation-detail.php?id=$1 [L,QSA]
 RewriteRule ^projet-public/([a-f0-9]{32,64})/?$  projet-public.php?t=$1 [L,QSA]
 # /espace-public/<token> → /espace-public.php?t=<token> (widget WordPress lecture seule)
 RewriteRule ^espace-public/([a-f0-9]{32,64})/?$  espace-public.php?t=$1 [L,QSA]
+# /evenement-public/<slug> → /evenement-public.php?slug=<slug> (page publique + RSVP)
+RewriteRule ^evenement-public/([A-Za-z0-9_-]+)/?$  evenement-public.php?slug=$1 [L,QSA]
 # Pack #6 Subventions
 RewriteRule ^fondateur-pricing/?$  fondateur-pricing.php [L,QSA]
 RewriteRule ^subvention/(\d+)/?$             subvention-detail.php?id=$1 [L,QSA]
@@ -341,7 +343,7 @@ RewriteRule ^super-admin/logs/?$                  super-admin-logs.php [L,QSA]
 RewriteRule ^super-admin/super-admins/?$          super-admin-super-admins.php [L,QSA]
 # Pack #5A — Facturation asso (DOIT être avant la regle generique associations)
 RewriteRule ^super-admin/associations/facturation/save/?$   super-admin-association-facturation-save.php [L,QSA]
-RewriteRule ^super-admin/associations/facturation/?$        test-meta.php [L,QSA]
+RewriteRule ^super-admin/associations/facturation/?$        super-admin-association-facturation.php [L,QSA]
 RewriteRule ^super-admin/associations/?$          super-admin-associations.php [L,QSA]
 RewriteRule ^mon-asso/facturation/?$              mon-asso-facturation.php [L,QSA]
 RewriteRule ^super-admin/projets/?$               super-admin-projets.php [L,QSA]

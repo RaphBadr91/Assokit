@@ -44,7 +44,7 @@ if (!empty($org_ids)) {
 
     // Subventions actives
     try {
-        $s = $pdo->prepare("SELECT COUNT(*) FROM grants WHERE org_id IN ($in) AND status IN ('in_progress','submitted','to_prepare')");
+        $s = $pdo->prepare("SELECT COUNT(*) FROM grants WHERE org_id IN ($in) AND status IN ('submitted','in_review')");
         $s->execute($org_ids); $stats['grants_active'] = (int)$s->fetchColumn();
     } catch (Exception $e) {}
 
@@ -105,7 +105,7 @@ if (!empty($org_ids)) {
 
     // Événements à venir
     try {
-        $s = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id IN ($in_p) AND start_at >= NOW()");
+        $s = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id IN ($in_p) AND starts_at >= NOW()");
         $s->execute($org_ids);
         $events_upcoming = (int)$s->fetchColumn();
     } catch (Exception $e) {}
@@ -317,7 +317,7 @@ render_sidebar('mairie-dashboard');
           // Mini stats par asso
           $nb_members = 0; $nb_grants = 0; $last_login = null;
           try { $s = $pdo->prepare("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND org_id=?"); $s->execute([$o['id']]); $nb_members = (int)$s->fetchColumn(); } catch (Exception $e) {}
-          try { $s = $pdo->prepare("SELECT COUNT(*) FROM grants WHERE org_id=? AND status IN ('in_progress','submitted','in_review')"); $s->execute([$o['id']]); $nb_grants = (int)$s->fetchColumn(); } catch (Exception $e) {}
+          try { $s = $pdo->prepare("SELECT COUNT(*) FROM grants WHERE org_id=? AND status IN ('submitted','in_review')"); $s->execute([$o['id']]); $nb_grants = (int)$s->fetchColumn(); } catch (Exception $e) {}
           try { $s = $pdo->prepare("SELECT MAX(last_login_at) FROM users WHERE org_id=? AND last_login_at IS NOT NULL"); $s->execute([$o['id']]); $last_login = $s->fetchColumn(); } catch (Exception $e) {}
         ?>
         <div class="org-card" data-name="<?= strtolower(h($o['name'])) ?>" style="background:#FAFAF9;border:1px solid #E5E7EB;border-radius:10px;padding:14px 18px;transition:all 0.15s;">

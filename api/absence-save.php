@@ -24,6 +24,10 @@ $user = current_user();
 $org_id = (int)$user['org_id'];
 $user_id = (int)$user['id'];
 
+// Édition des absences : réservée aux admins, ou à ses propres absences.
+$role = (string)($user['role'] ?? '');
+$is_planning_admin = in_array($role, ['admin', 'founder', 'super_admin'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
+
 if (file_exists(__DIR__ . '/../activity-tracker.php')) {
     require_once __DIR__ . '/../activity-tracker.php';
 }
@@ -37,9 +41,21 @@ try {
             echo json_encode(['success' => false, 'error' => 'ID manquant']);
             exit;
         }
+        $stmt = $pdo->prepare("SELECT user_id FROM assokit_absences WHERE id = ? AND org_id = ?");
+        $stmt->execute([$id, $org_id]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            echo json_encode(['success' => false, 'error' => 'Absence introuvable']);
+            exit;
+        }
+        if (!$is_planning_admin && (int)$row['user_id'] !== $user_id) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Action réservée aux administrateurs.']);
+            exit;
+        }
         $stmt = $pdo->prepare("DELETE FROM assokit_absences WHERE id = ? AND org_id = ?");
         $stmt->execute([$id, $org_id]);
-        
+
         if (function_exists('activity_log_action')) {
             activity_log_action('absence_deleted', [], (string)$id);
         }
@@ -48,6 +64,11 @@ try {
     }
     
     $target_user_id = (int)($_POST['user_id'] ?? $user_id);
+    if (!$is_planning_admin && $target_user_id !== $user_id) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Vous ne pouvez gérer que vos propres absences.']);
+        exit;
+    }
     $type = $_POST['type'] ?? 'vacation';
     $start_date = $_POST['start_date'] ?? '';
     $end_date = $_POST['end_date'] ?? '';
@@ -77,13 +98,19 @@ try {
     
     if ($id > 0) {
         // UPDATE
-        $stmt = $pdo->prepare("SELECT id FROM assokit_absences WHERE id = ? AND org_id = ?");
+        $stmt = $pdo->prepare("SELECT user_id FROM assokit_absences WHERE id = ? AND org_id = ?");
         $stmt->execute([$id, $org_id]);
-        if (!$stmt->fetchColumn()) {
+        $existing = $stmt->fetch();
+        if (!$existing) {
             echo json_encode(['success' => false, 'error' => 'Absence introuvable']);
             exit;
         }
-        
+        if (!$is_planning_admin && (int)$existing['user_id'] !== $user_id) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Action réservée aux administrateurs.']);
+            exit;
+        }
+
         $stmt = $pdo->prepare("UPDATE assokit_absences SET
             user_id = ?, type = ?, start_date = ?, end_date = ?, reason = ?
             WHERE id = ? AND org_id = ?");

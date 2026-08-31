@@ -109,7 +109,7 @@ if ($action === 'send_invitations') {
         if (!filter_var($a['email'], FILTER_VALIDATE_EMAIL)) continue;
         $url = "https://" . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr') . "/ag-public/" . $a['access_token'];
         $subject = "📨 Convocation : " . $ag['title'];
-        $when = strftime('%A %d %B %Y à %H:%M', strtotime($ag['scheduled_at']));
+        $when = fr_format_date('%A %d %B %Y à %H:%M', strtotime($ag['scheduled_at']));
         $html = '<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#f9fafb;">'
             . '<div style="background:#fff;border-radius:14px;padding:28px;border:1px solid #e5e7eb;">'
             . '<h1 style="font-size:20px;margin:0 0 12px;color:#111827;">📨 Convocation</h1>'

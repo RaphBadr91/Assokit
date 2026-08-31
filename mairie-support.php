@@ -69,7 +69,7 @@ render_sidebar('support');
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;">
       <div style="font-size:28px;margin-bottom:8px;">📚</div>
       <div style="font-size:13.5px;font-weight:700;color:#0A0A0B;margin-bottom:4px;">Documentation</div>
-      <a href="https://assokit.fr/aide" target="_blank" style="color:#059669;font-size:14px;font-weight:600;text-decoration:none;">Centre d'aide →</a>
+      <a href="https://assokit.fr/contact" target="_blank" style="color:#059669;font-size:14px;font-weight:600;text-decoration:none;">Centre d'aide →</a>
       <div style="font-size:12px;color:#71717A;margin-top:6px;">Guides, tutos, FAQ</div>
     </div>
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;">

@@ -24,6 +24,10 @@ $user = current_user();
 $org_id = (int)$user['org_id'];
 $user_id = (int)$user['id'];
 
+// Édition du planning : réservée aux admins, ou à son propre planning.
+$role = (string)($user['role'] ?? '');
+$is_planning_admin = in_array($role, ['admin', 'founder', 'super_admin'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
+
 // Tracker l'action si dispo
 if (file_exists(__DIR__ . '/../activity-tracker.php')) {
     require_once __DIR__ . '/../activity-tracker.php';
@@ -50,7 +54,12 @@ try {
             echo json_encode(['success' => false, 'error' => 'Créneau introuvable']);
             exit;
         }
-        
+        if (!$is_planning_admin && (int)$row['user_id'] !== $user_id) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Action réservée aux administrateurs.']);
+            exit;
+        }
+
         $stmt = $pdo->prepare("DELETE FROM assokit_schedules WHERE id = ? AND org_id = ?");
         $stmt->execute([$id, $org_id]);
         
@@ -66,6 +75,11 @@ try {
     // CRÉATION OU MODIFICATION
     // ============================================================
     $target_user_id = (int)($_POST['user_id'] ?? $user_id);
+    if (!$is_planning_admin && $target_user_id !== $user_id) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Vous ne pouvez modifier que votre propre planning.']);
+        exit;
+    }
     $title = trim((string)($_POST['title'] ?? ''));
     $type = $_POST['type'] ?? 'present';
     $recurrence = $_POST['recurrence'] ?? 'weekly';
@@ -117,10 +131,16 @@ try {
     
     if ($id > 0) {
         // UPDATE
-        $stmt = $pdo->prepare("SELECT id FROM assokit_schedules WHERE id = ? AND org_id = ?");
+        $stmt = $pdo->prepare("SELECT user_id FROM assokit_schedules WHERE id = ? AND org_id = ?");
         $stmt->execute([$id, $org_id]);
-        if (!$stmt->fetchColumn()) {
+        $existing = $stmt->fetch();
+        if (!$existing) {
             echo json_encode(['success' => false, 'error' => 'Créneau introuvable']);
+            exit;
+        }
+        if (!$is_planning_admin && (int)$existing['user_id'] !== $user_id) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Action réservée aux administrateurs.']);
             exit;
         }
         

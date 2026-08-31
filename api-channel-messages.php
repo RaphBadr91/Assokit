@@ -23,8 +23,10 @@ if ($channel_id <= 0) {
 }
 
 try {
-    // === Sécurité : vérifier que l'utilisateur est membre du channel ===
-    $stmt = $pdo->prepare("SELECT id, is_archived FROM channels WHERE id = ?");
+    // === Sécurité : accès au canal (aligné sur messages.php) ===
+    // Canaux public/announce : ouverts à tous les membres de l'org.
+    // Canaux privés : réservés aux membres du canal.
+    $stmt = $pdo->prepare("SELECT id, type, org_id, is_archived FROM channels WHERE id = ?");
     $stmt->execute([$channel_id]);
     $channel = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$channel) {
@@ -33,12 +35,20 @@ try {
         exit;
     }
 
-    $stmt = $pdo->prepare("SELECT id FROM channel_members WHERE channel_id = ? AND user_id = ?");
-    $stmt->execute([$channel_id, $user_id]);
-    if (!$stmt->fetchColumn()) {
+    if ((int)$channel['org_id'] !== (int)($current['org_id'] ?? 0)) {
         http_response_code(403);
-        echo json_encode(['ok' => false, 'error' => 'not_member']);
+        echo json_encode(['ok' => false, 'error' => 'forbidden']);
         exit;
+    }
+
+    if (!in_array($channel['type'], ['public', 'announce'], true)) {
+        $stmt = $pdo->prepare("SELECT id FROM channel_members WHERE channel_id = ? AND user_id = ?");
+        $stmt->execute([$channel_id, $user_id]);
+        if (!$stmt->fetchColumn()) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'not_member']);
+            exit;
+        }
     }
 
     // === Récupérer les nouveaux messages ===

@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-if (function_exists('check_csrf') && !check_csrf()) {
+if (function_exists('check_csrf') && !check_csrf($_POST['csrf_token'] ?? '')) {
     http_response_code(403);
     echo json_encode(['success' => false, 'error' => 'Token CSRF invalide']);
     exit;

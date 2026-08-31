@@ -94,9 +94,9 @@ function coach_build_context(PDO $pdo, int $org_id): array {
 
     // Événements à venir 14j
     try {
-        $stmt = $pdo->prepare("SELECT title, start_at FROM events
-            WHERE org_id = ? AND deleted_at IS NULL AND start_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 14 DAY)
-            ORDER BY start_at ASC LIMIT 5");
+        $stmt = $pdo->prepare("SELECT title, starts_at FROM events
+            WHERE org_id = ? AND deleted_at IS NULL AND starts_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 14 DAY)
+            ORDER BY starts_at ASC LIMIT 5");
         $stmt->execute([$org_id]);
         $ctx['events_14j'] = $stmt->fetchAll();
     } catch (Throwable $e) { $ctx['events_14j'] = []; }
@@ -158,7 +158,7 @@ function coach_build_prompt(array $ctx): string {
     if (!empty($ctx['events_14j'])) {
         $p .= "\nÉVÉNEMENTS À VENIR (14j) :\n";
         foreach ($ctx['events_14j'] as $e) {
-            $p .= "  · " . date('d/m H:i', strtotime($e['start_at'])) . " — {$e['title']}\n";
+            $p .= "  · " . date('d/m H:i', strtotime($e['starts_at'])) . " — {$e['title']}\n";
         }
     }
 
