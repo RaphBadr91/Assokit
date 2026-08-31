@@ -630,6 +630,24 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
 /* ================================================================== */
 /*  PROJETS (liste native)                                             */
 /* ================================================================== */
+// Chargement de liste : si ça reste bloqué (échec réseau), propose « Réessayer » après 4 s.
+function ListLoader({ onRefresh }) {
+  const [showRetry, setShowRetry] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setShowRetry(true), 4000); return () => clearTimeout(t); }, []);
+  return (
+    <View style={styles.homeLoader}>
+      <ActivityIndicator size="large" color={BRAND} />
+      <Text style={styles.homeLoaderTxt}>{showRetry ? 'Connexion lente…' : 'Chargement…'}</Text>
+      {showRetry && onRefresh ? (
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Réessayer" onPress={onRefresh} activeOpacity={0.85}
+          style={{ marginTop: 16, backgroundColor: BRAND, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 12 }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Réessayer</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
 function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
   const projects = (data && data.projects) || [];
   return (
@@ -649,7 +667,7 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
         </TouchableOpacity>
       </View>
       {!data ? (
-        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+        <ListLoader onRefresh={onRefresh} />
       ) : projects.length === 0 ? (
         <View style={styles.emptyBox}>
           <Ionicons name="folder-open-outline" size={44} color="#CBD5E1" />
@@ -717,7 +735,7 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
         </TouchableOpacity>
       </View>
       {!list ? (
-        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+        <ListLoader onRefresh={onRefresh} />
       ) : list.length === 0 ? (
         <View style={styles.emptyBox}>
           <Ionicons name={isClients ? 'briefcase-outline' : 'people-outline'} size={44} color="#CBD5E1" />
@@ -787,7 +805,7 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
         </TouchableOpacity>
       </View>
       {!list ? (
-        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+        <ListLoader onRefresh={onRefresh} />
       ) : (
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
