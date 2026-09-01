@@ -52,10 +52,11 @@
 .pa-theme-name { font-size: 14px; font-weight: 600; color: var(--ink-1, #111827); margin-bottom: 2px; }
 .pa-theme-desc { font-size: 12px; color: var(--ink-4, #6b7280); }
 .pa-theme-current { font-size: 13px; color: var(--ink-4, #6b7280); }
-.pa-info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
+.pa-info-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
 .pa-info-row:last-child { border-bottom: none; }
-.pa-info-label { color: var(--ink-4, #6b7280); }
-.pa-info-value { font-weight: 600; color: var(--ink-1, #111827); }
+.pa-info-label { color: var(--ink-4, #6b7280); flex: none; }
+/* Valeur (email de contact, nom d'asso, URL) : se coupe au lieu d'élargir la carte. */
+.pa-info-value { font-weight: 600; color: var(--ink-1, #111827); min-width: 0; overflow-wrap: anywhere; word-break: break-word; text-align: right; }
 @media (max-width: 768px) {
   .pa-grid { grid-template-columns: 1fr; }
   .pa-tabs { flex-direction: row; flex-wrap: wrap; position: static; }

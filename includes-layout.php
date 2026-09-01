@@ -321,15 +321,6 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
   .main-head { flex-direction: column !important; align-items: stretch !important; }
   .head-actions { flex-wrap: wrap; }
 
-  /* Fiches en grille (.list / .list-row) : une valeur longue non sécable
-     (email, URL, référence) ne doit JAMAIS élargir la page. La piste `1fr`
-     d'une grille vaut minmax(auto,1fr) : sans césure, son minimum = la largeur
-     max-content de la valeur → débordement horizontal + clipping du bord droit.
-     On autorise donc la césure sur tous les enfants de .list-row. */
-  .list-row > * { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
-
-  /* Liens de contact (email / téléphone) : cassent au besoin partout dans le contenu */
-  .main a[href^="mailto:"], .main a[href^="tel:"] { overflow-wrap: anywhere; word-break: break-word; }
 }
 @media (max-width: 540px) {
   .main { padding: 14px 10px 60px !important; }
@@ -567,6 +558,15 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .list-row { display: grid; gap: 16px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--border); transition: background 0.12s ease; cursor: pointer; }
 .list-row:first-child { border-top: none; }
 .list-row:hover { background: var(--bg-2); }
+/* Anti-débordement (tous écrans) : une valeur longue non sécable (email, URL,
+   référence) ne doit jamais élargir la page. La piste `1fr` d'une grille vaut
+   minmax(auto,1fr) — sans césure, son minimum = la largeur max-content de la
+   valeur → débordement horizontal et clipping du bord droit sur mobile. On
+   autorise la césure sur tous les enfants de .list-row et on les rend
+   rétractables. Sans effet visible sur desktop (le contenu tient déjà). */
+.list-row { min-width: 0; }
+.list-row > * { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.main a[href^="mailto:"], .main a[href^="tel:"] { overflow-wrap: anywhere; word-break: break-word; }
 .list-row-header { background: var(--bg-2); cursor: default; font-size: 11px; font-weight: 500; color: var(--ink-3); letter-spacing: 0.04em; text-transform: uppercase; padding: 10px 20px; }
 .list-row-header:hover { background: var(--bg-2); }
 
