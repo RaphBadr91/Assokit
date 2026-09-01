@@ -258,7 +258,8 @@ if (!function_exists('gr_platform_label')) {
 .gr-btn-relance { display: inline-flex; align-items: center; padding: 9px 16px; background: #6366F1; color: #fff; text-decoration: none; border-radius: 8px; font-size: 13px; font-weight: 600; }
 .gr-btn-relance:hover { background: #4F46E5; }
 .gr-cols { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
-.gr-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 20px; margin-bottom: 14px; }
+.gr-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 20px; margin-bottom: 14px; word-break: break-word; overflow-wrap: anywhere; }
+.gr-card code { overflow-wrap: anywhere; word-break: break-word; }
 .gr-card h2 { display: flex; align-items: center; gap: 7px; font-size: 13px; margin: 0 0 12px; color: #065F46; padding-bottom: 6px; border-bottom: 1px solid #f3f4f6; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .gr-card h2 svg { flex: none; }
 .gr-muted { color: #9ca3af; font-size: 13px; }

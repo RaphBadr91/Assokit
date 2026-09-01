@@ -303,9 +303,9 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
   
   /* Neutralise les styles inline avec width fixe */
   .main [style*="max-width:"] { max-width: 100% !important; }
-  .main [style*="min-width: 280px"], .main [style*="min-width: 300px"], 
-  .main [style*="min-width: 220px"], .main [style*="min-width: 200px"] { 
-    min-width: 0 !important; 
+  .main [style*="min-width: 280px"], .main [style*="min-width: 300px"],
+  .main [style*="min-width: 220px"], .main [style*="min-width: 200px"] {
+    min-width: 0 !important;
   }
   
   /* Panels : padding réduit pour gagner de la place */
@@ -352,10 +352,15 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
   .btn { padding: 8px 14px !important; font-size: 13px !important; }
   
   /* Forcer flex-wrap sur tout ce qui pourrait déborder */
-  .main-head, .ak-page-head, .form-actions, .head-actions, 
-  .panel-title, .step-builder-item, .chat-form { 
-    flex-wrap: wrap !important; 
+  .main-head, .ak-page-head, .form-actions, .head-actions,
+  .panel-title, .step-builder-item, .chat-form {
+    flex-wrap: wrap !important;
   }
+
+  /* Grilles de formulaire à 2 colonnes en inline (Prénom/Nom, Tél/Ville…) :
+     empilées sur petit écran pour ne pas tasser les champs. */
+  .main [style*="grid-template-columns: 1fr 1fr"],
+  .main [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
 }
 .sb-org { display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
 .sb-org:hover { background: var(--bg-3); }

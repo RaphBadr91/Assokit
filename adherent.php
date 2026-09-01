@@ -125,7 +125,7 @@ render_sidebar('adherents');
           Message
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
-        <div id="msg-menu" style="display:none; position:absolute; right:0; top:calc(100% + 4px); background:var(--bg); border:1px solid var(--border); border-radius:10px; box-shadow:0 6px 20px rgba(0,0,0,0.08); min-width:200px; z-index:100; overflow:hidden;">
+        <div id="msg-menu" style="display:none; position:absolute; right:0; top:calc(100% + 4px); background:var(--bg); border:1px solid var(--border); border-radius:10px; box-shadow:0 6px 20px rgba(0,0,0,0.08); min-width:200px; max-width:calc(100vw - 32px); z-index:100; overflow:hidden;">
           <a href="/messages?user=<?= (int)$adherent['id'] ?>" style="display:flex; align-items:center; gap:10px; padding:10px 14px; text-decoration:none; color:var(--ink); font-size:13px; border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
             <span><?= ak_icon('message',18) ?></span>
             <div>

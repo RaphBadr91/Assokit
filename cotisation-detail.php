@@ -213,7 +213,7 @@ render_head($campaign['name']);
 .ck-tbl-btn { background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; padding: 4px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
 .ck-tbl-btn:hover { background: #D1FAE5; }
 .ck-stripe-card { background: linear-gradient(135deg, #fafbff, #f0fdf4); border: 1px solid #d1fae5; border-radius: 12px; padding: 16px 20px; margin-top: 22px; }
-.ck-stripe-head { display: flex; align-items: center; gap: 14px; }
+.ck-stripe-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .ck-stripe-icon { font-size: 28px; }
 .ck-stripe-title { font-size: 14px; font-weight: 700; color: #111827; }
 .ck-stripe-sub { font-size: 12.5px; color: #6b7280; margin-top: 2px; }
