@@ -320,6 +320,16 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
   /* Main-head : aligner verticalement sur mobile */
   .main-head { flex-direction: column !important; align-items: stretch !important; }
   .head-actions { flex-wrap: wrap; }
+
+  /* Fiches en grille (.list / .list-row) : une valeur longue non sécable
+     (email, URL, référence) ne doit JAMAIS élargir la page. La piste `1fr`
+     d'une grille vaut minmax(auto,1fr) : sans césure, son minimum = la largeur
+     max-content de la valeur → débordement horizontal + clipping du bord droit.
+     On autorise donc la césure sur tous les enfants de .list-row. */
+  .list-row > * { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+
+  /* Liens de contact (email / téléphone) : cassent au besoin partout dans le contenu */
+  .main a[href^="mailto:"], .main a[href^="tel:"] { overflow-wrap: anywhere; word-break: break-word; }
 }
 @media (max-width: 540px) {
   .main { padding: 14px 10px 60px !important; }
