@@ -11,6 +11,11 @@ require __DIR__ . '/_app-write-boot.php';
 @require_once __DIR__ . '/../asso-invoice-helpers.php';
 @require_once __DIR__ . '/../asso-quote-helpers.php';
 
+// Même contrôle de rôle que le site (mon-asso-devis-save.php) : admin ou coordinateur.
+if (!in_array($user['role'] ?? '', ['admin', 'coordinator'], true)) {
+    app_fail(403, 'role', 'Rôle insuffisant pour modifier un devis.');
+}
+
 if (!function_exists('ak_asso_line_compute')) {
     app_fail(500, 'unavailable', 'Fonction indisponible.');
 }

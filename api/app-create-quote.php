@@ -8,6 +8,11 @@ require __DIR__ . '/_app-write-boot.php';
 @require_once __DIR__ . '/../asso-quote-helpers.php';
 @require_once __DIR__ . '/../asso-invoice-helpers.php';
 
+// Même contrôle de rôle que le site (mon-asso-devis-save.php) : admin ou coordinateur.
+if (!in_array($user['role'] ?? '', ['admin', 'coordinator'], true)) {
+    app_fail(403, 'role', 'Rôle insuffisant pour créer un devis.');
+}
+
 if (!function_exists('ak_asso_quote_create')) {
     app_fail(500, 'unavailable', 'Fonction indisponible.');
 }
@@ -50,10 +55,15 @@ if (!$lines) app_fail(422, 'invalid', 'Ajoutez au moins une ligne.');
 $status = in_array(($input['status'] ?? 'draft'), ['draft', 'sent'], true) ? $input['status'] : 'draft';
 
 try {
+    // Validité saisie dans l'app (le helper la lit ; 30 j par défaut, borné 0-365)
+    $validity_days = (int) ($input['validity_days'] ?? 30);
+    if ($validity_days < 0 || $validity_days > 365) $validity_days = 30;
+
     $res = ak_asso_quote_create($pdo, $org_id, $uid, [
-        'client' => $client,
-        'lines'  => $lines,
-        'status' => $status,
+        'client'        => $client,
+        'lines'         => $lines,
+        'status'        => $status,
+        'validity_days' => $validity_days,
     ]);
     echo json_encode([
         'ok'      => true,

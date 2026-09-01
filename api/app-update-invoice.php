@@ -10,7 +10,13 @@
  * NE MODIFIE PAS le site.
  */
 require __DIR__ . '/_app-write-boot.php';
+@require_once __DIR__ . '/../finance-permissions.php';
 @require_once __DIR__ . '/../asso-invoice-helpers.php';
+
+// Même contrôle d'accès que le site (mon-asso-facture-save.php) : finances réservées.
+if (!function_exists('user_can_view_finances') || !user_can_view_finances($user)) {
+    app_fail(403, 'role', 'Accès réservé aux administrateurs.');
+}
 
 if (!function_exists('ak_asso_line_compute')) {
     app_fail(500, 'unavailable', 'Fonction indisponible.');

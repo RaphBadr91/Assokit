@@ -1438,6 +1438,12 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
   const selCamp = camps.find((c) => c.id === campaignId) || null;
   const selMem = mbrs.find((m) => m.id === adherentId) || null;
 
+  // Les campagnes arrivent en asynchrone après l'ouverture du formulaire :
+  // s'il n'y en a qu'une, on la sélectionne automatiquement.
+  useEffect(() => {
+    if (!campaignId && camps.length === 1) setCampaignId(camps[0].id);
+  }, [camps.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const pickMember = (id) => {
     setAdherentId(id);
     const m = mbrs.find((x) => x.id === id);
@@ -1445,6 +1451,7 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
   };
 
   const submit = () => {
+    if (!campaignId) { Alert.alert('Campagne', 'Sélectionnez la campagne de cotisation concernée.'); return; }
     onSubmit({
       campaign_id: campaignId,
       adherent_id: adherentId || 0,

@@ -571,7 +571,7 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
    rétractables. Sans effet visible sur desktop (le contenu tient déjà). */
 .list-row { min-width: 0; }
 .list-row > * { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
-.main a[href^="mailto:"], .main a[href^="tel:"] { overflow-wrap: anywhere; word-break: break-word; }
+.main a[href^="mailto:"]:not([class*="btn"]), .main a[href^="tel:"]:not([class*="btn"]) { overflow-wrap: anywhere; word-break: break-word; }
 .list-row-header { background: var(--bg-2); cursor: default; font-size: 11px; font-weight: 500; color: var(--ink-3); letter-spacing: 0.04em; text-transform: uppercase; padding: 10px 20px; }
 .list-row-header:hover { background: var(--bg-2); }
 
