@@ -4,6 +4,8 @@
  * Reproduit action-coach-ia.php (generate_now), retour JSON. NE MODIFIE PAS le site.
  */
 require __DIR__ . '/_app-write-boot.php';
+@require_once __DIR__ . '/../rate-limit-helper.php';
+if (function_exists('ak_rate_limit_or_die')) { ak_rate_limit_or_die('app_ai', 5, 60, (string) $uid); ak_rate_limit_or_die('app_ai_org', 20, 3600, 'org' . $org_id); }
 @require_once __DIR__ . '/../includes-coach-ia.php';
 @require_once __DIR__ . '/../ai-helper.php';
 

@@ -299,7 +299,7 @@ render_sidebar('mairie-dashboard');
 
   <!-- LISTE DES ASSO -->
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:24px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
       <h2 style="margin:0;font-size:18px;color:#0A0A0B;font-weight:700;">🏢 Mes associations (<?= $nb_orgs ?>)</h2>
       <input type="search" placeholder="🔍 Rechercher..." oninput="filterOrgs(this.value)" style="padding:8px 14px;border:1px solid #D4D4D8;border-radius:7px;font-size:13px;width:100%;max-width:240px;">
     </div>
@@ -321,14 +321,14 @@ render_sidebar('mairie-dashboard');
           try { $s = $pdo->prepare("SELECT MAX(last_login_at) FROM users WHERE org_id=? AND last_login_at IS NOT NULL"); $s->execute([$o['id']]); $last_login = $s->fetchColumn(); } catch (Exception $e) {}
         ?>
         <div class="org-card" data-name="<?= strtolower(h($o['name'])) ?>" style="background:#FAFAF9;border:1px solid #E5E7EB;border-radius:10px;padding:14px 18px;transition:all 0.15s;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;">
-            <div style="flex:1;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:0;">
               <div style="font-size:15px;font-weight:700;color:#0A0A0B;margin-bottom:4px;"><?= h($o['name']) ?></div>
               <div style="font-size:12.5px;color:#71717A;">
                 <?php if ($o['billing_address_city']): ?>📍 <?= h($o['billing_address_city']) ?><?php endif; ?>
                 <?php if ($o['siret']): ?> · SIRET <?= h($o['siret']) ?><?php endif; ?>
               </div>
-              <div style="margin-top:8px;display:flex;gap:14px;font-size:12px;color:#3F3F46;">
+              <div style="margin-top:8px;display:flex;gap:14px;font-size:12px;color:#3F3F46;flex-wrap:wrap;">
                 <span><strong style="color:#0A0A0B;"><?= $nb_members ?></strong> adhérents</span>
                 <span><strong style="color:#059669;"><?= $nb_grants ?></strong> subv. en cours</span>
                 <?php if ($last_login): ?>
@@ -362,3 +362,5 @@ function filterOrgs(query) {
   });
 }
 </script>
+
+<?php render_foot(); ?>

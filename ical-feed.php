@@ -39,7 +39,7 @@ try {
         $stmt = $pdo->prepare("SELECT e.*, p.name AS project_name FROM events e
                                LEFT JOIN projects p ON p.id = e.project_id
                                LEFT JOIN folders f ON f.id = p.folder_id
-                               WHERE (e.org_id = ? OR f.org_id = ?)
+                               WHERE (e.org_id = ? OR f.org_id = ?) AND e.deleted_at IS NULL
                                ORDER BY e.starts_at DESC LIMIT 500");
         $stmt->execute([$org_id, $org_id]);
     } else {
@@ -47,7 +47,7 @@ try {
                                LEFT JOIN projects p ON p.id = e.project_id
                                LEFT JOIN folders f ON f.id = p.folder_id
                                LEFT JOIN project_members pm ON pm.project_id = e.project_id AND pm.user_id = ?
-                               WHERE (e.org_id = ? OR f.org_id = ?)
+                               WHERE (e.org_id = ? OR f.org_id = ?) AND e.deleted_at IS NULL
                                  AND (pm.user_id IS NOT NULL OR p.referent_id = ? OR e.created_by = ?)
                                GROUP BY e.id
                                ORDER BY e.starts_at DESC LIMIT 500");
@@ -57,7 +57,7 @@ try {
 } catch (Throwable $e) {
     // Si schéma diffère, fallback : org_id uniquement
     try {
-        $stmt = $pdo->prepare("SELECT * FROM events WHERE org_id = ? ORDER BY starts_at DESC LIMIT 500");
+        $stmt = $pdo->prepare("SELECT * FROM events WHERE org_id = ? AND deleted_at IS NULL ORDER BY starts_at DESC LIMIT 500");
         $stmt->execute([$org_id]);
         $events = $stmt->fetchAll();
     } catch (Throwable $e2) { $events = []; }

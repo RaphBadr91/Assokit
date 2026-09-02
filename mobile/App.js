@@ -661,7 +661,7 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
           <Text style={styles.projTitle}>Projets</Text>
           <Text style={styles.projSub}>{projects.length} projet{projects.length > 1 ? 's' : ''}</Text>
         </View>
-        <TouchableOpacity accessibilityRole="button" style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
           <Ionicons name="add" size={19} color="#fff" />
           <Text style={styles.projNewTxt}>Nouveau</Text>
         </TouchableOpacity>
@@ -672,7 +672,7 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
         <View style={styles.emptyBox}>
           <Ionicons name="folder-open-outline" size={44} color="#CBD5E1" />
           <Text style={styles.emptyTxt}>Aucun projet en cours</Text>
-          <TouchableOpacity accessibilityRole="button" style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}>
+          <TouchableOpacity accessibilityRole="button" style={[styles.emptyBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
             <Text style={styles.emptyBtnTxt}>Créer un projet</Text>
           </TouchableOpacity>
         </View>
@@ -717,6 +717,7 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
 /* ================================================================== */
 function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack }) {
   const isClients = mode === 'clients';
+  if (data && data.allowed === false) return <GatedScreen title={isClients ? 'Clients' : 'Membres'} message={data.message} onBack={onBack} />;
   const list = data ? (isClients ? (data.clients || []) : (data.members || [])) : null;
   const title = isClients ? 'Clients' : 'Membres';
   const newLabel = isClients ? 'Nouveau' : 'Inviter';
@@ -729,7 +730,7 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
           <Text style={styles.projTitle}>{title}</Text>
           <Text style={styles.projSub}>{(list ? list.length : 0)} {title.toLowerCase()}</Text>
         </View>
-        <TouchableOpacity accessibilityRole="button" style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
           <Ionicons name={isClients ? 'add' : 'person-add'} size={18} color="#fff" />
           <Text style={styles.projNewTxt}>{newLabel}</Text>
         </TouchableOpacity>
@@ -740,7 +741,7 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
         <View style={styles.emptyBox}>
           <Ionicons name={isClients ? 'briefcase-outline' : 'people-outline'} size={44} color="#CBD5E1" />
           <Text style={styles.emptyTxt}>{isClients ? 'Aucun client' : 'Aucun membre'}</Text>
-          <TouchableOpacity accessibilityRole="button" style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}>
+          <TouchableOpacity accessibilityRole="button" style={[styles.emptyBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
             <Text style={styles.emptyBtnTxt}>{isClients ? 'Ajouter un client' : 'Inviter un membre'}</Text>
           </TouchableOpacity>
         </View>
@@ -783,6 +784,7 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
 /*  FACTURES (liste native)                                            */
 /* ================================================================== */
 function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiText, aiLoading, onAnalyze }) {
+  if (data && data.allowed === false) return <GatedScreen title="Factures" message={data.message} onBack={onBack} />;
   const list = data ? (data.invoices || []) : null;
   const t = (list || []).reduce((a, i) => {
     const v = i.amount || 0; a.total += v;
@@ -799,7 +801,7 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
           <Text style={styles.projTitle}>Factures</Text>
           <Text style={styles.projSub}>{(list ? list.length : 0)} facture{(list && list.length > 1) ? 's' : ''}</Text>
         </View>
-        <TouchableOpacity accessibilityRole="button" style={styles.projNewBtn} onPress={onNew} activeOpacity={0.85}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
           <Ionicons name="add" size={19} color="#fff" />
           <Text style={styles.projNewTxt}>Nouvelle</Text>
         </TouchableOpacity>
@@ -831,7 +833,7 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
             <View style={styles.emptyBox}>
               <Ionicons name="receipt-outline" size={44} color="#CBD5E1" />
               <Text style={styles.emptyTxt}>Aucune facture</Text>
-              <TouchableOpacity accessibilityRole="button" style={styles.emptyBtn} onPress={onNew} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Créer une facture</Text></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" style={[styles.emptyBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Créer une facture</Text></TouchableOpacity>
             </View>
           ) : list.map((inv) => {
             const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
@@ -873,6 +875,19 @@ function DetailHeader({ title, onBack, onAction, actionIcon }) {
       ) : (
         <View style={{ width: 34 }} />
       )}
+    </View>
+  );
+}
+
+// Écran verrouillé par le rôle (le serveur a répondu allowed:false — parité avec le site)
+function GatedScreen({ title, message, onBack }) {
+  return (
+    <View style={styles.detailWrap}>
+      {onBack ? <DetailHeader title={title} onBack={onBack} /> : null}
+      <View style={styles.emptyBox}>
+        <Ionicons name="lock-closed" size={40} color="#CBD5E1" />
+        <Text style={styles.emptyTxt}>{message || 'Réservé aux administrateurs.'}</Text>
+      </View>
     </View>
   );
 }
@@ -1047,7 +1062,7 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
             {pdfBusy ? <ActivityIndicator size="small" color="#4F46E5" /> : <Ionicons name="share-outline" size={17} color="#4F46E5" />}
             <Text style={styles.pdfBtnTxt}>{pdfBusy ? 'Préparation…' : 'Bilan analytique (PDF)'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity accessibilityRole="button" style={styles.pdfBtn} activeOpacity={0.85} onPress={() => onWeb('/projet/' + p.id + '/bilan')}>
+          <TouchableOpacity accessibilityRole="button" style={[styles.pdfBtn, pdfBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={pdfBusy ? undefined : () => onSharePdf('/download-bilan-analytique.php?project=' + p.id)}>
             <Ionicons name="document-text" size={17} color="#4F46E5" />
             <Text style={styles.pdfBtnTxt}>Bilan du projet</Text>
           </TouchableOpacity>
@@ -1097,7 +1112,7 @@ function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) 
             <Text style={styles.dSection}>Contact</Text>
             <View style={styles.dCard}>
               <InfoRow icon="mail" label="Email" value={m.email} onPress={m.email ? () => onWeb('mailto:' + m.email) : null} />
-              <InfoRow icon="call" label="Téléphone" value={m.phone} />
+              <InfoRow icon="call" label="Téléphone" value={m.phone} onPress={m.phone ? () => onWeb('tel:' + String(m.phone).replace(/\s+/g, '')) : null} />
               <InfoRow icon="location" label="Ville" value={m.city} />
             </View>
 
@@ -1174,7 +1189,7 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
         <Text style={styles.dSection}>Contact</Text>
         <View style={styles.dCard}>
           <InfoRow icon="mail" label="Email" value={c.email} onPress={c.email ? () => onWeb('mailto:' + c.email) : null} />
-          <InfoRow icon="call" label="Téléphone" value={c.phone} />
+          <InfoRow icon="call" label="Téléphone" value={c.phone} onPress={c.phone ? () => onWeb('tel:' + String(c.phone).replace(/\s+/g, '')) : null} />
           <InfoRow icon="location" label="Adresse" value={c.address} />
           <InfoRow icon="business" label="SIREN" value={c.siren} />
           <InfoRow icon="pricetag" label="N° TVA" value={c.vat_number} />
@@ -1266,20 +1281,20 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit }) {
         {!!inv.public_uuid && (
           <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/devis/' : '/facture/') + inv.public_uuid)}>
             <Ionicons name="document-text" size={18} color="#fff" />
-            <Text style={styles.dPrimaryBtnTxt}>{isQuote ? 'Voir / envoyer le devis' : 'Voir / envoyer la facture'}</Text>
+            <Text style={styles.dPrimaryBtnTxt}>{isQuote ? 'Aperçu client du devis' : 'Aperçu client de la facture'}</Text>
           </TouchableOpacity>
         )}
-        {(onEdit && (isQuote ? (inv.status !== 'signed' && inv.status !== 'converted') : inv.status === 'draft')) ? (
+        {(onEdit && (isQuote ? (inv.status !== 'signed' && inv.status !== 'converted' && inv.status !== 'cancelled') : inv.status === 'draft')) && (
           <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onEdit(d, !!isQuote)}>
             <Ionicons name="create-outline" size={18} color={BRAND} />
             <Text style={styles.dWebBtnTxt}>{isQuote ? 'Modifier le devis' : 'Modifier la facture'}</Text>
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/mon-asso-devis-edit?id=' : '/mon-asso-facture-edit?id=') + inv.id)}>
-            <Text style={styles.dWebBtnTxt}>{isQuote ? 'Modifier le devis' : 'Modifier la facture'}</Text>
-            <Ionicons name="open-outline" size={18} color={BRAND} />
-          </TouchableOpacity>
         )}
+        {/* Envoi par email, conversion devis→facture, duplication : sur le site, dans la session connectée */}
+        <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/mon-asso-devis-edit?id=' : '/mon-asso-facture-edit?id=') + inv.id)}>
+          <Text style={styles.dWebBtnTxt}>{isQuote ? 'Envoyer / convertir le devis' : 'Envoyer la facture par email'}</Text>
+          <Ionicons name="open-outline" size={18} color={BRAND} />
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -2130,6 +2145,7 @@ function NativeAgenda({ data, loading, onRefresh, onOpen, onBack, onNew }) {
 /*  MES FACTURES (abonnement Stripe) — natif                           */
 /* ================================================================== */
 function NativeSubInvoices({ data, loading, onRefresh, onBack, onWeb }) {
+  if (data && data.allowed === false) return <GatedScreen title="Mes factures" message={data.message} onBack={onBack} />;
   const list = data ? (data.invoices || []) : null;
   const s = (data && data.stats) || {};
   return (
@@ -2261,10 +2277,10 @@ const MORE_GROUPS = [
     items: [
       { label: 'Adhérents', icon: 'people', nav: { screen: 'members' }, assoOnly: true },
       { label: 'Agenda', icon: 'calendar', nav: { screen: 'agenda' } },
-      { label: 'Cotisations', icon: 'card', nav: { screen: 'cotisations' }, admin: true, assoOnly: true },
-      { label: 'Subventions', icon: 'cash', nav: { screen: 'subventions' }, admin: true, assoOnly: true },
+      { label: 'Cotisations', icon: 'card', nav: { screen: 'cotisations' }, manage: true, assoOnly: true },
+      { label: 'Subventions', icon: 'cash', nav: { screen: 'subventions' }, manage: true, assoOnly: true },
       { label: 'Assemblées', icon: 'clipboard', nav: { screen: 'assemblies' }, admin: true, assoOnly: true },
-      { label: 'Émargement', icon: 'checkbox', nav: { screen: 'attendance' }, admin: true, assoOnly: true },
+      { label: 'Émargement', icon: 'checkbox', nav: { screen: 'attendance' }, manage: true, assoOnly: true },
     ],
   },
   {
@@ -2305,7 +2321,7 @@ const FOUNDER_SHORTCUTS = [
   { label: 'Pilotage', icon: 'grid', fk: 'cockpit' },
 ];
 
-function NativeMore({ orgName, initials, logo, isFounder, isAdmin, isTpe, counts, onNav, onLogout }) {
+function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, isTpe, counts, onNav, onLogout }) {
   const cnt = counts || {};
   return (
     <View style={styles.detailWrap}>
@@ -2341,7 +2357,8 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, isTpe, counts
         )}
         {MORE_GROUPS.map((g) => {
           // Masque les fonctions propres aux associations pour un profil TPE.
-          const items = g.items.filter((it) => (!it.admin || isAdmin) && (!it.assoOnly || !isTpe));
+          // admin → admins seuls ; manage → admins ET coordinateurs (mêmes règles que le serveur)
+          const items = g.items.filter((it) => (!it.admin || isAdmin) && (!it.manage || isAdmin || canManage) && (!it.assoOnly || !isTpe));
           if (items.length === 0) return null;
           return (
           <View key={g.title} style={{ marginBottom: 20 }}>
@@ -2667,7 +2684,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
   const dirty = o && (name.trim() !== (o.name || '') || email.trim() !== (o.billing_email || '') || plan !== (o.plan || '') || note !== (o.note || ''));
   const canSave = name.trim().length > 1 && !busy && dirty;
   return (
-    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       <DetailHeader title="Association" onBack={onBack} />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
@@ -2786,7 +2803,7 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
     const isNew = !form.id;
     const canSave = form.slug.trim().length > 0 && form.name.trim().length > 0 && !busy;
     return (
-      <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
         <DetailHeader title={isNew ? 'Nouveau plan' : 'Modifier le plan'} onBack={() => setForm(null)} />
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -2966,7 +2983,7 @@ function NativeFounderSettings({ data, loading, busy, onRefresh, onBack, onSave 
   if (!data || !form) return <DetailLoading title="Paramètres société" onBack={onBack} />;
   const kb = { email: 'email-address', phone: 'phone-pad', url: 'url', decimal: 'decimal-pad', default: 'default' };
   return (
-    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       <DetailHeader title="Paramètres société" onBack={onBack} />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
@@ -3603,7 +3620,7 @@ function NativeFounderSupportThread({ data, loading, onBack, onRefresh, onReply,
   const [body, setBody] = useState('');
   const send = () => { if (body.trim().length < 2 || replyBusy) return; onReply(t.id, body.trim()); setBody(''); };
   return (
-    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       <DetailHeader title="Ticket support" onBack={onBack} />
       {!data || !t ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
@@ -3796,7 +3813,7 @@ function NativeFounderContactThread({ data, loading, onBack, onRefresh, onReply,
   const [body, setBody] = useState('');
   const send = () => { if (body.trim().length < 2 || replyBusy) return; onReply(c.id, body.trim()); setBody(''); };
   return (
-    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       <DetailHeader title="Prospect" onBack={onBack} />
       {!data || !c ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
@@ -3834,6 +3851,7 @@ function NativeFounderContactThread({ data, loading, onBack, onRefresh, onReply,
 /*  DEVIS / STATS / NOTIFS / COTISATIONS / SUBVENTIONS (natifs)        */
 /* ================================================================== */
 function NativeQuotes({ data, loading, onRefresh, onOpen, onNew, onBack }) {
+  if (data && data.allowed === false) return <GatedScreen title="Devis" message={data.message} onBack={onBack} />;
   const list = data ? (data.quotes || []) : null;
   return (
     <View style={styles.detailWrap}>
@@ -3843,7 +3861,7 @@ function NativeQuotes({ data, loading, onRefresh, onOpen, onNew, onBack }) {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
-          <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, { alignSelf: 'flex-start', marginBottom: 14 }]} onPress={onNew} activeOpacity={0.85}>
+          <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, { alignSelf: 'flex-start', marginBottom: 14 }, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
             <Ionicons name="add" size={18} color="#fff" /><Text style={styles.projNewTxt}>Nouveau devis</Text>
           </TouchableOpacity>
           {list.length === 0 ? (
@@ -4006,7 +4024,7 @@ function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead,
   );
 }
 
-function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage }) {
+function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage, onWeb }) {
   const list = data ? (data.campaigns || []) : null;
   const s = (data && data.stats) || {};
   const hasCampaigns = !!(list && list.length);
@@ -4032,7 +4050,7 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage 
               <Text style={styles.emptySub}>Créez une campagne de cotisation sur le site pour pouvoir y enregistrer des paiements depuis l'app.</Text>
             </View>
           ) : list.map((c) => (
-            <View key={c.id} style={styles.projCard}>
+            <TouchableOpacity accessibilityRole="button" key={c.id} style={styles.projCard} activeOpacity={onWeb ? 0.85 : 1} onPress={onWeb ? () => onWeb('/cotisation/' + c.id) : undefined}>
               <View style={styles.projCardTop}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={styles.projName} numberOfLines={1}>{c.name}</Text>
@@ -4042,8 +4060,11 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage 
                   <Text style={[styles.projChipTxt, { color: c.active ? '#065F46' : '#64748B' }]}>{c.active ? 'Active' : 'Clôturée'}</Text>
                 </View>
               </View>
-              <Text style={[styles.dTotal, { marginTop: 10, fontSize: 18 }]}>{fmtEuro(c.total)}</Text>
-            </View>
+              <View style={[styles.dCardRow, { marginTop: 10 }]}>
+                <Text style={[styles.dTotal, { fontSize: 18 }]}>{fmtEuro(c.total)}</Text>
+                {onWeb ? <Ionicons name="chevron-forward" size={18} color="#94A3B8" /> : null}
+              </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
       )}
@@ -4051,7 +4072,7 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage 
   );
 }
 
-function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage }) {
+function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onWeb }) {
   const list = data ? (data.grants || []) : null;
   const s = (data && data.stats) || {};
   return (
@@ -4077,7 +4098,7 @@ function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage }) {
           ) : list.map((g) => {
             const km = INV_KIND[g.status_kind] || INV_KIND.wait;
             return (
-              <View key={g.id} style={styles.projCard}>
+              <TouchableOpacity accessibilityRole="button" key={g.id} style={styles.projCard} activeOpacity={onWeb ? 0.85 : 1} onPress={onWeb ? () => onWeb('/subvention/' + g.id) : undefined}>
                 <View style={styles.projCardTop}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={styles.projName} numberOfLines={2}>{g.name}</Text>
@@ -4089,7 +4110,7 @@ function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage }) {
                   <Text style={styles.dMuted}>{g.deadline ? 'Échéance ' + g.deadline : ' '}</Text>
                   <Text style={styles.bilanAmount}>{fmtEuro(g.status === 'granted' ? g.granted : g.requested)}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </ScrollView>
@@ -4289,6 +4310,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const founderInit = useRef(false);
   const autoLoginTried = useRef(false);
   const pendingCreds = useRef(null);
+  const pendingLogin = useRef(null);   // identifiants à soumettre dès que /connexion est chargée
+  const lastLoadAlert = useRef(0);      // anti-spam des alertes « chargement impossible »
+  const logoutTimer = useRef(null);
+  const finishLogoutRef = useRef(null);
   const loginAttempted = useRef(false);
   const authedRef = useRef(false);
   const pendingNotifLink = useRef(null); // lien d'une notification tapee, consomme une fois authentifie
@@ -4426,7 +4451,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const isTpe = profile === 'tpe';
   const isFounder = !!(kpi && kpi.is_founder);
   const TABS = tabsFor(profile);
-  const QUICK_ACTIONS = isTpe ? QUICK_ACTIONS_TPE : QUICK_ACTIONS_ASSO;
+  // Rôles (mêmes règles que le serveur, qui renvoie 403 sinon) : on n'affiche pas un bouton
+  // qui échouerait après avoir rempli tout le formulaire.
+  const isAdminOrg = !!kpi && (kpi.role === 'admin' || !!kpi.is_founder || !!kpi.is_super_admin);
+  const canManageOrg = isAdminOrg || (!!kpi && kpi.role === 'coordinator');
+  const canCreateProjects = !kpi || kpi.can_create_projects !== false; // inconnu (ancien serveur) → on laisse
+  const QUICK_ACTIONS = (isTpe ? QUICK_ACTIONS_TPE : QUICK_ACTIONS_ASSO).filter((a) => {
+    if (a.form === 'invoice' || a.form === 'client') return isAdminOrg;
+    if (a.form === 'member' || a.form === 'quote') return canManageOrg;
+    if (a.form === 'project') return canCreateProjects;
+    return true;
+  });
 
   const inject = useCallback((js) => {
     if (webRef.current) webRef.current.injectJavaScript(js);
@@ -4793,7 +4828,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (res.canceled || !res.assets || !res.assets[0] || !res.assets[0].base64) return;
       if (!csrf) { inject(FETCH_CSRF_JS); return; }
       setLogoBusy(true);
-      inject(postJS('/api/app-upload-logo.php', { image: res.assets[0].base64, mime: 'image/jpeg', csrf }, '__aklogosaved'));
+      inject(postJS('/api/app-upload-logo.php', { image: res.assets[0].base64, mime: (res.assets[0].mimeType && /^image\//.test(res.assets[0].mimeType)) ? res.assets[0].mimeType : 'image/jpeg', csrf }, '__aklogosaved'));
     } catch (e) { setLogoBusy(false); setSettingsErr('Impossible d\'ouvrir la photothèque.'); }
   }, [csrf, inject]);
 
@@ -4888,12 +4923,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (Platform.OS !== 'android') return;
     const onBack = () => {
       if (quickOpen) { setQuickOpen(false); return true; }
-      if (form) { closeForm(); return true; }
+      if (form) { if (submitting) return true; closeForm(); return true; } // pas de fermeture pendant l'envoi (double création)
       if (stack.length) { popDetail(); return true; }
       if (webMode && canGoBack && webRef.current) { webRef.current.goBack(); return true; }
       if (webMode) { setWebMode(false); return true; }
       if (active === 'menu' && openChannel) { setOpenChannel(null); return true; }
-      if (active === 'menu' && menuScreen) { setMenuScreen(null); return true; }
+      // Écrans du cockpit Fondateur (fd…) : retour vers le cockpit, comme les boutons de l'interface
+      if (active === 'menu' && menuScreen) { setMenuScreen(String(menuScreen).indexOf('fd') === 0 ? 'founder' : null); return true; }
       if (active !== 'accueil') { setActive('accueil'); return true; }
       onExitToWelcome();
       return true;
@@ -4901,7 +4937,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
     // eslint-disable-next-line
-  }, [canGoBack, quickOpen, active, webMode, stack.length, form, menuScreen, openChannel, popDetail, closeForm, onExitToWelcome]);
+  }, [canGoBack, quickOpen, active, webMode, stack.length, form, submitting, menuScreen, openChannel, popDetail, closeForm, onExitToWelcome]);
 
   const onNav = (nav) => {
     setCanGoBack(nav.canGoBack);
@@ -4930,21 +4966,47 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     loginAttempted.current = true;
     setLoginErr('');
     setLoginBusy(true);
-    inject(autoLoginJS(email, password));
+    // Le formulaire web doit être chargé pour que l'injection trouve les champs : si la WebView
+    // charge encore (ou n'est pas sur /connexion), on mémorise et on soumet dans onLoadEnd.
+    const onLoginPage = /\/connexion/.test(lastUrl.current || '');
+    if (loading || !onLoginPage) {
+      pendingLogin.current = { email, password };
+      if (!onLoginPage) inject(gotoJS('/connexion'));
+    } else {
+      inject(autoLoginJS(email, password));
+    }
     setTimeout(() => {
       if (!authedRef.current && loginAttempted.current) {
         loginAttempted.current = false;
+        pendingLogin.current = null;
         setLoginBusy(false);
         setLoginErr('Connexion impossible. Vérifie ta connexion et réessaie.');
       }
-    }, 9000);
-  }, [inject]);
+    }, 12000);
+  }, [inject, loading]);
 
   useEffect(() => { authedRef.current = authed; if (authed) { setLoginBusy(false); setLoginErr(''); } }, [authed]);
 
   const onMessage = (e) => {
     try {
       const msg = JSON.parse(e.nativeEvent.data);
+      // Session serveur perdue (401 'auth' sur n'importe quel appel) : on ne laisse pas l'app « vide »,
+      // on repasse sur l'écran de connexion (l'auto-login biométrique se relance).
+      const authLost = msg && typeof msg === 'object' && Object.keys(msg).some((k) => k.indexOf('__ak') === 0 && msg[k] && msg[k].ok === false && msg[k].error === 'auth');
+      if (authLost) {
+        setCsrf(''); setAuthed(false); setWebMode(false); setLoggingOut(false);
+        autoLoginTried.current = false;
+        inject(gotoJS('/connexion'));
+        return;
+      }
+      // Échec de chargement d'un écran de données (réseau/serveur) : on prévient (au plus une fois / 5 s)
+      // au lieu d'afficher silencieusement un écran vide ; le tirer-pour-rafraîchir relance.
+      const DATA_KEYS = ['__akevents', '__akchannels', '__akchanmsgs', '__aksubinv', '__akquotes', '__akstats', '__aknotifs', '__akfounder', '__akfdorgs', '__akfdorgdet', '__akfdproj', '__akfdactiv', '__akfdpros', '__akfddir', '__akfdset', '__akfdplansm', '__akfdbill', '__akfdstats', '__akfdblog', '__akfdsup', '__akfdthread', '__akfdcontacts', '__akfdctcthread', '__akfdplans', '__akcoti', '__akgrants', '__akassemblies', '__akattendance', '__akbroadcasts', '__aktickets', '__akcoach', '__akaccount'];
+      const failedKey = DATA_KEYS.find((k) => msg[k] && msg[k].ok === false);
+      if (failedKey && Date.now() - (lastLoadAlert.current || 0) > 5000) {
+        lastLoadAlert.current = Date.now();
+        Alert.alert('Chargement impossible', (msg[failedKey].message) || 'Vérifie ta connexion, puis tire vers le bas pour rafraîchir.');
+      }
       // Les fetch injectes renvoient { ok:false } en cas d'echec reseau/session.
       // On NE stocke PAS cet objet comme donnee (sinon ecrans a "0 EUR" trompeurs) :
       // on coupe le loader, on marque l'erreur, et on conserve d'eventuelles donnees deja chargees.
@@ -4972,7 +5034,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         setStack((s) => {
           if (!s.length) return s;
           const cp = s.slice();
-          cp[cp.length - 1] = { ...cp[cp.length - 1], data: msg.__akdetail, loading: false };
+          const top = cp[cp.length - 1];
+          const dd = msg.__akdetail;
+          // Réponse périmée (l'utilisateur a ouvert une autre fiche entre-temps) : on l'ignore
+          const ent = dd && dd.ok !== false ? (dd.invoice || dd.project || dd.member || dd.client || dd.event || null) : null;
+          if (ent && ent.id != null && top.id != null && String(ent.id) !== String(top.id)) return s;
+          cp[cp.length - 1] = { ...top, data: dd, loading: false };
           return cp;
         });
       }
@@ -5010,7 +5077,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         if (msg.__akfdaction.ok) { fetchFdOrgs(fdOrgsFilter); fetchFounder(); }
         else { Alert.alert('Action impossible', 'Réessaie dans un instant.'); }
       }
-      if (msg && msg.__akfdorgdet) { setFdOrgDetail(msg.__akfdorgdet); setFdOrgDetailLoading(false); }
+      if (msg && msg.__akfdorgdet) { setFdOrgDetailLoading(false); if (msg.__akfdorgdet.ok === false) setMenuScreen('founder'); else setFdOrgDetail(msg.__akfdorgdet); }
       if (msg && msg.__akfdorgedit) {
         setFdOrgEditBusy(false);
         if (msg.__akfdorgedit.ok) {
@@ -5040,7 +5107,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           if (fdDirNav.dept) fetchFdDir({ dept: fdDirNav.dept, category: fdDirNav.category || '', page: fdDirNav.page || 1 });
         } else { Alert.alert('Opération impossible', (r && r.message) || 'Réessaie.'); }
       }
-      if (msg && msg.__akfdset) { setFdSettings(msg.__akfdset); setFdSettingsLoading(false); }
+      if (msg && msg.__akfdset) { setFdSettingsLoading(false); if (msg.__akfdset.ok === false) setMenuScreen('founder'); else setFdSettings(msg.__akfdset); }
       if (msg && msg.__akfdsetsave) {
         setFdSettingsBusy(false);
         if (msg.__akfdsetsave.ok) Alert.alert('Enregistré', 'Paramètres société mis à jour.');
@@ -5082,7 +5149,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         else { Alert.alert('Programmation', (r && r.message) || 'Action impossible.'); }
       }
       if (msg && msg.__akfdsup) { setFdSupport(msg.__akfdsup); setFdSupportLoading(false); }
-      if (msg && msg.__akfdthread) { setFdTicket(msg.__akfdthread); setFdTicketLoading(false); }
+      if (msg && msg.__akfdthread) { setFdTicketLoading(false); if (msg.__akfdthread.ok === false) setMenuScreen('founder'); else setFdTicket(msg.__akfdthread); }
       if (msg && msg.__akfdreply) {
         setFdReplyBusy(false);
         const r = msg.__akfdreply;
@@ -5090,14 +5157,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         else { Alert.alert('Support', (r && r.message) || 'Envoi impossible.'); }
       }
       if (msg && msg.__akfdcontacts) { setFdContacts(msg.__akfdcontacts); setFdContactsLoading(false); }
-      if (msg && msg.__akfdctcthread) { setFdCtcThread(msg.__akfdctcthread); setFdCtcThreadLoading(false); }
+      if (msg && msg.__akfdctcthread) { setFdCtcThreadLoading(false); if (msg.__akfdctcthread.ok === false) setMenuScreen('founder'); else setFdCtcThread(msg.__akfdctcthread); }
       if (msg && msg.__akfdctcreply) {
         setFdCtcReplyBusy(false);
         const r = msg.__akfdctcreply;
         if (r && r.ok) { fetchFdCtcThread(r.contact_id); }
         else { Alert.alert('Contact', (r && r.message) || 'Envoi impossible.'); }
       }
-      if (msg && msg.__akfdplans) { setFdPlans((msg.__akfdplans && msg.__akfdplans.plans) || []); }
+      if (msg && msg.__akfdplans) {
+        setFdPlans((msg.__akfdplans && msg.__akfdplans.plans) || []);
+        if (msg.__akfdplans.ok === false) setFdCreateErr('Plans indisponibles : tire pour rafraîchir puis réessaie.');
+      }
       if (msg && msg.__akfdcreate) {
         setFdCreateBusy(false);
         const r = msg.__akfdcreate;
@@ -5116,6 +5186,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__aktickets) { setTickets(msg.__aktickets); setSecLoading(false); }
       if (msg && msg.__akcoach) { setCoach(msg.__akcoach); setSecLoading(false); }
       if (msg && msg.__akcreds && msg.__akcreds.email && msg.__akcreds.password) { pendingCreds.current = msg.__akcreds; }
+      if (msg && msg.__aklogout) { if (finishLogoutRef.current) finishLogoutRef.current(); }
       if (msg && msg.__akpdf) {
         setPdfBusy(false);
         if (msg.__akpdf.ok && msg.__akpdf.data) sharePdfData(msg.__akpdf.data);
@@ -5123,7 +5194,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       if (msg && msg.__akinvai) { setInvAI(msg.__akinvai && msg.__akinvai.ok ? (msg.__akinvai.analysis || '') : 'Analyse indisponible.'); setInvAILoading(false); }
       if (msg && msg.__akstatsai) { setStatsCockpit(msg.__akstatsai && msg.__akstatsai.ok ? (msg.__akstatsai.cockpit || null) : null); setStatsCockpitLoading(false); }
-      if (msg && msg.__akaccount) { setAccount(msg.__akaccount); }
+      if (msg && msg.__akaccount) {
+        // Échec de chargement : on ne laisse pas l'écran Compte en chargement infini → retour au menu (alerte déjà affichée)
+        if (msg.__akaccount.ok === false) { setMenuScreen(null); } else setAccount(msg.__akaccount);
+      }
       if (msg && msg.__akaccountsaved) {
         setSettingsBusy(false);
         if (msg.__akaccountsaved.ok) { Alert.alert('Enregistré', msg.__akaccountsaved.message || 'Profil mis à jour.'); fetchAccount(); }
@@ -5250,21 +5324,27 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     // avec un voile natif "Déconnexion…" pendant qu'on ferme la session côté serveur.
     setLoggingOut(true);
     setMenuScreen(null); setOpenChannel(null); clearDetail(); closeForm(); setWebMode(false);
-    inject(gotoJS('/deconnexion.php'));
-    // Teardown complet côté racine : efface SecureStore + autoCreds + retour Welcome.
-    // (onLogout fait clearCreds + setAutoCreds(null) + setPath(null) ; fallback si absent)
-    setTimeout(() => {
-      if (onLogout) onLogout();
-      else { if (onClearCreds) onClearCreds(); if (onExitToWelcome) onExitToWelcome(); }
-    }, 450);
-  }, [onLogout, onClearCreds, inject, onExitToWelcome, clearDetail, closeForm]);
+    // Déconnexion serveur via fetch (même session) : on attend la réponse (ou 3 s max) AVANT le
+    // démontage, sinon le cookie pouvait rester valide → auto-connexion sans mot de passe.
+    inject(fetchJS('/deconnexion.php', '__aklogout'));
+    if (logoutTimer.current) clearTimeout(logoutTimer.current);
+    logoutTimer.current = setTimeout(() => finishLogoutRef.current && finishLogoutRef.current(), 3000);
+  }, [inject, clearDetail, closeForm]);
+
+  // Teardown complet côté racine : efface SecureStore + autoCreds + retour Welcome.
+  // (onLogout fait clearCreds + setAutoCreds(null) + setPath(null) ; fallback si absent)
+  const finishLogout = useCallback(() => {
+    if (logoutTimer.current) { clearTimeout(logoutTimer.current); logoutTimer.current = null; }
+    if (onLogout) onLogout();
+    else { if (onClearCreds) onClearCreds(); if (onExitToWelcome) onExitToWelcome(); }
+  }, [onLogout, onClearCreds, onExitToWelcome]);
+  useEffect(() => { finishLogoutRef.current = finishLogout; }, [finishLogout]);
 
   const openProject = (id) => pushDetail('project', id);
   const openInvoice = (id) => pushDetail('invoice', id);
   const openPerson = (id) => pushDetail(isTpe ? 'client' : 'member', id);
 
   const detailTop = stack.length ? stack[stack.length - 1] : null;
-  const canManageOrg = !!kpi && (kpi.role === 'admin' || kpi.role === 'coordinator');
   const showForm = !!form && authed;
   const showMenu = active === 'menu' && authed && !webMode && !detailTop && !showForm;
   const showHome = active === 'accueil' && authed && !webMode && !detailTop && !showForm;
@@ -5290,7 +5370,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             }
             if (/\/(connexion|login)/.test(u)) {
               inject(CAPTURE_CREDS_JS);
-              if (autoCreds && !autoLoginTried.current) { autoLoginTried.current = true; inject(autoLoginJS(autoCreds.email, autoCreds.password)); }
+              if (pendingLogin.current) {
+                const c = pendingLogin.current; pendingLogin.current = null;
+                inject(autoLoginJS(c.email, c.password));
+              } else if (autoCreds && !autoLoginTried.current) { autoLoginTried.current = true; inject(autoLoginJS(autoCreds.email, autoCreds.password)); }
             }
             if (!webMode && authed && active === 'accueil') fetchKpis();
           }}
@@ -5334,7 +5417,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
         {showInvoices && (
           <View style={styles.homeOverlay}>
-            <NativeInvoices data={invoices} loading={invLoading} onRefresh={fetchInvoices} onOpen={openInvoice} onNew={() => openForm('invoice')}
+            <NativeInvoices data={invoices} loading={invLoading} onRefresh={fetchInvoices} onOpen={openInvoice} onNew={isAdminOrg ? () => openForm('invoice') : undefined}
               onBack={TABS.some((t) => t.key === 'factures') ? undefined : backToHub}
               aiText={invAI} aiLoading={invAILoading} onAnalyze={onAnalyzeInvoices} />
           </View>
@@ -5347,7 +5430,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               loading={peopleLoading}
               onRefresh={() => fetchPeople(isTpe)}
               onOpen={openPerson}
-              onNew={() => openForm(isTpe ? 'client' : 'member')}
+              onNew={(isTpe ? isAdminOrg : canManageOrg) ? () => openForm(isTpe ? 'client' : 'member') : undefined}
             />
           </View>
         )}
@@ -5389,24 +5472,24 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'subinvoices' ? (
               <NativeSubInvoices data={subInv} loading={subInvLoading} onRefresh={fetchSubInv} onBack={() => setMenuScreen(null)} onWeb={openWeb} />
             ) : menuScreen === 'devis' ? (
-              <NativeQuotes data={quotes} loading={quotesLoading} onRefresh={fetchQuotes} onOpen={(id) => pushDetail('quote', id)} onNew={() => openForm('quote')} onBack={() => setMenuScreen(null)} />
+              <NativeQuotes data={quotes} loading={quotesLoading} onRefresh={fetchQuotes} onOpen={(id) => pushDetail('quote', id)} onNew={canManageOrg ? () => openForm('quote') : undefined} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'stats' ? (
               <NativeStats data={stats} loading={statsLoading} onRefresh={fetchStats} onBack={() => setMenuScreen(null)}
                 cockpit={statsCockpit} cockpitLoading={statsCockpitLoading} onCockpit={onCockpit} />
             ) : menuScreen === 'members' ? (
               <NativePeople mode="members" data={people} loading={peopleLoading} onRefresh={() => fetchPeople(false)}
-                onOpen={(id) => pushDetail('member', id)} onNew={() => openForm('member')} onBack={() => setMenuScreen(null)} />
+                onOpen={(id) => pushDetail('member', id)} onNew={canManageOrg ? () => openForm('member') : undefined} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'clients' ? (
               <NativePeople mode="clients" data={people} loading={peopleLoading} onRefresh={() => fetchPeople(true)}
-                onOpen={(id) => pushDetail('client', id)} onNew={() => openForm('client')} onBack={() => setMenuScreen(null)} />
+                onOpen={(id) => pushDetail('client', id)} onNew={isAdminOrg ? () => openForm('client') : undefined} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'notifications' ? (
               <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onPress={onNotifPress} onMarkAllRead={onMarkAllRead} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'cotisations' ? (
               <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)}
-                onNew={() => openForm('payment')} canManage={canManageOrg} />
+                onNew={() => openForm('payment')} canManage={canManageOrg} onWeb={openWeb} />
             ) : menuScreen === 'subventions' ? (
               <NativeGrants data={grantsData} loading={grantsLoading} onRefresh={fetchGrants} onBack={() => setMenuScreen(null)}
-                onNew={() => openForm('grant')} canManage={canManageOrg} />
+                onNew={() => openForm('grant')} canManage={canManageOrg} onWeb={openWeb} />
             ) : menuScreen === 'assemblies' ? (
               <GatedList title="Assemblées" data={assemblies} loading={secLoading} onRefresh={fetchAssemblies} onBack={() => setMenuScreen(null)}
                 itemsKey="items" emptyIcon="clipboard-outline" emptyLabel="Aucune assemblée"
@@ -5517,6 +5600,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 orgName={kpi && kpi.org_name}
                 initials={kpi && kpi.org_initials}
                 logo={kpi && kpi.org_logo}
+                canManage={canManageOrg}
                 isFounder={!!(kpi && kpi.is_founder)}
                 isAdmin={!!(kpi && (kpi.role === 'admin' || kpi.is_founder))}
                 isTpe={isTpe}
@@ -5731,7 +5815,8 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff' },
+  // Android edge-to-edge (SDK 57) : SafeAreaView natif n'inset pas → on compense la barre de statut
+  safe: { flex: 1, backgroundColor: '#fff', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0 },
   webWrap: { flex: 1, backgroundColor: '#fff' },
   logoutVeil: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center', zIndex: 999, elevation: 999 },
   logoutVeilTxt: { color: '#fff', fontSize: 15, fontWeight: '700', marginTop: 14, letterSpacing: 0.3 },
@@ -5890,7 +5975,7 @@ const styles = StyleSheet.create({
 
   /* Formulaires natifs */
   formContent: { padding: 18, paddingBottom: 30 },
-  formFooter: { padding: 14, paddingBottom: Platform.OS === 'ios' ? 26 : 14, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#EEF2F6' },
+  formFooter: { padding: 14, paddingBottom: Platform.OS === 'ios' ? 26 : 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#EEF2F6' },
   formErr: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', borderRadius: 12, padding: 12, marginBottom: 14 },
   formErrTxt: { flex: 1, color: '#B91C1C', fontSize: 13.5, fontWeight: '500' },
   fLabel: { fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 6 },
@@ -6104,7 +6189,7 @@ const styles = StyleSheet.create({
   emptyBtnTxt: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
 
   /* Tab bar */
-  tabBar: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.55)', marginHorizontal: 12, marginBottom: Platform.OS === 'ios' ? 6 : 10, borderRadius: 30, paddingBottom: Platform.OS === 'ios' ? 14 : 10, paddingTop: 10, paddingHorizontal: 6, alignItems: 'flex-end', shadowColor: '#0F172A', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 18 },
+  tabBar: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.55)', marginHorizontal: 12, marginBottom: Platform.OS === 'ios' ? 6 : 22, borderRadius: 30, paddingBottom: Platform.OS === 'ios' ? 14 : 10, paddingTop: 10, paddingHorizontal: 6, alignItems: 'flex-end', shadowColor: '#0F172A', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 18 },
   tabBlur: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 30, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.42)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 },
   tabLabel: { fontSize: 11, fontWeight: '600' },
@@ -6452,7 +6537,7 @@ const styles = StyleSheet.create({
   blob1: { width: 380, height: 380, top: -110, right: -110, backgroundColor: 'rgba(255,255,255,0.10)' },
   blob2: { width: 320, height: 320, bottom: 20, left: -120, backgroundColor: 'rgba(16,201,141,0.22)' },
   blob3: { width: 240, height: 240, top: 200, right: 150, backgroundColor: 'rgba(255,255,255,0.06)' },
-  wSafe: { flex: 1, paddingHorizontal: 24, justifyContent: 'space-between' },
+  wSafe: { flex: 1, paddingHorizontal: 24, justifyContent: 'space-between', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0, paddingBottom: Platform.OS === 'android' ? 16 : 0 },
   wTop: { alignItems: 'center', marginTop: 40 },
   logoHalo: { width: 116, height: 116, borderRadius: 34, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', marginBottom: 22 },
   logoRing: { width: 88, height: 88, borderRadius: 26, padding: 3, backgroundColor: 'rgba(255,255,255,0.55)', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 26, shadowOffset: { width: 0, height: 14 }, elevation: 12 },

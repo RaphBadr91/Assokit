@@ -33,10 +33,14 @@ try {
 
     $mrr = 0.0;
     try {
+        // Même source de vérité que super-admin.php (asso_subscriptions + asso_plans, essais exclus,
+        // dernier abonnement actif par org) — la table legacy `subscriptions` donnait un MRR différent.
         $mrr = (float) $pdo->query("
-            SELECT COALESCE(SUM(CASE WHEN billing_cycle='monthly' THEN price_ht*(1+tva_rate/100)
-                                     WHEN billing_cycle='yearly' THEN (price_ht*(1+tva_rate/100))/12 ELSE 0 END),0)
-            FROM subscriptions WHERE status='active'")->fetchColumn();
+            SELECT COALESCE(SUM(p.price_cents), 0) / 100
+            FROM asso_subscriptions s
+            INNER JOIN asso_plans p ON p.id = s.plan_id
+            WHERE s.status = 'active' AND p.is_trial = 0
+              AND s.id = (SELECT MAX(s2.id) FROM asso_subscriptions s2 WHERE s2.org_id = s.org_id)")->fetchColumn();
     } catch (Throwable $e) {}
 
     $ia = ['nb' => 0, 'cost' => 0.0];

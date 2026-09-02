@@ -101,9 +101,18 @@ try {
 
         $expires_at = date('Y-m-d 23:59:59', strtotime($issued_at . ' +' . $validity_days . ' days'));
 
-        $pdo->prepare("UPDATE asso_quotes SET client_id=:cli, issued_at=:iss, expires_at=:exp, amount_ht_cents=:ht, amount_vat_cents=:vat, amount_ttc_cents=:ttc, status=:status, description=:desc, terms=:terms, internal_notes=:notes, updated_at=NOW() WHERE id=:id")
+        // Le PDF lit client_snapshot : on le rafraîchit à chaque édition (cf. facture-save).
+        $client_snap = null;
+        try {
+            $cs = $pdo->prepare("SELECT * FROM asso_clients WHERE id = ? LIMIT 1");
+            $cs->execute([$client_id]);
+            $cfull = $cs->fetch(PDO::FETCH_ASSOC);
+            if ($cfull) $client_snap = json_encode($cfull, JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {}
+
+        $pdo->prepare("UPDATE asso_quotes SET client_id=:cli, client_snapshot=COALESCE(:snap, client_snapshot), issued_at=:iss, expires_at=:exp, amount_ht_cents=:ht, amount_vat_cents=:vat, amount_ttc_cents=:ttc, status=:status, description=:desc, terms=:terms, internal_notes=:notes, updated_at=NOW() WHERE id=:id")
             ->execute([
-                ':cli' => $client_id, ':iss' => $issued_at, ':exp' => $expires_at,
+                ':cli' => $client_id, ':snap' => $client_snap, ':iss' => $issued_at, ':exp' => $expires_at,
                 ':ht' => $total_ht, ':vat' => $total_vat, ':ttc' => $total_ttc,
                 ':status' => $status,
                 ':desc' => trim((string)($_POST['description'] ?? '')) ?: null,

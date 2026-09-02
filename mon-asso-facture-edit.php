@@ -292,7 +292,7 @@ render_sidebar('factures');
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Échéance (jours)</label>
-                    <input type="number" name="due_days" value="<?= max(1, (int) round((strtotime($invoice['due_at']) - strtotime($invoice['issued_at'])) / 86400)) ?>" min="0" max="365" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="number" name="due_days" value="<?= max(1, (int) floor((strtotime($invoice['due_at']) - strtotime($invoice['issued_at'])) / 86400)) ?>" min="0" max="365" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Statut actuel</label>

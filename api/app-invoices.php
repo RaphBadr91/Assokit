@@ -30,6 +30,13 @@ try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
 
+    // Parité site (mon-asso-factures.php) : les factures sont réservées aux finances.
+    @require_once __DIR__ . '/../finance-permissions.php';
+    if (!function_exists('user_can_view_finances') || !user_can_view_finances($user)) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'invoices' => [], 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         SELECT i.id, i.invoice_number, i.status, i.amount_ttc_cents,
                i.issued_at, i.due_at,

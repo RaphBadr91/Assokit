@@ -267,8 +267,8 @@ try {
 $upcoming_events_count = 0;
 try {
     $stmt = $pdo->prepare("
-        SELECT COUNT(*) FROM events 
-        WHERE org_id = ? AND start_date >= CURDATE()
+        SELECT COUNT(*) FROM events
+        WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL
     ");
     $stmt->execute([$org_id]);
     $upcoming_events_count = (int)$stmt->fetchColumn();

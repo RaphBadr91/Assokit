@@ -225,7 +225,7 @@ render_sidebar('devis');
                     <input type="date" name="issued_at" value="<?= h(date('Y-m-d', strtotime($quote['issued_at']))) ?>" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Validité (jours)</label>
-                    <input type="number" name="validity_days" value="<?= max(1, (int) round((strtotime($quote['expires_at']) - strtotime($quote['issued_at'])) / 86400)) ?>" min="1" max="365" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="number" name="validity_days" value="<?= max(1, (int) floor((strtotime($quote['expires_at']) - strtotime($quote['issued_at'])) / 86400)) ?>" min="1" max="365" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div style="grid-column:1/-1;"><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Description</label>
                     <textarea name="description" rows="2" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px; resize:vertical; font-family:inherit;"><?= h($quote['description'] ?? '') ?></textarea>

@@ -103,7 +103,7 @@ try {
             'is_active'   => !empty($m['is_active']),
             'adhesion_since' => fdate($m['adhesion_date'] ?? null),
             'adhesion_until' => fdate($vu),
-            'last_login'  => fdate($m['last_login_at'] ?? null),
+            'last_login'  => $can ? fdate($m['last_login_at'] ?? null) : '',
         ],
         'projects' => $projects,
     ], JSON_UNESCAPED_UNICODE);

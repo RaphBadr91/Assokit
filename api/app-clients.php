@@ -24,6 +24,11 @@ try {
     $is_admin = (($user['role'] ?? '') === 'admin')
         || !empty($user['is_super_admin']) || !empty($user['is_founder'])
         || (($user['role'] ?? '') === 'super_admin');
+    // Parité site (mon-asso-clients.php) : le fichier client est réservé aux administrateurs.
+    if (!$is_admin) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'admin' => false, 'clients' => [], 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     $stmt = $pdo->prepare("
         SELECT c.id, c.display_name, c.email, c.city, c.client_type,

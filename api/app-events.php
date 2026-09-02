@@ -31,6 +31,14 @@ try {
     $now = date('Y-m-d 00:00:00');
     $end = date('Y-m-d 23:59:59', strtotime('+120 days'));
 
+    // Parité site (agenda.php) : un « follower » ne voit que les événements de ses projets autorisés.
+    $fpids = function_exists('get_follower_project_ids') ? get_follower_project_ids() : null;
+    $fsql = ''; $fparams = [];
+    if ($fpids !== null) {
+        if (empty($fpids)) { $fsql = ' AND 1 = 0'; }
+        else { $fsql = ' AND e.project_id IN (' . implode(',', array_fill(0, count($fpids), '?')) . ')'; $fparams = array_map('intval', $fpids); }
+    }
+
     $stmt = $pdo->prepare("
         SELECT e.id, e.title, e.location, e.event_type, e.color_theme, e.sync_origin,
                e.starts_at, e.ends_at, e.is_all_day, e.project_id,
@@ -39,11 +47,11 @@ try {
         LEFT JOIN projects p ON e.project_id = p.id
         LEFT JOIN folders f ON p.folder_id = f.id
         WHERE e.org_id = ? AND e.deleted_at IS NULL
-          AND e.ends_at >= ? AND e.starts_at <= ?
+          AND e.ends_at >= ? AND e.starts_at <= ?" . $fsql . "
         ORDER BY e.starts_at ASC
         LIMIT 150
     ");
-    $stmt->execute([$org_id, $now, $end]);
+    $stmt->execute(array_merge([$org_id, $now, $end], $fparams));
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     $GPAL = ['#7986CB', '#33B679', '#8E24AA', '#E67C73', '#F6BF26', '#039BE5', '#3F51B5', '#0B8043', '#D50000', '#F4511E'];

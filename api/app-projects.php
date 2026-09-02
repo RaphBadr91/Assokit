@@ -21,6 +21,14 @@ try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
 
+    // Parité site (projets.php) : un « follower » ne voit que les projets qui lui sont autorisés.
+    $fpids = function_exists('get_follower_project_ids') ? get_follower_project_ids() : null;
+    $fsql = ''; $fparams = [];
+    if ($fpids !== null) {
+        if (empty($fpids)) { $fsql = ' AND 1 = 0'; }
+        else { $fsql = ' AND p.id IN (' . implode(',', array_fill(0, count($fpids), '?')) . ')'; $fparams = array_map('intval', $fpids); }
+    }
+
     $stmt = $pdo->prepare("
         SELECT p.id, p.name, p.progress_percent, p.status,
                COALESCE(p.participants_count, 0) AS participants,
@@ -28,11 +36,11 @@ try {
         FROM projects p
         JOIN folders f ON p.folder_id = f.id
         WHERE f.org_id = ? AND f.archived_at IS NULL AND p.archived_at IS NULL
-          AND p.status IN ('active','warning','done')
+          AND p.status IN ('active','warning','done')" . $fsql . "
         ORDER BY FIELD(p.status,'warning','active','done'), p.progress_percent ASC
         LIMIT 200
     ");
-    $stmt->execute([$org_id]);
+    $stmt->execute(array_merge([$org_id], $fparams));
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     $projects = [];

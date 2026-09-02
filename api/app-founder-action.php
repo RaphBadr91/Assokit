@@ -43,6 +43,13 @@ try {
         $note  = (string) ($input['note'] ?? '');
         if ($name === '') app_fail(400, 'name', 'Nom obligatoire.');
         if ($mail !== '' && !filter_var($mail, FILTER_VALIDATE_EMAIL)) app_fail(400, 'billing_email', 'Email invalide.');
+        // Le plan doit exister (slug) — pas de chaîne libre en base
+        if ($plan !== '') {
+            try {
+                $pq = $pdo->prepare("SELECT COUNT(*) FROM asso_plans WHERE slug = ?"); $pq->execute([$plan]);
+                if ((int) $pq->fetchColumn() === 0) app_fail(400, 'plan', 'Plan inconnu.');
+            } catch (Throwable $e) {}
+        }
         // Construit dynamiquement selon les colonnes présentes
         $sets = ['name = ?']; $params = [$name];
         $colExists = function ($col) use ($pdo) {

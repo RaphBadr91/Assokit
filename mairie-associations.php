@@ -112,3 +112,5 @@ render_sidebar('mairie-assos');
   <?php endif; ?>
 
 </div>
+
+<?php render_foot(); ?>

@@ -116,7 +116,9 @@ body {
 }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .label { color: #6B7280; font-size: 13px; }
-.value { color: #111827; font-weight: 500; font-size: 14px; }
+.value { color: #111827; font-weight: 500; font-size: 14px; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.section:has(> table) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 540px) { .grid-2 { grid-template-columns: 1fr; gap: 14px; } }
 .amount {
     font-size: 32px;
     font-weight: 700;

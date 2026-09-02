@@ -5,6 +5,8 @@
  * NE MODIFIE PAS le site.
  */
 require __DIR__ . '/_app-write-boot.php';
+@require_once __DIR__ . '/../rate-limit-helper.php';
+if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_msg', 30, 60, (string) $uid);
 
 $channel_id = (int) ($input['channel_id'] ?? 0);
 $content = trim((string) ($input['content'] ?? ''));

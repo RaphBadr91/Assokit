@@ -38,7 +38,12 @@ if (is_array($from)) $from = (string) ($from['address'] ?? $from['email'] ?? '')
 $recipient = '';
 foreach ($recips as $r) { if (ak_contact_parse_recipient((string) $r)) { $recipient = (string) $r; break; } }
 
-$res = ak_contact_store_inbound($pdo, $recipient, (string) $from, $body);
+try {
+    $res = ak_contact_store_inbound($pdo, $recipient, (string) $from, $body);
+} catch (Throwable $e) {
+    error_log('[app-inbound-contact] ' . $e->getMessage());
+    $res = ['ok' => false, 'msg' => 'server'];
+}
 if (!$res['ok'] && in_array($res['msg'], ['no-token', 'unknown-contact'], true)) http_response_code(202);
 elseif (!$res['ok'] && $res['msg'] === 'bad-token') http_response_code(403);
 elseif (!$res['ok']) http_response_code(500);

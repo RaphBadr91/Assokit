@@ -36,6 +36,14 @@ try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
 
+    // Parité site (mon-asso-devis.php) : devis réservés aux admin/coordinateurs/finances.
+    @require_once __DIR__ . '/../finance-permissions.php';
+    $role = (string) ($user['role'] ?? '');
+    if (!in_array($role, ['admin', 'coordinator'], true) && !(function_exists('user_can_view_finances') && user_can_view_finances($user))) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'quotes' => [], 'message' => 'Réservé aux administrateurs et coordinateurs.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         SELECT q.id, q.quote_number, q.status, q.amount_ttc_cents, q.issued_at, q.expires_at,
                c.display_name AS client_name

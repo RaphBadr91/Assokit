@@ -53,7 +53,8 @@
         "expo-image-picker",
         {
           "photosPermission": "Assokit accède à vos photos pour importer un logo ou une facture.",
-          "cameraPermission": "Assokit utilise l'appareil photo pour scanner vos factures et documents."
+          "cameraPermission": "Assokit utilise l'appareil photo pour scanner vos factures et documents.",
+          "microphonePermission": false
         }
       ],
       [

@@ -34,7 +34,7 @@ function ck_load_payments(PDO $pdo, int $campaign_id, ?string $status = null): a
     $sql = "SELECT p.*, t.name AS tier_name, a.first_name AS a_first, a.last_name AS a_last
             FROM cotisation_payments p
             LEFT JOIN cotisation_tiers t ON t.id = p.tier_id
-            LEFT JOIN adherents a ON a.id = p.adherent_id
+            LEFT JOIN users a ON a.id = p.adherent_id
             WHERE p.campaign_id = ?";
     $params = [$campaign_id];
     if ($status) { $sql .= " AND p.status = ?"; $params[] = $status; }

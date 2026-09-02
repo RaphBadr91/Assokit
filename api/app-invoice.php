@@ -37,6 +37,14 @@ try {
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
 
+    // Parité site (mon-asso-factures.php) : réservé aux finances.
+    @require_once __DIR__ . '/../finance-permissions.php';
+    if (!function_exists('user_can_view_finances') || !user_can_view_finances($user)) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => 'role', 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         SELECT i.*, c.display_name AS client_name, c.email AS client_email
         FROM asso_invoices i

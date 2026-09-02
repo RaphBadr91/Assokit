@@ -83,9 +83,11 @@ try {
         $pid = (int) ($input['plan_id'] ?? 0);
         if ($pid <= 0) plans_fail(400, 'plan_id');
         // Refuse la suppression si des orgs utilisent ce plan (par slug)
-        $slug = (string) $pdo->query("SELECT slug FROM asso_plans WHERE id = " . $pid)->fetchColumn();
+        $sq = $pdo->prepare("SELECT slug FROM asso_plans WHERE id = ?"); $sq->execute([$pid]);
+        $slug = (string) $sq->fetchColumn();
         if ($slug !== '') {
-            $used = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE plan = " . $pdo->quote($slug) . " AND deleted_at IS NULL")->fetchColumn();
+            $uq = $pdo->prepare("SELECT COUNT(*) FROM organizations WHERE plan = ? AND deleted_at IS NULL"); $uq->execute([$slug]);
+            $used = (int) $uq->fetchColumn();
             if ($used > 0) plans_fail(409, 'in_use', "Ce plan est utilisé par $used organisation(s).");
         }
         $pdo->prepare("DELETE FROM asso_plans WHERE id = ?")->execute([$pid]);

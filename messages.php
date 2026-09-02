@@ -294,6 +294,7 @@ render_sidebar('messages');
 
         <!-- Header du canal -->
         <header class="msg-head">
+          <button type="button" class="btn btn-ghost msg-toggle" aria-label="Afficher les canaux" title="Canaux" onclick="document.querySelector('.msg-channels').classList.toggle('mobile-open')" style="padding:8px 10px; margin-right:8px;">☰</button>
           <div class="msg-head-icon"><?= $active_channel['icon'] ?: '💬' ?></div>
           <div class="msg-head-info">
             <div class="msg-head-name">

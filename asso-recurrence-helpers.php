@@ -266,7 +266,8 @@ if (!function_exists('ak_recurrence_generate_invoice')) {
                 if ($delta > 0 && $delta < 365) $due_days = $delta;
             } catch (Throwable $e) {}
         }
-        $due_at = (clone $today)->modify("+{$due_days} day")->format('Y-m-d 00:00:00');
+        // Échéance à 23:59:59 comme partout ailleurs (sinon « en retard » un jour trop tôt)
+        $due_at = (clone $today)->modify("+{$due_days} day")->format('Y-m-d 23:59:59');
 
         // 7. Champs additionnels
         $description     = trim((string)($recurrence['title'] ?? ''));

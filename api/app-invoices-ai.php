@@ -24,6 +24,15 @@ try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
 
+    // Même gate admin que app-stats-ai.php (parité mon-asso-stats.php) + limite d'appels IA.
+    $role = (string) ($user['role'] ?? '');
+    if (!in_array($role, ['admin', 'founder', 'super_admin'], true) && empty($user['is_founder'])) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    @require_once __DIR__ . '/../rate-limit-helper.php';
+    if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_ai', 10, 60, (string) ($_SESSION['user_id'] ?? ''));
+
     // Stats de facturation
     $stmt = $pdo->prepare("
         SELECT

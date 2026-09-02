@@ -5,6 +5,8 @@
  * NE MODIFIE PAS le site.
  */
 require __DIR__ . '/_app-write-boot.php';
+@require_once __DIR__ . '/../rate-limit-helper.php';
+if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_logo', 5, 60, (string) $uid);
 
 $role = (string) ($user['role'] ?? '');
 if (!in_array($role, ['admin', 'coordinator'], true)) {
@@ -19,8 +21,12 @@ $data = base64_decode($b64, true);
 if ($data === false || strlen($data) < 100) app_fail(422, 'invalid', 'Image illisible.');
 if (strlen($data) > 5 * 1024 * 1024) app_fail(422, 'toobig', 'Image trop lourde (max 5 Mo).');
 
-$ext_map = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/gif' => 'gif'];
-$ext = $ext_map[$mime] ?? 'jpg';
+// Type réel détecté sur les octets (le MIME annoncé par le client n'est pas fiable).
+$info = function_exists('getimagesizefromstring') ? @getimagesizefromstring($data) : false;
+$real = is_array($info) ? (string) ($info['mime'] ?? '') : '';
+$ext_map = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/gif' => 'gif'];
+if (!isset($ext_map[$real])) app_fail(422, 'invalid', 'Format d\'image non supporté (PNG, JPEG ou GIF).');
+$ext = $ext_map[$real];
 
 try {
     $dir = __DIR__ . '/../uploads/asso-logos';
@@ -51,7 +57,8 @@ try {
             else $saved = imagejpeg($src, $abs, 88);
         }
     }
-    if (!$saved) { file_put_contents($abs, $data); }
+    // Jamais d'écriture des octets bruts : si GD ne sait pas relire/réencoder l'image, on refuse.
+    if (!$saved) app_fail(422, 'invalid', 'Image illisible.');
     @chmod($abs, 0644);
 
     $web = '/uploads/asso-logos/' . $name;

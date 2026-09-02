@@ -361,6 +361,52 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
      empilées sur petit écran pour ne pas tasser les champs. */
   .main [style*="grid-template-columns: 1fr 1fr"],
   .main [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+
+  /* Autres gabarits inline à colonnes multiples (2fr 1fr, repeat(3|4,1fr), 2fr auto auto) : empilés */
+  .main [style*="grid-template-columns: 2fr"], .main [style*="grid-template-columns:2fr"],
+  .main [style*="repeat(3, 1fr)"], .main [style*="repeat(3,1fr)"],
+  .main [style*="repeat(4, 1fr)"], .main [style*="repeat(4,1fr)"] { grid-template-columns: 1fr !important; }
+
+  /* Blocs « Total TTC » à marges négatives (facture/devis) : une fois empilés, ils débordaient du cadre */
+  .main [style*="margin:-10px -14px"], .main [style*="margin: -10px -14px"] { margin: 0 !important; border-radius: 10px !important; }
+}
+
+/* ── Anti-débordement transverse (≤900px) — tables, lignes de facture, popovers, en-têtes d'actions ── */
+@media (max-width: 900px) {
+  /* Une table enfant d'une carte overflow:hidden ne pouvait pas défiler : on rend la carte scrollable */
+  .main .card:has(> table), .main .card:has(> .ak-table), .main details:has(> table),
+  .main [style*="overflow:hidden"]:has(> table), .main [style*="overflow: hidden"]:has(> table),
+  .main .section:has(> table), .ak-table-wrap { overflow-x: auto !important; overflow-y: visible; -webkit-overflow-scrolling: touch; }
+
+  /* Ligne de facture/devis (grille JS 1fr 70px 100px 120px 100px 30px = 420px de pistes fixes) */
+  .main .invoice-line, .main [style*="1fr 70px 100px"] { grid-template-columns: 1fr 1fr !important; }
+  .main .invoice-line > :first-child, .main [style*="1fr 70px 100px"] > :first-child { grid-column: 1 / -1; }
+  .main .invoice-line > :last-child, .main [style*="1fr 70px 100px"] > :last-child { justify-self: end; }
+
+  /* Rangées d'actions inline (plusieurs boutons) : passent à la ligne au lieu de déborder */
+  .main [style*="display:flex"]:has(> .btn), .main [style*="display: flex"]:has(> .btn),
+  .main [style*="display:flex"]:has(> a.btn), .main [style*="display:flex"]:has(> form > .btn) { flex-wrap: wrap; }
+
+  /* Popovers ancrés à droite d'un bouton (partage / bilan / exports projet, menus) : pleine largeur du conteneur */
+  .ck-actions-bar { position: relative; }
+  .ck-bilan, .ck-share, .ck-exports { position: static !important; }
+  .ck-bilan-pop, .ck-share-pop, .ck-exports-menu { left: 0; right: 0; width: auto !important; max-width: 100%; transform: none; top: calc(100% + 6px); }
+  #mentionDropdown { max-width: calc(100vw - 24px); }
+
+  /* Messagerie : liste des canaux basculable (le bouton ☰ est ajouté dans messages.php) */
+  .msg-toggle { display: inline-flex !important; }
+  .msg-channels.mobile-open { display: flex !important; position: absolute; inset: 0; z-index: 6; background: var(--bg); }
+  .msg-layout, .msg-wrap { position: relative; }
+}
+.msg-toggle { display: none; }
+
+/* ── Impression : factures, devis, bilans sans chrome d'interface ── */
+@media print {
+  .sidebar, .sb-mobile-header, .sidebar-overlay, .sb-overlay, #akCopFab, #akCopPanel, #notifToastContainer,
+  .ak-trial-banner, #demo-banner, .btn, .head-actions, .tabs, [style*="position:sticky"], [style*="position: sticky"] { display: none !important; }
+  .app { display: block !important; }
+  .main { padding: 0 !important; max-width: none !important; }
+  body { background: #fff !important; }
 }
 .sb-org { display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
 .sb-org:hover { background: var(--bg-3); }
@@ -1739,6 +1785,11 @@ if (function_exists('current_user') && function_exists('can')):
 <style>
 #akCopFab{position:fixed;right:22px;bottom:22px;z-index:10000;width:56px;height:56px;border:none;border-radius:50%;cursor:pointer;background:linear-gradient(135deg,#0CCB8F,#059669);box-shadow:0 10px 28px rgba(5,150,105,.45);display:flex;align-items:center;justify-content:center;transition:transform .15s;}
 #akCopFab:hover{transform:translateY(-2px) scale(1.04);}
+/* Le bouton flottant ne doit pas recouvrir une barre d'action collée en bas (facture/devis/copilote) ni le composeur de messages */
+body:has(.main [style*="position:sticky"][style*="bottom"]), body:has(.main [style*="position: sticky"][style*="bottom"]), body:has(.msg-compose) { --ak-fab-off: 84px; }
+#akCopFab { bottom: var(--ak-fab-off, 22px); }
+#akCopPanel { bottom: calc(var(--ak-fab-off, 22px) + 66px); }
+#notifToastContainer { bottom: 90px !important; right: 16px !important; }
 #akCopPanel{position:fixed;right:22px;bottom:88px;z-index:10000;width:370px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 130px);background:#fff;border:1px solid #E2E8F0;border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.22);display:none;flex-direction:column;overflow:hidden;}
 #akCopPanel.open{display:flex;}
 .akcop-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(135deg,#0F172A,#065F46);color:#fff;}

@@ -17,6 +17,9 @@ if (!function_exists('ak_asso_quote_create')) {
     app_fail(500, 'unavailable', 'Fonction indisponible.');
 }
 
+// Normalise les décimales à virgule (clavier FR) avant le cast float : (float)"12,50" vaudrait 12.
+$num = static fn($v) => (float) str_replace([' ', ','], ['', '.'], (string) $v);
+
 $client = [];
 $client_id = (int) ($input['client_id'] ?? 0);
 if ($client_id > 0) {
@@ -45,9 +48,9 @@ foreach ((array) ($input['lines'] ?? []) as $l) {
     if ($des === '') continue;
     $lines[] = [
         'designation'   => mb_substr($des, 0, 500),
-        'quantity'      => (float) ($l['quantity'] ?? 1),
-        'unit_price_ht' => (float) ($l['unit_price_ht'] ?? 0),
-        'vat_rate'      => (isset($l['vat_rate']) && $l['vat_rate'] !== '' && $l['vat_rate'] !== null) ? (float) $l['vat_rate'] : null,
+        'quantity'      => $num($l['quantity'] ?? 1),
+        'unit_price_ht' => $num($l['unit_price_ht'] ?? 0),
+        'vat_rate'      => (isset($l['vat_rate']) && $l['vat_rate'] !== '' && $l['vat_rate'] !== null) ? $num($l['vat_rate']) : null,
     ];
 }
 if (!$lines) app_fail(422, 'invalid', 'Ajoutez au moins une ligne.');

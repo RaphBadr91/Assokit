@@ -5,6 +5,8 @@
  * NE MODIFIE PAS le site.
  */
 require __DIR__ . '/_app-write-boot.php';
+@require_once __DIR__ . '/../rate-limit-helper.php';
+if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_member_create', 20, 60, (string) $uid);
 @require_once __DIR__ . '/../password-token-helper.php';
 @require_once __DIR__ . '/../plan-helpers.php';
 

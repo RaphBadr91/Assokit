@@ -71,7 +71,8 @@ try {
             'title'       => (string) $e['title'],
             'when'        => $when,
             'location'    => (string) ($e['location'] ?? ''),
-            'description' => (string) ($e['description'] ?? ''),
+            // Texte brut pour l'écran natif : balises (Google/Outlook/éditeur) → sauts de ligne, entités décodées.
+            'description' => trim(html_entity_decode(strip_tags(preg_replace('#<br\s*/?>|</p>|</div>|</li>|</h[1-6]>#i', "\n", (string) ($e['description'] ?? ''))), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
             'project'     => (string) ($e['project_name'] ?? ''),
             'type_label'  => $TYPE_LABEL[$e['event_type'] ?? 'other'] ?? 'Autre',
             'color'       => $color,

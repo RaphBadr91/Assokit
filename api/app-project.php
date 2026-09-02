@@ -30,6 +30,13 @@ try {
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
 
+    // Parité site (projet.php) : un « follower » ne peut ouvrir que ses projets autorisés.
+    if (function_exists('follower_can_access_project') && !follower_can_access_project($id)) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => 'forbidden', 'message' => 'Accès refusé à ce projet.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         SELECT p.*, f.name AS folder_name, f.org_id AS folder_org_id,
                u.first_name AS ref_first, u.last_name AS ref_last, u.avatar_color AS ref_color

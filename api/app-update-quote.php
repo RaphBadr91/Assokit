@@ -28,8 +28,9 @@ $st = $pdo->prepare("SELECT id, status, quote_number FROM asso_quotes WHERE id =
 $st->execute([$quote_id, $org_id]);
 $q = $st->fetch(PDO::FETCH_ASSOC);
 if (!$q) app_fail(404, 'not_found', 'Devis introuvable.');
-if (in_array((string) $q['status'], ['signed', 'converted'], true)) {
-    app_fail(409, 'locked', 'Ce devis est ' . ($q['status'] === 'signed' ? 'signé' : 'converti') . ' : il ne peut plus être modifié.');
+if (in_array((string) $q['status'], ['signed', 'converted', 'cancelled'], true)) {
+    $lib = ['signed' => 'signé', 'converted' => 'converti', 'cancelled' => 'annulé'][$q['status']] ?? 'verrouillé';
+    app_fail(409, 'locked', 'Ce devis est ' . $lib . ' : il ne peut plus être modifié.');
 }
 
 // Client : existant (client_id) ou nouveau (display_name + email)

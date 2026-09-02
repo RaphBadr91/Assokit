@@ -34,6 +34,13 @@ try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
 
+    // Parité site (abonnement.php) : factures d'abonnement réservées aux administrateurs.
+    $role = (string) ($user['role'] ?? '');
+    if (!in_array($role, ['admin', 'super_admin'], true) && empty($user['is_founder']) && empty($user['is_super_admin'])) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'invoices' => [], 'stats' => [], 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     $rows = [];
     try {
         $stmt = $pdo->prepare("

@@ -55,7 +55,7 @@ try {
 // KPI : événements à venir.
 $kpi_events = 0;
 try {
-    $st = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND start_date >= CURDATE()");
+    $st = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL");
     $st->execute([$org_id]);
     $kpi_events = (int)$st->fetchColumn();
 } catch (Throwable $e) {}

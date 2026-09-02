@@ -17,7 +17,9 @@ if (!function_exists('ak_contact_secret')) {
     function ak_contact_secret(): string {
         if (defined('AK_CONTACT_SECRET') && AK_CONTACT_SECRET) return (string) AK_CONTACT_SECRET;
         if (defined('RESEND_API_KEY') && RESEND_API_KEY) return hash('sha256', 'akctc|' . RESEND_API_KEY);
-        return 'ak-contact-fallback-secret';
+        // Fail-closed : sans secret configuré (AK_CONTACT_SECRET ou RESEND_API_KEY), aucun jeton n'est accepté.
+        error_log('[ak_contact_secret] Aucun secret configuré (AK_CONTACT_SECRET / RESEND_API_KEY) : double-sens contact désactivé.');
+        return '';
     }
 }
 
@@ -79,8 +81,11 @@ if (!function_exists('ak_contact_store_inbound')) {
      * @return array ['ok'=>bool, 'msg'=>string]
      */
     function ak_contact_store_inbound(PDO $pdo, string $recipient, string $from, string $body): array {
+        if (ak_contact_secret() === '') return ['ok' => false, 'msg' => 'no-secret'];
         $p = ak_contact_parse_recipient($recipient);
         if (!$p) return ['ok' => false, 'msg' => 'no-token'];
+        $from = trim($from);
+        if ($from !== '' && !filter_var($from, FILTER_VALIDATE_EMAIL)) $from = '';
 
         try {
             $st = $pdo->prepare("SELECT id, email FROM asso_contact_messages WHERE id = ? LIMIT 1");

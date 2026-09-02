@@ -7,6 +7,11 @@
 require __DIR__ . '/_app-write-boot.php';
 @require_once __DIR__ . '/../asso-invoice-helpers.php';
 
+// Parité site (mon-asso-clients.php) : le fichier client est réservé aux administrateurs.
+if (!in_array($user['role'] ?? '', ['admin', 'super_admin'], true) && empty($user['is_founder']) && empty($user['is_super_admin'])) {
+    app_fail(403, 'role', 'Réservé aux administrateurs.');
+}
+
 if (!function_exists('ak_asso_find_or_create_client')) {
     app_fail(500, 'unavailable', 'Fonction indisponible.');
 }

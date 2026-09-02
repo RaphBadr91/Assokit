@@ -419,6 +419,7 @@ RewriteRule ^modifier-adherent/(\d+)/?$      modifier-adherent.php?id=$1 [L,QSA]
 # 3. URLS PROPRES (sans .php) POUR LES PAGES SIMPLES
 # ============================================================
 RewriteCond %{REQUEST_METHOD} !=POST
+RewriteCond %{REQUEST_URI} !^/api/
 RewriteCond %{THE_REQUEST} \s/+(.+?)\.php[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
 

@@ -123,3 +123,5 @@ render_sidebar('support');
   </div>
 
 </div>
+
+<?php render_foot(); ?>

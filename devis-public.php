@@ -73,7 +73,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .section h2 { font-size: 12px; text-transform: uppercase; color: #6B7280; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 8px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .label { color: #6B7280; font-size: 13px; }
-.value { color: #111827; font-weight: 500; font-size: 14px; }
+.value { color: #111827; font-weight: 500; font-size: 14px; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.section:has(> table) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+canvas { max-width: 100%; height: auto; }
+@media (max-width: 540px) { .grid-2 { grid-template-columns: 1fr; gap: 14px; } }
 .amount { font-size: 32px; font-weight: 700; color: #7E22CE; font-variant-numeric: tabular-nums; margin: 4px 0; }
 table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
 table thead { background: #F3F4F6; }

@@ -48,6 +48,7 @@ if ($project_id > 0) {
 
 $contact_name  = trim((string) ($input['contact_name'] ?? '')) ?: null;
 $contact_email = trim((string) ($input['contact_email'] ?? '')) ?: null;
+if ($contact_email !== null && !filter_var($contact_email, FILTER_VALIDATE_EMAIL)) app_fail(422, 'invalid', 'Email du contact invalide.');
 $contact_phone = trim((string) ($input['contact_phone'] ?? '')) ?: null;
 
 try {

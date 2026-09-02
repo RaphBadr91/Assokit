@@ -6,6 +6,11 @@
  */
 require __DIR__ . '/_app-write-boot.php';
 
+// Même règle que nouveau-projet.php : admin ou droit « peut créer des projets ».
+if (($user['role'] ?? '') !== 'admin' && empty($user['can_create_projects']) && empty($user['is_founder']) && empty($user['is_super_admin'])) {
+    app_fail(403, 'role', 'Vous n\'avez pas le droit de créer des projets.');
+}
+
 $name = trim((string) ($input['name'] ?? ''));
 if ($name === '') app_fail(422, 'invalid', 'Le nom du projet est obligatoire.');
 

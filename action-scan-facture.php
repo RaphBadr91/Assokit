@@ -62,6 +62,14 @@ if (!isset($_FILES['invoice_file']) || $_FILES['invoice_file']['error'] !== UPLO
     exit;
 }
 
+// Limite d'appels IA par utilisateur (chaque scan = un appel Claude)
+@require_once __DIR__ . '/rate-limit-helper.php';
+if (function_exists('ak_rate_limit') && !ak_rate_limit('scan_facture', 10, 60, (string) ($user['id'] ?? ''))) {
+    http_response_code(429);
+    echo json_encode(['success' => false, 'error' => 'Trop de scans en peu de temps. Patientez une minute.']);
+    exit;
+}
+
 $f = $_FILES['invoice_file'];
 $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
 $allowed_exts = ['pdf', 'jpg', 'jpeg', 'png'];
@@ -69,6 +77,18 @@ $allowed_exts = ['pdf', 'jpg', 'jpeg', 'png'];
 if (!in_array($ext, $allowed_exts, true)) {
     http_response_code(400);
     echo json_encode(['success' => false, 'error' => 'Format non supporté (PDF, JPG, PNG uniquement)']);
+    exit;
+}
+// Le contenu réel doit correspondre à l'extension (pas seulement le nom du fichier)
+$finfo_mime = '';
+if (function_exists('finfo_open')) {
+    $fi = @finfo_open(FILEINFO_MIME_TYPE);
+    if ($fi) { $finfo_mime = (string) @finfo_file($fi, $f['tmp_name']); @finfo_close($fi); }
+}
+$mime_ok = ['pdf' => ['application/pdf'], 'jpg' => ['image/jpeg'], 'jpeg' => ['image/jpeg'], 'png' => ['image/png']];
+if ($finfo_mime !== '' && !in_array($finfo_mime, $mime_ok[$ext], true)) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'Le contenu du fichier ne correspond pas à son extension.']);
     exit;
 }
 if ($f['size'] > 10 * 1024 * 1024) {
@@ -94,6 +114,10 @@ elseif ($ext === 'png') $media_type = 'image/png';
 // On stocke aussi le fichier en temp pour pouvoir le rattacher ensuite à la facture
 $temp_dir = __DIR__ . '/uploads/temp';
 if (!is_dir($temp_dir)) mkdir($temp_dir, 0755, true);
+// Purge best-effort des scans temporaires abandonnés (> 24 h)
+foreach ((array) @glob($temp_dir . '/scan_*') as $old_scan) {
+    if (is_file($old_scan) && @filemtime($old_scan) < time() - 86400) @unlink($old_scan);
+}
 $temp_filename = 'scan_' . $user['id'] . '_' . time() . '.' . $ext;
 $temp_path = $temp_dir . '/' . $temp_filename;
 move_uploaded_file($f['tmp_name'], $temp_path);

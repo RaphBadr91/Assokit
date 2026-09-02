@@ -80,7 +80,8 @@ try {
     // Evenements a venir
     $events = 0;
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND start_date >= CURDATE()");
+        // Colonne réelle : starts_at (start_date n'existe pas → le KPI restait à 0)
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL");
         $stmt->execute([$org_id]);
         $events = (int) $stmt->fetchColumn();
     } catch (Throwable $e) {}
@@ -112,8 +113,8 @@ try {
     try {
         $stmt = $pdo->prepare("
             SELECT
-              COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_ttc_cents ELSE 0 END), 0) AS paid,
-              COALESCE(SUM(CASE WHEN status IN ('pending','overdue') THEN amount_ttc_cents ELSE 0 END), 0) AS due,
+              COALESCE(SUM(CASE WHEN status = 'paid' AND YEAR(issued_at) = YEAR(CURDATE()) THEN amount_ttc_cents ELSE 0 END), 0) AS paid,
+              COALESCE(SUM(CASE WHEN status IN ('pending','overdue') AND due_at < NOW() THEN amount_ttc_cents ELSE 0 END), 0) AS due,
               COUNT(*) AS total
             FROM asso_invoices WHERE org_id = ?
         ");
@@ -161,6 +162,7 @@ try {
         'ok'           => true,
         'profile'      => $profile,
         'role'         => (string) ($user['role'] ?? 'member'),
+        'can_create_projects' => (($user['role'] ?? '') === 'admin') || !empty($user['can_create_projects']) || $is_founder || !empty($user['is_super_admin']),
         'is_founder'   => $is_founder,
         'is_super_admin' => ($is_founder || !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin'),
         'notif_unread' => $notif_unread,

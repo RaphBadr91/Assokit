@@ -34,12 +34,27 @@ try {
     $stmt->execute([$org_id]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+    // KPI « Encaissé » : MÊME règle que cotisations.php (exercice courant, rattaché à paid_at),
+    // et non la somme de toutes les campagnes toutes années (chiffre différent du site).
+    $year = (int) date('Y');
+    $paid_year = 0.0; $pending_year = 0.0; $payers_year = 0;
+    try {
+        $ks = $pdo->prepare("SELECT
+            COALESCE(SUM(CASE WHEN p.status='paid' AND YEAR(p.paid_at) = ? THEN p.amount ELSE 0 END), 0) AS paid,
+            COALESCE(SUM(CASE WHEN p.status='pending' AND YEAR(p.created_at) = ? THEN p.amount ELSE 0 END), 0) AS pending,
+            COUNT(DISTINCT CASE WHEN p.status='paid' AND YEAR(p.paid_at) = ? THEN COALESCE(p.adherent_id, CONCAT('e:', p.payer_email)) END) AS payers
+            FROM cotisation_payments p WHERE p.org_id = ?");
+        $ks->execute([$year, $year, $year, $org_id]);
+        if ($kr = $ks->fetch(PDO::FETCH_ASSOC)) {
+            $paid_year = (float) $kr['paid']; $pending_year = (float) $kr['pending']; $payers_year = (int) $kr['payers'];
+        }
+    } catch (Throwable $e) {}
+
     $campaigns = [];
-    $total_year = 0; $active = 0;
+    $active = 0;
     foreach ($rows as $r) {
         if (!empty($r['is_active'])) $active++;
         $tp = (float) ($r['total_paid'] ?? 0);
-        $total_year += $tp;
         $campaigns[] = [
             'id'      => (int) $r['id'],
             'name'    => (string) $r['name'],
@@ -53,7 +68,7 @@ try {
 
     echo json_encode([
         'ok' => true,
-        'stats' => ['total' => $total_year, 'active' => $active, 'nb' => count($campaigns)],
+        'stats' => ['total' => $paid_year, 'pending' => $pending_year, 'payers' => $payers_year, 'year' => $year, 'active' => $active, 'nb' => count($campaigns)],
         'campaigns' => $campaigns,
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {

@@ -17,7 +17,9 @@ $project = $st->fetch(PDO::FETCH_ASSOC);
 if (!$project) app_fail(403, 'forbidden', 'Accès refusé à ce projet.');
 
 $role = (string) ($user['role'] ?? '');
-$can_validate = in_array($role, ['admin', 'coordinator'], true) || ((int) $project['referent_id'] === $uid);
+// Parité site (action-facture.php) : seuls admin/coordinateur auto-valident ; un référent crée en « pending »
+// (sinon le budget engagé diverge entre l'app et le site).
+$can_validate = in_array($role, ['admin', 'coordinator'], true);
 
 $supplier = trim((string) ($input['supplier_name'] ?? ''));
 $category = trim((string) ($input['category'] ?? ''));

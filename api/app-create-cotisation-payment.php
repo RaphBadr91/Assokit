@@ -33,6 +33,7 @@ $method      = in_array(($input['payment_method'] ?? ''), ['stripe', 'bank', 'ch
 $status      = in_array(($input['status'] ?? ''), ['paid', 'pending', 'refunded', 'cancelled'], true) ? $input['status'] : 'paid';
 $reference   = trim((string) ($input['reference'] ?? '')) ?: null;
 $notes       = trim((string) ($input['notes'] ?? '')) ?: null;
+if ($payer_email !== null && !filter_var($payer_email, FILTER_VALIDATE_EMAIL)) app_fail(422, 'invalid', 'Email du payeur invalide.');
 
 // Date de paiement : YYYY-MM-DD (sinon aujourd'hui)
 $paid_at = (string) ($input['paid_at'] ?? '');

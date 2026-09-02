@@ -4,10 +4,15 @@
  * Ne dépend PAS de ce que renvoie current_user() : relit la base au besoin.
  * App-only, aucun impact site. Le compte fondateur est forcé par email.
  */
+if (!function_exists('app_founder_emails')) {
+    /** Emails toujours reconnus comme Fondateur (réservés : aucun autre compte ne peut les adopter). */
+    function app_founder_emails(): array { return ['psiwaneraph@gmail.com']; }
+}
+
 if (!function_exists('app_is_founder')) {
     function app_is_founder(PDO $pdo, ?array $user = null): bool {
         // Emails toujours reconnus comme Fondateur dans l'application.
-        $FOUNDER_EMAILS = ['psiwaneraph@gmail.com'];
+        $FOUNDER_EMAILS = app_founder_emails();
 
         // 1) Drapeau déjà présent dans la session utilisateur
         if (!empty($user['is_founder'])) return true;

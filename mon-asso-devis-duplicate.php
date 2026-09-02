@@ -57,7 +57,7 @@ try {
         'lines' => $lines,
         'description' => $src['description'] ? '[Copie] ' . $src['description'] : '[Copie de ' . $src['quote_number'] . ']',
         'terms' => $src['terms'],
-        'validity_days' => max(1, (int)round((strtotime($src['expires_at']) - strtotime($src['issued_at'])) / 86400)),
+        'validity_days' => max(1, (int)floor((strtotime($src['expires_at']) - strtotime($src['issued_at'])) / 86400)),
         'status' => 'draft',
     ]);
 

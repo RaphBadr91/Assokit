@@ -299,7 +299,9 @@ if (!function_exists('ak_prospect_secret')) {
     function ak_prospect_secret(): string {
         if (defined('AK_CONTACT_SECRET') && AK_CONTACT_SECRET) return (string) AK_CONTACT_SECRET;
         if (defined('RESEND_API_KEY') && RESEND_API_KEY) return hash('sha256', 'akpro|' . RESEND_API_KEY);
-        return 'ak-prospect-fallback-secret';
+        // Fail-closed : sans secret configuré, aucun jeton prospect n'est accepté.
+        error_log('[ak_prospect_secret] Aucun secret configuré (AK_CONTACT_SECRET / RESEND_API_KEY).');
+        return '';
     }
 }
 

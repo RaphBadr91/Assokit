@@ -29,6 +29,8 @@ try {
         echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
+    @require_once __DIR__ . '/../rate-limit-helper.php';
+    if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_ai', 10, 60, (string) ($_SESSION['user_id'] ?? ''));
 
     $k = function_exists('ak_stats_global_kpis') ? ak_stats_global_kpis($pdo, $org_id) : [];
     $top = function_exists('ak_stats_top_clients') ? ak_stats_top_clients($pdo, $org_id, 5) : [];

@@ -54,6 +54,7 @@ $events_sql = "
     LEFT JOIN folders f ON p.folder_id = f.id
     LEFT JOIN users u ON e.created_by = u.id
     WHERE e.org_id = ?
+      AND e.deleted_at IS NULL
       AND e.starts_at <= ?
       AND e.ends_at >= ?
 ";

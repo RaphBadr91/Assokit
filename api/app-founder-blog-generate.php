@@ -5,6 +5,8 @@
  * POST { topic_title, category, keywords?, briefing?, is_published?, csrf }
  */
 require __DIR__ . '/_app-write-boot.php';
+@require_once __DIR__ . '/../rate-limit-helper.php';
+if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_blog_ai', 5, 60, (string) $uid);
 require_once __DIR__ . '/_app-founder.php';
 
 $is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');

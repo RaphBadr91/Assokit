@@ -17,7 +17,7 @@ $stmt = $pdo->prepare("
     LEFT JOIN projects p ON e.project_id = p.id
     LEFT JOIN folders f ON p.folder_id = f.id
     LEFT JOIN users u ON e.created_by = u.id
-    WHERE e.id = ? AND e.org_id = ?
+    WHERE e.id = ? AND e.org_id = ? AND e.deleted_at IS NULL
     LIMIT 1
 ");
 $stmt->execute([$event_id, $org_id]);

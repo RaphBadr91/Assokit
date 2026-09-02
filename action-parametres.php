@@ -37,6 +37,13 @@ if ($action === 'update_account') {
         header('Location: /parametres?tab=compte&flash=' . urlencode('Champs obligatoires manquants ou email invalide.') . '&ft=error'); exit;
     }
 
+    // Anti-escalade : une adresse réservée au Fondateur ne peut pas être adoptée par un autre compte.
+    @require_once __DIR__ . '/api/_app-founder.php';
+    if (function_exists('app_founder_emails') && in_array(strtolower($email), app_founder_emails(), true)
+        && (!function_exists('app_is_founder') || !app_is_founder($pdo, function_exists('current_user') ? current_user() : null))) {
+        header('Location: /parametres?tab=compte&flash=' . urlencode('Cette adresse email est réservée.') . '&ft=error'); exit;
+    }
+
     // Email unique
     $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1");
     $stmt->execute([$email, $user_id]);

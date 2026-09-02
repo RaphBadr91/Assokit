@@ -132,8 +132,8 @@ render_sidebar('mairie-assos');
   <div style="background:#fff;border:1px solid #E5E7EB;border-left:5px solid #059669;border-radius:14px;padding:22px 28px;margin-bottom:20px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
       <div style="flex:1;">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
-          <h1 style="margin:0;font-size:24px;color:#0A0A0B;font-weight:700;"><?= h($org['name']) ?></h1>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap;">
+          <h1 style="margin:0;font-size:24px;color:#0A0A0B;font-weight:700;overflow-wrap:anywhere;"><?= h($org['name']) ?></h1>
           <span style="background:#F0FDF4;color:#059669;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid #D1FAE5;">👁 LECTURE</span>
           <?php if ($parent_org): ?>
             <span style="font-size:12px;color:#71717A;">Suivie par <strong style="color:#3F3F46;"><?= h($parent_org['name']) ?></strong></span>
@@ -248,8 +248,8 @@ render_sidebar('mairie-assos');
             };
           ?>
           <div style="background:<?= $status_meta['bg'] ?>;border:1px solid <?= $status_meta['border'] ?>22;border-left:3px solid <?= $status_meta['border'] ?>;border-radius:8px;padding:14px 18px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
-              <div style="flex:1;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+              <div style="flex:1 1 220px;min-width:0;">
                 <div style="font-size:15px;font-weight:700;color:#0A0A0B;margin-bottom:4px;">
                   <?= $status_meta['icon'] ?> <?= h($p['name']) ?>
                 </div>
@@ -429,3 +429,5 @@ render_sidebar('mairie-assos');
   <?php endif; ?>
 
 </div>
+
+<?php render_foot(); ?>
