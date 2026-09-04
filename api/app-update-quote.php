@@ -72,7 +72,9 @@ foreach ((array) ($input['lines'] ?? []) as $l) {
 }
 if (!$lines) app_fail(422, 'invalid', 'Ajoutez au moins une ligne.');
 
-$status = in_array(($input['status'] ?? 'sent'), ['draft', 'sent'], true) ? $input['status'] : 'sent';
+// Valeur transmise par l'app, sinon 'sent' : on ne relit jamais une clé absente
+$_status = (string) ($input['status'] ?? 'sent');
+$status = in_array($_status, ['draft', 'sent'], true) ? $_status : 'sent';
 $validity_days = (int) ($input['validity_days'] ?? 30);
 if ($validity_days < 0 || $validity_days > 365) $validity_days = 30;
 

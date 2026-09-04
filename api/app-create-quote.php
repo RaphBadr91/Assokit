@@ -55,8 +55,9 @@ foreach ((array) ($input['lines'] ?? []) as $l) {
 }
 if (!$lines) app_fail(422, 'invalid', 'Ajoutez au moins une ligne.');
 
-$status = in_array(($input['status'] ?? 'draft'), ['draft', 'sent'], true) ? $input['status'] : 'draft';
-
+// Valeur transmise par l'app, sinon 'draft' : on ne relit jamais une clé absente
+$_status = (string) ($input['status'] ?? 'draft');
+$status = in_array($_status, ['draft', 'sent'], true) ? $_status : 'draft';
 try {
     // Validité saisie dans l'app (le helper la lit ; 30 j par défaut, borné 0-365)
     $validity_days = (int) ($input['validity_days'] ?? 30);

@@ -215,6 +215,12 @@ function fmtEuro(n) {
   return Math.round(n) + ' €';
 }
 
+// Montant exact à 2 décimales (cotisations, tarifs, confirmations d'encaissement) :
+// fmtEuro arrondit et abrège en k€, ce qui afficherait « 13 € » pour un tarif à 12,50 €.
+function fmtEuro2(n) {
+  return (Number(n) || 0).toFixed(2).replace('.', ',') + ' €';
+}
+
 function greeting() {
   const h = new Date().getHours();
   if (h < 6) return 'Bonne nuit';
@@ -1554,7 +1560,7 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
               const on = tierId === t.id;
               return (
                 <TouchableOpacity accessibilityRole="button" key={t.id} style={[styles.tierChip, on && styles.tierChipOn]} activeOpacity={0.8} onPress={() => pickTier(t)}>
-                  <Text style={[styles.tierChipTxt, on && styles.tierChipTxtOn]}>{t.name} · {fmtEuro(t.amount)}</Text>
+                  <Text style={[styles.tierChipTxt, on && styles.tierChipTxtOn]}>{t.name} · {fmtEuro2(t.amount)}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -4243,7 +4249,7 @@ function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayme
       isCancel ? 'Annuler le paiement' : 'Encaissement',
       isCancel
         ? 'Annuler le paiement de ' + p.name + ' ? Il ne sera plus compté dans les encaissements.'
-        : 'Confirmer la réception de ' + fmtEuro(p.amount) + ' de la part de ' + p.name + ' ?',
+        : 'Confirmer la réception de ' + fmtEuro2(p.amount) + ' de la part de ' + p.name + ' ?',
       [
         { text: 'Retour', style: 'cancel' },
         { text: isCancel ? 'Annuler le paiement' : 'Confirmer', style: isCancel ? 'destructive' : 'default', onPress: () => onAction(p.id, act) },
@@ -4263,8 +4269,8 @@ function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayme
         {!!c.description && <DescBlock label="Description" text={c.description} tint="#2563EB" />}
 
         <View style={[styles.miniKpiRow, { marginTop: 16 }]}>
-          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.amount_paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé · {s.count_paid || 0}</Text></View>
-          <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#B45309' }]}>{fmtEuro(s.amount_pending)}</Text><Text style={styles.miniKpiLbl}>En attente · {s.count_pending || 0}</Text></View>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro2(s.amount_paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé · {s.count_paid || 0}</Text></View>
+          <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#B45309' }]}>{fmtEuro2(s.amount_pending)}</Text><Text style={styles.miniKpiLbl}>En attente · {s.count_pending || 0}</Text></View>
         </View>
 
         {tiers.length > 0 && (
@@ -4273,7 +4279,7 @@ function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayme
             {tiers.map((t) => (
               <View key={t.id} style={styles.dInfoRow}>
                 <Text style={styles.dLabel}>{t.name}</Text>
-                <Text style={styles.dValue}>{fmtEuro(t.amount)}</Text>
+                <Text style={styles.dValue}>{fmtEuro2(t.amount)}</Text>
               </View>
             ))}
           </>
@@ -4283,24 +4289,24 @@ function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayme
         {payments.length === 0 ? (
           <Text style={styles.dMuted}>Aucun paiement enregistré pour le moment.</Text>
         ) : payments.map((p) => (
-          <View key={p.id} style={styles.payRow}>
+          <View key={p.id} style={styles.ckPayRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.payName} numberOfLines={1}>{p.name}</Text>
-              <Text style={styles.paySub} numberOfLines={1}>
+              <Text style={styles.ckPayName} numberOfLines={1}>{p.name}</Text>
+              <Text style={styles.ckPaySub} numberOfLines={1}>
                 {[p.method_label, p.tier, p.paid_at || p.created_at].filter(Boolean).join(' · ')}
               </Text>
               <View style={[styles.projChip, { backgroundColor: p.status_bg, alignSelf: 'flex-start', marginTop: 6 }]}>
                 <Text style={[styles.projChipTxt, { color: p.status_color }]}>{p.status_label}</Text>
               </View>
             </View>
-            <Text style={styles.payAmt}>{fmtEuro(p.amount)}</Text>
+            <Text style={styles.ckPayAmt}>{fmtEuro2(p.amount)}</Text>
             {canManage && p.status === 'pending' && (
               <TouchableOpacity accessibilityRole="button" accessibilityLabel="Marquer encaissé" style={styles.payAct} activeOpacity={0.8}
                 disabled={!!busy} onPress={() => confirmAct(p, 'mark_paid')}>
                 {busy === p.id ? <ActivityIndicator size="small" color="#065F46" /> : <Ionicons name="checkmark" size={20} color="#065F46" />}
               </TouchableOpacity>
             )}
-            {canManage && p.status !== 'cancelled' && p.status !== 'pending' && (
+            {d.is_admin && p.status !== 'cancelled' && (
               <TouchableOpacity accessibilityRole="button" accessibilityLabel="Annuler le paiement" style={[styles.payAct, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}
                 activeOpacity={0.8} disabled={!!busy} onPress={() => confirmAct(p, 'cancel')}>
                 {busy === p.id ? <ActivityIndicator size="small" color="#991B1B" /> : <Ionicons name="close" size={19} color="#991B1B" />}
@@ -4377,11 +4383,11 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
         <Text style={styles.dSection}>Étapes {steps.length > 0 ? '(' + doneCount + '/' + steps.length + ')' : ''}</Text>
         {steps.length === 0 && <Text style={styles.dMuted}>Aucune étape. Ajoutez votre checklist ci-dessous.</Text>}
         {steps.map((s) => (
-          <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: !!s.done }} key={s.id} style={styles.stepRow}
+          <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: !!s.done }} key={s.id} style={styles.grStepRow}
             activeOpacity={canManage ? 0.7 : 1} disabled={!canManage || !!busy} onPress={() => onAction('toggle_step', { step_id: s.id })}>
             <Ionicons name={s.done ? 'checkbox' : 'square-outline'} size={23} color={s.done ? BRAND : '#CBD5E1'} />
-            <Text style={[styles.stepTxt, s.done && styles.stepTxtDone]}>{s.title}</Text>
-            {!!s.done_at && <Text style={styles.paySub}>{s.done_at}</Text>}
+            <Text style={[styles.grStepTxt, s.done && styles.grStepTxtDone]}>{s.title}</Text>
+            {!!s.done_at && <Text style={styles.ckPaySub}>{s.done_at}</Text>}
           </TouchableOpacity>
         ))}
         {canManage && (
@@ -4437,10 +4443,10 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
           <>
             <Text style={styles.dSection}>Journal</Text>
             {activity.map((a, i) => (
-              <View key={i} style={styles.payRow}>
+              <View key={i} style={styles.ckPayRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.paySub}>{a.label}</Text>
-                  <Text style={styles.paySub}>{[a.who, a.when].filter(Boolean).join(' · ')}</Text>
+                  <Text style={styles.ckPaySub}>{a.label}</Text>
+                  <Text style={styles.ckPaySub}>{[a.who, a.when].filter(Boolean).join(' · ')}</Text>
                 </View>
               </View>
             ))}
@@ -5512,7 +5518,6 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         setActBusy(null);
         const r = msg.__akact;
         if (r.ok) {
-          refreshDetail();            // la fiche se recharge avec le nouvel état
           fetchKpis();
           const t = detailTopRef.current && detailTopRef.current.type;
           if (t === 'invoice') fetchInvoices();
@@ -5520,8 +5525,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           else if (t === 'cotisation') fetchCoti();
           else if (t === 'grant') fetchGrants();
           if (r.message) Alert.alert('C\'est fait ✅', r.message);
-          // Devis converti : on ouvre la facture créée
-          if (r.invoice_id) { fetchInvoices(); pushDetail('invoice', r.invoice_id); }
+          if (r.invoice_id) {
+            // Devis converti : on empile la facture créée. On NE rafraîchit PAS le devis en même
+            // temps, sinon deux réponses de détail se croisent sur le sommet de pile.
+            fetchInvoices(); fetchQuotes();
+            pushDetail('invoice', r.invoice_id);
+          } else if (r.archived) {
+            popDetail();               // dossier archivé : il quitte la liste, on ferme la fiche
+          } else {
+            refreshDetail();           // la fiche se recharge avec le nouvel état
+          }
         } else {
           Alert.alert('Action impossible', r.message || 'Réessayez dans un instant.');
         }
@@ -5989,7 +6002,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 onAction={(paymentId, act) => runAction('/api/app-cotisation-action.php', { payment_id: paymentId, action: act }, paymentId)} />
             )}
             {detailTop.type === 'grant' && (
-              <NativeGrantDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} busy={actBusy}
+              <NativeGrantDetail key={detailTop.id} entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} busy={actBusy}
                 onAction={(act, extra) => runAction('/api/app-grant-action.php', { grant_id: detailTop.id, action: act, ...(extra || {}) }, act)} />
             )}
           </View>
@@ -6341,14 +6354,14 @@ const styles = StyleSheet.create({
   dActBtnTxt: { fontSize: 15, fontWeight: '800', color: '#065F46' },
   dDangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, paddingVertical: 14, borderRadius: 16, borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
   dDangerBtnTxt: { fontSize: 14.5, fontWeight: '700', color: '#991B1B' },
-  payRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  payName: { fontSize: 14.5, fontWeight: '700', color: INK },
-  paySub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
-  payAmt: { fontSize: 15, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
+  ckPayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  ckPayName: { fontSize: 14.5, fontWeight: '700', color: INK },
+  ckPaySub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  ckPayAmt: { fontSize: 15, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
   payAct: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
-  stepRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  stepTxt: { flex: 1, fontSize: 14.5, color: INK, fontWeight: '600' },
-  stepTxtDone: { color: '#94A3B8', textDecorationLine: 'line-through', fontWeight: '500' },
+  grStepRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  grStepTxt: { flex: 1, fontSize: 14.5, color: INK, fontWeight: '600' },
+  grStepTxtDone: { color: '#94A3B8', textDecorationLine: 'line-through', fontWeight: '500' },
   tierChip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 11, borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#fff', marginRight: 8, marginBottom: 8 },
   tierChipOn: { borderColor: BRAND, backgroundColor: '#ECFDF5' },
   tierChipTxt: { fontSize: 13, fontWeight: '700', color: '#64748B' },

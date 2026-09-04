@@ -23,7 +23,7 @@ $action     = (string) ($input['action'] ?? '');
 if ($invoice_id <= 0) app_fail(422, 'invalid', 'Facture manquante.');
 
 // Appartenance à l'org
-$st = $pdo->prepare("SELECT i.id, i.status, i.invoice_number, i.amount_ttc_cents, c.email AS client_email
+$st = $pdo->prepare("SELECT i.id, i.status, i.invoice_number, i.amount_ttc_cents, i.sent_at, c.email AS client_email
                      FROM asso_invoices i LEFT JOIN asso_clients c ON c.id = i.client_id
                      WHERE i.id = ? AND i.org_id = ? LIMIT 1");
 $st->execute([$invoice_id, $org_id]);
@@ -40,7 +40,9 @@ if ($action === 'send') {
     if (empty($inv['client_email'])) {
         app_fail(422, 'no_email', 'Ce client n\'a pas d\'adresse email : ajoutez-la puis réessayez.');
     }
-    $type = in_array(($input['email_type'] ?? 'initial'), ['initial', 'reminder'], true) ? $input['email_type'] : 'initial';
+    // Parité mon-asso-facture-edit.php : 1er envoi = modèle « initial », renvoi = « manual ».
+    // (Le helper ne met à jour sent_at que sur 'initial' : une relance ne doit pas écraser la date d'envoi.)
+    $type = empty($inv['sent_at']) ? 'initial' : 'manual';
     try {
         $res = ak_asso_invoice_send_email($pdo, $invoice_id, $type, $uid);
         if (empty($res['success'])) app_fail(502, 'send_failed', $res['message'] ?? 'Envoi impossible.');
@@ -62,8 +64,15 @@ if ($action === 'mark_paid') {
     if ($paid_at !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $paid_at)) $paid_at = '';
     $paid_at_full = ($paid_at ?: date('Y-m-d')) . ' ' . date('H:i:s');
     try {
-        $pdo->prepare("UPDATE asso_invoices SET status = 'paid', paid_at = ?, updated_at = NOW() WHERE id = ? AND org_id = ?")
-            ->execute([$paid_at_full, $invoice_id, $org_id]);
+        // Mêmes écritures que la confirmation côté site (mon-asso-notification-respond.php) :
+        // statut + date, traçabilité de qui a confirmé, et ligne dans l'historique des règlements.
+        $pdo->prepare("UPDATE asso_invoices SET status = 'paid', paid_at = ?, confirmed_paid_by_org_at = NOW(), confirmed_paid_by_user_id = ?, updated_at = NOW() WHERE id = ? AND org_id = ?")
+            ->execute([$paid_at_full, $uid, $invoice_id, $org_id]);
+        try {
+            $pdo->prepare("INSERT INTO asso_invoice_payments (invoice_id, org_id, amount_cents, paid_at, payment_method, source, recorded_by_user_id)
+                           VALUES (?,?,?,?,'declared','admin',?)")
+                ->execute([$invoice_id, $org_id, (int) $inv['amount_ttc_cents'], $paid_at_full, $uid]);
+        } catch (Throwable $e) { error_log('[app-invoice-action payments] ' . $e->getMessage()); }
         echo json_encode([
             'ok' => true, 'id' => $invoice_id,
             'message' => 'Facture ' . $inv['invoice_number'] . ' marquée payée ('

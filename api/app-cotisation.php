@@ -72,6 +72,8 @@ try {
     echo json_encode([
         'ok' => true,
         'can_manage' => $can_manage,
+        // L'annulation d'un paiement est réservée aux admins (parité action-cotisation-payment.php)
+        'is_admin'   => in_array($role, ['admin', 'super_admin'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']),
         'campaign' => [
             'id'          => (int) $c['id'],
             'name'        => (string) $c['name'],

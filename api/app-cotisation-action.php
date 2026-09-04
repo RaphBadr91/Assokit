@@ -9,7 +9,7 @@
 require __DIR__ . '/_app-write-boot.php';
 
 $role = (string) ($user['role'] ?? '');
-$is_admin = ($role === 'admin') || !empty($user['is_founder']) || !empty($user['is_super_admin']);
+$is_admin = in_array($role, ['admin', 'super_admin'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
 $is_coord = ($role === 'coordinator');
 if (!$is_admin && !$is_coord) app_fail(403, 'role', 'Rôle insuffisant.');
 
@@ -25,7 +25,12 @@ if (!$p) app_fail(404, 'not_found', 'Paiement introuvable.');
 
 try {
     if ($action === 'mark_paid') {
-        if ((string) $p['status'] === 'paid') app_fail(409, 'state', 'Ce paiement est déjà encaissé.');
+        // Seul un paiement « en attente » peut être encaissé (un paiement annulé/remboursé
+        // ne doit pas pouvoir être ressuscité et recompté dans les statistiques).
+        if ((string) $p['status'] !== 'pending') {
+            $lbl = ['paid' => 'déjà encaissé', 'cancelled' => 'annulé', 'refunded' => 'remboursé'];
+            app_fail(409, 'state', 'Ce paiement est ' . ($lbl[$p['status']] ?? 'dans un état non encaissable') . '.');
+        }
         $pdo->prepare("UPDATE cotisation_payments SET status='paid', paid_at=NOW() WHERE id=? AND org_id=?")
             ->execute([$payment_id, $org_id]);
         echo json_encode([

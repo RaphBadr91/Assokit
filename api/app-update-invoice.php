@@ -73,7 +73,9 @@ foreach ((array) ($input['lines'] ?? []) as $l) {
 }
 if (!$lines) app_fail(422, 'invalid', 'Ajoutez au moins une ligne.');
 
-$status   = in_array(($input['status'] ?? 'pending'), ['draft', 'pending'], true) ? $input['status'] : 'pending';
+// Valeur transmise par l'app, sinon 'pending' : on ne relit jamais une clé absente
+$_status = (string) ($input['status'] ?? 'pending');
+$status = in_array($_status, ['draft', 'pending'], true) ? $_status : 'pending';
 $due_days = (int) ($input['due_days'] ?? 30);
 if ($due_days < 0 || $due_days > 365) $due_days = 30;
 

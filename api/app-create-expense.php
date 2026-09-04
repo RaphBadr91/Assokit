@@ -26,7 +26,9 @@ $category = trim((string) ($input['category'] ?? ''));
 $description = trim((string) ($input['description'] ?? ''));
 $invoice_date = trim((string) ($input['invoice_date'] ?? ''));
 
-$mode = in_array(($input['amount_mode'] ?? 'ttc'), ['ttc', 'ht', 'no_vat'], true) ? $input['amount_mode'] : 'ttc';
+// Valeur transmise par l'app, sinon 'ttc' : on ne relit jamais une clé absente
+$_amount_mode = (string) ($input['amount_mode'] ?? 'ttc');
+$mode = in_array($_amount_mode, ['ttc', 'ht', 'no_vat'], true) ? $_amount_mode : 'ttc';
 $vat_rate = (float) str_replace(',', '.', (string) ($input['vat_rate'] ?? '20'));
 $norm = fn($v) => (float) str_replace([',', ' '], ['.', ''], (string) $v);
 

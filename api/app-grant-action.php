@@ -10,7 +10,7 @@ require __DIR__ . '/_app-write-boot.php';
 @require_once __DIR__ . '/../includes-grants.php';
 
 $role = (string) ($user['role'] ?? '');
-$is_admin = ($role === 'admin') || !empty($user['is_founder']) || !empty($user['is_super_admin']);
+$is_admin = in_array($role, ['admin', 'super_admin'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
 if (!$is_admin && $role !== 'coordinator') app_fail(403, 'role', 'Rôle insuffisant.');
 if (!function_exists('gr_load')) app_fail(500, 'unavailable', 'Module subventions indisponible.');
 
@@ -55,6 +55,7 @@ try {
 
     /* Changer le statut du dossier */
     if ($action === 'set_status') {
+        if (!empty($g['archived_at'])) app_fail(409, 'state', 'Ce dossier est archivé : désarchivez-le sur le site pour le rouvrir.');
         $valid = ['draft', 'submitted', 'in_review', 'granted', 'rejected', 'reported'];
         $new = (string) ($input['status'] ?? '');
         if (!in_array($new, $valid, true)) app_fail(422, 'invalid', 'Statut invalide.');
