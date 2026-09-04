@@ -50,6 +50,20 @@ try {
         }
     } catch (Throwable $e) {}
 
+    // Tarifs par campagne (sélecteur « Tarif » du formulaire de paiement natif)
+    $tiers_by_camp = [];
+    try {
+        $ids = array_map(static fn($r) => (int) $r['id'], $rows);
+        if ($ids) {
+            $in = implode(',', array_fill(0, count($ids), '?'));
+            $ts = $pdo->prepare("SELECT id, campaign_id, name, amount FROM cotisation_tiers WHERE campaign_id IN ($in) ORDER BY position ASC, id ASC");
+            $ts->execute($ids);
+            foreach (($ts->fetchAll(PDO::FETCH_ASSOC) ?: []) as $t) {
+                $tiers_by_camp[(int) $t['campaign_id']][] = ['id' => (int) $t['id'], 'name' => (string) $t['name'], 'amount' => (float) $t['amount']];
+            }
+        }
+    } catch (Throwable $e) {}
+
     $campaigns = [];
     $active = 0;
     foreach ($rows as $r) {
@@ -63,6 +77,7 @@ try {
             'paid'    => (int) ($r['count_paid'] ?? 0),
             'pending' => (int) ($r['count_pending'] ?? 0),
             'total'   => $tp,
+            'tiers'   => $tiers_by_camp[(int) $r['id']] ?? [],
         ];
     }
 

@@ -1229,7 +1229,7 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
   );
 }
 
-function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit }) {
+function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction, busy }) {
   const d = entry.data;
   const isQuote = d && d.invoice && d.invoice.is_quote;
   if (d && d.ok === false) return <DetailError title="Document" onBack={onBack} onRetry={onRefresh} />;
@@ -1278,11 +1278,38 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit }) {
 
         {!!inv.description && <DescBlock label="Note" text={inv.description} tint="#2563EB" />}
 
-        {!!inv.public_uuid && (
-          <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/devis/' : '/facture/') + inv.public_uuid)}>
-            <Ionicons name="document-text" size={18} color="#fff" />
-            <Text style={styles.dPrimaryBtnTxt}>{isQuote ? 'Aperçu client du devis' : 'Aperçu client de la facture'}</Text>
-          </TouchableOpacity>
+        {/* ── Actions natives (envoi, encaissement, conversion) ── */}
+        {onAction && (
+          <>
+            {!isQuote && inv.status !== 'draft' && (
+              <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+                onPress={busy ? undefined : () => onAction('send')}>
+                {busy === 'send' ? <ActivityIndicator color="#fff" /> : <Ionicons name="mail" size={18} color="#fff" />}
+                <Text style={styles.dPrimaryBtnTxt}>{inv.status === 'overdue' ? 'Relancer le client par email' : 'Envoyer la facture par email'}</Text>
+              </TouchableOpacity>
+            )}
+            {isQuote && (
+              <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+                onPress={busy ? undefined : () => onAction('send')}>
+                {busy === 'send' ? <ActivityIndicator color="#fff" /> : <Ionicons name="mail" size={18} color="#fff" />}
+                <Text style={styles.dPrimaryBtnTxt}>Envoyer le devis par email</Text>
+              </TouchableOpacity>
+            )}
+            {!isQuote && (inv.status === 'pending' || inv.status === 'overdue') && (
+              <TouchableOpacity accessibilityRole="button" style={[styles.dActBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+                onPress={busy ? undefined : () => onAction('mark_paid')}>
+                {busy === 'mark_paid' ? <ActivityIndicator color="#065F46" /> : <Ionicons name="checkmark-circle" size={18} color="#065F46" />}
+                <Text style={styles.dActBtnTxt}>Marquer comme payée</Text>
+              </TouchableOpacity>
+            )}
+            {isQuote && inv.status === 'signed' && (
+              <TouchableOpacity accessibilityRole="button" style={[styles.dActBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+                onPress={busy ? undefined : () => onAction('convert')}>
+                {busy === 'convert' ? <ActivityIndicator color="#065F46" /> : <Ionicons name="swap-horizontal" size={18} color="#065F46" />}
+                <Text style={styles.dActBtnTxt}>Convertir en facture</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
         {(onEdit && (isQuote ? (inv.status !== 'signed' && inv.status !== 'converted' && inv.status !== 'cancelled') : inv.status === 'draft')) && (
           <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onEdit(d, !!isQuote)}>
@@ -1290,11 +1317,12 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit }) {
             <Text style={styles.dWebBtnTxt}>{isQuote ? 'Modifier le devis' : 'Modifier la facture'}</Text>
           </TouchableOpacity>
         )}
-        {/* Envoi par email, conversion devis→facture, duplication : sur le site, dans la session connectée */}
-        <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/mon-asso-devis-edit?id=' : '/mon-asso-facture-edit?id=') + inv.id)}>
-          <Text style={styles.dWebBtnTxt}>{isQuote ? 'Envoyer / convertir le devis' : 'Envoyer la facture par email'}</Text>
-          <Ionicons name="open-outline" size={18} color={BRAND} />
-        </TouchableOpacity>
+        {!!inv.public_uuid && (
+          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/devis/' : '/facture/') + inv.public_uuid)}>
+            <Text style={styles.dWebBtnTxt}>{isQuote ? 'Aperçu client du devis' : 'Aperçu client de la facture'}</Text>
+            <Ionicons name="open-outline" size={18} color={BRAND} />
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </View>
   );
@@ -1438,10 +1466,11 @@ function todayISO() {
 }
 
 // ── Enregistrement d'un paiement de cotisation (natif) ────────────────
-function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns, members }) {
+function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns, members, preCampaign }) {
   const camps = campaigns || [];
   const mbrs = members || [];
-  const [campaignId, setCampaignId] = useState(camps.length === 1 ? camps[0].id : 0);
+  const [campaignId, setCampaignId] = useState(preCampaign || (camps.length === 1 ? camps[0].id : 0));
+  const [tierId, setTierId] = useState(0);
   const [adherentId, setAdherentId] = useState(0);
   const [f, setF] = useState({ payer_name: '', payer_email: '', amount: '', reference: '', notes: '', paid_at: todayISO() });
   const [method, setMethod] = useState('bank');
@@ -1459,6 +1488,15 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
     if (!campaignId && camps.length === 1) setCampaignId(camps[0].id);
   }, [camps.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tarifs de la campagne choisie : sélectionner un tarif pré-remplit le montant.
+  const tiers = (selCamp && selCamp.tiers) || [];
+  useEffect(() => { setTierId(0); }, [campaignId]);
+  const pickTier = (t) => {
+    if (tierId === t.id) { setTierId(0); return; }
+    setTierId(t.id);
+    setF((s) => ({ ...s, amount: String(t.amount) }));
+  };
+
   const pickMember = (id) => {
     setAdherentId(id);
     const m = mbrs.find((x) => x.id === id);
@@ -1469,6 +1507,7 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
     if (!campaignId) { Alert.alert('Campagne', 'Sélectionnez la campagne de cotisation concernée.'); return; }
     onSubmit({
       campaign_id: campaignId,
+      tier_id: tierId || 0,
       adherent_id: adherentId || 0,
       payer_name: f.payer_name.trim(),
       payer_email: f.payer_email.trim(),
@@ -1505,6 +1544,23 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
           <Ionicons name="person-outline" size={18} color={BRAND} />
           <Text style={styles.projPickTxt}>{mbrs.length ? 'Rattacher à un adhérent (optionnel)' : 'Saisie libre du payeur'}</Text>
         </TouchableOpacity>
+      )}
+
+      {tiers.length > 0 && (
+        <>
+          <Text style={[styles.fLabel, { marginTop: 18 }]}>Tarif</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {tiers.map((t) => {
+              const on = tierId === t.id;
+              return (
+                <TouchableOpacity accessibilityRole="button" key={t.id} style={[styles.tierChip, on && styles.tierChipOn]} activeOpacity={0.8} onPress={() => pickTier(t)}>
+                  <Text style={[styles.tierChipTxt, on && styles.tierChipTxtOn]}>{t.name} · {fmtEuro(t.amount)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.fHint}>Choisir un tarif pré-remplit le montant. Facultatif.</Text>
+        </>
       )}
 
       <View style={{ height: 18 }} />
@@ -1627,6 +1683,10 @@ function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
   const [projectId, setProjectId] = useState(0);
   const [ftPicker, setFtPicker] = useState(false);
   const [projPicker, setProjPicker] = useState(false);
+  const [steps, setSteps] = useState(['Constituer le dossier', 'Déposer la demande', 'Relancer le financeur']);
+  const setStep = (i, v) => setSteps((s) => s.map((x, j) => (j === i ? v : x)));
+  const addStep = () => setSteps((s) => [...s, '']);
+  const rmStep = (i) => setSteps((s) => s.filter((_, j) => j !== i));
   const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
   const selProj = projs.find((p) => p.id === projectId) || null;
   const selFunder = GRANT_FUNDERS.find((x) => x.value === funderType) || GRANT_FUNDERS[GRANT_FUNDERS.length - 1];
@@ -1642,6 +1702,7 @@ function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
       deadline_apply: f.deadline_apply.trim(),
       project_id: projectId || 0,
       description: f.description.trim(),
+      steps: steps.map((s) => s.trim()).filter(Boolean),
     });
   };
 
@@ -1681,6 +1742,23 @@ function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
           <Text style={styles.projPickTxt}>{projs.length ? 'Associer à un projet (optionnel)' : 'Aucun projet'}</Text>
         </TouchableOpacity>
       )}
+
+      <View style={{ height: 18 }} />
+      <Text style={styles.formCardTitle}>Étapes du dossier</Text>
+      {steps.map((s, i) => (
+        <View key={i} style={styles.stepEditRow}>
+          <Text style={styles.stepEditIdx}>{i + 1}</Text>
+          <TextInput style={[styles.fInput, { flex: 1 }]} value={s} onChangeText={(v) => setStep(i, v)} placeholder={'Étape ' + (i + 1)} placeholderTextColor="#B6C0CC" accessibilityLabel={'Étape ' + (i + 1)} />
+          {steps.length > 1 && (
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer l'étape" onPress={() => rmStep(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 8 }}>
+              <Ionicons name="close-circle" size={22} color="#CBD5E1" />
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
+      <TouchableOpacity accessibilityRole="button" style={[styles.addLineBtn, { marginTop: 4 }]} onPress={addStep} activeOpacity={0.8}>
+        <Ionicons name="add" size={18} color={BRAND} /><Text style={styles.addLineTxt}>Ajouter une étape</Text>
+      </TouchableOpacity>
 
       <View style={{ height: 18 }} />
       <Field label="Description / objet" value={f.description} onChangeText={set('description')} multiline numberOfLines={3} style={[styles.fInput, { height: 90, textAlignVertical: 'top' }]} />
@@ -4024,7 +4102,7 @@ function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead,
   );
 }
 
-function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage, onWeb }) {
+function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage, onOpen }) {
   const list = data ? (data.campaigns || []) : null;
   const s = (data && data.stats) || {};
   const hasCampaigns = !!(list && list.length);
@@ -4050,7 +4128,7 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage,
               <Text style={styles.emptySub}>Créez une campagne de cotisation sur le site pour pouvoir y enregistrer des paiements depuis l'app.</Text>
             </View>
           ) : list.map((c) => (
-            <TouchableOpacity accessibilityRole="button" key={c.id} style={styles.projCard} activeOpacity={onWeb ? 0.85 : 1} onPress={onWeb ? () => onWeb('/cotisation/' + c.id) : undefined}>
+            <TouchableOpacity accessibilityRole="button" key={c.id} style={styles.projCard} activeOpacity={onOpen ? 0.85 : 1} onPress={onOpen ? () => onOpen(c.id) : undefined}>
               <View style={styles.projCardTop}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={styles.projName} numberOfLines={1}>{c.name}</Text>
@@ -4062,7 +4140,7 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage,
               </View>
               <View style={[styles.dCardRow, { marginTop: 10 }]}>
                 <Text style={[styles.dTotal, { fontSize: 18 }]}>{fmtEuro(c.total)}</Text>
-                {onWeb ? <Ionicons name="chevron-forward" size={18} color="#94A3B8" /> : null}
+                {onOpen ? <Ionicons name="chevron-forward" size={18} color="#94A3B8" /> : null}
               </View>
             </TouchableOpacity>
           ))}
@@ -4072,7 +4150,7 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage,
   );
 }
 
-function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onWeb }) {
+function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onOpen }) {
   const list = data ? (data.grants || []) : null;
   const s = (data && data.stats) || {};
   return (
@@ -4098,7 +4176,7 @@ function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onWe
           ) : list.map((g) => {
             const km = INV_KIND[g.status_kind] || INV_KIND.wait;
             return (
-              <TouchableOpacity accessibilityRole="button" key={g.id} style={styles.projCard} activeOpacity={onWeb ? 0.85 : 1} onPress={onWeb ? () => onWeb('/subvention/' + g.id) : undefined}>
+              <TouchableOpacity accessibilityRole="button" key={g.id} style={styles.projCard} activeOpacity={onOpen ? 0.85 : 1} onPress={onOpen ? () => onOpen(g.id) : undefined}>
                 <View style={styles.projCardTop}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={styles.projName} numberOfLines={2}>{g.name}</Text>
@@ -4144,6 +4222,235 @@ function NativeEventDetail({ entry, onBack, onRefresh, onWeb }) {
           <Ionicons name="open-outline" size={18} color={BRAND} />
         </TouchableOpacity>
       </ScrollView>
+    </View>
+  );
+}
+
+/* ── Détail d'une campagne de cotisation (natif) ─────────────────────── */
+function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayment, busy }) {
+  const d = entry.data;
+  if (d && d.ok === false) return <DetailError title="Campagne" onBack={onBack} onRetry={onRefresh} />;
+  if (!d || !d.campaign) return <DetailLoading title="Campagne" onBack={onBack} />;
+  const c = d.campaign;
+  const s = d.stats || {};
+  const tiers = d.tiers || [];
+  const payments = d.payments || [];
+  const canManage = d.can_manage !== false;
+
+  const confirmAct = (p, act) => {
+    const isCancel = act === 'cancel';
+    Alert.alert(
+      isCancel ? 'Annuler le paiement' : 'Encaissement',
+      isCancel
+        ? 'Annuler le paiement de ' + p.name + ' ? Il ne sera plus compté dans les encaissements.'
+        : 'Confirmer la réception de ' + fmtEuro(p.amount) + ' de la part de ' + p.name + ' ?',
+      [
+        { text: 'Retour', style: 'cancel' },
+        { text: isCancel ? 'Annuler le paiement' : 'Confirmer', style: isCancel ? 'destructive' : 'default', onPress: () => onAction(p.id, act) },
+      ]
+    );
+  };
+
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title={c.name} onBack={onBack} onAction={canManage ? onNewPayment : null} actionIcon="add" />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <View style={[styles.projChip, { backgroundColor: c.active ? '#D1FAE5' : '#F1F5F9', alignSelf: 'flex-start' }]}>
+          <Text style={[styles.projChipTxt, { color: c.active ? '#065F46' : '#64748B' }]}>{c.active ? 'Campagne active' : 'Clôturée'}{c.year ? ' · ' + c.year : ''}</Text>
+        </View>
+        {!!c.closes_at && <Text style={[styles.dMuted, { marginTop: 10 }]}>Clôture le {c.closes_at}</Text>}
+        {!!c.description && <DescBlock label="Description" text={c.description} tint="#2563EB" />}
+
+        <View style={[styles.miniKpiRow, { marginTop: 16 }]}>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.amount_paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé · {s.count_paid || 0}</Text></View>
+          <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#B45309' }]}>{fmtEuro(s.amount_pending)}</Text><Text style={styles.miniKpiLbl}>En attente · {s.count_pending || 0}</Text></View>
+        </View>
+
+        {tiers.length > 0 && (
+          <>
+            <Text style={styles.dSection}>Tarifs proposés</Text>
+            {tiers.map((t) => (
+              <View key={t.id} style={styles.dInfoRow}>
+                <Text style={styles.dLabel}>{t.name}</Text>
+                <Text style={styles.dValue}>{fmtEuro(t.amount)}</Text>
+              </View>
+            ))}
+          </>
+        )}
+
+        <Text style={styles.dSection}>Paiements ({payments.length})</Text>
+        {payments.length === 0 ? (
+          <Text style={styles.dMuted}>Aucun paiement enregistré pour le moment.</Text>
+        ) : payments.map((p) => (
+          <View key={p.id} style={styles.payRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.payName} numberOfLines={1}>{p.name}</Text>
+              <Text style={styles.paySub} numberOfLines={1}>
+                {[p.method_label, p.tier, p.paid_at || p.created_at].filter(Boolean).join(' · ')}
+              </Text>
+              <View style={[styles.projChip, { backgroundColor: p.status_bg, alignSelf: 'flex-start', marginTop: 6 }]}>
+                <Text style={[styles.projChipTxt, { color: p.status_color }]}>{p.status_label}</Text>
+              </View>
+            </View>
+            <Text style={styles.payAmt}>{fmtEuro(p.amount)}</Text>
+            {canManage && p.status === 'pending' && (
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Marquer encaissé" style={styles.payAct} activeOpacity={0.8}
+                disabled={!!busy} onPress={() => confirmAct(p, 'mark_paid')}>
+                {busy === p.id ? <ActivityIndicator size="small" color="#065F46" /> : <Ionicons name="checkmark" size={20} color="#065F46" />}
+              </TouchableOpacity>
+            )}
+            {canManage && p.status !== 'cancelled' && p.status !== 'pending' && (
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Annuler le paiement" style={[styles.payAct, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}
+                activeOpacity={0.8} disabled={!!busy} onPress={() => confirmAct(p, 'cancel')}>
+                {busy === p.id ? <ActivityIndicator size="small" color="#991B1B" /> : <Ionicons name="close" size={19} color="#991B1B" />}
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+
+        {canManage && (
+          <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={onNewPayment}>
+            <Ionicons name="add-circle" size={18} color="#fff" />
+            <Text style={styles.dPrimaryBtnTxt}>Enregistrer un paiement</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+/* ── Détail d'une subvention (natif) ─────────────────────────────────── */
+const GRANT_STATUSES = [
+  { value: 'draft', label: 'Brouillon' }, { value: 'submitted', label: 'Déposé' },
+  { value: 'in_review', label: 'Instruction' }, { value: 'granted', label: 'Accordé' },
+  { value: 'rejected', label: 'Refusé' }, { value: 'reported', label: 'Bilan rendu' },
+];
+function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
+  const [stepTitle, setStepTitle] = useState('');
+  const [statusOpen, setStatusOpen] = useState(false);
+  const d = entry.data;
+  if (d && d.ok === false) return <DetailError title="Subvention" onBack={onBack} onRetry={onRefresh} />;
+  if (!d || !d.grant) return <DetailLoading title="Subvention" onBack={onBack} />;
+  const g = d.grant;
+  const steps = d.steps || [];
+  const activity = d.activity || [];
+  const canManage = d.can_manage !== false;
+  const km = INV_KIND[g.status_kind] || INV_KIND.wait;
+  const doneCount = steps.filter((s) => s.done).length;
+
+  const addStep = () => {
+    const t = stepTitle.trim();
+    if (!t) return;
+    setStepTitle('');
+    onAction('add_step', { title: t });
+  };
+
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Subvention" onBack={onBack} />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <Text style={styles.dBigTitle}>{g.name}</Text>
+        <Text style={[styles.dMuted, { marginTop: 4 }]}>{[g.funder, g.funder_type].filter(Boolean).join(' · ')}</Text>
+        <View style={[styles.projChip, { backgroundColor: km.bg, alignSelf: 'flex-start', marginTop: 12 }]}>
+          <Text style={[styles.projChipTxt, { color: km.color }]}>{g.status_label}</Text>
+        </View>
+
+        <View style={[styles.miniKpiRow, { marginTop: 16 }]}>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{g.requested != null ? fmtEuro(g.requested) : '—'}</Text><Text style={styles.miniKpiLbl}>Demandé</Text></View>
+          <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: g.granted ? BRAND : INK }]}>{g.granted != null ? fmtEuro(g.granted) : '—'}</Text><Text style={styles.miniKpiLbl}>Accordé</Text></View>
+        </View>
+
+        <Text style={styles.dSection}>Dossier</Text>
+        {!!g.deadline && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Date limite de dépôt</Text><Text style={styles.dValue}>{g.deadline}</Text></View>}
+        {!!g.submitted_at && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Déposé le</Text><Text style={styles.dValue}>{g.submitted_at}</Text></View>}
+        {!!g.decision_at && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Décision</Text><Text style={styles.dValue}>{g.decision_at}</Text></View>}
+        {!!g.deadline_report && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Bilan attendu</Text><Text style={styles.dValue}>{g.deadline_report}</Text></View>}
+        {!!g.project && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Projet lié</Text><Text style={styles.dValue}>{g.project}</Text></View>}
+        {!!g.cerfa && <View style={styles.dInfoRow}><Text style={styles.dLabel}>CERFA</Text><Text style={styles.dValue}>{g.cerfa}</Text></View>}
+        {!!g.reference && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Référence</Text><Text style={styles.dValue}>{g.reference}</Text></View>}
+        {!!g.last_relance && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Dernière relance</Text><Text style={styles.dValue}>{g.last_relance}</Text></View>}
+        {!!g.description && <DescBlock label="Objet" text={g.description} tint="#2563EB" />}
+
+        <Text style={styles.dSection}>Étapes {steps.length > 0 ? '(' + doneCount + '/' + steps.length + ')' : ''}</Text>
+        {steps.length === 0 && <Text style={styles.dMuted}>Aucune étape. Ajoutez votre checklist ci-dessous.</Text>}
+        {steps.map((s) => (
+          <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: !!s.done }} key={s.id} style={styles.stepRow}
+            activeOpacity={canManage ? 0.7 : 1} disabled={!canManage || !!busy} onPress={() => onAction('toggle_step', { step_id: s.id })}>
+            <Ionicons name={s.done ? 'checkbox' : 'square-outline'} size={23} color={s.done ? BRAND : '#CBD5E1'} />
+            <Text style={[styles.stepTxt, s.done && styles.stepTxtDone]}>{s.title}</Text>
+            {!!s.done_at && <Text style={styles.paySub}>{s.done_at}</Text>}
+          </TouchableOpacity>
+        ))}
+        {canManage && (
+          <View style={[styles.formRow2, { marginTop: 12, alignItems: 'center' }]}>
+            <TextInput style={[styles.fInput, { flex: 1 }]} value={stepTitle} onChangeText={setStepTitle}
+              placeholder="Ajouter une étape…" placeholderTextColor="#B6C0CC" accessibilityLabel="Nouvelle étape" onSubmitEditing={addStep} returnKeyType="done" />
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ajouter l'étape" style={[styles.payAct, { marginLeft: 8 }]}
+              activeOpacity={0.8} disabled={!stepTitle.trim() || !!busy} onPress={addStep}>
+              <Ionicons name="add" size={22} color="#065F46" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {canManage && !g.archived && (
+          <>
+            <Text style={styles.dSection}>Actions</Text>
+            <TouchableOpacity accessibilityRole="button" style={[styles.dActBtn, { marginTop: 0 }, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+              disabled={!!busy} onPress={() => setStatusOpen(true)}>
+              <Ionicons name="flag" size={18} color="#065F46" />
+              <Text style={styles.dActBtnTxt}>Changer le statut</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" style={[styles.dActBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+              disabled={!!busy} onPress={() => Alert.alert('Relance', 'Enregistrer une relance envoyée au financeur ' + (g.contact_email ? '(' + g.contact_email + ')' : '') + ' ?', [
+                { text: 'Retour', style: 'cancel' },
+                { text: 'Enregistrer', onPress: () => onAction('log_relance') },
+              ])}>
+              {busy === 'log_relance' ? <ActivityIndicator color="#065F46" /> : <Ionicons name="megaphone" size={18} color="#065F46" />}
+              <Text style={styles.dActBtnTxt}>Journaliser une relance</Text>
+            </TouchableOpacity>
+            {d.is_admin && (
+              <TouchableOpacity accessibilityRole="button" style={[styles.dDangerBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+                disabled={!!busy} onPress={() => Alert.alert('Archiver', 'Archiver ce dossier ? Il n\'apparaîtra plus dans les demandes en cours.', [
+                  { text: 'Retour', style: 'cancel' },
+                  { text: 'Archiver', style: 'destructive', onPress: () => onAction('archive') },
+                ])}>
+                <Ionicons name="archive-outline" size={18} color="#991B1B" />
+                <Text style={styles.dDangerBtnTxt}>Archiver le dossier</Text>
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+
+        {(!!g.contact_email || !!g.contact_phone) && (
+          <>
+            <Text style={styles.dSection}>Contact financeur</Text>
+            {!!g.contact_name && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Nom</Text><Text style={styles.dValue}>{g.contact_name}</Text></View>}
+            {!!g.contact_email && <InfoRow icon="mail" label="Email" value={g.contact_email} onPress={() => Linking.openURL('mailto:' + g.contact_email)} />}
+            {!!g.contact_phone && <InfoRow icon="call" label="Téléphone" value={g.contact_phone} onPress={() => Linking.openURL('tel:' + String(g.contact_phone).replace(/\s+/g, ''))} />}
+          </>
+        )}
+
+        {activity.length > 0 && (
+          <>
+            <Text style={styles.dSection}>Journal</Text>
+            {activity.map((a, i) => (
+              <View key={i} style={styles.payRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.paySub}>{a.label}</Text>
+                  <Text style={styles.paySub}>{[a.who, a.when].filter(Boolean).join(' · ')}</Text>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
+        <SheetPicker visible={statusOpen} title="Statut du dossier" onClose={() => setStatusOpen(false)} selected={g.status}
+          onPick={(v) => onAction('set_status', { status: v })} options={GRANT_STATUSES} />
+      </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -4344,12 +4651,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [pickClients, setPickClients] = useState([]);
   const [folders, setFolders] = useState([]);
   const [projMembers, setProjMembers] = useState([]);
+  const [actBusy, setActBusy] = useState(null);
   const [pickCampaigns, setPickCampaigns] = useState([]);
   const [pickMembers, setPickMembers] = useState([]);
   const [pickProjects, setPickProjects] = useState([]);
   const [scanData, setScanData] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [expenseProject, setExpenseProject] = useState(0);
+  const [paymentCampaign, setPaymentCampaign] = useState(0);
   const [menuScreen, setMenuScreen] = useState(null); // null=hub | 'agenda' | 'messages' | 'subinvoices'
   const [events, setEvents] = useState(null);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -4540,7 +4849,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     inject(FETCH_CSRF_JS);
     if (type === 'invoice' || type === 'quote') inject(fetchJS('/api/app-clients.php', '__akpick'));
     if (type === 'project') { inject(fetchJS('/api/app-folders.php', '__akfolders')); inject(fetchJS('/api/app-members.php', '__akprojmembers')); }
-    if (type === 'payment') { inject(fetchJS('/api/app-cotisations.php', '__akpickcampaigns')); inject(fetchJS('/api/app-members.php', '__akpickmembers')); }
+    if (type === 'payment') {
+      setPaymentCampaign(preId || 0);   // ouvert depuis une fiche campagne : elle est pré-sélectionnée
+      inject(fetchJS('/api/app-cotisations.php', '__akpickcampaigns'));
+      inject(fetchJS('/api/app-members.php', '__akpickmembers'));
+    }
     if (type === 'event' || type === 'grant') { inject(fetchJS('/api/app-projects.php', '__akpickprojects')); }
     if (type === 'expense') {
       setScanData(null);
@@ -4587,6 +4900,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   }, [runScan]);
 
   const onAddExpense = useCallback((projectId) => { openForm('expense', projectId); }, [openForm]);
+
+  // --- Actions natives sur une fiche (envoi, encaissement, conversion, étapes) ---
+  // `busy` porte l'action en cours (ou l'id de la ligne) pour l'indicateur de chargement.
+  const runAction = useCallback((endpoint, payload, busyKey) => {
+    if (!csrf) { Alert.alert('Un instant', 'Session en préparation, réessayez dans un instant.'); inject(FETCH_CSRF_JS); return; }
+    setActBusy(busyKey);
+    inject(postJS(endpoint, { ...payload, csrf }, '__akact'));
+  }, [csrf, inject]);
 
   // --- Écrans du menu « Plus » (natifs) ------------------------------
   const fetchEvents = useCallback(() => { setEventsLoading(true); inject(fetchJS('/api/app-events.php', '__akevents')); }, [inject]);
@@ -5037,7 +5358,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           const top = cp[cp.length - 1];
           const dd = msg.__akdetail;
           // Réponse périmée (l'utilisateur a ouvert une autre fiche entre-temps) : on l'ignore
-          const ent = dd && dd.ok !== false ? (dd.invoice || dd.project || dd.member || dd.client || dd.event || null) : null;
+          const ent = dd && dd.ok !== false ? (dd.invoice || dd.project || dd.member || dd.client || dd.event || dd.campaign || dd.grant || null) : null;
           if (ent && ent.id != null && top.id != null && String(ent.id) !== String(top.id)) return s;
           cp[cp.length - 1] = { ...top, data: dd, loading: false };
           return cp;
@@ -5187,6 +5508,24 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akcoach) { setCoach(msg.__akcoach); setSecLoading(false); }
       if (msg && msg.__akcreds && msg.__akcreds.email && msg.__akcreds.password) { pendingCreds.current = msg.__akcreds; }
       if (msg && msg.__aklogout) { if (finishLogoutRef.current) finishLogoutRef.current(); }
+      if (msg && msg.__akact) {
+        setActBusy(null);
+        const r = msg.__akact;
+        if (r.ok) {
+          refreshDetail();            // la fiche se recharge avec le nouvel état
+          fetchKpis();
+          const t = detailTopRef.current && detailTopRef.current.type;
+          if (t === 'invoice') fetchInvoices();
+          else if (t === 'quote') fetchQuotes();
+          else if (t === 'cotisation') fetchCoti();
+          else if (t === 'grant') fetchGrants();
+          if (r.message) Alert.alert('C\'est fait ✅', r.message);
+          // Devis converti : on ouvre la facture créée
+          if (r.invoice_id) { fetchInvoices(); pushDetail('invoice', r.invoice_id); }
+        } else {
+          Alert.alert('Action impossible', r.message || 'Réessayez dans un instant.');
+        }
+      }
       if (msg && msg.__akpdf) {
         setPdfBusy(false);
         if (msg.__akpdf.ok && msg.__akpdf.data) sharePdfData(msg.__akpdf.data);
@@ -5243,9 +5582,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           else if (created === 'quote') { fetchQuotes(); if (editId) pushDetail('quote', editId); }
           else if (created === 'project') fetchProjects();
           else if (created === 'expense') { fetchProjects(); if (expenseProject) pushDetail('project', expenseProject); }
-          else if (created === 'payment') { fetchCoti(); setActive('menu'); setMenuScreen('cotisations'); }
+          else if (created === 'payment') {
+            fetchCoti(); setActive('menu'); setMenuScreen('cotisations');
+            // Saisi depuis une fiche campagne : on y retourne, à jour
+            if (paymentCampaign) pushDetail('cotisation', paymentCampaign);
+          }
           else if (created === 'event') { fetchEvents(); setActive('menu'); setMenuScreen('agenda'); }
-          else if (created === 'grant') { fetchGrants(); setActive('menu'); setMenuScreen('subventions'); }
+          else if (created === 'grant') {
+            fetchGrants(); setActive('menu'); setMenuScreen('subventions');
+            if (w.id) pushDetail('grant', w.id);   // on ouvre le dossier créé (étapes prêtes à cocher)
+          }
         } else {
           setFormErr(w.message || 'Une erreur est survenue.');
         }
@@ -5345,6 +5691,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const openPerson = (id) => pushDetail(isTpe ? 'client' : 'member', id);
 
   const detailTop = stack.length ? stack[stack.length - 1] : null;
+  const detailTopRef = useRef(null);
+  useEffect(() => { detailTopRef.current = detailTop; }, [detailTop]);
   const showForm = !!form && authed;
   const showMenu = active === 'menu' && authed && !webMode && !detailTop && !showForm;
   const showHome = active === 'accueil' && authed && !webMode && !detailTop && !showForm;
@@ -5455,7 +5803,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             )}
             {form.type === 'payment' && (
               <CotisationPaymentForm onBack={closeForm} onSubmit={(d) => submitForm('payment', d)} submitting={submitting} error={formErr}
-                campaigns={pickCampaigns} members={pickMembers} />
+                campaigns={pickCampaigns} members={pickMembers} preCampaign={paymentCampaign} />
             )}
             {form.type === 'event' && (
               <EventForm onBack={closeForm} onSubmit={(d) => submitForm('event', d)} submitting={submitting} error={formErr} projects={pickProjects} />
@@ -5486,10 +5834,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onPress={onNotifPress} onMarkAllRead={onMarkAllRead} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'cotisations' ? (
               <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)}
-                onNew={() => openForm('payment')} canManage={canManageOrg} onWeb={openWeb} />
+                onNew={() => openForm('payment')} canManage={canManageOrg} onOpen={(id) => pushDetail('cotisation', id)} />
             ) : menuScreen === 'subventions' ? (
               <NativeGrants data={grantsData} loading={grantsLoading} onRefresh={fetchGrants} onBack={() => setMenuScreen(null)}
-                onNew={() => openForm('grant')} canManage={canManageOrg} onWeb={openWeb} />
+                onNew={() => openForm('grant')} canManage={canManageOrg} onOpen={(id) => pushDetail('grant', id)} />
             ) : menuScreen === 'assemblies' ? (
               <GatedList title="Assemblées" data={assemblies} loading={secLoading} onRefresh={fetchAssemblies} onBack={() => setMenuScreen(null)}
                 itemsKey="items" emptyIcon="clipboard-outline" emptyLabel="Aucune assemblée"
@@ -5623,13 +5971,26 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeClientDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onOpenInvoice={(id) => pushDetail('invoice', id)} onWeb={openWeb} />
             )}
             {detailTop.type === 'invoice' && (
-              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onEdit={(dd, q) => openForm(q ? 'quote' : 'invoice', 0, { invoice: dd.invoice, lines: dd.lines })} />
+              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} busy={actBusy}
+                onEdit={(dd, q) => openForm(q ? 'quote' : 'invoice', 0, { invoice: dd.invoice, lines: dd.lines })}
+                onAction={isAdminOrg ? (act) => runAction('/api/app-invoice-action.php', { invoice_id: detailTop.id, action: act }, act) : null} />
             )}
             {detailTop.type === 'quote' && (
-              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onEdit={(dd, q) => openForm(q ? 'quote' : 'invoice', 0, { invoice: dd.invoice, lines: dd.lines })} />
+              <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} busy={actBusy}
+                onEdit={(dd, q) => openForm(q ? 'quote' : 'invoice', 0, { invoice: dd.invoice, lines: dd.lines })}
+                onAction={canManageOrg ? (act) => runAction('/api/app-quote-action.php', { quote_id: detailTop.id, action: act }, act) : null} />
             )}
             {detailTop.type === 'event' && (
               <NativeEventDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
+            )}
+            {detailTop.type === 'cotisation' && (
+              <NativeCotisationDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} busy={actBusy}
+                onNewPayment={() => openForm('payment', detailTop.id)}
+                onAction={(paymentId, act) => runAction('/api/app-cotisation-action.php', { payment_id: paymentId, action: act }, paymentId)} />
+            )}
+            {detailTop.type === 'grant' && (
+              <NativeGrantDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} busy={actBusy}
+                onAction={(act, extra) => runAction('/api/app-grant-action.php', { grant_id: detailTop.id, action: act, ...(extra || {}) }, act)} />
             )}
           </View>
         )}
@@ -5931,6 +6292,10 @@ const styles = StyleSheet.create({
   dFolder: { fontSize: 14, color: MUTE, marginTop: 4 },
   dCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, marginTop: 14, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   dCardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dBigTitle: { fontSize: 22, fontWeight: '800', color: INK, letterSpacing: -0.3, lineHeight: 28 },
+  dInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  dLabel: { fontSize: 13.5, color: '#64748B', fontWeight: '600', flex: 1, paddingRight: 12 },
+  dValue: { fontSize: 14, color: INK, fontWeight: '700', textAlign: 'right', flexShrink: 1 },
   dCardLabel: { fontSize: 14, fontWeight: '600', color: '#334155' },
   dCardStrong: { fontSize: 14.5, fontWeight: '800', color: INK },
   dSteps: { fontSize: 12.5, color: MUTE, marginTop: 8 },
@@ -5972,6 +6337,22 @@ const styles = StyleSheet.create({
   dWebBtnTxt: { fontSize: 15, fontWeight: '700', color: BRAND },
   dPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, paddingVertical: 16, borderRadius: 16, backgroundColor: BRAND, shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
   dPrimaryBtnTxt: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
+  dActBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, paddingVertical: 15, borderRadius: 16, borderWidth: 1.5, borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' },
+  dActBtnTxt: { fontSize: 15, fontWeight: '800', color: '#065F46' },
+  dDangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, paddingVertical: 14, borderRadius: 16, borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
+  dDangerBtnTxt: { fontSize: 14.5, fontWeight: '700', color: '#991B1B' },
+  payRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  payName: { fontSize: 14.5, fontWeight: '700', color: INK },
+  paySub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  payAmt: { fontSize: 15, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
+  payAct: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  stepTxt: { flex: 1, fontSize: 14.5, color: INK, fontWeight: '600' },
+  stepTxtDone: { color: '#94A3B8', textDecorationLine: 'line-through', fontWeight: '500' },
+  tierChip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 11, borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#fff', marginRight: 8, marginBottom: 8 },
+  tierChipOn: { borderColor: BRAND, backgroundColor: '#ECFDF5' },
+  tierChipTxt: { fontSize: 13, fontWeight: '700', color: '#64748B' },
+  tierChipTxtOn: { color: BRAND },
 
   /* Formulaires natifs */
   formContent: { padding: 18, paddingBottom: 30 },

@@ -62,6 +62,19 @@ try {
     ]);
     $grant_id = (int) $pdo->lastInsertId();
 
+    // Étapes du dossier (checklist) — parité action-subvention.php
+    $steps = [];
+    foreach ((array) ($input['steps'] ?? []) as $s) {
+        $t = trim((string) (is_array($s) ? ($s['title'] ?? '') : $s));
+        if ($t !== '') $steps[] = mb_substr($t, 0, 255);
+    }
+    if ($steps) {
+        try {
+            $ins = $pdo->prepare("INSERT INTO grant_steps (grant_id, position, title, is_completed, completed_at) VALUES (?,?,?,0,NULL)");
+            foreach ($steps as $i => $t) $ins->execute([$grant_id, $i, $t]);
+        } catch (Throwable $e) { error_log('[app-create-grant steps] ' . $e->getMessage()); }
+    }
+
     if (function_exists('gr_log')) {
         try { gr_log($pdo, $grant_id, $uid, 'create', '🆕 Demande créée : ' . $name); } catch (Throwable $e) {}
     }
