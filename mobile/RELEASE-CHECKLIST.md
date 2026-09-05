@@ -5,25 +5,40 @@ Ce document liste tout ce qui reste à faire pour publier. ✅ = déjà en place
 
 ---
 
-## ⚠️ 0-bis. AVANT TOUT `eas update` : installer les modules natifs manquants (rebuild obligatoire)
-
-L'audit a révélé que **`expo-updates` n'est pas dans `package.json`** : sans ce module natif dans le binaire,
-un `eas update` (OTA) n'est reçu par **aucun** build — la publication part dans le vide. Il faut donc,
-une seule fois, sur le Mac :
+## 🚀 0. Envoyer une version sur TestFlight (le plus court chemin)
 
 ```bash
 cd mobile
-npx expo install expo-updates react-native-safe-area-context   # versions alignées sur le SDK 57
-eas build --profile production --platform all                     # nouveau binaire (modules natifs)
-# puis, pour toutes les mises à jour JS suivantes :
+npm install                 # installe expo-updates, ajouté au package.json
+eas login                   # compte Expo
+eas build --platform ios --profile production
+eas submit --platform ios --latest
+```
+
+Puis dans **App Store Connect → TestFlight**, le build apparaît après le traitement Apple
+(≈ 5 à 20 min). Ajoute-toi comme testeur interne pour le recevoir immédiatement — un groupe de
+test **interne** ne passe pas par la revue Apple.
+
+Prérequis : compte Apple Developer actif (99 $/an) et l'app créée dans App Store Connect avec le
+bundle `fr.assokit.app`. EAS gère les certificats de signature tout seul si tu le laisses faire.
+
+> ⚠️ `supportsTablet: true` dans `app.json` n'empêche **pas** TestFlight, mais obligera à fournir des
+> captures iPad le jour de la soumission en production. Voir §1.
+
+### 0-bis. Mises à jour suivantes : OTA sans repasser par un build
+
+**`expo-updates` est maintenant dans `package.json`** (il manquait : sans ce module natif dans le
+binaire, un `eas update` n'était reçu par aucun build et la publication partait dans le vide).
+Une fois **ce** build installé sur TestFlight, toute modification JS ultérieure part en OTA :
+
+```bash
 eas update --channel production --message "…"
 ```
 
-`react-native-safe-area-context` corrige aussi l'affichage Android 15+ (edge-to-edge) : en-têtes sous la
-barre de statut et onglets sous la barre gestuelle. En attendant ce build, un repli pur JS
-(`StatusBar.currentHeight` + marge basse) est en place dans `App.js`.
+Rappel : l'OTA ne couvre que le JavaScript. Ajouter un module natif, changer une permission ou une
+icône impose un nouveau `eas build`.
 
-## 0. Correctifs déjà intégrés (nécessitent un rebuild pour être actifs)
+## 0-ter. Correctifs déjà intégrés (nécessitent un rebuild pour être actifs)
 
 Ces changements sont dans le code mais **ne prennent effet qu'au prochain build EAS** :
 - ✅ Sécurité : auto-login biométrique fail-closed, validation stricte du domaine (`isAssokitUrl`), `originWhitelist` HTTPS uniquement, permission Android `READ_EXTERNAL_STORAGE` retirée.
