@@ -342,6 +342,33 @@ const CHANNELS = {
   ],
 };
 
+/* Tableau de bord complet. La courbe d'activité est déterministe (pas de
+   Math.random) : deux ouvertures de l'aperçu doivent donner le même dessin. */
+const DASHBOARD_FULL = {
+  ok: true,
+  kpis: { active_projects: 7, members: 248, new_members: 12, events: 5, health: 78, health_label: 'Bon' },
+  activity: {
+    days: [0, 2, 1, 0, 0, 4, 3, 1, 0, 5, 2, 0, 1, 6, 4, 2, 0, 0, 3, 7, 5, 2, 1, 0, 4, 8, 6, 3, 5, 9],
+    total: 84,
+  },
+  status_counts: { active: 5, warning: 2, completed: 4, paused: 1 },
+  actions: [
+    { tone: 'warn', title: 'Une étape vous attend', body: 'Boucler le plan de sécurité — sur Festival de quartier 2026', type: 'project', id: 1 },
+    { tone: 'success', title: 'Un projet à terminer', body: 'Rénovation du local est à 81 %. Une dernière poussée.', type: 'project', id: 3 },
+    { tone: 'info', title: 'Un projet au repos', body: 'Ateliers numériques seniors n’a plus bougé depuis 14 jours.', type: 'project', id: 2 },
+  ],
+  next_ag: { id: 1, title: 'Assemblée générale ordinaire', when: fr(d(2)) + ' à 18:30', location: 'Gymnase municipal', days: 2 },
+  grants_urgent: [
+    { id: 4, name: 'Fonds de développement associatif', funder: 'Région Île-de-France', what: 'Dossier à déposer', due: fr(d(5)), days: 5 },
+    { id: 5, name: 'Appel à projets Jeunesse', funder: "Département de l'Essonne", what: 'Bilan à rendre', due: fr(d(-3)), days: -3 },
+  ],
+  projects: [
+    { id: 2, name: 'Ateliers numériques seniors', folder: 'Solidarité', status: 'warning', progress: 28 },
+    { id: 1, name: 'Festival de quartier 2026', folder: 'Culture', status: 'active', progress: 62 },
+    { id: 3, name: 'Rénovation du local', folder: 'Vie associative', status: 'active', progress: 81 },
+  ],
+};
+
 const FOLDERS = {
   ok: true,
   folders: [
@@ -357,6 +384,7 @@ const FOLDERS = {
    comportement réel et non un plantage. */
 const ROUTES = {
   '/api/app-dashboard.php': DASHBOARD,
+  '/api/app-dashboard-full.php': DASHBOARD_FULL,
   '/api/app-csrf.php': { ok: true, csrf: 'apercu-hors-ligne' },
   '/api/app-projects.php': PROJECTS,
   '/api/app-members.php': MEMBERS,

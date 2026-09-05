@@ -2597,6 +2597,202 @@ function NativeAgenda({ data, loading, onRefresh, onOpen, onBack, onNew }) {
 }
 
 /* ================================================================== */
+/*  TABLEAU DE BORD COMPLET (natif)                                    */
+/* ================================================================== */
+const DASH_STATUS = [
+  { key: 'active', label: 'En cours', color: BRAND },
+  { key: 'warning', label: 'À suivre', color: '#B45309' },
+  { key: 'completed', label: 'Terminés', color: '#2563EB' },
+  { key: 'paused', label: 'En pause', color: INK_3 },
+];
+const DASH_TONE = {
+  warn: { bg: '#FFFBEB', border: '#FDE68A', fg: '#92400E' },
+  success: { bg: '#ECFDF5', border: '#A7F3D0', fg: '#065F46' },
+  info: { bg: '#EFF6FF', border: '#BFDBFE', fg: '#1D4ED8' },
+};
+
+function NativeDashboard({ data, loading, onRefresh, onBack, onOpenProject, onOpenGrant, onGoto }) {
+  const still = useReducedMotion();
+  if (data && data.ok === false) return <DetailError title="Tableau de bord" onBack={onBack} onRetry={onRefresh} />;
+  if (!data) return <DetailLoading title="Tableau de bord" onBack={onBack} />;
+
+  const k = data.kpis || {};
+  const days = (data.activity && data.activity.days) || [];
+  const peak = Math.max(1, ...days);
+  const sc = data.status_counts || {};
+  const totalProj = DASH_STATUS.reduce((n, s) => n + (sc[s.key] || 0), 0);
+  const actions = data.actions || [];
+  const grants = data.grants_urgent || [];
+  const projects = data.projects || [];
+  const ag = data.next_ag;
+
+  const cards = [
+    { label: 'Projets actifs', value: String(k.active_projects ?? 0), sub: 'en cours', tone: INK, path: '/projets' },
+    { label: 'Adhérents', value: String(k.members ?? 0), sub: (k.new_members > 0 ? '+' + k.new_members + ' en 30 j' : 'à jour'), tone: INK, path: '/adherents' },
+    { label: 'Événements', value: String(k.events ?? 0), sub: 'à venir', tone: INK, path: '/agenda' },
+    { label: 'Santé', value: (k.health ?? 0) + '/100', sub: k.health_label || '—', tone: (k.health ?? 0) >= 70 ? BRAND : '#B45309', path: null },
+  ];
+
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Tableau de bord" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+
+        <View style={{ gap: 12 }}>
+          {[0, 2].map((start) => (
+            <View key={start} style={styles.fgKpiRow}>
+              {cards.slice(start, start + 2).map((c, j) => (
+                <FadeUp key={c.label} still={still} delay={60 + (start + j) * 60} style={{ flex: 1 }}>
+                  <Tap accessibilityRole={c.path ? 'button' : 'text'} accessibilityLabel={c.label + ' : ' + c.value}
+                    wrapStyle={{ flex: 1 }} style={styles.fgKpi} disabled={!c.path}
+                    onPress={c.path ? () => onGoto(c.path) : undefined}>
+                    <Text style={styles.fgKpiLbl} numberOfLines={1}>{c.label.toUpperCase()}</Text>
+                    <Text style={[styles.fgKpiVal, { color: c.tone }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{c.value}</Text>
+                    <Text style={styles.fgKpiSub} numberOfLines={1}>{c.sub}</Text>
+                  </Tap>
+                </FadeUp>
+              ))}
+            </View>
+          ))}
+        </View>
+
+        {/* Activité : 30 colonnes, une par jour. Chaque barre est relative au pic
+            du mois, sinon une journée calme paraîtrait aussi chargée qu'un pic. */}
+        <Text style={styles.dSection}>Activité · 30 jours</Text>
+        <FadeUp still={still} delay={200}>
+          <View style={[styles.dCard, { marginTop: 0 }]}>
+            <View style={styles.dCardRow}>
+              <Text style={styles.dCardLabel}>Événements enregistrés</Text>
+              <Text style={styles.dTotal}>{data.activity ? data.activity.total : 0}</Text>
+            </View>
+            <View style={styles.dashBars}>
+              {days.map((v, i) => (
+                <View key={i} style={[styles.dashBar, {
+                  height: Math.max(2, Math.round((v / peak) * 54)),
+                  backgroundColor: v === 0 ? LINE : (i >= days.length - 7 ? BRAND : '#A7F3D0'),
+                }]} />
+              ))}
+            </View>
+            <View style={styles.dCardRow}>
+              <Text style={styles.dashAxis}>il y a 30 j</Text>
+              <Text style={styles.dashAxis}>aujourd’hui</Text>
+            </View>
+          </View>
+        </FadeUp>
+
+        {totalProj > 0 && (
+          <>
+            <Text style={styles.dSection}>Répartition des projets</Text>
+            <FadeUp still={still} delay={250}>
+              <View style={[styles.dCard, { marginTop: 0 }]}>
+                {/* Barre empilée plutôt qu'un anneau : sur 350 px de large, les
+                    proportions se comparent mieux à l'horizontale. */}
+                <View style={styles.dashStack}>
+                  {DASH_STATUS.filter((s) => (sc[s.key] || 0) > 0).map((s) => (
+                    <View key={s.key} style={{ flex: sc[s.key], backgroundColor: s.color }} />
+                  ))}
+                </View>
+                <View style={styles.dashLegend}>
+                  {DASH_STATUS.map((s) => (
+                    <View key={s.key} style={styles.dashLegItem}>
+                      <View style={[styles.dashDot, { backgroundColor: s.color }]} />
+                      <Text style={styles.dashLegTxt}>{s.label}</Text>
+                      <Text style={styles.dashLegNum}>{sc[s.key] || 0}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </FadeUp>
+          </>
+        )}
+
+        {actions.length > 0 && (
+          <>
+            <Text style={styles.dSection}>À faire</Text>
+            {actions.map((a, i) => {
+              const t = DASH_TONE[a.tone] || DASH_TONE.info;
+              return (
+                <FadeUp key={i} still={still} delay={300 + i * 50}>
+                  <Tap accessibilityRole="button" accessibilityLabel={a.title} scale={0.985}
+                    style={[styles.dashAct, { backgroundColor: t.bg, borderColor: t.border }]}
+                    disabled={!a.id} onPress={a.id ? () => onOpenProject(a.id) : undefined}>
+                    <Text style={[styles.dashActTitle, { color: t.fg }]}>{a.title}</Text>
+                    <Text style={styles.dashActBody}>{a.body}</Text>
+                  </Tap>
+                </FadeUp>
+              );
+            })}
+          </>
+        )}
+
+        {(!!ag || grants.length > 0) && (
+          <>
+            <Text style={styles.dSection}>Échéances</Text>
+            <View style={[styles.dCard, { marginTop: 0, padding: 0 }]}>
+              {!!ag && (
+                <View style={styles.dashDue}>
+                  <View style={[styles.dashDueBar, { backgroundColor: '#7C3AED' }]} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.dashDueTitle} numberOfLines={1}>{ag.title}</Text>
+                    <Text style={styles.dashDueSub} numberOfLines={1}>
+                      {[ag.when, ag.location].filter(Boolean).join(' · ')}
+                    </Text>
+                  </View>
+                  <Text style={styles.dashDueDays}>{ag.days <= 0 ? "auj." : 'J−' + ag.days}</Text>
+                </View>
+              )}
+              {grants.map((g, i) => (
+                <Tap accessibilityRole="button" accessibilityLabel={g.name} key={g.id} scale={0.99}
+                  style={[styles.dashDue, (i > 0 || !!ag) ? styles.fgSep : null]}
+                  onPress={() => onOpenGrant(g.id)}>
+                  <View style={[styles.dashDueBar, { backgroundColor: g.days < 0 ? '#B91C1C' : (g.days <= 7 ? '#B45309' : BRAND) }]} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.dashDueTitle} numberOfLines={1}>{g.name}</Text>
+                    <Text style={styles.dashDueSub} numberOfLines={1}>{g.what} · {g.due}</Text>
+                  </View>
+                  <Text style={[styles.dashDueDays, g.days < 0 ? { color: '#B91C1C' } : null]}>
+                    {g.days < 0 ? 'en retard' : (g.days === 0 ? "auj." : 'J−' + g.days)}
+                  </Text>
+                </Tap>
+              ))}
+            </View>
+          </>
+        )}
+
+        {projects.length > 0 && (
+          <>
+            <Text style={styles.dSection}>Projets en cours</Text>
+            {projects.map((p) => {
+              const sm = STATUS_META[p.status] || STATUS_META.active;
+              return (
+                <Tap accessibilityRole="button" accessibilityLabel={p.name} key={p.id} scale={0.985}
+                  style={styles.projCard} onPress={() => onOpenProject(p.id)}>
+                  <View style={[styles.projAccent, { backgroundColor: sm.color }]} />
+                  <View style={styles.projCardTop}>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={styles.projName} numberOfLines={1}>{p.name}</Text>
+                      {!!p.folder && <Text style={styles.projFolder}>{p.folder}</Text>}
+                    </View>
+                    <View style={[styles.projChip, { backgroundColor: sm.bg }]}>
+                      <Text style={[styles.projChipTxt, { color: sm.color }]}>{sm.label}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.progRow}>
+                    <View style={styles.progTrack}><View style={[styles.progFill, { width: p.progress + '%', backgroundColor: sm.color }]} /></View>
+                    <Text style={styles.progTxt}>{p.progress}%</Text>
+                  </View>
+                </Tap>
+              );
+            })}
+          </>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+/* ================================================================== */
 /*  MES FACTURES (abonnement Stripe) — natif                           */
 /* ================================================================== */
 function NativeSubInvoices({ data, loading, onRefresh, onBack, onWeb }) {
@@ -5228,6 +5424,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [cotiLoading, setCotiLoading] = useState(false);
   const [grantsData, setGrantsData] = useState(null);
   const [grantsLoading, setGrantsLoading] = useState(false);
+  const [dashData, setDashData] = useState(null);
+  const [dashLoading, setDashLoading] = useState(false);
   const [assemblies, setAssemblies] = useState(null);
   const [attendance, setAttendance] = useState(null);
   const [broadcasts, setBroadcasts] = useState(null);
@@ -5514,6 +5712,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const doContactReply = useCallback((contactId, body) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdCtcReplyBusy(true); inject(postJS('/api/app-founder-contact-reply.php', { contact_id: contactId, body, csrf }, '__akfdctcreply')); }, [csrf, inject]);
   const fetchCoti = useCallback(() => { setCotiLoading(true); inject(fetchJS('/api/app-cotisations.php', '__akcoti')); }, [inject]);
   const fetchGrants = useCallback(() => { setGrantsLoading(true); inject(fetchJS('/api/app-grants.php', '__akgrants')); }, [inject]);
+  const fetchDash = useCallback(() => { setDashLoading(true); inject(fetchJS('/api/app-dashboard-full.php', '__akdash')); }, [inject]);
   const fetchAssemblies = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-assemblies.php', '__akassemblies')); }, [inject]);
   const fetchAttendance = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-attendance.php', '__akattendance')); }, [inject]);
   const fetchBroadcasts = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-broadcasts.php', '__akbroadcasts')); }, [inject]);
@@ -5532,6 +5731,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (screen === 'founder') { setFounderData(null); fetchFounder(); }
     else if (screen === 'cotisations') fetchCoti();
     else if (screen === 'subventions') fetchGrants();
+    else if (screen === 'dashboard') fetchDash();
     else if (screen === 'members') { setPeople(null); fetchPeople(false); }
     else if (screen === 'clients') { setPeople(null); fetchPeople(true); }
     else if (screen === 'assemblies') fetchAssemblies();
@@ -5540,7 +5740,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (screen === 'tickets') fetchTickets();
     else if (screen === 'coach') fetchCoach();
     else if (screen === 'settings') { setSettingsErr(''); setAccount(null); fetchAccount(); inject(FETCH_CSRF_JS); }
-  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchFounder, fetchCoti, fetchGrants, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
+  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchFounder, fetchCoti, fetchGrants, fetchDash, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
 
   const onFounderTile = useCallback((key, filter) => {
     if (key === 'associations') openFdOrgs(filter || 'all');
@@ -5846,7 +6046,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       // Échec de chargement d'un écran de données (réseau/serveur) : on prévient (au plus une fois / 5 s)
       // au lieu d'afficher silencieusement un écran vide ; le tirer-pour-rafraîchir relance.
-      const DATA_KEYS = ['__akevents', '__akchannels', '__akchanmsgs', '__aksubinv', '__akquotes', '__akstats', '__aknotifs', '__akfounder', '__akfdorgs', '__akfdorgdet', '__akfdproj', '__akfdactiv', '__akfdpros', '__akfddir', '__akfdset', '__akfdplansm', '__akfdbill', '__akfdstats', '__akfdblog', '__akfdsup', '__akfdthread', '__akfdcontacts', '__akfdctcthread', '__akfdplans', '__akcoti', '__akgrants', '__akassemblies', '__akattendance', '__akbroadcasts', '__aktickets', '__akcoach', '__akaccount'];
+      const DATA_KEYS = ['__akevents', '__akchannels', '__akchanmsgs', '__aksubinv', '__akquotes', '__akstats', '__aknotifs', '__akfounder', '__akfdorgs', '__akfdorgdet', '__akfdproj', '__akfdactiv', '__akfdpros', '__akfddir', '__akfdset', '__akfdplansm', '__akfdbill', '__akfdstats', '__akfdblog', '__akfdsup', '__akfdthread', '__akfdcontacts', '__akfdctcthread', '__akfdplans', '__akcoti', '__akgrants', '__akdash', '__akassemblies', '__akattendance', '__akbroadcasts', '__aktickets', '__akcoach', '__akaccount'];
       const failedKey = DATA_KEYS.find((k) => msg[k] && msg[k].ok === false);
       if (failedKey && Date.now() - (lastLoadAlert.current || 0) > 5000) {
         lastLoadAlert.current = Date.now();
@@ -6025,6 +6225,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       if (msg && msg.__akcoti) { setCoti(msg.__akcoti); setCotiLoading(false); }
       if (msg && msg.__akgrants) { setGrantsData(msg.__akgrants); setGrantsLoading(false); }
+      if (msg && msg.__akdash) { setDashData(msg.__akdash); setDashLoading(false); }
       if (msg && msg.__akassemblies) { setAssemblies(msg.__akassemblies); setSecLoading(false); }
       if (msg && msg.__akattendance) { setAttendance(msg.__akattendance); setSecLoading(false); }
       if (msg && msg.__akbroadcasts) { setBroadcasts(msg.__akbroadcasts); setSecLoading(false); }
@@ -6170,6 +6371,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (path === '/mon-asso-factures') { setMenuScreen(null); setActive('factures'); setWebMode(false); return; }
     if (path === '/mon-asso-devis') { openMenuScreen('devis'); return; }
     if (path === '/mon-asso-stats') { openMenuScreen('stats'); return; }
+    if (path === '/dashboard') { openMenuScreen('dashboard'); return; }
     if (path === '/agenda') { openMenuScreen('agenda'); return; }
     if (path === '/messages') { openMenuScreen('messages'); return; }
     setWebMode(true);
@@ -6389,6 +6591,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'cotisations' ? (
               <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)}
                 onNew={() => openForm('payment')} onNewCampaign={() => openForm('campaign')} canManage={canManageOrg} onOpen={(id) => pushDetail('cotisation', id)} />
+            ) : menuScreen === 'dashboard' ? (
+              <NativeDashboard data={dashData} loading={dashLoading} onRefresh={fetchDash} onBack={() => setMenuScreen(null)}
+                onOpenProject={(id) => pushDetail('project', id)} onOpenGrant={(id) => pushDetail('grant', id)} onGoto={onGoto} />
             ) : menuScreen === 'subventions' ? (
               <NativeGrants data={grantsData} loading={grantsLoading} onRefresh={fetchGrants} onBack={() => setMenuScreen(null)}
                 onNew={() => openForm('grant')} canManage={canManageOrg} onOpen={(id) => pushDetail('grant', id)} />
@@ -7043,6 +7248,25 @@ const styles = StyleSheet.create({
 
   /* Agenda */
   /* Agenda (nœud 18:18) : titre de jour en capitales, carte par jour, barre d'accent 3×42. */
+  /* Tableau de bord natif */
+  dashBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: 54, marginTop: 14, marginBottom: 8 },
+  dashBar: { flex: 1, borderRadius: 2, minWidth: 2 },
+  dashAxis: { fontSize: 10.5, color: INK_3 },
+  dashStack: { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', backgroundColor: LINE },
+  dashLegend: { marginTop: 14, gap: 9 },
+  dashLegItem: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  dashDot: { width: 9, height: 9, borderRadius: 5 },
+  dashLegTxt: { flex: 1, fontSize: 13, color: MUTE, fontWeight: '500' },
+  dashLegNum: { fontSize: 13.5, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
+  dashAct: { borderRadius: R_BTN, borderWidth: 1, padding: 14, marginBottom: 10 },
+  dashActTitle: { fontSize: 14, fontWeight: '700' },
+  dashActBody: { fontSize: 12.5, color: MUTE, marginTop: 4, lineHeight: 18 },
+  dashDue: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
+  dashDueBar: { width: 3, height: 34, borderRadius: 2 },
+  dashDueTitle: { fontSize: 13.5, fontWeight: '700', color: INK },
+  dashDueSub: { fontSize: 11.5, color: MUTE, marginTop: 3 },
+  dashDueDays: { fontSize: 11.5, fontWeight: '700', color: MUTE, fontVariant: ['tabular-nums'] },
+
   agDay: { fontSize: 10, fontWeight: '700', color: MUTE, letterSpacing: 0.7, textTransform: 'uppercase', marginBottom: 10 },
   agGroup: { backgroundColor: '#fff', borderRadius: R_CARD, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
   agCard: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
