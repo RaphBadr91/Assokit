@@ -104,6 +104,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; ba
 .pp-reso-title { font-size: 15px; font-weight: 700; margin: 4px 0; color: #111827; }
 .pp-reso-type { font-size: 11.5px; color: #6b7280; margin-bottom: 10px; }
 .pp-vote-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+@media (max-width: 400px) { .pp-vote-btns { grid-template-columns: 1fr; } }
 .pp-vote-btn { padding: 12px 8px; border: 2px solid #e5e7eb; background: #fff; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; font-family: inherit; }
 .pp-vote-btn:hover { background: #f9fafb; }
 .pp-vote-btn.for.is-active { background: #ECFDF5; border-color: #10B981; color: #065F46; }

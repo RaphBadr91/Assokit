@@ -1197,6 +1197,58 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* ════════════════════════════════════════════════════════════════════
+   FILET DE SÉCURITÉ RESPONSIVE
+   Ces règles ne redessinent rien : elles empêchent qu'un contenu trop
+   large fasse déborder la page entière. Le principe est toujours le
+   même — ce qui ne rentre pas défile DANS son propre bloc, jamais en
+   poussant le corps de la page vers la droite.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Tableaux : enveloppés au chargement par le script de render_foot().
+   Le conteneur défile seul ; la table garde ses colonnes alignées, ce
+   qu'un `display:block` sur <table> aurait cassé. */
+/* `min-width: 0` est indispensable : un enfant de flex ou de grid vaut
+   `min-width: auto` par défaut, donc il refuse de devenir plus étroit que
+   son contenu. Sans ça, le conteneur ne défile jamais — c'est la page
+   entière qui s'élargit, et le `overflow-x: auto` ci-dessous ne sert à rien. */
+.app, .main, .card, .ak-tblwrap { min-width: 0; }
+.ak-tblwrap { width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.ak-tblwrap > table { margin: 0; }
+@media (max-width: 900px) {
+  /* Repère visuel : le liseré indique qu'il reste du contenu à droite. */
+  .ak-tblwrap.is-scrollable { border-right: 2px solid var(--line, #E5E7EB); border-radius: 0 4px 4px 0; }
+  .ak-tblwrap > table { min-width: max-content; }
+}
+
+/* Médias : jamais plus larges que leur colonne. `height:auto` évite la
+   déformation quand seule la largeur est contrainte. */
+.main img, .main video, .main canvas, .main svg, .main iframe { max-width: 100%; }
+.main img, .main video { height: auto; }
+
+@media (max-width: 900px) {
+  /* Un contenu insécable (URL, IBAN, e-mail, jeton) élargissait le bloc
+     parent au lieu de se couper. `break-word` ne coupe que le mot qui
+     déborde vraiment — `anywhere` couperait aussi la prose normale. */
+  .main { overflow-wrap: break-word; }
+  .main pre, .main code { max-width: 100%; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  /* Grilles à colonnes fixes : elles gardent leur gabarit desktop tant
+     qu'aucune règle ne les libère. On les repasse en une colonne. */
+  .main [style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+
+  /* Panneaux latéraux à largeur figée (listes de messages, filtres) :
+     `flex-shrink:0` + largeur fixe = débordement garanti sous 400 px. */
+  .main [style*="width:340px"], .main [style*="width: 340px"],
+  .main [style*="width:320px"], .main [style*="width: 320px"] { width: 100% !important; max-width: 100% !important; }
+
+  /* Barres d'action et en-têtes : on autorise le retour à la ligne.
+     Les cellules de tableau sont exclues — elles défilent déjà dans leur
+     conteneur, et les y faire passer à la ligne écraserait les colonnes. */
+  .main :not(td):not(th)[style*="white-space:nowrap"],
+  .main :not(td):not(th)[style*="white-space: nowrap"] { white-space: normal !important; }
+}
 </style>
 </head>
 <body>
@@ -2337,6 +2389,54 @@ body:has(.main [style*="position:sticky"][style*="bottom"]), body:has(.main [sty
   var isIOS = /iphone|ipad|ipod/i.test(ua);
   var isSafari = /safari/i.test(ua) && !/crios|fxios|chrome|android/i.test(ua);
   if (isIOS && isSafari) { setTimeout(function() { showBanner('ios'); }, 3000); }
+})();
+</script>
+
+<script>
+/* ────────────────────────────────────────────────────────────────────
+   Tableaux défilants — filet responsive global.
+
+   Un <table> ne peut pas défiler tout seul : il lui faut un conteneur.
+   Plutôt que d'éditer les ~22 pages qui en contiennent, on l'ajoute ici
+   au chargement. Sans ça, un tableau de factures ou d'adhérents pousse
+   toute la page vers la droite sur téléphone.
+
+   `display:block` sur le <table> aurait été plus simple mais casse
+   l'alignement des colonnes : d'où l'enveloppe.
+   ──────────────────────────────────────────────────────────────────── */
+(function () {
+  function envelopper() {
+    var racine = document.querySelector('.main') || document.body;
+    var tables = racine.querySelectorAll('table');
+    for (var i = 0; i < tables.length; i++) {
+      var t = tables[i];
+      // Déjà enveloppé, ou déjà dans un bloc qui défile : on n'y touche pas.
+      if (t.closest('.ak-tblwrap')) continue;
+      var parent = t.parentNode;
+      if (parent && parent.nodeType === 1) {
+        var ox = getComputedStyle(parent).overflowX;
+        if (ox === 'auto' || ox === 'scroll') continue;
+      }
+      var wrap = document.createElement('div');
+      wrap.className = 'ak-tblwrap';
+      parent.insertBefore(wrap, t);
+      wrap.appendChild(t);
+    }
+    marquer();
+  }
+  // Le liseré n'apparaît que si le tableau dépasse réellement.
+  function marquer() {
+    var w = document.querySelectorAll('.ak-tblwrap');
+    for (var i = 0; i < w.length; i++) {
+      w[i].classList.toggle('is-scrollable', w[i].scrollWidth > w[i].clientWidth + 1);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', envelopper);
+  } else {
+    envelopper();
+  }
+  window.addEventListener('resize', marquer);
 })();
 </script>
 </body>

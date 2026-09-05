@@ -896,7 +896,7 @@ render_sidebar('projets');
     background: #fff; border: 1px solid #e5e7eb;
     border-radius: 12px; padding: 16px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.12);
-    width: 320px; z-index: 1000;
+    width: 320px; max-width: calc(100vw - 32px); z-index: 1000;
   }
   .ck-bilan-pop-title { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 12px; }
   .ck-bilan-pop-row { margin-bottom: 12px; }
@@ -927,7 +927,7 @@ render_sidebar('projets');
     position: absolute; right: 0; top: calc(100% + 6px);
     background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.12);
-    width: 360px; z-index: 1000;
+    width: 360px; max-width: calc(100vw - 32px); z-index: 1000;
   }
   .ck-share-pop-title { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 8px; }
   .ck-share-pop-desc { font-size: 11.5px; color: #6b7280; line-height: 1.5; margin-bottom: 14px; }
