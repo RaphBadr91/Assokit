@@ -624,6 +624,22 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
 /* Empty state un peu plus premium */
 .sa-empty-title { color: var(--sa-ink-2); }
+
+/* ── Filet responsive (même principe que includes-layout.php) ──────────
+   Ces 20 pages ont leur propre gabarit : sans ce bloc, ni l'enveloppe des
+   tableaux ni le repli des grilles ne s'y appliquent. */
+.sa-shell, .sa-main, .sa-card, .ak-tblwrap { min-width: 0; }
+.ak-tblwrap { width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.ak-tblwrap > table { margin: 0; }
+.sa-main img, .sa-main video, .sa-main canvas, .sa-main svg { max-width: 100%; }
+.sa-main img, .sa-main video { height: auto; }
+@media (max-width: 900px) {
+  .ak-tblwrap > table { min-width: max-content; }
+  .sa-main { overflow-wrap: break-word; }
+  /* Grilles posées en style inline : elles n'ont aucun point de rupture. */
+  .sa-main [style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+  .sa-main pre, .sa-main code { max-width: 100%; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+}
 </style>
 </head>
 <body>
@@ -818,6 +834,31 @@ function sa_render_foot(): void {
     ?>
   </main>
 </div>
+<script>
+/* Enveloppe les tableaux pour qu'ils défilent dans leur bloc plutôt que
+   d'élargir la page — un <table> ne peut pas défiler seul. */
+(function () {
+  function envelopper() {
+    var racine = document.querySelector('.sa-main') || document.body;
+    var tables = racine.querySelectorAll('table');
+    for (var i = 0; i < tables.length; i++) {
+      var t = tables[i];
+      if (t.closest('.ak-tblwrap')) continue;
+      var parent = t.parentNode;
+      if (parent && parent.nodeType === 1) {
+        var ox = getComputedStyle(parent).overflowX;
+        if (ox === 'auto' || ox === 'scroll') continue;
+      }
+      var wrap = document.createElement('div');
+      wrap.className = 'ak-tblwrap';
+      parent.insertBefore(wrap, t);
+      wrap.appendChild(t);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', envelopper);
+  else envelopper();
+})();
+</script>
 </body>
 </html>
     <?php

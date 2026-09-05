@@ -1222,21 +1222,36 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
   .ak-tblwrap > table { min-width: max-content; }
 }
 
+/* Grilles posées en style inline (repeat(3), repeat(5)…) : elles gardent
+   leur gabarit desktop tant qu'aucune règle ne les libère, et débordaient
+   aussi bien sur téléphone que sur tablette. `auto-fit` place autant de
+   colonnes que la largeur permet et descend seul jusqu'à une seule ;
+   `min(100%, 180px)` évite de déborder quand le conteneur est plus étroit
+   que la colonne minimale.
+   Portée volontairement large (pas seulement .main) : plusieurs pages
+   posent leur contenu dans un <div> nu sous render_head(). Le gabarit
+   partagé ne contient aucune grille en style inline, donc rien à casser. */
+@media (max-width: 1200px) {
+  [style*="grid-template-columns"] { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)) !important; }
+}
+
+/* Un contenu insécable (URL, IBAN, e-mail, jeton) élargit le bloc parent
+   au lieu de se couper. Volontairement HORS media query : un <pre> qui
+   contient un jeton de 90 caractères déborde à 1024 px comme à 390 px —
+   la largeur de l'écran n'y change rien.
+   `break-word` ne coupe que le mot qui déborde réellement ; `anywhere`,
+   réservé aux blocs de code, couperait aussi la prose normale. */
+.main { overflow-wrap: break-word; }
+.main pre, .main code { max-width: 100%; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* Médias : jamais plus larges que leur colonne. `height:auto` évite la
    déformation quand seule la largeur est contrainte. */
 .main img, .main video, .main canvas, .main svg, .main iframe { max-width: 100%; }
 .main img, .main video { height: auto; }
 
 @media (max-width: 900px) {
-  /* Un contenu insécable (URL, IBAN, e-mail, jeton) élargissait le bloc
-     parent au lieu de se couper. `break-word` ne coupe que le mot qui
-     déborde vraiment — `anywhere` couperait aussi la prose normale. */
-  .main { overflow-wrap: break-word; }
-  .main pre, .main code { max-width: 100%; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-  /* Grilles à colonnes fixes : elles gardent leur gabarit desktop tant
-     qu'aucune règle ne les libère. On les repasse en une colonne. */
-  .main [style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+
 
   /* Panneaux latéraux à largeur figée (listes de messages, filtres) :
      `flex-shrink:0` + largeur fixe = débordement garanti sous 400 px. */
