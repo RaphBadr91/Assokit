@@ -132,6 +132,97 @@ try {
 
     $initials = strtoupper(function_exists('mb_substr') ? mb_substr($org_name, 0, 2) : substr($org_name, 0, 2));
 
+    /* ── Fil « Aujourd'hui » de l'accueil natif (maquette V2) ───────────────
+       Trois sources, une couleur d'accent par type, comme sur l'écran de
+       référence : événement (vert), facture échue (bleu), subvention (ambre).
+       Chaque source est défensive : une table absente ne casse pas l'accueil. */
+    $today = [];
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, title, location, starts_at, is_all_day
+            FROM events
+            WHERE org_id = ? AND deleted_at IS NULL
+              AND starts_at >= NOW() AND starts_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+            ORDER BY starts_at ASC LIMIT 4
+        ");
+        $stmt->execute([$org_id]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) {
+            $today[] = [
+                'kind'  => 'event',
+                'id'    => (int) $r['id'],
+                'time'  => !empty($r['is_all_day']) ? 'Jour' : date('H:i', strtotime((string) $r['starts_at'])),
+                'title' => (string) $r['title'],
+                'sub'   => trim((string) ($r['location'] ?? '')),
+                'color' => '#059669',
+            ];
+        }
+    } catch (Throwable $e) {}
+    try {
+        $stmt = $pdo->prepare("
+            SELECT i.id, i.invoice_number, i.amount_ttc_cents, i.due_at, c.display_name AS client_name
+            FROM asso_invoices i
+            LEFT JOIN asso_clients c ON i.client_id = c.id
+            WHERE i.org_id = ? AND i.status IN ('pending','overdue') AND i.due_at <= CURDATE()
+            ORDER BY i.due_at ASC LIMIT 3
+        ");
+        $stmt->execute([$org_id]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) {
+            $due = strtotime((string) $r['due_at']);
+            $today[] = [
+                'kind'  => 'invoice',
+                'id'    => (int) $r['id'],
+                'time'  => '—',
+                'title' => 'Facture ' . (string) $r['invoice_number'],
+                'sub'   => ($due && $due >= strtotime('today') ? "Échéance aujourd'hui" : 'Échue le ' . date('d/m', (int) $due))
+                           . ' · ' . number_format(((int) $r['amount_ttc_cents']) / 100, 0, ',', ' ') . ' €',
+                'color' => '#2563EB',
+            ];
+        }
+    } catch (Throwable $e) {}
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, name, deadline_apply FROM grants
+            WHERE org_id = ? AND archived_at IS NULL
+              AND status IN ('draft','submitted')
+              AND deadline_apply IS NOT NULL AND deadline_apply >= CURDATE()
+              AND deadline_apply <= DATE_ADD(CURDATE(), INTERVAL 21 DAY)
+            ORDER BY deadline_apply ASC LIMIT 2
+        ");
+        $stmt->execute([$org_id]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) {
+            $today[] = [
+                'kind'  => 'grant',
+                'id'    => (int) $r['id'],
+                'time'  => '—',
+                'title' => (string) $r['name'],
+                'sub'   => 'À déposer avant le ' . date('d/m', strtotime((string) $r['deadline_apply'])),
+                'color' => '#B45309',
+            ];
+        }
+    } catch (Throwable $e) {}
+
+    // Sous-titre de l'en-tête : « N échéances cette semaine · N factures à relancer »
+    $week_due = 0;
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM events
+            WHERE org_id = ? AND deleted_at IS NULL
+              AND starts_at >= NOW() AND starts_at < DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+        ");
+        $stmt->execute([$org_id]);
+        $week_due = (int) $stmt->fetchColumn();
+    } catch (Throwable $e) {}
+    $late_invoices = 0;
+    try {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM asso_invoices WHERE org_id = ? AND status IN ('pending','overdue') AND due_at < CURDATE()");
+        $stmt->execute([$org_id]);
+        $late_invoices = (int) $stmt->fetchColumn();
+    } catch (Throwable $e) {}
+    $head_bits = [];
+    if ($week_due > 0)      $head_bits[] = $week_due . ' échéance' . ($week_due > 1 ? 's' : '') . ' cette semaine';
+    if ($late_invoices > 0) $head_bits[] = $late_invoices . ' facture' . ($late_invoices > 1 ? 's' : '') . ' à relancer';
+    $head_line = $head_bits ? implode(' · ', $head_bits) : 'Tout est à jour, rien ne vous attend.';
+
     // Compteurs de notifications non lues (endpoint dédié app — aucun impact site)
     $notif_unread = 0; $msg_unread = 0; $support_unread = 0;
     // Notifications internes (messages + mentions) depuis user_notifications
@@ -172,6 +263,8 @@ try {
         'org_name'     => $org_name,
         'org_initials' => $initials,
         'org_logo'     => $org_logo,
+        'head_line'    => $head_line,
+        'today'        => $today,
         'kpis'         => [
             'projets_actifs'   => $active_projects,
             'membres'          => $total_users,

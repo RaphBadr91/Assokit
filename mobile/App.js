@@ -33,9 +33,32 @@ import * as Sharing from 'expo-sharing';
 import Constants from 'expo-constants';
 
 const BASE = 'https://assokit.fr';
+
+/* ────────────────────────────────────────────────────────────────────
+ * Design system — maquette Figma « Assokit V2 »
+ * https://www.figma.com/design/T5FqyZHVJKkmwvEZUjeVan
+ * Les valeurs ci-dessous sont relevées directement sur les 5 écrans de
+ * référence (Accueil, Facture, Cotisations, Subvention, Agenda) : toute
+ * la teinte d'encre est verte-neutre, plus le bleu ardoise d'origine.
+ * ──────────────────────────────────────────────────────────────────── */
 const BRAND = '#059669';
-const INK = '#0F172A';
-const MUTE = '#64748B';
+const INK = '#0B1A13';        // titres, montants
+const INK_2 = '#45544D';      // libellés de boutons secondaires
+const INK_3 = '#8A968F';      // texte désactivé / barré / onglet inactif
+const MUTE = '#5F6D66';       // texte secondaire (5,43:1 sur blanc → AA)
+const CANVAS = '#F4F8F6';     // fond d'écran
+const LINE = '#E7EEEA';       // bordure de carte
+const SEP = '#F1F5F4';        // séparateur interne de carte
+const SOFT = '#F3F6F5';       // fond du bouton retour
+const R_CARD = 20;            // rayon des cartes
+const R_BTN = 16;             // rayon des boutons pleine largeur
+const R_CHIP = 12;            // rayon des pastilles d'icône
+const HEAD_GRAD = ['#0B3B2A', '#0E7A5A', '#12B886'];
+const HEAD_STOPS = [0, 0.367, 0.667];
+// Ombre de carte Figma : 0 8 20 -4 rgba(10,59,41,.10)
+const SH_CARD = { shadowColor: '#0A3B29', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 };
+// Ombre de bouton primaire : 0 6 14 -3 rgba(5,150,105,.30)
+const SH_BTN = { shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 11, shadowOffset: { width: 0, height: 6 }, elevation: 5 };
 
 // Verifie qu'une URL appartient bien au domaine assokit.fr (ou un sous-domaine),
 // et non a un domaine piege du type "assokit.fr.attaquant.com" ou "evil-assokit.fr".
@@ -197,18 +220,6 @@ const STATUS_META = {
   done: { label: 'Terminé', color: '#2563EB', bg: '#EFF6FF' },
 };
 
-// Assombrit une couleur hex (#RRGGBB) pour un dégradé d'icône premium
-function shade(hex, f) {
-  f = f == null ? 0.78 : f;
-  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
-  if (!m) return hex;
-  const n = parseInt(m[1], 16);
-  const r = Math.round(((n >> 16) & 255) * f);
-  const g = Math.round(((n >> 8) & 255) * f);
-  const b = Math.round((n & 255) * f);
-  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-}
-
 function fmtEuro(n) {
   n = Number(n) || 0;
   if (n >= 1000) return (n / 1000).toFixed(1).replace('.', ',') + ' k€';
@@ -260,19 +271,32 @@ function tabsFor(profile) {
   ];
 }
 
+/* Pastilles pastel des actions rapides (maquette : fond clair + texte foncé assorti) */
+const TINTS = {
+  '#2563EB': { bg: '#EFF6FF', fg: '#1D4ED8' },
+  '#059669': { bg: '#ECFDF5', fg: '#065F46' },
+  '#7C3AED': { bg: '#F5F3FF', fg: '#5B21B6' },
+  '#D97706': { bg: '#FFF7ED', fg: '#9A3412' },
+  '#0EA5E9': { bg: '#F0F9FF', fg: '#075985' },
+};
+
+// `short` : libellé d'une tuile d'accueil (80 px de large) ; `label` reste le titre du menu « Créer ».
 const QUICK_ACTIONS_ASSO = [
-  { label: 'Nouveau projet', icon: 'add-circle', color: '#059669', form: 'project' },
-  { label: 'Scanner une facture', icon: 'camera', color: '#0EA5E9', form: 'expense' },
-  { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', form: 'invoice' },
-  { label: 'Nouvel adhérent', icon: 'person-add', color: '#D97706', form: 'member' },
-  { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', screen: 'messages' },
+  { label: 'Nouvelle facture', short: 'Facture', icon: 'receipt', color: '#2563EB', form: 'invoice' },
+  { label: 'Nouveau paiement de cotisation', short: 'Cotisation', icon: 'card', color: '#059669', form: 'payment' },
+  { label: 'Nouvel événement', short: 'Événement', icon: 'calendar', color: '#7C3AED', form: 'event' },
+  { label: 'Nouvelle subvention', short: 'Subvention', icon: 'cash', color: '#D97706', form: 'grant' },
+  { label: 'Nouveau projet', short: 'Projet', icon: 'add-circle', color: '#059669', form: 'project' },
+  { label: 'Scanner une facture', short: 'Scanner', icon: 'camera', color: '#0EA5E9', form: 'expense' },
+  { label: 'Nouvel adhérent', short: 'Adhérent', icon: 'person-add', color: '#D97706', form: 'member' },
+  { label: 'Nouveau message', short: 'Message', icon: 'chatbubble-ellipses', color: '#7C3AED', screen: 'messages' },
 ];
 
 const QUICK_ACTIONS_TPE = [
-  { label: 'Nouvelle facture', icon: 'document-text', color: '#2563EB', form: 'invoice' },
-  { label: 'Nouveau devis', icon: 'create', color: '#059669', form: 'quote' },
-  { label: 'Nouveau client', icon: 'person-add', color: '#D97706', form: 'client' },
-  { label: 'Nouveau message', icon: 'chatbubble-ellipses', color: '#7C3AED', screen: 'messages' },
+  { label: 'Nouvelle facture', short: 'Facture', icon: 'receipt', color: '#2563EB', form: 'invoice' },
+  { label: 'Nouveau devis', short: 'Devis', icon: 'create', color: '#059669', form: 'quote' },
+  { label: 'Nouveau client', short: 'Client', icon: 'person-add', color: '#D97706', form: 'client' },
+  { label: 'Nouveau message', short: 'Message', icon: 'chatbubble-ellipses', color: '#7C3AED', screen: 'messages' },
 ];
 
 const SHORTCUTS_ASSO = [
@@ -294,8 +318,8 @@ const INV_KIND = {
   done:  { color: '#065F46', bg: '#D1FAE5' },
   wait:  { color: '#92400E', bg: '#FEF3C7' },
   late:  { color: '#991B1B', bg: '#FEE2E2' },
-  draft: { color: '#475569', bg: '#F1F5F9' },
-  off:   { color: '#64748B', bg: '#F1F5F9' },
+  draft: { color: '#45544D', bg: '#F1F5F4' },
+  off:   { color: '#5F6D66', bg: '#F1F5F4' },
 };
 
 /* ================================================================== */
@@ -376,7 +400,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
       <StatusBar barStyle="dark-content" />
       <SafeAreaView style={{ flex: 1 }}>
         <TouchableOpacity accessibilityRole="button" style={styles.lgBack} activeOpacity={0.8} onPress={onBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Ionicons name="chevron-back" size={20} color="#0F172A" />
+          <Ionicons name="chevron-back" size={20} color="#0B1A13" />
           <Text style={styles.lgBackTxt}>Retour</Text>
         </TouchableOpacity>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
@@ -422,7 +446,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
                   editable={!busy}
                 />
                 <TouchableOpacity accessibilityRole="button" accessibilityLabel={show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} onPress={() => setShow((s) => !s)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <Ionicons name={show ? 'eye-off' : 'eye'} size={20} color="#94A3B8" />
+                  <Ionicons name={show ? 'eye-off' : 'eye'} size={20} color="#8A968F" />
                 </TouchableOpacity>
               </View>
 
@@ -465,169 +489,156 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
 /* ================================================================== */
 /*  ACCUEIL NATIF (KPIs premium)                                       */
 /* ================================================================== */
-function NativeHome({ data, loading, onRefresh, onGoto, profile, error }) {
+function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick, onNotifs, notifCount, quickActions }) {
   const k = (data && data.kpis) || {};
   const isTpe = profile === 'tpe';
 
-  // Métrique vedette (spotlight) — cœur du dashboard, effet verre liquide
-  const spot = isTpe
-    ? {
-        label: 'Chiffre d\'affaires encaissé',
-        value: fmtEuro(k.ca_paid),
-        icon: 'trending-up',
-        path: '/mon-asso-factures',
-        pct: (() => { const t = (k.ca_paid || 0) + (k.impayes || 0); return t > 0 ? Math.round(((k.ca_paid || 0) / t) * 100) : 0; })(),
-        barLabel: fmtEuro(k.impayes) + ' en attente',
-        chip: (k.factures ?? 0) + ' facture' + ((k.factures ?? 0) > 1 ? 's' : ''),
-      }
-    : {
-        label: 'Budget engagé',
-        value: fmtEuro(k.budget_used),
-        icon: 'wallet',
-        path: '/projets',
-        pct: (k.budget_planned > 0 ? Math.min(100, Math.round(((k.budget_used || 0) / k.budget_planned) * 100)) : 0),
-        barLabel: 'sur ' + fmtEuro(k.budget_planned) + ' prévus',
-        chip: (k.projets_actifs ?? 0) + ' projet' + ((k.projets_actifs ?? 0) > 1 ? 's' : '') + ' actif' + ((k.projets_actifs ?? 0) > 1 ? 's' : ''),
-      };
-
+  // Quatre indicateurs, grille 2×2 (maquette : libellé capitales, valeur XXL, sous-titre)
   const cards = isTpe
     ? [
-        { icon: 'briefcase', color: '#2563EB', g: ['#EFF6FF', '#DCEAFE'], label: 'Clients', value: String(k.clients ?? 0), sub: 'au total', path: '/mon-asso-clients' },
-        { icon: 'document-text', color: '#059669', g: ['#ECFDF5', '#D1FAE5'], label: 'Devis en cours', value: String(k.devis_encours ?? 0), sub: 'à relancer', path: '/mon-asso-devis' },
-        { icon: 'card', color: '#7C3AED', g: ['#F5F3FF', '#E9E2FE'], label: 'Factures', value: String(k.factures ?? 0), sub: 'émises', path: '/mon-asso-factures' },
-        { icon: 'alert-circle', color: '#D97706', g: ['#FFFBEB', '#FEF0C7'], label: 'Impayés', value: fmtEuro(k.impayes), sub: 'à recouvrer', path: '/mon-asso-factures' },
+        { label: 'Encaissé ' + new Date().getFullYear(), value: fmtEuro(k.ca_paid), sub: (k.factures ?? 0) + ' facture' + ((k.factures ?? 0) > 1 ? 's' : ''), tone: BRAND, path: '/mon-asso-factures' },
+        { label: 'Impayés', value: fmtEuro(k.impayes), sub: 'à recouvrer', tone: '#B45309', path: '/mon-asso-factures' },
+        { label: 'Clients', value: String(k.clients ?? 0), sub: 'au total', tone: INK, path: '/mon-asso-clients' },
+        { label: 'Devis en cours', value: String(k.devis_encours ?? 0), sub: 'à relancer', tone: INK, path: '/mon-asso-devis' },
       ]
     : [
-        { icon: 'folder', color: '#059669', g: ['#ECFDF5', '#D1FAE5'], label: 'Projets actifs', value: String(k.projets_actifs ?? 0), sub: 'en cours', path: '/projets' },
-        { icon: 'people', color: '#2563EB', g: ['#EFF6FF', '#DCEAFE'], label: 'Membres', value: String(k.membres ?? 0), sub: (k.membres_nouveaux > 0 ? '+' + k.membres_nouveaux + ' en 30j' : 'actifs'), path: '/adherents' },
-        { icon: 'calendar', color: '#D97706', g: ['#FFFBEB', '#FEF0C7'], label: 'Événements', value: String(k.evenements ?? 0), sub: 'à venir', path: '/agenda' },
-        { icon: 'sparkles', color: '#7C3AED', g: ['#F5F3FF', '#E9E2FE'], label: 'Nouveaux', value: String(k.membres_nouveaux ?? 0), sub: 'ce mois-ci', path: '/adherents' },
+        { label: 'Budget engagé', value: fmtEuro(k.budget_used), sub: 'sur ' + fmtEuro(k.budget_planned) + ' prévus', tone: BRAND, path: '/projets' },
+        { label: 'Impayés', value: fmtEuro(k.impayes), sub: 'à recouvrer', tone: '#B45309', path: '/mon-asso-factures' },
+        { label: 'Adhérents', value: String(k.membres ?? 0), sub: (k.membres_nouveaux > 0 ? '+' + k.membres_nouveaux + ' en 30 j' : 'actifs'), tone: INK, path: '/adherents' },
+        { label: 'Projets actifs', value: String(k.projets_actifs ?? 0), sub: (k.evenements ?? 0) + ' événement' + ((k.evenements ?? 0) > 1 ? 's' : '') + ' à venir', tone: INK, path: '/projets' },
       ];
   const shortcuts = isTpe ? SHORTCUTS_TPE : SHORTCUTS_ASSO;
+  const actions = (quickActions || []).slice(0, 4);
+  const today = (data && data.today) || [];
 
   return (
-    <View style={styles.homeAurora}>
-      {/* Fond « Aurora Glass » : dégradé doux + halos colorés */}
-      <LinearGradient colors={['#EAF7F1', '#E9F0FB', '#F2EBFB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-      <View style={styles.auroraOrbA} pointerEvents="none" />
-      <View style={styles.auroraOrbB} pointerEvents="none" />
+    <View style={styles.homeWrap}>
       <ScrollView
         style={styles.homeScroll}
         contentContainerStyle={styles.homeContent}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
       >
-      <View style={styles.hHeaderWrap}>
-        <BlurView intensity={34} tint="light" style={styles.hHeader}>
-          {/* Halos aurora subtils */}
-          <View style={styles.hOrb1} />
-          <View style={styles.hOrb2} />
-          <View style={styles.hHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.hHello}>{greeting()}{data && data.first_name ? ',' : ''}</Text>
-              {data && data.first_name ? <Text style={styles.hName}>{data.first_name} 👋</Text> : null}
-              <View style={styles.hOrgPill}>
-                <View style={styles.hOrgDot} />
-                <Text style={styles.hOrg} numberOfLines={1}>{(data && data.org_name) || ' '}</Text>
-              </View>
-            </View>
-            <View style={styles.hAvatar}>
+        {/* ── En-tête dégradé (maquette : #0B3B2A → #0E7A5A → #12B886, 140°) ── */}
+        <LinearGradient colors={HEAD_GRAD} locations={HEAD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 0.85, y: 1 }} style={styles.fgHead}>
+          <View style={styles.fgHeadOrb} pointerEvents="none" />
+          <View style={styles.fgOrgRow}>
+            <View style={styles.fgOrgLogo}>
               {data && data.org_logo ? (
-                <Image source={{ uri: data.org_logo }} style={styles.hAvatarImg} resizeMode="contain" />
+                <Image source={{ uri: data.org_logo }} style={styles.fgOrgLogoImg} resizeMode="contain" />
               ) : (
-                <Text style={styles.hAvatarTxt}>{(data && data.org_initials) || '·'}</Text>
+                <Text style={styles.fgOrgLogoTxt}>{((data && data.org_initials) || '·').slice(0, 1)}</Text>
               )}
             </View>
-          </View>
-        </BlurView>
-      </View>
-
-      {!data ? (
-        error ? (
-          <View style={styles.homeLoader}>
-            <Ionicons name="cloud-offline-outline" size={40} color={MUTE} />
-            <Text style={styles.homeLoaderTxt}>Connexion impossible. Vérifiez votre réseau.</Text>
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel="Réessayer le chargement"
-              onPress={onRefresh}
-              activeOpacity={0.85}
-              style={{ marginTop: 14, backgroundColor: BRAND, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 12 }}
-            >
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Réessayer</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.fgOrgName} numberOfLines={1}>{(data && data.org_name) || ' '}</Text>
+              <Text style={styles.fgOrgSub} numberOfLines={1}>{isTpe ? 'Entreprise' : 'Association'}</Text>
+            </View>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={'Notifications' + (notifCount > 0 ? ', ' + notifCount + ' non lues' : '')}
+              style={styles.fgBell} activeOpacity={0.8} onPress={onNotifs}>
+              <Ionicons name="notifications-outline" size={21} color="#fff" />
+              {notifCount > 0 ? <View style={styles.fgBellDot} /> : null}
             </TouchableOpacity>
           </View>
+          <Text style={styles.fgHello} numberOfLines={1}>
+            {greeting()}{data && data.first_name ? ' ' + data.first_name : ''} 👋
+          </Text>
+          <Text style={styles.fgHeadLine} numberOfLines={2}>{(data && data.head_line) || ' '}</Text>
+        </LinearGradient>
+
+        {!data ? (
+          error ? (
+            <View style={styles.homeLoader}>
+              <Ionicons name="cloud-offline-outline" size={40} color={MUTE} />
+              <Text style={styles.homeLoaderTxt}>Connexion impossible. Vérifiez votre réseau.</Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Réessayer le chargement"
+                onPress={onRefresh}
+                activeOpacity={0.85}
+                style={{ marginTop: 14, backgroundColor: BRAND, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 12 }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Réessayer</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.homeLoader}>
+              <ActivityIndicator size="large" color={BRAND} />
+              <Text style={styles.homeLoaderTxt}>Chargement de vos données…</Text>
+            </View>
+          )
         ) : (
-          <View style={styles.homeLoader}>
-            <ActivityIndicator size="large" color={BRAND} />
-            <Text style={styles.homeLoaderTxt}>Chargement de vos données…</Text>
-          </View>
-        )
-      ) : (
-        <>
-          {/* Carte vedette en verre liquide, flottant sur le header */}
-          <TouchableOpacity accessibilityRole="button" activeOpacity={0.9} onPress={() => onGoto(spot.path)} style={styles.spotShadow}>
-            <BlurView intensity={38} tint="light" style={styles.spotCard}>
-              <View style={styles.spotGloss} />
-              <View style={styles.spotTopRow}>
-                <View style={styles.spotIconWrap}>
-                  <Ionicons name={spot.icon} size={17} color="#065F46" />
+          <>
+            {/* ── KPI 2×2, chevauchant l'en-tête de 28 px ── */}
+            <View style={styles.fgKpiGrid}>
+              {[0, 2].map((start) => (
+                <View key={start} style={styles.fgKpiRow}>
+                  {cards.slice(start, start + 2).map((c) => (
+                    <TouchableOpacity accessibilityRole="button" key={c.label} style={styles.fgKpi} activeOpacity={0.88} onPress={() => onGoto(c.path)}>
+                      <Text style={styles.fgKpiLbl} numberOfLines={1}>{c.label.toUpperCase()}</Text>
+                      <Text style={[styles.fgKpiVal, { color: c.tone }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{c.value}</Text>
+                      <Text style={styles.fgKpiSub} numberOfLines={1}>{c.sub}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-                <Text style={styles.spotLabel}>{spot.label}</Text>
-                <View style={styles.spotChip}><Text style={styles.spotChipTxt}>{spot.chip}</Text></View>
-              </View>
-              <Text style={styles.spotValue}>{spot.value}</Text>
-              <View style={styles.spotBarTrack}>
-                <LinearGradient colors={['#0CCB8F', '#059669']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={[styles.spotBarFill, { width: Math.max(6, spot.pct) + '%' }]} />
-              </View>
-              <View style={styles.spotBarMeta}>
-                <Text style={styles.spotBarPct}>{spot.pct}%</Text>
-                <Text style={styles.spotBarLabel}>{spot.barLabel}</Text>
-              </View>
-            </BlurView>
-          </TouchableOpacity>
+              ))}
+            </View>
 
-          <View style={styles.kpiGrid}>
-            {cards.map((c) => (
-              <TouchableOpacity accessibilityRole="button" key={c.label} style={styles.kpiShadow} activeOpacity={0.88} onPress={() => onGoto(c.path)}>
-                <View style={styles.kpiCard}>
-                  <View style={styles.kpiGloss} />
-                  <View style={styles.kpiTop}>
-                    <LinearGradient colors={[c.color, shade(c.color)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.kpiIcon}>
-                      <Ionicons name={c.icon} size={20} color="#fff" />
-                    </LinearGradient>
-                    <View style={[styles.kpiDot, { backgroundColor: c.color }]} />
-                  </View>
-                  <Text style={styles.kpiValue}>{c.value}</Text>
-                  <Text style={styles.kpiLabel}>{c.label}</Text>
-                  <Text style={styles.kpiSub}>{c.sub}</Text>
+            {actions.length > 0 && (
+              <>
+                <Text style={styles.fgSection}>Actions rapides</Text>
+                <View style={styles.fgActions}>
+                  {actions.map((a) => {
+                    const t = TINTS[a.color] || TINTS[BRAND];
+                    return (
+                      <TouchableOpacity accessibilityRole="button" key={a.label} style={styles.fgAction} activeOpacity={0.85} onPress={() => onQuick(a)}>
+                        <View style={[styles.fgActionIc, { backgroundColor: t.bg }]}>
+                          <Ionicons name={a.icon} size={20} color={t.fg} />
+                        </View>
+                        <Text style={[styles.fgActionTxt, { color: t.fg }]} numberOfLines={1}>{a.short || a.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+              </>
+            )}
 
-          <Text style={styles.sectionTitle}>Accès rapide</Text>
-          <View style={styles.shortcuts}>
-            {shortcuts.map((s) => (
-              <TouchableOpacity accessibilityRole="button" key={s.label} style={styles.shortcut} activeOpacity={0.8} onPress={() => onGoto(s.path)}>
-                <View style={styles.shortcutIcon}>
-                  <Ionicons name={s.icon} size={22} color={BRAND} />
+            {today.length > 0 && (
+              <>
+                <Text style={styles.fgSection}>Aujourd'hui</Text>
+                <View style={styles.fgCard}>
+                  {today.map((t, i) => (
+                    <View key={t.kind + t.id} style={[styles.fgTodayRow, i > 0 ? styles.fgSep : null]}>
+                      <View style={[styles.fgTodayBar, { backgroundColor: t.color }]} />
+                      <Text style={styles.fgTodayTime}>{t.time}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.fgTodayTitle} numberOfLines={1}>{t.title}</Text>
+                        {!!t.sub && <Text style={styles.fgTodaySub} numberOfLines={1}>{t.sub}</Text>}
+                      </View>
+                    </View>
+                  ))}
                 </View>
-                <Text style={styles.shortcutTxt}>{s.label}</Text>
-                <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
-              </TouchableOpacity>
-            ))}
-          </View>
+              </>
+            )}
 
-          <TouchableOpacity accessibilityRole="button" style={styles.openFullShadow} activeOpacity={0.9} onPress={() => onGoto('/dashboard')}>
-            <LinearGradient colors={['#0CCB8F', '#047857']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.openFull}>
-              <Text style={styles.openFullTxt}>Ouvrir le tableau de bord complet</Text>
-              <Ionicons name="arrow-forward" size={18} color="#fff" />
-            </LinearGradient>
-          </TouchableOpacity>
-        </>
-      )}
+            <Text style={styles.fgSection}>Accès rapide</Text>
+            <View style={styles.fgCard}>
+              {shortcuts.map((s, i) => (
+                <TouchableOpacity accessibilityRole="button" key={s.label} style={[styles.fgLinkRow, i > 0 ? styles.fgSep : null]}
+                  activeOpacity={0.7} onPress={() => onGoto(s.path)}>
+                  <View style={styles.fgLinkIc}><Ionicons name={s.icon} size={18} color={BRAND} /></View>
+                  <Text style={styles.fgLinkTxt}>{s.label}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={INK_3} />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity accessibilityRole="button" style={styles.fgPrimary} activeOpacity={0.88} onPress={() => onGoto('/dashboard')}>
+              <Ionicons name="grid-outline" size={18} color="#fff" />
+              <Text style={styles.fgPrimaryTxt}>Tableau de bord complet</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -676,7 +687,7 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
         <ListLoader onRefresh={onRefresh} />
       ) : projects.length === 0 ? (
         <View style={styles.emptyBox}>
-          <Ionicons name="folder-open-outline" size={44} color="#CBD5E1" />
+          <Ionicons name="folder-open-outline" size={44} color="#CBD5D1" />
           <Text style={styles.emptyTxt}>Aucun projet en cours</Text>
           <TouchableOpacity accessibilityRole="button" style={[styles.emptyBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
             <Text style={styles.emptyBtnTxt}>Créer un projet</Text>
@@ -745,7 +756,7 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
         <ListLoader onRefresh={onRefresh} />
       ) : list.length === 0 ? (
         <View style={styles.emptyBox}>
-          <Ionicons name={isClients ? 'briefcase-outline' : 'people-outline'} size={44} color="#CBD5E1" />
+          <Ionicons name={isClients ? 'briefcase-outline' : 'people-outline'} size={44} color="#CBD5D1" />
           <Text style={styles.emptyTxt}>{isClients ? 'Aucun client' : 'Aucun membre'}</Text>
           <TouchableOpacity accessibilityRole="button" style={[styles.emptyBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
             <Text style={styles.emptyBtnTxt}>{isClients ? 'Ajouter un client' : 'Inviter un membre'}</Text>
@@ -837,7 +848,7 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
 
           {list.length === 0 ? (
             <View style={styles.emptyBox}>
-              <Ionicons name="receipt-outline" size={44} color="#CBD5E1" />
+              <Ionicons name="receipt-outline" size={44} color="#CBD5D1" />
               <Text style={styles.emptyTxt}>Aucune facture</Text>
               <TouchableOpacity accessibilityRole="button" style={[styles.emptyBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Créer une facture</Text></TouchableOpacity>
             </View>
@@ -871,7 +882,7 @@ function DetailHeader({ title, onBack, onAction, actionIcon }) {
   return (
     <View style={styles.dHeader}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.dBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.7}>
-        <Ionicons name="chevron-back" size={26} color={INK} />
+        <Ionicons name="arrow-back" size={20} color={INK} />
       </TouchableOpacity>
       <Text style={styles.dTitle} numberOfLines={1}>{title}</Text>
       {onAction ? (
@@ -891,7 +902,7 @@ function GatedScreen({ title, message, onBack }) {
     <View style={styles.detailWrap}>
       {onBack ? <DetailHeader title={title} onBack={onBack} /> : null}
       <View style={styles.emptyBox}>
-        <Ionicons name="lock-closed" size={40} color="#CBD5E1" />
+        <Ionicons name="lock-closed" size={40} color="#CBD5D1" />
         <Text style={styles.emptyTxt}>{message || 'Réservé aux administrateurs.'}</Text>
       </View>
     </View>
@@ -912,7 +923,7 @@ function DetailError({ title, onBack, onRetry }) {
     <View style={styles.detailWrap}>
       <DetailHeader title={title} onBack={onBack} />
       <View style={styles.emptyBox}>
-        <Ionicons name="cloud-offline-outline" size={44} color="#CBD5E1" />
+        <Ionicons name="cloud-offline-outline" size={44} color="#CBD5D1" />
         <Text style={styles.emptyTxt}>Chargement impossible. Vérifiez votre connexion.</Text>
         <TouchableOpacity accessibilityRole="button" style={styles.emptyBtn} onPress={onRetry} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Réessayer</Text></TouchableOpacity>
       </View>
@@ -930,7 +941,7 @@ function InfoRow({ icon, label, value, onPress }) {
         <Text style={styles.infoLabel}>{label}</Text>
         <Text style={[styles.infoValue, onPress ? { color: BRAND } : null]}>{value}</Text>
       </View>
-      {onPress ? <Ionicons name="chevron-forward" size={16} color="#CBD5E1" /> : null}
+      {onPress ? <Ionicons name="chevron-forward" size={16} color="#CBD5D1" /> : null}
     </Row>
   );
 }
@@ -1021,7 +1032,7 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
             <Text style={styles.dSection}>Étapes</Text>
             {d.steps.map((s) => (
               <View key={s.id} style={styles.stepRow}>
-                <Ionicons name={s.done ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={s.done ? '#10B981' : '#CBD5E1'} />
+                <Ionicons name={s.done ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={s.done ? '#10B981' : '#CBD5D1'} />
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={[styles.stepTitle, s.done ? styles.stepDone : null]}>{s.title}</Text>
                   {!!s.desc && <Text style={styles.stepDesc}>{s.desc}</Text>}
@@ -1062,7 +1073,7 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
           </View>
         )}
 
-        <Text style={styles.bilanNote}><Ionicons name="information-circle-outline" size={13} color="#94A3B8" /> Sans factures ni informations saisies, le bilan analytique sera incomplet.</Text>
+        <Text style={styles.bilanNote}><Ionicons name="information-circle-outline" size={13} color="#8A968F" /> Sans factures ni informations saisies, le bilan analytique sera incomplet.</Text>
         <View style={styles.pdfRow}>
           <TouchableOpacity accessibilityRole="button" style={[styles.pdfBtn, pdfBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={() => !pdfBusy && onSharePdf('/download-bilan-analytique.php?project=' + p.id)}>
             {pdfBusy ? <ActivityIndicator size="small" color="#4F46E5" /> : <Ionicons name="share-outline" size={17} color="#4F46E5" />}
@@ -1110,7 +1121,7 @@ function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) 
 
         {d.admin === false ? (
           <View style={styles.dLockCard}>
-            <Ionicons name="lock-closed" size={18} color="#94A3B8" />
+            <Ionicons name="lock-closed" size={18} color="#8A968F" />
             <Text style={styles.dLockTxt}>Les coordonnées des membres sont réservées aux administrateurs de l'association.</Text>
           </View>
         ) : (
@@ -1181,7 +1192,7 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
 
         {d.admin === false ? (
           <View style={styles.dLockCard}>
-            <Ionicons name="lock-closed" size={18} color="#94A3B8" />
+            <Ionicons name="lock-closed" size={18} color="#8A968F" />
             <Text style={styles.dLockTxt}>Le fichier client (coordonnées et facturation) est réservé aux administrateurs.</Text>
           </View>
         ) : (
@@ -1247,35 +1258,43 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction
       <DetailHeader title={isQuote ? 'Devis' : 'Facture'} onBack={onBack} />
       <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
-        <Text style={styles.dName}>{inv.number}</Text>
-        {!!inv.client && <Text style={styles.dFolder}>{inv.client}</Text>}
-        <View style={[styles.projChip, { backgroundColor: km.bg, alignSelf: 'flex-start', marginTop: 10 }]}>
-          <Text style={[styles.projChipTxt, { color: km.color }]}>{inv.status_label}</Text>
+        {/* Carte « montant » (nœud 9:8) : numéro, montant 34 px, pastille de statut. */}
+        <View style={[styles.dCard, { marginTop: 0, gap: 8 }]}>
+          <Text style={styles.dInvNum}>{inv.number}</Text>
+          <Text style={styles.dInvAmount}>{fmtEuro2(inv.amount_ttc)}</Text>
+          <View style={[styles.projChip, { backgroundColor: km.bg, alignSelf: 'flex-start' }]}>
+            <Text style={[styles.projChipTxt, { color: km.color }]}>{inv.status_label}</Text>
+          </View>
         </View>
 
-        <View style={styles.dCard}>
-          <View style={styles.dCardRow}><Text style={styles.dCardLabel}>Total TTC</Text><Text style={styles.dTotal}>{fmtEuro(inv.amount_ttc)}</Text></View>
-          <View style={[styles.dCardRow, { marginTop: 6 }]}><Text style={styles.dMuted}>Total HT</Text><Text style={styles.dMuted}>{fmtEuro(inv.amount_ht)}</Text></View>
-          <View style={[styles.dCardRow, { marginTop: 4 }]}><Text style={styles.dMuted}>TVA</Text><Text style={styles.dMuted}>{fmtEuro(inv.amount_vat)}</Text></View>
-        </View>
-
-        <View style={styles.dCard}>
-          <InfoRow icon="calendar" label="Émis le" value={inv.issued_at} />
-          <InfoRow icon="time" label={isQuote ? 'Valable jusqu\'au' : 'Échéance'} value={inv.due_at} />
-          {!isQuote && <InfoRow icon="checkmark-done" label="Payée le" value={inv.paid_at} />}
+        {/* Carte d'identité (nœud 9:13) : lignes libellé / valeur séparées d'un filet. */}
+        <View style={[styles.dCard, { padding: 0 }]}>
+          {[
+            { label: 'Client', value: inv.client },
+            { label: 'Total HT', value: fmtEuro2(inv.amount_ht) },
+            { label: 'TVA', value: fmtEuro2(inv.amount_vat) },
+            { label: 'Émise le', value: inv.issued_at },
+            { label: isQuote ? 'Valable jusqu\'au' : 'Échéance', value: inv.due_at },
+            { label: 'Payée le', value: isQuote ? '' : inv.paid_at },
+          ].filter((r) => !!r.value).map((r, i) => (
+            <View key={r.label} style={[styles.dRow, i > 0 ? styles.fgSep : null]}>
+              <Text style={styles.dLabel}>{r.label}</Text>
+              <Text style={styles.dValue} numberOfLines={1}>{r.value}</Text>
+            </View>
+          ))}
         </View>
 
         {d.lines && d.lines.length > 0 && (
           <>
             <Text style={styles.dSection}>Détail</Text>
-            <View style={styles.dCard}>
+            <View style={[styles.dCard, { marginTop: 0, padding: 0 }]}>
               {d.lines.map((l, i) => (
-                <View key={i} style={[styles.lineRow, i > 0 ? styles.lineSep : null]}>
+                <View key={i} style={[styles.lineRow, { paddingHorizontal: 16 }, i > 0 ? styles.lineSep : null]}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={styles.lineLabel} numberOfLines={2}>{l.label}</Text>
-                    <Text style={styles.lineQty}>{l.qty} × {fmtEuro(l.unit)}{l.vat ? '  · TVA ' + l.vat + '%' : ''}</Text>
+                    <Text style={styles.lineQty}>{l.qty} × {fmtEuro2(l.unit)}{l.vat ? ' · TVA ' + l.vat + '%' : ''}</Text>
                   </View>
-                  <Text style={styles.lineTotal}>{fmtEuro(l.total)}</Text>
+                  <Text style={styles.lineTotal}>{fmtEuro2(l.total)}</Text>
                 </View>
               ))}
             </View>
@@ -1317,18 +1336,23 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction
             )}
           </>
         )}
-        {(onEdit && (isQuote ? (inv.status !== 'signed' && inv.status !== 'converted' && inv.status !== 'cancelled') : inv.status === 'draft')) && (
-          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onEdit(d, !!isQuote)}>
-            <Ionicons name="create-outline" size={18} color={BRAND} />
-            <Text style={styles.dWebBtnTxt}>{isQuote ? 'Modifier le devis' : 'Modifier la facture'}</Text>
-          </TouchableOpacity>
-        )}
-        {!!inv.public_uuid && (
-          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb((isQuote ? '/devis/' : '/facture/') + inv.public_uuid)}>
-            <Text style={styles.dWebBtnTxt}>{isQuote ? 'Aperçu client du devis' : 'Aperçu client de la facture'}</Text>
-            <Ionicons name="open-outline" size={18} color={BRAND} />
-          </TouchableOpacity>
-        )}
+        {/* Paire « Modifier » / « Aperçu client » côte à côte (nœud 9:48). */}
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {(onEdit && (isQuote ? (inv.status !== 'signed' && inv.status !== 'converted' && inv.status !== 'cancelled') : inv.status === 'draft')) && (
+            <TouchableOpacity accessibilityRole="button" style={[styles.dWebBtn, { flex: 1 }]} activeOpacity={0.85} onPress={() => onEdit(d, !!isQuote)}>
+              <Ionicons name="create-outline" size={17} color={INK_2} />
+              <Text style={styles.dWebBtnTxt}>Modifier</Text>
+            </TouchableOpacity>
+          )}
+          {!!inv.public_uuid && (
+            <TouchableOpacity accessibilityRole="button" style={[styles.dWebBtn, { flex: 1 }]} activeOpacity={0.85}
+              accessibilityLabel={isQuote ? 'Aperçu client du devis' : 'Aperçu client de la facture'}
+              onPress={() => onWeb((isQuote ? '/devis/' : '/facture/') + inv.public_uuid)}>
+              <Ionicons name="eye-outline" size={17} color={INK_2} />
+              <Text style={styles.dWebBtnTxt}>Aperçu client</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </ScrollView>
     </View>
   );
@@ -1543,7 +1567,7 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
         <View style={styles.pickedClient}>
           <View style={[styles.projPersonAv, { backgroundColor: selMem.color || BRAND }]}><Text style={styles.projPersonAvTxt}>{selMem.initials}</Text></View>
           <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selMem.name}</Text>{!!selMem.email && <Text style={styles.projPersonRole}>{selMem.email}</Text>}</View>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setAdherentId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setAdherentId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5D1" /></TouchableOpacity>
         </View>
       ) : (
         <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !mbrs.length && { opacity: 0.55 }]} activeOpacity={0.8} disabled={!mbrs.length} onPress={() => setMemPicker(true)}>
@@ -1643,7 +1667,7 @@ function CampaignForm({ onBack, onSubmit, submitting, error }) {
             placeholder="€" placeholderTextColor="#B6C0CC" keyboardType="decimal-pad" accessibilityLabel={'Montant du tarif ' + (i + 1)} />
           {tiers.length > 1 && (
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer le tarif" onPress={() => rmTier(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 8 }}>
-              <Ionicons name="close-circle" size={22} color="#CBD5E1" />
+              <Ionicons name="close-circle" size={22} color="#CBD5D1" />
             </TouchableOpacity>
           )}
         </View>
@@ -1720,7 +1744,7 @@ function EventForm({ onBack, onSubmit, submitting, error, projects }) {
       {selProj ? (
         <View style={styles.pickedClient}>
           <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selProj.name}</Text>{!!selProj.folder && <Text style={styles.projPersonRole}>{selProj.folder}</Text>}</View>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setProjectId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setProjectId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5D1" /></TouchableOpacity>
         </View>
       ) : (
         <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !projs.length && { opacity: 0.55 }]} activeOpacity={0.8} disabled={!projs.length} onPress={() => setProjPicker(true)}>
@@ -1807,7 +1831,7 @@ function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
       {selProj ? (
         <View style={styles.pickedClient}>
           <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selProj.name}</Text>{!!selProj.folder && <Text style={styles.projPersonRole}>{selProj.folder}</Text>}</View>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setProjectId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer" onPress={() => setProjectId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5D1" /></TouchableOpacity>
         </View>
       ) : (
         <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !projs.length && { opacity: 0.55 }]} activeOpacity={0.8} disabled={!projs.length} onPress={() => setProjPicker(true)}>
@@ -1824,7 +1848,7 @@ function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
           <TextInput style={[styles.fInput, { flex: 1 }]} value={s} onChangeText={(v) => setStep(i, v)} placeholder={'Étape ' + (i + 1)} placeholderTextColor="#B6C0CC" accessibilityLabel={'Étape ' + (i + 1)} />
           {steps.length > 1 && (
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer l'étape" onPress={() => rmStep(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 8 }}>
-              <Ionicons name="close-circle" size={22} color="#CBD5E1" />
+              <Ionicons name="close-circle" size={22} color="#CBD5D1" />
             </TouchableOpacity>
           )}
         </View>
@@ -1889,7 +1913,7 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients 
             <Text style={styles.pickedMail}>{client.email}</Text>
           </View>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setClient({ id: 0, client_type: 'company', display_name: '', email: '', phone: '', address_city: '' })} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="close-circle" size={22} color="#CBD5E1" />
+            <Ionicons name="close-circle" size={22} color="#CBD5D1" />
           </TouchableOpacity>
         </View>
       ) : (
@@ -2006,7 +2030,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
       {selFolder ? (
         <View style={styles.pickedClient}>
           <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selFolder.name}</Text></View>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setFolderId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setFolderId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5D1" /></TouchableOpacity>
         </View>
       ) : (
         <Field label="Nouveau dossier *" value={newFolder} onChangeText={setNewFolder} placeholder="Ex : Événements 2026" autoCapitalize="sentences" hint="Un dossier regroupe vos projets." />
@@ -2019,7 +2043,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
           <TextInput style={[styles.fInput, { flex: 1 }]} value={s} onChangeText={(v) => setStep(i, v)} placeholder={'Étape ' + (i + 1)} placeholderTextColor="#B6C0CC" />
           {steps.length > 4 && (
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => rmStep(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 8 }}>
-              <Ionicons name="close-circle" size={22} color="#CBD5E1" />
+              <Ionicons name="close-circle" size={22} color="#CBD5D1" />
             </TouchableOpacity>
           )}
         </View>
@@ -2038,7 +2062,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
         <View style={styles.pickedClient}>
           <View style={[styles.projPersonAv, { backgroundColor: selReferent.color || BRAND }]}><Text style={styles.projPersonAvTxt}>{selReferent.initials}</Text></View>
           <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selReferent.name}</Text><Text style={styles.projPersonRole}>{selReferent.role_label || 'Référent'}</Text></View>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setReferentId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5E1" /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setReferentId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5D1" /></TouchableOpacity>
         </View>
       ) : (
         <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !referents.length && { opacity: 0.55 }]} activeOpacity={0.8} disabled={!referents.length} onPress={() => setRefPickerOpen(true)}>
@@ -2065,7 +2089,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
               <TouchableOpacity accessibilityRole="button" key={id} style={styles.projTeamChip} activeOpacity={0.8} onPress={() => toggleTeam(id)}>
                 <View style={[styles.projTeamAv, { backgroundColor: m.color || BRAND }]}><Text style={styles.projTeamAvTxt}>{m.initials}</Text></View>
                 <Text style={styles.projTeamName}>{m.name}</Text>
-                <Ionicons name="close" size={15} color="#94A3B8" />
+                <Ionicons name="close" size={15} color="#8A968F" />
               </TouchableOpacity>
             );
           })}
@@ -2108,7 +2132,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
                   <TouchableOpacity accessibilityRole="button" key={m.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => toggleTeam(m.id)}>
                     <View style={[styles.projPersonAv, { backgroundColor: m.color || BRAND, marginRight: 12 }]}><Text style={styles.projPersonAvTxt}>{m.initials}</Text></View>
                     <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{m.name}</Text><Text style={styles.projPersonRole}>{m.role_label || m.role}</Text></View>
-                    <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? BRAND : '#CBD5E1'} />
+                    <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? BRAND : '#CBD5D1'} />
                   </TouchableOpacity>
                 );
               })}
@@ -2258,32 +2282,41 @@ function NativeAgenda({ data, loading, onRefresh, onOpen, onBack, onNew }) {
       {!events ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : events.length === 0 ? (
-        <View style={styles.emptyBox}><Ionicons name="calendar-outline" size={44} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun événement à venir</Text>
+        <View style={styles.emptyBox}><Ionicons name="calendar-outline" size={44} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun événement à venir</Text>
           <TouchableOpacity accessibilityRole="button" style={[styles.listNewBtn, { marginTop: 16 }]} activeOpacity={0.85} onPress={onNew}>
             <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvel événement</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
+        <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           <TouchableOpacity accessibilityRole="button" style={styles.listNewBtn} activeOpacity={0.85} onPress={onNew}>
-            <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvel événement</Text>
+            <Ionicons name="add" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvel événement</Text>
           </TouchableOpacity>
+          {/* Une carte par jour, l'heure colorée reprend l'accent de l'événement (nœud 18:18). */}
           {groups.map((g) => (
-            <View key={g.key} style={{ marginBottom: 18 }}>
+            <View key={g.key} style={{ marginBottom: 20 }}>
               <Text style={styles.agDay}>{g.label}</Text>
-              {g.items.map((e) => (
-                <TouchableOpacity accessibilityRole="button" key={e.id} style={styles.agCard} activeOpacity={0.85} onPress={() => onOpen(e.id)}>
-                  <View style={[styles.agBar, { backgroundColor: e.color }]} />
-                  <View style={styles.agTime}><Text style={styles.agTimeTxt}>{e.time}</Text></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.agTitle} numberOfLines={2}>{e.title}</Text>
-                    {(e.location || e.project) ? (
-                      <Text style={styles.agSub} numberOfLines={1}>{[e.location, e.project].filter(Boolean).join(' · ')}</Text>
-                    ) : null}
-                  </View>
-                </TouchableOpacity>
-              ))}
+              <View style={styles.agGroup}>
+                {g.items.map((e, i) => (
+                  <TouchableOpacity accessibilityRole="button" key={e.id} style={[styles.agCard, i > 0 ? styles.agSep : null]}
+                    activeOpacity={0.85} onPress={() => onOpen(e.id)}>
+                    <View style={[styles.agBar, { backgroundColor: e.color }]} />
+                    <View style={styles.agTime}><Text style={[styles.agTimeTxt, { color: e.color }]}>{e.time}</Text></View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.agTitle} numberOfLines={2}>{e.title}</Text>
+                      {(e.location || e.project) ? (
+                        <View style={styles.agMeta}>
+                          {!!e.location && <Ionicons name="location-outline" size={13} color={MUTE} />}
+                          {!!e.location && <Text style={styles.agSub} numberOfLines={1}>{e.location}</Text>}
+                          {!!e.project && <Ionicons name="people-outline" size={13} color={MUTE} />}
+                          {!!e.project && <Text style={styles.agSub} numberOfLines={1}>{e.project}</Text>}
+                        </View>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           ))}
         </ScrollView>
@@ -2313,7 +2346,7 @@ function NativeSubInvoices({ data, loading, onRefresh, onBack, onWeb }) {
             <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: s.nb_pending ? '#B45309' : '#047857' }]}>{s.nb_pending || 0}</Text><Text style={styles.miniKpiLbl}>En attente</Text></View>
           </View>
           {list.length === 0 ? (
-            <View style={styles.emptyBox}><Ionicons name="receipt-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune facture</Text></View>
+            <View style={styles.emptyBox}><Ionicons name="receipt-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune facture</Text></View>
           ) : list.map((inv, i) => {
             const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
             return (
@@ -2348,7 +2381,7 @@ function NativeChannels({ data, loading, onRefresh, onOpen, onBack }) {
       {!list ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : list.length === 0 ? (
-        <View style={styles.emptyBox}><Ionicons name="chatbubbles-outline" size={44} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun canal</Text></View>
+        <View style={styles.emptyBox}><Ionicons name="chatbubbles-outline" size={44} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun canal</Text></View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
@@ -2362,7 +2395,7 @@ function NativeChannels({ data, loading, onRefresh, onOpen, onBack }) {
                 <Text style={[styles.chanSub, c.unread ? { color: BRAND, fontWeight: '600' } : null]}>{c.unread ? 'Nouveaux messages' : (c.count + ' message' + (c.count > 1 ? 's' : ''))}</Text>
               </View>
               {c.unread ? <View style={styles.chanNewPill}><Text style={styles.chanNewTxt}>Nouveau</Text></View> : null}
-              <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -2408,7 +2441,7 @@ function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh
         </ScrollView>
       )}
       <View style={styles.composer}>
-        <TextInput style={styles.composerInput} value={text} onChangeText={setText} placeholder="Écrire un message…" placeholderTextColor="#94A3B8" multiline />
+        <TextInput style={styles.composerInput} value={text} onChangeText={setText} placeholder="Écrire un message…" placeholderTextColor="#8A968F" multiline />
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Envoyer" style={[styles.composerBtn, (!text.trim() || sending) ? { opacity: 0.5 } : null]} onPress={submit} activeOpacity={0.85}>
           {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="send" size={18} color="#fff" />}
         </TouchableOpacity>
@@ -2565,7 +2598,7 @@ const FC_TILES = [
   { key: 'blog', icon: 'newspaper', color: '#D97706', bg: '#FFFBEB', title: 'Blog SEO', desc: 'Générer & programmer' },
   { key: 'annuaire', icon: 'map', color: '#0369A1', bg: '#F0F9FF', title: 'Annuaire France', desc: 'Assos par région · dept · catégorie' },
   { key: 'prospects', icon: 'rocket', color: '#DB2777', bg: '#FDF2F8', title: 'Prospection', desc: 'Emailing ciblé · relances' },
-  { key: 'settings', icon: 'business', color: '#475569', bg: '#F1F5F9', title: 'Société', desc: 'Infos légales · TVA · IBAN' },
+  { key: 'settings', icon: 'business', color: '#45544D', bg: '#F1F5F4', title: 'Société', desc: 'Infos légales · TVA · IBAN' },
 ];
 
 function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, onLogout, onTile, onNotifs, notifCount }) {
@@ -2650,7 +2683,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
             {/* Notifications + Créer */}
             <View style={styles.fcActions}>
               <TouchableOpacity accessibilityRole="button" style={styles.fcNotif} activeOpacity={0.85} onPress={onNotifs}>
-                <Ionicons name="notifications" size={16} color="#334155" />
+                <Ionicons name="notifications" size={16} color="#45544D" />
                 <Text style={styles.fcNotifTxt}>Notifications</Text>
                 {notifCount > 0 ? <View style={styles.fcNotifPill}><Text style={styles.fcNotifPillTxt}>{notifCount > 99 ? '99+' : notifCount}</Text></View> : null}
               </TouchableOpacity>
@@ -2674,7 +2707,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
 
             {/* Ce mois-ci */}
             <View style={styles.fcMonthCard}>
-              <Text style={styles.fcMonthTitle}><Ionicons name="calendar-outline" size={13} color="#334155" /> Ce mois-ci</Text>
+              <Text style={styles.fcMonthTitle}><Ionicons name="calendar-outline" size={13} color="#45544D" /> Ce mois-ci</Text>
               <View style={styles.fcMonthRow}>
                 <View style={styles.fcMonthItem}><Text style={[styles.fcMonthVal, { color: '#059669' }]}>+{mo.new_orgs ?? 0}</Text><Text style={styles.fcMonthLb}>nouvelles assos</Text></View>
                 <View style={styles.fcMonthSep} />
@@ -2695,7 +2728,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
                   <TouchableOpacity accessibilityRole="button" key={i} style={styles.fcSignal} activeOpacity={0.85} onPress={() => onTile(s.screen || 'associations', s.filter)}>
                     <View style={[styles.fcSignalIc, { backgroundColor: s.bg }]}><Ionicons name={s.icon} size={16} color={s.tone} /></View>
                     <Text style={styles.fcSignalTxt} numberOfLines={2}>{s.t}</Text>
-                    <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={16} color="#CBD5D1" />
                   </TouchableOpacity>
                 ))}
               </>
@@ -2728,7 +2761,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
                     <Text style={styles.fcOrgSub}>{o.plan} · {o.nb_users} util. · {o.created}</Text>
                   </View>
                   {o.pending ? <View style={[styles.fcChip, { backgroundColor: '#EDE9FE' }]}><Text style={[styles.fcChipTxt, { color: '#6D28D9' }]}>À valider</Text></View>
-                    : <View style={[styles.fcChip, { backgroundColor: o.status === 'active' ? '#D1FAE5' : '#F1F5F9' }]}><Text style={[styles.fcChipTxt, { color: o.status === 'active' ? '#047857' : '#64748B' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
+                    : <View style={[styles.fcChip, { backgroundColor: o.status === 'active' ? '#D1FAE5' : '#F1F5F4' }]}><Text style={[styles.fcChipTxt, { color: o.status === 'active' ? '#047857' : '#5F6D66' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
                 </TouchableOpacity>
               ))}
               <TouchableOpacity accessibilityRole="button" style={styles.fcSeeAll} activeOpacity={0.8} onPress={() => onTile('associations', 'all')}>
@@ -2772,7 +2805,7 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
       {!orgs ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : orgs.length === 0 ? (
-        <View style={styles.emptyBox}><Ionicons name="business-outline" size={42} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune association</Text></View>
+        <View style={styles.emptyBox}><Ionicons name="business-outline" size={42} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune association</Text></View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
@@ -2788,9 +2821,9 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
                   </View>
                   {o.pending ? <View style={[styles.fcChip, { backgroundColor: '#EDE9FE' }]}><Text style={[styles.fcChipTxt, { color: '#6D28D9' }]}>À valider</Text></View>
                     : o.status === 'suspended' ? <View style={[styles.fcChip, { backgroundColor: '#FEE2E2' }]}><Text style={[styles.fcChipTxt, { color: '#B91C1C' }]}>Suspendue</Text></View>
-                    : o.status === 'cancelled' ? <View style={[styles.fcChip, { backgroundColor: '#F1F5F9' }]}><Text style={[styles.fcChipTxt, { color: '#64748B' }]}>Résiliée</Text></View>
-                    : <View style={[styles.fcChip, { backgroundColor: o.status === 'active' ? '#D1FAE5' : '#F1F5F9' }]}><Text style={[styles.fcChipTxt, { color: o.status === 'active' ? '#047857' : '#64748B' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
-                  <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginLeft: 4 }} />
+                    : o.status === 'cancelled' ? <View style={[styles.fcChip, { backgroundColor: '#F1F5F4' }]}><Text style={[styles.fcChipTxt, { color: '#5F6D66' }]}>Résiliée</Text></View>
+                    : <View style={[styles.fcChip, { backgroundColor: o.status === 'active' ? '#D1FAE5' : '#F1F5F4' }]}><Text style={[styles.fcChipTxt, { color: o.status === 'active' ? '#047857' : '#5F6D66' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
+                  <Ionicons name="chevron-forward" size={16} color="#CBD5D1" style={{ marginLeft: 4 }} />
                 </TouchableOpacity>
                 {o.unpaid_nb > 0 && <Text style={styles.fcOrgUnpaid}>⚠︎ {o.unpaid_nb} impayé{o.unpaid_nb > 1 ? 's' : ''} · {fmtEuro(o.unpaid_total)}</Text>}
                 <View style={styles.fcOrgActions}>
@@ -2983,15 +3016,15 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
             {PLAN_FEATURES.map((ft, i) => (
               <View key={ft.key} style={[styles.plnFeat, i > 0 && styles.odMemberBorder]}>
                 <Text style={styles.plnFeatLbl}>{ft.label}</Text>
-                <Switch value={!!form[ft.key]} onValueChange={(v) => setF(ft.key, v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
+                <Switch value={!!form[ft.key]} onValueChange={(v) => setF(ft.key, v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} />
               </View>
             ))}
           </View>
 
           <View style={styles.plnPanel}>
-            <View style={styles.plnFeat}><Text style={styles.plnFeatLbl}>Visible sur la page tarifs</Text><Switch value={!!form.is_visible} onValueChange={(v) => setF('is_visible', v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} /></View>
-            <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Plan mis en avant</Text><Switch value={!!form.is_featured} onValueChange={(v) => setF('is_featured', v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} /></View>
-            <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Sur devis (prix masqué)</Text><Switch value={!!form.is_custom_quote} onValueChange={(v) => setF('is_custom_quote', v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} /></View>
+            <View style={styles.plnFeat}><Text style={styles.plnFeatLbl}>Visible sur la page tarifs</Text><Switch value={!!form.is_visible} onValueChange={(v) => setF('is_visible', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
+            <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Plan mis en avant</Text><Switch value={!!form.is_featured} onValueChange={(v) => setF('is_featured', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
+            <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Sur devis (prix masqué)</Text><Switch value={!!form.is_custom_quote} onValueChange={(v) => setF('is_custom_quote', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
           </View>
 
           <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave}
@@ -3026,20 +3059,20 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
             <Ionicons name="add" size={18} color="#fff" /><Text style={styles.projNewTxt}>Nouveau plan</Text>
           </TouchableOpacity>
           {plans.length === 0 ? (
-            <View style={styles.emptyBox}><Ionicons name="pricetags-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun plan</Text></View>
+            <View style={styles.emptyBox}><Ionicons name="pricetags-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun plan</Text></View>
           ) : plans.map((p) => (
             <TouchableOpacity accessibilityRole="button" key={p.id} style={styles.plnCard} activeOpacity={0.85} onPress={() => openEdit(p)}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={styles.plnName} numberOfLines={1}>{p.name}</Text>
                   {p.is_featured && <View style={[styles.fcChip, { backgroundColor: '#FEF3C7' }]}><Text style={[styles.fcChipTxt, { color: '#B45309' }]}>Mis en avant</Text></View>}
-                  {!p.is_visible && <View style={[styles.fcChip, { backgroundColor: '#F1F5F9' }]}><Text style={[styles.fcChipTxt, { color: '#64748B' }]}>Masqué</Text></View>}
+                  {!p.is_visible && <View style={[styles.fcChip, { backgroundColor: '#F1F5F4' }]}><Text style={[styles.fcChipTxt, { color: '#5F6D66' }]}>Masqué</Text></View>}
                 </View>
                 <Text style={styles.plnSub} numberOfLines={1}>{p.slug} · {p.adoption} org{p.adoption > 1 ? 's' : ''}{p.tagline ? ' · ' + p.tagline : ''}</Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={styles.plnPrice}>{p.is_custom_quote ? 'Sur devis' : (p.price_eur > 0 ? fmtEuro(p.price_eur) : 'Gratuit')}</Text>
-                <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginTop: 3 }} />
+                <Ionicons name="chevron-forward" size={16} color="#CBD5D1" style={{ marginTop: 3 }} />
               </View>
             </TouchableOpacity>
           ))}
@@ -3066,7 +3099,7 @@ function NativeFounderProjects({ data, loading, filter, onFilter, onRefresh, onB
       {!list ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : list.length === 0 ? (
-        <View style={styles.emptyBox}><Ionicons name="folder-open-outline" size={42} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun projet</Text></View>
+        <View style={styles.emptyBox}><Ionicons name="folder-open-outline" size={42} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun projet</Text></View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
@@ -3096,7 +3129,7 @@ function NativeFounderActivity({ data, loading, onRefresh, onBack }) {
       {!list ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : list.length === 0 ? (
-        <View style={styles.emptyBox}><Ionicons name="pulse-outline" size={42} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune activité récente</Text></View>
+        <View style={styles.emptyBox}><Ionicons name="pulse-outline" size={42} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune activité récente</Text></View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
@@ -3145,7 +3178,7 @@ function NativeFounderSettings({ data, loading, busy, onRefresh, onBack, onSave 
               type === 'switch' ? (
                 <View key={key} style={styles.blogSwitchRow}>
                   <Text style={[styles.blogSwitchTitle, { flex: 1 }]}>{label}</Text>
-                  <Switch value={!!form[key]} onValueChange={(v) => setF(key, v)} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
+                  <Switch value={!!form[key]} onValueChange={(v) => setF(key, v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} />
                 </View>
               ) : (
                 <View key={key}>
@@ -3203,7 +3236,7 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
               <Ionicons name="refresh" size={18} color="#EAF2EE" />
             </TouchableOpacity>
           </View>
-          <Text style={[styles.fcSub, { marginTop: 8 }]} numberOfLines={1}><Ionicons name="location-outline" size={12} color="#64748B" /> {crumb()}</Text>
+          <Text style={[styles.fcSub, { marginTop: 8 }]} numberOfLines={1}><Ionicons name="location-outline" size={12} color="#5F6D66" /> {crumb()}</Text>
         </LinearGradient>
       </View>
 
@@ -3222,7 +3255,7 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
               </View>
               {(!data.regions || !data.regions.length) ? (
                 <View style={styles.dirEmpty}>
-                  <Ionicons name="cloud-download-outline" size={34} color="#94A3B8" />
+                  <Ionicons name="cloud-download-outline" size={34} color="#8A968F" />
                   <Text style={styles.dirEmptyT}>Annuaire vide</Text>
                   <Text style={styles.dirEmptyS}>Lance sur le serveur :{"\n"}php founder-annuaire-france.php</Text>
                 </View>
@@ -3231,7 +3264,7 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
                   <View style={[styles.dirIco, { backgroundColor: '#F0F9FF' }]}><Ionicons name="map" size={18} color="#0369A1" /></View>
                   <Text style={styles.dirRowT}>{r.region}</Text>
                   <View style={styles.dirCount}><Text style={styles.dirCountT}>{r.total.toLocaleString('fr-FR')}</Text></View>
-                  <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                  <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
                 </TouchableOpacity>
               ))}
             </>
@@ -3249,7 +3282,7 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
                     <Text style={styles.dirRowT}>{d.name}</Text>
                     <Text style={styles.dirRowS}>{d.total.toLocaleString('fr-FR')} associations</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                  <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
                 </TouchableOpacity>
                 <View style={styles.dirChips}>
                   {Object.entries(d.by_cat || {}).map(([c, n]) => (
@@ -3305,13 +3338,13 @@ function NativeFounderDirectory({ data, loading, busy, nav, onBack, onRefresh, o
 
 /* Fondateur — Prospection conforme (natif) : import, séquences, suivi */
 const PROSPECT_STATUS = {
-  new: { label: 'Nouveau', color: '#64748B', bg: '#F1F5F9' },
+  new: { label: 'Nouveau', color: '#5F6D66', bg: '#F1F5F4' },
   queued: { label: 'En file', color: '#B45309', bg: '#FEF3C7' },
   contacted: { label: 'Contacté', color: '#2563EB', bg: '#EFF6FF' },
   engaged: { label: 'Engagé', color: '#7C3AED', bg: '#F5F3FF' },
   replied: { label: 'A répondu', color: '#047857', bg: '#D1FAE5' },
   booked: { label: 'RDV pris', color: '#047857', bg: '#D1FAE5' },
-  unsubscribed: { label: 'Désinscrit', color: '#94A3B8', bg: '#F1F5F9' },
+  unsubscribed: { label: 'Désinscrit', color: '#8A968F', bg: '#F1F5F4' },
   bounced: { label: 'Rejeté', color: '#B91C1C', bg: '#FEE2E2' },
 };
 function NativeFounderProspects({ data, loading, busy, onRefresh, onBack, onImport, onQueue, onStatus, onDelete }) {
@@ -3374,7 +3407,7 @@ function NativeFounderProspects({ data, loading, busy, onRefresh, onBack, onImpo
 
           {/* Liste */}
           {list.length === 0 ? (
-            <View style={styles.emptyBox}><Ionicons name="people-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun prospect — importez vos contacts</Text></View>
+            <View style={styles.emptyBox}><Ionicons name="people-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun prospect — importez vos contacts</Text></View>
           ) : list.map((p) => {
             const s = PROSPECT_STATUS[p.status] || PROSPECT_STATUS.new;
             return (
@@ -3424,7 +3457,7 @@ function NativeFounderBilling({ data, loading, filter, onFilter, onRefresh, onBa
         {!list ? (
           <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
         ) : list.length === 0 ? (
-          <View style={styles.emptyBox}><Ionicons name="card-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune facture</Text></View>
+          <View style={styles.emptyBox}><Ionicons name="card-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune facture</Text></View>
         ) : list.map((inv) => {
           const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
           const busy = busyId === inv.id;
@@ -3485,7 +3518,7 @@ function NativeFounderStats({ data, loading, onBack, onRefresh }) {
             </View>
             {curve.length > 0 && (
               <>
-                <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12, color: '#64748B' }]}>NOUVELLES ASSOCIATIONS · 6 MOIS</Text>
+                <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12, color: '#5F6D66' }]}>NOUVELLES ASSOCIATIONS · 6 MOIS</Text>
                 <View style={styles.fcBars}>
                   {curve.map((c, i) => (
                     <View key={i} style={styles.fcBarCol}>
@@ -3571,7 +3604,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
 
         {queue.length > 0 && (
           <>
-            <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 10, color: '#64748B' }]}>PROGRAMMÉS · FILE D'ATTENTE</Text>
+            <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 10, color: '#5F6D66' }]}>PROGRAMMÉS · FILE D'ATTENTE</Text>
             {queue.map((t) => (
               <View key={t.id} style={styles.blogQueueRow}>
                 <View style={styles.blogQueueIc}><Ionicons name="time" size={15} color="#B45309" /></View>
@@ -3587,7 +3620,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
           </>
         )}
 
-        <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 10, color: '#64748B' }]}>ARTICLES</Text>
+        <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 10, color: '#5F6D66' }]}>ARTICLES</Text>
         <View style={styles.fcFilters2}>
           {BLOG_ART_FILTERS.map((f) => (
             <TouchableOpacity accessibilityRole="button" key={f.key} style={[styles.fcFilter, filter === f.key && styles.fcFilterOn]} activeOpacity={0.8} onPress={() => onFilter(f.key)}>
@@ -3598,16 +3631,16 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
         {!list ? (
           <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
         ) : list.length === 0 ? (
-          <View style={styles.emptyBox}><Ionicons name="newspaper-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun article</Text></View>
+          <View style={styles.emptyBox}><Ionicons name="newspaper-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun article</Text></View>
         ) : list.map((a) => (
           <TouchableOpacity accessibilityRole="button" key={a.id} style={[styles.fcArtCard, { marginTop: 10 }]} activeOpacity={a.url ? 0.85 : 1} onPress={() => a.url && onWeb(a.url)}>
-            <View style={[styles.fcArtIc, { backgroundColor: a.published ? '#ECFDF5' : '#F1F5F9' }]}>
-              <Ionicons name={a.published ? 'newspaper' : 'document-text-outline'} size={18} color={a.published ? '#059669' : '#94A3B8'} />
+            <View style={[styles.fcArtIc, { backgroundColor: a.published ? '#ECFDF5' : '#F1F5F4' }]}>
+              <Ionicons name={a.published ? 'newspaper' : 'document-text-outline'} size={18} color={a.published ? '#059669' : '#8A968F'} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.fcOrgName} numberOfLines={2}>{a.title}</Text>
               <Text style={styles.fcOrgSub} numberOfLines={1}>{[a.category, a.reading ? a.reading + ' min' : ''].filter(Boolean).join(' · ')}</Text>
-              <Text style={styles.blogArtDate}><Ionicons name={a.published ? 'calendar-outline' : 'create-outline'} size={11} color="#94A3B8" /> {a.published ? ('Publié le ' + (a.pub_date || a.date)) : ('Créé le ' + a.date)}</Text>
+              <Text style={styles.blogArtDate}><Ionicons name={a.published ? 'calendar-outline' : 'create-outline'} size={11} color="#8A968F" /> {a.published ? ('Publié le ' + (a.pub_date || a.date)) : ('Créé le ' + a.date)}</Text>
             </View>
             <View style={[styles.fcChip, { backgroundColor: a.published ? '#D1FAE5' : '#FEF3C7' }]}>
               <Text style={[styles.fcChipTxt, { color: a.published ? '#047857' : '#B45309' }]}>{a.published ? 'Publié' : 'Brouillon'}</Text>
@@ -3623,7 +3656,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
               <View style={styles.blogModalHandle} />
               <View style={styles.blogModalHead}>
                 <Text style={styles.blogModalTitle}><Ionicons name="sparkles-outline" size={17} color={INK} /> Génération IA</Text>
-                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close" size={22} color="#94A3B8" /></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close" size={22} color="#8A968F" /></TouchableOpacity>
               </View>
 
               {genBusy ? (
@@ -3676,14 +3709,14 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
                   </View>
                   {!bulk && (
                     <>
-                      <Text style={styles.blogLabel}>Mots-clés SEO <Text style={{ color: '#94A3B8', fontWeight: '400' }}>(optionnel)</Text></Text>
+                      <Text style={styles.blogLabel}>Mots-clés SEO <Text style={{ color: '#8A968F', fontWeight: '400' }}>(optionnel)</Text></Text>
                       <TextInput style={styles.blogInput} value={keywords} onChangeText={setKeywords} placeholder="séparés par des virgules" placeholderTextColor="#9AA7A1" autoCapitalize="none" />
                       <View style={styles.blogSwitchRow}>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.blogSwitchTitle}>Publier tout de suite</Text>
                           <Text style={styles.blogSwitchSub}>Sinon, l'article est créé en brouillon</Text>
                         </View>
-                        <Switch value={publishNow} onValueChange={setPublishNow} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
+                        <Switch value={publishNow} onValueChange={setPublishNow} trackColor={{ true: BRAND, false: '#CBD5D1' }} />
                       </View>
                     </>
                   )}
@@ -3745,7 +3778,7 @@ function NativeFounderSupport({ data, loading, filter, onFilter, onBack, onRefre
         {!list ? (
           <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
         ) : list.length === 0 ? (
-          <View style={styles.emptyBox}><Ionicons name="chatbubbles-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun ticket</Text></View>
+          <View style={styles.emptyBox}><Ionicons name="chatbubbles-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun ticket</Text></View>
         ) : list.map((t) => {
           const km = INV_KIND[t.status_kind] || INV_KIND.wait;
           return (
@@ -3909,11 +3942,11 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
 
         <View style={styles.blogSwitchRow}>
           <View style={{ flex: 1 }}><Text style={styles.blogSwitchTitle}>Domaine personnalisé</Text><Text style={styles.blogSwitchSub}>Add-on marque blanche · +10 €/mois</Text></View>
-          <Switch value={addonDomain} onValueChange={setAddonDomain} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
+          <Switch value={addonDomain} onValueChange={setAddonDomain} trackColor={{ true: BRAND, false: '#CBD5D1' }} />
         </View>
         <View style={styles.blogSwitchRow}>
           <View style={{ flex: 1 }}><Text style={styles.blogSwitchTitle}>Envoyer l'email de bienvenue</Text><Text style={styles.blogSwitchSub}>Avec les identifiants de connexion</Text></View>
-          <Switch value={sendMail} onValueChange={setSendMail} trackColor={{ true: BRAND, false: '#CBD5E1' }} />
+          <Switch value={sendMail} onValueChange={setSendMail} trackColor={{ true: BRAND, false: '#CBD5D1' }} />
         </View>
         <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSubmit && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSubmit}
           onPress={() => onSubmit({ org_name: name.trim(), first_name: first.trim(), last_name: last.trim(), billing_email: email.trim(), plan_id: planId, custom_password: pass.trim(), payment_mode: payMode, period_days: periodDays, with_addon_domain: addonDomain ? 1 : 0, send_welcome_email: sendMail ? 1 : 0 })}>
@@ -3933,14 +3966,14 @@ function NativeFounderContacts({ data, loading, onBack, onRefresh, onOpen }) {
       {!list ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : list.length === 0 ? (
-        <View style={styles.emptyBox}><Ionicons name="mail-outline" size={42} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune demande</Text></View>
+        <View style={styles.emptyBox}><Ionicons name="mail-outline" size={42} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune demande</Text></View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           {list.map((c) => (
             <TouchableOpacity accessibilityRole="button" key={c.id} style={styles.ctcCard} activeOpacity={0.85} onPress={() => onOpen(c)}>
               <View style={styles.ctcTop}>
-                <View style={[styles.ctcAv, { backgroundColor: c.is_new ? '#EFF6FF' : '#F1F5F9' }]}><Ionicons name="person" size={17} color={c.is_new ? '#2563EB' : '#94A3B8'} /></View>
+                <View style={[styles.ctcAv, { backgroundColor: c.is_new ? '#EFF6FF' : '#F1F5F4' }]}><Ionicons name="person" size={17} color={c.is_new ? '#2563EB' : '#8A968F'} /></View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.fcOrgName} numberOfLines={1}>{c.name}{c.is_new ? '  🔵' : ''}</Text>
                   <Text style={styles.fcOrgSub} numberOfLines={1}>{[c.org, c.date].filter(Boolean).join(' · ')}</Text>
@@ -4016,7 +4049,7 @@ function NativeQuotes({ data, loading, onRefresh, onOpen, onNew, onBack }) {
             <Ionicons name="add" size={18} color="#fff" /><Text style={styles.projNewTxt}>Nouveau devis</Text>
           </TouchableOpacity>
           {list.length === 0 ? (
-            <View style={styles.emptyBox}><Ionicons name="document-text-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun devis</Text></View>
+            <View style={styles.emptyBox}><Ionicons name="document-text-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun devis</Text></View>
           ) : list.map((q) => {
             const km = INV_KIND[q.status_kind] || INV_KIND.wait;
             return (
@@ -4044,7 +4077,7 @@ function NativeStats({ data, loading, onRefresh, onBack, cockpit, cockpitLoading
     return (
       <View style={styles.detailWrap}>
         <DetailHeader title="Cockpit" onBack={onBack} />
-        <View style={styles.emptyBox}><Ionicons name="lock-closed" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>{data.message || 'Réservé aux administrateurs.'}</Text></View>
+        <View style={styles.emptyBox}><Ionicons name="lock-closed" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>{data.message || 'Réservé aux administrateurs.'}</Text></View>
       </View>
     );
   }
@@ -4123,7 +4156,7 @@ function NativeStats({ data, loading, onRefresh, onBack, cockpit, cockpitLoading
             <Text style={styles.dSection}>Meilleurs clients</Text>
             <View style={styles.dCard}>
               {top.map((c, i) => (
-                <View key={i} style={[styles.bilanRow, i > 0 ? { borderTopWidth: 1, borderTopColor: '#F1F5F9' } : null]}>
+                <View key={i} style={[styles.bilanRow, i > 0 ? { borderTopWidth: 1, borderTopColor: '#F1F5F4' } : null]}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={styles.bilanLabel} numberOfLines={1}>{c.name}</Text>
                     <Text style={styles.bilanCount}>{c.nb} facture{c.nb > 1 ? 's' : ''}</Text>
@@ -4154,13 +4187,13 @@ function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead,
       {!list ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : list.length === 0 ? (
-        <View style={styles.emptyBox}><Ionicons name="notifications-off-outline" size={44} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune notification</Text></View>
+        <View style={styles.emptyBox}><Ionicons name="notifications-off-outline" size={44} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune notification</Text></View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           {list.map((n) => (
             <TouchableOpacity accessibilityRole="button" key={n.id} style={[styles.notifCard, !n.read ? styles.notifUnread : null]} activeOpacity={0.85} onPress={() => onPress(n)}>
-              <View style={[styles.notifIcon, !n.read ? { backgroundColor: '#ECFDF5' } : null]}><Ionicons name={n.icon} size={18} color={!n.read ? BRAND : '#94A3B8'} /></View>
+              <View style={[styles.notifIcon, !n.read ? { backgroundColor: '#ECFDF5' } : null]}><Ionicons name={n.icon} size={18} color={!n.read ? BRAND : '#8A968F'} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.notifTitle, !n.read ? { fontWeight: '700' } : null]} numberOfLines={2}>{n.title}</Text>
                 {!!n.body && <Text style={styles.notifBody} numberOfLines={2}>{n.body}</Text>}
@@ -4202,7 +4235,7 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, onNewCampa
             </TouchableOpacity>
           )}
           {list.length === 0 ? (
-            <View style={styles.emptyBox}><Ionicons name="card-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune campagne</Text>
+            <View style={styles.emptyBox}><Ionicons name="card-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune campagne</Text>
               <Text style={styles.emptySub}>Créez votre première campagne pour commencer à encaisser les cotisations.</Text>
               {canManage && (
                 <TouchableOpacity accessibilityRole="button" style={[styles.listNewBtn, { marginTop: 16, paddingHorizontal: 20 }]} activeOpacity={0.85} onPress={onNewCampaign}>
@@ -4217,13 +4250,13 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, onNewCampa
                   <Text style={styles.projName} numberOfLines={1}>{c.name}</Text>
                   <Text style={styles.projFolder}>{c.year} · {c.paid} payé{c.paid > 1 ? 's' : ''} · {c.pending} en attente</Text>
                 </View>
-                <View style={[styles.projChip, { backgroundColor: c.active ? '#D1FAE5' : '#F1F5F9' }]}>
-                  <Text style={[styles.projChipTxt, { color: c.active ? '#065F46' : '#64748B' }]}>{c.active ? 'Active' : 'Clôturée'}</Text>
+                <View style={[styles.projChip, { backgroundColor: c.active ? '#D1FAE5' : '#F1F5F4' }]}>
+                  <Text style={[styles.projChipTxt, { color: c.active ? '#065F46' : '#5F6D66' }]}>{c.active ? 'Active' : 'Clôturée'}</Text>
                 </View>
               </View>
               <View style={[styles.dCardRow, { marginTop: 10 }]}>
                 <Text style={[styles.dTotal, { fontSize: 18 }]}>{fmtEuro(c.total)}</Text>
-                {onOpen ? <Ionicons name="chevron-forward" size={18} color="#94A3B8" /> : null}
+                {onOpen ? <Ionicons name="chevron-forward" size={18} color="#8A968F" /> : null}
               </View>
             </TouchableOpacity>
           ))}
@@ -4255,7 +4288,7 @@ function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onOp
             </TouchableOpacity>
           )}
           {list.length === 0 ? (
-            <View style={styles.emptyBox}><Ionicons name="cash-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune subvention</Text></View>
+            <View style={styles.emptyBox}><Ionicons name="cash-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune subvention</Text></View>
           ) : list.map((g) => {
             const km = INV_KIND[g.status_kind] || INV_KIND.wait;
             return (
@@ -4337,60 +4370,75 @@ function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayme
   return (
     <View style={styles.detailWrap}>
       <DetailHeader title={c.name} onBack={onBack} onAction={canManage ? onNewPayment : null} actionIcon="add" />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}
+      <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
-        <View style={[styles.projChip, { backgroundColor: c.active ? '#D1FAE5' : '#F1F5F9', alignSelf: 'flex-start' }]}>
-          <Text style={[styles.projChipTxt, { color: c.active ? '#065F46' : '#64748B' }]}>{c.active ? 'Campagne active' : 'Clôturée'}{c.year ? ' · ' + c.year : ''}</Text>
+        <View style={[styles.projChip, { backgroundColor: c.active ? '#D1FAE5' : '#F1F5F4', alignSelf: 'flex-start' }]}>
+          <Text style={[styles.projChipTxt, { color: c.active ? '#065F46' : MUTE }]}>{c.active ? '● Campagne active' : 'Clôturée'}{c.year ? ' · ' + c.year : ''}</Text>
         </View>
         {!!c.closes_at && <Text style={[styles.dMuted, { marginTop: 10 }]}>Clôture le {c.closes_at}</Text>}
         {!!c.description && <DescBlock label="Description" text={c.description} tint="#2563EB" />}
 
-        <View style={[styles.miniKpiRow, { marginTop: 16 }]}>
-          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro2(s.amount_paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé · {s.count_paid || 0}</Text></View>
-          <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#B45309' }]}>{fmtEuro2(s.amount_pending)}</Text><Text style={styles.miniKpiLbl}>En attente · {s.count_pending || 0}</Text></View>
+        {/* Deux cartes statistiques (nœud 10:14) : libellé capitales au-dessus de la valeur. */}
+        <View style={styles.miniKpiRow}>
+          <View style={styles.miniKpi}>
+            <Text style={styles.miniKpiLbl}>Encaissé</Text>
+            <Text style={styles.miniKpiVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{fmtEuro2(s.amount_paid)}</Text>
+            <Text style={styles.fgKpiSub}>{s.count_paid || 0} paiement{(s.count_paid || 0) > 1 ? 's' : ''}</Text>
+          </View>
+          <View style={styles.miniKpi}>
+            <Text style={styles.miniKpiLbl}>En attente</Text>
+            <Text style={[styles.miniKpiVal, { color: '#B45309' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{fmtEuro2(s.amount_pending)}</Text>
+            <Text style={styles.fgKpiSub}>{s.count_pending || 0} en attente</Text>
+          </View>
         </View>
 
         {tiers.length > 0 && (
           <>
             <Text style={styles.dSection}>Tarifs proposés</Text>
-            {tiers.map((t) => (
-              <View key={t.id} style={styles.dInfoRow}>
-                <Text style={styles.dLabel}>{t.name}</Text>
-                <Text style={styles.dValue}>{fmtEuro2(t.amount)}</Text>
-              </View>
-            ))}
+            <View style={styles.ckTierRow}>
+              {tiers.slice(0, 3).map((t, i) => (
+                <View key={t.id} style={[styles.ckTier, i === 0 ? styles.ckTierOn : null]}>
+                  <Text style={[styles.ckTierName, i === 0 ? styles.ckTierNameOn : null]} numberOfLines={1}>{t.name}</Text>
+                  <Text style={[styles.ckTierAmt, i === 0 ? styles.ckTierAmtOn : null]} numberOfLines={1}>{fmtEuro2(t.amount)}</Text>
+                </View>
+              ))}
+            </View>
           </>
         )}
 
         <Text style={styles.dSection}>Paiements ({payments.length})</Text>
         {payments.length === 0 ? (
           <Text style={styles.dMuted}>Aucun paiement enregistré pour le moment.</Text>
-        ) : payments.map((p) => (
-          <View key={p.id} style={styles.ckPayRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.ckPayName} numberOfLines={1}>{p.name}</Text>
-              <Text style={styles.ckPaySub} numberOfLines={1}>
-                {[p.method_label, p.tier, p.paid_at || p.created_at].filter(Boolean).join(' · ')}
-              </Text>
-              <View style={[styles.projChip, { backgroundColor: p.status_bg, alignSelf: 'flex-start', marginTop: 6 }]}>
-                <Text style={[styles.projChipTxt, { color: p.status_color }]}>{p.status_label}</Text>
+        ) : (
+          <View style={[styles.dCard, { marginTop: 0, padding: 0 }]}>
+            {payments.map((p, i) => (
+              <View key={p.id} style={[styles.ckPayRow, i > 0 ? styles.fgSep : null]}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.ckPayName} numberOfLines={1}>{p.name}</Text>
+                  <Text style={styles.ckPaySub} numberOfLines={1}>
+                    {[p.method_label, p.tier, p.paid_at || p.created_at].filter(Boolean).join(' · ')}
+                  </Text>
+                  <View style={[styles.ckPayChip, { backgroundColor: p.status_bg }]}>
+                    <Text style={[styles.ckPayChipTxt, { color: p.status_color }]}>{p.status_label}</Text>
+                  </View>
+                </View>
+                <Text style={styles.ckPayAmt}>{fmtEuro2(p.amount)}</Text>
+                {canManage && p.status === 'pending' && (
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Marquer encaissé" style={styles.payAct} activeOpacity={0.8}
+                    disabled={!!busy} onPress={() => confirmAct(p, 'mark_paid')}>
+                    {busy === p.id ? <ActivityIndicator size="small" color="#065F46" /> : <Ionicons name="checkmark" size={18} color="#065F46" />}
+                  </TouchableOpacity>
+                )}
+                {d.is_admin && p.status !== 'cancelled' && (
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Annuler le paiement" style={[styles.payAct, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}
+                    activeOpacity={0.8} disabled={!!busy} onPress={() => confirmAct(p, 'cancel')}>
+                    {busy === p.id ? <ActivityIndicator size="small" color="#991B1B" /> : <Ionicons name="close" size={18} color="#991B1B" />}
+                  </TouchableOpacity>
+                )}
               </View>
-            </View>
-            <Text style={styles.ckPayAmt}>{fmtEuro2(p.amount)}</Text>
-            {canManage && p.status === 'pending' && (
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Marquer encaissé" style={styles.payAct} activeOpacity={0.8}
-                disabled={!!busy} onPress={() => confirmAct(p, 'mark_paid')}>
-                {busy === p.id ? <ActivityIndicator size="small" color="#065F46" /> : <Ionicons name="checkmark" size={20} color="#065F46" />}
-              </TouchableOpacity>
-            )}
-            {d.is_admin && p.status !== 'cancelled' && (
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Annuler le paiement" style={[styles.payAct, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}
-                activeOpacity={0.8} disabled={!!busy} onPress={() => confirmAct(p, 'cancel')}>
-                {busy === p.id ? <ActivityIndicator size="small" color="#991B1B" /> : <Ionicons name="close" size={19} color="#991B1B" />}
-              </TouchableOpacity>
-            )}
+            ))}
           </View>
-        ))}
+        )}
 
         {canManage && (
           <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={onNewPayment}>
@@ -4435,40 +4483,76 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
     <View style={styles.detailWrap}>
       <DetailHeader title="Subvention" onBack={onBack} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+      <ScrollView contentContainerStyle={styles.detailContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
         <Text style={styles.dBigTitle}>{g.name}</Text>
-        <Text style={[styles.dMuted, { marginTop: 4 }]}>{[g.funder, g.funder_type].filter(Boolean).join(' · ')}</Text>
+        <Text style={[styles.dMuted, { marginTop: 8 }]}>{[g.funder, g.funder_type].filter(Boolean).join(' · ')}</Text>
         <View style={[styles.projChip, { backgroundColor: km.bg, alignSelf: 'flex-start', marginTop: 12 }]}>
           <Text style={[styles.projChipTxt, { color: km.color }]}>{g.status_label}</Text>
         </View>
 
-        <View style={[styles.miniKpiRow, { marginTop: 16 }]}>
-          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{g.requested != null ? fmtEuro(g.requested) : '—'}</Text><Text style={styles.miniKpiLbl}>Demandé</Text></View>
-          <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: g.granted ? BRAND : INK }]}>{g.granted != null ? fmtEuro(g.granted) : '—'}</Text><Text style={styles.miniKpiLbl}>Accordé</Text></View>
+        {/* Demandé / Accordé (nœud 14:13) : la carte « Accordé » reste grise tant qu'il n'y a pas de montant. */}
+        <View style={styles.miniKpiRow}>
+          <View style={styles.miniKpi}>
+            <Text style={styles.miniKpiLbl}>Demandé</Text>
+            <Text style={[styles.miniKpiVal, { color: INK, fontSize: 21 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{g.requested != null ? fmtEuro(g.requested) : '—'}</Text>
+          </View>
+          <View style={styles.miniKpi}>
+            <Text style={styles.miniKpiLbl}>Accordé</Text>
+            <Text style={[styles.miniKpiVal, { color: g.granted != null ? BRAND : MUTE, fontSize: 21 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{g.granted != null ? fmtEuro(g.granted) : '—'}</Text>
+          </View>
         </View>
 
         <Text style={styles.dSection}>Dossier</Text>
-        {!!g.deadline && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Date limite de dépôt</Text><Text style={styles.dValue}>{g.deadline}</Text></View>}
-        {!!g.submitted_at && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Déposé le</Text><Text style={styles.dValue}>{g.submitted_at}</Text></View>}
-        {!!g.decision_at && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Décision</Text><Text style={styles.dValue}>{g.decision_at}</Text></View>}
-        {!!g.deadline_report && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Bilan attendu</Text><Text style={styles.dValue}>{g.deadline_report}</Text></View>}
-        {!!g.project && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Projet lié</Text><Text style={styles.dValue}>{g.project}</Text></View>}
-        {!!g.cerfa && <View style={styles.dInfoRow}><Text style={styles.dLabel}>CERFA</Text><Text style={styles.dValue}>{g.cerfa}</Text></View>}
-        {!!g.reference && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Référence</Text><Text style={styles.dValue}>{g.reference}</Text></View>}
-        {!!g.last_relance && <View style={styles.dInfoRow}><Text style={styles.dLabel}>Dernière relance</Text><Text style={styles.dValue}>{g.last_relance}</Text></View>}
+        {(() => {
+          const rows = [
+            { label: 'Date limite de dépôt', value: g.deadline },
+            { label: 'Déposé le', value: g.submitted_at },
+            { label: 'Décision', value: g.decision_at },
+            { label: 'Bilan attendu', value: g.deadline_report },
+            { label: 'Projet lié', value: g.project },
+            { label: 'CERFA', value: g.cerfa },
+            { label: 'Référence', value: g.reference },
+            { label: 'Dernière relance', value: g.last_relance },
+          ].filter((r) => !!r.value);
+          if (!rows.length) return null;
+          return (
+            <View style={[styles.dCard, { marginTop: 0, padding: 0 }]}>
+              {rows.map((r, i) => (
+                <View key={r.label} style={[styles.dRow, { paddingVertical: 12 }, i > 0 ? styles.fgSep : null]}>
+                  <Text style={styles.dLabel}>{r.label}</Text>
+                  <Text style={styles.dValue} numberOfLines={1}>{r.value}</Text>
+                </View>
+              ))}
+            </View>
+          );
+        })()}
         {!!g.description && <DescBlock label="Objet" text={g.description} tint="#2563EB" />}
 
         <Text style={styles.dSection}>Étapes {steps.length > 0 ? '(' + doneCount + '/' + steps.length + ')' : ''}</Text>
-        {steps.length === 0 && <Text style={styles.dMuted}>Aucune étape. Ajoutez votre checklist ci-dessous.</Text>}
-        {steps.map((s) => (
-          <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: !!s.done }} key={s.id} style={styles.grStepRow}
-            activeOpacity={canManage ? 0.7 : 1} disabled={!canManage || !!busy} onPress={() => onAction('toggle_step', { step_id: s.id })}>
-            <Ionicons name={s.done ? 'checkbox' : 'square-outline'} size={23} color={s.done ? BRAND : '#CBD5E1'} />
-            <Text style={[styles.grStepTxt, s.done && styles.grStepTxtDone]}>{s.title}</Text>
-            {!!s.done_at && <Text style={styles.ckPaySub}>{s.done_at}</Text>}
-          </TouchableOpacity>
-        ))}
+        {steps.length === 0 ? (
+          <Text style={styles.dMuted}>Aucune étape. Ajoutez votre checklist ci-dessous.</Text>
+        ) : (
+          <>
+            {/* Barre de progression (nœud 14:32) puis la checklist en carte. */}
+            <View style={styles.grProgTrack}>
+              <View style={[styles.grProgFill, { width: Math.round((doneCount / steps.length) * 100) + '%' }]} />
+            </View>
+            <View style={[styles.dCard, { marginTop: 0, padding: 0 }]}>
+              {steps.map((s, i) => (
+                <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: !!s.done }} key={s.id}
+                  style={[styles.grStepRow, i > 0 ? styles.fgSep : null]}
+                  activeOpacity={canManage ? 0.7 : 1} disabled={!canManage || !!busy} onPress={() => onAction('toggle_step', { step_id: s.id })}>
+                  <View style={[styles.grStepBox, s.done && styles.grStepBoxOn]}>
+                    {s.done ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+                  </View>
+                  <Text style={[styles.grStepTxt, s.done && styles.grStepTxtDone]}>{s.title}</Text>
+                  {!!s.done_at && <Text style={styles.grStepDate}>{s.done_at}</Text>}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
         {canManage && (
           <View style={[styles.formRow2, { marginTop: 12, alignItems: 'center' }]}>
             <TextInput style={[styles.fInput, { flex: 1 }]} value={stepTitle} onChangeText={setStepTitle}
@@ -4482,30 +4566,35 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
 
         {canManage && !g.archived && (
           <>
-            <Text style={styles.dSection}>Actions</Text>
-            <TouchableOpacity accessibilityRole="button" style={[styles.dActBtn, { marginTop: 0 }, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
-              disabled={!!busy} onPress={() => setStatusOpen(true)}>
-              <Ionicons name="flag" size={18} color="#065F46" />
-              <Text style={styles.dActBtnTxt}>Changer le statut</Text>
-            </TouchableOpacity>
-            <TouchableOpacity accessibilityRole="button" style={[styles.dActBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
-              disabled={!!busy} onPress={() => Alert.alert('Relance', 'Enregistrer une relance envoyée au financeur ' + (g.contact_email ? '(' + g.contact_email + ')' : '') + ' ?', [
-                { text: 'Retour', style: 'cancel' },
-                { text: 'Enregistrer', onPress: () => onAction('log_relance') },
-              ])}>
-              {busy === 'log_relance' ? <ActivityIndicator color="#065F46" /> : <Ionicons name="megaphone" size={18} color="#065F46" />}
-              <Text style={styles.dActBtnTxt}>Journaliser une relance</Text>
-            </TouchableOpacity>
-            {d.is_admin && (
-              <TouchableOpacity accessibilityRole="button" style={[styles.dDangerBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
-                disabled={!!busy} onPress={() => Alert.alert('Archiver', 'Archiver ce dossier ? Il n\'apparaîtra plus dans les demandes en cours.', [
-                  { text: 'Retour', style: 'cancel' },
-                  { text: 'Archiver', style: 'destructive', onPress: () => onAction('archive') },
-                ])}>
-                <Ionicons name="archive-outline" size={18} color="#991B1B" />
-                <Text style={styles.dDangerBtnTxt}>Archiver le dossier</Text>
+            {/* Trois tuiles d'action (nœud 16:3) : Statut · Relance · Archiver. */}
+            <Text style={styles.dSection}>Actions du dossier</Text>
+            <View style={[styles.grActRow, busy ? { opacity: 0.6 } : null]}>
+              <TouchableOpacity accessibilityRole="button" style={[styles.grAct, { borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' }]} activeOpacity={0.85}
+                disabled={!!busy} onPress={() => setStatusOpen(true)}>
+                <Ionicons name="flag-outline" size={19} color="#065F46" />
+                <Text style={[styles.grActTxt, { color: '#065F46' }]}>Statut</Text>
               </TouchableOpacity>
-            )}
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Journaliser une relance"
+                style={[styles.grAct, { borderColor: LINE, backgroundColor: '#fff' }]} activeOpacity={0.85}
+                disabled={!!busy} onPress={() => Alert.alert('Relance', 'Enregistrer une relance envoyée au financeur ' + (g.contact_email ? '(' + g.contact_email + ')' : '') + ' ?', [
+                  { text: 'Retour', style: 'cancel' },
+                  { text: 'Enregistrer', onPress: () => onAction('log_relance') },
+                ])}>
+                {busy === 'log_relance' ? <ActivityIndicator size="small" color={INK_2} /> : <Ionicons name="megaphone-outline" size={19} color={INK_2} />}
+                <Text style={[styles.grActTxt, { color: INK_2 }]}>Relance</Text>
+              </TouchableOpacity>
+              {d.is_admin && (
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Archiver le dossier"
+                  style={[styles.grAct, { borderColor: '#FECACA', backgroundColor: '#FEF2F2' }]} activeOpacity={0.85}
+                  disabled={!!busy} onPress={() => Alert.alert('Archiver', 'Archiver ce dossier ? Il n\'apparaîtra plus dans les demandes en cours.', [
+                    { text: 'Retour', style: 'cancel' },
+                    { text: 'Archiver', style: 'destructive', onPress: () => onAction('archive') },
+                  ])}>
+                  <Ionicons name="archive-outline" size={19} color="#991B1B" />
+                  <Text style={[styles.grActTxt, { color: '#991B1B' }]}>Archiver</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </>
         )}
 
@@ -4588,13 +4677,13 @@ function GatedList({ title, data, loading, onRefresh, onBack, emptyIcon, emptyLa
       {!data ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : !allowed ? (
-        <View style={styles.emptyBox}><Ionicons name="lock-closed" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>{data.message || 'Accès restreint.'}</Text></View>
+        <View style={styles.emptyBox}><Ionicons name="lock-closed" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>{data.message || 'Accès restreint.'}</Text></View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           {renderStats ? renderStats(data.stats || {}) : null}
           {(!list || list.length === 0) ? (
-            <View style={styles.emptyBox}><Ionicons name={emptyIcon} size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>{emptyLabel}</Text></View>
+            <View style={styles.emptyBox}><Ionicons name={emptyIcon} size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>{emptyLabel}</Text></View>
           ) : list.map(renderItem)}
         </ScrollView>
       )}
@@ -4622,7 +4711,7 @@ function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack 
   if (!data) return <DetailLoading title="Coach IA" onBack={onBack} />;
   if (data.allowed === false) {
     return (<View style={styles.detailWrap}><DetailHeader title="Coach IA" onBack={onBack} />
-      <View style={styles.emptyBox}><Ionicons name="lock-closed" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>{data.message || 'Réservé aux administrateurs.'}</Text></View></View>);
+      <View style={styles.emptyBox}><Ionicons name="lock-closed" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>{data.message || 'Réservé aux administrateurs.'}</Text></View></View>);
   }
   const r = data.report;
   return (
@@ -4631,7 +4720,7 @@ function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
         {!r ? (
-          <View style={styles.emptyBox}><Ionicons name="sparkles" size={44} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucun rapport encore</Text></View>
+          <View style={styles.emptyBox}><Ionicons name="sparkles" size={44} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun rapport encore</Text></View>
         ) : (
           <>
             {!!r.week && <Text style={styles.coachWeek}>Semaine {r.week}</Text>}
@@ -4681,7 +4770,7 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
             <Text style={styles.formCardTitle}>Logo de l'organisation</Text>
             <View style={styles.logoRow}>
               <View style={styles.logoBox}>
-                {org.logo ? <Image source={{ uri: org.logo }} style={styles.logoImg} /> : <Ionicons name="image-outline" size={26} color="#CBD5E1" />}
+                {org.logo ? <Image source={{ uri: org.logo }} style={styles.logoImg} /> : <Ionicons name="image-outline" size={26} color="#CBD5D1" />}
               </View>
               <TouchableOpacity accessibilityRole="button" style={[styles.scanBtn, { flex: 1 }, logoBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={logoBusy ? undefined : onLogo}>
                 {logoBusy ? <ActivityIndicator color={BRAND} /> : <Ionicons name="cloud-upload" size={18} color="#0369A1" />}
@@ -4704,15 +4793,15 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
         </TouchableOpacity>
 
         <TouchableOpacity accessibilityRole="button" style={styles.settingsRow} activeOpacity={0.7} onPress={() => onWeb('/parametres?tab=securite')}>
-          <Ionicons name="lock-closed-outline" size={20} color="#475569" />
+          <Ionicons name="lock-closed-outline" size={20} color="#45544D" />
           <Text style={styles.settingsRowTxt}>Sécurité & mot de passe</Text>
-          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+          <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
         </TouchableOpacity>
         {org.is_admin && (
           <TouchableOpacity accessibilityRole="button" style={styles.settingsRow} activeOpacity={0.7} onPress={() => onWeb('/parametres?tab=organisation')}>
-            <Ionicons name="business-outline" size={20} color="#475569" />
+            <Ionicons name="business-outline" size={20} color="#45544D" />
             <Text style={styles.settingsRowTxt}>Infos de l'organisation</Text>
-            <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
           </TouchableOpacity>
         )}
 
@@ -4892,6 +4981,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const QUICK_ACTIONS = (isTpe ? QUICK_ACTIONS_TPE : QUICK_ACTIONS_ASSO).filter((a) => {
     if (a.form === 'invoice' || a.form === 'client') return isAdminOrg;
     if (a.form === 'member' || a.form === 'quote') return canManageOrg;
+    if (a.form === 'payment' || a.form === 'campaign' || a.form === 'grant') return canManageOrg;
     if (a.form === 'project') return canCreateProjects;
     return true;
   });
@@ -5927,7 +6017,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         />
         {showHome && (
           <View style={styles.homeOverlay}>
-            <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} profile={profile} error={kpiError} />
+            <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} profile={profile} error={kpiError}
+              onQuick={onQuick} quickActions={QUICK_ACTIONS} onNotifs={() => openMenuScreen('notifications')}
+              notifCount={(kpi && kpi.notif_unread) || 0} />
           </View>
         )}
         {showProjects && (
@@ -6211,34 +6303,35 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         </TouchableOpacity>
       )}
 
+      {/* Barre d'onglets + bouton « + » FLOTTANT : le « + » est un frère de la barre,
+          posé par-dessus son bord supérieur (maquette 22:2). S'il était un enfant de
+          la barre, celle-ci le rognerait — c'est le défaut corrigé sur la maquette. */}
       {authed && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans', 'fdsettings', 'fdprospects', 'fddir'].includes(menuScreen) && (
-      <View style={styles.tabBar}>
-        <BlurView intensity={26} tint="light" style={styles.tabBlur} pointerEvents="none" />
-        {TABS.map((tab) => {
-          if (tab.key === 'add') {
+      <View style={styles.tabDock}>
+        <View style={styles.tabBar}>
+          {TABS.map((tab) => {
+            if (tab.key === 'add') return <View key={tab.key} style={styles.tabSpacer} />;
+            const isActive = active === tab.key;
+            const tabBadge = tab.key === 'menu' ? (kpi && kpi.notif_unread) || 0 : 0;
             return (
-              <TouchableOpacity key={tab.key} style={styles.fabWrap} onPress={() => goTab(tab)} activeOpacity={0.85}
-                accessibilityRole="button" accessibilityLabel="Créer">
-                <View style={styles.fab}>
-                  <Ionicons name="add" size={30} color="#fff" />
+              <TouchableOpacity key={tab.key} style={styles.tab} onPress={() => goTab(tab)} activeOpacity={0.7}
+                accessibilityRole="tab" accessibilityState={{ selected: isActive }}
+                accessibilityLabel={tab.label + (tabBadge > 0 ? ', ' + tabBadge + ' non lus' : '')}>
+                <View>
+                  <Ionicons name={isActive ? tab.icon : tab.icon + '-outline'} size={21} color={isActive ? BRAND : INK_3} />
+                  {tabBadge > 0 && <View style={styles.tabBadge}><Text style={styles.tabBadgeTxt}>{tabBadge > 99 ? '99+' : tabBadge}</Text></View>}
                 </View>
+                <Text style={[styles.tabLabel, isActive ? styles.tabLabelOn : null]}>{tab.label}</Text>
               </TouchableOpacity>
             );
-          }
-          const isActive = active === tab.key;
-          const tabBadge = tab.key === 'menu' ? (kpi && kpi.notif_unread) || 0 : 0;
-          return (
-            <TouchableOpacity key={tab.key} style={styles.tab} onPress={() => goTab(tab)} activeOpacity={0.7}
-              accessibilityRole="tab" accessibilityState={{ selected: isActive }}
-              accessibilityLabel={tab.label + (tabBadge > 0 ? ', ' + tabBadge + ' non lus' : '')}>
-              <View>
-                <Ionicons name={isActive ? tab.icon : tab.icon + '-outline'} size={23} color={isActive ? BRAND : MUTE} />
-                {tabBadge > 0 && <View style={styles.tabBadge}><Text style={styles.tabBadgeTxt}>{tabBadge > 99 ? '99+' : tabBadge}</Text></View>}
-              </View>
-              <Text style={[styles.tabLabel, { color: isActive ? BRAND : MUTE }]}>{tab.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+          })}
+        </View>
+        <TouchableOpacity style={styles.fabWrap} onPress={() => goTab({ key: 'add' })} activeOpacity={0.85}
+          accessibilityRole="button" accessibilityLabel="Créer">
+          <View style={styles.fab}>
+            <Ionicons name="add" size={28} color="#fff" />
+          </View>
+        </TouchableOpacity>
       </View>
       )}
 
@@ -6253,7 +6346,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                   <Ionicons name={a.icon} size={22} color={a.color} />
                 </View>
                 <Text style={styles.qaLabel}>{a.label}</Text>
-                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
               </TouchableOpacity>
             ))}
           </Pressable>
@@ -6359,25 +6452,68 @@ const styles = StyleSheet.create({
   logoutVeilTxt: { color: '#fff', fontSize: 15, fontWeight: '700', marginTop: 14, letterSpacing: 0.3 },
   web: { flex: 1, backgroundColor: '#ffffff' },
   loader: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.65)' },
-  homeOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#F4F6FA' },
+  homeOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: CANVAS },
+
+  /* ── Accueil « Figma V2 » ────────────────────────────────────────────
+     Relevé sur le nœud 2:2 : en-tête dégradé 214 px, grille KPI 2×2 en
+     chevauchement de 28 px, tuiles d'action 80 px, fil « Aujourd'hui ». */
+  homeWrap: { flex: 1, backgroundColor: CANVAS },
+  fgHead: { paddingTop: 16, paddingBottom: 46, paddingHorizontal: 20, overflow: 'hidden' },
+  fgHeadOrb: { position: 'absolute', width: 300, height: 300, borderRadius: 150, top: -140, left: 200, backgroundColor: 'rgba(255,255,255,0.07)' },
+  fgOrgRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  fgOrgLogo: { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  fgOrgLogoImg: { width: 30, height: 30 },
+  fgOrgLogoTxt: { color: '#fff', fontSize: 19, fontWeight: '800' },
+  fgOrgName: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  fgOrgSub: { color: '#D7F5E8', fontSize: 11.5, marginTop: 1 },
+  fgBell: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  fgBellDot: { position: 'absolute', top: 7, right: 7, width: 9, height: 9, borderRadius: 5, backgroundColor: '#FCA5A5', borderWidth: 1.5, borderColor: '#0E7A5A' },
+  fgHello: { color: '#fff', fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginTop: 22 },
+  fgHeadLine: { color: '#CDEFE0', fontSize: 12.5, marginTop: 6, lineHeight: 17 },
+
+  fgKpiGrid: { marginTop: -28, paddingHorizontal: 20, gap: 12 },
+  fgKpiRow: { flexDirection: 'row', gap: 12 },
+  fgKpi: { flex: 1, backgroundColor: '#fff', borderRadius: R_CARD, borderWidth: 1, borderColor: LINE, padding: 16, gap: 6, ...SH_CARD },
+  fgKpiLbl: { fontSize: 9.5, fontWeight: '700', color: MUTE, letterSpacing: 0.6 },
+  fgKpiVal: { fontSize: 23, fontWeight: '800', letterSpacing: -0.4 },
+  fgKpiSub: { fontSize: 11, color: MUTE },
+
+  fgSection: { fontSize: 10, fontWeight: '700', color: MUTE, letterSpacing: 0.7, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginHorizontal: 20 },
+  fgActions: { flexDirection: 'row', paddingHorizontal: 20, gap: 10 },
+  fgAction: { flex: 1, backgroundColor: '#fff', borderRadius: 18, borderWidth: 1, borderColor: LINE, paddingVertical: 13, alignItems: 'center', gap: 7 },
+  fgActionIc: { width: 36, height: 36, borderRadius: R_CHIP, alignItems: 'center', justifyContent: 'center' },
+  fgActionTxt: { fontSize: 10.5, fontWeight: '600' },
+
+  fgCard: { marginHorizontal: 20, backgroundColor: '#fff', borderRadius: R_CARD, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
+  fgSep: { borderTopWidth: 1, borderTopColor: SEP },
+  fgTodayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
+  fgTodayBar: { width: 3, height: 34, borderRadius: 2 },
+  fgTodayTime: { width: 38, fontSize: 11.5, fontWeight: '700', color: MUTE },
+  fgTodayTitle: { fontSize: 14, fontWeight: '600', color: INK },
+  fgTodaySub: { fontSize: 11.5, color: MUTE, marginTop: 3 },
+  fgLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
+  fgLinkIc: { width: 34, height: 34, borderRadius: 11, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
+  fgLinkTxt: { flex: 1, fontSize: 14, fontWeight: '600', color: INK },
+  fgPrimary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 22, marginHorizontal: 20, paddingVertical: 15, borderRadius: R_BTN, backgroundColor: BRAND, ...SH_BTN },
+  fgPrimaryTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   /* Accueil natif */
   homeAurora: { flex: 1, backgroundColor: '#EEF3FA' },
   auroraOrbA: { position: 'absolute', top: 120, right: -70, width: 240, height: 240, borderRadius: 120, backgroundColor: 'rgba(45,212,191,0.20)' },
   auroraOrbB: { position: 'absolute', bottom: 40, left: -80, width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(129,140,248,0.18)' },
   homeScroll: { flex: 1, backgroundColor: 'transparent' },
-  homeContent: { paddingBottom: 28 },
-  hHeaderWrap: { borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', shadowColor: '#1E293B', shadowOpacity: 0.10, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 6 },
+  homeContent: { paddingBottom: 110 }, // dégage la barre d'onglets flottante (66 px + marges)
+  hHeaderWrap: { borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', shadowColor: '#2B3A33', shadowOpacity: 0.10, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 6 },
   hHeader: { paddingTop: 28, paddingBottom: 54, paddingHorizontal: 22, position: 'relative', overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.5)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.6)' },
   hOrb1: { position: 'absolute', top: -60, right: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(45,212,191,0.18)' },
   hOrb2: { position: 'absolute', bottom: -70, left: -50, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(129,140,248,0.20)' },
   hHeaderRow: { flexDirection: 'row', alignItems: 'center' },
-  hHello: { color: '#475569', fontSize: 16, fontWeight: '500' },
-  hName: { color: '#0F172A', fontSize: 27, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
+  hHello: { color: '#45544D', fontSize: 16, fontWeight: '500' },
+  hName: { color: '#0B1A13', fontSize: 27, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
   hOrgPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.62)', borderRadius: 999, paddingVertical: 5, paddingHorizontal: 11, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', maxWidth: '92%' },
   hOrgDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#059669' },
-  hOrg: { color: '#0F172A', fontSize: 13, fontWeight: '600', flexShrink: 1 },
-  hAvatar: { width: 54, height: 54, borderRadius: 17, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', shadowColor: '#0F172A', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
+  hOrg: { color: '#0B1A13', fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  hAvatar: { width: 54, height: 54, borderRadius: 17, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', shadowColor: '#0B1A13', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
   hAvatarTxt: { color: '#059669', fontSize: 18, fontWeight: '800' },
   hAvatarImg: { width: 42, height: 42, borderRadius: 11 },
 
@@ -6398,7 +6534,7 @@ const styles = StyleSheet.create({
   spotBarFill: { height: 9, borderRadius: 6 },
   spotBarMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   spotBarPct: { fontSize: 13, fontWeight: '800', color: '#047857' },
-  spotBarLabel: { fontSize: 12, fontWeight: '500', color: '#64748B' },
+  spotBarLabel: { fontSize: 12, fontWeight: '500', color: '#5F6D66' },
 
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: 18 },
   kpiShadow: { width: '48%', marginBottom: 14, borderRadius: 24, shadowColor: '#0B3B2A', shadowOpacity: 0.09, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 4 },
@@ -6408,10 +6544,10 @@ const styles = StyleSheet.create({
   kpiIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', shadowColor: '#0B3B2A', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
   kpiDot: { width: 8, height: 8, borderRadius: 5 },
   kpiValue: { fontSize: 30, fontWeight: '800', color: INK, marginTop: 14, letterSpacing: -0.5 },
-  kpiLabel: { fontSize: 14, fontWeight: '700', color: '#1E293B', marginTop: 2 },
-  kpiSub: { fontSize: 12, color: '#64748B', marginTop: 3, fontWeight: '500' },
+  kpiLabel: { fontSize: 14, fontWeight: '700', color: '#2B3A33', marginTop: 2 },
+  kpiSub: { fontSize: 12, color: '#5F6D66', marginTop: 3, fontWeight: '500' },
 
-  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#94A3B8', marginTop: 14, marginBottom: 12, marginHorizontal: 20, textTransform: 'uppercase', letterSpacing: 0.7 },
+  sectionTitle: { fontSize: 10, fontWeight: '700', color: MUTE, marginTop: 22, marginBottom: 10, marginHorizontal: 20, textTransform: 'uppercase', letterSpacing: 0.7 },
   shortcuts: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 16 },
   shortcut: { width: '48%', backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 18, paddingVertical: 15, paddingHorizontal: 13, marginBottom: 12, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#0B3B2A', shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
   shortcutIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: 'rgba(236,253,245,0.9)', alignItems: 'center', justifyContent: 'center', marginRight: 10, borderWidth: 1, borderColor: '#D1FAE5' },
@@ -6433,14 +6569,14 @@ const styles = StyleSheet.create({
   projCardTop: { flexDirection: 'row', alignItems: 'flex-start' },
   projName: { fontSize: 16, fontWeight: '700', color: INK },
   projFolder: { fontSize: 13, color: MUTE, marginTop: 2 },
-  projChip: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 20 },
+  projChip: { paddingVertical: 6, paddingHorizontal: 11, borderRadius: 999 },
   projChipTxt: { fontSize: 11.5, fontWeight: '700' },
   progRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14, gap: 10 },
   progTrack: { flex: 1, height: 7, borderRadius: 4, backgroundColor: '#EEF2F6', overflow: 'hidden' },
   progFill: { height: 7, borderRadius: 4 },
-  progTxt: { fontSize: 12.5, fontWeight: '700', color: '#64748B', width: 38, textAlign: 'right' },
+  progTxt: { fontSize: 12.5, fontWeight: '700', color: '#5F6D66', width: 38, textAlign: 'right' },
   /* Membres / Clients */
-  personCard: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  personCard: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   personAvatar: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 13 },
   personAvatarTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
   personName: { fontSize: 15.5, fontWeight: '700', color: INK },
@@ -6448,47 +6584,51 @@ const styles = StyleSheet.create({
   personRight: { fontSize: 15, fontWeight: '800', color: '#047857' },
   personBadges: { alignItems: 'flex-end', gap: 6 },
   roleChip: { paddingVertical: 4, paddingHorizontal: 9, borderRadius: 20 },
-  roleChipTxt: { fontSize: 11, fontWeight: '700', color: '#475569' },
+  roleChipTxt: { fontSize: 11, fontWeight: '700', color: '#45544D' },
   dot: { width: 8, height: 8, borderRadius: 4 },
 
   /* Factures */
-  invCard: { backgroundColor: '#fff', borderRadius: 16, padding: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  invCard: { backgroundColor: '#fff', borderRadius: 16, padding: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   invNum: { fontSize: 15.5, fontWeight: '700', color: INK },
   invClient: { fontSize: 13, color: MUTE, marginTop: 3 },
   invAmount: { fontSize: 16.5, fontWeight: '800', color: INK },
 
   /* Fiches détail natives */
-  detailWrap: { flex: 1, backgroundColor: '#F2F5FB' },
-  dHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderBottomWidth: 1, borderBottomColor: 'rgba(226,232,240,0.8)', shadowColor: '#0B3B2A', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2, zIndex: 2 },
-  dBack: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#F3F6F5', alignItems: 'center', justifyContent: 'center' },
-  dHeadAction: { width: 38, height: 38, borderRadius: 12, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
-  dTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '750', color: INK, letterSpacing: -0.2 },
-  detailContent: { padding: 18, paddingBottom: 40 },
+  /* ── Fiches détail « Figma V2 » (nœuds 9:2, 10:2, 14:2, 18:2) ──────── */
+  detailWrap: { flex: 1, backgroundColor: CANVAS },
+  dHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: LINE, zIndex: 2 },
+  dBack: { width: 38, height: 38, borderRadius: R_CHIP, backgroundColor: SOFT, alignItems: 'center', justifyContent: 'center' },
+  dHeadAction: { width: 38, height: 38, borderRadius: R_CHIP, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' },
+  dTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700', color: INK },
+  detailContent: { padding: 20, paddingBottom: 40 },
   dName: { fontSize: 24, fontWeight: '800', color: INK, letterSpacing: -0.4 },
-  dFolder: { fontSize: 14, color: MUTE, marginTop: 4 },
-  dCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, marginTop: 14, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  dFolder: { fontSize: 12.5, color: MUTE, marginTop: 4 },
+  dCard: { backgroundColor: '#fff', borderRadius: R_CARD, borderWidth: 1, borderColor: LINE, padding: 16, marginTop: 14, ...SH_CARD },
   dCardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  dBigTitle: { fontSize: 22, fontWeight: '800', color: INK, letterSpacing: -0.3, lineHeight: 28 },
-  dInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  dLabel: { fontSize: 13.5, color: '#64748B', fontWeight: '600', flex: 1, paddingRight: 12 },
-  dValue: { fontSize: 14, color: INK, fontWeight: '700', textAlign: 'right', flexShrink: 1 },
-  dCardLabel: { fontSize: 14, fontWeight: '600', color: '#334155' },
+  dBigTitle: { fontSize: 21, fontWeight: '800', color: INK, letterSpacing: -0.4, lineHeight: 27 },
+  dInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderTopWidth: 1, borderTopColor: SEP },
+  dLabel: { fontSize: 13, color: MUTE, fontWeight: '500', flex: 1, paddingRight: 12 },
+  dValue: { fontSize: 13.5, color: INK, fontWeight: '600', textAlign: 'right', flexShrink: 1 },
+  dRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
+  dInvNum: { fontSize: 12, fontWeight: '700', color: MUTE, letterSpacing: 0.4 },
+  dInvAmount: { fontSize: 34, fontWeight: '800', color: INK, letterSpacing: -1 },
+  dCardLabel: { fontSize: 14, fontWeight: '600', color: '#45544D' },
   dCardStrong: { fontSize: 14.5, fontWeight: '800', color: INK },
   dSteps: { fontSize: 12.5, color: MUTE, marginTop: 8 },
-  dSection: { fontSize: 12, fontWeight: '800', color: '#059669', marginTop: 24, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.7 },
-  dLockCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F1F5F9', borderRadius: 16, padding: 16, marginTop: 18, borderWidth: 1, borderColor: '#E2E8F0' },
-  dLockTxt: { flex: 1, fontSize: 13, lineHeight: 19, color: '#64748B', fontWeight: '500' },
-  dText: { fontSize: 14.5, color: '#334155', lineHeight: 21, marginTop: 8 },
+  dSection: { fontSize: 10, fontWeight: '700', color: MUTE, marginTop: 22, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.7 },
+  dLockCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F1F5F4', borderRadius: 16, padding: 16, marginTop: 18, borderWidth: 1, borderColor: '#E7EEEA' },
+  dLockTxt: { flex: 1, fontSize: 13, lineHeight: 19, color: '#5F6D66', fontWeight: '500' },
+  dText: { fontSize: 14.5, color: '#45544D', lineHeight: 21, marginTop: 8 },
   /* Bloc description riche */
-  dInfoCard: { backgroundColor: '#fff', borderRadius: 18, padding: 18, marginTop: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
+  dInfoCard: { backgroundColor: '#fff', borderRadius: 18, padding: 18, marginTop: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
   dEyebrow: { fontSize: 11.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
-  dPara: { fontSize: 15, color: '#334155', lineHeight: 23, marginBottom: 4 },
+  dPara: { fontSize: 15, color: '#45544D', lineHeight: 23, marginBottom: 4 },
   dBullet: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 11 },
   dBulletDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8, marginRight: 12 },
-  dBulletTxt: { flex: 1, fontSize: 14.5, color: '#334155', lineHeight: 22 },
+  dBulletTxt: { flex: 1, fontSize: 14.5, color: '#45544D', lineHeight: 22 },
   stepRow: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff', borderRadius: 14, padding: 14, marginTop: 8 },
   stepTitle: { fontSize: 14.5, fontWeight: '600', color: INK },
-  stepDone: { color: '#94A3B8', textDecorationLine: 'line-through' },
+  stepDone: { color: '#8A968F', textDecorationLine: 'line-through' },
   stepDesc: { fontSize: 13, color: MUTE, marginTop: 3 },
   dHero: { alignItems: 'center', paddingTop: 6, paddingBottom: 4 },
   dHeroAvatar: { width: 76, height: 76, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
@@ -6498,36 +6638,59 @@ const styles = StyleSheet.create({
   infoIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   infoLabel: { fontSize: 12, color: MUTE },
   infoValue: { fontSize: 14.5, fontWeight: '600', color: INK, marginTop: 1 },
-  miniKpiRow: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 18, padding: 6, marginTop: 16, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
-  miniKpi: { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  miniKpiVal: { fontSize: 17, fontWeight: '800', color: '#047857' },
-  miniKpiLbl: { fontSize: 11.5, color: MUTE, marginTop: 3 },
+  /* Deux cartes statistiques côte à côte (169 px, libellé capitales + valeur 20/21 px) */
+  miniKpiRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  miniKpi: { flex: 1, backgroundColor: '#fff', borderRadius: R_CARD, borderWidth: 1, borderColor: LINE, paddingHorizontal: 16, paddingVertical: 15, gap: 5, ...SH_CARD },
+  miniKpiVal: { fontSize: 20, fontWeight: '800', color: BRAND, letterSpacing: -0.4 },
+  miniKpiLbl: { fontSize: 9.5, fontWeight: '700', color: MUTE, letterSpacing: 0.6, textTransform: 'uppercase' },
   dTotal: { fontSize: 20, fontWeight: '800', color: INK },
-  dMuted: { fontSize: 13.5, color: '#64748B' },
-  lineRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12 },
-  lineSep: { borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  lineLabel: { fontSize: 14, fontWeight: '600', color: INK },
-  lineQty: { fontSize: 12.5, color: MUTE, marginTop: 3 },
-  lineTotal: { fontSize: 14.5, fontWeight: '700', color: INK },
-  dWebBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16, paddingVertical: 15, borderRadius: 16, borderWidth: 1.5, borderColor: '#D1FAE5', backgroundColor: '#F0FDF9' },
-  dWebBtnTxt: { fontSize: 15, fontWeight: '700', color: BRAND },
-  dPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, paddingVertical: 16, borderRadius: 16, backgroundColor: BRAND, shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
-  dPrimaryBtnTxt: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
-  dActBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, paddingVertical: 15, borderRadius: 16, borderWidth: 1.5, borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' },
-  dActBtnTxt: { fontSize: 15, fontWeight: '800', color: '#065F46' },
-  dDangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, paddingVertical: 14, borderRadius: 16, borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
-  dDangerBtnTxt: { fontSize: 14.5, fontWeight: '700', color: '#991B1B' },
-  ckPayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  ckPayName: { fontSize: 14.5, fontWeight: '700', color: INK },
-  ckPaySub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
-  ckPayAmt: { fontSize: 15, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
-  payAct: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
-  grStepRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  grStepTxt: { flex: 1, fontSize: 14.5, color: INK, fontWeight: '600' },
-  grStepTxtDone: { color: '#94A3B8', textDecorationLine: 'line-through', fontWeight: '500' },
-  tierChip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 11, borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#fff', marginRight: 8, marginBottom: 8 },
+  dMuted: { fontSize: 12.5, color: MUTE },
+  lineRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
+  lineSep: { borderTopWidth: 1, borderTopColor: SEP },
+  lineLabel: { fontSize: 13.5, fontWeight: '600', color: INK },
+  lineQty: { fontSize: 11.5, color: MUTE, marginTop: 3 },
+  lineTotal: { fontSize: 13.5, fontWeight: '700', color: INK },
+  /* Boutons d'action (nœuds 9:39 / 9:44 / 9:49) : plein vert, contour menthe, contour neutre. */
+  dWebBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 10, paddingVertical: 14, borderRadius: R_BTN, borderWidth: 1.5, borderColor: LINE, backgroundColor: '#fff' },
+  dWebBtnTxt: { fontSize: 13.5, fontWeight: '600', color: INK_2 },
+  dPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, paddingVertical: 15, borderRadius: R_BTN, backgroundColor: BRAND, ...SH_BTN },
+  dPrimaryBtnTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  dActBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, paddingVertical: 15, borderRadius: R_BTN, borderWidth: 1.5, borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' },
+  dActBtnTxt: { fontSize: 15, fontWeight: '700', color: '#065F46' },
+  dDangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, paddingVertical: 14, borderRadius: R_BTN, borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
+  dDangerBtnTxt: { fontSize: 14, fontWeight: '700', color: '#991B1B' },
+  /* Lignes de paiement (nœud 10:36) et étapes de dossier (nœud 14:35). */
+  ckPayRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
+  ckPayName: { fontSize: 13.5, fontWeight: '700', color: INK },
+  ckPaySub: { fontSize: 11, color: MUTE, marginTop: 4 },
+  ckPayAmt: { fontSize: 14, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
+  ckPayChip: { alignSelf: 'flex-start', marginTop: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
+  ckPayChipTxt: { fontSize: 10, fontWeight: '700' },
+  payAct: { width: 36, height: 36, borderRadius: R_CHIP, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
+  grStepRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
+  grStepBox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.6, borderColor: '#CBD5D1', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  grStepBoxOn: { backgroundColor: BRAND, borderColor: BRAND },
+  grStepTxt: { flex: 1, fontSize: 14, color: INK, fontWeight: '600' },
+  grStepTxtDone: { color: INK_3, textDecorationLine: 'line-through', fontWeight: '500' },
+  grStepDate: { fontSize: 11, color: INK_3 },
+  /* Barre de progression des étapes (nœud 14:32) : 6 px, r3. */
+  grProgTrack: { height: 6, borderRadius: 3, backgroundColor: LINE, overflow: 'hidden', marginBottom: 10 },
+  grProgFill: { height: 6, borderRadius: 3, backgroundColor: BRAND },
+  /* Tuiles d'action du dossier (nœud 16:3) : 3 colonnes, icône au-dessus du libellé. */
+  grActRow: { flexDirection: 'row', gap: 9, marginTop: 2 },
+  grAct: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: R_BTN, borderWidth: 1.5 },
+  grActTxt: { fontSize: 12, fontWeight: '700' },
+  /* Tarifs de campagne (nœud 10:25) : 3 colonnes, le 1er tarif est mis en avant. */
+  ckTierRow: { flexDirection: 'row', gap: 8 },
+  ckTier: { flex: 1, alignItems: 'center', gap: 3, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: LINE, backgroundColor: '#fff' },
+  ckTierOn: { borderWidth: 1.8, borderColor: BRAND, backgroundColor: '#ECFDF5' },
+  ckTierName: { fontSize: 12, fontWeight: '600', color: INK_2 },
+  ckTierNameOn: { color: '#065F46' },
+  ckTierAmt: { fontSize: 14.5, fontWeight: '800', color: INK },
+  ckTierAmtOn: { color: BRAND },
+  tierChip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 11, borderWidth: 1.5, borderColor: '#E7EEEA', backgroundColor: '#fff', marginRight: 8, marginBottom: 8 },
   tierChipOn: { borderColor: BRAND, backgroundColor: '#ECFDF5' },
-  tierChipTxt: { fontSize: 13, fontWeight: '700', color: '#64748B' },
+  tierChipTxt: { fontSize: 13, fontWeight: '700', color: '#5F6D66' },
   tierChipTxtOn: { color: BRAND },
 
   /* Formulaires natifs */
@@ -6535,15 +6698,15 @@ const styles = StyleSheet.create({
   formFooter: { padding: 14, paddingBottom: Platform.OS === 'ios' ? 26 : 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#EEF2F6' },
   formErr: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', borderRadius: 12, padding: 12, marginBottom: 14 },
   formErrTxt: { flex: 1, color: '#B91C1C', fontSize: 13.5, fontWeight: '500' },
-  fLabel: { fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 6 },
-  fInput: { backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 13 : 10, fontSize: 15, color: INK },
+  fLabel: { fontSize: 13, fontWeight: '600', color: '#45544D', marginBottom: 6 },
+  fInput: { backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E7EEEA', borderRadius: 12, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 13 : 10, fontSize: 15, color: INK },
   fHint: { fontSize: 11.5, color: MUTE, marginTop: 5 },
   segWrap: { flexDirection: 'row', backgroundColor: '#EEF2F6', borderRadius: 12, padding: 4, gap: 4 },
   segItem: { flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: 'center' },
-  segItemOn: { backgroundColor: '#fff', shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  segTxt: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  segItemOn: { backgroundColor: '#fff', shadowColor: '#0B1A13', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  segTxt: { fontSize: 13, fontWeight: '600', color: '#5F6D66' },
   segTxtOn: { color: BRAND },
-  switchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, marginTop: 16 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F4F8F6', borderRadius: 12, padding: 14, marginTop: 16 },
   switchLabel: { fontSize: 14, fontWeight: '600', color: INK },
   switchSub: { fontSize: 12, color: MUTE, marginTop: 3, lineHeight: 16 },
   formCardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
@@ -6551,11 +6714,11 @@ const styles = StyleSheet.create({
   formLink: { fontSize: 13.5, fontWeight: '600', color: BRAND },
   pickedClient: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F0FDF9', borderWidth: 1, borderColor: '#D1FAE5', borderRadius: 12, padding: 14 },
   pickedName: { fontSize: 15, fontWeight: '700', color: INK },
-  projPickBtn: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 15 },
-  projPickTxt: { fontSize: 14.5, fontWeight: '600', color: '#64748B' },
+  projPickBtn: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#F4F8F6', borderWidth: 1, borderColor: '#E7EEEA', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 15 },
+  projPickTxt: { fontSize: 14.5, fontWeight: '600', color: '#5F6D66' },
   projPersonAv: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   projPersonAvTxt: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  projPersonRole: { fontSize: 12, color: '#94A3B8', marginTop: 1 },
+  projPersonRole: { fontSize: 12, color: '#8A968F', marginTop: 1 },
   projTeamWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   projTeamChip: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#F0FDF9', borderWidth: 1, borderColor: '#D1FAE5', borderRadius: 999, paddingLeft: 4, paddingRight: 11, paddingVertical: 4 },
   projTeamAv: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
@@ -6568,19 +6731,19 @@ const styles = StyleSheet.create({
   lineCardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   lineCardIdx: { fontSize: 12.5, fontWeight: '700', color: MUTE },
   line3: { flexDirection: 'row', gap: 8 },
-  addLineBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#CBD5E1' },
+  addLineBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#CBD5D1' },
   addLineTxt: { fontSize: 14, fontWeight: '600', color: BRAND },
   totalsBox: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginTop: 14, borderWidth: 1, borderColor: '#EEF2F6' },
   stepEditRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   stepEditIdx: { width: 24, fontSize: 14, fontWeight: '700', color: MUTE, textAlign: 'center', marginRight: 6 },
-  selectRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, marginBottom: 12 },
+  selectRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E7EEEA', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, marginBottom: 12 },
   selectVal: { flex: 1, fontSize: 15, color: INK, fontWeight: '600' },
   scanBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 14, borderWidth: 1.5, borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' },
   scanBtnTxt: { fontSize: 15, fontWeight: '700', color: '#0369A1' },
   catWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   catChip: { paddingVertical: 8, paddingHorizontal: 13, borderRadius: 20, backgroundColor: '#EEF2F6' },
   catChipOn: { backgroundColor: BRAND },
-  catTxt: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  catTxt: { fontSize: 13, fontWeight: '600', color: '#5F6D66' },
   catTxtOn: { color: '#fff' },
   bilanHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   bilanRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
@@ -6594,13 +6757,17 @@ const styles = StyleSheet.create({
   upsellBtnTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
   /* Agenda */
-  agDay: { fontSize: 13, fontWeight: '700', color: '#64748B', textTransform: 'capitalize', marginBottom: 8, marginLeft: 2 },
-  agCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 8, overflow: 'hidden', shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
-  agBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
-  agTime: { width: 54, alignItems: 'center', marginLeft: 4 },
-  agTimeTxt: { fontSize: 13, fontWeight: '700', color: INK },
-  agTitle: { fontSize: 14.5, fontWeight: '600', color: INK },
-  agSub: { fontSize: 12.5, color: MUTE, marginTop: 2 },
+  /* Agenda (nœud 18:18) : titre de jour en capitales, carte par jour, barre d'accent 3×42. */
+  agDay: { fontSize: 10, fontWeight: '700', color: MUTE, letterSpacing: 0.7, textTransform: 'uppercase', marginBottom: 10 },
+  agGroup: { backgroundColor: '#fff', borderRadius: R_CARD, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
+  agCard: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
+  agSep: { borderTopWidth: 1, borderTopColor: SEP },
+  agBar: { width: 3, height: 42, borderRadius: 2 },
+  agTime: { width: 40 },
+  agTimeTxt: { fontSize: 12, fontWeight: '800' },
+  agTitle: { fontSize: 14.5, fontWeight: '700', color: INK },
+  agMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
+  agSub: { fontSize: 11.5, color: MUTE },
 
   /* Canaux */
   chanCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 15, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
@@ -6615,26 +6782,26 @@ const styles = StyleSheet.create({
   msgAvatar: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
   msgAvatarTxt: { color: '#fff', fontSize: 12, fontWeight: '800' },
   msgBubbleWrap: { maxWidth: '78%' },
-  msgAuthor: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 3, marginLeft: 4 },
-  msgReply: { borderLeftWidth: 3, borderLeftColor: '#CBD5E1', paddingLeft: 8, marginBottom: 4, marginLeft: 4 },
-  msgReplyAuthor: { fontSize: 11.5, fontWeight: '700', color: '#64748B' },
+  msgAuthor: { fontSize: 12, fontWeight: '700', color: '#45544D', marginBottom: 3, marginLeft: 4 },
+  msgReply: { borderLeftWidth: 3, borderLeftColor: '#CBD5D1', paddingLeft: 8, marginBottom: 4, marginLeft: 4 },
+  msgReplyAuthor: { fontSize: 11.5, fontWeight: '700', color: '#5F6D66' },
   msgReplyTxt: { fontSize: 11.5, color: MUTE },
-  msgBubble: { backgroundColor: '#fff', borderRadius: 16, paddingVertical: 10, paddingHorizontal: 13, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  msgBubble: { backgroundColor: '#fff', borderRadius: 16, paddingVertical: 10, paddingHorizontal: 13, shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   msgBubbleSelf: { backgroundColor: BRAND },
   msgTxt: { fontSize: 14.5, color: INK, lineHeight: 20 },
   msgTime: { fontSize: 10.5, color: '#B6C0CC', marginTop: 3, marginHorizontal: 4 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', padding: 10, paddingBottom: Platform.OS === 'ios' ? 24 : 10, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#EEF2F6', gap: 8 },
-  composerInput: { flex: 1, maxHeight: 110, backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 11 : 8, paddingBottom: Platform.OS === 'ios' ? 11 : 8, fontSize: 15, color: INK },
+  composerInput: { flex: 1, maxHeight: 110, backgroundColor: '#F1F5F4', borderRadius: 20, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 11 : 8, paddingBottom: Platform.OS === 'ios' ? 11 : 8, fontSize: 15, color: INK },
   composerBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' },
 
   /* Menu Plus (hub) */
   moreHeader: { flexDirection: 'row', alignItems: 'center', padding: 18, paddingTop: 22, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEF2F6' },
-  moreAvatar: { width: 54, height: 54, borderRadius: 17, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 14, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  moreAvatar: { width: 54, height: 54, borderRadius: 17, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 14, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', shadowColor: '#0B1A13', shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
   moreAvatarImg: { width: 42, height: 42, borderRadius: 11 },
   moreAvatarTxt: { fontSize: 19, fontWeight: '800', color: BRAND },
   moreOrg: { fontSize: 18, fontWeight: '800', color: INK },
   moreSub: { fontSize: 13, color: MUTE, marginTop: 2 },
-  moreGroupTitle: { fontSize: 11, fontWeight: '700', color: '#94A3B8', marginLeft: 2, textTransform: 'uppercase', letterSpacing: 0.6 },
+  moreGroupTitle: { fontSize: 11, fontWeight: '700', color: '#8A968F', marginLeft: 2, textTransform: 'uppercase', letterSpacing: 0.6 },
   moreGroupHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   adminTag: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2 },
   adminTagCorner: { position: 'absolute', top: 6, right: 6, backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1, zIndex: 2 },
@@ -6665,35 +6832,35 @@ const styles = StyleSheet.create({
 
   /* Stats */
   statGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  statCard: { width: '48%', backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  statCard: { width: '48%', backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   statVal: { fontSize: 22, fontWeight: '800', letterSpacing: -0.4 },
   statLbl: { fontSize: 12.5, color: MUTE, marginTop: 4 },
   bar: { width: 22, borderRadius: 6, backgroundColor: BRAND, marginTop: 6 },
-  barVal: { fontSize: 10, color: '#64748B', fontWeight: '600' },
+  barVal: { fontSize: 10, color: '#5F6D66', fontWeight: '600' },
   barLbl: { fontSize: 10.5, color: MUTE, marginTop: 6 },
 
   /* Notifications */
   notifCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff', borderRadius: 15, padding: 14, marginBottom: 9, borderWidth: 1, borderColor: '#EFF3F1', shadowColor: '#0B3B2A', shadowOpacity: 0.045, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 1 },
   notifUnread: { backgroundColor: '#F7FFFC', borderWidth: 1, borderColor: '#D1FAE5' },
-  notifIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  notifIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#F1F5F4', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   notifTitle: { fontSize: 14, fontWeight: '600', color: INK, lineHeight: 19 },
-  notifBody: { fontSize: 12.5, color: '#64748B', marginTop: 2 },
+  notifBody: { fontSize: 12.5, color: '#5F6D66', marginTop: 2 },
   notifAgo: { fontSize: 11, color: MUTE, marginTop: 4 },
 
   /* Coach IA */
   coachWeek: { fontSize: 13, fontWeight: '700', color: BRAND, marginBottom: 10 },
   coachRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: '#fff', borderRadius: 12, padding: 13, marginBottom: 8 },
-  coachRowTxt: { flex: 1, fontSize: 14, color: '#334155', lineHeight: 20 },
+  coachRowTxt: { flex: 1, fontSize: 14, color: '#45544D', lineHeight: 20 },
   recoCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#F0FDF9', borderWidth: 1, borderColor: '#D1FAE5', borderRadius: 14, padding: 14, marginBottom: 10 },
   recoIcon: { fontSize: 22 },
   recoTitle: { fontSize: 14.5, fontWeight: '700', color: INK },
-  recoWhy: { fontSize: 13, color: '#475569', marginTop: 3, lineHeight: 18 },
+  recoWhy: { fontSize: 13, color: '#45544D', marginTop: 3, lineHeight: 18 },
 
   /* Réglages */
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logoBox: { width: 64, height: 64, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  logoBox: { width: 64, height: 64, borderRadius: 16, backgroundColor: '#F1F5F4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   logoImg: { width: 64, height: 64, borderRadius: 16 },
-  settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 12, padding: 15, marginTop: 10, shadowColor: '#0F172A', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
+  settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 12, padding: 15, marginTop: 10, shadowColor: '#0B1A13', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
   settingsRowTxt: { flex: 1, fontSize: 14.5, fontWeight: '600', color: INK },
   deleteTxt: { fontSize: 13.5, color: '#DC2626', fontWeight: '600', textDecorationLine: 'underline' },
 
@@ -6704,7 +6871,7 @@ const styles = StyleSheet.create({
   aiCard: { backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 16, padding: 15, marginTop: 14, marginBottom: 6 },
   aiHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   aiTitle: { fontSize: 13, fontWeight: '800', color: '#6D28D9', letterSpacing: 0.2 },
-  aiTxt: { fontSize: 14, color: '#334155', lineHeight: 20 },
+  aiTxt: { fontSize: 14, color: '#45544D', lineHeight: 20 },
   aiMuted: { fontSize: 13, color: '#7C6FAE' },
   aiBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 12, paddingVertical: 11, borderRadius: 12, backgroundColor: '#EDE9FE' },
   aiBtnTxt: { fontSize: 14, fontWeight: '700', color: '#6D28D9' },
@@ -6727,31 +6894,39 @@ const styles = StyleSheet.create({
   cockpitBtnTxt: { fontSize: 14.5, fontWeight: '800', color: '#4F46E5' },
 
   /* Boutons Bilan PDF */
-  bilanNote: { fontSize: 12.5, color: '#94A3B8', marginTop: 12, lineHeight: 17 },
+  bilanNote: { fontSize: 12.5, color: '#8A968F', marginTop: 12, lineHeight: 17 },
   pdfRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
   pdfBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 13, borderWidth: 1.5, borderColor: '#DDD6FE', backgroundColor: '#F5F3FF' },
   pdfBtnTxt: { fontSize: 12.5, fontWeight: '700', color: '#4F46E5' },
 
   /* Bouton retour flottant (pages web / PDF) */
-  floatBack: { position: 'absolute', top: 10, left: 12, flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 22, paddingVertical: 8, paddingLeft: 8, paddingRight: 14, shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  floatBack: { position: 'absolute', top: 10, left: 12, flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 22, paddingVertical: 8, paddingLeft: 8, paddingRight: 14, shadowColor: '#0B1A13', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   floatBackTxt: { fontSize: 14.5, fontWeight: '700', color: INK },
 
   emptyBox: { alignItems: 'center', paddingTop: 70, paddingHorizontal: 30 },
-  emptyTxt: { color: '#64748B', fontSize: 15, marginTop: 14, fontWeight: '500' },
-  emptySub: { color: '#94A3B8', fontSize: 13, marginTop: 8, textAlign: 'center', lineHeight: 19 },
+  emptyTxt: { color: '#5F6D66', fontSize: 15, marginTop: 14, fontWeight: '500' },
+  emptySub: { color: '#8A968F', fontSize: 13, marginTop: 8, textAlign: 'center', lineHeight: 19 },
   formRow2: { flexDirection: 'row', alignItems: 'flex-start' },
-  listNewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BRAND, borderRadius: 14, paddingVertical: 13, marginBottom: 16, shadowColor: BRAND, shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+  listNewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BRAND, borderRadius: R_BTN, paddingVertical: 14, marginBottom: 20, ...SH_BTN },
   listNewTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
   emptyBtn: { marginTop: 18, backgroundColor: BRAND, paddingVertical: 12, paddingHorizontal: 22, borderRadius: 12 },
   emptyBtnTxt: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
 
   /* Tab bar */
-  tabBar: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.55)', marginHorizontal: 12, marginBottom: Platform.OS === 'ios' ? 6 : 22, borderRadius: 30, paddingBottom: Platform.OS === 'ios' ? 14 : 10, paddingTop: 10, paddingHorizontal: 6, alignItems: 'flex-end', shadowColor: '#0F172A', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 18 },
-  tabBlur: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 30, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.42)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
-  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 },
-  tabLabel: { fontSize: 11, fontWeight: '600' },
-  fabWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  fab: { width: 56, height: 56, borderRadius: 28, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', marginTop: -26, shadowColor: BRAND, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 8, borderWidth: 4, borderColor: '#fff' },
+  /* Barre d'onglets (nœud 3:40) : 358×66, r26, blanc 92 %, bordure #E7EEEA,
+     ombre 0 10 26 -6 rgba(10,59,41,.16). Le dock ne rogne pas : le « + » déborde. */
+  // Dock de 84 px : la barre (66) est calée en bas, le « + » (58) démarre à top:0.
+  // 84 − 66 = 18 px de débordement, exactement l'écart de la maquette — et comme le
+  // bouton reste DANS les limites du dock, aucun rognage possible (iOS comme Android).
+  tabDock: { height: 84, justifyContent: 'flex-end', marginBottom: Platform.OS === 'ios' ? 6 : 18 },
+  tabBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 66, marginHorizontal: 16, borderRadius: 26, paddingVertical: 11, backgroundColor: 'rgba(255,255,255,0.96)', borderWidth: 1, borderColor: LINE, shadowColor: '#0A3B29', shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 14 },
+  tab: { width: 70, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  tabSpacer: { width: 64, height: 44 },
+  tabLabel: { fontSize: 9.5, fontWeight: '500', color: INK_3 },
+  tabLabelOn: { fontWeight: '700', color: BRAND },
+  /* Bouton « + » (nœud 22:2) : 58×58, anneau blanc 4 px, chevauche le haut de la barre. */
+  fabWrap: { position: 'absolute', left: 0, right: 0, top: 0, alignItems: 'center' },
+  fab: { width: 58, height: 58, borderRadius: 29, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: '#fff', shadowColor: '#057352', shadowOpacity: 0.38, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
   founderStrip: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#1F1804', borderTopWidth: 1, borderTopColor: 'rgba(252,211,77,0.35)', paddingHorizontal: 16, paddingVertical: 11 },
   founderStripStar: { width: 26, height: 26, borderRadius: 8, backgroundColor: '#FCD34D', alignItems: 'center', justifyContent: 'center' },
   founderStripTxt: { fontSize: 13.5, fontWeight: '800', color: '#FCD34D', letterSpacing: 0.2 },
@@ -6801,23 +6976,23 @@ const styles = StyleSheet.create({
   dirBanner: { backgroundColor: '#0369A1', borderRadius: 18, padding: 18, marginBottom: 16, alignItems: 'center' },
   dirBannerBig: { color: '#fff', fontSize: 30, fontWeight: '800' },
   dirBannerLbl: { color: '#BAE6FD', fontSize: 13, marginTop: 2, fontWeight: '600' },
-  dirRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  dirRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
   dirIco: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  dirRowT: { flex: 1, fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  dirRowS: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  dirRowT: { flex: 1, fontSize: 15, fontWeight: '700', color: '#0B1A13' },
+  dirRowS: { fontSize: 12, color: '#5F6D66', marginTop: 2 },
   dirCount: { backgroundColor: '#F0F9FF', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 4, marginRight: 6 },
   dirCountT: { color: '#0369A1', fontWeight: '800', fontSize: 13 },
-  dirDeptCard: { backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 12, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  dirDeptCard: { backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 12, shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
   dirDeptHead: { flexDirection: 'row', alignItems: 'center' },
   dirDeptCode: { color: '#2563EB', fontWeight: '800', fontSize: 14 },
   dirChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 11 },
-  dirChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 6 },
-  dirChipT: { fontSize: 12, color: '#334155', fontWeight: '600' },
+  dirChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F1F5F4', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 6 },
+  dirChipT: { fontSize: 12, color: '#45544D', fontWeight: '600' },
   dirChipN: { fontSize: 11, color: '#0369A1', fontWeight: '800' },
-  dirListCount: { fontSize: 13, color: '#64748B', fontWeight: '700', marginBottom: 10 },
-  dirAsso: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
-  dirAssoName: { fontSize: 14.5, fontWeight: '700', color: '#0F172A' },
-  dirAssoMeta: { fontSize: 12, color: '#64748B', marginTop: 3 },
+  dirListCount: { fontSize: 13, color: '#5F6D66', fontWeight: '700', marginBottom: 10 },
+  dirAsso: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  dirAssoName: { fontSize: 14.5, fontWeight: '700', color: '#0B1A13' },
+  dirAssoMeta: { fontSize: 12, color: '#5F6D66', marginTop: 3 },
   dirEmailRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 7 },
   dirEmailTxt: { fontSize: 12.5, color: '#047857', fontWeight: '600' },
   dirAssoActions: { flexDirection: 'row', gap: 9, marginTop: 12 },
@@ -6825,10 +7000,10 @@ const styles = StyleSheet.create({
   dirActBtnP: { backgroundColor: '#0369A1' },
   dirActTxt: { fontSize: 12.5, fontWeight: '700', color: '#0369A1' },
   dirEmpty: { alignItems: 'center', paddingVertical: 44, gap: 8 },
-  dirEmptyT: { fontSize: 16, fontWeight: '700', color: '#334155' },
-  dirEmptyS: { fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 19 },
+  dirEmptyT: { fontSize: 16, fontWeight: '700', color: '#45544D' },
+  dirEmptyS: { fontSize: 13, color: '#5F6D66', textAlign: 'center', lineHeight: 19 },
   dirLegal: { flexDirection: 'row', gap: 9, backgroundColor: '#EFF6FF', borderRadius: 12, padding: 13, marginTop: 16, alignItems: 'flex-start' },
-  dirLegalTxt: { flex: 1, fontSize: 11.5, color: '#475569', lineHeight: 17 },
+  dirLegalTxt: { flex: 1, fontSize: 11.5, color: '#45544D', lineHeight: 17 },
   fcHeaderWrap: { borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', shadowColor: '#047857', shadowOpacity: 0.3, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
   fcHeader: { paddingTop: 8, paddingHorizontal: 16, paddingBottom: 52, position: 'relative', overflow: 'hidden' },
   fcOrbGold: { position: 'absolute', top: -50, right: -30, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(252,211,77,0.18)' },
@@ -6859,11 +7034,11 @@ const styles = StyleSheet.create({
   fcDistTrack: { flexDirection: 'row', height: 9, borderRadius: 6, backgroundColor: 'rgba(6,95,70,0.1)', marginTop: 14, overflow: 'hidden' },
   fcDistFill: { height: 9 },
   fcDistMeta: { flexDirection: 'row', gap: 16, marginTop: 8 },
-  fcDistTxt: { fontSize: 11.5, color: '#475569', fontWeight: '600' },
+  fcDistTxt: { fontSize: 11.5, color: '#45544D', fontWeight: '600' },
 
   fcActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
   fcNotif: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 13, paddingVertical: 13, borderWidth: 1, borderColor: '#E7EDEA' },
-  fcNotifTxt: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  fcNotifTxt: { fontSize: 13, fontWeight: '700', color: '#45544D' },
   fcNotifPill: { backgroundColor: '#EF4444', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, minWidth: 18, alignItems: 'center' },
   fcNotifPillTxt: { color: '#fff', fontSize: 10, fontWeight: '900' },
   fcCreate: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#FCD34D', borderRadius: 14, paddingVertical: 13, shadowColor: '#B45309', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
@@ -6873,10 +7048,10 @@ const styles = StyleSheet.create({
   fcMini: { flex: 1, backgroundColor: '#fff', borderRadius: 17, padding: 13, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   fcMiniIc: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginBottom: 9 },
   fcMiniVal: { fontSize: 21, fontWeight: '800', color: INK, letterSpacing: -0.5 },
-  fcMiniLb: { fontSize: 11.5, fontWeight: '700', color: '#334155', marginTop: 1 },
+  fcMiniLb: { fontSize: 11.5, fontWeight: '700', color: '#45544D', marginTop: 1 },
   fcMiniSub: { fontSize: 9.5, color: '#8A9A92', marginTop: 2 },
   fcMonthCard: { backgroundColor: '#fff', borderRadius: 17, padding: 15, marginTop: 12, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  fcMonthTitle: { fontSize: 12.5, fontWeight: '800', color: '#334155', marginBottom: 12 },
+  fcMonthTitle: { fontSize: 12.5, fontWeight: '800', color: '#45544D', marginBottom: 12 },
   fcMonthRow: { flexDirection: 'row', alignItems: 'center' },
   fcMonthItem: { flex: 1, alignItems: 'center' },
   fcMonthVal: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
@@ -6889,7 +7064,7 @@ const styles = StyleSheet.create({
   fcSecNTxt: { fontSize: 10, fontWeight: '900', color: '#DC2626' },
   fcSignal: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#E7EDEA' },
   fcSignalIc: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  fcSignalTxt: { flex: 1, fontSize: 13, fontWeight: '700', color: '#1E293B' },
+  fcSignalTxt: { flex: 1, fontSize: 13, fontWeight: '700', color: '#2B3A33' },
 
   fcTiles: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   fcTile: { width: '48%', backgroundColor: '#fff', borderRadius: 18, padding: 15, marginBottom: 12, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
@@ -6915,9 +7090,9 @@ const styles = StyleSheet.create({
 
   /* Associations natives — filtres + actions */
   fcFilters: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4, flexWrap: 'wrap' },
-  fcFilter: { backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  fcFilter: { backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: '#E7EEEA' },
   fcFilterOn: { backgroundColor: '#059669', borderColor: '#059669' },
-  fcFilterTxt: { fontSize: 12.5, fontWeight: '700', color: '#64748B' },
+  fcFilterTxt: { fontSize: 12.5, fontWeight: '700', color: '#5F6D66' },
   fcFilterTxtOn: { color: '#fff' },
   fcOrgCard: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   fcOrgCardTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
@@ -6940,14 +7115,14 @@ const styles = StyleSheet.create({
   fcStatGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   fcStatCard: { width: '48%', backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   fcStatVal: { fontSize: 22, fontWeight: '800', color: INK, marginTop: 11, letterSpacing: -0.5 },
-  fcStatLb: { fontSize: 12.5, fontWeight: '700', color: '#334155', marginTop: 2 },
+  fcStatLb: { fontSize: 12.5, fontWeight: '700', color: '#45544D', marginTop: 2 },
   fcStatSub: { fontSize: 10.5, color: '#8A9A92', marginTop: 2 },
   fcBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#E7EDEA' },
   fcBarCol: { flex: 1, alignItems: 'center', gap: 6 },
-  fcBarVal: { fontSize: 11, fontWeight: '800', color: '#334155' },
+  fcBarVal: { fontSize: 11, fontWeight: '800', color: '#45544D' },
   fcBarTrack: { height: 80, justifyContent: 'flex-end' },
   fcBarFill: { width: 18, borderRadius: 6, backgroundColor: '#059669' },
-  fcBarLbl: { fontSize: 9.5, color: '#94A3B8', fontWeight: '600' },
+  fcBarLbl: { fontSize: 9.5, color: '#8A968F', fontWeight: '600' },
   fcArtCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 15, padding: 13, marginTop: 11, borderWidth: 1, borderColor: '#E7EDEA' },
   fcArtIc: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   fcTicketCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 15, padding: 14, marginTop: 11, borderWidth: 1, borderColor: '#E7EDEA' },
@@ -6961,128 +7136,128 @@ const styles = StyleSheet.create({
   blogQueueIc: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center' },
   blogModalWrap: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
   blogModal: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, paddingBottom: 30, maxHeight: '90%' },
-  blogModalHandle: { width: 42, height: 5, borderRadius: 3, backgroundColor: '#E2E8F0', alignSelf: 'center', marginBottom: 14 },
+  blogModalHandle: { width: 42, height: 5, borderRadius: 3, backgroundColor: '#E7EEEA', alignSelf: 'center', marginBottom: 14 },
   blogModalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   blogModalTitle: { fontSize: 19, fontWeight: '800', color: INK },
   blogBusy: { alignItems: 'center', paddingVertical: 30 },
   blogBusyTxt: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 16, textAlign: 'center' },
-  blogBusySub: { fontSize: 13, color: '#64748B', marginTop: 6, textAlign: 'center', paddingHorizontal: 20, lineHeight: 18 },
+  blogBusySub: { fontSize: 13, color: '#5F6D66', marginTop: 6, textAlign: 'center', paddingHorizontal: 20, lineHeight: 18 },
   blogOkIc: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center' },
-  blogSecBtn: { paddingVertical: 13, paddingHorizontal: 22, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
-  blogSecTxt: { fontSize: 15, fontWeight: '700', color: '#334155' },
+  blogSecBtn: { paddingVertical: 13, paddingHorizontal: 22, borderRadius: 12, borderWidth: 1, borderColor: '#E7EEEA' },
+  blogSecTxt: { fontSize: 15, fontWeight: '700', color: '#45544D' },
   blogPrimBtn: { paddingVertical: 13, paddingHorizontal: 28, borderRadius: 12, backgroundColor: BRAND },
   blogPrimTxt: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  blogLabel: { fontSize: 14, fontWeight: '700', color: '#334155', marginTop: 12, marginBottom: 8 },
-  blogInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: INK, minHeight: 48 },
+  blogLabel: { fontSize: 14, fontWeight: '700', color: '#45544D', marginTop: 12, marginBottom: 8 },
+  blogInput: { backgroundColor: '#F4F8F6', borderWidth: 1, borderColor: '#E7EEEA', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: INK, minHeight: 48 },
   blogCats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  blogCat: { backgroundColor: '#F1F5F9', borderRadius: 999, paddingHorizontal: 13, paddingVertical: 9, borderWidth: 1, borderColor: '#E2E8F0' },
+  blogCat: { backgroundColor: '#F1F5F4', borderRadius: 999, paddingHorizontal: 13, paddingVertical: 9, borderWidth: 1, borderColor: '#E7EEEA' },
   blogCatOn: { backgroundColor: '#EDE9FE', borderColor: '#7C3AED' },
-  blogCatTxt: { fontSize: 12.5, fontWeight: '600', color: '#64748B' },
+  blogCatTxt: { fontSize: 12.5, fontWeight: '600', color: '#5F6D66' },
   blogCatTxtOn: { color: '#6D28D9', fontWeight: '800' },
-  blogSwitchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 18, backgroundColor: '#F8FAFC', borderRadius: 13, padding: 14, borderWidth: 1, borderColor: '#E7EDEA' },
+  blogSwitchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 18, backgroundColor: '#F4F8F6', borderRadius: 13, padding: 14, borderWidth: 1, borderColor: '#E7EDEA' },
   blogSwitchTitle: { fontSize: 14.5, fontWeight: '700', color: INK },
-  blogSwitchSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  blogSwitchSub: { fontSize: 12, color: '#8A968F', marginTop: 2 },
   blogProgBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, paddingVertical: 14, marginTop: 10, borderWidth: 1.5, borderColor: '#D1FAE5', backgroundColor: '#F0FDF9' },
   blogProgTxt: { color: BRAND, fontSize: 14.5, fontWeight: '800' },
-  blogHint: { fontSize: 12, color: '#94A3B8', marginTop: 12, lineHeight: 17, textAlign: 'center' },
-  blogArtDate: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
-  blogQty: { minWidth: 50, alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 12, paddingVertical: 11, paddingHorizontal: 14, borderWidth: 1.5, borderColor: '#E2E8F0' },
+  blogHint: { fontSize: 12, color: '#8A968F', marginTop: 12, lineHeight: 17, textAlign: 'center' },
+  blogArtDate: { fontSize: 11, color: '#8A968F', marginTop: 4, fontWeight: '600' },
+  blogQty: { minWidth: 50, alignItems: 'center', backgroundColor: '#F1F5F4', borderRadius: 12, paddingVertical: 11, paddingHorizontal: 14, borderWidth: 1.5, borderColor: '#E7EEEA' },
   blogQtyOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
-  blogQtyTxt: { fontSize: 16, fontWeight: '800', color: '#64748B' },
+  blogQtyTxt: { fontSize: 16, fontWeight: '800', color: '#5F6D66' },
   blogQtyTxtOn: { color: '#fff' },
 
   /* Créer org — plans + identifiants */
-  planChip: { backgroundColor: '#F8FAFC', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1.5, borderColor: '#E2E8F0' },
+  planChip: { backgroundColor: '#F4F8F6', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1.5, borderColor: '#E7EEEA' },
   planChipOn: { backgroundColor: BRAND, borderColor: BRAND },
   planChipName: { fontSize: 13.5, fontWeight: '800', color: INK },
-  planChipPrice: { fontSize: 11, color: '#64748B', marginTop: 1 },
-  payRow: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#F8FAFC', borderRadius: 13, padding: 13, borderWidth: 1.5, borderColor: '#E2E8F0' },
+  planChipPrice: { fontSize: 11, color: '#5F6D66', marginTop: 1 },
+  payRow: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#F4F8F6', borderRadius: 13, padding: 13, borderWidth: 1.5, borderColor: '#E7EEEA' },
   payRowOn: { backgroundColor: '#ECFDF5', borderColor: BRAND },
   payLbl: { fontSize: 14, fontWeight: '700', color: INK },
-  paySub: { fontSize: 12, color: '#64748B', marginTop: 1 },
+  paySub: { fontSize: 12, color: '#5F6D66', marginTop: 1 },
   odHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
   odTitle: { fontSize: 19, fontWeight: '800', color: INK },
-  odMeta: { fontSize: 12.5, color: '#64748B', marginTop: 2 },
+  odMeta: { fontSize: 12.5, color: '#5F6D66', marginTop: 2 },
   odActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
   odBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5 },
   odBtnTxt: { fontSize: 13.5, fontWeight: '700' },
   odPanel: { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E7EDEA', paddingHorizontal: 14 },
   odMember: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
-  odMemberBorder: { borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  odMemberBorder: { borderTopWidth: 1, borderTopColor: '#F1F5F4' },
   odMemberName: { fontSize: 14, fontWeight: '700', color: INK },
-  odMemberMail: { fontSize: 12, color: '#94A3B8', marginTop: 1 },
+  odMemberMail: { fontSize: 12, color: '#8A968F', marginTop: 1 },
   plnCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 14, padding: 15, marginBottom: 10, borderWidth: 1, borderColor: '#E7EDEA' },
   plnName: { fontSize: 15, fontWeight: '800', color: INK },
-  plnSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  plnSub: { fontSize: 12, color: '#8A968F', marginTop: 2 },
   plnPrice: { fontSize: 14, fontWeight: '800', color: BRAND },
   plnGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  plnQuota: { width: '48%', backgroundColor: '#F8FAFC', borderRadius: 11, padding: 10, borderWidth: 1, borderColor: '#E7EDEA' },
-  plnQuotaLbl: { fontSize: 11.5, color: '#64748B', marginBottom: 4 },
+  plnQuota: { width: '48%', backgroundColor: '#F4F8F6', borderRadius: 11, padding: 10, borderWidth: 1, borderColor: '#E7EDEA' },
+  plnQuotaLbl: { fontSize: 11.5, color: '#5F6D66', marginBottom: 4 },
   plnQuotaInp: { fontSize: 15, fontWeight: '700', color: INK, padding: 0 },
   plnPanel: { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E7EDEA', paddingHorizontal: 14, marginTop: 10 },
   plnFeat: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11 },
   plnFeatLbl: { fontSize: 14, color: INK, flex: 1 },
-  fdCountLine: { fontSize: 12.5, color: '#94A3B8', marginBottom: 10, fontWeight: '600' },
+  fdCountLine: { fontSize: 12.5, color: '#8A968F', marginBottom: 10, fontWeight: '600' },
   fdProgTrack: { height: 5, borderRadius: 3, backgroundColor: '#EEF2F6', marginTop: 8, overflow: 'hidden' },
   fdProgFill: { height: '100%', borderRadius: 3, backgroundColor: BRAND },
-  actRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  actRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#F1F5F4' },
   actIc: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   actLbl: { fontSize: 14, color: INK, fontWeight: '600' },
-  actMeta: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
-  setSec: { fontSize: 12, fontWeight: '800', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 16, marginBottom: 4 },
+  actMeta: { fontSize: 12, color: '#8A968F', marginTop: 2 },
+  setSec: { fontSize: 12, fontWeight: '800', color: '#8A968F', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 16, marginBottom: 4 },
   prBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 14 },
   prBannerTxt: { flex: 1, fontSize: 12.5, fontWeight: '600', lineHeight: 17 },
   prImport: { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E7EDEA', padding: 14, marginBottom: 16 },
-  prHint: { fontSize: 11.5, color: '#94A3B8', lineHeight: 16, marginTop: 6, marginBottom: 10 },
-  credCard: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: '#E2E8F0' },
-  credLbl: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
+  prHint: { fontSize: 11.5, color: '#8A968F', lineHeight: 16, marginTop: 6, marginBottom: 10 },
+  credCard: { backgroundColor: '#F4F8F6', borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: '#E7EEEA' },
+  credLbl: { fontSize: 12, fontWeight: '700', color: '#8A968F', textTransform: 'uppercase', letterSpacing: 0.4 },
   credVal: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 3 },
   credDivider: { height: 1, backgroundColor: '#E7EDEA', marginVertical: 12 },
 
   /* Support thread */
   supHead: { marginBottom: 14 },
   supTitle: { fontSize: 17, fontWeight: '800', color: INK },
-  supMeta: { fontSize: 12, color: '#94A3B8', marginTop: 3 },
+  supMeta: { fontSize: 12, color: '#8A968F', marginTop: 3 },
   supMsgRow: { marginBottom: 10, flexDirection: 'row' },
   supMsgLeft: { justifyContent: 'flex-start' },
   supMsgRight: { justifyContent: 'flex-end' },
   supBubble: { maxWidth: '82%', borderRadius: 16, padding: 12 },
   supBubbleMe: { backgroundColor: BRAND, borderBottomRightRadius: 5 },
-  supBubbleOrg: { backgroundColor: '#F1F5F9', borderBottomLeftRadius: 5 },
+  supBubbleOrg: { backgroundColor: '#F1F5F4', borderBottomLeftRadius: 5 },
   supNote: { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A' },
   supNoteLbl: { fontSize: 10, fontWeight: '800', color: '#B45309', marginBottom: 3, textTransform: 'uppercase' },
-  supBody: { fontSize: 14.5, color: '#1E293B', lineHeight: 20 },
-  supAt: { fontSize: 10.5, color: '#94A3B8', marginTop: 5, alignSelf: 'flex-end' },
+  supBody: { fontSize: 14.5, color: '#2B3A33', lineHeight: 20 },
+  supAt: { fontSize: 10.5, color: '#8A968F', marginTop: 5, alignSelf: 'flex-end' },
   supClosed: { padding: 16, alignItems: 'center', borderTopWidth: 1, borderTopColor: '#EEF2F1' },
-  supClosedTxt: { fontSize: 13, color: '#94A3B8', fontWeight: '600' },
+  supClosedTxt: { fontSize: 13, color: '#8A968F', fontWeight: '600' },
   supInputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12, borderTopWidth: 1, borderTopColor: '#EEF2F1', backgroundColor: '#fff' },
-  supInput: { flex: 1, maxHeight: 110, backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 11, fontSize: 15, color: INK },
+  supInput: { flex: 1, maxHeight: 110, backgroundColor: '#F1F5F4', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 11, fontSize: 15, color: INK },
   supSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' },
 
   /* Contacts / prospects */
   ctcCard: { backgroundColor: '#fff', borderRadius: 15, padding: 14, marginBottom: 11, borderWidth: 1, borderColor: '#E7EDEA' },
   ctcTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   ctcAv: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  ctcSubject: { fontSize: 13, fontWeight: '700', color: '#334155', marginTop: 10 },
-  ctcMsg: { fontSize: 13, color: '#64748B', marginTop: 4, lineHeight: 18 },
-  ctcDetailMeta: { fontSize: 13, color: '#64748B', marginTop: 2 },
+  ctcSubject: { fontSize: 13, fontWeight: '700', color: '#45544D', marginTop: 10 },
+  ctcMsg: { fontSize: 13, color: '#5F6D66', marginTop: 4, lineHeight: 18 },
+  ctcDetailMeta: { fontSize: 13, color: '#5F6D66', marginTop: 2 },
   ctcDetailSubject: { fontSize: 15, fontWeight: '800', color: INK, marginTop: 12 },
-  ctcDetailBox: { backgroundColor: '#F8FAFC', borderRadius: 13, padding: 14, marginTop: 10, borderWidth: 1, borderColor: '#EEF2F1' },
-  ctcDetailMsg: { fontSize: 14.5, color: '#1E293B', lineHeight: 21 },
+  ctcDetailBox: { backgroundColor: '#F4F8F6', borderRadius: 13, padding: 14, marginTop: 10, borderWidth: 1, borderColor: '#EEF2F1' },
+  ctcDetailMsg: { fontSize: 14.5, color: '#2B3A33', lineHeight: 21 },
 
   /* Emails / SMS — périodes */
   periodCard: { backgroundColor: '#fff', borderRadius: 17, padding: 15, marginTop: 16, borderWidth: 1, borderColor: '#E7EDEA', shadowColor: '#0B3B2A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   periodHead: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 13 },
   periodTitle: { fontSize: 13.5, fontWeight: '800', color: INK },
   periodRow: { flexDirection: 'row', gap: 8 },
-  periodCell: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#EEF2F1' },
-  periodCellLb: { fontSize: 9, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.4 },
+  periodCell: { flex: 1, backgroundColor: '#F4F8F6', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#EEF2F1' },
+  periodCellLb: { fontSize: 9, fontWeight: '700', color: '#8A968F', letterSpacing: 0.4 },
   periodCellVal: { fontSize: 22, fontWeight: '800', marginTop: 5, letterSpacing: -0.5 },
 
   /* Quick actions sheet */
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 34 },
-  sheetHandle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: '#E2E8F0', marginBottom: 12 },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: '#E7EEEA', marginBottom: 12 },
   sheetTitle: { fontSize: 18, fontWeight: '700', color: INK, marginBottom: 8, marginLeft: 4 },
   qaRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
   qaIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
@@ -7122,20 +7297,20 @@ const styles = StyleSheet.create({
   lgBlob1: { width: 320, height: 320, backgroundColor: 'rgba(12,203,143,0.12)', top: -120, right: -90 },
   lgBlob2: { width: 300, height: 300, backgroundColor: 'rgba(5,150,105,0.10)', bottom: -110, left: -100 },
   lgBack: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 14, marginTop: 6, marginLeft: 16 },
-  lgBackTxt: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  lgBackTxt: { fontSize: 15, fontWeight: '700', color: '#0B1A13' },
   lgScroll: { flexGrow: 1, justifyContent: 'center', padding: 20, paddingBottom: 40 },
   lgCard: { backgroundColor: '#fff', borderRadius: 26, padding: 24, shadowColor: '#0B3B2A', shadowOpacity: 0.1, shadowRadius: 30, shadowOffset: { width: 0, height: 16 }, elevation: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
   lgBrandRow: { alignItems: 'center' },
   lgBrand: { fontSize: 27, fontWeight: '800', color: '#111827', letterSpacing: -0.5 },
   lgBrandKit: { color: '#059669' },
   lgBrandDot: { color: '#059669' },
-  lgTagline: { fontSize: 13.5, color: '#94A3B8', textAlign: 'center', marginTop: 4, marginBottom: 22 },
-  lgTitle: { fontSize: 30, fontWeight: '800', color: '#0F172A', letterSpacing: -0.6 },
-  lgSub: { fontSize: 14.5, color: '#64748B', marginTop: 4, marginBottom: 22 },
-  lgLabel: { fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 8, marginTop: 4 },
-  lgInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 14, paddingHorizontal: 15, paddingVertical: 14, fontSize: 15.5, color: '#0F172A', marginBottom: 16 },
-  lgPassRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 14, paddingHorizontal: 15, marginBottom: 6 },
-  lgPassInput: { flex: 1, paddingVertical: 14, fontSize: 15.5, color: '#0F172A' },
+  lgTagline: { fontSize: 13.5, color: '#8A968F', textAlign: 'center', marginTop: 4, marginBottom: 22 },
+  lgTitle: { fontSize: 30, fontWeight: '800', color: '#0B1A13', letterSpacing: -0.6 },
+  lgSub: { fontSize: 14.5, color: '#5F6D66', marginTop: 4, marginBottom: 22 },
+  lgLabel: { fontSize: 14, fontWeight: '700', color: '#45544D', marginBottom: 8, marginTop: 4 },
+  lgInput: { backgroundColor: '#F4F8F6', borderWidth: 1, borderColor: '#E7EEEA', borderRadius: 14, paddingHorizontal: 15, paddingVertical: 14, fontSize: 15.5, color: '#0B1A13', marginBottom: 16 },
+  lgPassRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F4F8F6', borderWidth: 1, borderColor: '#E7EEEA', borderRadius: 14, paddingHorizontal: 15, marginBottom: 6 },
+  lgPassInput: { flex: 1, paddingVertical: 14, fontSize: 15.5, color: '#0B1A13' },
   lgError: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#FEF2F2', borderRadius: 11, padding: 11, marginTop: 12, borderWidth: 1, borderColor: '#FECACA' },
   lgErrorTxt: { flex: 1, fontSize: 13, color: '#B91C1C', fontWeight: '600' },
   lgBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#059669', borderRadius: 14, paddingVertical: 16, marginTop: 18, shadowColor: '#047857', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
@@ -7145,7 +7320,7 @@ const styles = StyleSheet.create({
   lgFace: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6, paddingVertical: 13, borderRadius: 13, borderWidth: 1, borderColor: '#D1FAE5', backgroundColor: '#F0FDF9' },
   lgFaceTxt: { color: '#059669', fontSize: 14.5, fontWeight: '700' },
   lgDivider: { height: 1, backgroundColor: '#EEF2F1', marginVertical: 18 },
-  lgFooter: { fontSize: 13.5, color: '#64748B', textAlign: 'center' },
+  lgFooter: { fontSize: 13.5, color: '#5F6D66', textAlign: 'center' },
   lgLink: { color: '#059669', fontWeight: '800' },
-  lgHosted: { fontSize: 12.5, color: '#64748B', textAlign: 'center', marginTop: 18 },
+  lgHosted: { fontSize: 12.5, color: '#5F6D66', textAlign: 'center', marginTop: 18 },
 });
