@@ -14,6 +14,10 @@
       "url": "https://u.expo.dev/dae894d1-666e-4f15-9a5b-12819abd97e4",
       "fallbackToCacheTimeout": 0
     },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "fr.assokit.app",

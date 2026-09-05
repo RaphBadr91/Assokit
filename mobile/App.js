@@ -934,9 +934,6 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
   const projects = (data && data.projects) || [];
   return (
     <View style={styles.projWrap}>
-      <LinearGradient colors={['#EAF7F1', '#E9F0FB', '#F2EBFB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-      <View style={styles.auroraOrbA} pointerEvents="none" />
-      <View style={styles.auroraOrbB} pointerEvents="none" />
       <View style={styles.projHeader}>
         {onBack && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
         <View style={{ flex: 1 }}>
@@ -6238,9 +6235,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const showDetail = !!detailTop && authed && !webMode && !showForm;
   const showWeb = !showHome && !showProjects && !showInvoices && !showPeople && !showDetail && !showForm && !showMenu;
 
+  // Zone de statut : sur l'accueil elle prolonge le dégradé vert de l'en-tête.
+  // Deux SafeAreaView superposées — la première (flex: 0) ne couvre que l'encoche,
+  // la seconde le reste. Sans ça, iOS laissait un bandeau blanc au-dessus du
+  // dégradé et Android gardait le vert pâle de l'ancienne maquette.
+  const topTint = showHome ? HEAD_GRAD[0] : '#fff';
   return (
+    <>
+    <SafeAreaView style={{ flex: 0, backgroundColor: topTint }} />
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={showHome ? '#EAF7F1' : '#fff'} />
+      <StatusBar barStyle={showHome ? 'light-content' : 'dark-content'} backgroundColor={topTint} />
       <View style={styles.webWrap}>
         <WebView
           ref={webRef}
@@ -6633,6 +6637,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         </View>
       )}
     </SafeAreaView>
+    </>
   );
 }
 
@@ -6771,9 +6776,7 @@ const styles = StyleSheet.create({
   fgPrimaryTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   /* Accueil natif */
-  homeAurora: { flex: 1, backgroundColor: '#EEF3FA' },
-  auroraOrbA: { position: 'absolute', top: 120, right: -70, width: 240, height: 240, borderRadius: 120, backgroundColor: 'rgba(45,212,191,0.20)' },
-  auroraOrbB: { position: 'absolute', bottom: 40, left: -80, width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(129,140,248,0.18)' },
+  homeAurora: { flex: 1, backgroundColor: CANVAS },
   homeScroll: { flex: 1, backgroundColor: 'transparent' },
   homeContent: { paddingBottom: 110 }, // dégage la barre d'onglets flottante (66 px + marges)
   hHeaderWrap: { borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden', shadowColor: '#2B3A33', shadowOpacity: 0.10, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 6 },
@@ -6831,13 +6834,13 @@ const styles = StyleSheet.create({
   openFullTxt: { fontSize: 15, fontWeight: '750', color: '#fff' },
 
   /* Projets natifs */
-  projWrap: { flex: 1, backgroundColor: '#EEF3FA' },
+  projWrap: { flex: 1, backgroundColor: CANVAS },
   projHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 12 },
   projTitle: { fontSize: 26, fontWeight: '800', color: INK, letterSpacing: -0.4 },
   projSub: { fontSize: 13.5, color: MUTE, marginTop: 2 },
   projNewBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: BRAND, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, shadowColor: BRAND, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   projNewTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  projCard: { backgroundColor: 'rgba(255,255,255,0.82)', borderRadius: 20, padding: 16, paddingLeft: 20, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#0B3B2A', shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 9 }, elevation: 3, position: 'relative', overflow: 'hidden' },
+  projCard: { backgroundColor: '#fff', borderRadius: R_CARD, padding: 16, paddingLeft: 20, marginBottom: 12, borderWidth: 1, borderColor: LINE, ...SH_CARD, position: 'relative', overflow: 'hidden' },
   projAccent: { position: 'absolute', top: 0, bottom: 0, left: 0, width: 4 },
   projCardTop: { flexDirection: 'row', alignItems: 'flex-start' },
   projName: { fontSize: 16, fontWeight: '700', color: INK },
@@ -6849,7 +6852,7 @@ const styles = StyleSheet.create({
   progFill: { height: 7, borderRadius: 4 },
   progTxt: { fontSize: 12.5, fontWeight: '700', color: '#5F6D66', width: 38, textAlign: 'right' },
   /* Membres / Clients */
-  personCard: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  personCard: { backgroundColor: '#fff', borderRadius: R_CARD, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: LINE, ...SH_CARD },
   personAvatar: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 13 },
   personAvatarTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
   personName: { fontSize: 15.5, fontWeight: '700', color: INK },
@@ -6861,7 +6864,7 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
 
   /* Factures */
-  invCard: { backgroundColor: '#fff', borderRadius: 16, padding: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  invCard: { backgroundColor: '#fff', borderRadius: R_CARD, padding: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: LINE, ...SH_CARD },
   invNum: { fontSize: 15.5, fontWeight: '700', color: INK },
   invClient: { fontSize: 13, color: MUTE, marginTop: 3 },
   invAmount: { fontSize: 16.5, fontWeight: '800', color: INK },

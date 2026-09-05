@@ -4,8 +4,12 @@ node_modules/
 # Expo
 .expo/
 dist/
+dist-web/
 web-build/
 expo-env.d.ts
+
+# Aperçu web : fichier assemblé (regenerable via preview/build-preview.js)
+preview/assokit-preview.html
 
 # Projets natifs (generes par prebuild / EAS)
 ios/
