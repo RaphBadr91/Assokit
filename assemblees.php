@@ -34,7 +34,7 @@ render_head('Assemblées');
 
     <?php if (empty($ags)): ?>
     <div class="ag-empty">
-      <div style="color:#94A3B8;"><?= ak_icon('building',44,'1.5') ?></div>
+      <div style="color:#64748B;"><?= ak_icon('building',44,'1.5') ?></div>
       <h2>Aucune assemblée</h2>
       <p>Crée ta première AG : convocation auto, signature électronique, votes en ligne, PV automatique.</p>
       <a href="/assemblee-form" class="ag-btn-primary">Créer une AG</a>

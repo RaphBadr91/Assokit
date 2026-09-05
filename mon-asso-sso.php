@@ -66,7 +66,7 @@ echo render_sidebar('mon-asso-sso');
         <p style="font-size:13.5px;color:#334155;margin:0 0 6px;">Statut : <strong style="color:#059669;">Activé</strong> · <?= $views ?> vue<?= $views>1?'s':'' ?></p>
         <div style="font-size:12.5px;color:#475569;margin:10px 0 4px;font-weight:600;">Collez ce shortcode dans une page WordPress :</div>
         <code style="display:block;word-break:break-all;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px;font-size:13px;">[assokit_projets token=&quot;<?= h($token) ?>&quot;]</code>
-        <div style="font-size:12px;color:#94A3B8;margin:8px 0 12px;">Aperçu direct : <a href="/espace-public?t=<?= h($token) ?>" target="_blank" rel="noopener" style="color:#059669;font-weight:600;">ouvrir la vue publique →</a></div>
+        <div style="font-size:12px;color:#64748B;margin:8px 0 12px;">Aperçu direct : <a href="/espace-public?t=<?= h($token) ?>" target="_blank" rel="noopener" style="color:#059669;font-weight:600;">ouvrir la vue publique →</a></div>
         <form method="POST" style="display:inline;" onsubmit="return confirm('Désactiver le widget ? Le shortcode ne fonctionnera plus.')">
           <input type="hidden" name="csrf_token" value="<?= $csrf ?>"><input type="hidden" name="action" value="revoke">
           <button style="padding:9px 16px;background:#FEE2E2;color:#991B1B;border:0;border-radius:10px;font-weight:700;cursor:pointer;">Désactiver</button>

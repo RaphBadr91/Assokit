@@ -86,7 +86,7 @@ p {
 }
 .links-title {
     font-size: 11px;
-    color: #94A3B8;
+    color: #64748B;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 14px;

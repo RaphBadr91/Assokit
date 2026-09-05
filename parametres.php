@@ -223,7 +223,7 @@ render_sidebar('parametres');
             <input type="text" name="billing_address_street" maxlength="255" value="<?= h($org_full['billing_address_street'] ?? '') ?>" placeholder="12 rue des Lilas">
           </div>
           <div class="pa-fld">
-            <label>Complément d'adresse <span style="color:#A1A1AA;font-weight:400;">(facultatif)</span></label>
+            <label>Complément d'adresse <span style="color:#6B7280;font-weight:400;">(facultatif)</span></label>
             <input type="text" name="billing_address_complement" maxlength="255" value="<?= h($org_full['billing_address_complement'] ?? '') ?>" placeholder="Bâtiment B, Étage 3">
           </div>
           <div class="pa-grid-2">
@@ -255,7 +255,7 @@ render_sidebar('parametres');
             <label for="vat_subject_chk" style="margin:0;cursor:pointer;font-weight:500;">Mon organisation est assujettie à la TVA</label>
           </div>
           <div class="pa-fld">
-            <label>N° TVA intracommunautaire <span style="color:#A1A1AA;font-weight:400;">(si applicable)</span></label>
+            <label>N° TVA intracommunautaire <span style="color:#6B7280;font-weight:400;">(si applicable)</span></label>
             <input type="text" name="vat_number" maxlength="30" value="<?= h($org_full['vat_number'] ?? '') ?>" placeholder="FR12345678901">
           </div>
 

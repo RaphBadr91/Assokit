@@ -82,7 +82,7 @@ function build_email(array $grant, string $title, string $urgency_color, string 
         . 'Montant demandé : '.$amount.'</p>'
         . '<p style="color:#4b5563;font-size:14px;line-height:1.55;margin:0 0 22px;">'.htmlspecialchars($action_text).'</p>'
         . '<a href="'.$url.'" style="display:inline-block;background:#10B981;color:#fff;padding:11px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Ouvrir le dossier →</a>'
-        . '</div><p style="text-align:center;color:#9ca3af;font-size:11px;margin:18px 0 0;">AssoKit · gestion d\'association</p></div>';
+        . '</div><p style="text-align:center;color:#6b7280;font-size:11px;margin:18px 0 0;">AssoKit · gestion d\'association</p></div>';
     $text = "{$urgency_label}\n\n{$title}\n\n{$grant['name']}\nFinanceur : {$grant['funder']}\nMontant : {$amount}\n\n{$action_text}\n\n{$url}";
     return [$subject, $html, $text];
 }

@@ -34,7 +34,7 @@ render_public_nav('');
 .org-frame { background:#fff; border:1px solid #E2E8F0; border-radius:16px; overflow:hidden; box-shadow:0 20px 50px rgba(15,23,42,.08); }
 .org-frame-bar { background:#F8FAFC; border-bottom:1px solid #E2E8F0; padding:11px 16px; display:flex; align-items:center; gap:8px; }
 .org-frame-dot { width:11px; height:11px; border-radius:50%; }
-.org-frame-title { margin-left:10px; font-size:12.5px; color:#94A3B8; font-weight:600; }
+.org-frame-title { margin-left:10px; font-size:12.5px; color:#64748B; font-weight:600; }
 .org-frame-body { padding:22px; }
 /* KPI */
 .org-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
@@ -48,7 +48,7 @@ render_public_nav('');
 .org-row-left { display:flex; align-items:center; gap:11px; }
 .org-avatar { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff; font-size:13px; }
 .org-row-name { font-size:14px; font-weight:600; color:#0F172A; }
-.org-row-meta { font-size:12px; color:#94A3B8; }
+.org-row-meta { font-size:12px; color:#64748B; }
 .org-pill { font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px; }
 .org-pill-ok { background:#DCFCE7; color:#15803D; }
 .org-pill-wait { background:#FEF3C7; color:#B45309; }
@@ -194,11 +194,11 @@ render_public_nav('');
             <span style="background:#1D4ED8;color:#fff;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;">Latitude91</span>
             <span style="background:#F1F5F9;color:#64748B;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;">ASCE Évry</span>
             <span style="background:#F1F5F9;color:#64748B;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;">Croix-Rouge</span>
-            <span style="background:#F1F5F9;color:#94A3B8;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;">+139</span>
+            <span style="background:#F1F5F9;color:#64748B;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;">+139</span>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
             <div><div style="font-size:16px;font-weight:700;color:#0F172A;">🎬 Tournage Ciné été</div>
-            <div style="font-size:12px;color:#94A3B8;margin-top:2px;">Latitude91 · échéance août 2026</div></div>
+            <div style="font-size:12px;color:#64748B;margin-top:2px;">Latitude91 · échéance août 2026</div></div>
             <span style="background:#DBEAFE;color:#1D4ED8;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;">En cours</span>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
@@ -215,8 +215,8 @@ render_public_nav('');
           <div style="display:flex;align-items:center;gap:10px;padding:5px 0;"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;background:#DCFCE7;color:#15803D;font-size:11px;font-weight:800;flex:none;">✓</span><span style="font-size:13px;color:#334155;">Appel des organisateurs Ciné été</span></div>
           <div style="display:flex;align-items:center;gap:10px;padding:5px 0;"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;background:#DCFCE7;color:#15803D;font-size:11px;font-weight:800;flex:none;">✓</span><span style="font-size:13px;color:#334155;">Prise de rendez-vous pour tournage</span></div>
           <div style="display:flex;align-items:center;gap:10px;padding:5px 0;"><span style="display:inline-flex;width:18px;height:18px;border-radius:999px;background:#1D4ED8;flex:none;box-shadow:0 0 0 3px #DBEAFE;"></span><span style="font-size:13px;color:#1D4ED8;font-weight:700;">Tournage</span></div>
-          <div style="display:flex;align-items:center;gap:10px;padding:5px 0;"><span style="display:inline-flex;width:18px;height:18px;border-radius:999px;background:#fff;border:2px solid #E2E8F0;flex:none;"></span><span style="font-size:13px;color:#94A3B8;">Montage</span></div>
-          <div style="display:flex;align-items:center;gap:10px;padding:5px 0;"><span style="display:inline-flex;width:18px;height:18px;border-radius:999px;background:#fff;border:2px solid #E2E8F0;flex:none;"></span><span style="font-size:13px;color:#94A3B8;">Diffusion</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:5px 0;"><span style="display:inline-flex;width:18px;height:18px;border-radius:999px;background:#fff;border:2px solid #E2E8F0;flex:none;"></span><span style="font-size:13px;color:#64748B;">Montage</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:5px 0;"><span style="display:inline-flex;width:18px;height:18px;border-radius:999px;background:#fff;border:2px solid #E2E8F0;flex:none;"></span><span style="font-size:13px;color:#64748B;">Diffusion</span></div>
           <div style="font-size:12px;font-weight:700;color:#475569;margin:14px 0 4px;">Factures rattachées</div>
           <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid #F1F5F9;">
             <span style="font-size:13px;color:#0F172A;">📄 Location caméra Sony X58be</span>
@@ -277,7 +277,7 @@ render_public_nav('');
           <div class="org-chat-msg org-chat-out">Bonjour, pourriez-vous nous transmettre votre bilan financier 2025 pour finaliser la subvention ?</div>
           <div class="org-chat-msg org-chat-in">Bonjour, bien sûr ! Le voici en pièce jointe 📎 bilan-2025.pdf</div>
           <div class="org-chat-msg org-chat-out">Parfait, tout est conforme. Subvention validée ✓</div>
-          <div style="text-align:center;font-size:11px;color:#94A3B8;margin-top:4px;">Aujourd'hui · 14:32</div>
+          <div style="text-align:center;font-size:11px;color:#64748B;margin-top:4px;">Aujourd'hui · 14:32</div>
         </div>
       </div>
     </div>
@@ -308,7 +308,7 @@ render_public_nav('');
             <div style="font-size:13px;color:#64748B;line-height:1.5;">Chères associations, nous avons le plaisir de vous convier au Forum annuel le 7 septembre...</div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;">
-            <span style="font-size:12px;color:#94A3B8;">142 associations ciblées</span>
+            <span style="font-size:12px;color:#64748B;">142 associations ciblées</span>
             <span style="background:#1D4ED8;color:#fff;font-size:13px;font-weight:600;padding:8px 18px;border-radius:8px;">Envoyer</span>
           </div>
         </div>

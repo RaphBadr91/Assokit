@@ -73,7 +73,7 @@ render_sidebar('emailing');
 .eml-orgs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; padding: 14px; background: #f9fafb; border-radius: 10px; margin-top: 8px; }
 .eml-orgs-grid label { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #fff; border-radius: 8px; cursor: pointer; font-size: .88rem; }
 .eml-orgs-grid label:hover { background: #fffbeb; }
-.eml-orgs-grid input[type=checkbox]:disabled + span { color: #9ca3af; }
+.eml-orgs-grid input[type=checkbox]:disabled + span { color: #6b7280; }
 .eml-orgs-meta { font-size: .72rem; color: #6b7280; }
 
 .eml-actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; padding-top: 8px; border-top: 1px solid #f3f4f6; margin-top: 4px; }
@@ -88,7 +88,7 @@ render_sidebar('emailing');
 .eml-history-table th, .eml-history-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #f3f4f6; font-size: .88rem; }
 .eml-history-table th { font-size: .75rem; color: #6b7280; text-transform: uppercase; letter-spacing: .4px; font-weight: 700; background: #f9fafb; }
 .eml-history-table tr:hover { background: #fcfcfd; }
-.eml-history-empty { text-align: center; padding: 50px 20px; color: #9ca3af; }
+.eml-history-empty { text-align: center; padding: 50px 20px; color: #6b7280; }
 .eml-history-empty .icon { font-size: 3rem; opacity: .4; display: block; margin-bottom: 12px; }
 
 .eml-status-badge { padding: 3px 9px; border-radius: 12px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; display: inline-block; }
@@ -127,7 +127,7 @@ render_sidebar('emailing');
     <h2>📝 Nouvelle campagne</h2>
 
     <?php if (!$orgs): ?>
-      <p style="color:#9ca3af;padding:20px 0;text-align:center;">Aucune association liée pour le moment. Liez d'abord des associations à votre mairie.</p>
+      <p style="color:#6b7280;padding:20px 0;text-align:center;">Aucune association liée pour le moment. Liez d'abord des associations à votre mairie.</p>
     <?php else: ?>
 
     <form method="POST" action="/action-mairie-emailing" id="emlForm">

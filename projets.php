@@ -585,7 +585,7 @@ render_sidebar('projets');
     box-shadow: 0 6px 16px rgba(0,0,0,0.05);
 }
 .pulse-cell-lbl {
-    font-size: 11px; color: #9CA3AF;
+    font-size: 11px; color: #6B7280;
     text-transform: uppercase; letter-spacing: 0.05em;
     font-weight: 600; margin-bottom: 6px;
 }
@@ -595,7 +595,7 @@ render_sidebar('projets');
     font-variant-numeric: tabular-nums;
     display: flex; align-items: baseline; gap: 8px;
 }
-.pulse-cell-val .unit { font-size: 14px; color: #9CA3AF; font-weight: 500; }
+.pulse-cell-val .unit { font-size: 14px; color: #6B7280; font-weight: 500; }
 .pulse-cell-sub {
     font-size: 12px; color: #6b7280; margin-top: 6px;
     display: flex; align-items: center; gap: 6px;
@@ -638,7 +638,7 @@ render_sidebar('projets');
     font-variant-numeric: tabular-nums;
 }
 .pulse-score-info { flex: 1; min-width: 0; }
-.pulse-score-lbl { font-size: 11px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+.pulse-score-lbl { font-size: 11px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
 .pulse-score-status { font-size: 16px; font-weight: 700; color: #111827; margin-top: 4px; display: flex; align-items: center; gap: 6px; }
 .pulse-score-help { font-size: 11px; color: #6b7280; margin-top: 3px; }
 
@@ -713,7 +713,7 @@ render_sidebar('projets');
     min-width: 110px;
 }
 .ak-folder-spark-lbl {
-    font-size: 10px; color: #9CA3AF; text-transform: uppercase;
+    font-size: 10px; color: #6B7280; text-transform: uppercase;
     letter-spacing: 0.04em; font-weight: 600;
 }
 .ak-sparkline {
@@ -1118,7 +1118,7 @@ render_sidebar('projets');
   <?php if (empty($folders)): ?>
     <div class="empty-state">
       <?php if ($is_follower_user): ?>
-        <div style="color:#94A3B8; margin-bottom: 12px;"><?= ak_icon('eye',44,'1.5') ?></div>
+        <div style="color:#64748B; margin-bottom: 12px;"><?= ak_icon('eye',44,'1.5') ?></div>
         <div style="font-size: 15px; color: var(--ink-2); margin-bottom: 6px; font-weight: 500;">Aucun projet à suivre pour l'instant</div>
         <div style="font-size: 13px; color: var(--ink-3);">L'association vous associera aux projets qu'elle souhaite partager avec vous.</div>
       <?php else: ?>

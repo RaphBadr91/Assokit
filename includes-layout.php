@@ -155,7 +155,7 @@ a { color: inherit; text-decoration: none; }
 :root {
   --acc: #059669; --acc-hover: #047857; --acc-light: #D1FAE5; --acc-dark: #047857;
   --ai: #6366F1; --ai-light: #ECEBFE; --ai-dark: #4338CA;
-  --ink: #0B1A13; --ink-2: #45544D; --ink-3: #5F6D66; --ink-4: #7A8781;
+  --ink: #0B1A13; --ink-2: #45544D; --ink-3: #5F6D66; --ink-4: #5F6D66; --ink-5: #5F6D66;
   --bg: #FFFFFF; --bg-2: #EDF2EF; --bg-3: #E6EDE9;
   --border: rgba(12, 40, 28, 0.07); --border-strong: rgba(12, 40, 28, 0.13);
   --radius: 12px; --radius-lg: 18px;
@@ -182,10 +182,10 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
     radial-gradient(55% 55% at 88% 100%, rgba(16,185,129,0.07), transparent 60%),
     var(--bg-2);
   background-attachment: fixed; }
-.app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+.app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; height: 100dvh; }
 
 /* SIDEBAR */
-.sidebar { background: var(--glass); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border-right: 1px solid var(--glass-border); padding: 28px 12px 18px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.sidebar { background: var(--glass); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border-right: 1px solid var(--glass-border); padding: 28px 12px 18px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; }
 .sb-backto-sa:first-child { margin-top: 10px; }
 .sb-logo { display: inline-flex; align-items: center; gap: 11px; font-weight: 700; font-size: 18px; letter-spacing: -0.02em; padding: 4px 10px; color: var(--ink); }
 .sb-logo i { font-style: normal; color: var(--acc); }
@@ -240,6 +240,12 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .ak-collapse { display: flex; flex-direction: column; }
 .ak-collapse-row { display: flex; align-items: center; gap: 2px; }
 .ak-collapse-toggle { background: transparent; border: 0; padding: 6px 8px; cursor: pointer; color: var(--ink-4); border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s, background 0.15s, opacity 0.15s; flex-shrink: 0; opacity: 0; }
+/* Écrans tactiles : pas de survol possible, ces commandes doivent rester atteignables. */
+@media (hover: none) {
+  .ak-collapse-toggle { opacity: 1; }
+  .ak-sound-tgl, .ak-push-tgl { opacity: .6; visibility: visible; }
+}
+.sb-link-notif:focus-within .ak-sound-tgl, .sb-link-notif:focus-within .ak-push-tgl { opacity: .6; visibility: visible; }
 .ak-collapse-toggle:focus-visible, .ak-collapse:focus-within .ak-collapse-toggle,
 .ak-collapse-row:hover .ak-collapse-toggle, .ak-collapse.is-open .ak-collapse-toggle { opacity: 1; }
 .ak-collapse-toggle:hover { background: var(--bg-2); color: var(--ink); }
@@ -266,7 +272,7 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
-  .sidebar { position: fixed; top: 0; left: -100%; width: 280px; height: 100vh; z-index: 100; transition: left 0.25s ease; box-shadow: 2px 0 24px rgba(0,0,0,0.08); }
+  .sidebar { position: fixed; top: 0; left: -100%; width: 280px; height: 100vh; height: 100dvh; z-index: 100; transition: left 0.25s ease; box-shadow: 2px 0 24px rgba(0,0,0,0.08); }
   .sidebar.open { left: 0; }
   .sb-mobile-header { display: flex; }
   .main { padding: 16px 14px 60px !important; max-width: 100% !important; min-width: 0; overflow-x: hidden; width: 100%; box-sizing: border-box; }
@@ -299,6 +305,9 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 
   /* Empêche débordement global */
   body, html { overflow-x: hidden; max-width: 100vw; }
+  /* `overflow` non-visible sur html/body en fait un conteneur de défilement et neutralise
+     position:sticky (l'en-tête mobile disparaissait au scroll). `clip` borne sans scroller. */
+  @supports (overflow-x: clip) { body, html { overflow-x: clip; } .main { overflow-x: clip; } }
   .app { overflow-x: hidden; max-width: 100vw; }
   .main * { max-width: 100%; box-sizing: border-box; }
   
@@ -382,7 +391,7 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
   /* Ligne de facture/devis (grille JS 1fr 70px 100px 120px 100px 30px = 420px de pistes fixes) */
   .main .invoice-line, .main [style*="1fr 70px 100px"] { grid-template-columns: 1fr 1fr !important; }
   .main .invoice-line > :first-child, .main [style*="1fr 70px 100px"] > :first-child { grid-column: 1 / -1; }
-  .main .invoice-line > :last-child, .main [style*="1fr 70px 100px"] > :last-child { justify-self: end; }
+  .main .invoice-line > :last-child, .main [style*="1fr 70px 100px"] > :last-child { grid-column: 1 / -1; justify-self: end; }
 
   /* Rangées d'actions inline (plusieurs boutons) : passent à la ligne au lieu de déborder */
   .main [style*="display:flex"]:has(> .btn), .main [style*="display: flex"]:has(> .btn),
@@ -391,15 +400,22 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
   /* Popovers ancrés à droite d'un bouton (partage / bilan / exports projet, menus) : pleine largeur du conteneur */
   .ck-actions-bar { position: relative; }
   .ck-bilan, .ck-share, .ck-exports { position: static !important; }
-  .ck-bilan-pop, .ck-share-pop, .ck-exports-menu { left: 0; right: 0; width: auto !important; max-width: 100%; transform: none; top: calc(100% + 6px); }
+  /* !important sur left/right/transform : projet.php redéfinit `left:50%;right:auto` plus bas
+     dans la cascade, ce qui combiné à width:auto réduisait le popover à ~50 % de largeur. */
+  .ck-bilan-pop, .ck-share-pop, .ck-exports-menu { left: 0 !important; right: 0 !important; width: auto !important; max-width: 100%; transform: none !important; top: calc(100% + 6px); }
   #mentionDropdown { max-width: calc(100vw - 24px); }
 
-  /* Messagerie : liste des canaux basculable (le bouton ☰ est ajouté dans messages.php) */
-  .msg-toggle { display: inline-flex !important; }
-  .msg-channels.mobile-open { display: flex !important; position: absolute; inset: 0; z-index: 6; background: var(--bg); }
-  .msg-layout, .msg-wrap { position: relative; }
 }
-.msg-toggle { display: none; }
+/* Messagerie mobile : le bouton ☰ n'apparaît qu'au point de rupture où la liste des canaux
+   est masquée (≤720px), sinon il recouvrait une liste déjà visible. La croix de fermeture
+   (messages.php) évite l'impasse : l'overlay plein écran cachait le ☰. */
+.msg-toggle, .msg-close { display: none; }
+@media (max-width: 720px) {
+  .msg-toggle { display: inline-flex !important; }
+  .msg-channels.mobile-open .msg-close { display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg-2); border: 1px solid var(--border); color: var(--ink-2); border-radius: 9px;
+    width: 34px; height: 34px; font-size: 15px; cursor: pointer; margin-left: auto; }
+}
 
 /* ── Impression : factures, devis, bilans sans chrome d'interface ── */
 @media print {
@@ -1150,14 +1166,17 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 /* RESPONSIVE */
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
-  .sidebar { position: fixed; left: 0; top: 0; z-index: 50; width: 280px; height: 100vh; transform: translateX(-100%); transition: transform 0.22s ease; }
+  .sidebar { position: fixed; left: 0; top: 0; z-index: 50; width: 280px; height: 100vh; height: 100dvh; transform: translateX(-100%); transition: transform 0.22s ease; }
   .sidebar.open { transform: translateX(0); }
   .mobile-bar { display: flex; }
   .main { padding: 22px 20px 48px; }
   .main-head { margin-bottom: 22px; align-items: flex-start; }
   .greet h1 { font-size: 24px; }
   .head-actions { width: 100%; }
-  .btn { flex: 1; justify-content: center; }
+  /* `flex:1` (base 0) empêchait tout passage à la ligne : les boutons se compressaient
+     et leur libellé (white-space:nowrap) débordait sur le voisin. `flex:1 1 auto` garde
+     la répartition tout en autorisant le wrap. */
+  .btn { flex: 1 1 auto; min-width: 0; justify-content: center; }
   .today { padding: 20px; }
   .my-proj-grid, .folder-grid { grid-template-columns: 1fr; }
   .folder-btn { padding: 16px 18px; gap: 12px; }
@@ -1789,19 +1808,24 @@ if (function_exists('current_user') && function_exists('can')):
 #akCopFab{position:fixed;right:22px;bottom:22px;z-index:10000;width:56px;height:56px;border:none;border-radius:50%;cursor:pointer;background:linear-gradient(135deg,#0CCB8F,#059669);box-shadow:0 10px 28px rgba(5,150,105,.45);display:flex;align-items:center;justify-content:center;transition:transform .15s;}
 #akCopFab:hover{transform:translateY(-2px) scale(1.04);}
 /* Le bouton flottant ne doit pas recouvrir une barre d'action collée en bas (facture/devis/copilote) ni le composeur de messages */
+#akCopPanel{position:fixed;right:22px;bottom:88px;z-index:10000;width:370px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 130px);background:#fff;border:1px solid #E2E8F0;border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.22);display:none;flex-direction:column;overflow:hidden;}
+#akCopPanel.open{display:flex;}
+/* Décalage du bouton flottant et du panneau au-dessus d'une barre d'action collante ou du
+   composeur de messages. Placé APRÈS la définition de base, sinon la cascade l'annulait. */
 body:has(.main [style*="position:sticky"][style*="bottom"]), body:has(.main [style*="position: sticky"][style*="bottom"]), body:has(.msg-compose) { --ak-fab-off: 84px; }
 #akCopFab { bottom: var(--ak-fab-off, 22px); }
 #akCopPanel { bottom: calc(var(--ak-fab-off, 22px) + 66px); }
-#notifToastContainer { bottom: 90px !important; right: 16px !important; }
-#akCopPanel{position:fixed;right:22px;bottom:88px;z-index:10000;width:370px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 130px);background:#fff;border:1px solid #E2E8F0;border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.22);display:none;flex-direction:column;overflow:hidden;}
-#akCopPanel.open{display:flex;}
+/* Le bouton flottant doit rester SOUS les modales (z-index 1000) : il masquait leurs boutons. */
+#akCopFab { z-index: 900; }
+#akCopPanel { z-index: 901; }
+#notifToastContainer { bottom: 90px !important; right: 16px !important; max-width: calc(100vw - 32px) !important; }
 .akcop-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(135deg,#0F172A,#065F46);color:#fff;}
 .akcop-head-t{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;}
 .akcop-dot{width:8px;height:8px;border-radius:50%;background:#0CCB8F;box-shadow:0 0 0 4px rgba(12,203,143,.25);}
 #akCopClose{background:transparent;border:none;color:#fff;font-size:16px;cursor:pointer;opacity:.8;}
 .akcop-log{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#F8FAFC;}
 .akcop-hello{color:#475569;font-size:13.5px;text-align:center;padding:6px 4px;}
-.akcop-hello span{color:#94A3B8;font-size:12px;}
+.akcop-hello span{color:#64748B;font-size:12px;}
 .akcop-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:4px;}
 .akcop-chip{background:#EEF2F7;border:1px solid #E2E8F0;border-radius:999px;padding:6px 11px;font-size:12px;color:#334155;cursor:pointer;}
 .akcop-me{align-self:flex-end;max-width:82%;background:#059669;color:#fff;padding:9px 12px;border-radius:13px 13px 4px 13px;font-size:13.5px;}
@@ -1813,7 +1837,7 @@ body:has(.main [style*="position:sticky"][style*="bottom"]), body:has(.main [sty
 .akcop-form{display:flex;gap:8px;padding:10px;border-top:1px solid #E2E8F0;background:#fff;}
 #akCopInput{flex:1;border:1px solid #E2E8F0;border-radius:10px;padding:9px 11px;font-size:13.5px;outline:none;}
 #akCopSend{background:linear-gradient(135deg,#0CCB8F,#059669);color:#fff;border:none;border-radius:10px;width:42px;font-size:15px;cursor:pointer;}
-@media (max-width:900px){#akCopFab{bottom:78px;} #akCopPanel{bottom:78px;}}
+@media (max-width:900px){#akCopFab{bottom:var(--ak-fab-off,78px);} #akCopPanel{bottom:calc(var(--ak-fab-off,78px) + 66px);}}
 </style>
 <script>
 (function(){
@@ -1828,7 +1852,7 @@ body:has(.main [style*="position:sticky"][style*="bottom"]), body:has(.main [sty
   document.getElementById('akCopClose').addEventListener('click',close);
   function tbl(html,who){var b=document.createElement('div');b.className=who==='me'?'akcop-me':'akcop-bot';b.innerHTML=html;log.appendChild(b);b.scrollIntoView({block:'end'});return b;}
   function renderTable(t){if(!t||!t.columns)return '';var h='<div style="font-weight:700;margin-bottom:2px;">'+esc(t.title||'')+'</div><table><tr>'+t.columns.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+'</tr>';(t.rows||[]).forEach(function(r){h+='<tr>'+r.map(function(c){return '<td>'+esc(c)+'</td>';}).join('')+'</tr>';});return h+'</table>';}
-  function ask(q){if(!q||!q.trim())return;tbl(esc(q),'me');input.value='';send.disabled=true;var w=tbl('<span style="color:#94A3B8;">…</span>','bot');
+  function ask(q){if(!q||!q.trim())return;tbl(esc(q),'me');input.value='';send.disabled=true;var w=tbl('<span style="color:#64748B;">…</span>','bot');
     fetch('/mon-asso-copilote-ask.php',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify({question:q,csrf_token:CSRF})})
     .then(function(r){return r.json();}).then(function(d){var html='';
       if(d&&d.ok===false){html=esc(d.error==='forbidden'?'Accès non autorisé.':'Service momentanément indisponible.');}
@@ -1864,7 +1888,7 @@ body:has(.main [style*="position:sticky"][style*="bottom"]), body:has(.main [sty
 .notif-toast-close {
     position: absolute; top: 6px; right: 8px;
     background: transparent; border: none; cursor: pointer;
-    color: #9CA3AF; padding: 2px; line-height: 1;
+    color: #6B7280; padding: 2px; line-height: 1;
     font-size: 16px;
 }
 .notif-toast-icon {
@@ -2266,6 +2290,11 @@ body:has(.main [style*="position:sticky"][style*="bottom"]), body:has(.main [sty
   try { if (localStorage.getItem(KEY)) return; } catch (e) { return; }
   // Deja installe (mode standalone) : ne rien afficher
   if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone) return;
+  // L'invite est fixee en bas d'ecran : elle recouvrait les barres d'action collantes
+  // (valider une facture, un devis, envoyer un message). On ne l'affiche que sur les pages
+  // d'accueil, ou rien n'est ancre en bas.
+  var p = location.pathname.replace(/\/+$/, '');
+  if (!(p === '' || p === '/dashboard' || p === '/dashboard.php' || p === '/accueil')) return;
 
   var deferred = null;
   function dismiss(el){ try { localStorage.setItem(KEY, '1'); } catch(e){} if (el) el.remove(); }

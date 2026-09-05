@@ -376,19 +376,19 @@ render_sidebar('mairie-assos');
           ?>
             <tr style="border-bottom:1px solid #F4F4F5;">
               <td style="padding:11px 6px;font-weight:600;color:#0A0A0B;"><?= h($g['name'] ?? '—') ?></td>
-              <td style="padding:11px 6px;color:#3F3F46;"><?= h($g['funder'] ?? '—') ?><?php if (!empty($g['funder_type'])): ?><br><span style="font-size:10.5px;color:#A1A1AA;"><?= h($g['funder_type']) ?></span><?php endif; ?></td>
+              <td style="padding:11px 6px;color:#3F3F46;"><?= h($g['funder'] ?? '—') ?><?php if (!empty($g['funder_type'])): ?><br><span style="font-size:10.5px;color:#6B7280;"><?= h($g['funder_type']) ?></span><?php endif; ?></td>
               <td style="padding:11px 6px;text-align:right;font-weight:700;white-space:nowrap;">
                 <?php if ((float)$g['amount_requested'] > 0): ?>
                   <span style="color:#0A0A0B;"><?= number_format((float)$g['amount_requested'], 0, ',', ' ') ?> €</span>
                   <?php if ((float)$g['amount_granted'] > 0): ?><br><span style="font-size:10.5px;color:#059669;">✅ <?= number_format((float)$g['amount_granted'], 0, ',', ' ') ?> €</span><?php endif; ?>
-                <?php else: ?><span style="color:#A1A1AA;">—</span><?php endif; ?>
+                <?php else: ?><span style="color:#6B7280;">—</span><?php endif; ?>
               </td>
               <td style="padding:11px 6px;"><span style="background:<?= $meta[2] ?>;color:<?= $meta[1] ?>;padding:4px 10px;border-radius:12px;font-size:11.5px;font-weight:600;display:inline-block;white-space:nowrap;"><?= h($meta[0]) ?></span></td>
               <td style="padding:11px 6px;color:#3F3F46;font-size:12.5px;white-space:nowrap;">
-                <?php if (!empty($g['deadline_apply']) && $g['deadline_apply'] !== '0000-00-00'): ?>📅 <?= date('d/m/Y', strtotime($g['deadline_apply'])) ?><?php else: ?><span style="color:#A1A1AA;">—</span><?php endif; ?>
+                <?php if (!empty($g['deadline_apply']) && $g['deadline_apply'] !== '0000-00-00'): ?>📅 <?= date('d/m/Y', strtotime($g['deadline_apply'])) ?><?php else: ?><span style="color:#6B7280;">—</span><?php endif; ?>
               </td>
               <td style="padding:11px 6px;color:#71717A;font-size:11.5px;white-space:nowrap;">
-                <?php if (!empty($g['created_at'])): ?><?= date('d/m/Y', strtotime($g['created_at'])) ?><?php else: ?><span style="color:#A1A1AA;">—</span><?php endif; ?>
+                <?php if (!empty($g['created_at'])): ?><?= date('d/m/Y', strtotime($g['created_at'])) ?><?php else: ?><span style="color:#6B7280;">—</span><?php endif; ?>
               </td>
             </tr>
           <?php endforeach; ?>

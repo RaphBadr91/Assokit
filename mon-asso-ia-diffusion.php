@@ -133,7 +133,7 @@ render_sidebar('ia');
     .dif-history-item { padding: 12px; border-bottom: 1px solid #F1F5F9; font-size: 13px; }
     .dif-history-item:last-child { border-bottom: none; }
     .dif-history-item .subj { font-weight: 600; }
-    .dif-history-item .meta { font-size: 11px; color: #94A3B8; margin-top: 2px; }
+    .dif-history-item .meta { font-size: 11px; color: #64748B; margin-top: 2px; }
     .dif-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; }
     .dif-pill.sent { background: #D1FAE5; color: #065F46; }
     .dif-pill.partial { background: #FEF3C7; color: #92400E; }
@@ -256,7 +256,7 @@ render_sidebar('ia');
           <div class="dif-card">
             <h2>👁 Aperçu email</h2>
             <div id="emailPreview" style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:16px;font-size:13px;line-height:1.6;max-height:380px;overflow-y:auto;">
-              <div style="color:#94A3B8;text-align:center;padding:30px 12px;">L'aperçu s'affichera ici dès que vous saisirez l'objet et le corps.</div>
+              <div style="color:#64748B;text-align:center;padding:30px 12px;">L'aperçu s'affichera ici dès que vous saisirez l'objet et le corps.</div>
             </div>
           </div>
 
@@ -330,7 +330,7 @@ function updatePreview() {
   const body = document.getElementById('body').value;
   const prev = document.getElementById('emailPreview');
   if (!subj && !body) {
-    prev.innerHTML = '<div style="color:#94A3B8;text-align:center;padding:30px 12px;">L\'aperçu s\'affichera ici…</div>';
+    prev.innerHTML = '<div style="color:#64748B;text-align:center;padding:30px 12px;">L\'aperçu s\'affichera ici…</div>';
     return;
   }
   prev.innerHTML = '<div style="font-weight:700;font-size:14px;margin-bottom:10px;border-bottom:1px solid #E2E8F0;padding-bottom:8px;">Objet : ' +

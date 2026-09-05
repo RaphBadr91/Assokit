@@ -100,7 +100,7 @@ render_sidebar('ia');
     .qa-role { display: flex; align-items: center; gap: 10px; }
     .qa-role-ico { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
     .qa-role-name { font-weight: 600; font-size: 14px; }
-    .qa-role-key { font-size: 11px; color: #94A3B8; font-family: ui-monospace, Menlo, monospace; margin-top: 1px; }
+    .qa-role-key { font-size: 11px; color: #64748B; font-family: ui-monospace, Menlo, monospace; margin-top: 1px; }
 
     .qa-quota { font-weight: 700; font-size: 14px; color: #0F172A; }
     .qa-quota .unit { font-size: 12px; color: #64748B; font-weight: 500; }
@@ -217,7 +217,7 @@ render_sidebar('ia');
       <?php endforeach; ?>
     </div>
 
-    <p style="font-size: 12px; color: #94A3B8; margin-top: 16px; text-align: center;">
+    <p style="font-size: 12px; color: #64748B; margin-top: 16px; text-align: center;">
       Les quotas sont définis par Assokit pour garantir l'équité d'accès.
     </p>
 

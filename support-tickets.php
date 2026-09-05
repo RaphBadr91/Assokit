@@ -123,7 +123,7 @@ if (function_exists('render_head')) {
 .st-container { max-width: 1280px; margin: 24px auto; padding: 0 20px; }
 .st-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
 .st-header h1 { font-size: 28px; margin: 0 0 4px; color: #f1f5f9; }
-.st-header p { color: #94a3b8; margin: 0; font-size: 14px; }
+.st-header p { color: #64748b; margin: 0; font-size: 14px; }
 .st-cta { background: #3b82f6; color: white; padding: 10px 18px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; }
 .st-cta:hover { filter: brightness(1.1); }
 
@@ -131,11 +131,11 @@ if (function_exists('render_head')) {
 .st-stat { background: linear-gradient(135deg, #1e293b 0%, #1a2238 100%); border: 1px solid #334155; padding: 14px 16px; border-radius: 12px; transition: transform 0.15s; cursor: pointer; }
 .st-stat:hover { transform: translateY(-2px); border-color: #475569; }
 .st-stat.is-active { border-color: #3b82f6; background: linear-gradient(135deg, #1e3a8a30 0%, #1a2238 100%); }
-.st-stat-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.st-stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
 .st-stat-value { font-size: 24px; font-weight: 700; color: #f8fafc; }
 
 .st-filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-.st-filter { padding: 6px 14px; background: rgba(255,255,255,0.05); border: 1px solid #334155; color: #94a3b8; border-radius: 999px; font-size: 13px; text-decoration: none; transition: all 0.15s; }
+.st-filter { padding: 6px 14px; background: rgba(255,255,255,0.05); border: 1px solid #334155; color: #64748b; border-radius: 999px; font-size: 13px; text-decoration: none; transition: all 0.15s; }
 .st-filter:hover { background: rgba(255,255,255,0.1); }
 .st-filter.is-active { background: #3b82f6; color: white; border-color: #3b82f6; }
 
@@ -151,8 +151,8 @@ if (function_exists('render_head')) {
 .st-meta { font-size: 11px; color: #64748b; }
 .st-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .st-badge-prio { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
-.st-msg-count { color: #94a3b8; font-size: 13px; }
-.st-time { color: #94a3b8; font-size: 12px; text-align: right; }
+.st-msg-count { color: #64748b; font-size: 13px; }
+.st-time { color: #64748b; font-size: 12px; text-align: right; }
 
 .st-empty { padding: 60px 20px; text-align: center; color: #64748b; }
 .st-empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
@@ -209,7 +209,7 @@ if (function_exists('render_head')) {
     <a href="?status=closed" style="text-decoration:none;">
         <div class="st-stat <?= $filter_status === 'closed' ? 'is-active' : '' ?>">
             <div class="st-stat-label">⚫ Fermés</div>
-            <div class="st-stat-value" style="color: #94a3b8;"><?= (int)$stats['nb_closed'] ?></div>
+            <div class="st-stat-value" style="color: #64748b;"><?= (int)$stats['nb_closed'] ?></div>
         </div>
     </a>
 </div>
@@ -219,7 +219,7 @@ if (function_exists('render_head')) {
     <?php if (empty($tickets)): ?>
         <div class="st-empty">
             <div class="st-empty-icon">🎫</div>
-            <p style="font-size: 16px; margin: 0 0 8px; color: #94a3b8;"><strong>Aucun ticket <?= $filter_status !== 'all' ? status_badge_st($filter_status)['label'] : '' ?></strong></p>
+            <p style="font-size: 16px; margin: 0 0 8px; color: #64748b;"><strong>Aucun ticket <?= $filter_status !== 'all' ? status_badge_st($filter_status)['label'] : '' ?></strong></p>
             <p style="margin: 0;">Tu n'as pas de ticket dans cette catégorie.</p>
         </div>
     <?php else: ?>
@@ -246,7 +246,7 @@ if (function_exists('render_head')) {
                         <span class="st-badge-prio" style="color: <?= $prio_cfg['color'] ?>;"><?= h_st($prio_cfg['label']) ?></span>
                     </div>
                 </div>
-                <div style="font-size: 12px; color: #94a3b8;">
+                <div style="font-size: 12px; color: #64748b;">
                     <?= h_st(category_label_st($ticket['category'])) ?>
                 </div>
                 <div>

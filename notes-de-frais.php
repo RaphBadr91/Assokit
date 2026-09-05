@@ -260,8 +260,8 @@ echo render_sidebar('notes-de-frais');
 .nf-table th { text-align:left; padding:9px 12px; border-bottom:2px solid #E2E8F0; color:#64748B; font-size:11px; text-transform:uppercase; background:#F8FAFC; }
 .nf-table td { padding:9px 12px; border-bottom:1px solid #F1F5F9; } .nf-table .r { text-align:right; }
 .nf-table tfoot td { border-top:2px solid #E2E8F0; background:#F8FAFC; }
-.nf-muted { color:#94A3B8; font-size:11.5px; }
-.nf-x { border:0; background:none; color:#94A3B8; cursor:pointer; padding:2px; } .nf-x:hover { color:#EF4444; }
+.nf-muted { color:#64748B; font-size:11.5px; }
+.nf-x { border:0; background:none; color:#64748B; cursor:pointer; padding:2px; } .nf-x:hover { color:#EF4444; }
 .nf-card { background:#fff; border:1px solid #E5E7EB; border-radius:12px; padding:14px 16px; margin-top:8px; }
 .nf-card-h { font-weight:750; color:#0F172A; font-size:14px; margin-bottom:12px; display:flex; align-items:center; gap:7px; }
 .nf-modes { display:flex; gap:16px; margin-bottom:12px; font-size:13.5px; color:#334155; }
@@ -271,9 +271,9 @@ echo render_sidebar('notes-de-frais');
 .nf-row input, .nf-row select { padding:8px 10px; border:1px solid #E2E8F0; border-radius:8px; font-family:inherit; font-size:13.5px; }
 .nf-ik-note { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:#64748B; align-self:center; }
 .nf-decide { margin-top:14px; display:flex; gap:8px; }
-.nf-empty { text-align:center; padding:44px 20px; background:#fff; border:2px dashed #E5E7EB; border-radius:14px; color:#94A3B8; }
+.nf-empty { text-align:center; padding:44px 20px; background:#fff; border:2px dashed #E5E7EB; border-radius:14px; color:#64748B; }
 .nf-empty p { color:#64748B; margin:10px 0 0; font-size:14px; }
-.nf-note { font-size:12px; color:#94A3B8; margin-top:18px; line-height:1.5; display:flex; align-items:flex-start; gap:6px; }
+.nf-note { font-size:12px; color:#64748B; margin-top:18px; line-height:1.5; display:flex; align-items:flex-start; gap:6px; }
 .nf-note svg { flex:none; margin-top:2px; }
 </style>
 <script>

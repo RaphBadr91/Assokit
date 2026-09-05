@@ -124,9 +124,9 @@ render_sidebar('mon-asso-paiement');
 
         <!-- Logos confiance -->
         <div style="display:flex; align-items:center; justify-content:center; gap:16px; margin-top:18px; padding-top:18px; border-top:1px solid #F1F5F9; flex-wrap:wrap;">
-          <div style="font-size:11px; color:#94A3B8; font-weight:600; letter-spacing:0.05em;">PAIEMENT SÉCURISÉ PAR</div>
+          <div style="font-size:11px; color:#64748B; font-weight:600; letter-spacing:0.05em;">PAIEMENT SÉCURISÉ PAR</div>
           <div style="font-weight:700; color:#635BFF; font-size:16px;">stripe</div>
-          <div style="font-size:11px; color:#94A3B8;">🔒 SSL 256-bit · PCI-DSS · 3D Secure</div>
+          <div style="font-size:11px; color:#64748B;">🔒 SSL 256-bit · PCI-DSS · 3D Secure</div>
         </div>
       </div>
 
@@ -167,11 +167,11 @@ render_sidebar('mon-asso-paiement');
         </div>
 
         <?php if (!ak_vat_is_enabled($pdo)): ?>
-        <div style="font-size:11px; color:#94A3B8; margin-top:6px;">
+        <div style="font-size:11px; color:#64748B; margin-top:6px;">
           TVA non applicable · art. 293 B du CGI
         </div>
         <?php else: ?>
-        <div style="font-size:11px; color:#94A3B8; margin-top:6px;">
+        <div style="font-size:11px; color:#64748B; margin-top:6px;">
           Dont TVA (<?= ak_vat_get_rate($pdo) ?>%) : <?= ak_format_price_cents((int)round($total_cents * (ak_vat_get_rate($pdo) / (100 + ak_vat_get_rate($pdo))))) ?>
         </div>
         <?php endif; ?>
@@ -184,7 +184,7 @@ render_sidebar('mon-asso-paiement');
         </div>
 
         <!-- Lien retour -->
-        <a href="/mon-asso-plan" style="display:block; text-align:center; margin-top:14px; color:#94A3B8; font-size:12.5px; text-decoration:none;">← Retour au choix du plan</a>
+        <a href="/mon-asso-plan" style="display:block; text-align:center; margin-top:14px; color:#64748B; font-size:12.5px; text-decoration:none;">← Retour au choix du plan</a>
       </div>
     </div>
 

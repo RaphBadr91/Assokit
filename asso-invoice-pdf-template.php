@@ -191,7 +191,7 @@ table.lines tbody td.num { text-align: right; font-variant-numeric: tabular-nums
     padding-top: 10px;
     border-top: 1px solid #E5E7EB;
     font-size: 7.5pt;
-    color: #9CA3AF;
+    color: #6B7280;
     text-align: center;
 }
 </style>

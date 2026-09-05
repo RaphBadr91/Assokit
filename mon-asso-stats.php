@@ -26,7 +26,7 @@ if (!$is_admin) {
     render_head('Accès refusé');
     render_sidebar('stats');
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
-    echo '<div style="color:#94A3B8;margin-bottom:14px;">' . ak_icon('lock',44,'1.5') . '</div>';
+    echo '<div style="color:#64748B;margin-bottom:14px;">' . ak_icon('lock',44,'1.5') . '</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
     echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">Les statistiques avancées (revenus, top clients, CA) sont strictement réservées aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
@@ -106,7 +106,7 @@ render_sidebar('stats');
             <?php if (!empty($status_dist['values'])): ?>
                 <canvas id="chart-status" style="max-height:240px;"></canvas>
             <?php else: ?>
-                <div style="text-align:center; color:#9CA3AF; padding:40px 0;">Pas encore de données</div>
+                <div style="text-align:center; color:#6B7280; padding:40px 0;">Pas encore de données</div>
             <?php endif; ?>
         </div>
     </div>
@@ -115,7 +115,7 @@ render_sidebar('stats');
     <div class="card" style="padding:22px; margin-bottom:18px;">
         <h3 style="margin:0 0 16px 0; font-size:16px; display:flex; align-items:center; gap:8px;"><?= ak_icon('trophy',18) ?> Top <?= min(10, count($top_clients)) ?> clients par CA encaissé</h3>
         <?php if (empty($top_clients)): ?>
-            <div style="color:#9CA3AF; text-align:center; padding:30px 0;">Pas encore de clients facturés payés.</div>
+            <div style="color:#6B7280; text-align:center; padding:30px 0;">Pas encore de clients facturés payés.</div>
         <?php else: ?>
             <table style="width:100%; border-collapse:collapse;">
                 <thead style="background:#F9FAFB;">

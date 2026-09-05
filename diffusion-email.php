@@ -82,19 +82,19 @@ render_sidebar('diffusion-email');
       <div class="ak-blur-content">
         <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;margin-bottom:24px;">
           <div class="card" style="text-align:center;padding:20px;background:white;border:1px solid #E2E8F0;border-radius:12px;">
-            <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;">Envoyés ce mois</div>
+            <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;">Envoyés ce mois</div>
             <div style="font-size:28px;font-weight:700;color:#0F172A;margin-top:6px;">1 247</div>
           </div>
           <div class="card" style="text-align:center;padding:20px;background:white;border:1px solid #E2E8F0;border-radius:12px;">
-            <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;">Taux d'ouverture</div>
+            <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;">Taux d'ouverture</div>
             <div style="font-size:28px;font-weight:700;color:#059669;margin-top:6px;">68%</div>
           </div>
           <div class="card" style="text-align:center;padding:20px;background:white;border:1px solid #E2E8F0;border-radius:12px;">
-            <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;">Listes</div>
+            <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;">Listes</div>
             <div style="font-size:28px;font-weight:700;color:#0F172A;margin-top:6px;">5</div>
           </div>
           <div class="card" style="text-align:center;padding:20px;background:white;border:1px solid #E2E8F0;border-radius:12px;">
-            <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;">Quota</div>
+            <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;">Quota</div>
             <div style="font-size:28px;font-weight:700;color:#0F172A;margin-top:6px;">2 000/mois</div>
           </div>
         </div>
@@ -106,7 +106,7 @@ render_sidebar('diffusion-email');
               <div style="width:40px;height:40px;background:#FCE7F3;color:#9D174D;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;">📨</div>
               <div style="flex:1;">
                 <div style="font-weight:600;color:#0F172A;">Newsletter Mai 2026</div>
-                <div style="font-size:12px;color:#94A3B8;">320 destinataires · 78% d'ouverture</div>
+                <div style="font-size:12px;color:#64748B;">320 destinataires · 78% d'ouverture</div>
               </div>
               <span style="background:#D1FAE5;color:#065F46;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;">✓ Envoyée</span>
             </div>
@@ -114,7 +114,7 @@ render_sidebar('diffusion-email');
               <div style="width:40px;height:40px;background:#E0F2FE;color:#0C4A6E;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;">📨</div>
               <div style="flex:1;">
                 <div style="font-weight:600;color:#0F172A;">Convocation AG annuelle</div>
-                <div style="font-size:12px;color:#94A3B8;">152 destinataires · 92% d'ouverture</div>
+                <div style="font-size:12px;color:#64748B;">152 destinataires · 92% d'ouverture</div>
               </div>
               <span style="background:#D1FAE5;color:#065F46;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;">✓ Envoyée</span>
             </div>
@@ -122,7 +122,7 @@ render_sidebar('diffusion-email');
               <div style="width:40px;height:40px;background:#FEF3C7;color:#92400E;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;">📨</div>
               <div style="flex:1;">
                 <div style="font-weight:600;color:#0F172A;">Appel aux dons fin d'année</div>
-                <div style="font-size:12px;color:#94A3B8;">487 destinataires · 64% d'ouverture</div>
+                <div style="font-size:12px;color:#64748B;">487 destinataires · 64% d'ouverture</div>
               </div>
               <span style="background:#D1FAE5;color:#065F46;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;">✓ Envoyée</span>
             </div>
@@ -168,15 +168,15 @@ render_sidebar('diffusion-email');
     <!-- Stats du mois -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;margin-bottom:22px;">
       <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:18px;">
-        <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Envoyés ce mois</div>
+        <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Envoyés ce mois</div>
         <div style="font-size:26px;font-weight:700;color:#0F172A;margin-top:6px;"><?= number_format($stats['sent_month'], 0, ',', ' ') ?></div>
       </div>
       <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:18px;">
-        <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Taux d'ouverture moyen</div>
+        <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Taux d'ouverture moyen</div>
         <div style="font-size:26px;font-weight:700;color:#059669;margin-top:6px;"><?= $stats['open_rate'] ?>%</div>
       </div>
       <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:18px;">
-        <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Total diffusions</div>
+        <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Total diffusions</div>
         <div style="font-size:26px;font-weight:700;color:#0F172A;margin-top:6px;"><?= count($diffusions) ?></div>
       </div>
     </div>
@@ -207,7 +207,7 @@ render_sidebar('diffusion-email');
             <div style="width:40px;height:40px;background:#F1F5F9;color:#475569;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📨</div>
             <div style="flex:1;min-width:0;">
               <div style="font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?= h($d['subject'] ?? '(sans titre)') ?></div>
-              <div style="font-size:12px;color:#94A3B8;">
+              <div style="font-size:12px;color:#64748B;">
                 <?= $recipients ?> destinataire<?= $recipients > 1 ? 's' : '' ?>
                 <?php if ($status === 'sent'): ?> · <?= $rate ?>% d'ouverture<?php endif; ?>
                 · <?= h(date('d/m/Y', strtotime($d['created_at'] ?? 'now'))) ?>
@@ -254,7 +254,7 @@ render_sidebar('diffusion-email');
     transition: all 0.2s ease; display: block; text-align: center;
   }
   .ak-blur-btn-secondary:hover { background: #F8FAFC; border-color: #CBD5E1; }
-  .ak-blur-footer { margin: 0; color: #94A3B8; font-size: 12.5px; line-height: 1.5; }
+  .ak-blur-footer { margin: 0; color: #64748B; font-size: 12.5px; line-height: 1.5; }
 
   @media (max-width: 640px) {
     .ak-blur-card { padding: 32px 24px; border-radius: 16px; }

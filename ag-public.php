@@ -111,7 +111,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; ba
 .pp-vote-btn.abstain.is-active { background: #f3f4f6; border-color: #6b7280; color: #374151; }
 .pp-vote-confirm { font-size: 11.5px; color: #10B981; margin-top: 6px; }
 .pp-locked { padding: 12px; background: #FEF3C7; color: #92400E; border-radius: 8px; font-size: 13px; text-align: center; }
-.pp-foot { text-align: center; color: #9ca3af; font-size: 11px; margin-top: 24px; padding: 14px 0; }
+.pp-foot { text-align: center; color: #6b7280; font-size: 11px; margin-top: 24px; padding: 14px 0; }
 </style>
 </head><body>
 <div class="pp">

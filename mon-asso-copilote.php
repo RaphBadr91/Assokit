@@ -54,7 +54,7 @@ $csrf = h($_SESSION['csrf_token'] ?? '');
              style="flex:1;border:none;outline:none;font-size:15px;padding:10px 12px;background:transparent;color:#0F172A;">
       <button type="submit" id="cop-send" style="background:linear-gradient(135deg,#0CCB8F,#059669);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer;">Demander</button>
     </form>
-    <p style="text-align:center;color:#94A3B8;font-size:12px;margin-top:10px;">Les chiffres proviennent directement de tes données Assokit. L'IA ne fait que les mettre en mots.</p>
+    <p style="text-align:center;color:#64748B;font-size:12px;margin-top:10px;">Les chiffres proviennent directement de tes données Assokit. L'IA ne fait que les mettre en mots.</p>
   </div>
 </main>
 
@@ -95,7 +95,7 @@ $csrf = h($_SESSION['csrf_token'] ?? '');
     if(!q || !q.trim()) return;
     bubble(esc(q), 'me');
     input.value=''; send.disabled=true;
-    var wait = bubble('<span style="color:#94A3B8;">…</span>', 'bot');
+    var wait = bubble('<span style="color:#64748B;">…</span>', 'bot');
     fetch('/mon-asso-copilote-ask.php', {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},

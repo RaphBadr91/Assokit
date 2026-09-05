@@ -151,13 +151,13 @@ h1 {
   margin: 0 0 10px;
 }
 .lede {
-  font-size: 13.5px; color: #9CA3AF;
+  font-size: 13.5px; color: #6B7280;
   margin: 0 0 28px; line-height: 1.55;
 }
 .field { margin-bottom: 18px; }
 .label {
   display: block; font-size: 12px;
-  color: #9CA3AF; margin-bottom: 7px;
+  color: #6B7280; margin-bottom: 7px;
   font-weight: 500; letter-spacing: 0.02em;
 }
 .input {

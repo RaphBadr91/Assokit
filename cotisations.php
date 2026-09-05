@@ -69,7 +69,7 @@ render_head('Cotisations');
 
     <?php if (empty($campaigns)): ?>
     <div class="ck-empty">
-      <div class="ck-empty-emoji" style="color:#94A3B8;"><?= ak_icon('euro',44,'1.5') ?></div>
+      <div class="ck-empty-emoji" style="color:#64748B;"><?= ak_icon('euro',44,'1.5') ?></div>
       <h2>Aucune campagne pour le moment</h2>
       <p>Crée ta première campagne (ex : "Adhésion 2025-2026") avec un ou plusieurs tarifs (membre, étudiant, famille…).</p>
       <?php if ($can_manage): ?><a href="/cotisation-form" class="ck-btn-primary">Créer une campagne</a><?php endif; ?>
@@ -131,7 +131,7 @@ render_head('Cotisations');
 .ck-camp-stats { font-size: 12.5px; color: #6b7280; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .ck-camp-stats strong { color: #111827; }
 .ck-camp-total { margin-left: auto; font-weight: 700; color: #10B981; font-size: 14px; }
-.ck-camp-deadline { font-size: 11.5px; color: #9ca3af; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f3f4f6; }
+.ck-camp-deadline { font-size: 11.5px; color: #6b7280; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f3f4f6; }
 @media (max-width: 540px) { .ck-camp-list { grid-template-columns: 1fr; } }
 </style>
 <?= render_foot() ?>

@@ -29,7 +29,7 @@ if (!$is_admin) {
     render_head('Accès refusé');
     render_sidebar('devis');
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
-    echo '<div style="color:#94A3B8;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
+    echo '<div style="color:#64748B;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
     echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">La liste des devis (montants prévus, conversions) est strictement réservée aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
@@ -162,7 +162,7 @@ $current_query = http_build_query($_GET);
 .ak-empty { padding:60px 20px; text-align:center; color:#6B7280; }
 .ak-empty-icon { font-size:42px; margin-bottom:14px; opacity:0.4; }
 .ak-empty-text { font-size:15px; color:#374151; margin-bottom:6px; }
-.ak-empty-sub { font-size:13px; color:#9CA3AF; }
+.ak-empty-sub { font-size:13px; color:#6B7280; }
 
 .ak-btn-primary { background:#7E22CE; color:#fff; border:1px solid #7E22CE; padding:10px 18px; border-radius:10px; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.15s; display:inline-flex; align-items:center; gap:6px; }
 .ak-btn-primary:hover { background:#6B21A8; border-color:#6B21A8; }
@@ -281,7 +281,7 @@ $current_query = http_build_query($_GET);
     <?php if (empty($quotes)): ?>
         <div class="ak-table-wrap">
             <div class="ak-empty">
-                <div class="ak-empty-icon" style="color:#94A3B8;"><?= ak_icon('edit',44,'1.5') ?></div>
+                <div class="ak-empty-icon" style="color:#64748B;"><?= ak_icon('edit',44,'1.5') ?></div>
                 <div class="ak-empty-text">Aucun devis trouvé</div>
                 <div class="ak-empty-sub"><?= $has_filters ? 'Essaie de modifier ou réinitialiser les filtres.' : 'Crée ton premier devis pour commencer.' ?></div>
             </div>
@@ -312,7 +312,7 @@ $current_query = http_build_query($_GET);
                         <td>
                             <div style="font-weight:600; color:#111827;"><?= h($q['client_name'] ?? 'Client inconnu') ?></div>
                             <?php if (!empty($q['client_email'])): ?>
-                                <div style="font-size:11px; color:#9CA3AF;"><?= h($q['client_email']) ?></div>
+                                <div style="font-size:11px; color:#6B7280;"><?= h($q['client_email']) ?></div>
                             <?php endif; ?>
                             <?php if (!empty($qtags)): ?>
                                 <div style="margin-top:4px;">

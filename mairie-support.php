@@ -95,7 +95,7 @@ render_sidebar('support');
         <textarea name="message" required rows="6" placeholder="Décrivez votre besoin en détail..." style="width:100%;padding:11px 14px;border:1px solid #D4D4D8;border-radius:8px;font-size:13.5px;font-family:inherit;box-sizing:border-box;resize:vertical;"></textarea>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
-        <div style="font-size:12px;color:#A1A1AA;">📧 Envoyé depuis : <strong style="color:#3F3F46;"><?= h($current['email']) ?></strong></div>
+        <div style="font-size:12px;color:#6B7280;">📧 Envoyé depuis : <strong style="color:#3F3F46;"><?= h($current['email']) ?></strong></div>
         <button type="submit" style="background:#0A0A0B;color:#fff;padding:11px 26px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">✉ Envoyer le message</button>
       </div>
     </form>

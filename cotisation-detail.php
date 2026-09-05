@@ -199,7 +199,7 @@ render_head($campaign['name']);
 .ck-add-pay[open] summary { margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f3f4f6; }
 .ck-pay-form { padding-top: 4px; }
 .ck-section { font-size: 14px; color: #065F46; margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #d1fae5; }
-.ck-empty-mini { background: #fff; border: 1px dashed #e5e7eb; border-radius: 10px; padding: 24px; text-align: center; color: #9ca3af; font-size: 13px; }
+.ck-empty-mini { background: #fff; border: 1px dashed #e5e7eb; border-radius: 10px; padding: 24px; text-align: center; color: #6b7280; font-size: 13px; }
 .ck-pay-list { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: auto; }
 .ck-pay-tbl { width: 100%; border-collapse: collapse; }
 .ck-pay-tbl th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; text-align: left; padding: 10px 12px; border-bottom: 1px solid #f3f4f6; background: #fafbfc; font-weight: 700; }

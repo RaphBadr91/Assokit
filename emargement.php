@@ -35,7 +35,7 @@ render_head('Émargement');
 
     <?php if (empty($sessions)): ?>
     <div class="at-empty">
-      <div style="color:#94A3B8;"><?= ak_icon('edit',44,'1.5') ?></div>
+      <div style="color:#64748B;"><?= ak_icon('edit',44,'1.5') ?></div>
       <h2>Aucune session d'émargement</h2>
       <p>Crée ta première session pour un cours, un entraînement, une formation ou une réunion. Partage le QR code aux participants pour qu'ils signent en 5 secondes.</p>
       <a href="/emargement-form" class="at-btn-primary">Créer une session</a>

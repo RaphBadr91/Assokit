@@ -848,7 +848,7 @@ render_sidebar('projets');
     font-variant-numeric: tabular-nums;
   }
   .ck-donut-num::after { content: '%'; font-size: 13px; font-weight: 500; color: #6b7280; margin-left: 2px; }
-  .ck-donut-lbl { font-size: 10px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .ck-donut-lbl { font-size: 10px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
 
   /* KPI grid */
   .ck-kpi-grid {
@@ -864,16 +864,16 @@ render_sidebar('projets');
     transition: transform 0.18s ease, box-shadow 0.18s ease;
   }
   .ck-kpi:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.04); }
-  .ck-kpi-lbl { font-size: 10px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 4px; }
+  .ck-kpi-lbl { font-size: 10px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 4px; }
   .ck-kpi-val { font-size: 22px; font-weight: 700; color: #111827; line-height: 1; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 4px; }
-  .ck-kpi-tot { font-size: 13px; color: #9CA3AF; font-weight: 500; }
-  .ck-kpi-unit { font-size: 11px; color: #9CA3AF; font-weight: 500; }
+  .ck-kpi-tot { font-size: 13px; color: #6B7280; font-weight: 500; }
+  .ck-kpi-unit { font-size: 11px; color: #6B7280; font-weight: 500; }
   .ck-kpi-health { gap: 6px; }
   .ck-kpi-sub { font-size: 11px; color: #6b7280; margin-top: 4px; font-weight: 500; }
 
   /* Sparkline + bilan ligne */
   .ck-spark { grid-column: 2; padding: 0 4px; }
-  .ck-spark-lbl { font-size: 10px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 4px; }
+  .ck-spark-lbl { font-size: 10px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 4px; }
 
   /* Bouton Générer le bilan */
   .ck-bilan { grid-column: 1 / 3; position: relative; padding-top: 12px; border-top: 1px dashed #e5e7eb; display: flex; justify-content: flex-end; }
@@ -968,7 +968,7 @@ render_sidebar('projets');
   .ck-nba.tone-warn .ck-nba-emoji { background: rgba(245,158,11,0.1); }
   .ck-nba.tone-info .ck-nba-emoji { background: rgba(59,130,246,0.1); }
   .ck-nba-body { flex: 1; min-width: 0; }
-  .ck-nba-pretitle { font-size: 10px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; margin-bottom: 4px; }
+  .ck-nba-pretitle { font-size: 10px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; margin-bottom: 4px; }
   .ck-nba-title { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 3px; }
   .ck-nba-text { font-size: 13px; color: #4b5563; line-height: 1.5; }
   .ck-nba-text strong { color: #111827; }
@@ -999,7 +999,7 @@ render_sidebar('projets');
   }
   .ck-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .ck-card-title { font-size: 13px; font-weight: 700; color: #111827; display: inline-flex; align-items: center; gap: 8px; }
-  .ck-card-sub { font-size: 11px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+  .ck-card-sub { font-size: 11px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
   .ck-card-empty { text-align: center; color: #6b7280; font-size: 12px; padding: 16px 8px; }
 
   /* Team pulse */
@@ -1008,7 +1008,7 @@ render_sidebar('projets');
   .ck-team-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
   .ck-team-info { flex: 1; min-width: 0; }
   .ck-team-name { font-size: 13px; font-weight: 600; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ck-team-meta { font-size: 11px; color: #9CA3AF; margin-top: 1px; }
+  .ck-team-meta { font-size: 11px; color: #6B7280; margin-top: 1px; }
   .ck-team-bar { width: 80px; height: 5px; background: #f3f4f6; border-radius: 999px; overflow: hidden; flex-shrink: 0; }
   .ck-team-fill { height: 100%; border-radius: 999px; transition: width 1s cubic-bezier(0.4,0,0.2,1); }
   .ck-team-score { font-size: 12px; font-weight: 700; color: #111827; min-width: 24px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -1077,7 +1077,7 @@ render_sidebar('projets');
 
   /* Étapes : couleur lisible (override toujours, desktop + mobile + dark) */
   .step-item .step-title { color: #111827 !important; }
-  .step-item.done .step-title { color: #9ca3af !important; }
+  .step-item.done .step-title { color: #6b7280 !important; }
   .step-item .step-desc { color: #4b5563 !important; }
   .step-item .step-meta { color: #6b7280 !important; }
 
@@ -1748,7 +1748,7 @@ render_sidebar('projets');
       box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(0,0,0,0.05);
     }
     .ov2-tl-info { padding-left: 4px; flex: 1; min-width: 0; }
-    .ov2-tl-label { font-size: 10px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+    .ov2-tl-label { font-size: 10px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
     .ov2-tl-value { font-size: 13px; color: #111827; font-weight: 600; margin-top: 2px; }
 
     /* Animations */
@@ -2629,7 +2629,7 @@ render_sidebar('projets');
       <!-- Timeline -->
       <?php if (empty($activities)): ?>
         <div class="history-empty">
-          <div style="color:#94A3B8; margin-bottom: 10px;"><?= ak_icon('inbox',44,'1.5') ?></div>
+          <div style="color:#64748B; margin-bottom: 10px;"><?= ak_icon('inbox',44,'1.5') ?></div>
           <div style="font-size: 15px; color: var(--ink-2); margin-bottom: 4px;">Aucune activité à afficher</div>
           <div style="font-size: 13px; color: var(--ink-3);">Essayez d'ajuster les filtres ou reviens plus tard.</div>
         </div>

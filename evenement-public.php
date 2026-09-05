@@ -225,7 +225,7 @@ $date_fr = $days_fr[(int)date('w', $start_ts)] . ' ' . (int)date('j', $start_ts)
   .response-option input { display: none; }
   .response-option:hover { border-color: #059669; background: #F0FDF4; }
   .response-option.selected { border-color: #059669; background: #D1FAE5; }
-  .response-option.selected.no { border-color: #9CA3AF; background: #F3F4F6; }
+  .response-option.selected.no { border-color: #6B7280; background: #F3F4F6; }
   .response-option.selected.maybe { border-color: #F59E0B; background: #FEF3C7; }
   .response-icon { font-size: 22px; margin-bottom: 3px; }
   .response-label { font-size: 12.5px; font-weight: 500; color: #44403C; }

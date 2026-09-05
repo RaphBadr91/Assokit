@@ -37,7 +37,7 @@ if (!$can_view_finances) {
     render_head('Accès refusé');
     render_sidebar('mon-asso-plan');
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
-    echo '<div style="color:#94A3B8;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
+    echo '<div style="color:#64748B;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
     echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">L\'abonnement et les factures sont strictement réservés aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
@@ -191,7 +191,7 @@ render_sidebar('mon-asso-plan');
           <tr style="border-top:1px solid #F1F5F9;">
             <td style="padding:10px 0;">
               <div style="font-weight:600;"><?= htmlspecialchars($inv['invoice_number'] ?? 'INV-' . $inv['id']) ?></div>
-              <div style="font-size:12px;color:#94A3B8;"><?= htmlspecialchars(date('d/m/Y', strtotime($inv['created_at']))) ?></div>
+              <div style="font-size:12px;color:#64748B;"><?= htmlspecialchars(date('d/m/Y', strtotime($inv['created_at']))) ?></div>
             </td>
             <td style="padding:10px 0;text-align:right;">
               <div style="font-weight:700;"><?= ak_format_price_cents((int)$inv['amount_cents']) ?></div>

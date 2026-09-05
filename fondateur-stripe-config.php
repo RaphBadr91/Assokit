@@ -197,14 +197,14 @@ render_sidebar('fondateur-stripe-config');
   <!-- État global -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(250px, 1fr));gap:16px;margin-bottom:24px;">
     <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:20px;">
-      <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Stripe</div>
+      <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Stripe</div>
       <div style="font-size:22px;font-weight:700;margin-top:6px;color:<?= $stripe_enabled ? '#059669' : '#94A3B8' ?>;">
         <?= $stripe_enabled ? '✅ ACTIVÉ' : '⏸ DÉSACTIVÉ' ?>
       </div>
-      <div style="font-size:12px;color:#94A3B8;margin-top:2px;">Mode : <strong><?= htmlspecialchars($stripe_mode) ?></strong></div>
+      <div style="font-size:12px;color:#64748B;margin-top:2px;">Mode : <strong><?= htmlspecialchars($stripe_mode) ?></strong></div>
     </div>
     <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:20px;">
-      <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Connexion API</div>
+      <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Connexion API</div>
       <div style="font-size:22px;font-weight:700;margin-top:6px;color:<?= $connection_status && $connection_status['ok'] ? '#059669' : '#94A3B8' ?>;">
         <?php if ($connection_status === null): ?>
           ⚪ NON TESTÉ
@@ -214,14 +214,14 @@ render_sidebar('fondateur-stripe-config');
           ❌ ERREUR
         <?php endif; ?>
       </div>
-      <div style="font-size:12px;color:#94A3B8;margin-top:2px;"><?= $connection_status ? htmlspecialchars($connection_status['message']) : 'Renseignez vos clés' ?></div>
+      <div style="font-size:12px;color:#64748B;margin-top:2px;"><?= $connection_status ? htmlspecialchars($connection_status['message']) : 'Renseignez vos clés' ?></div>
     </div>
     <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:20px;">
-      <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">TVA</div>
+      <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">TVA</div>
       <div style="font-size:22px;font-weight:700;margin-top:6px;color:<?= $vat_enabled ? '#059669' : '#94A3B8' ?>;">
         <?= $vat_enabled ? '✅ ' . $vat_rate . '%' : '⏸ DÉSACTIVÉE' ?>
       </div>
-      <div style="font-size:12px;color:#94A3B8;margin-top:2px;"><?= $vat_enabled ? 'Société assujettie' : 'Franchise (art. 293 B)' ?></div>
+      <div style="font-size:12px;color:#64748B;margin-top:2px;"><?= $vat_enabled ? 'Société assujettie' : 'Franchise (art. 293 B)' ?></div>
     </div>
   </div>
 
@@ -235,20 +235,20 @@ render_sidebar('fondateur-stripe-config');
       <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
 
       <div>
-        <label style="display:block;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px;">Clé publique <span style="color:#94A3B8;font-weight:400;">(publishable_key)</span></label>
+        <label style="display:block;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px;">Clé publique <span style="color:#64748B;font-weight:400;">(publishable_key)</span></label>
         <input type="text" name="stripe_publishable_key" value="<?= htmlspecialchars($pk ?? '') ?>" placeholder="pk_test_... ou pk_live_..." style="width:100%;padding:10px 14px;border:1px solid #E2E8F0;border-radius:8px;font-family:monospace;font-size:13px;">
       </div>
 
       <div>
-        <label style="display:block;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px;">Clé secrète <span style="color:#94A3B8;font-weight:400;">(secret_key)</span> 🔒</label>
+        <label style="display:block;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px;">Clé secrète <span style="color:#64748B;font-weight:400;">(secret_key)</span> 🔒</label>
         <input type="password" name="stripe_secret_key" value="<?= $sk ? '••••••••' : '' ?>" placeholder="sk_test_... ou sk_live_..." style="width:100%;padding:10px 14px;border:1px solid #E2E8F0;border-radius:8px;font-family:monospace;font-size:13px;">
-        <div style="font-size:11.5px;color:#94A3B8;margin-top:4px;">⚠️ NE JAMAIS partager cette clé. Elle reste sur le serveur.</div>
+        <div style="font-size:11.5px;color:#64748B;margin-top:4px;">⚠️ NE JAMAIS partager cette clé. Elle reste sur le serveur.</div>
       </div>
 
       <div>
-        <label style="display:block;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px;">Secret de webhook <span style="color:#94A3B8;font-weight:400;">(webhook_secret)</span> 🔒</label>
+        <label style="display:block;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px;">Secret de webhook <span style="color:#64748B;font-weight:400;">(webhook_secret)</span> 🔒</label>
         <input type="password" name="stripe_webhook_secret" value="<?= $whs ? '••••••••' : '' ?>" placeholder="whsec_..." style="width:100%;padding:10px 14px;border:1px solid #E2E8F0;border-radius:8px;font-family:monospace;font-size:13px;">
-        <div style="font-size:11.5px;color:#94A3B8;margin-top:4px;">URL webhook à configurer dans Stripe : <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;"><?= htmlspecialchars($webhook_url) ?></code></div>
+        <div style="font-size:11.5px;color:#64748B;margin-top:4px;">URL webhook à configurer dans Stripe : <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;"><?= htmlspecialchars($webhook_url) ?></code></div>
       </div>
 
       <div style="display:flex;gap:10px;">

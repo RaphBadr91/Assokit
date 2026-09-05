@@ -135,7 +135,7 @@ if (defined('RESEND_API_KEY') && RESEND_API_KEY) {
         . '</ul>'
         . '<p>À très vite,<br><strong>L\'équipe Assokit 🌿</strong></p>'
         . '</div>'
-        . '<p style="text-align:center;font-size:12px;color:#94A3B8;margin-top:18px;">Assokit · édité par Latitude91 · pensé en France 🇫🇷</p>'
+        . '<p style="text-align:center;font-size:12px;color:#64748B;margin-top:18px;">Assokit · édité par Latitude91 · pensé en France 🇫🇷</p>'
         . '</body></html>';
 
     $payload2 = [

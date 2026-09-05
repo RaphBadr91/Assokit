@@ -88,7 +88,7 @@ render_sidebar('mairie-assos');
           <div style="flex:1;">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
               <h3 style="margin:0;font-size:16px;color:#0A0A0B;font-weight:700;"><?= h($o['name']) ?></h3>
-              <?php if (!empty($o['siret'])): ?><span style="font-size:11px;color:#A1A1AA;">SIRET <?= h(substr($o['siret'], 0, 9)) ?>…</span><?php endif; ?>
+              <?php if (!empty($o['siret'])): ?><span style="font-size:11px;color:#6B7280;">SIRET <?= h(substr($o['siret'], 0, 9)) ?>…</span><?php endif; ?>
             </div>
             <div style="font-size:12.5px;color:#71717A;margin-bottom:10px;">
               📍 <?= h($o['billing_address_city'] ?? '—') ?>

@@ -100,7 +100,7 @@ render_head($sess['title']);
                   <?php if ($r['signature_data']): ?>
                     <img src="<?= h($r['signature_data']) ?>" style="max-width:80px;max-height:30px;border:1px solid #e5e7eb;border-radius:4px;background:#fff;">
                   <?php else: ?>
-                    <span style="color:#9ca3af;font-size:11px;">—</span>
+                    <span style="color:#6b7280;font-size:11px;">—</span>
                   <?php endif; ?>
                 </td>
                 <td>
@@ -131,7 +131,7 @@ render_head($sess['title']);
 .at-cols { display:grid; grid-template-columns:300px 1fr; gap:16px; }
 .at-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px 18px; margin-bottom:14px; }
 .at-card h2 { font-size:13px; margin:0 0 12px; color:#065F46; padding-bottom:6px; border-bottom:1px solid #f3f4f6; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; }
-.at-muted { color:#9ca3af; font-size:13px; }
+.at-muted { color:#6b7280; font-size:13px; }
 .at-url-box { display:flex; gap:6px; margin-top:10px; }
 .at-url-box input { flex:1; padding:7px 10px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:7px; font-family:ui-monospace,monospace; font-size:11px; color:#4b5563; }
 .at-url-box button { padding:7px 12px; background:#6366F1; color:#fff; border:0; border-radius:7px; cursor:pointer; }

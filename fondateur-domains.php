@@ -71,19 +71,19 @@ render_sidebar('fondateur-domains');
   <!-- Stats actuelles -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;margin-bottom:24px;">
     <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:18px;">
-      <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Sous-domaines configurés</div>
+      <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Sous-domaines configurés</div>
       <div style="font-size:28px;font-weight:700;color:#0F172A;margin-top:6px;"><?= (int)$stats['subdomains'] ?></div>
-      <div style="font-size:11px;color:#94A3B8;margin-top:2px;">Phase 2 — *.assokit.fr</div>
+      <div style="font-size:11px;color:#64748B;margin-top:2px;">Phase 2 — *.assokit.fr</div>
     </div>
     <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:18px;">
-      <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Domaines perso actifs</div>
+      <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Domaines perso actifs</div>
       <div style="font-size:28px;font-weight:700;color:#059669;margin-top:6px;"><?= (int)$stats['custom_domains'] ?></div>
-      <div style="font-size:11px;color:#94A3B8;margin-top:2px;">Phase 3 — domaine client</div>
+      <div style="font-size:11px;color:#64748B;margin-top:2px;">Phase 3 — domaine client</div>
     </div>
     <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:18px;">
-      <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">En attente validation</div>
+      <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">En attente validation</div>
       <div style="font-size:28px;font-weight:700;color:#EA580C;margin-top:6px;"><?= (int)$stats['pending'] ?></div>
-      <div style="font-size:11px;color:#94A3B8;margin-top:2px;">Configuration DNS</div>
+      <div style="font-size:11px;color:#64748B;margin-top:2px;">Configuration DNS</div>
     </div>
   </div>
 
@@ -181,7 +181,7 @@ render_sidebar('fondateur-domains');
       <?php endforeach; ?>
     </table>
 
-    <p style="margin:18px 0 0;font-size:13px;color:#94A3B8;line-height:1.5;">
+    <p style="margin:18px 0 0;font-size:13px;color:#64748B;line-height:1.5;">
       💡 Si des éléments sont manquants, exécute <code>migration-v47-domains.sql</code> dans phpMyAdmin.
     </p>
   </div>

@@ -615,7 +615,7 @@ render_sidebar($active);
 /* ===== Plans disponibles — redesign ===== */
 .pa-plans-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink, #0B1A13); margin: 0 0 6px; }
 .pa-plans-sub { color: var(--ink-3, #78857F); font-size: 14px; margin: 0 0 24px; max-width: 640px; }
-.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px,100%), 1fr)); gap: 18px; }
 .plan-card {
   position: relative; display: flex; flex-direction: column;
   padding: 24px 22px; border-radius: var(--radius-lg, 18px);

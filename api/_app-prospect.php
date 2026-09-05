@@ -102,7 +102,7 @@ if (!function_exists('ak_prospect_mockup')) {
                 . '<td valign="middle" style="width:40px;"><div style="width:36px;height:36px;border-radius:10px;background:' . $r[1] . ';text-align:center;line-height:36px;font-size:17px;">' . $r[0] . '</div></td>'
                 . '<td valign="middle" style="padding-left:12px;font-family:' . $font . ';">'
                 . '<div style="font-size:14px;font-weight:700;color:#0F172A;">' . $r[2] . '</div>'
-                . '<div style="font-size:12px;color:#94A3B8;margin-top:2px;">' . $r[3] . '</div></td>'
+                . '<div style="font-size:12px;color:#6B7280;margin-top:2px;">' . $r[3] . '</div></td>'
                 . '<td valign="middle" align="right"><span style="display:inline-block;font-family:' . $font . ';font-size:12.5px;font-weight:800;color:' . $r[5] . ';background:' . $r[6] . ';padding:5px 11px;border-radius:999px;">' . $r[4] . '</span></td>'
                 . '</tr></table></td></tr>';
         }
@@ -196,7 +196,7 @@ if (!function_exists('ak_prospect_html_template')) {
             . '<td align="center" bgcolor="#059669" style="border-radius:13px;background:linear-gradient(180deg,#10B981 0%,#059669 100%);box-shadow:0 5px 0 #04653F, 0 16px 26px rgba(4,101,63,.36);">'
             . '<a href="' . $link . '" style="display:inline-block;padding:16px 42px;font-family:' . $FONT . ';font-size:16px;font-weight:800;color:#ffffff;text-decoration:none;letter-spacing:.2px;">' . $cta . ' &#8594;</a>'
             . '</td></tr></table>'
-            . '<p style="margin:0 0 26px;font-family:' . $FONT . ';font-size:12px;color:#94A3B8;">Activation en 2 minutes &#183; aucune installation &#183; sans carte bancaire</p>'
+            . '<p style="margin:0 0 26px;font-family:' . $FONT . ';font-size:12px;color:#6B7280;">Activation en 2 minutes &#183; aucune installation &#183; sans carte bancaire</p>'
             // ---- Bénéfices ----
             . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F7FBFA;border:1px solid #E6F0EC;border-radius:14px;margin-bottom:22px;"><tr><td style="padding:14px 20px;">'
             . '<table role="presentation" cellpadding="0" cellspacing="0">' . $benefitRows . '</table>'
@@ -212,8 +212,8 @@ if (!function_exists('ak_prospect_html_template')) {
             . '</td></tr>'
             // ---- Footer ----
             . '<tr><td style="padding:18px 34px 26px;border-top:1px solid #EEF2F0;background:#FBFCFB;">'
-            . '<p style="margin:0;font-family:' . $FONT . ';font-size:11.5px;line-height:1.6;color:#94A3B8;">Vous recevez cet email professionnel car votre structure pourrait être concernée par nos services de gestion. '
-            . 'Pour ne plus être contacté&#183;e : <a href="' . $unsub . '" style="color:#94A3B8;text-decoration:underline;">se désinscrire</a>.</p>'
+            . '<p style="margin:0;font-family:' . $FONT . ';font-size:11.5px;line-height:1.6;color:#6B7280;">Vous recevez cet email professionnel car votre structure pourrait être concernée par nos services de gestion. '
+            . 'Pour ne plus être contacté&#183;e : <a href="' . $unsub . '" style="color:#6B7280;text-decoration:underline;">se désinscrire</a>.</p>'
             . '</td></tr>'
             . '</table></td></tr></table></body></html>';
     }

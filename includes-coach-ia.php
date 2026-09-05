@@ -265,6 +265,6 @@ function coach_render_email_html(array $report, array $org): string {
     }
 
     $html .= '<a href="' . $url . '" style="display:inline-block;background:#10B981;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:14px;">Ouvrir mon Coach Assokit →</a>';
-    $html .= '</div><p style="text-align:center;color:#9ca3af;font-size:11px;margin:18px 0 0;">AssoKit · ton coach Assokit chaque lundi matin</p></div>';
+    $html .= '</div><p style="text-align:center;color:#6b7280;font-size:11px;margin:18px 0 0;">AssoKit · ton coach Assokit chaque lundi matin</p></div>';
     return $html;
 }

@@ -238,7 +238,7 @@ table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .footer {
     text-align: center;
-    color: #9CA3AF;
+    color: #6B7280;
     font-size: 12px;
     margin-top: 30px;
     padding: 14px;

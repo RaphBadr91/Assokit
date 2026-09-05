@@ -112,7 +112,7 @@ render_sidebar('ia');
     .iat-btn-diffuse { background: linear-gradient(135deg, #7E22CE, #EC4899); color: white; border: none; }
 
     .iat-result-card { min-height: 300px; display: flex; flex-direction: column; }
-    .iat-result-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px 16px; color: #94A3B8; }
+    .iat-result-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px 16px; color: #64748B; }
     .iat-result-empty .big { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
     .iat-result-loading { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 16px; color: #64748B; }
     .iat-spinner { width: 36px; height: 36px; border: 3px solid #E2E8F0; border-top-color: <?= h($color) ?>; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 14px; }
@@ -271,7 +271,7 @@ render_sidebar('ia');
 
         <div id="iaResultLoading" class="iat-result-loading" style="display:none;">
           <div class="iat-spinner"></div>
-          <div>Génération en cours…<br><span style="font-size:12px;color:#94A3B8;">Quelques secondes seulement.</span></div>
+          <div>Génération en cours…<br><span style="font-size:12px;color:#64748B;">Quelques secondes seulement.</span></div>
         </div>
 
         <div id="iaResultError" class="iat-error" style="display:none;"></div>

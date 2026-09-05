@@ -272,13 +272,13 @@ function ak_email_template_wrap(string $greeting, string $body_html, string $cta
             <div style="text-align:center;margin:30px 0 10px;">
                 <a href="' . htmlspecialchars($cta_url) . '" style="background:#0F172A;color:#fff;text-decoration:none;padding:13px 30px;border-radius:8px;display:inline-block;font-weight:600;font-size:14px;">' . htmlspecialchars($cta_label) . '</a>
             </div>
-            <div style="text-align:center;font-size:11px;color:#94A3B8;margin-top:16px;">
+            <div style="text-align:center;font-size:11px;color:#64748B;margin-top:16px;">
                 Ou copie-colle ce lien dans ton navigateur :<br>
                 <span style="color:#64748B;word-break:break-all;">' . htmlspecialchars($cta_url) . '</span>
             </div>
         </td></tr>
         <!-- Footer -->
-        <tr><td style="padding:20px 30px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;font-size:12px;color:#94A3B8;">
+        <tr><td style="padding:20px 30px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;font-size:12px;color:#64748B;">
             Email envoyé automatiquement par AssoKit · <a href="https://assokit.fr" style="color:#64748B;text-decoration:underline;">assokit.fr</a>
         </td></tr>
     </table>

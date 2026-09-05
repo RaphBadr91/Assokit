@@ -79,7 +79,7 @@ table.lines tbody td.num { text-align: right; font-variant-numeric: tabular-nums
 .signature-box { margin-top: 18px; padding: 14px; background: #F0FDF4; border: 2px solid #10B981; border-radius: 8px; }
 .signature-box .title { font-size: 11pt; font-weight: bold; color: #065F46; margin-bottom: 8px; }
 .signature-box img { max-height: 30mm; max-width: 80mm; }
-.footer { margin-top: 22px; padding-top: 10px; border-top: 1px solid #E5E7EB; font-size: 7.5pt; color: #9CA3AF; text-align: center; }
+.footer { margin-top: 22px; padding-top: 10px; border-top: 1px solid #E5E7EB; font-size: 7.5pt; color: #6B7280; text-align: center; }
 </style>
 </head>
 <body>

@@ -94,18 +94,18 @@ a { color: #A78BFA; text-decoration: none; }
 .bar .logout { color: #fff; opacity: 0.85; text-decoration: underline; font-weight: 500; text-transform: none; }
 .container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
 header.page h1 { font-size: 26px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.02em; color: #F3F4F6; }
-header.page p { color: #9CA3AF; margin: 0 0 20px; }
+header.page p { color: #6B7280; margin: 0 0 20px; }
 .back { color: #A78BFA; font-size: 13px; margin-bottom: 16px; display: inline-block; }
 .card { background: #1A1828; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
 .card h2 { margin: 0 0 16px; font-size: 15px; font-weight: 600; color: #F3F4F6; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
 .cell { background: #22202F; border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 14px 16px; }
-.cell-label { font-size: 11px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; font-weight: 500; }
+.cell-label { font-size: 11px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; font-weight: 500; }
 .cell-value { font-size: 20px; font-weight: 600; color: #F3F4F6; letter-spacing: -0.01em; }
 .cell-value.sm { font-size: 15px; font-weight: 500; }
 .mono { font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 12.5px; color: #D4D4D8; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { text-align: left; padding: 10px 14px; font-weight: 500; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; font-size: 10.5px; background: #22202F; border-bottom: 1px solid rgba(255,255,255,0.08); }
+th { text-align: left; padding: 10px 14px; font-weight: 500; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em; font-size: 10.5px; background: #22202F; border-bottom: 1px solid rgba(255,255,255,0.08); }
 td { padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
 tr:last-child td { border-bottom: none; }
 pre { background: #0A0A10; border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 12px; color: #D4D4D8; margin: 0; }
@@ -172,7 +172,7 @@ pre { background: #0A0A10; border: 1px solid rgba(255,255,255,0.05); border-radi
         <div class="cell-value sm">
           <?= ak_cron_h($run['triggered_by']) ?>
           <?php if ($run['first_name']): ?>
-            <div style="font-size:11px;color:#9CA3AF;margin-top:3px;"><?= ak_cron_h($run['first_name'] . ' ' . $run['last_name']) ?></div>
+            <div style="font-size:11px;color:#6B7280;margin-top:3px;"><?= ak_cron_h($run['first_name'] . ' ' . $run['last_name']) ?></div>
           <?php endif; ?>
         </div>
       </div>
@@ -202,7 +202,7 @@ pre { background: #0A0A10; border: 1px solid rgba(255,255,255,0.05); border-radi
               <td>
                 <?= ak_cron_h($e['email_to']) ?>
                 <?php if ($e['first_name']): ?>
-                  <div style="font-size:11px;color:#9CA3AF;margin-top:2px;"><?= ak_cron_h($e['first_name'] . ' ' . $e['last_name']) ?></div>
+                  <div style="font-size:11px;color:#6B7280;margin-top:2px;"><?= ak_cron_h($e['first_name'] . ' ' . $e['last_name']) ?></div>
                 <?php endif; ?>
               </td>
               <td><span style="display:inline-block;padding:2px 7px;background:rgba(127,119,221,0.15);color:#A78BFA;border-radius:5px;font-size:11px;font-weight:600;"><?= ak_cron_h($e['email_type']) ?></span></td>

@@ -122,7 +122,7 @@ if ($action === 'send_invitations') {
             . '</div>'
             . '<p style="color:#4b5563;font-size:14px;">Merci de cliquer sur le lien ci-dessous pour confirmer votre présence et signer électroniquement :</p>'
             . '<a href="' . $url . '" style="display:inline-block;background:#10B981;color:#fff;padding:14px 26px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin:10px 0;">Accéder à mon espace personnel →</a>'
-            . '<p style="font-size:11px;color:#9ca3af;margin-top:18px;">Ce lien est strictement personnel et ne doit pas être partagé.</p>'
+            . '<p style="font-size:11px;color:#6b7280;margin-top:18px;">Ce lien est strictement personnel et ne doit pas être partagé.</p>'
             . '</div></div>';
         $text = "Convocation : " . $ag['title'] . "\n\n" . $when . "\n\nLien personnel : " . $url;
         try {

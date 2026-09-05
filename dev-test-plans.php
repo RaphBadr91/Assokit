@@ -88,7 +88,7 @@ if (!$has_access) {
         <pre style="background:#0F172A;color:#A7F3D0;padding:14px 16px;border-radius:8px;font-size:12.5px;overflow-x:auto;line-height:1.5;">UPDATE users
 SET is_founder = 1, is_super_admin = 1
 WHERE email = '<?= h($user['email'] ?? '') ?>';</pre>
-        <p style="margin:14px 0 0;font-size:13px;color:#94A3B8;">
+        <p style="margin:14px 0 0;font-size:13px;color:#64748B;">
           Puis <strong>déconnecte-toi et reconnecte-toi</strong> pour rafraîchir la session.
         </p>
       </div>
@@ -208,11 +208,11 @@ render_sidebar('');
     <?php if ($subscription): ?>
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;">
         <div>
-          <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Plan actuel</div>
+          <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Plan actuel</div>
           <div style="font-size:18px;font-weight:700;color:#0F172A;margin-top:4px;"><?= h($subscription['plan_name']) ?></div>
         </div>
         <div>
-          <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Statut</div>
+          <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Statut</div>
           <div style="font-size:18px;font-weight:700;margin-top:4px;
                       <?= $subscription['status'] === 'active' ? 'color:#059669;' : ($subscription['status'] === 'overdue' ? 'color:#DC2626;' : 'color:#EA580C;') ?>">
             <?= h($subscription['status']) ?>
@@ -220,13 +220,13 @@ render_sidebar('');
         </div>
         <?php if ($subscription['grace_period_end']): ?>
         <div>
-          <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Fin de grâce</div>
+          <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Fin de grâce</div>
           <div style="font-size:14px;color:#0F172A;margin-top:4px;"><?= h(date('d/m/Y', strtotime($subscription['grace_period_end']))) ?></div>
         </div>
         <?php endif; ?>
       </div>
     <?php else: ?>
-      <p style="margin:0;color:#94A3B8;">Aucune subscription pour cette org. Bascule un plan ci-dessous pour en créer une.</p>
+      <p style="margin:0;color:#64748B;">Aucune subscription pour cette org. Bascule un plan ci-dessous pour en créer une.</p>
     <?php endif; ?>
   </div>
 

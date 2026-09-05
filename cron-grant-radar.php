@@ -89,7 +89,7 @@ function radar_email_shell(string $title, string $intro, string $itemsHtml): arr
         . '<p style="color:#4b5563;font-size:14px;line-height:1.55;margin:0 0 18px;">'.htmlspecialchars($intro).'</p>'
         . $itemsHtml
         . '<a href="'.$url.'" style="display:inline-block;background:#10B981;color:#fff;padding:11px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:8px;">Ouvrir le radar →</a>'
-        . '</div><p style="text-align:center;color:#9ca3af;font-size:11px;margin:18px 0 0;">AssoKit · vous recevez cette alerte car le radar de subventions est actif. Réglages : /financements</p></div>';
+        . '</div><p style="text-align:center;color:#6b7280;font-size:11px;margin:18px 0 0;">AssoKit · vous recevez cette alerte car le radar de subventions est actif. Réglages : /financements</p></div>';
     return [$html];
 }
 

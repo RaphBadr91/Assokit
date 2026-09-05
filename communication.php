@@ -437,7 +437,7 @@ render_sidebar('communication');
 
     <?php if (empty($tpls)): ?>
       <div class="empty-state" style="padding:60px 20px">
-        <div style="margin-bottom:10px;color:#94A3B8"><?= ak_icon('book', 44, '1.5') ?></div>
+        <div style="margin-bottom:10px;color:#64748B"><?= ak_icon('book', 44, '1.5') ?></div>
         <div style="font-size:17px;color:var(--ink);font-weight:500;margin-bottom:6px">Votre bibliothèque est vide</div>
         <div style="max-width:460px;margin:0 auto 18px;line-height:1.55">
           Quand vous générez un document qui vous plaît, cliquez sur <strong>« Sauvegarder »</strong> pour le réutiliser plus tard.
@@ -591,7 +591,7 @@ render_sidebar('communication');
 .comm-recent-i svg{vertical-align:-2px}
 .comm-sec-h2 svg,.comm-lib-title svg{vertical-align:-2px;margin-right:2px}
 h2 svg{vertical-align:-3px;margin-right:4px}
-.comm-coming-icon,.comm-preview-icon{color:#94A3B8}
+.comm-coming-icon,.comm-preview-icon{color:#64748B}
 .comm-preview-icon{display:inline-flex}
 </style>
 

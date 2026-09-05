@@ -162,9 +162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $confirm_html .= '<p style="margin:0 0 18px;line-height:1.6;font-size:15px;"><strong>Notre équipe humaine</strong> vous répondra <strong>en moins de 24h ouvrées</strong>. Pas de bot, pas de FAQ qui tourne en rond — juste de vraies réponses, par de vraies personnes 🌿</p>';
                 $confirm_html .= '<p style="margin:0 0 24px;line-height:1.6;font-size:14px;color:#475569;">En attendant, n\'hésitez pas à explorer nos <a href="https://assokit.fr/fonctionnalites" style="color:#047857;font-weight:600;">fonctionnalités</a> ou consulter nos <a href="https://assokit.fr/tarifs" style="color:#047857;font-weight:600;">tarifs</a>.</p>';
                 $confirm_html .= '<hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0;">';
-                $confirm_html .= '<p style="margin:0;font-size:13px;color:#94A3B8;line-height:1.5;">À très vite,<br><strong style="color:#0F172A;">L\'équipe Assokit</strong> · Édité par RBPS · Évry, France 🇫🇷</p>';
+                $confirm_html .= '<p style="margin:0;font-size:13px;color:#64748B;line-height:1.5;">À très vite,<br><strong style="color:#0F172A;">L\'équipe Assokit</strong> · Édité par RBPS · Évry, France 🇫🇷</p>';
                 $confirm_html .= '</div>';
-                $confirm_html .= '<p style="text-align:center;font-size:12px;color:#94A3B8;margin:18px 0 0;">Vous recevez cet email suite à votre demande sur <a href="https://assokit.fr" style="color:#94A3B8;">assokit.fr</a></p>';
+                $confirm_html .= '<p style="text-align:center;font-size:12px;color:#64748B;margin:18px 0 0;">Vous recevez cet email suite à votre demande sur <a href="https://assokit.fr" style="color:#64748B;">assokit.fr</a></p>';
                 $confirm_html .= '</div>';
 
                 try {
@@ -564,7 +564,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
   .contact-req { color: #DC2626; font-weight: 700; }
   .contact-optional {
-    color: #94A3B8;
+    color: #64748B;
     font-weight: 400;
     font-size: 12px;
     font-style: italic;
@@ -585,7 +585,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     appearance: none;
     -webkit-appearance: none;
   }
-  .contact-input::placeholder { color: #94A3B8; font-weight: 400; }
+  .contact-input::placeholder { color: #64748B; font-weight: 400; }
   .contact-input:hover { border-color: #CBD5E1; }
   .contact-input:focus {
     outline: none;
@@ -610,7 +610,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     appearance: none;
     -webkit-appearance: none;
   }
-  .contact-textarea::placeholder { color: #94A3B8; font-weight: 400; }
+  .contact-textarea::placeholder { color: #64748B; font-weight: 400; }
   .contact-textarea:hover { border-color: #CBD5E1; }
   .contact-textarea:focus {
     outline: none;

@@ -124,7 +124,7 @@ render_sidebar('ia');
     .ia-tool .t-ico { font-size: 18px; flex-shrink: 0; width: 26px; text-align: center; }
     .ia-tool .t-info { min-width: 0; }
     .ia-tool .t-label { font-size: 13px; font-weight: 600; line-height: 1.2; }
-    .ia-tool .t-desc { font-size: 11px; color: #94A3B8; line-height: 1.3; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ia-tool .t-desc { font-size: 11px; color: #64748B; line-height: 1.3; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .ia-transverse { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
     .ia-transverse .ia-tool { padding: 14px 14px; }
@@ -138,7 +138,7 @@ render_sidebar('ia');
     .ia-recent-item .info { min-width: 0; }
     .ia-recent-item .info .t { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ia-recent-item .info .s { font-size: 12px; color: #64748B; }
-    .ia-recent-item .date { font-size: 12px; color: #94A3B8; flex-shrink: 0; }
+    .ia-recent-item .date { font-size: 12px; color: #64748B; flex-shrink: 0; }
 
     .ia-empty { padding: 40px 20px; text-align: center; color: #64748B; font-size: 14px; }
     .ia-empty .big { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
@@ -235,7 +235,7 @@ render_sidebar('ia');
     <div class="ia-recent">
       <?php if (empty($recent)): ?>
         <div class="ia-empty">
-          <div class="big" style="color:#94A3B8;"><?= ak_icon('inbox',44,'1.5') ?></div>
+          <div class="big" style="color:#64748B;"><?= ak_icon('inbox',44,'1.5') ?></div>
           Aucune génération pour le moment. Choisissez un outil ci-dessus pour commencer.
         </div>
       <?php else: foreach ($recent as $r): $tool = ak_ai_tool($r['tool_type']); ?>

@@ -275,7 +275,7 @@ render_public_nav('fonctionnalites');
             <strong>Objet :</strong> Suivi de votre facture FAC-0135<br><br>
             Bonjour M. Garcia,<br><br>
             Sauf erreur de notre part, votre facture du mois dernier reste en attente de règlement. Pourriez-vous régulariser sous 8 jours ?<br><br>
-            <span style="color:#94A3B8;">Bien cordialement,<br>[Votre signature]</span>
+            <span style="color:#64748B;">Bien cordialement,<br>[Votre signature]</span>
           </div>
           <div style="margin-top:10px;display:flex;gap:8px;">
             <span style="font-size:11px;padding:4px 10px;background:#EDE9FE;color:#5B21B6;border-radius:999px;font-weight:600;">✨ Généré en 2,3s</span>
@@ -458,12 +458,12 @@ render_public_nav('fonctionnalites');
             <div class="pub-hero-card-title">Assokit IA · 6 dossiers</div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
-            <div style="padding:12px;background:#F3E8FF;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#7E22CE;">📋 Vie associative<br><span style="color:#94A3B8;font-weight:400;">4 outils</span></div>
-            <div style="padding:12px;background:#FEE2E2;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#DC2626;">💝 Dons<br><span style="color:#94A3B8;font-weight:400;">3 outils</span></div>
-            <div style="padding:12px;background:#E0F2FE;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#0EA5E9;">👥 Adhérents<br><span style="color:#94A3B8;font-weight:400;">3 outils</span></div>
-            <div style="padding:12px;background:#FCE7F3;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#EC4899;">📱 Réseaux<br><span style="color:#94A3B8;font-weight:400;">3 outils</span></div>
-            <div style="padding:12px;background:#D1FAE5;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#059669;">📊 Rapports<br><span style="color:#94A3B8;font-weight:400;">3 outils</span></div>
-            <div style="padding:12px;background:#FEF3C7;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#F59E0B;">✉️ Courrier<br><span style="color:#94A3B8;font-weight:400;">3 outils</span></div>
+            <div style="padding:12px;background:#F3E8FF;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#7E22CE;">📋 Vie associative<br><span style="color:#64748B;font-weight:400;">4 outils</span></div>
+            <div style="padding:12px;background:#FEE2E2;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#DC2626;">💝 Dons<br><span style="color:#64748B;font-weight:400;">3 outils</span></div>
+            <div style="padding:12px;background:#E0F2FE;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#0EA5E9;">👥 Adhérents<br><span style="color:#64748B;font-weight:400;">3 outils</span></div>
+            <div style="padding:12px;background:#FCE7F3;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#EC4899;">📱 Réseaux<br><span style="color:#64748B;font-weight:400;">3 outils</span></div>
+            <div style="padding:12px;background:#D1FAE5;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#059669;">📊 Rapports<br><span style="color:#64748B;font-weight:400;">3 outils</span></div>
+            <div style="padding:12px;background:#FEF3C7;border-radius:8px;text-align:center;font-size:12px;font-weight:600;color:#F59E0B;">✉️ Courrier<br><span style="color:#64748B;font-weight:400;">3 outils</span></div>
           </div>
           <div class="pub-hero-row" style="margin-bottom:0;">
             <div class="pub-hero-row-ico" style="background:#FCE7F3;color:#9D174D;">📨</div>

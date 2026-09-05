@@ -229,7 +229,7 @@ render_sidebar('mairie-dashboard');
 
 
   <!-- 2 COLONNES : TOP 5 ASSO + TOP 5 PROJETS -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;margin-bottom:18px;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:14px;margin-bottom:18px;">
 
     <!-- TOP 5 ASSOCIATIONS ACTIVES -->
     <?php if (!empty($top_assos)): ?>
@@ -279,7 +279,7 @@ render_sidebar('mairie-dashboard');
             <?php if ($p['ref_first']): ?> · 👤 <?= h(trim($p['ref_first'] . ' ' . $p['ref_last'])) ?><?php endif; ?>
           </div>
           <?php if ($p['start_date'] && $p['start_date'] !== '0000-00-00'): ?>
-            <div style="font-size:11px;color:#A1A1AA;">
+            <div style="font-size:11px;color:#6B7280;">
               📅 <?= date('d/m/Y', strtotime($p['start_date'])) ?>
               <?php if ($p['end_date'] && $p['end_date'] !== '0000-00-00'): ?> → <?= date('d/m/Y', strtotime($p['end_date'])) ?><?php endif; ?>
               <?php if ((int)$p['participants_count'] > 0): ?> · 👥 <?= (int)$p['participants_count'] ?> bénéficiaires<?php endif; ?>
@@ -309,7 +309,7 @@ render_sidebar('mairie-dashboard');
         <div style="font-size:42px;margin-bottom:10px;">🏢</div>
         <strong style="color:#0A0A0B;display:block;margin-bottom:4px;">Aucune association rattachée</strong>
         Le Super Admin Fondateur doit lier des associations à votre <?= h($parent_org['type']) ?>.<br>
-        <span style="font-size:12px;color:#A1A1AA;">Contact : <a href="mailto:contact@assokit.fr" style="color:#059669;">contact@assokit.fr</a></span>
+        <span style="font-size:12px;color:#6B7280;">Contact : <a href="mailto:contact@assokit.fr" style="color:#059669;">contact@assokit.fr</a></span>
       </div>
     <?php else: ?>
       <div id="orgs-list" style="display:grid;gap:10px;">
@@ -336,7 +336,7 @@ render_sidebar('mairie-dashboard');
                 <?php else: ?>
                   <span style="color:#DC2626;font-weight:600;">⚠ Jamais connecté</span>
                 <?php endif; ?>
-                <?php if ($o['parent_org_linked_at']): ?><span style="color:#A1A1AA;">· Lié le <?= date('d/m/Y', strtotime($o['parent_org_linked_at'])) ?></span><?php endif; ?>
+                <?php if ($o['parent_org_linked_at']): ?><span style="color:#6B7280;">· Lié le <?= date('d/m/Y', strtotime($o['parent_org_linked_at'])) ?></span><?php endif; ?>
               </div>
             </div>
             <div style="display:flex;gap:8px;">
@@ -349,7 +349,7 @@ render_sidebar('mairie-dashboard');
     <?php endif; ?>
   </div>
 
-  <div style="margin-top:24px;text-align:center;font-size:11.5px;color:#A1A1AA;">
+  <div style="margin-top:24px;text-align:center;font-size:11.5px;color:#6B7280;">
     Dashboard mairie · powered by <strong style="color:#059669;">Assokit</strong>
   </div>
 </div>

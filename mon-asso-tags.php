@@ -122,7 +122,7 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
     <div class="card" style="padding:0; overflow:hidden;">
         <?php if (empty($tags)): ?>
             <div style="padding:40px; text-align:center; color:#6B7280;">
-                <div style="color:#94A3B8; margin-bottom:10px;"><?= ak_icon('tag',44,'1.5') ?></div>
+                <div style="color:#64748B; margin-bottom:10px;"><?= ak_icon('tag',44,'1.5') ?></div>
                 Aucun tag créé. Crée ton premier tag ci-dessus !
             </div>
         <?php else: ?>
@@ -147,7 +147,7 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
                             <?php if ($total > 0): ?>
                                 <?php $parts = []; foreach (['invoice'=>'facture','quote'=>'devis','client'=>'client'] as $k=>$lbl): $n = $usage[$k] ?? 0; if ($n > 0) $parts[] = "$n " . $lbl . ($n > 1 ? 's' : ''); endforeach; echo implode(' · ', $parts); ?>
                             <?php else: ?>
-                                <span style="color:#9CA3AF;">Pas encore utilisé</span>
+                                <span style="color:#6B7280;">Pas encore utilisé</span>
                             <?php endif; ?>
                         </td>
                         <td style="padding:12px 14px; text-align:right;">

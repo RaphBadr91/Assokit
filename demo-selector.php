@@ -185,7 +185,7 @@ body { font-family: -apple-system, sans-serif; background: linear-gradient(135de
 .demo-header { text-align: center; margin-bottom: 32px; }
 .demo-badge { display: inline-flex; padding: 6px 16px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 999px; color: #fbbf24; font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 16px; }
 .demo-header h1 { font-size: 32px; margin: 0 0 10px; font-weight: 700; }
-.demo-header p { color: #94a3b8; font-size: 16px; margin: 0; }
+.demo-header p { color: #64748b; font-size: 16px; margin: 0; }
 .error-box { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; padding: 12px 18px; border-radius: 10px; margin-bottom: 24px; text-align: center; font-size: 14px; }
 .demo-info { background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 12px; padding: 16px 20px; margin-bottom: 28px; font-size: 13px; color: #d1fae5; }
 .demo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px; margin-bottom: 32px; }
@@ -196,9 +196,9 @@ body { font-family: -apple-system, sans-serif; background: linear-gradient(135de
 .demo-card.is-premium::after { content: '⭐ FULL MAX'; position: absolute; top: 14px; right: 14px; padding: 3px 10px; background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.5); border-radius: 999px; font-size: 9px; font-weight: 700; color: #93c5fd; }
 .demo-card-icon { font-size: 32px; margin-bottom: 10px; }
 .demo-card-name { font-size: 18px; font-weight: 700; color: #f8fafc; margin-bottom: 3px; }
-.demo-card-tagline { font-size: 12px; color: #94a3b8; margin-bottom: 14px; }
+.demo-card-tagline { font-size: 12px; color: #64748b; margin-bottom: 14px; }
 .demo-card-pitch { font-size: 11px; color: #cbd5e0; padding: 8px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; margin-bottom: 14px; font-style: italic; border-left: 2px solid var(--card-color); }
-.demo-card-meta { font-size: 11.5px; color: #94a3b8; margin-bottom: 5px; }
+.demo-card-meta { font-size: 11.5px; color: #64748b; margin-bottom: 5px; }
 .demo-card-meta strong { color: #cbd5e0; }
 .demo-card-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 14px 0; padding: 12px; background: rgba(0,0,0,0.25); border-radius: 10px; }
 .demo-card-stat { text-align: center; }
@@ -212,7 +212,7 @@ body { font-family: -apple-system, sans-serif; background: linear-gradient(135de
 .demo-card-cta { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px; background: var(--card-color); color: white; border: 0; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; margin-top: auto; transition: all 0.15s; }
 .demo-card-cta:hover { filter: brightness(1.15); transform: scale(1.02); }
 .demo-footer { text-align: center; padding-top: 24px; border-top: 1px solid #334155; color: #64748b; font-size: 13px; }
-.demo-footer a { color: #94a3b8; text-decoration: none; }
+.demo-footer a { color: #64748b; text-decoration: none; }
 @media (max-width: 600px) { body { padding: 20px 14px; } .demo-header h1 { font-size: 24px; } .demo-grid { grid-template-columns: 1fr; } }
 </style>
 </head>

@@ -130,7 +130,7 @@ render_head($grant ? 'Modifier subvention' : 'Nouvelle subvention');
           </select>
         </div>
         <div class="gr-fld">
-          <label>Lien direct du dossier <span style="color:#9ca3af;font-weight:400;">(optionnel)</span></label>
+          <label>Lien direct du dossier <span style="color:#6b7280;font-weight:400;">(optionnel)</span></label>
           <input type="url" name="platform_url" id="grant-platform-url" maxlength="500" value="<?= h($d['platform_url']) ?>" placeholder="https://...">
         </div>
       </div>

@@ -206,7 +206,7 @@ try {
     ';
 
     // Footer discret commun (nom de l'association)
-    $footer_discreet = '<table style="width:100%;font-size:7.5pt;color:#9ca3af;border-top:0.3pt solid #E5E7EB;padding-top:4pt;">
+    $footer_discreet = '<table style="width:100%;font-size:7.5pt;color:#6b7280;border-top:0.3pt solid #E5E7EB;padding-top:4pt;">
       <tr>
         <td>' . ak_h($asso_name) . '</td>
         <td style="text-align:right;">Page {PAGENO} / {nbpg}</td>
@@ -263,7 +263,7 @@ try {
 
         // Footer mentions légales asso enrichi
         $footer_letter = '
-        <table style="width:100%;font-size:7.5pt;color:#A1A1AA;border-top:0.5pt solid #E5E7EB;padding-top:5pt;line-height:1.5;">
+        <table style="width:100%;font-size:7.5pt;color:#6B7280;border-top:0.5pt solid #E5E7EB;padding-top:5pt;line-height:1.5;">
           <tr>
             <td style="width:75%;">
               ' . $mentions_footer_str . '
@@ -371,7 +371,7 @@ try {
           padding-top: 12pt;
           border-top: 0.3pt dashed #D4D4D8;
           font-size: 8pt;
-          color: #A1A1AA;
+          color: #6B7280;
           text-align: center;
           font-style: italic;
           letter-spacing: 0.02em;
@@ -502,7 +502,7 @@ try {
         .admin-content h3 { font-size: 10.5pt; margin: 7pt 0 3pt; }
         .admin-content ul { margin: 3pt 0 6pt 0; padding-left: 18pt; }
         .admin-content li { margin-bottom: 1.5pt; }
-        .admin-cachet { width: 95pt; height: 95pt; border: 1pt dashed #9ca3af; border-radius: 50%; text-align: center; font-size: 8pt; color: #9ca3af; padding-top: 40pt; box-sizing: border-box; }
+        .admin-cachet { width: 95pt; height: 95pt; border: 1pt dashed #9ca3af; border-radius: 50%; text-align: center; font-size: 8pt; color: #6b7280; padding-top: 40pt; box-sizing: border-box; }
         </style>
         <div class="admin-frame">
           <div class="admin-header">
@@ -579,7 +579,7 @@ try {
         .so-preview { border: 1pt solid #E5E7EB; border-radius: 10pt; background: #fff; margin-bottom: 20pt; }
         .so-preview-head { padding: 11pt 14pt; border-bottom: 0.5pt solid #F1F5F9; }
         .so-preview-name { font-size: 10pt; font-weight: 700; color: #0A0A0B; }
-        .so-preview-sub { font-size: 8pt; color: #94A3B8; }
+        .so-preview-sub { font-size: 8pt; color: #64748B; }
         .so-preview-body { padding: 14pt 16pt; font-size: 10.5pt; line-height: 1.6; color: #1a1a1a; }
         .so-preview-body p { margin: 0 0 7pt; text-align: left; }
         .so-preview-body h2, .so-preview-body h3 { color: ' . $platform_color . '; font-size: 11pt; margin: 8pt 0 4pt; border: none; }
@@ -634,7 +634,7 @@ try {
           <tr><td colspan="2" style="padding-top:5pt;border-bottom:1.5pt solid #059669;"></td></tr>
         </table>';
         $mpdf->SetHTMLHeader($header_report);
-        $mpdf->SetHTMLFooter('<table style="width:100%;font-size:8pt;color:#9ca3af;border-top:0.5pt solid #E5E7EB;padding-top:5pt;">
+        $mpdf->SetHTMLFooter('<table style="width:100%;font-size:8pt;color:#6b7280;border-top:0.5pt solid #E5E7EB;padding-top:5pt;">
           <tr><td style="width:60%;">' . ak_h($clean_title) . ' · ' . ak_h($asso_name) . '</td>
           <td style="width:40%;text-align:right;">Page <strong style="color:#52525B;">{PAGENO}</strong> / {nbpg}</td></tr>
         </table>');

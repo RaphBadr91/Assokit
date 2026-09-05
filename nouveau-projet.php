@@ -395,7 +395,7 @@ render_sidebar('projets');
     .tpl-chip:hover { background: #fff; color: #111827; }
     .tpl-chip.is-active { background: #065F46; border-color: #065F46; color: #fff; }
     .tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
-    .tpl-empty { text-align: center; padding: 24px; color: #9ca3af; font-size: 13px; }
+    .tpl-empty { text-align: center; padding: 24px; color: #6b7280; font-size: 13px; }
     .tpl-card { display: flex; flex-direction: column; gap: 4px; padding: 14px 12px; background: #fff; border: 1.5px solid #e5e7eb; border-radius: 10px; cursor: pointer; text-align: left; font-family: inherit; transition: all 0.18s ease; position: relative; overflow: hidden; }
     .tpl-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--tpl-color); opacity: 0; transition: opacity 0.18s ease; }
     .tpl-card:hover { border-color: var(--tpl-color); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.06); }

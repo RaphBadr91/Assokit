@@ -204,13 +204,13 @@ render_sidebar('admin-subscriptions');
             <tr style="border-bottom:1px solid #F1F5F9;">
               <td style="padding:14px 18px;">
                 <div style="font-weight:600;color:#0F172A;"><?= htmlspecialchars($row['org_name'] ?? '?') ?></div>
-                <div style="color:#94A3B8;font-size:12px;">#<?= $row['org_id'] ?> · <?= htmlspecialchars($row['org_slug'] ?? '') ?></div>
+                <div style="color:#64748B;font-size:12px;">#<?= $row['org_id'] ?> · <?= htmlspecialchars($row['org_slug'] ?? '') ?></div>
               </td>
               <td style="padding:14px 12px;">
                 <?php if ($row['plan_name']): ?>
                   <strong><?= htmlspecialchars($row['plan_name']) ?></strong>
                   <?php if ($row['price_cents'] > 0): ?>
-                    <div style="color:#94A3B8;font-size:12px;"><?= number_format($row['price_cents']/100, 2, ',', ' ') ?>€/mois</div>
+                    <div style="color:#64748B;font-size:12px;"><?= number_format($row['price_cents']/100, 2, ',', ' ') ?>€/mois</div>
                   <?php endif; ?>
                 <?php else: ?>
                   <span style="color:#DC2626;">Aucun plan</span>
@@ -228,7 +228,7 @@ render_sidebar('admin-subscriptions');
               <td style="padding:14px 12px;font-size:12px;">
                 <?php if ($usage): ?>
                   <div>👥 <?= $usage['adherents'] ?> · 📋 <?= $usage['invoices_total'] ?> · 🤖 <?= $usage['ai_text_month'] ?>/mois</div>
-                  <div style="color:#94A3B8;">📨 <?= $usage['emails_month'] ?> emails ce mois</div>
+                  <div style="color:#64748B;">📨 <?= $usage['emails_month'] ?> emails ce mois</div>
                 <?php endif; ?>
               </td>
               <td style="padding:14px 12px;text-align:right;">
@@ -277,7 +277,7 @@ render_sidebar('admin-subscriptions');
             </tr>
           <?php endforeach; ?>
           <?php if (empty($rows)): ?>
-            <tr><td colspan="6" style="padding:40px;text-align:center;color:#94A3B8;">Aucune organisation trouvée</td></tr>
+            <tr><td colspan="6" style="padding:40px;text-align:center;color:#64748B;">Aucune organisation trouvée</td></tr>
           <?php endif; ?>
         </tbody>
       </table>

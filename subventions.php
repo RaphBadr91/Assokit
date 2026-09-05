@@ -54,7 +54,7 @@ render_head('Subventions');
 
     <?php if (empty($grants)): ?>
     <div class="gr-empty">
-      <div class="gr-empty-emoji" style="color:#94A3B8;"><?= ak_icon('euro',44,'1.5') ?></div>
+      <div class="gr-empty-emoji" style="color:#64748B;"><?= ak_icon('euro',44,'1.5') ?></div>
       <h2>Aucune subvention pour le moment</h2>
       <p>Crée ton premier dossier (CAF, FDVA, mairie, fondation…) pour suivre la deadline et le statut.</p>
       <?php if ($can_manage): ?><a href="/subvention-form" class="gr-btn-primary">Créer une demande</a><?php endif; ?>
@@ -127,7 +127,7 @@ render_head('Subventions');
 .gr-row-meta { font-size: 12px; color: #6b7280; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gr-row-amount { text-align: right; min-width: 90px; }
 .gr-row-amount strong { display: block; font-size: 14px; color: #111827; }
-.gr-row-amount-sub { font-size: 10.5px; color: #9ca3af; }
+.gr-row-amount-sub { font-size: 10.5px; color: #6b7280; }
 .gr-status { font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
 .gr-deadline { font-size: 11px; padding: 3px 9px; border-radius: 6px; font-weight: 700; background: #f3f4f6; color: #6b7280; white-space: nowrap; }
 .gr-deadline.gr-urgent { background: #FEF3C7; color: #92400E; }

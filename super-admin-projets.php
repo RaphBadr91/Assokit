@@ -133,7 +133,7 @@ sa_render_sidebar('projets');
     </div>
     <div class="sa-kpi">
         <div class="sa-kpi-label">Brouillons/Archivés</div>
-        <div class="sa-kpi-value" style="color:#A1A1AA"><?= $count_by_status['draft'] + $count_by_status['archived'] ?></div>
+        <div class="sa-kpi-value" style="color:#6B7280"><?= $count_by_status['draft'] + $count_by_status['archived'] ?></div>
     </div>
 </div>
 

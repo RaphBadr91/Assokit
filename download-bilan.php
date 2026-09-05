@@ -441,7 +441,7 @@ try {
         'margin_top' => 18,
         'margin_bottom' => 14,
     ]);
-    $footer = '<table width="100%" style="border-top: 1px solid #e5e7eb; padding-top: 4px; font-size: 8pt; color: #9CA3AF;"><tr>'
+    $footer = '<table width="100%" style="border-top: 1px solid #e5e7eb; padding-top: 4px; font-size: 8pt; color: #6B7280;"><tr>'
             . '<td>' . $h($doc['org_name']) . ' · ' . $h($doc['project_name']) . '</td>'
             . '<td align="right">{PAGENO} / {nbpg}</td>'
             . '</tr></table>';

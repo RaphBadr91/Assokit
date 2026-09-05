@@ -1174,12 +1174,12 @@ render_sidebar('accueil');
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .dash-search-wrap:focus-within { border-color: #10B981; box-shadow: 0 0 0 3px rgba(16,185,129,0.12); }
-  .dash-search-icon { color: #9ca3af; flex-shrink: 0; }
+  .dash-search-icon { color: #6b7280; flex-shrink: 0; }
   .dash-search-wrap input {
     flex: 1; min-width: 0; border: 0; outline: none; background: transparent;
     font-size: 13.5px; font-family: inherit; color: #111827;
   }
-  .dash-search-wrap input::placeholder { color: #9ca3af; }
+  .dash-search-wrap input::placeholder { color: #6b7280; }
   .dash-search-spinner { width: 14px; height: 14px; border: 2px solid #e5e7eb; border-top-color: #10B981; border-radius: 50%; animation: dash-spin 0.8s linear infinite; }
   @keyframes dash-spin { to { transform: rotate(360deg); } }
   .dash-search-results {
@@ -1190,14 +1190,14 @@ render_sidebar('accueil');
   }
   .dash-search-group { padding: 6px 0 2px; }
   .dash-search-group + .dash-search-group { border-top: 1px solid #f3f4f6; }
-  .dash-search-group-title { font-size: 10px; font-weight: 700; color: #9ca3af; padding: 6px 14px 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .dash-search-group-title { font-size: 10px; font-weight: 700; color: #6b7280; padding: 6px 14px 4px; text-transform: uppercase; letter-spacing: 0.06em; }
   .dash-search-item { display: flex; align-items: center; gap: 10px; padding: 8px 14px; text-decoration: none; color: inherit; transition: background 0.12s ease; }
   .dash-search-item:hover, .dash-search-item.is-active { background: #f0fdf4; }
   .dash-search-item-icon { width: 28px; height: 28px; border-radius: 7px; background: #f3f4f6; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; }
   .dash-search-item-body { flex: 1; min-width: 0; }
   .dash-search-item-label { font-size: 13px; font-weight: 600; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dash-search-item-sub { font-size: 11px; color: #6b7280; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dash-search-empty { padding: 18px 14px; text-align: center; color: #9ca3af; font-size: 12.5px; }
+  .dash-search-empty { padding: 18px 14px; text-align: center; color: #6b7280; font-size: 12.5px; }
   </style>
 
   <script>
@@ -1793,7 +1793,7 @@ render_sidebar('accueil');
   }
   .ai-card-emoji { font-size: 16px; }
   .ai-card-sub {
-    font-size: 11px; color: #9ca3af; text-transform: uppercase;
+    font-size: 11px; color: #6b7280; text-transform: uppercase;
     letter-spacing: 0.04em; font-weight: 600;
   }
   .ai-card-empty {

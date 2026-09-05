@@ -88,9 +88,9 @@ render_sidebar('messages');
 .msg-thread-card:hover { background: #f9fafb; }
 .msg-thread-card.active { background: #fef3c7; border-left: 3px solid #f59e0b; padding-left: 17px; }
 .msg-thread-org { font-weight: 600; font-size: .92rem; color: #1a1a1a; margin: 0 0 4px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.msg-thread-time { font-size: .72rem; color: #9ca3af; font-weight: 400; flex-shrink: 0; }
+.msg-thread-time { font-size: .72rem; color: #6b7280; font-weight: 400; flex-shrink: 0; }
 .msg-thread-preview { font-size: .82rem; color: #6b7280; margin: 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.msg-thread-empty { padding: 40px 20px; text-align: center; color: #9ca3af; font-size: .9rem; }
+.msg-thread-empty { padding: 40px 20px; text-align: center; color: #6b7280; font-size: .9rem; }
 .msg-thread-empty .icon { font-size: 2.5rem; display: block; margin-bottom: 12px; opacity: .4; }
 
 .msg-conv { flex: 1; background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.04); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #e9ecef; }
@@ -113,7 +113,7 @@ render_sidebar('messages');
 .msg-bubble-content { font-size: .92rem; line-height: 1.5; white-space: pre-wrap; }
 .msg-bubble-time { font-size: .68rem; opacity: .55; margin-top: 4px; }
 
-.msg-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: #9ca3af; padding: 60px 20px; text-align: center; }
+.msg-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: #6b7280; padding: 60px 20px; text-align: center; }
 .msg-empty .icon { font-size: 3.5rem; opacity: .4; margin-bottom: 16px; }
 .msg-empty h3 { color: #4b5563; margin: 0 0 6px; font-size: 1.05rem; }
 .msg-empty p { margin: 0; font-size: .9rem; }
@@ -157,7 +157,7 @@ render_sidebar('messages');
         <?php if ($c['last_message_content']): ?>
           <p class="msg-thread-preview"><strong><?= h($c['last_message_author']) ?>:</strong> <?= h($c['last_message_content']) ?></p>
         <?php else: ?>
-          <p class="msg-thread-preview" style="color:#9ca3af; font-style:italic;">Aucun message — démarrez la conversation</p>
+          <p class="msg-thread-preview" style="color:#6b7280; font-style:italic;">Aucun message — démarrez la conversation</p>
         <?php endif; ?>
       </a>
     <?php endforeach; endif; ?>
@@ -179,7 +179,7 @@ render_sidebar('messages');
 
       <div class="msg-conv-body" id="msg-body">
         <?php if (!$messages): ?>
-          <div style="text-align:center; color:#9ca3af; padding:40px 0;">
+          <div style="text-align:center; color:#6b7280; padding:40px 0;">
             <div style="font-size:2.5rem; opacity:.4; margin-bottom:12px;">✍️</div>
             <p style="margin:0; font-size:.92rem;">Aucun message pour le moment.<br>Envoyez le premier !</p>
           </div>

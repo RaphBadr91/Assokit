@@ -93,7 +93,7 @@ table.totals td { padding: 6px 12px; font-size: 12px; }
   ' . (!empty($org['siret']) ? '<div class="meta">SIRET : ' . htmlspecialchars($org['siret']) . '</div>' : '') . '
   ' . (!empty($org['rna_number']) ? '<div class="meta">RNA : ' . htmlspecialchars($org['rna_number']) . '</div>' : '') . '
   ' . (!empty($org['vat_subject']) && !empty($org['vat_number']) ? '<div class="meta">N° TVA intracommunautaire : ' . htmlspecialchars($org['vat_number']) . '</div>' : '') . '
-  ' . (empty($org['billing_address_street']) ? '<div class="meta" style="margin-top:8px;font-style:italic;color:#A1A1AA;">Adresse de facturation à compléter dans Paramètres → Association</div>' : '') . '
+  ' . (empty($org['billing_address_street']) ? '<div class="meta" style="margin-top:8px;font-style:italic;color:#6B7280;">Adresse de facturation à compléter dans Paramètres → Association</div>' : '') . '
 </div>
 
 <table class="items">
@@ -121,7 +121,7 @@ table.totals td { padding: 6px 12px; font-size: 12px; }
   ' . (!empty($inv['paid_at']) ? '<div class="meta" style="margin-top:6px;">Payée le ' . fpdf_date($inv['paid_at']) . (!empty($inv['payment_method']) ? ' — ' . htmlspecialchars($inv['payment_method']) : '') . '</div>' : '') . '
 </div>
 
-<div style="margin-top:40px;font-size:9px;color:#A1A1AA;border-top:1px solid #E4E4E7;padding-top:12px;text-align:center;">
+<div style="margin-top:40px;font-size:9px;color:#6B7280;border-top:1px solid #E4E4E7;padding-top:12px;text-align:center;">
   Facture générée par Assokit · ' . date('d/m/Y H:i') . '
 </div>';
 

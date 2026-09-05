@@ -167,9 +167,9 @@ echo render_sidebar('comptabilite');
 .cpt-ledger { margin-bottom:16px; }
 .cpt-ledger-head { font-weight:750; color:#0F172A; font-size:13.5px; margin-bottom:8px; display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
 .cpt-ledger-tot { font-weight:500; color:#64748B; font-size:12px; margin-left:auto; }
-.cpt-empty { text-align:center; padding:44px 20px; background:#fff; border:2px dashed #E5E7EB; border-radius:14px; color:#94A3B8; }
+.cpt-empty { text-align:center; padding:44px 20px; background:#fff; border:2px dashed #E5E7EB; border-radius:14px; color:#64748B; }
 .cpt-empty p { color:#64748B; margin:10px 0 0; font-size:14px; }
-.cpt-note { font-size:12px; color:#94A3B8; margin-top:18px; line-height:1.5; display:flex; align-items:flex-start; gap:6px; }
+.cpt-note { font-size:12px; color:#64748B; margin-top:18px; line-height:1.5; display:flex; align-items:flex-start; gap:6px; }
 .cpt-note svg { flex:none; margin-top:2px; }
 </style>
 <?php render_foot(); ?>

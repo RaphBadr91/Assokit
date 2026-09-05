@@ -111,7 +111,7 @@ canvas#sign-canvas { width: 100%; border: 2px dashed #D1D5DB; border-radius: 8px
 .checkbox-area { padding: 14px; background: #FAF5FF; border-radius: 8px; }
 .checkbox-area label { display: flex !important; align-items: center; gap: 10px; font-size: 14px; color: #1F2937; cursor: pointer; margin: 0 !important; }
 .checkbox-area input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
-.footer { text-align: center; color: #9CA3AF; font-size: 12px; margin-top: 30px; padding: 14px; }
+.footer { text-align: center; color: #6B7280; font-size: 12px; margin-top: 30px; padding: 14px; }
 </style>
 </head>
 <body>

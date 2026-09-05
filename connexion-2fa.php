@@ -106,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   input[type=text]{width:100%;padding:14px;border:1px solid #CBD5E1;border-radius:10px;font-size:22px;text-align:center;letter-spacing:8px;box-sizing:border-box;}
   button{width:100%;background:#059669;color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;margin-top:16px;}
   .err{background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:18px;}
-  .hint{color:#94A3B8;font-size:13px;margin-top:18px;text-align:center;}
+  .hint{color:#64748B;font-size:13px;margin-top:18px;text-align:center;}
   a{color:#047857;}
 </style>
 </head>

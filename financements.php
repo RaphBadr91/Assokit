@@ -258,14 +258,14 @@ echo render_sidebar('financements');
 .fin-profile { background:#fff; border:1px solid #E5E7EB; border-radius:14px; margin-bottom:16px; overflow:hidden; }
 .fin-profile > summary { list-style:none; cursor:pointer; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; gap:12px; font-weight:700; color:#0F172A; }
 .fin-profile > summary::-webkit-details-marker { display:none; }
-.fin-profile-hint { font-size:12px; color:#94A3B8; font-weight:500; text-align:right; }
+.fin-profile-hint { font-size:12px; color:#64748B; font-weight:500; text-align:right; }
 .fin-profile-body { padding:4px 18px 18px; border-top:1px solid #F1F5F9; }
 .fin-field-lbl { font-size:12.5px; font-weight:700; color:#475569; margin:14px 0 8px; }
 .fin-sectors { display:flex; flex-wrap:wrap; gap:8px; }
 .fin-tag { display:inline-flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; border:1px solid #E2E8F0; background:#F8FAFC; font-size:13px; color:#475569; cursor:pointer; user-select:none; transition:all .12s; }
 .fin-tag:hover { border-color:#CBD5E1; background:#fff; }
 .fin-tag.on { background:#ECFDF5; border-color:#10B981; color:#065F46; font-weight:650; }
-.fin-tag-ico { display:inline-flex; color:#94A3B8; transition:color .12s; }
+.fin-tag-ico { display:inline-flex; color:#64748B; transition:color .12s; }
 .fin-tag.on .fin-tag-ico { color:#10B981; }
 .fin-tri-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px; margin-top:4px; }
 .fin-tri { display:flex; flex-direction:column; gap:9px; align-items:flex-start; }
@@ -292,7 +292,7 @@ echo render_sidebar('financements');
 .fin-card-top { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
 .fin-elig { font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; white-space:nowrap; display:inline-flex; align-items:center; gap:5px; }
 .fin-deadline { font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px; background:#F1F5F9; color:#64748B; white-space:nowrap; }
-.fin-deadline.soft { background:#F8FAFC; color:#94A3B8; font-weight:600; }
+.fin-deadline.soft { background:#F8FAFC; color:#64748B; font-weight:600; }
 .fin-deadline.urgent { background:#FEF3C7; color:#92400E; }
 .fin-deadline.over { background:#FEE2E2; color:#991B1B; }
 .fin-card-title { font-size:15.5px; margin:0 0 3px; color:#0F172A; line-height:1.3; }
@@ -303,20 +303,20 @@ echo render_sidebar('financements');
 .fin-reasons li { font-size:12px; color:#475569; padding-left:16px; position:relative; }
 .fin-reasons li::before { content:"›"; position:absolute; left:4px; color:#10B981; font-weight:700; }
 .fin-card-actions { display:flex; align-items:center; gap:8px; margin-top:auto; flex-wrap:wrap; }
-.fin-icon-btn { margin-left:auto; width:32px; height:32px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; cursor:pointer; font-size:15px; line-height:1; display:inline-flex; align-items:center; justify-content:center; color:#94A3B8; }
+.fin-icon-btn { margin-left:auto; width:32px; height:32px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; cursor:pointer; font-size:15px; line-height:1; display:inline-flex; align-items:center; justify-content:center; color:#64748B; }
 .fin-icon-btn.js-save.on { color:#F59E0B; }
-.fin-empty-emoji { color:#94A3B8; }
+.fin-empty-emoji { color:#64748B; }
 .fin-sum-lbl { display:inline-flex; align-items:center; gap:7px; }
 .fin-btn svg, .fin-chip svg { flex:none; }
 .fin-disclaimer svg, .fin-geo-note svg, .fin-field-lbl svg { vertical-align:-2px; margin-right:4px; }
-.fin-icon-btn.js-dismiss { margin-left:0; color:#94A3B8; }
+.fin-icon-btn.js-dismiss { margin-left:0; color:#64748B; }
 .fin-icon-btn:hover { background:#F8FAFC; }
 .fin-empty { text-align:center; padding:48px 20px; background:#fff; border:2px dashed #E5E7EB; border-radius:14px; }
 .fin-empty-emoji { font-size:46px; margin-bottom:10px; }
 .fin-empty h2 { font-size:18px; margin:0 0 8px; color:#0F172A; }
 .fin-empty p { color:#64748B; max-width:480px; margin:0 auto; font-size:13.5px; }
 .fin-empty code { background:#F1F5F9; padding:1px 6px; border-radius:5px; font-size:12px; }
-.fin-disclaimer { font-size:12px; color:#94A3B8; margin-top:18px; line-height:1.5; }
+.fin-disclaimer { font-size:12px; color:#64748B; margin-top:18px; line-height:1.5; }
 @media (max-width:560px){ .fin-list{ grid-template-columns:1fr; } }
 </style>
 

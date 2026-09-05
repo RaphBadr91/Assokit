@@ -148,7 +148,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 .pp-step-check.done::after { content: '✓'; font-size: 13px; font-weight: 700; }
 .pp-step-body { flex: 1; min-width: 0; }
 .pp-step-title { font-size: 14px; color: #111827; font-weight: 500; }
-.pp-step.done .pp-step-title { color: #9ca3af; text-decoration: line-through; }
+.pp-step.done .pp-step-title { color: #6b7280; text-decoration: line-through; }
 .pp-step-date { font-size: 11.5px; color: #6b7280; margin-top: 2px; }
 
 /* Photos */
@@ -158,7 +158,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 .pp-photo:hover img { transform: scale(1.05); }
 
 /* Footer */
-.pp-foot { text-align: center; padding: 30px 16px 0; font-size: 12px; color: #9ca3af; }
+.pp-foot { text-align: center; padding: 30px 16px 0; font-size: 12px; color: #6b7280; }
 .pp-foot a { color: #6b7280; text-decoration: none; font-weight: 500; }
 
 /* Mobile */

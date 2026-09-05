@@ -46,7 +46,7 @@ if (!function_exists('ak_build_justificatifs')) {
 
             if (!$path || !is_file($path)) {
                 $mpdf->AddPage();
-                $mpdf->WriteHTML($cart . '<p style="color:#94A3B8;font-family:dejavusans,sans-serif;font-size:11px;margin-top:10px;">' . (($rel === '') ? 'Aucune photo jointe à cette facture.' : 'Photo jointe introuvable sur le serveur.') . '</p>');
+                $mpdf->WriteHTML($cart . '<p style="color:#64748B;font-family:dejavusans,sans-serif;font-size:11px;margin-top:10px;">' . (($rel === '') ? 'Aucune photo jointe à cette facture.' : 'Photo jointe introuvable sur le serveur.') . '</p>');
                 continue;
             }
 

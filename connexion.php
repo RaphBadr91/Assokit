@@ -182,6 +182,7 @@ if (empty($_SESSION['csrf_token'])) {
     :root{--acc:#059669;--acc-dark:#047857;--bg:#FAFAF9;--ink:#1C1917;--ink-2:#44403C;--ink-3:#78716C;--border:#E7E5E4}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Geist',Roboto,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
     .login-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:40px;max-width:420px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,0.04)}
+    @media (max-width:480px){.login-card{padding:24px}}
     .logo{text-align:center;margin-bottom:28px}
     .logo-mark{font-size:22px;font-weight:600;letter-spacing:-0.03em}
     .logo-mark span{color:var(--acc)}

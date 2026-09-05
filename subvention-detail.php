@@ -262,19 +262,19 @@ if (!function_exists('gr_platform_label')) {
 .gr-card code { overflow-wrap: anywhere; word-break: break-word; }
 .gr-card h2 { display: flex; align-items: center; gap: 7px; font-size: 13px; margin: 0 0 12px; color: #065F46; padding-bottom: 6px; border-bottom: 1px solid #f3f4f6; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .gr-card h2 svg { flex: none; }
-.gr-muted { color: #9ca3af; font-size: 13px; }
+.gr-muted { color: #6b7280; font-size: 13px; }
 .gr-steps-list { display: flex; flex-direction: column; gap: 6px; }
 .gr-step-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .gr-step-form { display: inline-flex; }
 .gr-step-check { width: 20px; height: 20px; border: 2px solid #d1d5db; background: #fff; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; flex-shrink: 0; }
 .gr-step-check.is-done { background: #10B981; border-color: #10B981; }
 .gr-step-title { flex: 1; font-size: 13.5px; color: #111827; }
-.gr-step-row.is-done .gr-step-title { color: #9ca3af; text-decoration: line-through; }
+.gr-step-row.is-done .gr-step-title { color: #6b7280; text-decoration: line-through; }
 .gr-step-date { font-size: 11px; color: #6b7280; }
 .gr-logs { display: flex; flex-direction: column; gap: 8px; }
 .gr-log { display: flex; gap: 10px; font-size: 12.5px; padding: 6px 0; border-bottom: 1px dashed #f3f4f6; }
 .gr-log:last-child { border-bottom: 0; }
-.gr-log-date { color: #9ca3af; min-width: 70px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.gr-log-date { color: #6b7280; min-width: 70px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .gr-log-user { color: #4b5563; font-weight: 600; min-width: 90px; flex-shrink: 0; }
 .gr-log-label { color: #111827; }
 .gr-dates { list-style: none; padding: 0; margin: 0; }

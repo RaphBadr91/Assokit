@@ -186,7 +186,7 @@ render_sidebar('parametres');
         <button type="submit" class="set-btn primary">Enregistrer les modifications</button>
       </div>
       <?php else: ?>
-      <p style="color:#9ca3af;font-size:.82rem;margin-top:14px;">Seuls les administrateurs de la collectivité peuvent modifier ces informations.</p>
+      <p style="color:#6b7280;font-size:.82rem;margin-top:14px;">Seuls les administrateurs de la collectivité peuvent modifier ces informations.</p>
       <?php endif; ?>
     </form>
   </div>
@@ -213,7 +213,7 @@ render_sidebar('parametres');
     <?php if ($quota > 0): ?>
       <div class="set-quota-bar"><div style="width: <?= min(100, round($nb_orgs / $quota * 100)) ?>%;"></div></div>
     <?php endif; ?>
-    <p style="color:#9ca3af;font-size:.8rem;margin-top:14px;margin-bottom:0;">Pour modifier votre quota ou votre abonnement, contactez Assokit à <a href="mailto:contact@assokit.fr" style="color:#059669;">contact@assokit.fr</a>.</p>
+    <p style="color:#6b7280;font-size:.8rem;margin-top:14px;margin-bottom:0;">Pour modifier votre quota ou votre abonnement, contactez Assokit à <a href="mailto:contact@assokit.fr" style="color:#059669;">contact@assokit.fr</a>.</p>
   </div>
 
   <!-- AGENTS -->
@@ -229,7 +229,7 @@ render_sidebar('parametres');
         <tbody>
           <?php foreach ($agents as $a): ?>
             <tr>
-              <td><strong><?= h($a['first_name'] . ' ' . $a['last_name']) ?></strong><?= (int)$a['id'] === $user_id ? ' <span style="color:#9ca3af;font-size:.78rem;">(vous)</span>' : '' ?></td>
+              <td><strong><?= h($a['first_name'] . ' ' . $a['last_name']) ?></strong><?= (int)$a['id'] === $user_id ? ' <span style="color:#6b7280;font-size:.78rem;">(vous)</span>' : '' ?></td>
               <td><?= h($a['email']) ?></td>
               <td><span class="set-role-badge <?= h($a['parent_org_role'] ?: 'agent') ?>"><?= h($a['parent_org_role'] ?: 'agent') ?></span></td>
               <td style="color:#6b7280;"><?= $a['last_login_at'] ? h(date('d/m/Y H:i', strtotime($a['last_login_at']))) : '<span style="color:#d1d5db;">Jamais</span>' ?></td>

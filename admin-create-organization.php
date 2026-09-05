@@ -241,11 +241,11 @@ render_sidebar('admin-create-organization');
         <h3 style="margin:0 0 14px;font-size:16px;color:#0F172A;">📋 Identifiants à transmettre au client</h3>
         <div style="display:grid;gap:10px;font-family:monospace;font-size:13.5px;">
           <div style="display:flex;justify-content:space-between;padding:10px 14px;background:#F8FAFC;border-radius:8px;">
-            <span style="color:#94A3B8;">Organisation :</span>
+            <span style="color:#64748B;">Organisation :</span>
             <strong><?= htmlspecialchars($created_credentials['org_name']) ?></strong>
           </div>
           <div style="display:flex;justify-content:space-between;padding:10px 14px;background:#F8FAFC;border-radius:8px;">
-            <span style="color:#94A3B8;">Email :</span>
+            <span style="color:#64748B;">Email :</span>
             <strong><?= htmlspecialchars($created_credentials['email']) ?></strong>
           </div>
           <div style="display:flex;justify-content:space-between;padding:10px 14px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;">
@@ -253,7 +253,7 @@ render_sidebar('admin-create-organization');
             <strong style="color:#92400E;font-size:15px;letter-spacing:0.04em;"><?= htmlspecialchars($created_credentials['password']) ?></strong>
           </div>
           <div style="display:flex;justify-content:space-between;padding:10px 14px;background:#F8FAFC;border-radius:8px;">
-            <span style="color:#94A3B8;">Validité :</span>
+            <span style="color:#64748B;">Validité :</span>
             <strong>jusqu'au <?= htmlspecialchars(date('d/m/Y', strtotime($created_credentials['period_end']))) ?></strong>
           </div>
         </div>
@@ -311,7 +311,7 @@ render_sidebar('admin-create-organization');
       <div style="margin-bottom:22px;">
         <label style="display:block;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px;">Mot de passe (optionnel)</label>
         <input type="text" name="custom_password" placeholder="Laissez vide pour générer automatiquement" style="width:100%;padding:10px 14px;border:1px solid #E2E8F0;border-radius:8px;font-size:14px;font-family:monospace;">
-        <div style="font-size:11.5px;color:#94A3B8;margin-top:4px;">Si vide, un mot de passe sécurisé sera généré automatiquement.</div>
+        <div style="font-size:11.5px;color:#64748B;margin-top:4px;">Si vide, un mot de passe sécurisé sera généré automatiquement.</div>
       </div>
 
       <hr style="border:none;border-top:1px solid #F1F5F9;margin:22px 0;">
@@ -327,7 +327,7 @@ render_sidebar('admin-create-organization');
           <div style="font-weight:700;color:#0F172A;font-size:14px;"><?= htmlspecialchars($p['name']) ?></div>
           <div style="font-size:13px;color:#64748B;margin-top:4px;"><?= htmlspecialchars($price_str) ?></div>
           <?php if (!empty($p['tagline'])): ?>
-            <div style="font-size:11.5px;color:#94A3B8;margin-top:6px;line-height:1.4;"><?= htmlspecialchars($p['tagline']) ?></div>
+            <div style="font-size:11.5px;color:#64748B;margin-top:6px;line-height:1.4;"><?= htmlspecialchars($p['tagline']) ?></div>
           <?php endif; ?>
         </label>
         <?php endforeach; ?>

@@ -541,7 +541,7 @@ function ak_render_overdue_overlay(PDO $pdo, int $org_id): string {
     $html .= '<p style="color:#475569;line-height:1.6;margin:0 0 8px;font-size:16px;">';
     $html .= 'Votre période de tolérance de 15 jours est écoulée. Pour continuer à utiliser le plan <strong>' . htmlspecialchars($status['plan_name'], ENT_QUOTES, 'UTF-8') . '</strong>, merci de régulariser votre paiement.';
     $html .= '</p>';
-    $html .= '<p style="color:#94A3B8;font-size:13px;margin:0 0 24px;">🔒 Vos données sont en sécurité et restent accessibles.</p>';
+    $html .= '<p style="color:#64748B;font-size:13px;margin:0 0 24px;">🔒 Vos données sont en sécurité et restent accessibles.</p>';
 
     $html .= '<div style="display:flex;flex-direction:column;gap:10px;">';
     // URL régulariser dynamique : Stripe direct si configuré
@@ -551,7 +551,7 @@ function ak_render_overdue_overlay(PDO $pdo, int $org_id): string {
     // 2. CTA secondaire — Contact (NOUVEAU)
     $html .= '<a href="/contact?subject=billing" style="background:#F0F9FF;color:#0C4A6E;padding:13px 24px;border-radius:12px;text-decoration:none;font-weight:600;font-size:14px;border:1px solid #BAE6FD;display:inline-flex;align-items:center;justify-content:center;gap:8px;">📞 Nous contacter — On va trouver une solution</a>';
     // 3. CTA tertiaire — Downgrade (en mode discret)
-    $html .= '<a href="/mon-asso-plan?action=downgrade" style="background:transparent;color:#94A3B8;padding:10px 24px;border-radius:12px;text-decoration:none;font-size:13px;border:1px solid #E2E8F0;">↓ Passer au plan Démarrage (gratuit)</a>';
+    $html .= '<a href="/mon-asso-plan?action=downgrade" style="background:transparent;color:#64748B;padding:10px 24px;border-radius:12px;text-decoration:none;font-size:13px;border:1px solid #E2E8F0;">↓ Passer au plan Démarrage (gratuit)</a>';
     $html .= '</div>';
 
     $html .= '<p style="color:#DC2626;font-size:12px;margin:18px 0 0;line-height:1.5;">';

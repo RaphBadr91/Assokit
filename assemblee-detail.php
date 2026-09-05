@@ -232,7 +232,7 @@ render_head($ag['title']);
 .ag-btn-mini { padding:5px 10px; background:#fff; border:1px solid #e5e7eb; border-radius:7px; font-size:11.5px; cursor:pointer; color:#4b5563; }
 .ag-btn-mini:hover { background:#f9fafb; }
 .ag-btn-mini-rm { background:transparent; border:0; color:#DC2626; cursor:pointer; font-size:16px; padding:2px 6px; }
-.ag-muted { color:#9ca3af; font-size:13px; }
+.ag-muted { color:#6b7280; font-size:13px; }
 .ag-table { width:100%; border-collapse:collapse; }
 .ag-table th { text-align:left; padding:8px 10px; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #e5e7eb; }
 .ag-table td { padding:9px 10px; font-size:13px; border-bottom:1px solid #f3f4f6; }

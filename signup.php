@@ -313,6 +313,7 @@ h1 { font-size: 22px; font-weight: 500; margin-bottom: 6px; letter-spacing: -0.0
 }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 430px) { .form-row { grid-template-columns: 1fr; } }
 .form-group { margin-bottom: 12px; }
 label { display: block; font-size: 12.5px; font-weight: 500; color: var(--ink-2); margin-bottom: 6px; }
 input[type="text"], input[type="email"], input[type="password"] {

@@ -65,7 +65,7 @@ if ($setup_mode) {
 render_head('Sécurité · Double authentification');
 render_sidebar('parametres');
 ?>
-<div style="max-width:640px;margin:0 auto;padding:24px;">
+<div class="main" style="max-width:640px;margin:0 auto;padding:24px;">
   <h1 style="font-size:24px;margin:0 0 6px;">Double authentification (2FA)</h1>
   <p style="color:#64748B;margin:0 0 24px;">Une couche de sécurité supplémentaire pour protéger votre compte.</p>
 

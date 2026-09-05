@@ -199,7 +199,7 @@ sa_render_sidebar('dashboard');
             <input type="hidden" name="action" value="start">
             <input type="hidden" name="target_user_id" id="imp-target-id" value="">
             <div style="margin-bottom:20px;">
-                <label style="display:block; margin-bottom:6px; font-size:12px; color:#9CA3AF; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Raison de l'incarnation <span style="color:#F97316;">*</span></label>
+                <label style="display:block; margin-bottom:6px; font-size:12px; color:#6B7280; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Raison de l'incarnation <span style="color:#F97316;">*</span></label>
                 <textarea name="reason" required minlength="10" maxlength="500" rows="3" placeholder="Ex: Diagnostic bug création de projet — ticket #42" style="width:100%; padding:12px 14px; background:#22202F; color:#F3F4F6; border:1px solid rgba(255,255,255,0.1); border-radius:10px; font-size:14px; font-family:inherit; resize:vertical; min-height:80px;"></textarea>
                 <div style="font-size:11.5px; color:#6B7280; margin-top:6px;">Minimum 10 caractères · Obligatoire pour traçabilité RGPD</div>
             </div>

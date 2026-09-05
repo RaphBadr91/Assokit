@@ -447,7 +447,7 @@ render_public_nav('');
   letter-spacing: 0.04em;
   font-size: 11px;
 }
-.ak-badge-new > span:not(.ak-badge-dot) { color: #9CA3AF; }
+.ak-badge-new > span:not(.ak-badge-dot) { color: #6B7280; }
 .ak-badge-dot {
   width: 8px; height: 8px;
   border-radius: 50%;

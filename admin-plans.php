@@ -168,9 +168,9 @@ render_sidebar('admin-plans');
                 <div style="font-weight:600;color:#0F172A;">
                   <?= htmlspecialchars($p['name'], ENT_QUOTES, 'UTF-8') ?>
                   <?= $p['is_featured'] ? ' <span style="color:#059669;">⭐</span>' : '' ?>
-                  <?= !$p['is_visible'] ? ' <span style="color:#94A3B8;font-size:12px;">(masqué)</span>' : '' ?>
+                  <?= !$p['is_visible'] ? ' <span style="color:#64748B;font-size:12px;">(masqué)</span>' : '' ?>
                 </div>
-                <div style="color:#94A3B8;font-size:12px;">slug: <code><?= htmlspecialchars($p['slug'], ENT_QUOTES, 'UTF-8') ?></code></div>
+                <div style="color:#64748B;font-size:12px;">slug: <code><?= htmlspecialchars($p['slug'], ENT_QUOTES, 'UTF-8') ?></code></div>
               </td>
               <td style="padding:14px 12px;">
                 <?php if ($p['is_custom_quote']): ?>
@@ -179,7 +179,7 @@ render_sidebar('admin-plans');
                   <span style="color:#059669;font-weight:600;">Gratuit</span>
                 <?php else: ?>
                   <strong><?= number_format($p['price_cents'] / 100, 2, ',', ' ') ?> €</strong>
-                  <span style="color:#94A3B8;font-size:12px;">/mois</span>
+                  <span style="color:#64748B;font-size:12px;">/mois</span>
                 <?php endif; ?>
               </td>
               <td style="padding:14px 12px;text-align:center;"><?= $p['limit_adherents'] === null ? '∞' : $p['limit_adherents'] ?></td>
@@ -271,7 +271,7 @@ render_sidebar('admin-plans');
 
       <!-- Limites quotas -->
       <fieldset style="border:1px solid #E2E8F0;border-radius:10px;padding:18px;">
-        <legend style="font-weight:600;padding:0 8px;">Limites & quotas <span style="color:#94A3B8;font-weight:400;font-size:12px;">(vide = illimité, 0 = bloqué)</span></legend>
+        <legend style="font-weight:600;padding:0 8px;">Limites & quotas <span style="color:#64748B;font-weight:400;font-size:12px;">(vide = illimité, 0 = bloqué)</span></legend>
         <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:12px;">
           <?php
           $fields = [

@@ -117,8 +117,8 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 .ep-bar { height: 7px; background: #f3f4f6; border-radius: 999px; overflow: hidden; }
 .ep-bar-fill { height: 100%; border-radius: 999px; }
 .ep-pct { font-size: 11.5px; color: #6b7280; margin-top: 5px; font-weight: 600; }
-.ep-empty { background: #fff; border: 1px dashed #d1d5db; border-radius: 14px; padding: 34px; text-align: center; color: #9ca3af; font-size: 14px; }
-.ep-foot { text-align: center; padding: 26px 12px 0; font-size: 12px; color: #9ca3af; }
+.ep-empty { background: #fff; border: 1px dashed #d1d5db; border-radius: 14px; padding: 34px; text-align: center; color: #6b7280; font-size: 14px; }
+.ep-foot { text-align: center; padding: 26px 12px 0; font-size: 12px; color: #6b7280; }
 .ep-foot a { color: #6b7280; text-decoration: none; font-weight: 600; }
 @media (max-width: 560px) { .ep-kpis { grid-template-columns: 1fr 1fr; } }
 </style>

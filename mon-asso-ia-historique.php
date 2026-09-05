@@ -79,7 +79,7 @@ render_sidebar('ia');
     .iah-info .title { font-weight:700; font-size:15px; }
     .iah-info .pill { font-size:11px; padding:2px 8px; border-radius:999px; font-weight:600; }
     .iah-info .preview { font-size:13px; color:#64748B; margin-top:6px; line-height:1.5; max-height:42px; overflow:hidden; }
-    .iah-info .meta { font-size:12px; color:#94A3B8; margin-top:6px; }
+    .iah-info .meta { font-size:12px; color:#64748B; margin-top:6px; }
     .iah-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
     .iah-btn-sm { padding:6px 10px; font-size:12px; border-radius:6px; border:1px solid #E2E8F0; background:white; cursor:pointer; text-decoration:none; color:#475569; font-weight:600; display:inline-flex; align-items:center; gap:4px; }
     .iah-btn-sm.fav-on { background:#FEF3C7; color:#92400E; border-color:#F59E0B; }

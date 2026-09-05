@@ -130,11 +130,11 @@ sa_render_sidebar('fondateur-pricing');
 .sa-page { max-width: 1200px; margin: 0 auto; padding: 24px 22px; color: #fff; }
 .sa-pg-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 14px; }
 .sa-pg-head h1 { font-size: 24px; margin: 0 0 4px; color: #fff; }
-.sa-pg-head p { color: #94A3B8; margin: 0; font-size: 14px; }
+.sa-pg-head p { color: #64748B; margin: 0; font-size: 14px; }
 .sa-card { background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 20px 22px; margin-bottom: 18px; }
 .sa-card h2 { font-size: 14px; margin: 0 0 14px; color: #FCD34D; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; padding-bottom: 8px; border-bottom: 1px solid #334155; }
 .ap-sim-form { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
-.ap-sim-form label { display: block; font-size: 11px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; margin-bottom: 4px; }
+.ap-sim-form label { display: block; font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; margin-bottom: 4px; }
 .ap-sim-form select { width: 100%; padding: 9px 12px; border: 1px solid #475569; background: #0F172A; color: #fff; border-radius: 8px; font-size: 14px; font-family: inherit; }
 .ap-sim-info { margin-top: 14px; padding: 10px 14px; background: #0F172A; border-radius: 8px; font-size: 13px; color: #E2E8F0; }
 .ap-muted { color: #64748B; }
@@ -145,19 +145,19 @@ sa_render_sidebar('fondateur-pricing');
 .ap-plan { background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 20px 22px; }
 .ap-plan.is-featured { border: 2px solid #FCD34D; box-shadow: 0 8px 24px rgba(252,211,77,0.15); }
 .ap-plan h3 { margin: 0 0 4px; font-size: 18px; color: #fff; }
-.ap-plan-tag { font-size: 11px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
+.ap-plan-tag { font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
 .ap-plan-prices { margin: 16px 0; padding: 14px 0; border-top: 1px solid #334155; border-bottom: 1px solid #334155; }
-.ap-plan-amt { font-size: 24px; font-weight: 800; color: #94A3B8; }
+.ap-plan-amt { font-size: 24px; font-weight: 800; color: #64748B; }
 .ap-plan-amt-billed { font-size: 28px; font-weight: 800; color: #fff; line-height: 1.1; }
-.ap-plan-unit { font-size: 13px; color: #94A3B8; font-weight: 600; margin-left: 4px; }
-.ap-plan-detail { font-size: 12px; color: #94A3B8; margin-top: 4px; }
+.ap-plan-unit { font-size: 13px; color: #64748B; font-weight: 600; margin-left: 4px; }
+.ap-plan-detail { font-size: 12px; color: #64748B; margin-top: 4px; }
 .ap-plan-eq { font-size: 12px; color: #34D399; font-weight: 600; margin-top: 4px; }
 .ap-plan-limits ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
 .ap-plan-limits li { font-size: 13px; color: #CBD5E1; }
 .ap-rules { width: 100%; border-collapse: collapse; }
-.ap-rules th { text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #94A3B8; border-bottom: 1px solid #334155; }
+.ap-rules th { text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #64748B; border-bottom: 1px solid #334155; }
 .ap-rules td { padding: 10px; font-size: 13px; border-bottom: 1px solid #334155; color: #E2E8F0; }
 .ap-rules code { font-size: 11.5px; background: #0F172A; padding: 2px 6px; border-radius: 4px; color: #FCD34D; }
-.ap-foot { margin: 14px 0 0; font-size: 12px; color: #94A3B8; }
+.ap-foot { margin: 14px 0 0; font-size: 12px; color: #64748B; }
 @media (max-width: 720px) { .ap-sim-form { grid-template-columns: 1fr; } }
 </style>

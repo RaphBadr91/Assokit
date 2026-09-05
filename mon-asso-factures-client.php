@@ -29,7 +29,7 @@ if (!$can_view_finances) {
     render_head('Accès refusé');
     render_sidebar('factures');
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
-    echo '<div style="color:#94A3B8;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
+    echo '<div style="color:#64748B;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
     echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">La liste des factures est réservée aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
@@ -123,7 +123,7 @@ render_sidebar('factures');
     <?php endif; ?>
     <button type="submit" style="background:#0F172A;color:white;padding:9px 18px;border:none;border-radius:8px;font-size:13.5px;cursor:pointer;font-weight:600;">Filtrer</button>
     <?php if ($f_status || $f_year): ?>
-      <a href="/mon-asso-factures-client" style="color:#94A3B8;font-size:13px;text-decoration:none;">Réinitialiser</a>
+      <a href="/mon-asso-factures-client" style="color:#64748B;font-size:13px;text-decoration:none;">Réinitialiser</a>
     <?php endif; ?>
   </form>
 
@@ -131,7 +131,7 @@ render_sidebar('factures');
   <div class="card" style="overflow:hidden;">
     <?php if (empty($invoices)): ?>
       <div style="padding:60px 20px;text-align:center;color:#64748B;">
-        <div style="color:#94A3B8;margin-bottom:12px;"><?= ak_icon('file-text',44,'1.5') ?></div>
+        <div style="color:#64748B;margin-bottom:12px;"><?= ak_icon('file-text',44,'1.5') ?></div>
         <div style="font-weight:600;font-size:16px;color:#0F172A;margin-bottom:6px;">Aucune facture</div>
         <div style="font-size:13.5px;">Créez votre première facture avec « Nouvelle facture ».</div>
       </div>
@@ -171,7 +171,7 @@ render_sidebar('factures');
     <?php endif; ?>
   </div>
 
-  <p style="text-align:center;margin-top:18px;color:#94A3B8;font-size:13px;">
+  <p style="text-align:center;margin-top:18px;color:#64748B;font-size:13px;">
     Vos factures émises à vos clients. Les factures d'abonnement Assokit sont dans <a href="/abonnement" style="color:#059669;font-weight:600;text-decoration:none;">Abonnement</a>.
   </p>
 </main>

@@ -238,6 +238,8 @@ render_sidebar('messages');
     <aside class="msg-channels">
       <div class="msg-channels-head">
         <div class="msg-channels-title">Canaux</div>
+        <button type="button" class="msg-close" aria-label="Fermer la liste des canaux" title="Fermer"
+          onclick="document.querySelector('.msg-channels').classList.remove('mobile-open')">✕</button>
         <?php if ($is_admin): ?>
           <a href="/nouveau-canal" class="msg-btn-new-channel" title="Créer un canal">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -286,7 +288,7 @@ render_sidebar('messages');
 
       <?php if (!$active_channel): ?>
         <div class="msg-empty">
-          <div class="msg-empty-icon" style="color:#94A3B8"><?= ak_icon('message', 44, '1.5') ?></div>
+          <div class="msg-empty-icon" style="color:#64748B"><?= ak_icon('message', 44, '1.5') ?></div>
           <div class="msg-empty-title">Aucun canal sélectionné</div>
           <div class="msg-empty-desc">Sélectionnez un canal dans la colonne de gauche pour voir les messages.</div>
         </div>
@@ -745,7 +747,7 @@ if (aiModalEl) aiModalEl.addEventListener('click', function(e) {
 .msg-quote:hover { background: #E5E7EB; }
 .msg-quote-author { font-weight: 600; color: #065F46; margin-bottom: 2px; font-size: 11px; }
 .msg-quote-content { color: #6B7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.msg-quote-deleted { color: #9CA3AF; font-style: italic; border-left-color: #D1D5DB; }
+.msg-quote-deleted { color: #6B7280; font-style: italic; border-left-color: #D1D5DB; }
 .msg-reply-preview {
   display: flex !important;
   align-items: center;
