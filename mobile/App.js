@@ -1217,7 +1217,9 @@ function DescBlock({ label, text, tint }) {
   const c = tint || BRAND;
   return (
     <View style={styles.dInfoCard}>
-      <Text style={[styles.dEyebrow, { color: c }]}>{label}</Text>
+      {/* Étiquette au même registre que les autres titres de section ; la teinte
+          `c` ne sert qu'aux puces, où elle porte une distinction de contenu. */}
+      <Text style={styles.dEyebrow}>{label}</Text>
       {asBullets ? (
         lines.map((l, i) => {
           const isB = /^[-–•*·]\s?/.test(l);
@@ -1272,12 +1274,19 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
               <Text style={styles.dCardLabel}>Budget engagé</Text>
               <Text style={styles.dCardStrong}>{fmtEuro(p.budget_used)} / {fmtEuro(p.budget_planned)}</Text>
             </View>
-            <View style={styles.progTrack}><View style={[styles.progFill, { width: Math.min(100, p.budget_pct) + '%', backgroundColor: '#7C3AED' }]} /></View>
+            {/* La couleur porte l'information : vert tant qu'on est dans l'enveloppe,
+                ambre à l'approche, rouge au dépassement. Le violet d'avant ne disait rien. */}
+            <View style={styles.progTrack}>
+              <View style={[styles.progFill, {
+                width: Math.min(100, p.budget_pct) + '%',
+                backgroundColor: p.budget_pct >= 100 ? '#B91C1C' : (p.budget_pct >= 90 ? '#B45309' : BRAND),
+              }]} />
+            </View>
           </View>
         )}
 
         {!!p.description && <DescBlock label="Description" text={p.description} />}
-        {!!p.objective && <DescBlock label="Objectif" text={p.objective} tint="#7C3AED" />}
+        {!!p.objective && <DescBlock label="Objectif" text={p.objective} />}
 
         {p.referent && (
           <>
@@ -4487,7 +4496,7 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, onNewCampa
             <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.active || 0}</Text><Text style={styles.miniKpiLbl}>Campagnes actives</Text></View>
           </View>
           {canManage && hasCampaigns && (
-            <TouchableOpacity accessibilityRole="button" style={styles.listNewBtn} activeOpacity={0.85} onPress={onNew}>
+            <TouchableOpacity accessibilityRole="button" style={[styles.listNewBtn, styles.afterStats]} activeOpacity={0.85} onPress={onNew}>
               <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Enregistrer un paiement</Text>
             </TouchableOpacity>
           )}
@@ -4545,7 +4554,7 @@ function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onOp
             <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: '#B45309' }]}>{s.pending || 0}</Text><Text style={styles.miniKpiLbl}>En cours</Text></View>
           </View>
           {canManage && (
-            <TouchableOpacity accessibilityRole="button" style={styles.listNewBtn} activeOpacity={0.85} onPress={onNew}>
+            <TouchableOpacity accessibilityRole="button" style={[styles.listNewBtn, styles.afterStats]} activeOpacity={0.85} onPress={onNew}>
               <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvelle demande</Text>
             </TouchableOpacity>
           )}
@@ -6897,7 +6906,7 @@ const styles = StyleSheet.create({
   dText: { fontSize: 14.5, color: '#45544D', lineHeight: 21, marginTop: 8 },
   /* Bloc description riche */
   dInfoCard: { backgroundColor: '#fff', borderRadius: 18, padding: 18, marginTop: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#0B1A13', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
-  dEyebrow: { fontSize: 11.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+  dEyebrow: { fontSize: 10, fontWeight: '700', color: MUTE, textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 10 },
   dPara: { fontSize: 15, color: '#45544D', lineHeight: 23, marginBottom: 4 },
   dBullet: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 11 },
   dBulletDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8, marginRight: 12 },
@@ -7184,6 +7193,9 @@ const styles = StyleSheet.create({
   emptySub: { color: '#8A968F', fontSize: 13, marginTop: 8, textAlign: 'center', lineHeight: 19 },
   formRow2: { flexDirection: 'row', alignItems: 'flex-start' },
   listNewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BRAND, borderRadius: R_BTN, paddingVertical: 14, marginBottom: 20, ...SH_BTN },
+  // Bouton posé juste sous une rangée de cartes statistiques : sans cette marge
+  // il touche les cartes, dont l'ombre déborde par-dessus.
+  afterStats: { marginTop: 18 },
   listNewTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
   emptyBtn: { marginTop: 18, backgroundColor: BRAND, paddingVertical: 12, paddingHorizontal: 22, borderRadius: 12 },
   emptyBtnTxt: { color: '#fff', fontSize: 14.5, fontWeight: '700' },

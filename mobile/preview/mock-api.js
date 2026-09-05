@@ -62,6 +62,124 @@ const PROJECTS = {
   ],
 };
 
+/* Fiches projet, une par carte de la liste : ouvrir un projet différent doit
+   donner un contenu différent, sinon l'aperçu ne montre rien de la variété
+   réelle (avancement, budget dépassé, checklist, équipe). */
+const PROJECT_DETAILS = {
+  1: {
+    ok: true,
+    project: {
+      id: 1, name: 'Festival de quartier 2026', folder: 'Culture', status: 'active',
+      progress: 62, budget_used: 7400, budget_planned: 12000, budget_pct: 62,
+      steps_done: 3, steps_total: 6, location: 'Parc des Loges, Évry',
+      objective: 'Réunir 1 200 habitants sur deux jours de programmation gratuite.',
+      description: "Trois scènes, un village associatif et une restauration solidaire.\n- Programmation musicale bouclée\n- Sécurité et arrêté municipal en cours\n- Bénévoles : 40 sur 60 recherchés",
+      referent: { name: 'Haoua Ali', initials: 'HA' },
+    },
+    steps: [
+      { id: 1, title: 'Déposer la demande d’occupation du domaine public', description: 'Dossier mairie', done: true },
+      { id: 2, title: 'Signer les contrats des trois groupes', description: '', done: true },
+      { id: 3, title: 'Commander la scène et la sono', description: 'Devis retenu : 3 200 €', done: true },
+      { id: 4, title: 'Recruter 20 bénévoles supplémentaires', description: '', done: false },
+      { id: 5, title: 'Boucler le plan de sécurité', description: 'À valider avec la préfecture', done: false },
+      { id: 6, title: 'Lancer la communication', description: '', done: false },
+    ],
+    members: [
+      { id: 1, name: 'Haoua Ali', initials: 'HA', role: 'admin' },
+      { id: 2, name: 'Marc Dubois', initials: 'MD', role: 'coordinator' },
+      { id: 4, name: 'Sofia Berger', initials: 'SB', role: 'member' },
+    ],
+  },
+  2: {
+    ok: true,
+    project: {
+      id: 2, name: 'Ateliers numériques seniors', folder: 'Solidarité', status: 'warning',
+      progress: 28, budget_used: 3100, budget_planned: 2800, budget_pct: 100,
+      steps_done: 1, steps_total: 5, location: 'Maison de quartier des Épinettes',
+      objective: 'Accompagner 45 seniors vers l’autonomie numérique en 10 séances.',
+      description: "Le budget est dépassé de 300 € : le prestataire a facturé deux séances supplémentaires.\n- Salle réservée jusqu'en juin\n- 28 inscrits sur 45",
+      referent: { name: 'Marc Dubois', initials: 'MD' },
+    },
+    steps: [
+      { id: 7, title: 'Réserver la salle informatique', description: '', done: true },
+      { id: 8, title: 'Recruter deux animateurs', description: 'Un seul trouvé', done: false },
+      { id: 9, title: 'Commander 10 tablettes', description: '', done: false },
+      { id: 10, title: 'Relancer le CCAS pour le cofinancement', description: 'Budget dépassé', done: false },
+      { id: 11, title: 'Évaluer la première session', description: '', done: false },
+    ],
+    members: [{ id: 2, name: 'Marc Dubois', initials: 'MD', role: 'coordinator' }],
+  },
+  3: {
+    ok: true,
+    project: {
+      id: 3, name: 'Rénovation du local', folder: 'Vie associative', status: 'active',
+      progress: 81, budget_used: 9800, budget_planned: 11500, budget_pct: 85,
+      steps_done: 4, steps_total: 5, location: '12 rue des Mares, Évry',
+      objective: 'Mettre le local aux normes d’accessibilité avant l’assemblée générale.',
+      description: 'Peinture et sol terminés. Reste la rampe d’accès, livrée la semaine prochaine.',
+      referent: { name: 'Sofia Berger', initials: 'SB' },
+    },
+    steps: [
+      { id: 12, title: 'Obtenir trois devis', description: '', done: true },
+      { id: 13, title: 'Voter les travaux en bureau', description: '', done: true },
+      { id: 14, title: 'Refaire le sol et les peintures', description: '', done: true },
+      { id: 15, title: 'Remplacer l’éclairage', description: '', done: true },
+      { id: 16, title: 'Poser la rampe d’accès', description: 'Livraison annoncée lundi', done: false },
+    ],
+    members: [
+      { id: 4, name: 'Sofia Berger', initials: 'SB', role: 'member' },
+      { id: 1, name: 'Haoua Ali', initials: 'HA', role: 'admin' },
+    ],
+  },
+  4: {
+    ok: true,
+    project: {
+      id: 4, name: 'Tournoi inter-associations', folder: 'Sport', status: 'done',
+      progress: 100, budget_used: 1850, budget_planned: 2000, budget_pct: 93,
+      steps_done: 4, steps_total: 4, location: 'Gymnase municipal',
+      objective: 'Faire se rencontrer huit associations du territoire autour d’un tournoi.',
+      description: 'Édition bouclée : 22 équipes, 180 participants. Bilan envoyé au service des sports.',
+      referent: { name: 'Haoua Ali', initials: 'HA' },
+    },
+    steps: [
+      { id: 17, title: 'Réserver le gymnase', description: '', done: true },
+      { id: 18, title: 'Inscrire les associations', description: '', done: true },
+      { id: 19, title: 'Organiser la buvette', description: '', done: true },
+      { id: 20, title: 'Envoyer le bilan à la mairie', description: '', done: true },
+    ],
+    members: [
+      { id: 1, name: 'Haoua Ali', initials: 'HA', role: 'admin' },
+      { id: 3, name: 'Léa Fontaine', initials: 'LF', role: 'member' },
+    ],
+  },
+};
+
+const MEMBER_DETAILS = {
+  1: {
+    ok: true, admin: true,
+    member: { id: 1, name: 'Haoua Ali', initials: 'HA', color: '#059669', email: 'haoua.ali@exemple.fr', phone: '06 12 34 56 78', city: 'Évry', role_label: 'Administratrice', up_to_date: true, adhesion_since: fr(d(-400)), adhesion_until: fr(d(320)), last_login: fr(d(-1)) },
+    projects: [
+      { id: 1, name: 'Festival de quartier 2026', folder: 'Culture', status: 'active', progress: 62, role: 'referent' },
+      { id: 4, name: 'Tournoi inter-associations', folder: 'Sport', status: 'done', progress: 100, role: 'referent' },
+    ],
+  },
+  2: {
+    ok: true, admin: true,
+    member: { id: 2, name: 'Marc Dubois', initials: 'MD', color: '#2563EB', email: 'marc.dubois@exemple.fr', phone: '06 98 76 54 32', city: 'Corbeil', role_label: 'Coordinateur', up_to_date: false, adhesion_since: fr(d(-720)), adhesion_until: fr(d(-30)), last_login: fr(d(-9)) },
+    projects: [{ id: 2, name: 'Ateliers numériques seniors', folder: 'Solidarité', status: 'warning', progress: 28, role: 'referent' }],
+  },
+  3: {
+    ok: true, admin: true,
+    member: { id: 3, name: 'Léa Fontaine', initials: 'LF', color: '#7C3AED', email: 'lea.fontaine@exemple.fr', phone: '', city: 'Évry', role_label: 'Membre', up_to_date: false, adhesion_since: fr(d(-95)), adhesion_until: fr(d(270)), last_login: fr(d(-21)) },
+    projects: [{ id: 4, name: 'Tournoi inter-associations', folder: 'Sport', status: 'done', progress: 100, role: 'member' }],
+  },
+  4: {
+    ok: true, admin: true,
+    member: { id: 4, name: 'Sofia Berger', initials: 'SB', color: '#B45309', email: 'sofia.berger@exemple.fr', phone: '07 45 12 89 03', city: 'Ris-Orangis', role_label: 'Membre', up_to_date: true, adhesion_since: fr(d(-210)), adhesion_until: fr(d(155)), last_login: fr(d(-3)) },
+    projects: [{ id: 3, name: 'Rénovation du local', folder: 'Vie associative', status: 'active', progress: 81, role: 'referent' }],
+  },
+};
+
 const MEMBERS = {
   ok: true,
   members: [
@@ -150,8 +268,8 @@ const COTISATION_DETAIL = {
 const GRANTS = {
   ok: true,
   grants: [
-    { id: 4, name: 'Fonds de développement associatif', funder: 'Région Île-de-France', funder_type: 'region', requested: 15000, granted: null, deadline: fr(d(21)), status: 'draft', status_kind: 'draft', status_label: 'Brouillon', project: 'Festival de quartier 2026', archived: false },
-    { id: 5, name: 'Appel à projets Jeunesse', funder: "Département de l'Essonne", funder_type: 'departement', requested: 8000, granted: 6500, deadline: fr(d(-40)), status: 'granted', status_kind: 'done', status_label: 'Accordé', project: 'Ateliers numériques seniors', archived: false },
+    { id: 4, name: 'Fonds de développement associatif', funder: 'Région Île-de-France', funder_type: 'Région', requested: 15000, granted: null, deadline: fr(d(21)), status: 'draft', status_kind: 'draft', status_label: 'Brouillon', project: 'Festival de quartier 2026', archived: false },
+    { id: 5, name: 'Appel à projets Jeunesse', funder: "Département de l'Essonne", funder_type: 'Département', requested: 8000, granted: 6500, deadline: fr(d(-40)), status: 'granted', status_kind: 'done', status_label: 'Accordé', project: 'Ateliers numériques seniors', archived: false },
   ],
   stats: { nb: 2, requested: 23000, granted: 6500, pending: 1 },
 };
@@ -196,6 +314,44 @@ const GRANT_DETAIL = {
   ],
 };
 
+const EVENT_DETAILS = {
+  1: { ok: true, event: { id: 1, title: 'Réunion du bureau', when: dayLabel(TODAY) + ' à 09:30', location: 'Salle des fêtes', project: '', type_label: 'Réunion', color: '#059669', all_day: false, description: 'Ordre du jour : point trésorerie, préparation du festival, calendrier des subventions.' } },
+  2: { ok: true, event: { id: 2, title: 'Atelier citoyenneté', when: dayLabel(TODAY) + ' à 14:00', location: 'Maison de quartier', project: 'Ateliers numériques seniors', type_label: 'Atelier', color: '#2563EB', all_day: false, description: '18 inscrits. Prévoir les tablettes et deux animateurs.' } },
+  3: { ok: true, event: { id: 3, title: 'Commission subventions', when: dayLabel(d(1)) + ' à 10:00', location: 'Visio', project: '', type_label: 'Réunion', color: '#7C3AED', all_day: false, description: 'Passage en revue du dossier Région avant dépôt.' } },
+  4: { ok: true, event: { id: 4, title: 'Assemblée générale', when: dayLabel(d(2)) + ' à 18:30', location: 'Gymnase municipal', project: '', type_label: 'Assemblée', color: '#B45309', all_day: false, description: '120 convoqués. Quorum requis : 61 présents ou représentés.' } },
+  5: { ok: true, event: { id: 5, title: 'Pot de rentrée', when: dayLabel(d(2)) + ' à 20:00', location: 'Gymnase municipal', project: '', type_label: 'Convivialité', color: '#059669', all_day: false, description: 'Ouvert à tous, sans inscription.' } },
+};
+
+const NOTIFICATIONS = {
+  ok: true,
+  unread: 3,
+  items: [
+    { id: 1, title: 'Marc Dubois vous a mentionné', body: '« On cale la commission subventions mercredi ? »', icon: 'mention', ago: 'il y a 2 h', read: false },
+    { id: 2, title: 'Étape assignée', body: 'Boucler le plan de sécurité — Festival de quartier 2026', icon: 'step_assigned', ago: 'hier', read: false },
+    { id: 3, title: 'Nouveau membre', body: 'Sofia Berger a rejoint l’association', icon: 'team_added', ago: 'il y a 3 j', read: false },
+    { id: 4, title: 'Facture payée', body: 'FA-2026-017 · 2 400 € encaissés', icon: 'message', ago: 'la semaine dernière', read: true },
+  ],
+};
+
+const CHANNELS = {
+  ok: true,
+  channels: [
+    { id: 1, name: 'Général', slug: 'general', type: 'public', color: '#059669', count: 128, unread: 2 },
+    { id: 2, name: 'Bureau', slug: 'bureau', type: 'private', color: '#2563EB', count: 46, unread: 0 },
+    { id: 3, name: 'Annonces', slug: 'annonces', type: 'announce', color: '#B45309', count: 12, unread: 0 },
+  ],
+};
+
+const FOLDERS = {
+  ok: true,
+  folders: [
+    { id: 1, name: 'Culture', color: '#7C3AED' },
+    { id: 2, name: 'Solidarité', color: '#2563EB' },
+    { id: 3, name: 'Vie associative', color: '#059669' },
+    { id: 4, name: 'Sport', color: '#B45309' },
+  ],
+};
+
 /* Table de correspondance chemin → réponse. Un chemin absent renvoie
    { ok: false } : l'écran affiche alors son état d'erreur, ce qui est le
    comportement réel et non un plantage. */
@@ -212,13 +368,36 @@ const ROUTES = {
   '/api/app-cotisation.php': COTISATION_DETAIL,
   '/api/app-grants.php': GRANTS,
   '/api/app-grant.php': GRANT_DETAIL,
+  '/api/app-notifications.php': NOTIFICATIONS,
+  '/api/app-channels.php': CHANNELS,
+  '/api/app-folders.php': FOLDERS,
 };
+
+/* Fiches dépendantes de l'identifiant : ouvrir deux projets différents doit
+   donner deux contenus différents. */
+const ROUTES_PAR_ID = {
+  '/api/app-project.php': PROJECT_DETAILS,
+  '/api/app-member.php': MEMBER_DETAILS,
+  '/api/app-event.php': EVENT_DETAILS,
+};
+
+function lireId(url) {
+  const m = /[?&]id=(\d+)/.exec(String(url));
+  return m ? m[1] : null;
+}
 
 export function mockResponse(url, isPost) {
   const path = String(url).split('?')[0];
   if (isPost) {
     // Les écritures réussissent, sans rien persister : l'aperçu est hors ligne.
     return { ok: true, id: Math.floor(Math.random() * 900) + 100, message: 'Aperçu hors ligne : rien n’est enregistré.' };
+  }
+  const parId = ROUTES_PAR_ID[path];
+  if (parId) {
+    const id = lireId(url);
+    // Un identifiant hors du jeu de démonstration retombe sur la première fiche,
+    // plutôt que sur un écran d'erreur qui ne dirait rien du design.
+    return parId[id] || parId[Object.keys(parId)[0]];
   }
   return ROUTES[path] || { ok: false, error: 'preview' };
 }
