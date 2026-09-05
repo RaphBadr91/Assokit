@@ -19,7 +19,7 @@
       "output": "single"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "fr.assokit.app",
       "buildNumber": "1",
       "infoPlist": {
