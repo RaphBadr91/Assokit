@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     $check_to = trim($_POST['check_payable_to'] ?? '') ?: null;
 
     $stripe_enabled = !empty($_POST['stripe_enabled']) ? 1 : 0;
-    $stripe_mode = in_array($_POST['stripe_mode'] ?? 'test', ['test','live']) ? $_POST['stripe_mode'] : 'test';
+    $stripe_mode = in_array($_POST['stripe_mode'] ?? '', ['test','live'], true) ? $_POST['stripe_mode'] : 'test';
     $stripe_pub = trim($_POST['stripe_publishable_key'] ?? '') ?: null;
     $stripe_sec = trim($_POST['stripe_secret_key'] ?? '') ?: null;
     $stripe_wh = trim($_POST['stripe_webhook_secret'] ?? '') ?: null;

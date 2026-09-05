@@ -30,8 +30,8 @@ try {
         $s = $st->fetch(PDO::FETCH_ASSOC);
         if (!$s) app_fail(404, 'not_found', 'Étape introuvable.');
         $new = empty($s['is_completed']) ? 1 : 0;
-        $pdo->prepare("UPDATE grant_steps SET is_completed = ?, completed_at = ?, completed_by = ? WHERE id = ?")
-            ->execute([$new, $new ? date('Y-m-d H:i:s') : null, $new ? $uid : null, $step_id]);
+        $pdo->prepare("UPDATE grant_steps SET is_completed = ?, completed_at = ?, completed_by = ? WHERE id = ? AND grant_id = ?")
+            ->execute([$new, $new ? date('Y-m-d H:i:s') : null, $new ? $uid : null, $step_id, $grant_id]);
         gr_log($pdo, $grant_id, $uid, 'step_toggle', ($new ? '✅ Étape cochée : ' : '↩️ Décochée : ') . $s['title']);
         echo json_encode(['ok' => true, 'id' => $grant_id, 'done' => (bool) $new, 'message' => $new ? 'Étape validée.' : 'Étape décochée.'], JSON_UNESCAPED_UNICODE);
         exit;
@@ -61,7 +61,7 @@ try {
         if (!in_array($new, $valid, true)) app_fail(422, 'invalid', 'Statut invalide.');
         $amount_granted = null;
         if ($new === 'granted' && isset($input['amount_granted']) && $input['amount_granted'] !== '' && $input['amount_granted'] !== null) {
-            $amount_granted = (float) str_replace([' ', ','], ['', '.'], (string) $input['amount_granted']);
+            $amount_granted = max(0, (float) str_replace([' ', ','], ['', '.'], (string) $input['amount_granted']));
         }
         if ($amount_granted !== null) {
             $pdo->prepare("UPDATE grants SET status = ?, amount_granted = ?, decision_at = COALESCE(decision_at, CURDATE()) WHERE id = ? AND org_id = ?")

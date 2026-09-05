@@ -4535,29 +4535,40 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
         {/* Passer à « Accordé » demande le montant obtenu : sans lui la KPI resterait vide. */}
         <SheetPicker visible={statusOpen} title="Statut du dossier" onClose={() => setStatusOpen(false)} selected={g.status}
           onPick={(v) => {
-            if (v === 'granted') { setGrantedAmt(g.granted != null ? String(g.granted) : (g.requested != null ? String(g.requested) : '')); setGrantedOpen(true); return; }
+            if (v === 'granted') {
+              setGrantedAmt(g.granted != null ? String(g.granted) : (g.requested != null ? String(g.requested) : ''));
+              setStatusOpen(false);
+              // iOS refuse d'ouvrir une modale pendant qu'une autre se ferme : on laisse
+              // l'animation de fermeture se terminer avant d'afficher la saisie du montant.
+              setTimeout(() => setGrantedOpen(true), Platform.OS === 'ios' ? 400 : 0);
+              return;
+            }
             onAction('set_status', { status: v });
           }} options={GRANT_STATUSES} />
 
         <Modal visible={grantedOpen} transparent animationType="slide" onRequestClose={() => setGrantedOpen(false)}>
-          <Pressable style={styles.sheetBackdrop} onPress={() => setGrantedOpen(false)}>
-            <Pressable style={styles.sheet}>
-              <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>Subvention accordée</Text>
-              <Text style={[styles.dMuted, { marginBottom: 14 }]}>Quel montant le financeur a-t-il accordé ?</Text>
-              <TextInput style={styles.fInput} value={grantedAmt} onChangeText={setGrantedAmt} keyboardType="decimal-pad"
-                placeholder="Montant en €" placeholderTextColor="#B6C0CC" accessibilityLabel="Montant accordé" autoFocus />
-              <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85}
-                onPress={() => { setGrantedOpen(false); onAction('set_status', { status: 'granted', amount_granted: grantedAmt }); }}>
-                <Ionicons name="checkmark-circle" size={18} color="#fff" />
-                <Text style={styles.dPrimaryBtnTxt}>Enregistrer</Text>
-              </TouchableOpacity>
-              <TouchableOpacity accessibilityRole="button" style={{ paddingVertical: 14, alignItems: 'center' }} activeOpacity={0.7}
-                onPress={() => { setGrantedOpen(false); onAction('set_status', { status: 'granted' }); }}>
-                <Text style={styles.formLink}>Sans préciser le montant</Text>
-              </TouchableOpacity>
+          {/* Le KeyboardAvoidingView doit être DANS la Modal : celle-ci est une vue hôte séparée
+              et ne se redimensionne pas au clavier sur iOS (le bouton passait dessous). */}
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <Pressable style={styles.sheetBackdrop} onPress={() => setGrantedOpen(false)}>
+              <Pressable style={styles.sheet}>
+                <View style={styles.sheetHandle} />
+                <Text style={styles.sheetTitle}>Subvention accordée</Text>
+                <Text style={[styles.dMuted, { marginBottom: 14 }]}>Quel montant le financeur a-t-il accordé ?</Text>
+                <TextInput style={styles.fInput} value={grantedAmt} onChangeText={setGrantedAmt} keyboardType="decimal-pad"
+                  placeholder="Montant en €" placeholderTextColor="#B6C0CC" accessibilityLabel="Montant accordé" returnKeyType="done" />
+                <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85}
+                  onPress={() => { setGrantedOpen(false); onAction('set_status', { status: 'granted', amount_granted: grantedAmt }); }}>
+                  <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                  <Text style={styles.dPrimaryBtnTxt}>Enregistrer</Text>
+                </TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" style={{ paddingVertical: 14, alignItems: 'center' }} activeOpacity={0.7}
+                  onPress={() => { setGrantedOpen(false); onAction('set_status', { status: 'granted' }); }}>
+                  <Text style={styles.formLink}>Sans préciser le montant</Text>
+                </TouchableOpacity>
+              </Pressable>
             </Pressable>
-          </Pressable>
+          </KeyboardAvoidingView>
         </Modal>
       </ScrollView>
       </KeyboardAvoidingView>
@@ -4731,6 +4742,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const lastLoadAlert = useRef(0);      // anti-spam des alertes « chargement impossible »
   const logoutTimer = useRef(null);
   const actTimer = useRef(null);
+  const actBusyRef = useRef(null);
+  const formTimer = useRef(null);
   const finishLogoutRef = useRef(null);
   const loginAttempted = useRef(false);
   const authedRef = useRef(false);
@@ -5025,11 +5038,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     // le bouton se débloque au lieu de rester en chargement indéfiniment.
     if (actTimer.current) clearTimeout(actTimer.current);
     actTimer.current = setTimeout(() => {
-      setActBusy((b) => {
-        if (b === null) return b;
-        Alert.alert('Action interrompue', 'Aucune réponse du serveur. Vérifie ta connexion et réessaie.');
-        return null;
-      });
+      actTimer.current = null;
+      if (actBusyRef.current === null) return;   // effet de bord hors updater (updater = fonction pure)
+      setActBusy(null);
+      Alert.alert('Action interrompue', 'Aucune réponse du serveur. Vérifie ta connexion et réessaie.');
     }, 20000);
   }, [csrf, inject]);
 
@@ -5305,6 +5317,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       ? (type === 'quote' ? { quote_id: form.edit.invoice.id } : { invoice_id: form.edit.invoice.id })
       : {};
     inject(postJS(endpoint, { ...data, ...extra, csrf }));
+    // Même filet que runAction : sans réponse, le formulaire se débloque au lieu de rester
+    // figé (le retour matériel Android est volontairement neutralisé pendant l'envoi).
+    if (formTimer.current) clearTimeout(formTimer.current);
+    formTimer.current = setTimeout(() => {
+      formTimer.current = null;
+      setSubmitting(false);
+      setFormErr('Aucune réponse du serveur. Vérifie ta connexion et réessaie.');
+    }, 20000);
   }, [csrf, inject, form]);
 
   useEffect(() => {
@@ -5431,6 +5451,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   }, [inject, loading]);
 
   useEffect(() => { authedRef.current = authed; if (authed) { setLoginBusy(false); setLoginErr(''); } }, [authed]);
+
+  // Miroir de l'état « action en cours » pour les effets de bord hors updater React
+  useEffect(() => { actBusyRef.current = actBusy; }, [actBusy]);
+
+  // Aucun minuteur ne doit survivre au démontage (déconnexion, suppression de compte) :
+  // sinon une alerte surgit sur l'écran d'accueil et on écrit dans un composant démonté.
+  useEffect(() => () => {
+    if (actTimer.current) clearTimeout(actTimer.current);
+    if (formTimer.current) clearTimeout(formTimer.current);
+    if (logoutTimer.current) clearTimeout(logoutTimer.current);
+  }, []);
 
   const onMessage = (e) => {
     try {
@@ -5699,6 +5730,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         }
       }
       if (msg && msg.__akwrite) {
+        if (formTimer.current) { clearTimeout(formTimer.current); formTimer.current = null; }
         setSubmitting(false);
         const w = msg.__akwrite;
         if (w.ok) {
@@ -5716,8 +5748,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           else if (created === 'expense') { fetchProjects(); if (expenseProject) pushDetail('project', expenseProject); }
           else if (created === 'payment') {
             fetchCoti(); setActive('menu'); setMenuScreen('cotisations');
-            // Saisi depuis une fiche campagne : on y retourne, à jour
-            if (paymentCampaign) pushDetail('cotisation', paymentCampaign);
+            if (paymentCampaign) {
+              // La fiche campagne est restée sous le formulaire : on la rafraîchit au lieu de
+              // l'empiler une 2e fois (sinon le retour réaffichait des données d'avant le paiement).
+              const top = detailTopRef.current;
+              if (top && top.type === 'cotisation' && String(top.id) === String(paymentCampaign)) refreshDetail();
+              else pushDetail('cotisation', paymentCampaign);
+            }
           }
           else if (created === 'campaign') {
             fetchCoti(); setActive('menu'); setMenuScreen('cotisations');

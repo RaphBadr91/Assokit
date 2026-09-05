@@ -62,6 +62,11 @@ if ($action === 'mark_paid') {
     }
     $paid_at = (string) ($input['paid_at'] ?? '');
     if ($paid_at !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $paid_at)) $paid_at = '';
+    // Exercice plausible : la date entre dans la piste d'audit et les KPI annuels
+    if ($paid_at !== '') {
+        $ts = strtotime($paid_at . ' 00:00:00');
+        if ($ts === false || $ts > strtotime('tomorrow') || $ts < strtotime('-5 years')) $paid_at = '';
+    }
     $paid_at_full = ($paid_at ?: date('Y-m-d')) . ' ' . date('H:i:s');
     try {
         // Mêmes écritures que la confirmation côté site (mon-asso-notification-respond.php) :

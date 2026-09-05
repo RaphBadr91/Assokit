@@ -14,6 +14,7 @@ if (!in_array($user['role'] ?? '', ['admin', 'coordinator'], true)
 
 $name = trim((string) ($input['name'] ?? ''));
 if ($name === '') app_fail(422, 'invalid', 'Le nom de la campagne est obligatoire.');
+$name = mb_substr($name, 0, 150);
 
 $year = (int) ($input['year'] ?? date('Y'));
 if ($year < 2020 || $year > 2050) $year = (int) date('Y');
@@ -28,6 +29,10 @@ $dt = static function ($v) {
 };
 $opens  = $dt($input['opens_at'] ?? '');
 $closes = $dt($input['closes_at'] ?? '');
+// Une clôture ne peut pas précéder l'ouverture
+if ($opens && $closes && strtotime($closes) < strtotime($opens)) {
+    app_fail(422, 'invalid', 'La date de clôture précède la date d\'ouverture.');
+}
 $is_active = !empty($input['is_active']) ? 1 : 0;
 
 // Tarifs (nom + montant obligatoires) — normalise la virgule décimale
@@ -42,6 +47,7 @@ foreach ((array) ($input['tiers'] ?? []) as $t) {
         'description' => trim((string) ($t['description'] ?? '')) ?: null,
     ];
 }
+$tiers = array_slice($tiers, 0, 30);
 
 try {
     $pdo->beginTransaction();

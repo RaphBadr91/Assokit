@@ -9,7 +9,8 @@
 require __DIR__ . '/_app-write-boot.php';
 @require_once __DIR__ . '/../includes-cotisations.php';
 
-if (!in_array($user['role'] ?? '', ['admin', 'coordinator'], true)) {
+if (!in_array($user['role'] ?? '', ['admin', 'coordinator'], true)
+    && empty($user['is_founder']) && empty($user['is_super_admin'])) {
     app_fail(403, 'role', 'Rôle insuffisant pour enregistrer un paiement.');
 }
 if (!function_exists('ck_load_campaign')) {
@@ -57,6 +58,13 @@ if ($tier_id) {
 
 if ($payer_name === '') app_fail(422, 'invalid', 'Le nom du payeur est obligatoire.');
 if ($amount <= 0)       app_fail(422, 'invalid', 'Le montant doit être supérieur à 0.');
+$payer_name = mb_substr($payer_name, 0, 120);
+// La date d'encaissement doit rester dans un exercice plausible (les KPI sont rattachés à paid_at)
+if ($paid_at !== '') {
+    $ts = strtotime($paid_at . ' 00:00:00');
+    if ($ts === false || $ts > strtotime('tomorrow') || $ts < strtotime('-5 years')) $paid_at = '';
+    $paid_at_full = ($status === 'paid') ? (($paid_at ?: date('Y-m-d')) . ' ' . date('H:i:s')) : null;
+}
 
 try {
     $stmt = $pdo->prepare("INSERT INTO cotisation_payments

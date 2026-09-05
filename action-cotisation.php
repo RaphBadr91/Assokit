@@ -18,7 +18,7 @@ if ($action === 'create' || $action === 'update') {
     if ($name === '') { header('Location: /cotisation-form?error=name'); exit; }
     $year = (int)($_POST['year'] ?? date('Y'));
     $description = trim($_POST['description'] ?? '');
-    $currency = in_array($_POST['currency'] ?? 'EUR', ['EUR','USD','CHF','GBP']) ? $_POST['currency'] : 'EUR';
+    $currency = in_array($_POST['currency'] ?? '', ['EUR','USD','CHF','GBP'], true) ? $_POST['currency'] : 'EUR';
     $opens = $_POST['opens_at'] ?: null;
     $closes = $_POST['closes_at'] ?: null;
     if ($opens && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $opens)) $opens = null;

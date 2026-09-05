@@ -9,7 +9,8 @@
 require __DIR__ . '/_app-write-boot.php';
 @require_once __DIR__ . '/../includes-grants.php';
 
-if (!in_array($user['role'] ?? '', ['admin', 'coordinator'], true)) {
+if (!in_array($user['role'] ?? '', ['admin', 'coordinator'], true)
+    && empty($user['is_founder']) && empty($user['is_super_admin'])) {
     app_fail(403, 'role', 'Rôle insuffisant pour créer une subvention.');
 }
 
@@ -17,6 +18,8 @@ $name   = trim((string) ($input['name'] ?? ''));
 $funder = trim((string) ($input['funder'] ?? ''));
 if ($name === '')   app_fail(422, 'invalid', 'Le nom de la demande est obligatoire.');
 if ($funder === '') app_fail(422, 'invalid', 'Le financeur est obligatoire.');
+$name   = mb_substr($name, 0, 150);
+$funder = mb_substr($funder, 0, 150);
 
 // Normalise les décimales à virgule (clavier FR).
 $num = static fn($v) => (float) str_replace([' ', ','], ['', '.'], (string) $v);
@@ -28,8 +31,8 @@ $status      = in_array(($input['status'] ?? ''), $valid_statuses, true) ? $inpu
 
 $description  = trim((string) ($input['description'] ?? '')) ?: null;
 $notes        = trim((string) ($input['notes'] ?? '')) ?: null;
-$amount_req   = (isset($input['amount_requested']) && $input['amount_requested'] !== '' && $input['amount_requested'] !== null) ? $num($input['amount_requested']) : null;
-$amount_gr    = (isset($input['amount_granted']) && $input['amount_granted'] !== '' && $input['amount_granted'] !== null) ? $num($input['amount_granted']) : null;
+$amount_req   = (isset($input['amount_requested']) && $input['amount_requested'] !== '' && $input['amount_requested'] !== null) ? max(0, $num($input['amount_requested'])) : null;
+$amount_gr    = (isset($input['amount_granted']) && $input['amount_granted'] !== '' && $input['amount_granted'] !== null) ? max(0, $num($input['amount_granted'])) : null;
 $currency     = (($input['currency'] ?? 'EUR') === 'CHF') ? 'CHF' : 'EUR';
 
 // Dates : YYYY-MM-DD (sinon null)
@@ -51,7 +54,18 @@ $contact_email = trim((string) ($input['contact_email'] ?? '')) ?: null;
 if ($contact_email !== null && !filter_var($contact_email, FILTER_VALIDATE_EMAIL)) app_fail(422, 'invalid', 'Email du contact invalide.');
 $contact_phone = trim((string) ($input['contact_phone'] ?? '')) ?: null;
 
+// Étapes du dossier (checklist) — parité action-subvention.php, plafonnées
+$steps = [];
+foreach ((array) ($input['steps'] ?? []) as $s) {
+    $t = trim((string) (is_array($s) ? ($s['title'] ?? '') : $s));
+    if ($t !== '') $steps[] = mb_substr($t, 0, 255);
+}
+$steps = array_slice($steps, 0, 50);
+
 try {
+    // Transaction : jamais de dossier créé sans sa checklist (ni l'inverse).
+    $pdo->beginTransaction();
+
     $stmt = $pdo->prepare("INSERT INTO grants
         (org_id, project_id, name, funder, funder_type, description, amount_requested, amount_granted, currency, status,
          deadline_apply, contact_name, contact_email, contact_phone, notes, created_by)
@@ -62,18 +76,12 @@ try {
     ]);
     $grant_id = (int) $pdo->lastInsertId();
 
-    // Étapes du dossier (checklist) — parité action-subvention.php
-    $steps = [];
-    foreach ((array) ($input['steps'] ?? []) as $s) {
-        $t = trim((string) (is_array($s) ? ($s['title'] ?? '') : $s));
-        if ($t !== '') $steps[] = mb_substr($t, 0, 255);
-    }
     if ($steps) {
-        try {
-            $ins = $pdo->prepare("INSERT INTO grant_steps (grant_id, position, title, is_completed, completed_at) VALUES (?,?,?,0,NULL)");
-            foreach ($steps as $i => $t) $ins->execute([$grant_id, $i, $t]);
-        } catch (Throwable $e) { error_log('[app-create-grant steps] ' . $e->getMessage()); }
+        $ins = $pdo->prepare("INSERT INTO grant_steps (grant_id, position, title, is_completed, completed_at) VALUES (?,?,?,0,NULL)");
+        foreach ($steps as $i => $t) $ins->execute([$grant_id, $i, $t]);
     }
+
+    $pdo->commit();
 
     if (function_exists('gr_log')) {
         try { gr_log($pdo, $grant_id, $uid, 'create', '🆕 Demande créée : ' . $name); } catch (Throwable $e) {}
@@ -85,6 +93,7 @@ try {
         'message' => 'Demande de subvention « ' . $name .' » créée.',
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
+    if ($pdo->inTransaction()) { try { $pdo->rollBack(); } catch (Throwable $e2) {} }
     error_log('[app-create-grant] ' . $e->getMessage());
     app_fail(500, 'server', 'Impossible de créer la subvention.');
 }

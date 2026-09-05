@@ -47,8 +47,8 @@ if ($action === 'send') {
             '{NOM_CLIENT}'   => $quote['client_name'] ?? 'Madame, Monsieur',
             '{NUMERO}'       => $quote['quote_number'],
             '{MONTANT_TTC}'  => number_format($quote['amount_ttc_cents'] / 100, 2, ',', ' ') . ' €',
-            '{DATE_EMISSION}' => date('d/m/Y', strtotime($quote['issued_at'])),
-            '{DATE_VALIDITE}' => date('d/m/Y', strtotime($quote['expires_at'])),
+            '{DATE_EMISSION}' => !empty($quote['issued_at']) ? date('d/m/Y', strtotime((string) $quote['issued_at'])) : '—',
+            '{DATE_VALIDITE}' => !empty($quote['expires_at']) ? date('d/m/Y', strtotime((string) $quote['expires_at'])) : '—',
             '{NOM_ASSO}'     => $quote['org_name'] ?? 'Votre association',
             '{LIEN_PUBLIC}'  => $public_url,
         ];
@@ -72,8 +72,8 @@ if ($action === 'send') {
 
         ak_asso_send_resend($quote['client_email'], $subject, $body_html, $quote['org_email'], $attachment, $quote['org_name']);
 
-        $pdo->prepare("UPDATE asso_quotes SET status = IF(status='draft', 'sent', status), sent_at = NOW(), sent_to_email = ? WHERE id = ?")
-            ->execute([$quote['client_email'], $quote_id]);
+        $pdo->prepare("UPDATE asso_quotes SET status = IF(status='draft', 'sent', status), sent_at = NOW(), sent_to_email = ? WHERE id = ? AND org_id = ?")
+            ->execute([$quote['client_email'], $quote_id, $org_id]);
 
         echo json_encode(['ok' => true, 'id' => $quote_id, 'message' => 'Devis envoyé à ' . $quote['client_email'] . '.'], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
