@@ -12,6 +12,9 @@ import {
   StatusBar,
   Modal,
   Pressable,
+  Animated,
+  Easing,
+  AccessibilityInfo,
   ScrollView,
   RefreshControl,
   TextInput,
@@ -232,11 +235,216 @@ function fmtEuro2(n) {
   return (Number(n) || 0).toFixed(2).replace('.', ',') + ' €';
 }
 
+/* Formateurs pour le compteur animé. L'unité est figée sur la valeur CIBLE :
+   sans ça, un compteur montant vers 18 400 basculerait de « 900 € » à « 1,0 k€ »
+   en pleine animation. */
+function euroFormatter(target) {
+  return (Number(target) || 0) >= 1000
+    ? (n) => (n / 1000).toFixed(1).replace('.', ',') + ' k€'
+    : (n) => Math.round(n) + ' €';
+}
+function intFormatter() {
+  return (n) => String(Math.round(n));
+}
+
 function greeting() {
   const h = new Date().getHours();
   if (h < 6) return 'Bonne nuit';
   if (h < 18) return 'Bonjour';
   return 'Bonsoir';
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * MOUVEMENT
+ * Le mouvement sert la lecture : il dit d'où vient un élément et confirme
+ * qu'un appui a été pris en compte. Tout passe par le driver natif (opacité
+ * et transform uniquement) pour rester à 60 fps même pendant un défilement.
+ * Si l'utilisateur a activé « Réduire les animations », tout est neutralisé
+ * et l'interface s'affiche instantanément dans son état final.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((v) => { if (alive) setReduced(!!v); })
+      .catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', (v) => setReduced(!!v));
+    return () => { alive = false; if (sub && typeof sub.remove === 'function') sub.remove(); };
+  }, []);
+  return reduced;
+}
+
+/* Apparition : léger fondu + montée de 14 px. `delay` échelonne une série. */
+function FadeUp({ delay = 0, still, style, children }) {
+  const a = useRef(new Animated.Value(still ? 1 : 0)).current;
+  useEffect(() => {
+    if (still) { a.setValue(1); return undefined; }
+    const anim = Animated.timing(a, {
+      toValue: 1, duration: 420, delay, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [a, delay, still]);
+  return (
+    <Animated.View
+      style={[style, { opacity: a, transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+/* Appui : la cible s'enfonce légèrement puis rebondit. Remplace TouchableOpacity
+   là où le retour tactile compte (cartes, tuiles, bouton flottant). */
+function Tap({ wrapStyle, style, onPress, disabled, still, scale = 0.96, children, ...rest }) {
+  const s = useRef(new Animated.Value(1)).current;
+  const to = (v) => {
+    if (still) return;
+    Animated.spring(s, { toValue: v, useNativeDriver: true, speed: 45, bounciness: 7 }).start();
+  };
+  return (
+    <Animated.View style={[wrapStyle, { transform: [{ scale: s }] }]}>
+      <Pressable
+        style={style}
+        onPress={onPress}
+        disabled={disabled}
+        onPressIn={() => to(scale)}
+        onPressOut={() => to(1)}
+        {...rest}
+      >
+        {children}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/* Compteur : la valeur monte de 0 jusqu'au chiffre réel en 900 ms.
+   Piloté en JS (le texte change à chaque image), donc réservé aux quelques
+   chiffres vedettes de l'accueil. */
+function CountUp({ value, format, style, still, ...rest }) {
+  const target = Number(value) || 0;
+  const [n, setN] = useState(still ? target : 0);
+  const raf = useRef(null);
+  useEffect(() => {
+    if (still) { setN(target); return undefined; }
+    const D = 900;
+    const t0 = Date.now();
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - t0) / D);
+      setN(target * (1 - Math.pow(1 - t, 3))); // easeOutCubic
+      raf.current = t < 1 ? requestAnimationFrame(tick) : null;
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => { if (raf.current) cancelAnimationFrame(raf.current); raf.current = null; };
+  }, [target, still]);
+  return <Text style={style} {...rest}>{format(n)}</Text>;
+}
+
+/* Barre de progression qui se remplit une fois, à l'arrivée sur la fiche.
+   `width` n'est pas animable en natif : la valeur reste petite et isolée. */
+function ProgressBar({ pct, still, trackStyle, fillStyle }) {
+  const w = useRef(new Animated.Value(still ? pct : 0)).current;
+  useEffect(() => {
+    if (still) { w.setValue(pct); return undefined; }
+    const anim = Animated.timing(w, { toValue: pct, duration: 700, delay: 120, easing: Easing.out(Easing.cubic), useNativeDriver: false });
+    anim.start();
+    return () => anim.stop();
+  }, [w, pct, still]);
+  return (
+    <View style={trackStyle}>
+      <Animated.View style={[fillStyle, { width: w.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) }]} />
+    </View>
+  );
+}
+
+/* Bouton « + » : le signe pivote en croix quand la feuille de création est
+   ouverte, ce qui rend le bouton réversible au lieu d'un simple déclencheur.
+   Le conteneur est en `box-none` : il court sur toute la largeur du dock et
+   recouvrirait le haut de la barre — seul le disque de 58 px reçoit les appuis. */
+function CreateFab({ open, onPress, still }) {
+  const r = useRef(new Animated.Value(0)).current;
+  const s = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (still) { r.setValue(open ? 1 : 0); return undefined; }
+    const anim = Animated.spring(r, { toValue: open ? 1 : 0, useNativeDriver: true, speed: 16, bounciness: 9 });
+    anim.start();
+    return () => anim.stop();
+  }, [open, r, still]);
+  const to = (v) => { if (!still) Animated.spring(s, { toValue: v, useNativeDriver: true, speed: 45, bounciness: 8 }).start(); };
+  return (
+    <View style={styles.fabWrap} pointerEvents="box-none">
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => to(0.9)}
+        onPressOut={() => to(1)}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: !!open }}
+        accessibilityLabel={open ? 'Fermer le menu de création' : 'Créer'}
+      >
+        <Animated.View style={[styles.fab, { transform: [{ scale: s }] }]}>
+          <Animated.View style={{ transform: [{ rotate: r.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '135deg'] }) }] }}>
+            <Ionicons name="add" size={28} color="#fff" />
+          </Animated.View>
+        </Animated.View>
+      </Pressable>
+    </View>
+  );
+}
+
+/* Onglet actif : l'icône grossit de 12 % — repère périphérique de la position. */
+function TabIcon({ name, active, still }) {
+  const s = useRef(new Animated.Value(active ? 1 : 0)).current;
+  useEffect(() => {
+    if (still) { s.setValue(active ? 1 : 0); return undefined; }
+    const anim = Animated.spring(s, { toValue: active ? 1 : 0, useNativeDriver: true, speed: 20, bounciness: 13 });
+    anim.start();
+    return () => anim.stop();
+  }, [active, s, still]);
+  return (
+    <Animated.View style={{ transform: [{ scale: s.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }) }] }}>
+      <Ionicons name={active ? name : name + '-outline'} size={21} color={active ? BRAND : INK_3} />
+    </Animated.View>
+  );
+}
+
+/* Feuille de création : monte depuis le bas au lieu d'apparaître en fondu. */
+function SheetIn({ visible, still, children }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (still) { a.setValue(visible ? 1 : 0); return undefined; }
+    const anim = Animated.timing(a, {
+      toValue: visible ? 1 : 0,
+      duration: visible ? 300 : 170,
+      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.quad),
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [visible, a, still]);
+  return (
+    <Animated.View style={{ opacity: a, transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [46, 0] }) }] }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+/* Squelette de chargement : un bloc gris qui respire, au gabarit du contenu
+   à venir. Bien plus lisible qu'un rond qui tourne au milieu de l'écran. */
+function Skeleton({ style, still }) {
+  const o = useRef(new Animated.Value(0.45)).current;
+  useEffect(() => {
+    if (still) { o.setValue(0.6); return undefined; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(o, { toValue: 0.9, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(o, { toValue: 0.45, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [o, still]);
+  return <Animated.View style={[{ backgroundColor: LINE, borderRadius: 8 }, style, { opacity: o }]} />;
 }
 
 Notifications.setNotificationHandler({
@@ -492,20 +700,22 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
 function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick, onNotifs, notifCount, quickActions }) {
   const k = (data && data.kpis) || {};
   const isTpe = profile === 'tpe';
+  const still = useReducedMotion();
 
-  // Quatre indicateurs, grille 2×2 (maquette : libellé capitales, valeur XXL, sous-titre)
+  // Quatre indicateurs, grille 2×2 (maquette : libellé capitales, valeur XXL, sous-titre).
+  // `raw` + `fmt` alimentent le compteur animé ; `fmt` est figé sur la valeur cible.
   const cards = isTpe
     ? [
-        { label: 'Encaissé ' + new Date().getFullYear(), value: fmtEuro(k.ca_paid), sub: (k.factures ?? 0) + ' facture' + ((k.factures ?? 0) > 1 ? 's' : ''), tone: BRAND, path: '/mon-asso-factures' },
-        { label: 'Impayés', value: fmtEuro(k.impayes), sub: 'à recouvrer', tone: '#B45309', path: '/mon-asso-factures' },
-        { label: 'Clients', value: String(k.clients ?? 0), sub: 'au total', tone: INK, path: '/mon-asso-clients' },
-        { label: 'Devis en cours', value: String(k.devis_encours ?? 0), sub: 'à relancer', tone: INK, path: '/mon-asso-devis' },
+        { label: 'Encaissé ' + new Date().getFullYear(), raw: k.ca_paid, fmt: euroFormatter(k.ca_paid), sub: (k.factures ?? 0) + ' facture' + ((k.factures ?? 0) > 1 ? 's' : ''), tone: BRAND, path: '/mon-asso-factures' },
+        { label: 'Impayés', raw: k.impayes, fmt: euroFormatter(k.impayes), sub: 'à recouvrer', tone: '#B45309', path: '/mon-asso-factures' },
+        { label: 'Clients', raw: k.clients, fmt: intFormatter(), sub: 'au total', tone: INK, path: '/mon-asso-clients' },
+        { label: 'Devis en cours', raw: k.devis_encours, fmt: intFormatter(), sub: 'à relancer', tone: INK, path: '/mon-asso-devis' },
       ]
     : [
-        { label: 'Budget engagé', value: fmtEuro(k.budget_used), sub: 'sur ' + fmtEuro(k.budget_planned) + ' prévus', tone: BRAND, path: '/projets' },
-        { label: 'Impayés', value: fmtEuro(k.impayes), sub: 'à recouvrer', tone: '#B45309', path: '/mon-asso-factures' },
-        { label: 'Adhérents', value: String(k.membres ?? 0), sub: (k.membres_nouveaux > 0 ? '+' + k.membres_nouveaux + ' en 30 j' : 'actifs'), tone: INK, path: '/adherents' },
-        { label: 'Projets actifs', value: String(k.projets_actifs ?? 0), sub: (k.evenements ?? 0) + ' événement' + ((k.evenements ?? 0) > 1 ? 's' : '') + ' à venir', tone: INK, path: '/projets' },
+        { label: 'Budget engagé', raw: k.budget_used, fmt: euroFormatter(k.budget_used), sub: 'sur ' + fmtEuro(k.budget_planned) + ' prévus', tone: BRAND, path: '/projets' },
+        { label: 'Impayés', raw: k.impayes, fmt: euroFormatter(k.impayes), sub: 'à recouvrer', tone: '#B45309', path: '/mon-asso-factures' },
+        { label: 'Adhérents', raw: k.membres, fmt: intFormatter(), sub: (k.membres_nouveaux > 0 ? '+' + k.membres_nouveaux + ' en 30 j' : 'actifs'), tone: INK, path: '/adherents' },
+        { label: 'Projets actifs', raw: k.projets_actifs, fmt: intFormatter(), sub: (k.evenements ?? 0) + ' événement' + ((k.evenements ?? 0) > 1 ? 's' : '') + ' à venir', tone: INK, path: '/projets' },
       ];
   const shortcuts = isTpe ? SHORTCUTS_TPE : SHORTCUTS_ASSO;
   const actions = (quickActions || []).slice(0, 4);
@@ -540,10 +750,14 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
               {notifCount > 0 ? <View style={styles.fgBellDot} /> : null}
             </TouchableOpacity>
           </View>
-          <Text style={styles.fgHello} numberOfLines={1}>
-            {greeting()}{data && data.first_name ? ' ' + data.first_name : ''} 👋
-          </Text>
-          <Text style={styles.fgHeadLine} numberOfLines={2}>{(data && data.head_line) || ' '}</Text>
+          <FadeUp still={still} delay={60}>
+            <Text style={styles.fgHello} numberOfLines={1}>
+              {greeting()}{data && data.first_name ? ' ' + data.first_name : ''} 👋
+            </Text>
+          </FadeUp>
+          <FadeUp still={still} delay={140}>
+            <Text style={styles.fgHeadLine} numberOfLines={2}>{(data && data.head_line) || ' '}</Text>
+          </FadeUp>
         </LinearGradient>
 
         {!data ? (
@@ -562,23 +776,64 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.homeLoader}>
-              <ActivityIndicator size="large" color={BRAND} />
-              <Text style={styles.homeLoaderTxt}>Chargement de vos données…</Text>
+            /* Squelette au gabarit réel : l'écran se met en place au lieu d'apparaître d'un bloc. */
+            <View>
+              <View style={styles.fgKpiGrid}>
+                {[0, 1].map((r) => (
+                  <View key={r} style={styles.fgKpiRow}>
+                    {[0, 1].map((c) => (
+                      <View key={c} style={styles.fgKpi}>
+                        <Skeleton still={still} style={{ width: 74, height: 8 }} />
+                        <Skeleton still={still} style={{ width: 104, height: 22, marginTop: 4 }} />
+                        <Skeleton still={still} style={{ width: 88, height: 9, marginTop: 4 }} />
+                      </View>
+                    ))}
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.fgSection}>Actions rapides</Text>
+              <View style={styles.fgActions}>
+                {[0, 1, 2, 3].map((i) => (
+                  <View key={i} style={styles.fgAction}>
+                    <Skeleton still={still} style={{ width: 36, height: 36, borderRadius: R_CHIP }} />
+                    <Skeleton still={still} style={{ width: 46, height: 8 }} />
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.fgSection}>Aujourd'hui</Text>
+              <View style={styles.fgCard}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={[styles.fgTodayRow, i > 0 ? styles.fgSep : null]}>
+                    <Skeleton still={still} style={{ width: 3, height: 34, borderRadius: 2 }} />
+                    <Skeleton still={still} style={{ width: 34, height: 9 }} />
+                    <View style={{ flex: 1 }}>
+                      <Skeleton still={still} style={{ width: '72%', height: 11 }} />
+                      <Skeleton still={still} style={{ width: '48%', height: 9, marginTop: 6 }} />
+                    </View>
+                  </View>
+                ))}
+              </View>
             </View>
           )
         ) : (
           <>
-            {/* ── KPI 2×2, chevauchant l'en-tête de 28 px ── */}
+            {/* ── KPI 2×2, chevauchant l'en-tête de 28 px. Chaque carte arrive
+                   en décalé et son chiffre monte depuis zéro. ── */}
             <View style={styles.fgKpiGrid}>
               {[0, 2].map((start) => (
                 <View key={start} style={styles.fgKpiRow}>
-                  {cards.slice(start, start + 2).map((c) => (
-                    <TouchableOpacity accessibilityRole="button" key={c.label} style={styles.fgKpi} activeOpacity={0.88} onPress={() => onGoto(c.path)}>
-                      <Text style={styles.fgKpiLbl} numberOfLines={1}>{c.label.toUpperCase()}</Text>
-                      <Text style={[styles.fgKpiVal, { color: c.tone }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{c.value}</Text>
-                      <Text style={styles.fgKpiSub} numberOfLines={1}>{c.sub}</Text>
-                    </TouchableOpacity>
+                  {cards.slice(start, start + 2).map((c, j) => (
+                    <FadeUp key={c.label} still={still} delay={180 + (start + j) * 70} style={{ flex: 1 }}>
+                      {/* wrapStyle flex:1 : la chaîne FadeUp → Tap → carte reste étirable,
+                          sinon deux cartes voisines n'auraient plus la même hauteur. */}
+                      <Tap accessibilityRole="button" accessibilityLabel={c.label + ' : ' + c.fmt(c.raw)}
+                        wrapStyle={{ flex: 1 }} style={styles.fgKpi} onPress={() => onGoto(c.path)}>
+                        <Text style={styles.fgKpiLbl} numberOfLines={1}>{c.label.toUpperCase()}</Text>
+                        <CountUp still={still} value={c.raw} format={c.fmt} style={[styles.fgKpiVal, { color: c.tone }]}
+                          numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} />
+                        <Text style={styles.fgKpiSub} numberOfLines={1}>{c.sub}</Text>
+                      </Tap>
+                    </FadeUp>
                   ))}
                 </View>
               ))}
@@ -588,15 +843,18 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
               <>
                 <Text style={styles.fgSection}>Actions rapides</Text>
                 <View style={styles.fgActions}>
-                  {actions.map((a) => {
+                  {actions.map((a, i) => {
                     const t = TINTS[a.color] || TINTS[BRAND];
                     return (
-                      <TouchableOpacity accessibilityRole="button" key={a.label} style={styles.fgAction} activeOpacity={0.85} onPress={() => onQuick(a)}>
-                        <View style={[styles.fgActionIc, { backgroundColor: t.bg }]}>
-                          <Ionicons name={a.icon} size={20} color={t.fg} />
-                        </View>
-                        <Text style={[styles.fgActionTxt, { color: t.fg }]} numberOfLines={1}>{a.short || a.label}</Text>
-                      </TouchableOpacity>
+                      <FadeUp key={a.label} still={still} delay={420 + i * 60} style={{ flex: 1 }}>
+                        <Tap accessibilityRole="button" accessibilityLabel={a.label} scale={0.93}
+                          wrapStyle={{ flex: 1 }} style={styles.fgAction} onPress={() => onQuick(a)}>
+                          <View style={[styles.fgActionIc, { backgroundColor: t.bg }]}>
+                            <Ionicons name={a.icon} size={20} color={t.fg} />
+                          </View>
+                          <Text style={[styles.fgActionTxt, { color: t.fg }]} numberOfLines={1}>{a.short || a.label}</Text>
+                        </Tap>
+                      </FadeUp>
                     );
                   })}
                 </View>
@@ -606,37 +864,44 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
             {today.length > 0 && (
               <>
                 <Text style={styles.fgSection}>Aujourd'hui</Text>
-                <View style={styles.fgCard}>
-                  {today.map((t, i) => (
-                    <View key={t.kind + t.id} style={[styles.fgTodayRow, i > 0 ? styles.fgSep : null]}>
-                      <View style={[styles.fgTodayBar, { backgroundColor: t.color }]} />
-                      <Text style={styles.fgTodayTime}>{t.time}</Text>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.fgTodayTitle} numberOfLines={1}>{t.title}</Text>
-                        {!!t.sub && <Text style={styles.fgTodaySub} numberOfLines={1}>{t.sub}</Text>}
+                <FadeUp still={still} delay={620}>
+                  <View style={styles.fgCard}>
+                    {today.map((t, i) => (
+                      <View key={t.kind + t.id} style={[styles.fgTodayRow, i > 0 ? styles.fgSep : null]}>
+                        <View style={[styles.fgTodayBar, { backgroundColor: t.color }]} />
+                        <Text style={styles.fgTodayTime}>{t.time}</Text>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.fgTodayTitle} numberOfLines={1}>{t.title}</Text>
+                          {!!t.sub && <Text style={styles.fgTodaySub} numberOfLines={1}>{t.sub}</Text>}
+                        </View>
                       </View>
-                    </View>
-                  ))}
-                </View>
+                    ))}
+                  </View>
+                </FadeUp>
               </>
             )}
 
             <Text style={styles.fgSection}>Accès rapide</Text>
-            <View style={styles.fgCard}>
-              {shortcuts.map((s, i) => (
-                <TouchableOpacity accessibilityRole="button" key={s.label} style={[styles.fgLinkRow, i > 0 ? styles.fgSep : null]}
-                  activeOpacity={0.7} onPress={() => onGoto(s.path)}>
-                  <View style={styles.fgLinkIc}><Ionicons name={s.icon} size={18} color={BRAND} /></View>
-                  <Text style={styles.fgLinkTxt}>{s.label}</Text>
-                  <Ionicons name="chevron-forward" size={16} color={INK_3} />
-                </TouchableOpacity>
-              ))}
-            </View>
+            <FadeUp still={still} delay={700}>
+              <View style={styles.fgCard}>
+                {shortcuts.map((s, i) => (
+                  <Tap accessibilityRole="button" accessibilityLabel={s.label} key={s.label} scale={0.985}
+                    style={[styles.fgLinkRow, i > 0 ? styles.fgSep : null]} onPress={() => onGoto(s.path)}>
+                    <View style={styles.fgLinkIc}><Ionicons name={s.icon} size={18} color={BRAND} /></View>
+                    <Text style={styles.fgLinkTxt}>{s.label}</Text>
+                    <Ionicons name="chevron-forward" size={16} color={INK_3} />
+                  </Tap>
+                ))}
+              </View>
+            </FadeUp>
 
-            <TouchableOpacity accessibilityRole="button" style={styles.fgPrimary} activeOpacity={0.88} onPress={() => onGoto('/dashboard')}>
-              <Ionicons name="grid-outline" size={18} color="#fff" />
-              <Text style={styles.fgPrimaryTxt}>Tableau de bord complet</Text>
-            </TouchableOpacity>
+            <FadeUp still={still} delay={760}>
+              <Tap accessibilityRole="button" accessibilityLabel="Ouvrir le tableau de bord complet"
+                style={styles.fgPrimary} onPress={() => onGoto('/dashboard')}>
+                <Ionicons name="grid-outline" size={18} color="#fff" />
+                <Text style={styles.fgPrimaryTxt}>Tableau de bord complet</Text>
+              </Tap>
+            </FadeUp>
           </>
         )}
       </ScrollView>
@@ -4344,6 +4609,7 @@ function NativeEventDetail({ entry, onBack, onRefresh, onWeb }) {
 
 /* ── Détail d'une campagne de cotisation (natif) ─────────────────────── */
 function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayment, busy }) {
+  const still = useReducedMotion();
   const d = entry.data;
   if (d && d.ok === false) return <DetailError title="Campagne" onBack={onBack} onRetry={onRefresh} />;
   if (!d || !d.campaign) return <DetailLoading title="Campagne" onBack={onBack} />;
@@ -4379,6 +4645,7 @@ function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayme
         {!!c.description && <DescBlock label="Description" text={c.description} tint="#2563EB" />}
 
         {/* Deux cartes statistiques (nœud 10:14) : libellé capitales au-dessus de la valeur. */}
+        <FadeUp still={still} delay={80}>
         <View style={styles.miniKpiRow}>
           <View style={styles.miniKpi}>
             <Text style={styles.miniKpiLbl}>Encaissé</Text>
@@ -4391,6 +4658,7 @@ function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayme
             <Text style={styles.fgKpiSub}>{s.count_pending || 0} en attente</Text>
           </View>
         </View>
+        </FadeUp>
 
         {tiers.length > 0 && (
           <>
@@ -4462,6 +4730,7 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
   const [statusOpen, setStatusOpen] = useState(false);
   const [grantedOpen, setGrantedOpen] = useState(false);
   const [grantedAmt, setGrantedAmt] = useState('');
+  const still = useReducedMotion();
   const d = entry.data;
   if (d && d.ok === false) return <DetailError title="Subvention" onBack={onBack} onRetry={onRefresh} />;
   if (!d || !d.grant) return <DetailLoading title="Subvention" onBack={onBack} />;
@@ -4492,16 +4761,18 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
         </View>
 
         {/* Demandé / Accordé (nœud 14:13) : la carte « Accordé » reste grise tant qu'il n'y a pas de montant. */}
-        <View style={styles.miniKpiRow}>
-          <View style={styles.miniKpi}>
-            <Text style={styles.miniKpiLbl}>Demandé</Text>
-            <Text style={[styles.miniKpiVal, { color: INK, fontSize: 21 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{g.requested != null ? fmtEuro(g.requested) : '—'}</Text>
+        <FadeUp still={still} delay={80}>
+          <View style={styles.miniKpiRow}>
+            <View style={styles.miniKpi}>
+              <Text style={styles.miniKpiLbl}>Demandé</Text>
+              <Text style={[styles.miniKpiVal, { color: INK, fontSize: 21 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{g.requested != null ? fmtEuro(g.requested) : '—'}</Text>
+            </View>
+            <View style={styles.miniKpi}>
+              <Text style={styles.miniKpiLbl}>Accordé</Text>
+              <Text style={[styles.miniKpiVal, { color: g.granted != null ? BRAND : MUTE, fontSize: 21 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{g.granted != null ? fmtEuro(g.granted) : '—'}</Text>
+            </View>
           </View>
-          <View style={styles.miniKpi}>
-            <Text style={styles.miniKpiLbl}>Accordé</Text>
-            <Text style={[styles.miniKpiVal, { color: g.granted != null ? BRAND : MUTE, fontSize: 21 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{g.granted != null ? fmtEuro(g.granted) : '—'}</Text>
-          </View>
-        </View>
+        </FadeUp>
 
         <Text style={styles.dSection}>Dossier</Text>
         {(() => {
@@ -4535,9 +4806,8 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
         ) : (
           <>
             {/* Barre de progression (nœud 14:32) puis la checklist en carte. */}
-            <View style={styles.grProgTrack}>
-              <View style={[styles.grProgFill, { width: Math.round((doneCount / steps.length) * 100) + '%' }]} />
-            </View>
+            <ProgressBar still={still} pct={Math.round((doneCount / steps.length) * 100)}
+              trackStyle={styles.grProgTrack} fillStyle={styles.grProgFill} />
             <View style={[styles.dCard, { marginTop: 0, padding: 0 }]}>
               {steps.map((s, i) => (
                 <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: !!s.done }} key={s.id}
@@ -4973,6 +5243,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const isTpe = profile === 'tpe';
   const isFounder = !!(kpi && kpi.is_founder);
   const TABS = tabsFor(profile);
+  // « Réduire les animations » du système : neutralise tout le mouvement de l'app.
+  const stillMotion = useReducedMotion();
+
   // Rôles (mêmes règles que le serveur, qui renvoie 403 sinon) : on n'affiche pas un bouton
   // qui échouerait après avoir rempli tout le formulaire.
   const isAdminOrg = !!kpi && (kpi.role === 'admin' || !!kpi.is_founder || !!kpi.is_super_admin);
@@ -6318,7 +6591,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 accessibilityRole="tab" accessibilityState={{ selected: isActive }}
                 accessibilityLabel={tab.label + (tabBadge > 0 ? ', ' + tabBadge + ' non lus' : '')}>
                 <View>
-                  <Ionicons name={isActive ? tab.icon : tab.icon + '-outline'} size={21} color={isActive ? BRAND : INK_3} />
+                  <TabIcon name={tab.icon} active={isActive} still={stillMotion} />
                   {tabBadge > 0 && <View style={styles.tabBadge}><Text style={styles.tabBadgeTxt}>{tabBadge > 99 ? '99+' : tabBadge}</Text></View>}
                 </View>
                 <Text style={[styles.tabLabel, isActive ? styles.tabLabelOn : null]}>{tab.label}</Text>
@@ -6326,30 +6599,30 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             );
           })}
         </View>
-        <TouchableOpacity style={styles.fabWrap} onPress={() => goTab({ key: 'add' })} activeOpacity={0.85}
-          accessibilityRole="button" accessibilityLabel="Créer">
-          <View style={styles.fab}>
-            <Ionicons name="add" size={28} color="#fff" />
-          </View>
-        </TouchableOpacity>
+        <CreateFab open={quickOpen} still={stillMotion} onPress={() => setQuickOpen((v) => !v)} />
       </View>
       )}
 
       <Modal visible={quickOpen} transparent animationType="fade" onRequestClose={() => setQuickOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setQuickOpen(false)}>
-          <Pressable style={styles.sheet}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Créer</Text>
-            {QUICK_ACTIONS.map((a) => (
-              <TouchableOpacity accessibilityRole="button" key={a.label} style={styles.qaRow} onPress={() => onQuick(a)} activeOpacity={0.7}>
-                <View style={[styles.qaIcon, { backgroundColor: a.color + '18' }]}>
-                  <Ionicons name={a.icon} size={22} color={a.color} />
-                </View>
-                <Text style={styles.qaLabel}>{a.label}</Text>
-                <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
-              </TouchableOpacity>
-            ))}
-          </Pressable>
+          <SheetIn visible={quickOpen} still={stillMotion}>
+            <Pressable style={styles.sheet}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Créer</Text>
+              {QUICK_ACTIONS.map((a, i) => (
+                <FadeUp key={a.label} still={stillMotion} delay={90 + i * 45}>
+                  <Tap accessibilityRole="button" accessibilityLabel={a.label} scale={0.985}
+                    style={styles.qaRow} onPress={() => onQuick(a)}>
+                    <View style={[styles.qaIcon, { backgroundColor: a.color + '18' }]}>
+                      <Ionicons name={a.icon} size={22} color={a.color} />
+                    </View>
+                    <Text style={styles.qaLabel}>{a.label}</Text>
+                    <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
+                  </Tap>
+                </FadeUp>
+              ))}
+            </Pressable>
+          </SheetIn>
         </Pressable>
       </Modal>
 
