@@ -77,7 +77,20 @@ try {
             'type_label'  => $TYPE_LABEL[$e['event_type'] ?? 'other'] ?? 'Autre',
             'color'       => $color,
             'all_day'     => !empty($e['is_all_day']),
+            // Champs bruts pour l'édition native : le formulaire attend des dates
+            // et heures déjà découpées, sans nouvel appel au serveur.
+            'start_date'  => date('Y-m-d', $ts),
+            'start_time'  => date('H:i', $ts),
+            'end_date'    => $te ? date('Y-m-d', $te) : date('Y-m-d', $ts),
+            'end_time'    => $te ? date('H:i', $te) : date('H:i', $ts),
+            'is_all_day'  => !empty($e['is_all_day']),
+            'event_type'  => (string) ($e['event_type'] ?? 'other'),
+            'visibility'  => (string) ($e['visibility'] ?? 'organization'),
+            'project_id'  => (int) ($e['project_id'] ?? 0),
         ],
+        // Mêmes droits que action-evenement.php : admin, coordinateur ou créateur.
+        'can_edit' => (($user['role'] ?? '') === 'admin' || ($user['role'] ?? '') === 'coordinator'
+                       || (int) ($e['created_by'] ?? 0) === (int) ($user['id'] ?? 0)),
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-event] ' . $e->getMessage());

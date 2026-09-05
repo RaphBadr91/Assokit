@@ -1955,13 +1955,24 @@ function CampaignForm({ onBack, onSubmit, submitting, error }) {
 }
 
 // ── Nouvel événement d'agenda (natif) ─────────────────────────────────
-function EventForm({ onBack, onSubmit, submitting, error, projects }) {
+// `edit` : mêmes champs en modification. Les valeurs viennent de app-event.php,
+// qui renvoie des dates déjà découpées pour éviter un nouvel aller-retour.
+function EventForm({ onBack, onSubmit, submitting, error, projects, edit }) {
   const projs = projects || [];
-  const [f, setF] = useState({ title: '', location: '', description: '', start_date: todayISO(), start_time: '14:00', end_date: todayISO(), end_time: '16:00' });
-  const [allDay, setAllDay] = useState(false);
-  const [type, setType] = useState('meeting');
-  const [visibility, setVisibility] = useState('organization');
-  const [projectId, setProjectId] = useState(0);
+  const e = edit || null;
+  const [f, setF] = useState({
+    title: e ? (e.title || '') : '',
+    location: e ? (e.location || '') : '',
+    description: e ? (e.description || '') : '',
+    start_date: (e && e.start_date) || todayISO(),
+    start_time: (e && e.start_time) || '14:00',
+    end_date: (e && e.end_date) || (e && e.start_date) || todayISO(),
+    end_time: (e && e.end_time) || '16:00',
+  });
+  const [allDay, setAllDay] = useState(!!(e && e.is_all_day));
+  const [type, setType] = useState((e && e.event_type) || 'meeting');
+  const [visibility, setVisibility] = useState((e && e.visibility) || 'organization');
+  const [projectId, setProjectId] = useState((e && e.project_id) || 0);
   const [projPicker, setProjPicker] = useState(false);
   const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
   const selProj = projs.find((p) => p.id === projectId) || null;
@@ -1983,7 +1994,8 @@ function EventForm({ onBack, onSubmit, submitting, error, projects }) {
   };
 
   return (
-    <FormShell title="Nouvel événement" onBack={onBack} onSubmit={submit} submitLabel="Ajouter à l'agenda" submitting={submitting} error={error}>
+    <FormShell title={e ? 'Modifier l’événement' : 'Nouvel événement'} onBack={onBack} onSubmit={submit}
+      submitLabel={e ? 'Enregistrer' : "Ajouter à l'agenda"} submitting={submitting} error={error}>
       <Field label="Titre *" value={f.title} onChangeText={set('title')} autoCapitalize="sentences" placeholder="Ex : Réunion du bureau" />
       <Text style={styles.fLabel}>Type</Text>
       <Segmented options={[{ value: 'meeting', label: 'Réunion' }, { value: 'workshop', label: 'Atelier' }, { value: 'deadline', label: 'Échéance' }, { value: 'other', label: 'Autre' }]} value={type} onChange={setType} />
@@ -2593,6 +2605,139 @@ function NativeAgenda({ data, loading, onRefresh, onOpen, onBack, onNew }) {
         </ScrollView>
       )}
     </View>
+  );
+}
+
+/* ================================================================== */
+/*  RÉGLAGES — SÉCURITÉ & ORGANISATION (natifs)                        */
+/* ================================================================== */
+function NativeSecurity({ onBack, onSubmit, busy, error, done }) {
+  const [f, setF] = useState({ current_password: '', new_password: '', confirm_password: '' });
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  const tooShort = f.new_password.length > 0 && f.new_password.length < 8;
+  const mismatch = f.confirm_password.length > 0 && f.new_password !== f.confirm_password;
+  const ready = f.current_password.length > 0 && f.new_password.length >= 8 && !mismatch;
+
+  return (
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <DetailHeader title="Sécurité" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.detailContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <Text style={styles.dSection}>Mot de passe</Text>
+        {!!error && (
+          <View style={styles.formErr}><Ionicons name="alert-circle" size={18} color="#B91C1C" /><Text style={styles.formErrTxt}>{error}</Text></View>
+        )}
+        {!!done && (
+          <View style={styles.formOk}><Ionicons name="checkmark-circle" size={18} color="#065F46" /><Text style={styles.formOkTxt}>{done}</Text></View>
+        )}
+        <Field label="Mot de passe actuel" value={f.current_password} onChangeText={set('current_password')}
+          secureTextEntry autoCapitalize="none" textContentType="password" />
+        <Field label="Nouveau mot de passe" value={f.new_password} onChangeText={set('new_password')}
+          secureTextEntry autoCapitalize="none" textContentType="newPassword"
+          hint={tooShort ? '8 caractères minimum.' : 'Au moins 8 caractères.'} />
+        <Field label="Confirmer le nouveau" value={f.confirm_password} onChangeText={set('confirm_password')}
+          secureTextEntry autoCapitalize="none" textContentType="newPassword"
+          hint={mismatch ? 'Les deux saisies diffèrent.' : undefined} />
+        <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, (!ready || busy) ? { opacity: 0.5 } : null]}
+          activeOpacity={0.85} disabled={!ready || !!busy} onPress={() => onSubmit(f)}>
+          {busy ? <ActivityIndicator color="#fff" /> : <Ionicons name="lock-closed" size={18} color="#fff" />}
+          <Text style={styles.dPrimaryBtnTxt}>{busy ? 'Enregistrement…' : 'Changer le mot de passe'}</Text>
+        </TouchableOpacity>
+        <Text style={styles.fHint}>
+          Vous resterez connecté sur cet appareil. Les autres appareils devront utiliser le nouveau mot de passe.
+        </Text>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const ORG_FIELDS = [
+  { key: 'org_name', label: 'Nom de l’organisation', required: true },
+  { key: 'legal_name', label: 'Raison sociale' },
+  { key: 'legal_form', label: 'Forme juridique', hint: 'Association loi 1901, SAS, SARL…' },
+  { key: 'rna_number', label: 'Numéro RNA', hint: 'W suivi de 9 chiffres, pour les associations.' },
+  { key: 'siren', label: 'SIREN', keyboardType: 'number-pad' },
+  { key: 'siret', label: 'SIRET', keyboardType: 'number-pad' },
+];
+const BILLING_FIELDS = [
+  { key: 'billing_address_street', label: 'Adresse' },
+  { key: 'billing_address_complement', label: 'Complément' },
+  { key: 'billing_address_zip', label: 'Code postal' },
+  { key: 'billing_address_city', label: 'Ville' },
+  { key: 'billing_address_country', label: 'Pays' },
+  { key: 'billing_email', label: 'Email de facturation', keyboardType: 'email-address', autoCapitalize: 'none' },
+  { key: 'billing_phone', label: 'Téléphone de facturation', keyboardType: 'phone-pad' },
+];
+
+function NativeOrgSettings({ data, onBack, onSubmit, busy, error, done }) {
+  const [f, setF] = useState(null);
+  const o = data && data.org;
+  useEffect(() => { if (o && !f) setF({ ...o }); }, [o]);
+  if (data && data.allowed === false) return <GatedScreen title="Organisation" message={data.message} onBack={onBack} />;
+  if (!data || !f) return <DetailLoading title="Organisation" onBack={onBack} />;
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+
+  return (
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <DetailHeader title="Organisation" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.detailContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {!!error && (
+          <View style={styles.formErr}><Ionicons name="alert-circle" size={18} color="#B91C1C" /><Text style={styles.formErrTxt}>{error}</Text></View>
+        )}
+        {!!done && (
+          <View style={styles.formOk}><Ionicons name="checkmark-circle" size={18} color="#065F46" /><Text style={styles.formOkTxt}>{done}</Text></View>
+        )}
+
+        <Text style={styles.dSection}>Identité</Text>
+        {ORG_FIELDS.map((x) => (
+          <Field key={x.key} label={x.label + (x.required ? ' *' : '')} hint={x.hint}
+            value={String(f[x.key] ?? '')} onChangeText={set(x.key)}
+            keyboardType={x.keyboardType} autoCapitalize={x.autoCapitalize || 'sentences'} />
+        ))}
+
+        <Text style={styles.dSection}>Facturation</Text>
+        {BILLING_FIELDS.map((x) => (
+          <Field key={x.key} label={x.label} value={String(f[x.key] ?? '')} onChangeText={set(x.key)}
+            keyboardType={x.keyboardType} autoCapitalize={x.autoCapitalize || 'sentences'} />
+        ))}
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.switchLabel}>Assujettie à la TVA</Text>
+            <Text style={styles.switchSub}>Fait apparaître la TVA sur vos factures.</Text>
+          </View>
+          <Switch value={!!f.vat_subject} onValueChange={set('vat_subject')} trackColor={{ true: BRAND }}
+            accessibilityLabel="Assujettie à la TVA" />
+        </View>
+        {!!f.vat_subject && (
+          <Field label="Numéro de TVA" value={String(f.vat_number ?? '')} onChangeText={set('vat_number')} autoCapitalize="characters" />
+        )}
+
+        <Text style={styles.dSection}>Couleurs</Text>
+        {/* Saisie hexadécimale : un sélecteur natif imposerait une dépendance
+            de plus, et le site attend de toute façon un #RRGGBB. */}
+        {[
+          { key: 'branding_primary_color', label: 'Couleur principale', fallback: '#10B981' },
+          { key: 'branding_secondary_color', label: 'Couleur secondaire', fallback: '#6366F1' },
+        ].map((c) => {
+          const val = String(f[c.key] ?? '');
+          const valid = /^#[0-9A-Fa-f]{6}$/.test(val);
+          return (
+            <View key={c.key} style={styles.colorRow}>
+              <View style={[styles.colorSwatch, { backgroundColor: valid ? val : c.fallback }]} />
+              <View style={{ flex: 1 }}>
+                <Field label={c.label} value={val} onChangeText={set(c.key)} autoCapitalize="characters"
+                  hint={valid ? undefined : 'Format attendu : #RRGGBB — sinon ' + c.fallback + ' sera appliqué.'} />
+              </View>
+            </View>
+          );
+        })}
+
+        <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, busy ? { opacity: 0.6 } : null]}
+          activeOpacity={0.85} disabled={!!busy} onPress={() => onSubmit(f)}>
+          {busy ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark-circle" size={18} color="#fff" />}
+          <Text style={styles.dPrimaryBtnTxt}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -4780,11 +4925,17 @@ function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onOp
   );
 }
 
-function NativeEventDetail({ entry, onBack, onRefresh, onWeb }) {
+function NativeEventDetail({ entry, onBack, onRefresh, onEdit, onDelete, busy }) {
   const d = entry.data;
   if (d && d.ok === false) return <DetailError title="Événement" onBack={onBack} onRetry={onRefresh} />;
   if (!d || !d.event) return <DetailLoading title="Événement" onBack={onBack} />;
   const e = d.event;
+  const canEdit = d.can_edit !== false;
+  const confirmDelete = () => Alert.alert(
+    'Supprimer l’événement',
+    'Supprimer « ' + e.title + ' » ? Cette suppression est définitive et retire aussi l’événement de Google Agenda s’il y était synchronisé.',
+    [{ text: 'Retour', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: onDelete }]
+  );
   return (
     <View style={styles.detailWrap}>
       <DetailHeader title="Événement" onBack={onBack} />
@@ -4799,11 +4950,21 @@ function NativeEventDetail({ entry, onBack, onRefresh, onWeb }) {
           <InfoRow icon="location" label="Lieu" value={e.location} />
           <InfoRow icon="folder" label="Projet" value={e.project} />
         </View>
-        {!!e.description && (<><Text style={styles.dSection}>Description</Text><Text style={styles.dText}>{e.description}</Text></>)}
-        <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/evenement/' + e.id)}>
-          <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
-          <Ionicons name="open-outline" size={18} color={BRAND} />
-        </TouchableOpacity>
+        {!!e.description && <DescBlock label="Description" text={e.description} />}
+        {canEdit && (
+          <>
+            <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, busy ? { opacity: 0.6 } : null]}
+              activeOpacity={0.85} disabled={!!busy} onPress={onEdit}>
+              <Ionicons name="create-outline" size={18} color="#fff" />
+              <Text style={styles.dPrimaryBtnTxt}>Modifier l’événement</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" style={[styles.dDangerBtn, busy ? { opacity: 0.6 } : null]}
+              activeOpacity={0.85} disabled={!!busy} onPress={confirmDelete}>
+              {busy === 'delete' ? <ActivityIndicator color="#991B1B" /> : <Ionicons name="trash-outline" size={18} color="#991B1B" />}
+              <Text style={styles.dDangerBtnTxt}>Supprimer</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -5226,7 +5387,7 @@ function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack 
   );
 }
 
-function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb }) {
+function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav }) {
   const a = (data && data.account) || null;
   const [f, setF] = useState(null);
   useEffect(() => { if (a && !f) setF({ first_name: a.first_name, last_name: a.last_name, email: a.email, phone: a.phone, city: a.city }); }, [a]);
@@ -5264,13 +5425,13 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
           <Text style={styles.dPrimaryBtnTxt}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity accessibilityRole="button" style={styles.settingsRow} activeOpacity={0.7} onPress={() => onWeb('/parametres?tab=securite')}>
+        <TouchableOpacity accessibilityRole="button" style={styles.settingsRow} activeOpacity={0.7} onPress={() => onNav('security')}>
           <Ionicons name="lock-closed-outline" size={20} color="#45544D" />
           <Text style={styles.settingsRowTxt}>Sécurité & mot de passe</Text>
           <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
         </TouchableOpacity>
         {org.is_admin && (
-          <TouchableOpacity accessibilityRole="button" style={styles.settingsRow} activeOpacity={0.7} onPress={() => onWeb('/parametres?tab=organisation')}>
+          <TouchableOpacity accessibilityRole="button" style={styles.settingsRow} activeOpacity={0.7} onPress={() => onNav('organization')}>
             <Ionicons name="business-outline" size={20} color="#45544D" />
             <Text style={styles.settingsRowTxt}>Infos de l'organisation</Text>
             <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
@@ -5426,6 +5587,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [grantsLoading, setGrantsLoading] = useState(false);
   const [dashData, setDashData] = useState(null);
   const [dashLoading, setDashLoading] = useState(false);
+  const [orgSettings, setOrgSettings] = useState(null);
+  const [orgBusy, setOrgBusy] = useState(false);
+  const [orgErr, setOrgErr] = useState('');
+  const [orgDone, setOrgDone] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwErr, setPwErr] = useState('');
+  const [pwDone, setPwDone] = useState('');
   const [assemblies, setAssemblies] = useState(null);
   const [attendance, setAttendance] = useState(null);
   const [broadcasts, setBroadcasts] = useState(null);
@@ -5713,6 +5881,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const fetchCoti = useCallback(() => { setCotiLoading(true); inject(fetchJS('/api/app-cotisations.php', '__akcoti')); }, [inject]);
   const fetchGrants = useCallback(() => { setGrantsLoading(true); inject(fetchJS('/api/app-grants.php', '__akgrants')); }, [inject]);
   const fetchDash = useCallback(() => { setDashLoading(true); inject(fetchJS('/api/app-dashboard-full.php', '__akdash')); }, [inject]);
+  const fetchOrgSettings = useCallback(() => { inject(fetchJS('/api/app-org-settings.php', '__akorgset')); }, [inject]);
+  const saveOrgSettings = useCallback((f) => {
+    if (!csrf) { setOrgErr('Session en préparation, réessayez.'); inject(FETCH_CSRF_JS); return; }
+    setOrgErr(''); setOrgDone(''); setOrgBusy(true);
+    inject(postJS('/api/app-update-org.php', { ...f, csrf }, '__akorgsaved'));
+  }, [csrf, inject]);
+  const changePassword = useCallback((f) => {
+    if (!csrf) { setPwErr('Session en préparation, réessayez.'); inject(FETCH_CSRF_JS); return; }
+    setPwErr(''); setPwDone(''); setPwBusy(true);
+    inject(postJS('/api/app-change-password.php', { ...f, csrf }, '__akpwsaved'));
+  }, [csrf, inject]);
   const fetchAssemblies = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-assemblies.php', '__akassemblies')); }, [inject]);
   const fetchAttendance = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-attendance.php', '__akattendance')); }, [inject]);
   const fetchBroadcasts = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-broadcasts.php', '__akbroadcasts')); }, [inject]);
@@ -5732,6 +5911,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (screen === 'cotisations') fetchCoti();
     else if (screen === 'subventions') fetchGrants();
     else if (screen === 'dashboard') fetchDash();
+    else if (screen === 'organization') { setOrgErr(''); setOrgDone(''); setOrgSettings(null); fetchOrgSettings(); inject(FETCH_CSRF_JS); }
+    else if (screen === 'security') { setPwErr(''); setPwDone(''); inject(FETCH_CSRF_JS); }
     else if (screen === 'members') { setPeople(null); fetchPeople(false); }
     else if (screen === 'clients') { setPeople(null); fetchPeople(true); }
     else if (screen === 'assemblies') fetchAssemblies();
@@ -5740,7 +5921,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (screen === 'tickets') fetchTickets();
     else if (screen === 'coach') fetchCoach();
     else if (screen === 'settings') { setSettingsErr(''); setAccount(null); fetchAccount(); inject(FETCH_CSRF_JS); }
-  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchFounder, fetchCoti, fetchGrants, fetchDash, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
+  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchFounder, fetchCoti, fetchGrants, fetchDash, fetchOrgSettings, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
 
   const onFounderTile = useCallback((key, filter) => {
     if (key === 'associations') openFdOrgs(filter || 'all');
@@ -5878,13 +6059,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (!csrf) { setFormErr('Session en cours de préparation, réessayez dans un instant.'); inject(FETCH_CSRF_JS); return; }
     setFormErr('');
     setSubmitting(true);
-    const editing = form && form.edit && (type === 'invoice' || type === 'quote');
-    const endpoint = editing
-      ? (type === 'quote' ? '/api/app-update-quote.php' : '/api/app-update-invoice.php')
-      : CREATE_ENDPOINTS[type];
-    const extra = editing
-      ? (type === 'quote' ? { quote_id: form.edit.invoice.id } : { invoice_id: form.edit.invoice.id })
-      : {};
+    const editing = form && form.edit && (type === 'invoice' || type === 'quote' || type === 'event');
+    let endpoint = CREATE_ENDPOINTS[type];
+    let extra = {};
+    if (editing) {
+      if (type === 'quote') { endpoint = '/api/app-update-quote.php'; extra = { quote_id: form.edit.invoice.id }; }
+      else if (type === 'invoice') { endpoint = '/api/app-update-invoice.php'; extra = { invoice_id: form.edit.invoice.id }; }
+      else { endpoint = '/api/app-event-action.php'; extra = { action: 'update', event_id: form.edit.id }; }
+    }
     inject(postJS(endpoint, { ...data, ...extra, csrf }));
     // Même filet que runAction : sans réponse, le formulaire se débloque au lieu de rester
     // figé (le retour matériel Android est volontairement neutralisé pendant l'envoi).
@@ -6046,7 +6228,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       // Échec de chargement d'un écran de données (réseau/serveur) : on prévient (au plus une fois / 5 s)
       // au lieu d'afficher silencieusement un écran vide ; le tirer-pour-rafraîchir relance.
-      const DATA_KEYS = ['__akevents', '__akchannels', '__akchanmsgs', '__aksubinv', '__akquotes', '__akstats', '__aknotifs', '__akfounder', '__akfdorgs', '__akfdorgdet', '__akfdproj', '__akfdactiv', '__akfdpros', '__akfddir', '__akfdset', '__akfdplansm', '__akfdbill', '__akfdstats', '__akfdblog', '__akfdsup', '__akfdthread', '__akfdcontacts', '__akfdctcthread', '__akfdplans', '__akcoti', '__akgrants', '__akdash', '__akassemblies', '__akattendance', '__akbroadcasts', '__aktickets', '__akcoach', '__akaccount'];
+      const DATA_KEYS = ['__akevents', '__akchannels', '__akchanmsgs', '__aksubinv', '__akquotes', '__akstats', '__aknotifs', '__akfounder', '__akfdorgs', '__akfdorgdet', '__akfdproj', '__akfdactiv', '__akfdpros', '__akfddir', '__akfdset', '__akfdplansm', '__akfdbill', '__akfdstats', '__akfdblog', '__akfdsup', '__akfdthread', '__akfdcontacts', '__akfdctcthread', '__akfdplans', '__akcoti', '__akgrants', '__akdash', '__akorgset', '__akassemblies', '__akattendance', '__akbroadcasts', '__aktickets', '__akcoach', '__akaccount'];
       const failedKey = DATA_KEYS.find((k) => msg[k] && msg[k].ok === false);
       if (failedKey && Date.now() - (lastLoadAlert.current || 0) > 5000) {
         lastLoadAlert.current = Date.now();
@@ -6244,8 +6426,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           else if (t === 'quote') fetchQuotes();
           else if (t === 'cotisation') fetchCoti();
           else if (t === 'grant') fetchGrants();
+          else if (t === 'event') fetchEvents();
           if (r.message) Alert.alert('C\'est fait ✅', r.message);
-          if (r.invoice_id) {
+          if (r.deleted) {
+            // L'objet n'existe plus : recharger sa fiche renverrait une erreur.
+            popDetail();
+          } else if (r.invoice_id) {
             // Devis converti : on empile la facture créée. On NE rafraîchit PAS le devis en même
             // temps, sinon deux réponses de détail se croisent sur le sommet de pile.
             fetchInvoices(); fetchQuotes();
@@ -6269,6 +6455,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akaccount) {
         // Échec de chargement : on ne laisse pas l'écran Compte en chargement infini → retour au menu (alerte déjà affichée)
         if (msg.__akaccount.ok === false) { setMenuScreen(null); } else setAccount(msg.__akaccount);
+      }
+      if (msg && msg.__akorgset) { setOrgSettings(msg.__akorgset); }
+      if (msg && msg.__akorgsaved) {
+        setOrgBusy(false);
+        if (msg.__akorgsaved.ok) { setOrgDone(msg.__akorgsaved.message || 'Organisation mise à jour.'); fetchKpis(); }
+        else setOrgErr(msg.__akorgsaved.message || 'Enregistrement impossible.');
+      }
+      if (msg && msg.__akpwsaved) {
+        setPwBusy(false);
+        if (msg.__akpwsaved.ok) setPwDone(msg.__akpwsaved.message || 'Mot de passe mis à jour.');
+        else setPwErr(msg.__akpwsaved.message || 'Changement impossible.');
       }
       if (msg && msg.__akaccountsaved) {
         setSettingsBusy(false);
@@ -6562,7 +6759,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 campaigns={pickCampaigns} members={pickMembers} preCampaign={paymentCampaign} />
             )}
             {form.type === 'event' && (
-              <EventForm onBack={closeForm} onSubmit={(d) => submitForm('event', d)} submitting={submitting} error={formErr} projects={pickProjects} />
+              <EventForm onBack={closeForm} onSubmit={(d) => submitForm('event', d)} submitting={submitting} error={formErr}
+                projects={pickProjects} edit={form.edit} />
             )}
             {form.type === 'grant' && (
               <GrantForm onBack={closeForm} onSubmit={(d) => submitForm('grant', d)} submitting={submitting} error={formErr} projects={pickProjects} />
@@ -6591,6 +6789,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'cotisations' ? (
               <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)}
                 onNew={() => openForm('payment')} onNewCampaign={() => openForm('campaign')} canManage={canManageOrg} onOpen={(id) => pushDetail('cotisation', id)} />
+            ) : menuScreen === 'organization' ? (
+              <NativeOrgSettings data={orgSettings} onBack={() => openMenuScreen('settings')} onSubmit={saveOrgSettings}
+                busy={orgBusy} error={orgErr} done={orgDone} />
+            ) : menuScreen === 'security' ? (
+              <NativeSecurity onBack={() => openMenuScreen('settings')} onSubmit={changePassword}
+                busy={pwBusy} error={pwErr} done={pwDone} />
             ) : menuScreen === 'dashboard' ? (
               <NativeDashboard data={dashData} loading={dashLoading} onRefresh={fetchDash} onBack={() => setMenuScreen(null)}
                 onOpenProject={(id) => pushDetail('project', id)} onOpenGrant={(id) => pushDetail('grant', id)} onGoto={onGoto} />
@@ -6621,7 +6825,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeCoach data={coach} loading={secLoading} generating={coachGen} onGenerate={generateCoach} onRefresh={fetchCoach} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'settings' ? (
               <NativeSettings data={account} onBack={() => setMenuScreen(null)} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
-                onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb}
+                onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb} onNav={openMenuScreen}
                 onLogout={doLogout} />
             ) : menuScreen === 'messages' ? (
               openChannel ? (
@@ -6740,7 +6944,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 onAction={canManageOrg ? (act) => runAction('/api/app-quote-action.php', { quote_id: detailTop.id, action: act }, act) : null} />
             )}
             {detailTop.type === 'event' && (
-              <NativeEventDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} />
+              <NativeEventDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} busy={actBusy}
+                onEdit={() => openForm('event', 0, (detailTop.data && detailTop.data.event) || null)}
+                onDelete={() => runAction('/api/app-event-action.php', { event_id: detailTop.id, action: 'delete' }, 'delete')} />
             )}
             {detailTop.type === 'cotisation' && (
               <NativeCotisationDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} busy={actBusy}
@@ -7186,6 +7392,10 @@ const styles = StyleSheet.create({
   /* Formulaires natifs */
   formContent: { padding: 18, paddingBottom: 30 },
   formFooter: { padding: 14, paddingBottom: Platform.OS === 'ios' ? 26 : 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#EEF2F6' },
+  formOk: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', borderRadius: 14, padding: 13, marginBottom: 14 },
+  formOkTxt: { flex: 1, fontSize: 13.5, color: '#065F46', fontWeight: '600' },
+  colorRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  colorSwatch: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: LINE, marginTop: 24 },
   formErr: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', borderRadius: 12, padding: 12, marginBottom: 14 },
   formErrTxt: { flex: 1, color: '#B91C1C', fontSize: 13.5, fontWeight: '500' },
   fLabel: { fontSize: 13, fontWeight: '600', color: '#45544D', marginBottom: 6 },

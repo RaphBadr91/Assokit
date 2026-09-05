@@ -314,12 +314,27 @@ const GRANT_DETAIL = {
   ],
 };
 
+const evt = (id, title, when, location, project, type_label, color, description, date, start, end) => ({
+  ok: true,
+  can_edit: true,
+  event: {
+    id, title, when, location, project, type_label, color, description,
+    all_day: false, is_all_day: false, event_type: 'meeting', visibility: 'organization', project_id: 0,
+    start_date: date, start_time: start, end_date: date, end_time: end,
+  },
+});
+
 const EVENT_DETAILS = {
-  1: { ok: true, event: { id: 1, title: 'Réunion du bureau', when: dayLabel(TODAY) + ' à 09:30', location: 'Salle des fêtes', project: '', type_label: 'Réunion', color: '#059669', all_day: false, description: 'Ordre du jour : point trésorerie, préparation du festival, calendrier des subventions.' } },
-  2: { ok: true, event: { id: 2, title: 'Atelier citoyenneté', when: dayLabel(TODAY) + ' à 14:00', location: 'Maison de quartier', project: 'Ateliers numériques seniors', type_label: 'Atelier', color: '#2563EB', all_day: false, description: '18 inscrits. Prévoir les tablettes et deux animateurs.' } },
-  3: { ok: true, event: { id: 3, title: 'Commission subventions', when: dayLabel(d(1)) + ' à 10:00', location: 'Visio', project: '', type_label: 'Réunion', color: '#7C3AED', all_day: false, description: 'Passage en revue du dossier Région avant dépôt.' } },
-  4: { ok: true, event: { id: 4, title: 'Assemblée générale', when: dayLabel(d(2)) + ' à 18:30', location: 'Gymnase municipal', project: '', type_label: 'Assemblée', color: '#B45309', all_day: false, description: '120 convoqués. Quorum requis : 61 présents ou représentés.' } },
-  5: { ok: true, event: { id: 5, title: 'Pot de rentrée', when: dayLabel(d(2)) + ' à 20:00', location: 'Gymnase municipal', project: '', type_label: 'Convivialité', color: '#059669', all_day: false, description: 'Ouvert à tous, sans inscription.' } },
+  1: evt(1, 'Réunion du bureau', dayLabel(TODAY) + ' à 09:30', 'Salle des fêtes', '', 'Réunion', '#059669',
+    'Ordre du jour : point trésorerie, préparation du festival, calendrier des subventions.', iso(TODAY), '09:30', '11:00'),
+  2: evt(2, 'Atelier citoyenneté', dayLabel(TODAY) + ' à 14:00', 'Maison de quartier', 'Ateliers numériques seniors', 'Atelier', '#2563EB',
+    '18 inscrits. Prévoir les tablettes et deux animateurs.', iso(TODAY), '14:00', '16:00'),
+  3: evt(3, 'Commission subventions', dayLabel(d(1)) + ' à 10:00', 'Visio', '', 'Réunion', '#7C3AED',
+    'Passage en revue du dossier Région avant dépôt.', iso(d(1)), '10:00', '11:30'),
+  4: evt(4, 'Assemblée générale', dayLabel(d(2)) + ' à 18:30', 'Gymnase municipal', '', 'Assemblée', '#B45309',
+    '120 convoqués. Quorum requis : 61 présents ou représentés.', iso(d(2)), '18:30', '21:00'),
+  5: evt(5, 'Pot de rentrée', dayLabel(d(2)) + ' à 20:00', 'Gymnase municipal', '', 'Convivialité', '#059669',
+    'Ouvert à tous, sans inscription.', iso(d(2)), '20:00', '23:00'),
 };
 
 const NOTIFICATIONS = {
@@ -369,6 +384,26 @@ const DASHBOARD_FULL = {
   ],
 };
 
+const ACCOUNT = {
+  ok: true,
+  account: { first_name: 'Raphaël', last_name: 'Badr', email: 'raphael@exemple.fr', phone: '06 12 34 56 78', city: 'Évry', role: 'admin', can_delete: true },
+  org: { name: 'Latitude 91', logo: null, is_admin: true },
+};
+
+const ORG_SETTINGS = {
+  ok: true,
+  allowed: true,
+  org: {
+    org_name: 'Latitude 91', legal_name: 'Association Latitude 91', legal_form: 'Association loi 1901',
+    siren: '812345678', siret: '81234567800019', rna_number: 'W913004512',
+    billing_address_street: '12 rue des Mares', billing_address_complement: 'Local associatif',
+    billing_address_zip: '91000', billing_address_city: 'Évry-Courcouronnes', billing_address_country: 'France',
+    vat_subject: false, vat_number: '',
+    billing_email: 'compta@exemple.fr', billing_phone: '01 60 12 34 56',
+    branding_primary_color: '#059669', branding_secondary_color: '#6366F1',
+  },
+};
+
 const FOLDERS = {
   ok: true,
   folders: [
@@ -399,6 +434,8 @@ const ROUTES = {
   '/api/app-notifications.php': NOTIFICATIONS,
   '/api/app-channels.php': CHANNELS,
   '/api/app-folders.php': FOLDERS,
+  '/api/app-org-settings.php': ORG_SETTINGS,
+  '/api/app-account.php': ACCOUNT,
 };
 
 /* Fiches dépendantes de l'identifiant : ouvrir deux projets différents doit
