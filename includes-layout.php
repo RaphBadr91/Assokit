@@ -155,7 +155,7 @@ a { color: inherit; text-decoration: none; }
 :root {
   --acc: #059669; --acc-hover: #047857; --acc-light: #D1FAE5; --acc-dark: #047857;
   --ai: #6366F1; --ai-light: #ECEBFE; --ai-dark: #4338CA;
-  --ink: #0B1A13; --ink-2: #45544D; --ink-3: #78857F; --ink-4: #A6B0AA;
+  --ink: #0B1A13; --ink-2: #45544D; --ink-3: #5F6D66; --ink-4: #7A8781;
   --bg: #FFFFFF; --bg-2: #EDF2EF; --bg-3: #E6EDE9;
   --border: rgba(12, 40, 28, 0.07); --border-strong: rgba(12, 40, 28, 0.13);
   --radius: 12px; --radius-lg: 18px;
@@ -240,6 +240,7 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .ak-collapse { display: flex; flex-direction: column; }
 .ak-collapse-row { display: flex; align-items: center; gap: 2px; }
 .ak-collapse-toggle { background: transparent; border: 0; padding: 6px 8px; cursor: pointer; color: var(--ink-4); border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s, background 0.15s, opacity 0.15s; flex-shrink: 0; opacity: 0; }
+.ak-collapse-toggle:focus-visible, .ak-collapse:focus-within .ak-collapse-toggle,
 .ak-collapse-row:hover .ak-collapse-toggle, .ak-collapse.is-open .ak-collapse-toggle { opacity: 1; }
 .ak-collapse-toggle:hover { background: var(--bg-2); color: var(--ink); }
 .ak-collapse.is-open .ak-collapse-toggle { transform: rotate(180deg); color: var(--acc); }
@@ -1104,7 +1105,9 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 /* Message actions inline (apparaissent au hover) */
 .msg-item { position: relative; }
 .msg-actions-inline { position: absolute; top: -12px; right: 12px; display: none; gap: 2px; background: var(--bg); border: 1px solid var(--border-strong); border-radius: 8px; padding: 2px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-.msg-item:hover .msg-actions-inline { display: flex; }
+.msg-item:hover .msg-actions-inline, .msg-item:focus-within .msg-actions-inline { display: flex; }
+/* Écrans tactiles : pas de survol possible, on affiche les actions en permanence */
+@media (hover: none) { .msg-actions-inline { display: flex; } }
 .msg-action-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: transparent; border: none; color: var(--ink-3); cursor: pointer; }
 .msg-action-btn:hover { background: var(--bg-2); color: var(--ink); }
 .msg-action-btn.danger:hover { color: #B91C1C; }

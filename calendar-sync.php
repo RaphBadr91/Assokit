@@ -75,13 +75,13 @@ render_head('Synchronisation calendrier');
           <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
           <input type="hidden" name="action" value="revoke">
           <input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
-          <button type="submit" class="cs-btn-revoke">🗑️</button>
+          <button aria-label="Révoquer ce lien d'abonnement" type="submit" class="cs-btn-revoke">🗑️</button>
         </form>
       </div>
 
       <div class="cs-url-row">
         <input type="text" id="cs-url-<?= (int)$t['id'] ?>" readonly value="<?= h($url) ?>">
-        <button type="button" class="cs-copy" onclick="(function(){const i=document.getElementById('cs-url-<?= (int)$t['id'] ?>');i.select();document.execCommand('copy');navigator.clipboard&&navigator.clipboard.writeText(i.value);this.textContent='✓';setTimeout(()=>this.textContent='📋',1500);}).call(this)">📋</button>
+        <button type="button" aria-label="Copier le lien d'abonnement" class="cs-copy" onclick="(function(){const i=document.getElementById('cs-url-<?= (int)$t['id'] ?>');i.select();document.execCommand('copy');navigator.clipboard&&navigator.clipboard.writeText(i.value);this.textContent='✓';setTimeout(()=>this.textContent='📋',1500);}).call(this)">📋</button>
       </div>
 
       <div class="cs-providers">

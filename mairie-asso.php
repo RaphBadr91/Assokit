@@ -122,7 +122,7 @@ render_sidebar('mairie-assos');
   .mairie-tabs a { padding:9px 12px !important; font-size:12.5px !important; }
 }
 </style>
-<div style="max-width:1300px;margin:0 auto;padding:clamp(12px,3vw,24px);">
+<div class="main" style="max-width:1300px;margin:0 auto;padding:clamp(12px,3vw,24px);">
 
   <div style="margin-bottom:16px;">
     <a href="<?= h($back_url) ?>" style="color:#3F3F46;text-decoration:none;font-size:13px;">← Retour <?= is_parent_org_user() ? 'dashboard' : 'mairie' ?></a>

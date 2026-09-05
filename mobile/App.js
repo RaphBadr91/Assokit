@@ -1592,6 +1592,73 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
   );
 }
 
+// ── Nouvelle campagne de cotisation (natif) ───────────────────────────
+function CampaignForm({ onBack, onSubmit, submitting, error }) {
+  const [f, setF] = useState({ name: '', year: String(new Date().getFullYear()), description: '', opens_at: '', closes_at: '' });
+  const [active, setActive] = useState(true);
+  const [tiers, setTiers] = useState([{ name: '', amount: '' }]);
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  const setTier = (i, k, v) => setTiers((s) => s.map((t, j) => (j === i ? { ...t, [k]: v } : t)));
+  const addTier = () => setTiers((s) => [...s, { name: '', amount: '' }]);
+  const rmTier = (i) => setTiers((s) => s.filter((_, j) => j !== i));
+
+  const submit = () => {
+    if (!f.name.trim()) { Alert.alert('Nom', 'Donnez un nom à la campagne (ex : Adhésion 2026).'); return; }
+    onSubmit({
+      name: f.name.trim(),
+      year: f.year.trim(),
+      description: f.description.trim(),
+      opens_at: f.opens_at.trim(),
+      closes_at: f.closes_at.trim(),
+      is_active: active,
+      tiers: tiers.filter((t) => t.name.trim()).map((t) => ({ name: t.name.trim(), amount: t.amount })),
+    });
+  };
+
+  return (
+    <FormShell title="Nouvelle campagne" onBack={onBack} onSubmit={submit} submitLabel="Créer la campagne" submitting={submitting} error={error}>
+      <Field label="Nom de la campagne *" value={f.name} onChangeText={set('name')} autoCapitalize="sentences" placeholder="Ex : Adhésion 2026" />
+      <Field label="Année" value={f.year} onChangeText={set('year')} keyboardType="number-pad" />
+
+      <View style={styles.switchRow}>
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={styles.switchLabel}>Campagne active</Text>
+          <Text style={styles.switchSub}>Les adhérents peuvent y cotiser dès maintenant.</Text>
+        </View>
+        <Switch value={active} onValueChange={setActive} trackColor={{ true: BRAND }} accessibilityLabel="Campagne active" />
+      </View>
+
+      <View style={styles.formRow2}>
+        <View style={{ flex: 1 }}><Field label="Ouverture" value={f.opens_at} onChangeText={set('opens_at')} placeholder="AAAA-MM-JJ" autoCapitalize="none" /></View>
+        <View style={{ width: 12 }} />
+        <View style={{ flex: 1 }}><Field label="Clôture" value={f.closes_at} onChangeText={set('closes_at')} placeholder="AAAA-MM-JJ" autoCapitalize="none" /></View>
+      </View>
+
+      <Text style={[styles.formCardTitle, { marginTop: 6 }]}>Tarifs proposés</Text>
+      {tiers.map((t, i) => (
+        <View key={i} style={styles.stepEditRow}>
+          <TextInput style={[styles.fInput, { flex: 1.6 }]} value={t.name} onChangeText={(v) => setTier(i, 'name', v)}
+            placeholder={'Tarif ' + (i + 1) + ' (ex : Adulte)'} placeholderTextColor="#B6C0CC" accessibilityLabel={'Nom du tarif ' + (i + 1)} />
+          <TextInput style={[styles.fInput, { width: 92, marginLeft: 8 }]} value={t.amount} onChangeText={(v) => setTier(i, 'amount', v)}
+            placeholder="€" placeholderTextColor="#B6C0CC" keyboardType="decimal-pad" accessibilityLabel={'Montant du tarif ' + (i + 1)} />
+          {tiers.length > 1 && (
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retirer le tarif" onPress={() => rmTier(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 8 }}>
+              <Ionicons name="close-circle" size={22} color="#CBD5E1" />
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
+      <TouchableOpacity accessibilityRole="button" style={[styles.addLineBtn, { marginTop: 4 }]} onPress={addTier} activeOpacity={0.8}>
+        <Ionicons name="add" size={18} color={BRAND} /><Text style={styles.addLineTxt}>Ajouter un tarif</Text>
+      </TouchableOpacity>
+
+      <View style={{ height: 18 }} />
+      <Field label="Description" value={f.description} onChangeText={set('description')} multiline numberOfLines={3}
+        style={[styles.fInput, { height: 90, textAlignVertical: 'top' }]} hint="Ce que finance la cotisation, conditions…" />
+    </FormShell>
+  );
+}
+
 // ── Nouvel événement d'agenda (natif) ─────────────────────────────────
 function EventForm({ onBack, onSubmit, submitting, error, projects }) {
   const projs = projects || [];
@@ -4108,13 +4175,13 @@ function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead,
   );
 }
 
-function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage, onOpen }) {
+function NativeCotisations({ data, loading, onRefresh, onBack, onNew, onNewCampaign, canManage, onOpen }) {
   const list = data ? (data.campaigns || []) : null;
   const s = (data && data.stats) || {};
   const hasCampaigns = !!(list && list.length);
   return (
     <View style={styles.detailWrap}>
-      <DetailHeader title="Cotisations" onBack={onBack} onAction={canManage && hasCampaigns ? onNew : null} actionIcon="add" />
+      <DetailHeader title="Cotisations" onBack={onBack} onAction={canManage ? (hasCampaigns ? onNew : onNewCampaign) : null} actionIcon="add" />
       {!list ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : (
@@ -4129,9 +4196,19 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, canManage,
               <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Enregistrer un paiement</Text>
             </TouchableOpacity>
           )}
+          {canManage && hasCampaigns && (
+            <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={onNewCampaign}>
+              <Ionicons name="pricetags-outline" size={18} color={BRAND} /><Text style={styles.dWebBtnTxt}>Nouvelle campagne</Text>
+            </TouchableOpacity>
+          )}
           {list.length === 0 ? (
             <View style={styles.emptyBox}><Ionicons name="card-outline" size={40} color="#CBD5E1" /><Text style={styles.emptyTxt}>Aucune campagne</Text>
-              <Text style={styles.emptySub}>Créez une campagne de cotisation sur le site pour pouvoir y enregistrer des paiements depuis l'app.</Text>
+              <Text style={styles.emptySub}>Créez votre première campagne pour commencer à encaisser les cotisations.</Text>
+              {canManage && (
+                <TouchableOpacity accessibilityRole="button" style={[styles.listNewBtn, { marginTop: 16, paddingHorizontal: 20 }]} activeOpacity={0.85} onPress={onNewCampaign}>
+                  <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Créer une campagne</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : list.map((c) => (
             <TouchableOpacity accessibilityRole="button" key={c.id} style={styles.projCard} activeOpacity={onOpen ? 0.85 : 1} onPress={onOpen ? () => onOpen(c.id) : undefined}>
@@ -4335,6 +4412,8 @@ const GRANT_STATUSES = [
 function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
   const [stepTitle, setStepTitle] = useState('');
   const [statusOpen, setStatusOpen] = useState(false);
+  const [grantedOpen, setGrantedOpen] = useState(false);
+  const [grantedAmt, setGrantedAmt] = useState('');
   const d = entry.data;
   if (d && d.ok === false) return <DetailError title="Subvention" onBack={onBack} onRetry={onRefresh} />;
   if (!d || !d.grant) return <DetailLoading title="Subvention" onBack={onBack} />;
@@ -4453,8 +4532,33 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
           </>
         )}
 
+        {/* Passer à « Accordé » demande le montant obtenu : sans lui la KPI resterait vide. */}
         <SheetPicker visible={statusOpen} title="Statut du dossier" onClose={() => setStatusOpen(false)} selected={g.status}
-          onPick={(v) => onAction('set_status', { status: v })} options={GRANT_STATUSES} />
+          onPick={(v) => {
+            if (v === 'granted') { setGrantedAmt(g.granted != null ? String(g.granted) : (g.requested != null ? String(g.requested) : '')); setGrantedOpen(true); return; }
+            onAction('set_status', { status: v });
+          }} options={GRANT_STATUSES} />
+
+        <Modal visible={grantedOpen} transparent animationType="slide" onRequestClose={() => setGrantedOpen(false)}>
+          <Pressable style={styles.sheetBackdrop} onPress={() => setGrantedOpen(false)}>
+            <Pressable style={styles.sheet}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Subvention accordée</Text>
+              <Text style={[styles.dMuted, { marginBottom: 14 }]}>Quel montant le financeur a-t-il accordé ?</Text>
+              <TextInput style={styles.fInput} value={grantedAmt} onChangeText={setGrantedAmt} keyboardType="decimal-pad"
+                placeholder="Montant en €" placeholderTextColor="#B6C0CC" accessibilityLabel="Montant accordé" autoFocus />
+              <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85}
+                onPress={() => { setGrantedOpen(false); onAction('set_status', { status: 'granted', amount_granted: grantedAmt }); }}>
+                <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                <Text style={styles.dPrimaryBtnTxt}>Enregistrer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" style={{ paddingVertical: 14, alignItems: 'center' }} activeOpacity={0.7}
+                onPress={() => { setGrantedOpen(false); onAction('set_status', { status: 'granted' }); }}>
+                <Text style={styles.formLink}>Sans préciser le montant</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -4626,6 +4730,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const pendingLogin = useRef(null);   // identifiants à soumettre dès que /connexion est chargée
   const lastLoadAlert = useRef(0);      // anti-spam des alertes « chargement impossible »
   const logoutTimer = useRef(null);
+  const actTimer = useRef(null);
   const finishLogoutRef = useRef(null);
   const loginAttempted = useRef(false);
   const authedRef = useRef(false);
@@ -4841,14 +4946,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     quote:   '/api/app-create-quote.php',
     project: '/api/app-create-project.php',
     expense: '/api/app-create-expense.php',
-    payment: '/api/app-create-cotisation-payment.php',
+    payment:  '/api/app-create-cotisation-payment.php',
+    campaign: '/api/app-create-campaign.php',
     event:   '/api/app-create-event.php',
     grant:   '/api/app-create-grant.php',
   };
 
   const openForm = useCallback((type, preId = 0, editData = null) => {
     setQuickOpen(false);
-    clearDetail();
+    // Un paiement ouvert depuis une fiche campagne garde la fiche dessous : fermer le
+    // formulaire (ou revenir en arrière) ramène sur la campagne, pas sur la liste.
+    if (!(type === 'payment' && preId)) clearDetail();
     setWebMode(false);
     setFormErr('');
     setForm({ type, edit: editData });
@@ -4913,6 +5021,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (!csrf) { Alert.alert('Un instant', 'Session en préparation, réessayez dans un instant.'); inject(FETCH_CSRF_JS); return; }
     setActBusy(busyKey);
     inject(postJS(endpoint, { ...payload, csrf }, '__akact'));
+    // Filet de sécurité : si la réponse n'arrive jamais (WebView rechargée en plein vol),
+    // le bouton se débloque au lieu de rester en chargement indéfiniment.
+    if (actTimer.current) clearTimeout(actTimer.current);
+    actTimer.current = setTimeout(() => {
+      setActBusy((b) => {
+        if (b === null) return b;
+        Alert.alert('Action interrompue', 'Aucune réponse du serveur. Vérifie ta connexion et réessaie.');
+        return null;
+      });
+    }, 20000);
   }, [csrf, inject]);
 
   // --- Écrans du menu « Plus » (natifs) ------------------------------
@@ -5515,6 +5633,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akcreds && msg.__akcreds.email && msg.__akcreds.password) { pendingCreds.current = msg.__akcreds; }
       if (msg && msg.__aklogout) { if (finishLogoutRef.current) finishLogoutRef.current(); }
       if (msg && msg.__akact) {
+        if (actTimer.current) { clearTimeout(actTimer.current); actTimer.current = null; }
         setActBusy(null);
         const r = msg.__akact;
         if (r.ok) {
@@ -5599,6 +5718,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             fetchCoti(); setActive('menu'); setMenuScreen('cotisations');
             // Saisi depuis une fiche campagne : on y retourne, à jour
             if (paymentCampaign) pushDetail('cotisation', paymentCampaign);
+          }
+          else if (created === 'campaign') {
+            fetchCoti(); setActive('menu'); setMenuScreen('cotisations');
+            if (w.id) pushDetail('cotisation', w.id);   // on ouvre la campagne créée
           }
           else if (created === 'event') { fetchEvents(); setActive('menu'); setMenuScreen('agenda'); }
           else if (created === 'grant') {
@@ -5814,6 +5937,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 projects={(projects && projects.projects) || []} preProject={expenseProject}
                 scanData={scanData} scanning={scanning} onScan={pickAndScan} />
             )}
+            {form.type === 'campaign' && (
+              <CampaignForm onBack={closeForm} onSubmit={(d) => submitForm('campaign', d)} submitting={submitting} error={formErr} />
+            )}
             {form.type === 'payment' && (
               <CotisationPaymentForm onBack={closeForm} onSubmit={(d) => submitForm('payment', d)} submitting={submitting} error={formErr}
                 campaigns={pickCampaigns} members={pickMembers} preCampaign={paymentCampaign} />
@@ -5847,7 +5973,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onPress={onNotifPress} onMarkAllRead={onMarkAllRead} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'cotisations' ? (
               <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)}
-                onNew={() => openForm('payment')} canManage={canManageOrg} onOpen={(id) => pushDetail('cotisation', id)} />
+                onNew={() => openForm('payment')} onNewCampaign={() => openForm('campaign')} canManage={canManageOrg} onOpen={(id) => pushDetail('cotisation', id)} />
             ) : menuScreen === 'subventions' ? (
               <NativeGrants data={grantsData} loading={grantsLoading} onRefresh={fetchGrants} onBack={() => setMenuScreen(null)}
                 onNew={() => openForm('grant')} canManage={canManageOrg} onOpen={(id) => pushDetail('grant', id)} />

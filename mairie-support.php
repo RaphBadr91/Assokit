@@ -49,7 +49,7 @@ render_head('Support · ' . ($parent_org['name'] ?? 'Mairie'));
 render_sidebar('support');
 ?>
 
-<div style="max-width:900px;margin:0 auto;padding:clamp(12px,3vw,24px);">
+<div class="main" style="max-width:900px;margin:0 auto;padding:clamp(12px,3vw,24px);">
 
   <h1 style="margin:0 0 6px;font-size:24px;color:#0A0A0B;font-weight:700;">🛟 Support Assokit</h1>
   <p style="color:#71717A;font-size:13.5px;margin:0 0 24px;">L'équipe Assokit vous accompagne dans la gestion de votre <?= h($parent_org['type'] ?? 'collectivité') ?>.</p>

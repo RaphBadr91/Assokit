@@ -181,7 +181,7 @@ render_sidebar('projets');
     <!-- ===== COULEUR (16 OPTIONS) ===== -->
     <div style="margin-bottom:24px;">
       <label style="display:block; font-size:13px; font-weight:500; margin-bottom:10px;">Couleur</label>
-      <div style="display:grid; grid-template-columns: repeat(8, 1fr); gap:8px;">
+      <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap:8px;">
         <?php foreach ($available_themes as $key => $t): ?>
           <label class="color-pick" data-color="<?= h($t['color']) ?>" data-key="<?= $key ?>"
                  title="<?= h($t['label']) ?>"
@@ -203,7 +203,7 @@ render_sidebar('projets');
     <!-- ===== ICÔNE (20 OPTIONS) ===== -->
     <div style="margin-bottom:24px;">
       <label style="display:block; font-size:13px; font-weight:500; margin-bottom:10px;">Icône</label>
-      <div style="display:grid; grid-template-columns: repeat(10, 1fr); gap:8px;">
+      <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap:8px;">
         <?php foreach ($available_icons as $key => $ic): ?>
           <label class="icon-pick" data-key="<?= $key ?>" data-svg='<?= htmlspecialchars($ic['svg'], ENT_QUOTES) ?>'
                  title="<?= h($ic['label']) ?>"

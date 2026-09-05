@@ -128,12 +128,12 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; ba
 
   <div class="pp-card">
     <p class="pp-greeting">Bonjour <strong><?= h($att['full_name']) ?></strong>,</p>
-    <p class="pp-info">Vous êtes convoqué·e à cette assemblée. Merci de :
+    <div class="pp-info">Vous êtes convoqué·e à cette assemblée. Merci de :
       <ol style="padding-left:18px;line-height:1.8;">
         <li>Indiquer votre présence et signer ci-dessous</li>
         <?php if ($can_vote): ?><li>Voter sur les résolutions une fois la séance ouverte</li><?php endif; ?>
       </ol>
-    </p>
+    </div>
     <?php if ($att['location_url']): ?>
       <a href="<?= h($att['location_url']) ?>" target="_blank" class="pp-btn pp-btn-primary" style="display:inline-block;text-decoration:none;margin-top:6px;">🎥 Rejoindre la visioconférence</a>
     <?php endif; ?>

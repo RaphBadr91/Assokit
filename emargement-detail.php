@@ -59,7 +59,7 @@ render_head($sess['title']);
           <div id="at-qr" style="text-align:center;padding:14px;background:#fff;border-radius:10px;border:1px solid #e5e7eb;"></div>
           <div class="at-url-box">
             <input type="text" readonly value="<?= h($public_url) ?>" id="at-url-<?= (int)$sess['id'] ?>">
-            <button type="button" onclick="(function(){const i=document.getElementById('at-url-<?= (int)$sess['id'] ?>');i.select();navigator.clipboard&&navigator.clipboard.writeText(i.value);this.textContent='✓';setTimeout(()=>this.textContent='📋',1500);}).call(this)">📋</button>
+            <button aria-label="Copier le lien d'émargement" type="button" onclick="(function(){const i=document.getElementById('at-url-<?= (int)$sess['id'] ?>');i.select();navigator.clipboard&&navigator.clipboard.writeText(i.value);this.textContent='✓';setTimeout(()=>this.textContent='📋',1500);}).call(this)">📋</button>
           </div>
           <p style="font-size:11.5px;color:#6b7280;margin:10px 0 0;line-height:1.5;">Imprime ce QR ou affiche-le sur écran. Les participants scannent et signent en quelques secondes.</p>
           <a href="<?= h($public_url) ?>" target="_blank" class="at-btn-ghost" style="display:block;text-align:center;margin-top:8px;">🔗 Ouvrir dans un onglet</a>

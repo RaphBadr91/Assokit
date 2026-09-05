@@ -131,7 +131,7 @@ render_head('Dashboard ' . $parent_org['name']);
 render_sidebar('mairie-dashboard');
 ?>
 
-<div style="max-width:1300px;margin:0 auto;padding:clamp(12px,3vw,24px);">
+<div class="main" style="max-width:1300px;margin:0 auto;padding:clamp(12px,3vw,24px);">
 
   <?php if (!empty($_SESSION['flash_success'])): ?>
     <div style="background:#D1FAE5;border:1px solid #10B981;color:#065F46;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:600;">✅ <?= h($_SESSION['flash_success']) ?></div>

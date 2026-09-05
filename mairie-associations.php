@@ -57,7 +57,7 @@ render_head('Associations · ' . $parent_org['name']);
 render_sidebar('mairie-assos');
 ?>
 
-<div style="max-width:1300px;margin:0 auto;padding:clamp(12px,3vw,24px);">
+<div class="main" style="max-width:1300px;margin:0 auto;padding:clamp(12px,3vw,24px);">
 
   <h1 style="margin:0 0 6px;font-size:24px;color:#0A0A0B;font-weight:700;">🏢 Mes associations</h1>
   <p style="color:#71717A;font-size:13.5px;margin:0 0 22px;"><?= count($enriched) ?> association<?= count($enriched) > 1 ? 's' : '' ?> rattachée<?= count($enriched) > 1 ? 's' : '' ?> à <strong style="color:#3F3F46;"><?= h($parent_org['name']) ?></strong></p>

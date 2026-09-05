@@ -124,7 +124,7 @@ render_head($ag['title']);
                 <td><span class="ag-mini-status" style="color:<?= $sm[1] ?>;"><?= $sm[0] ?></span></td>
                 <td><?= $a['signed_at'] ? '<span style="color:#10B981;">✓ '.date('d/m H:i', strtotime($a['signed_at'])).'</span>' : '—' ?></td>
                 <td>
-                  <button type="button" class="ag-btn-mini" onclick="navigator.clipboard.writeText('<?= h($public_url) ?>');this.textContent='✓';setTimeout(()=>this.textContent='🔗',1500);" title="Copier le lien personnel">🔗</button>
+                  <button aria-label="Copier le lien de vote" type="button" class="ag-btn-mini" onclick="navigator.clipboard.writeText('<?= h($public_url) ?>');this.textContent='✓';setTimeout(()=>this.textContent='🔗',1500);" title="Copier le lien personnel">🔗</button>
                   <form method="POST" action="/action-assemblee" style="display:inline;" onsubmit="return confirm('Retirer ?')">
                     <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
                     <input type="hidden" name="action" value="remove_attendee">

@@ -313,7 +313,7 @@ render_sidebar('emploi-du-temps');
 /* Modal */
 .edt-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px; }
 .edt-modal-bg.open { display: flex; }
-.edt-modal { background: #fff; border-radius: 14px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.edt-modal { position: relative; background: #fff; border-radius: 14px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
 .edt-modal h2 { margin: 0 0 16px; font-size: 18px; }
 .edt-modal-close { position: absolute; top: 16px; right: 20px; background: none; border: 0; font-size: 22px; cursor: pointer; color: #78716c; }
 .edt-form-row { margin-bottom: 14px; }
