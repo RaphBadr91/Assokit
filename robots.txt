@@ -4,11 +4,24 @@
 # https://assokit.fr
 # ============================================================
 #
-# NB : Google/Bing n'obeissent qu'au groupe le PLUS specifique qui matche
-# leur user-agent. On garde donc UN SEUL groupe "*" complet (pas de groupe
-# Googlebot/Bingbot qui annulerait ces regles).
+# RÈGLE FONDAMENTALE : un robot n'obéit QU'AU SEUL groupe le plus
+# spécifique qui correspond à son user-agent. Il n'hérite JAMAIS du
+# groupe « * ». Autrement dit, tout groupe nommé doit répéter les
+# interdictions, sinon ce robot a accès à tout le site.
+#
+# C'est pourquoi les groupes ci-dessous reprennent la liste complète
+# au lieu de se contenter d'une directive Crawl-delay.
+#
+# Les paramètres d'URL (utm_, fbclid, gclid, ref=) ne sont volontairement
+# PAS bloqués : chaque page publique déclare déjà sa balise canonical, et
+# Google doit pouvoir la lire pour regrouper les variantes. Les bloquer
+# l'empêchait de crawler, donc de canoniser — d'où les alertes
+# « Bloquée par le fichier robots.txt » sur les liens de campagne.
 
-# === REGLES POUR TOUS LES BOTS (Google & Bing inclus) ===
+
+# === TOUS LES ROBOTS (Google, Bing, et les robots IA) ===
+# Les robots IA (GPTBot, ClaudeBot, PerplexityBot…) relèvent de ce groupe :
+# ils accèdent donc à tout le site public, et à rien de la zone privée.
 User-agent: *
 
 # Pages privées (zone connectée)
@@ -43,11 +56,7 @@ Disallow: /*.bak$
 Disallow: /*.sql$
 Disallow: /tmp/
 
-# Recherche interne & paramètres URL bruyants
-Disallow: /*?*utm_
-Disallow: /*?*fbclid
-Disallow: /*?*gclid
-Disallow: /*?*ref=
+# Recherche interne (résultats infinis, aucune valeur d'indexation)
 Disallow: /blog?q=
 
 # Pages d'authentification / compte
@@ -65,34 +74,171 @@ Disallow: /deconnexion
 Allow: /assets/
 Allow: /asso/
 
-# === CRAWLERS SEO AGRESSIFS : on ralentit ===
+
+# === AhrefsBot : mêmes interdictions, mais ralenti ===
 User-agent: AhrefsBot
 Crawl-delay: 10
 
+# Pages privées (zone connectée)
+Disallow: /dashboard
+Disallow: /mon-asso-*
+Disallow: /admin-*
+Disallow: /super-admin
+Disallow: /fondateur-*
+Disallow: /projet/
+Disallow: /projets
+Disallow: /nouveau-projet
+Disallow: /modifier-projet
+Disallow: /supprimer-projet
+Disallow: /action-projet
+Disallow: /nouveau-dossier
+Disallow: /supprimer-dossier
+Disallow: /archives
+
+# Endpoints techniques
+Disallow: /api/
+Disallow: /cron/
+Disallow: /cron-*
+Disallow: /webhooks/
+Disallow: /stripe-*
+Disallow: /webhook-*
+
+# Fichiers techniques
+Disallow: /vendor/
+Disallow: /config.php
+Disallow: /*.log$
+Disallow: /*.bak$
+Disallow: /*.sql$
+Disallow: /tmp/
+
+# Recherche interne (résultats infinis, aucune valeur d'indexation)
+Disallow: /blog?q=
+
+# Pages d'authentification / compte
+Disallow: /reset-password
+Disallow: /mot-de-passe-oublie
+Disallow: /definir-mot-de-passe
+Disallow: /verify-email
+Disallow: /verifier-email
+Disallow: /connexion
+Disallow: /signup
+Disallow: /logout
+Disallow: /deconnexion
+
+# Ressources nécessaires au rendu (à ne jamais bloquer)
+Allow: /assets/
+Allow: /asso/
+
+
+# === SemrushBot : mêmes interdictions, mais ralenti ===
 User-agent: SemrushBot
 Crawl-delay: 10
 
+# Pages privées (zone connectée)
+Disallow: /dashboard
+Disallow: /mon-asso-*
+Disallow: /admin-*
+Disallow: /super-admin
+Disallow: /fondateur-*
+Disallow: /projet/
+Disallow: /projets
+Disallow: /nouveau-projet
+Disallow: /modifier-projet
+Disallow: /supprimer-projet
+Disallow: /action-projet
+Disallow: /nouveau-dossier
+Disallow: /supprimer-dossier
+Disallow: /archives
+
+# Endpoints techniques
+Disallow: /api/
+Disallow: /cron/
+Disallow: /cron-*
+Disallow: /webhooks/
+Disallow: /stripe-*
+Disallow: /webhook-*
+
+# Fichiers techniques
+Disallow: /vendor/
+Disallow: /config.php
+Disallow: /*.log$
+Disallow: /*.bak$
+Disallow: /*.sql$
+Disallow: /tmp/
+
+# Recherche interne (résultats infinis, aucune valeur d'indexation)
+Disallow: /blog?q=
+
+# Pages d'authentification / compte
+Disallow: /reset-password
+Disallow: /mot-de-passe-oublie
+Disallow: /definir-mot-de-passe
+Disallow: /verify-email
+Disallow: /verifier-email
+Disallow: /connexion
+Disallow: /signup
+Disallow: /logout
+Disallow: /deconnexion
+
+# Ressources nécessaires au rendu (à ne jamais bloquer)
+Allow: /assets/
+Allow: /asso/
+
+
+# === MJ12bot : mêmes interdictions, mais ralenti ===
 User-agent: MJ12bot
 Crawl-delay: 10
 
-# === BOTS IA (autorisés pour la visibilité) ===
-User-agent: GPTBot
-Allow: /
+# Pages privées (zone connectée)
+Disallow: /dashboard
+Disallow: /mon-asso-*
+Disallow: /admin-*
+Disallow: /super-admin
+Disallow: /fondateur-*
+Disallow: /projet/
+Disallow: /projets
+Disallow: /nouveau-projet
+Disallow: /modifier-projet
+Disallow: /supprimer-projet
+Disallow: /action-projet
+Disallow: /nouveau-dossier
+Disallow: /supprimer-dossier
+Disallow: /archives
 
-User-agent: ChatGPT-User
-Allow: /
+# Endpoints techniques
+Disallow: /api/
+Disallow: /cron/
+Disallow: /cron-*
+Disallow: /webhooks/
+Disallow: /stripe-*
+Disallow: /webhook-*
 
-User-agent: Google-Extended
-Allow: /
+# Fichiers techniques
+Disallow: /vendor/
+Disallow: /config.php
+Disallow: /*.log$
+Disallow: /*.bak$
+Disallow: /*.sql$
+Disallow: /tmp/
 
-User-agent: anthropic-ai
-Allow: /
+# Recherche interne (résultats infinis, aucune valeur d'indexation)
+Disallow: /blog?q=
 
-User-agent: ClaudeBot
-Allow: /
+# Pages d'authentification / compte
+Disallow: /reset-password
+Disallow: /mot-de-passe-oublie
+Disallow: /definir-mot-de-passe
+Disallow: /verify-email
+Disallow: /verifier-email
+Disallow: /connexion
+Disallow: /signup
+Disallow: /logout
+Disallow: /deconnexion
 
-User-agent: PerplexityBot
-Allow: /
+# Ressources nécessaires au rendu (à ne jamais bloquer)
+Allow: /assets/
+Allow: /asso/
+
 
 # === SITEMAP ===
 Sitemap: https://assokit.fr/sitemap.xml
