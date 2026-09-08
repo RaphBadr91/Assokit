@@ -70,6 +70,9 @@ Disallow: /signup
 Disallow: /logout
 Disallow: /deconnexion
 
+# Cartes de visite numériques : coordonnées personnelles, rien à indexer
+Disallow: /carte/
+
 # Ressources nécessaires au rendu (à ne jamais bloquer)
 Allow: /assets/
 Allow: /asso/
@@ -124,6 +127,9 @@ Disallow: /connexion
 Disallow: /signup
 Disallow: /logout
 Disallow: /deconnexion
+
+# Cartes de visite numériques : coordonnées personnelles, rien à indexer
+Disallow: /carte/
 
 # Ressources nécessaires au rendu (à ne jamais bloquer)
 Allow: /assets/
@@ -180,6 +186,9 @@ Disallow: /signup
 Disallow: /logout
 Disallow: /deconnexion
 
+# Cartes de visite numériques : coordonnées personnelles, rien à indexer
+Disallow: /carte/
+
 # Ressources nécessaires au rendu (à ne jamais bloquer)
 Allow: /assets/
 Allow: /asso/
@@ -234,6 +243,9 @@ Disallow: /connexion
 Disallow: /signup
 Disallow: /logout
 Disallow: /deconnexion
+
+# Cartes de visite numériques : coordonnées personnelles, rien à indexer
+Disallow: /carte/
 
 # Ressources nécessaires au rendu (à ne jamais bloquer)
 Allow: /assets/
