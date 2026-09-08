@@ -142,7 +142,10 @@ function render_head($page_title) {
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- 700 est nécessaire : la barre latérale, les noms d'organisation, les badges
+     et tous les <strong> l'utilisent. Sans lui le navigateur fabrique un faux
+     gras en épaississant le 600, plus lourd et moins net que le vrai dessin. -->
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- DARK MODE DISABLED — ak-theme-early-init removed -->
 <!-- DARK MODE DISABLED -- <link rel="stylesheet" href="/css/dark-fixes.css?v=1778772802"> -->
 <style>
