@@ -21,7 +21,6 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "fr.assokit.app",
-      "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "Assokit utilise Face ID pour déverrouiller l'application en toute sécurité.",
@@ -31,7 +30,6 @@
     },
     "android": {
       "package": "fr.assokit.app",
-      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#059669"
