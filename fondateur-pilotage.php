@@ -59,6 +59,7 @@ $groups = [
             ['ic' => '🌱', 'title' => 'Créer un compte',       'desc' => 'Nouvelle organisation en création directe', 'url' => '/fondateur-create-organization'],
             ['ic' => '🏛️', 'title' => 'Collectivités & Mairies', 'desc' => 'Mairies, CAF, départements…',              'url' => '/super-admin-mairies', 'tag' => 'MULTI-ASSO'],
             ['ic' => '🌐', 'title' => 'Domaines',              'desc' => 'Sous-domaines et domaines personnalisés',   'url' => '/fondateur-domains'],
+            ['ic' => '📇', 'title' => 'Cartes de visite QR',   'desc' => 'Fiches contact scannables · sans réimpression', 'url' => '/fondateur-cartes', 'tag' => 'QR CODE'],
             ['ic' => '✍️', 'title' => 'Blog SEO',              'desc' => 'Articles et référencement naturel',         'url' => '/admin-blog/', 'ext' => true],
         ],
     ],

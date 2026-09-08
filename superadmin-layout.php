@@ -776,7 +776,7 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
       <?php // === Section Pilotage Fondateur — bouton unique vers la page-hub === ?>
       <?php if ($is_founder): ?>
       <?php
-        $founder_pages = ['fondateur-pilotage', 'fondateur-pricing', 'fondateur-plans', 'fondateur-create-organization', 'fondateur-domains', 'fondateur-stripe-config', 'admin-blog', 'fondateur-activity'];
+        $founder_pages = ['fondateur-pilotage', 'fondateur-pricing', 'fondateur-plans', 'fondateur-create-organization', 'fondateur-domains', 'fondateur-stripe-config', 'admin-blog', 'fondateur-activity', 'fondateur-cartes'];
         $founder_active = in_array($active, $founder_pages, true);
       ?>
       <a href="/fondateur-pilotage" class="sa-founder-btn <?= $founder_active ? 'active' : '' ?>">

@@ -1,19 +1,20 @@
 <?php
 /**
- * cartes-contacts.php — Les fiches derrière les QR codes.
+ * cartes-contacts.php — Filet de secours des fiches QR.
  *
- * ── LE SEUL FICHIER À MODIFIER ──────────────────────────────────────────────
+ * ── CE N'EST PLUS ICI QUE ÇA SE PASSE ───────────────────────────────────────
  *
- * Chaque entrée correspond à un QR code déjà imprimé. Le QR encode l'URL
- * (https://assokit.fr/carte/1), jamais les coordonnées elles-mêmes : vous
- * pouvez donc corriger un numéro de téléphone ici sans réimprimer quoi que
- * ce soit. C'est toute la raison de ce montage.
+ * Les cartes s'éditent dans le tableau de bord fondateur :
+ *     /fondateur-cartes
+ * et vivent en base, dans la table qr_cards.
+ *
+ * Ce fichier ne sert que si la base est injoignable ou si la migration
+ * 2026-09-08-cartes-qr.sql n'a pas encore été lancée. Un QR imprimé ne se
+ * rappelle pas : il vaut mieux servir des coordonnées un peu anciennes
+ * qu'une page d'erreur.
  *
  * Ne changez PAS les clés '1', '2', '3' — ce sont les adresses gravées dans
- * les QR codes. Tout le reste se modifie librement.
- *
- * Champs facultatifs : laissez la chaîne vide et la ligne disparaît de la
- * fiche comme du fichier .vcf. Aucun champ n'est obligatoire sauf le nom.
+ * les QR codes.
  */
 
 return [

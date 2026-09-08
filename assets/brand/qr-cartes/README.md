@@ -1,30 +1,37 @@
 # QR codes — cartes de visite numériques
 
-Trois QR codes. Scannés, ils ouvrent une fiche contact aux couleurs Assokit
-avec un bouton **Ajouter à mes contacts** : la personne enregistre le numéro,
-le nom, l'e-mail et l'adresse d'un geste, sans que vous ayez à donner une carte.
+Douze QR codes pré-générés. Scannés, ils ouvrent une fiche contact aux
+couleurs Assokit avec un bouton **Ajouter à mes contacts** : la personne
+enregistre le numéro, le nom, l'e-mail et l'adresse d'un geste, sans que
+vous ayez à donner une carte papier.
 
-| QR | Ouvre | Fiche |
-|---|---|---|
-| `qr-carte-1` | `https://assokit.fr/carte/1` | 1ʳᵉ personne |
-| `qr-carte-2` | `https://assokit.fr/carte/2` | 2ᵉ personne |
-| `qr-carte-3` | `https://assokit.fr/carte/3` | 3ᵉ personne |
+Les fiches s'éditent dans **le tableau de bord fondateur → Pilotage →
+Cartes de visite QR** (`/fondateur-cartes`).
+
+| QR | Ouvre |
+|---|---|
+| `qr-carte-1` … `qr-carte-12` | `https://assokit.fr/carte/1` … `/carte/12` |
+
+Douze emplacements existent d'avance, la plupart vides. Un emplacement vide
+répond « carte introuvable » : rien ne fuit tant que vous ne l'avez pas
+rempli. Remplissez-en un et son QR — déjà généré ici — devient utilisable
+immédiatement, sans rien produire de nouveau.
 
 ## Le QR encode l'URL, pas les coordonnées
 
-C'est la décision qui compte ici, et elle a trois conséquences.
+C'est la décision qui structure tout le reste, et elle a trois conséquences.
 
-**Vous pouvez corriger un numéro sans réimprimer.** Les coordonnées vivent
-dans `cartes-contacts.php`, pas dans l'encre. Un changement de téléphone,
-une nouvelle adresse, un intitulé de poste qui évolue : vous modifiez le
-fichier, les QR déjà distribués pointent sur la version à jour.
+**Vous corrigez un numéro sans réimprimer.** Les coordonnées vivent en base,
+pas dans l'encre. Changement de téléphone, nouvelle adresse, intitulé de
+poste qui évolue : vous modifiez la fiche, les QR déjà distribués pointent
+sur la version à jour.
 
-**Le code reste simple donc facile à scanner.** Une vCard complète encodée
-directement produit un QR beaucoup plus dense, qui exige un bon appareil,
-une bonne lumière et une impression nette. Ici le code est court.
+**Le code reste court, donc facile à scanner.** Une vCard complète encodée
+directement produit un QR bien plus dense, qui exige un bon appareil, une
+bonne lumière et une impression nette.
 
-**Ce qui est imprimé est définitif.** Ne changez jamais les clés `1`, `2`,
-`3` dans `cartes-contacts.php` : ce sont les adresses gravées dans les codes.
+**Ce qui est imprimé est définitif.** Les numéros `1` à `12` sont les
+adresses gravées dans les codes. Ils ne changent jamais.
 
 ## Quel fichier prendre
 
@@ -33,6 +40,8 @@ une bonne lumière et une impression nette. Ici le code est court.
 | `qr-carte-N.svg` | **imprimeur** — vectoriel, net à n'importe quelle taille |
 | `qr-carte-N.png` | 2048 px, noir sur blanc, usage courant |
 | `qr-carte-N-marque.png` | 1280 px, vert Assokit avec le symbole au centre |
+
+Les trois sont téléchargeables directement depuis `/fondateur-cartes`.
 
 ## Impression
 
@@ -43,14 +52,18 @@ une bonne lumière et une impression nette. Ici le code est court.
 - **Ne pas inverser** (clair sur foncé) : une partie des lecteurs refuse.
 - Sur fond coloré, poser le QR dans un rectangle blanc.
 
-Les six images ont été décodées après génération, y compris les versions
-avec le logo au centre, et jusqu'à 140 px de côté. La correction d'erreur
-est en niveau H (30 %), le seul qui autorise un logo central.
+Les 24 images ont été décodées après génération, versions avec logo central
+comprises, et jusqu'à 140 px de côté. La correction d'erreur est en niveau H
+(30 %), le seul qui autorise un logo au centre.
 
-## Renseigner les coordonnées
+## Mise en service
 
-Tout se passe dans `cartes-contacts.php`, à la racine du site. Un champ
-laissé vide disparaît de la fiche comme du fichier `.vcf` — rien ne casse.
+Une fois le code déployé sur le serveur, lancer la migration une seule fois :
 
-Après modification : `git commit`, `git push`, puis `git pull` sur le
-serveur. Les QR déjà imprimés continuent de fonctionner.
+```bash
+cd ~/public_html
+php migrations/run.php 2026-09-08-cartes-qr.sql
+```
+
+Tant qu'elle n'est pas passée, `/fondateur-cartes` le signale et les fiches
+retombent sur `cartes-contacts.php`.

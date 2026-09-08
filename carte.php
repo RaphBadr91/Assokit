@@ -6,23 +6,63 @@
  * /carte/1.vcf   le fichier vCard lui-même
  *
  * Le QR code encode l'URL, pas les coordonnées. Conséquence directe : les
- * informations se corrigent dans cartes-contacts.php sans réimprimer un seul
+ * informations se corrigent depuis /fondateur-cartes sans réimprimer un seul
  * QR code. Encoder la vCard dans le QR aurait figé les coordonnées dans
  * l'encre, et produit un QR bien plus dense donc plus dur à scanner.
  *
- * Aucune dépendance : ni base de données, ni session. La page reste debout
- * même si le reste du site est en maintenance — c'est un support imprimé
- * qu'on ne peut pas rappeler.
+ * Les fiches vivent en base (table qr_cards, éditée par le fondateur). Si la
+ * base est injoignable ou la migration pas encore passée, la page retombe sur
+ * cartes-contacts.php. Ce filet n'est pas de la coquetterie : un QR imprimé ne
+ * se rappelle pas, la page doit répondre même pendant une maintenance.
+ *
+ * Ni session, ni includes-layout : rien qui puisse tomber avec le reste.
  */
 
 declare(strict_types=1);
 
-$contacts = require __DIR__ . '/cartes-contacts.php';
-
 $slug = isset($_GET['c']) ? (string) $_GET['c'] : '';
 $wantVcf = !empty($_GET['vcf']);
 
-if (!isset($contacts[$slug])) {
+$c = null;
+
+// 1. La base fait foi.
+try {
+    require_once __DIR__ . '/config.php';
+    if (isset($pdo) && $pdo instanceof PDO) {
+        $st = $pdo->prepare("SELECT * FROM qr_cards WHERE slug = ? AND is_active = 1 LIMIT 1");
+        $st->execute([$slug]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            $c = [
+                'prenom' => $row['prenom'], 'nom' => $row['nom'],
+                'fonction' => $row['fonction'], 'societe' => $row['societe'],
+                'tel' => $row['tel'], 'tel_fixe' => $row['tel_fixe'],
+                'email' => $row['email'], 'site' => $row['site'],
+                'linkedin' => $row['linkedin'], 'note' => $row['note'],
+                'adresse' => [
+                    'rue' => $row['adr_rue'], 'cp' => $row['adr_cp'],
+                    'ville' => $row['adr_ville'], 'pays' => $row['adr_pays'],
+                ],
+            ];
+            // Compteur de scans. Best-effort : une fiche doit s'afficher même
+            // si l'écriture échoue (base en lecture seule, verrou…).
+            if (!$wantVcf) {
+                try {
+                    $pdo->prepare("UPDATE qr_cards SET scan_count = scan_count + 1, last_scan_at = NOW() WHERE slug = ?")
+                        ->execute([$slug]);
+                } catch (Throwable $e) { /* sans importance */ }
+            }
+        }
+    }
+} catch (Throwable $e) { /* on passe au filet */ }
+
+// 2. Filet : le fichier livré avec le code.
+if ($c === null && is_file(__DIR__ . '/cartes-contacts.php')) {
+    $contacts = require __DIR__ . '/cartes-contacts.php';
+    if (is_array($contacts) && isset($contacts[$slug])) $c = $contacts[$slug];
+}
+
+if ($c === null) {
     http_response_code(404);
     header('Content-Type: text/html; charset=utf-8');
     exit('<!doctype html><meta charset="utf-8"><title>Carte introuvable</title>'
@@ -30,7 +70,6 @@ if (!isset($contacts[$slug])) {
         . '<a href="https://assokit.fr" style="color:#059669">assokit.fr</a></p>');
 }
 
-$c = $contacts[$slug];
 $prenom  = trim((string) ($c['prenom'] ?? ''));
 $nom     = trim((string) ($c['nom'] ?? ''));
 $fn      = trim($prenom . ' ' . $nom);
