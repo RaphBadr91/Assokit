@@ -1,0 +1,89 @@
+# Build iOS Assokit — lancé depuis GitHub, sans Mac.
+#
+# Ce workflow ne compile rien lui-même : il déclenche `eas build`, qui compile
+# sur les serveurs macOS d'Expo. La machine GitHub ne sert qu'à envoyer l'ordre.
+# C'est pour cela qu'aucun Mac n'est nécessaire.
+#
+# ── À FAIRE UNE SEULE FOIS, avant le premier lancement ────────────────────────
+#
+# 1. Créer un jeton Expo :
+#      https://expo.dev/settings/access-tokens  →  "Create token"
+#      Copier la valeur (elle ne sera plus affichée ensuite).
+#
+# 2. L'enregistrer dans GitHub :
+#      Repo → Settings → Secrets and variables → Actions → New repository secret
+#      Name   : EXPO_TOKEN
+#      Secret : (coller le jeton)
+#
+# 3. Lancer : onglet Actions → "Build iOS (TestFlight)" → "Run workflow".
+#
+# ── Envoi automatique vers TestFlight (facultatif) ────────────────────────────
+#
+# Cocher `submit` n'aboutit que si EAS connaît déjà vos identifiants
+# App Store Connect. Le plus simple, une seule fois depuis n'importe quelle
+# machine ayant `eas` :  eas credentials  →  iOS → App Store Connect API Key.
+# Sinon, laissez `submit` décoché : le build produit un .ipa téléchargeable
+# depuis expo.dev, que Transporter peut envoyer à TestFlight.
+
+name: Build iOS (TestFlight)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Profil EAS"
+        type: choice
+        default: production
+        options: [production, preview]
+      submit:
+        description: "Envoyer le build à TestFlight après compilation"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ios-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: eas build --platform ios
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Le contexte `secrets` n'est pas lisible dans un `if:` de step — d'où le test en shell.
+      - name: Vérifier le jeton Expo
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Le secret EXPO_TOKEN est absent. Voir l'en-tête de .github/workflows/ios-build.yml (étapes 1 et 2)."
+            exit 1
+          fi
+          echo "Jeton Expo présent."
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Compiler
+        run: eas build --platform ios --profile ${{ inputs.profile }} --non-interactive
+
+      - name: Envoyer à TestFlight
+        if: ${{ inputs.submit }}
+        run: eas submit --platform ios --latest --non-interactive
