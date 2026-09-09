@@ -42,3 +42,11 @@ ALTER TABLE asso_prospects
   ADD COLUMN IF NOT EXISTS source     VARCHAR(16) NOT NULL DEFAULT 'manuel',
   ADD COLUMN IF NOT EXISTS qr_id      INT NULL,
   ADD COLUMN IF NOT EXISTS consent_at DATETIME NULL;
+
+-- Rôle du code. Ajouté après coup : le besoin premier n'était pas la collecte
+-- mais le remplacement de la carte de visite.
+--   contact  : la page ne montre que la fiche de l'association
+--   collecte : la page ne montre que le formulaire
+--   both     : les deux (valeur d'origine)
+ALTER TABLE asso_qr_codes
+  ADD COLUMN IF NOT EXISTS mode VARCHAR(12) NOT NULL DEFAULT 'both';

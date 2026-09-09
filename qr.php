@@ -22,6 +22,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 @require_once __DIR__ . '/rate-limit-helper.php';
+require_once __DIR__ . '/asso-vcard-helper.php';
 
 $token   = isset($_GET['t']) ? (string) $_GET['t'] : '';
 $wantVcf = !empty($_GET['vcf']);
@@ -67,33 +68,16 @@ $adr   = ($rue !== '' || $ville !== '')
     : '';
 
 // ── vCard de l'association ──────────────────────────────────────────────────
+// Le contenu vient du helper partagé : le QR « carte de visite » embarque
+// exactement la même fiche, elles ne doivent pas pouvoir diverger.
 if ($wantVcf) {
     if (empty($qr['show_vcard'])) qr_404();
-    $esc = static fn(string $v): string => str_replace(
-        ["\\", ";", ",", "\r\n", "\n", "\r"], ["\\\\", "\\;", "\\,", "\\n", "\\n", "\\n"], $v);
-
-    $lines = ['BEGIN:VCARD', 'VERSION:3.0'];
-    $lines[] = 'N:' . $esc($orgName) . ';;;;';
-    $lines[] = 'FN:' . $esc($orgName);
-    $lines[] = 'ORG:' . $esc($orgName);
-    if (!empty($qr['billing_phone'])) $lines[] = 'TEL;TYPE=WORK,VOICE:' . $esc((string) $qr['billing_phone']);
-    if (!empty($qr['billing_email'])) $lines[] = 'EMAIL;TYPE=INTERNET,PREF:' . $esc((string) $qr['billing_email']);
-    if ($rue !== '' || $ville !== '') {
-        $lines[] = 'ADR;TYPE=WORK:;;' . $esc($rue) . ';' . $esc($ville) . ';;' . $esc($cp) . ';' . $esc($pays);
-    }
-    $lines[] = 'REV:' . gmdate('Y-m-d\TH:i:s\Z');
-    $lines[] = 'END:VCARD';
-    $vcf = implode("\r\n", $lines) . "\r\n";
-
-    $safe = $orgName;
-    if (function_exists('iconv')) {
-        $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $safe);
-        if ($t !== false && $t !== '') $safe = $t;
-    }
-    $safe = trim((string) preg_replace('/[^A-Za-z0-9._-]+/', '-', $safe), '-') ?: 'contact';
-
+    // La requête aliase o.name en org_name pour ne pas écraser q.label :
+    // on rétablit la clé attendue par le helper, sinon la fiche s'appellerait
+    // « Association ».
+    $vcf = ak_org_vcard(array_merge($qr, ['name' => $orgName]), 'https://assokit.fr');
     header('Content-Type: text/vcard; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $safe . '.vcf"');
+    header('Content-Disposition: attachment; filename="' . ak_vcard_filename($orgName) . '.vcf"');
     header('X-Robots-Tag: noindex, nofollow');
     echo $vcf;
     exit;
@@ -197,6 +181,12 @@ header('X-Robots-Tag: noindex, nofollow');
   .vcard{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;padding:15px;
          border-radius:15px;background:var(--canvas);border:1px solid var(--line);color:var(--ink);
          font-size:15px;font-weight:600;text-decoration:none;margin-bottom:22px}
+  .coord{list-style:none;margin:0 0 4px}
+  .coord li a{display:flex;align-items:center;gap:12px;padding:13px 2px;border-bottom:1px solid var(--line);
+              color:var(--ink);text-decoration:none;font-size:14.5px;overflow-wrap:anywhere}
+  .coord li:last-child a{border-bottom:none}
+  .coord .ic{flex:none;width:34px;height:34px;border-radius:10px;background:var(--canvas);color:var(--acc);
+             display:flex;align-items:center;justify-content:center}
   .sep{display:flex;align-items:center;gap:12px;color:var(--ink-3);font-size:12px;margin-bottom:18px}
   .sep::before,.sep::after{content:"";flex:1;height:1px;background:var(--line)}
   label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
@@ -243,20 +233,44 @@ header('X-Robots-Tag: noindex, nofollow');
       </div>
     <?php else: ?>
 
+      <?php $mode = (string) ($qr['mode'] ?? 'both');
+            $voirContact = $mode !== 'collecte' && !empty($qr['show_vcard']);
+            $voirForm    = $mode !== 'contact'; ?>
       <?php if (trim((string) $qr['intro']) !== ''): ?>
         <p class="intro"><?= $h($qr['intro']) ?></p>
       <?php endif; ?>
 
-      <?php if (!empty($qr['show_vcard'])): ?>
+      <?php if ($voirContact): ?>
         <a class="vcard" href="/qr/<?= $h($token) ?>.vcf">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
           Ajouter <?= $h($orgName) ?> à mes contacts
         </a>
-        <div class="sep">ou laissez-nous vos coordonnées</div>
+        <?php if ($mode === 'contact'): ?>
+          <ul class="coord">
+            <?php if (!empty($qr['billing_phone'])):
+                    $tc = preg_replace('/[^0-9+]/', '', (string) $qr['billing_phone']); ?>
+              <li><a href="tel:<?= $h($tc) ?>"><span class="ic">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              </span><?= $h($qr['billing_phone']) ?></a></li>
+            <?php endif; ?>
+            <?php if (!empty($qr['billing_email'])): ?>
+              <li><a href="mailto:<?= $h($qr['billing_email']) ?>"><span class="ic">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+              </span><?= $h($qr['billing_email']) ?></a></li>
+            <?php endif; ?>
+            <?php if ($adr !== ''): ?>
+              <li><a href="https://maps.google.com/?q=<?= $h(rawurlencode($adr)) ?>" target="_blank" rel="noopener"><span class="ic">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              </span><?= $h($adr) ?></a></li>
+            <?php endif; ?>
+          </ul>
+        <?php endif; ?>
+        <?php if ($voirForm): ?><div class="sep">ou laissez-nous vos coordonnées</div><?php endif; ?>
       <?php endif; ?>
 
       <?php if ($err !== ''): ?><div class="err"><?= $h($err) ?></div><?php endif; ?>
 
+      <?php if ($voirForm): ?>
       <form method="post" action="/qr/<?= $h($token) ?>">
         <div class="hp" aria-hidden="true">
           <label for="website">Ne pas remplir</label>
@@ -291,6 +305,7 @@ header('X-Robots-Tag: noindex, nofollow');
 
         <button class="send" type="submit">Envoyer mes coordonnées</button>
       </form>
+      <?php endif; ?>
     <?php endif; ?>
 
     <p class="foot">Propulsé par <a href="https://assokit.fr" target="_blank" rel="noopener">Assokit</a></p>

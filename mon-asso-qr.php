@@ -16,6 +16,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+require_once __DIR__ . '/asso-vcard-helper.php';
 
 require_login();
 $user = current_user();
@@ -53,11 +54,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 // 32 hexadécimaux : l'adresse d'une page publique ne doit pas se
                 // déduire de l'identifiant de l'organisation.
                 $token = bin2hex(random_bytes(16));
+                $mode = in_array($_POST['mode'] ?? '', ['contact', 'collecte', 'both'], true)
+                        ? (string) $_POST['mode'] : 'both';
                 $pdo->prepare("INSERT INTO asso_qr_codes
-                        (org_id, token, label, intro, show_vcard, ask_phone, ask_message, created_by, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())")
+                        (org_id, token, label, intro, mode, show_vcard, ask_phone, ask_message, created_by, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())")
                     ->execute([$org_id, $token, mb_substr($label, 0, 120),
-                               mb_substr(trim((string) ($_POST['intro'] ?? '')), 0, 300),
+                               mb_substr(trim((string) ($_POST['intro'] ?? '')), 0, 300), $mode,
                                empty($_POST['show_vcard']) ? 0 : 1,
                                empty($_POST['ask_phone']) ? 0 : 1,
                                empty($_POST['ask_message']) ? 0 : 1,
@@ -66,11 +69,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             }
 
         } elseif ($action === 'update' && $id > 0) {
+            $mode = in_array($_POST['mode'] ?? '', ['contact', 'collecte', 'both'], true)
+                    ? (string) $_POST['mode'] : 'both';
             $st = $pdo->prepare("UPDATE asso_qr_codes
-                                 SET label = ?, intro = ?, show_vcard = ?, ask_phone = ?, ask_message = ?, updated_at = NOW()
+                                 SET label = ?, intro = ?, mode = ?, show_vcard = ?, ask_phone = ?, ask_message = ?, updated_at = NOW()
                                  WHERE id = ? AND org_id = ? AND deleted_at IS NULL");
             $st->execute([mb_substr(trim((string) ($_POST['label'] ?? '')), 0, 120),
-                          mb_substr(trim((string) ($_POST['intro'] ?? '')), 0, 300),
+                          mb_substr(trim((string) ($_POST['intro'] ?? '')), 0, 300), $mode,
                           empty($_POST['show_vcard']) ? 0 : 1,
                           empty($_POST['ask_phone']) ? 0 : 1,
                           empty($_POST['ask_message']) ? 0 : 1,
@@ -109,6 +114,19 @@ try {
 } catch (Throwable $e) {
     $migration_missing = true;
 }
+
+// Coordonnées de l'association, pour le QR « carte de visite » qui embarque
+// la vCard au lieu de pointer vers une page.
+$org = null;
+try {
+    $st = $pdo->prepare("SELECT name, billing_email, billing_phone, billing_address_street,
+                                billing_address_zip, billing_address_city, billing_address_country
+                         FROM organizations WHERE id = ? LIMIT 1");
+    $st->execute([$org_id]);
+    $org = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+} catch (Throwable $e) {}
+$vcard = $org ? ak_org_vcard($org, 'https://assokit.fr') : '';
+$org_incomplet = !$org || (empty($org['billing_phone']) && empty($org['billing_email']));
 
 $total_scans = array_sum(array_column($codes, 'scan_count'));
 $total_leads = array_sum(array_column($codes, 'submit_count'));
@@ -158,17 +176,30 @@ render_sidebar('mon-asso-qr');
   .qz-stats{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:15px;font-size:13px;color:var(--ink-3,#5F6D66)}
   .qz-stats b{color:var(--ink,#0B1A13);font-size:16px;display:block}
   .qz-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .qz-vis-grid{display:grid;grid-template-columns:210px 1fr;gap:22px;align-items:start}
+  .qz-vcf{list-style:none;margin:0 0 12px;font-size:13.5px;color:var(--ink-2,#45544D);line-height:1.75}
+  .qz-vcf b{font-size:15px;color:var(--ink,#0B1A13)}
+  .qz-note{font-size:12.5px;color:var(--ink-3,#5F6D66);line-height:1.55;border-top:1px solid var(--sep,#F1F5F4);padding-top:11px}
+  .qz-warn{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:11px;padding:11px 13px;font-size:13.5px;margin-bottom:12px}
+  .qz-warn a{color:#92400E;font-weight:600}
+  .qz-role{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .qz-role label{display:flex;align-items:center;gap:7px;padding:9px 13px;border:1px solid var(--line,#E7EEEA);
+                 border-radius:10px;font-size:13.5px;cursor:pointer;background:#fff}
+  .qz-role input{margin:0}
+  .qz-role label:has(input:checked){border-color:#059669;background:#ECFDF5;color:#065F46;font-weight:600}
+  @media (max-width:760px){ .qz-vis-grid{grid-template-columns:1fr} }
   .qz-empty{text-align:center;padding:40px 20px;color:var(--ink-3,#5F6D66)}
   @media (max-width:760px){ .qz-grid{grid-template-columns:1fr} }
 </style>
 
 <div class="qz-top">
   <div>
-    <h1 style="font-size:23px;margin:0 0 4px">Codes QR de collecte</h1>
-    <p style="color:var(--ink-3,#5F6D66);font-size:14px;margin:0;max-width:660px">
-      Imprimez un code sur votre stand ou vos affiches. En le scannant, la personne
-      vous enregistre dans son téléphone et vous laisse ses coordonnées — qui arrivent
-      directement dans <a href="/prospection" style="color:#059669;font-weight:600">Prospection</a>.
+    <h1 style="font-size:23px;margin:0 0 4px">Codes QR</h1>
+    <p style="color:var(--ink-3,#5F6D66);font-size:14px;margin:0;max-width:680px">
+      Remplacez vos cartes de visite : la personne scanne, vos coordonnées entrent
+      dans son téléphone. Et si vous le souhaitez, elle vous laisse les siennes —
+      elles arrivent alors dans <a href="/prospection" style="color:#059669;font-weight:600">Prospection</a>,
+      prêtes à être rappelées.
     </p>
   </div>
   <div class="qz-kpis">
@@ -187,6 +218,49 @@ render_sidebar('mon-asso-qr');
   </div>
 <?php else: ?>
 
+<div class="qz-panel qz-vis">
+  <div class="qz-vis-grid">
+    <div class="qz-qr">
+      <div class="box" id="qzVisite" data-name="carte-<?= h(ak_vcard_filename((string) ($org['name'] ?? 'asso'))) ?>"></div>
+      <div class="qz-dl">
+        <button type="button" data-dl="svg">SVG</button>
+        <button type="button" data-dl="png">PNG</button>
+      </div>
+    </div>
+    <div>
+      <h2>Votre carte de visite en QR</h2>
+      <p class="sub" style="margin-bottom:12px">
+        Ce code contient vos coordonnées. La personne le scanne avec l'appareil photo
+        de son téléphone : celui-ci propose aussitôt d'ajouter le contact.
+        Pas de page web, pas de connexion nécessaire — utile dans un hall où le réseau
+        ne passe pas.
+      </p>
+      <?php if ($org_incomplet): ?>
+        <div class="qz-warn">
+          Aucun téléphone ni e-mail n'est renseigné pour l'association : la fiche
+          enregistrée serait vide. Complétez-les dans
+          <a href="/parametres">Paramètres</a>, le code se mettra à jour tout seul ici.
+        </div>
+      <?php else: ?>
+        <ul class="qz-vcf">
+          <li><b><?= h($org['name']) ?></b></li>
+          <?php if (!empty($org['billing_phone'])): ?><li><?= h($org['billing_phone']) ?></li><?php endif; ?>
+          <?php if (!empty($org['billing_email'])): ?><li><?= h($org['billing_email']) ?></li><?php endif; ?>
+          <?php $a2 = trim(trim(($org['billing_address_street'] ?? '') . ', ' . trim(($org['billing_address_zip'] ?? '') . ' ' . ($org['billing_address_city'] ?? '')), ', '), ', ');
+                if ($a2 !== ''): ?><li><?= h($a2) ?></li><?php endif; ?>
+        </ul>
+      <?php endif; ?>
+      <p class="qz-note">
+        <b>Imprimez-le à 4 cm de côté au minimum</b> : il contient toute la fiche,
+        il est donc bien plus dense qu'un code qui pointe vers une page.<br>
+        Ce code est figé dans l'encre : si vous changez de numéro, il faudra le
+        réimprimer. Pour un code modifiable à distance, utilisez un code
+        « fiche contact » ci-dessous — il pointe vers une page que vous gardez à jour.
+      </p>
+    </div>
+  </div>
+</div>
+
 <div class="qz-panel">
   <h2>Nouveau code QR</h2>
   <p class="sub">Un code par occasion : vous saurez ainsi d'où vient chaque contact.</p>
@@ -195,6 +269,12 @@ render_sidebar('mon-asso-qr');
     <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
     <label class="f" for="nlabel">Nom du code</label>
     <input class="qz-in" id="nlabel" name="label" placeholder="Forum des associations 2026" maxlength="120">
+    <label class="f">Rôle de ce code</label>
+    <div class="qz-role">
+      <label><input type="radio" name="mode" value="both" checked> Les deux</label>
+      <label><input type="radio" name="mode" value="contact"> Fiche contact seule</label>
+      <label><input type="radio" name="mode" value="collecte"> Collecte seule</label>
+    </div>
     <label class="f" for="nintro">Message d'accueil <span style="font-weight:400;color:#5F6D66">— facultatif</span></label>
     <input class="qz-in" id="nintro" name="intro" placeholder="Merci de votre visite ! Laissez-nous vos coordonnées, nous revenons vers vous." maxlength="300">
     <div class="qz-opts">
@@ -245,6 +325,12 @@ render_sidebar('mon-asso-qr');
         <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
         <label class="f">Nom du code</label>
         <input class="qz-in" name="label" value="<?= h($c['label']) ?>" maxlength="120">
+        <label class="f">Rôle de ce code</label>
+        <div class="qz-role">
+          <label><input type="radio" name="mode" value="both"<?= ($c['mode'] ?? 'both') === 'both' ? ' checked' : '' ?>> Les deux</label>
+          <label><input type="radio" name="mode" value="contact"<?= ($c['mode'] ?? '') === 'contact' ? ' checked' : '' ?>> Fiche contact seule</label>
+          <label><input type="radio" name="mode" value="collecte"<?= ($c['mode'] ?? '') === 'collecte' ? ' checked' : '' ?>> Collecte seule</label>
+        </div>
         <label class="f">Message d'accueil</label>
         <input class="qz-in" name="intro" value="<?= h($c['intro']) ?>" maxlength="300">
         <div class="qz-opts">
@@ -275,8 +361,21 @@ render_sidebar('mon-asso-qr');
   // Le QR est une fonction pure de l'URL : on le dessine à l'affichage plutôt
   // que de stocker une image, qui pourrait diverger de l'adresse réelle.
   // Correction d'erreur en niveau H (30 %) : tient l'impression sur papier mat.
+  // Le QR « carte de visite » embarque la vCard elle-même. Niveau M (15 %)
+  // et non H : la vCard est bien plus longue qu'une URL, et le niveau H
+  // rendrait le code si dense qu'il faudrait l'imprimer très grand.
+  var visite = document.getElementById('qzVisite');
+  var vcard = <?= json_encode($vcard, JSON_UNESCAPED_UNICODE) ?>;
+  // Sans vCard (organisation illisible), on retire le bloc plutôt que de
+  // demander à la bibliothèque d'encoder une chaîne vide — elle lève.
+  if (visite && !vcard) { var pv = visite.closest('.qz-vis'); if (pv) pv.remove(); visite = null; }
+  if (visite) {
+    visite.dataset.qr = vcard;
+    visite.dataset.ecc = 'M';
+  }
+
   document.querySelectorAll('[data-qr]').forEach(function (box) {
-    var q = qrcode(0, 'H');
+    var q = qrcode(0, box.dataset.ecc || 'H');
     q.addData(box.dataset.qr);
     q.make();
     box.innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
@@ -328,7 +427,8 @@ render_sidebar('mon-asso-qr');
 </script>
 
 <p style="color:var(--ink-3,#5F6D66);font-size:13px;margin:20px 0 40px;max-width:700px">
-  À l'impression : 2 cm de côté au minimum, marge blanche conservée, jamais inversé.
+  À l'impression, pour les codes ci-dessus : 2 cm de côté au minimum, marge blanche
+  conservée, jamais inversé (clair sur foncé).
   Modifier le nom ou le message d'un code ne change pas son adresse : les exemplaires
   déjà imprimés continuent de fonctionner.
 </p>
