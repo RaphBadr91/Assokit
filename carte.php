@@ -24,6 +24,7 @@ $slug = isset($_GET['c']) ? (string) $_GET['c'] : '';
 $wantVcf = !empty($_GET['vcf']);
 
 $c = null;
+$dbFaitFoi = false;   // la table a répondu : son verdict est définitif
 
 // 1. La base fait foi.
 try {
@@ -32,6 +33,10 @@ try {
         $st = $pdo->prepare("SELECT * FROM qr_cards WHERE slug = ? AND is_active = 1 LIMIT 1");
         $st->execute([$slug]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
+        // La requête a abouti : la table existe. Qu'elle renvoie une fiche ou
+        // rien, c'est elle qui tranche — sinon « mettre hors ligne » depuis
+        // /fondateur-cartes serait sans effet, le filet reprenant la main.
+        $dbFaitFoi = true;
         if ($row) {
             $c = [
                 'prenom' => $row['prenom'], 'nom' => $row['nom'],
@@ -56,8 +61,9 @@ try {
     }
 } catch (Throwable $e) { /* on passe au filet */ }
 
-// 2. Filet : le fichier livré avec le code.
-if ($c === null && is_file(__DIR__ . '/cartes-contacts.php')) {
+// 2. Filet : le fichier livré avec le code. Il ne sert QUE si la base n'a pas
+// pu répondre — base injoignable ou migration pas encore passée.
+if ($c === null && !$dbFaitFoi && is_file(__DIR__ . '/cartes-contacts.php')) {
     $contacts = require __DIR__ . '/cartes-contacts.php';
     if (is_array($contacts) && isset($contacts[$slug])) $c = $contacts[$slug];
 }
