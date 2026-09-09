@@ -39,6 +39,7 @@ Disallow: /action-projet
 Disallow: /nouveau-dossier
 Disallow: /supprimer-dossier
 Disallow: /archives
+Disallow: /prospection
 
 # Endpoints techniques
 Disallow: /api/
@@ -97,6 +98,7 @@ Disallow: /action-projet
 Disallow: /nouveau-dossier
 Disallow: /supprimer-dossier
 Disallow: /archives
+Disallow: /prospection
 
 # Endpoints techniques
 Disallow: /api/
@@ -155,6 +157,7 @@ Disallow: /action-projet
 Disallow: /nouveau-dossier
 Disallow: /supprimer-dossier
 Disallow: /archives
+Disallow: /prospection
 
 # Endpoints techniques
 Disallow: /api/
@@ -213,6 +216,7 @@ Disallow: /action-projet
 Disallow: /nouveau-dossier
 Disallow: /supprimer-dossier
 Disallow: /archives
+Disallow: /prospection
 
 # Endpoints techniques
 Disallow: /api/
