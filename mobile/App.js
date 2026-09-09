@@ -78,8 +78,14 @@ const APP_ONLY_CSS = `
     var s = document.createElement('style');
     s.id = 'ak-app-only-css';
     s.textContent = '.ak-trial-banner{display:none!important}#ak-pwa-banner{display:none!important}.sb-mobile-header{display:none!important}#demo-banner{display:none!important}'
-      /* Conformité stores : aucune mention de paiement / abonnement Assokit dans l\'app */
-      + 'a[href*="/tarifs"],a[href*="/mon-asso-plan"],a[href*="/mon-asso-abonnement"],a[href*="/mon-asso-annuler-abonnement"],a[href*="/upgrade"],.ak-upsell,.ak-upgrade,.ak-pricing,[data-upsell]{display:none!important}';
+      /* Conformité stores : aucune mention de paiement / abonnement Assokit dans l\'app.
+         "/abonnement" en sous-chaîne couvre aussi /mon-asso-abonnement et
+         /mon-asso-annuler-abonnement ; l\'ancienne liste ne visait que les
+         seconds et laissait passer /abonnement, la page réellement liée
+         depuis la barre latérale.
+         Ne PAS masquer /mon-asso-facturation ni /facturation-hub : c\'est la
+         facturation que l\'association adresse à SES clients, hors sujet Apple. */
+      + 'a[href*="/tarifs"],a[href*="/abonnement"],a[href*="/mon-asso-plan"],a[href*="/mon-asso-paiement"],a[href*="/upgrade"],.ak-upsell,.ak-upgrade,.ak-pricing,[data-upsell]{display:none!important}';
     (document.head || document.documentElement).appendChild(s);
   }
 } catch(e){} })();
@@ -6689,7 +6695,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             if (/^https?:\/\//i.test(u) && !isAssokitUrl(u)) { Linking.openURL(u).catch(() => {}); return false; }
             // Conformité stores (Apple 3.1.1 / Google) : on ne charge JAMAIS une page
             // de tarifs / d'abonnement Assokit dans l'app -> redirection vers le dashboard.
-            if (/\/(tarifs|mon-asso-plan|mon-asso-abonnement|mon-asso-annuler-abonnement)(\b|\/|\?|$)/i.test(u)) {
+            // /abonnement manquait : la page existe, elle est liée depuis la barre
+            // latérale, et elle redirige côté serveur vers /mon-asso-plan — on la
+            // bloque en amont plutôt que de compter sur l'interception d'une
+            // redirection 302, que la WebView ne signale pas toujours.
+            // /mon-asso-paiement couvre aussi /mon-asso-paiement-success (limite de mot).
+            // /mon-asso-facturation reste autorisée : c'est la facturation de
+            // l'association à ses propres clients, pas un achat Assokit.
+            if (/\/(tarifs|abonnement|mon-asso-plan|mon-asso-paiement|mon-asso-abonnement|mon-asso-annuler-abonnement)(\b|\/|\?|$)/i.test(u)) {
               inject(gotoJS('/dashboard'));
               return false;
             }
