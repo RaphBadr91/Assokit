@@ -34,6 +34,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
 
 const BASE = 'https://assokit.fr';
 
@@ -696,6 +697,40 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+    </View>
+  );
+}
+
+/* ================================================================== */
+/*  EMPREINTE DU CODE EXÉCUTÉ                                          */
+/* ================================================================== */
+/**
+ * Le binaire et le JavaScript peuvent diverger : les mises à jour OTA
+ * (runtimeVersion = appVersion) font qu'un build neuf exécute le dernier
+ * bundle publié sur son canal, pas forcément celui qu'il embarque. Sans
+ * repère à l'écran, impossible de distinguer « la correction n'est pas
+ * dans le build » de « le build tourne sur un vieux bundle ».
+ *
+ * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
+ * la main quand l'interface change de façon visible.
+ */
+const UI_REV = '2026-09-10-a';
+
+function BuildStamp() {
+  // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
+  // tourne. Sinon, l'app exécute une mise à jour téléchargée — et son identifiant
+  // est la seule façon de savoir laquelle.
+  const surOTA = Updates.isEmbeddedLaunch === false && !!Updates.updateId;
+  const bundle = surOTA ? 'OTA ' + String(Updates.updateId).slice(0, 8) : 'embarqué';
+  const ligne = 'v' + (Constants.nativeAppVersion || '?')
+    + ' (' + (Constants.nativeBuildVersion || '?') + ')'
+    + ' · ' + UI_REV
+    + ' · ' + (Updates.channel || 'sans canal')
+    + ' · ' + bundle;
+
+  return (
+    <View style={{ marginTop: 22, alignItems: 'center' }} accessible accessibilityLabel={'Version : ' + ligne}>
+      <Text selectable style={{ fontSize: 11.5, color: INK_3, textAlign: 'center' }}>{ligne}</Text>
     </View>
   );
 }
@@ -5452,6 +5487,8 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
             <Text style={styles.deleteTxt}>Supprimer mon compte (RGPD)</Text>
           </TouchableOpacity>
         )}
+
+        <BuildStamp />
       </ScrollView>
     </KeyboardAvoidingView>
   );
