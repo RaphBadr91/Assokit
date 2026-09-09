@@ -187,6 +187,7 @@ if ($q !== '') {
 
 $rows = []; $stats = ['total' => 0, 'a_appeler' => 0, 'appeles' => 0, 'a_rappeler' => 0, 'en_retard' => 0];
 $events = [];
+$qr_labels = [];
 
 try {
     // Les rappels dus remontent en tête : c'est l'ordre dans lequel on
@@ -214,6 +215,18 @@ try {
           FROM asso_prospects WHERE org_id = ? AND deleted_at IS NULL");
     $st->execute([$org_id]);
     $stats = array_map('intval', $st->fetch(PDO::FETCH_ASSOC) ?: $stats);
+
+    // Libellés des codes QR, en requête séparée et tolérante : si la migration
+    // des QR n'a pas été passée, la prospection doit continuer de fonctionner.
+    // Une jointure aurait fait tomber toute la page.
+    if ($rows) {
+        try {
+            foreach ($pdo->query("SELECT id, label FROM asso_qr_codes WHERE org_id = " . (int) $org_id)
+                         ->fetchAll(PDO::FETCH_ASSOC) as $q) {
+                $qr_labels[(int) $q['id']] = (string) $q['label'];
+            }
+        } catch (Throwable $e) { /* migration QR pas encore passée */ }
+    }
 
     if ($rows) {
         $ids = array_column($rows, 'id');
@@ -291,6 +304,7 @@ render_sidebar('prospection');
   .pr-bg.no{background:#F1F5F9;color:#64748B}
   .pr-bg.cb{background:#FEF3C7;color:#92400E}
   .pr-bg.due{background:#FEE2E2;color:#991B1B}
+  .pr-bg.qr{background:#EDE9FE;color:#5B21B6}
   .pr-acts{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .pr-detail{border-top:1px solid var(--sep,#F1F5F4);padding:14px 16px;background:#FBFDFC;display:grid;grid-template-columns:1fr 300px;gap:20px}
   .pr-detail h4{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3,#5F6D66);margin:0 0 9px}
@@ -329,6 +343,10 @@ render_sidebar('prospection');
     </p>
   </div>
   <div class="pr-kpis">
+    <a class="pr-kpi" href="/mon-asso-qr" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:9px;min-width:0">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM18 18h3v3h-3z"/></svg>
+      <span style="font-size:13px;font-weight:600;color:#059669">Codes QR</span>
+    </a>
     <div class="pr-kpi"><b><?= $stats['total'] ?></b><span>fiches</span></div>
     <div class="pr-kpi"><b><?= $stats['a_appeler'] ?></b><span>à appeler</span></div>
     <div class="pr-kpi"><b><?= $stats['appeles'] ?></b><span>appelés</span></div>
@@ -398,6 +416,11 @@ render_sidebar('prospection');
       <?php if ($deleted): ?>
         <span class="pr-bg no">SUPPRIMÉE</span>
       <?php else: ?>
+        <?php if (($p['source'] ?? 'manuel') === 'qr'): ?>
+          <span class="pr-bg qr" title="Coordonnées laissées par la personne elle-même">VIA QR<?php
+            $ql = $qr_labels[(int) ($p['qr_id'] ?? 0)] ?? '';
+            if ($ql !== '') echo ' · ' . h($ql); ?></span>
+        <?php endif; ?>
         <?php if (!empty($p['called'])): ?>
           <span class="pr-bg ok">APPELÉ<?= !empty($p['called_at']) ? ' · ' . h(date('d/m/Y H:i', strtotime((string) $p['called_at']))) : '' ?></span>
         <?php else: ?>

@@ -40,6 +40,9 @@ Disallow: /nouveau-dossier
 Disallow: /supprimer-dossier
 Disallow: /archives
 Disallow: /prospection
+Disallow: /mon-asso-qr
+# Pages de collecte : on y arrive en scannant un QR, pas par Google
+Disallow: /qr/
 
 # Endpoints techniques
 Disallow: /api/
@@ -99,6 +102,9 @@ Disallow: /nouveau-dossier
 Disallow: /supprimer-dossier
 Disallow: /archives
 Disallow: /prospection
+Disallow: /mon-asso-qr
+# Pages de collecte : on y arrive en scannant un QR, pas par Google
+Disallow: /qr/
 
 # Endpoints techniques
 Disallow: /api/
@@ -158,6 +164,9 @@ Disallow: /nouveau-dossier
 Disallow: /supprimer-dossier
 Disallow: /archives
 Disallow: /prospection
+Disallow: /mon-asso-qr
+# Pages de collecte : on y arrive en scannant un QR, pas par Google
+Disallow: /qr/
 
 # Endpoints techniques
 Disallow: /api/
@@ -217,6 +226,9 @@ Disallow: /nouveau-dossier
 Disallow: /supprimer-dossier
 Disallow: /archives
 Disallow: /prospection
+Disallow: /mon-asso-qr
+# Pages de collecte : on y arrive en scannant un QR, pas par Google
+Disallow: /qr/
 
 # Endpoints techniques
 Disallow: /api/

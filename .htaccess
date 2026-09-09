@@ -423,6 +423,10 @@ RewriteCond %{REQUEST_URI} !^/api/
 RewriteCond %{THE_REQUEST} \s/+(.+?)\.php[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
 
+# Codes QR de collecte des associations. Le .vcf d'abord, même raison.
+RewriteRule ^qr/([a-f0-9]{32})\.vcf$  qr.php?t=$1&vcf=1 [L,QSA]
+RewriteRule ^qr/([a-f0-9]{32})/?$      qr.php?t=$1       [L,QSA]
+
 # Cartes de visite numériques (QR codes). Le .vcf d'abord : sinon la règle
 # suivante avalerait « 1.vcf » comme un identifiant de carte.
 RewriteRule ^carte/([A-Za-z0-9_-]+)\.vcf$  carte.php?c=$1&vcf=1 [L,QSA]
