@@ -2,9 +2,14 @@
 /**
  * prospection.php — Prospection téléphonique (association).
  * --------------------------------------------------------------
- * Une fiche par personne à appeler : nom, prénom, téléphone, e-mail.
- * Deux gestes pendant l'appel — « Appelé » (horodaté automatiquement) et
- * « À rappeler le… » — plus un historique de tout ce qui a été fait.
+ * Une fiche par personne à contacter : nom, prénom, téléphone, e-mail.
+ * Trois gestes, tous horodatés par le serveur — « Appel : oui/non »,
+ * « E-mail : oui/non », « À rappeler le… » — plus un historique de tout ce
+ * qui a été fait, par qui et quand.
+ *
+ * Deux canaux séparés plutôt qu'un état « contacté » : sur un même prospect
+ * on appelle, on tombe sur un répondeur, on envoie un e-mail, on rappelle.
+ * Savoir lequel a déjà servi change ce qu'on fait au coup suivant.
  *
  * Les données sont cloisonnées par organisation : chaque requête filtre sur
  * org_id, y compris les écritures, pour qu'un identifiant deviné dans un
@@ -99,6 +104,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $msg = $yes ? "Appel enregistré." : "Appel annulé.";
             }
 
+        } elseif ($action === 'mail' && $pid > 0) {
+            // Même principe que l'appel : la date vient du serveur. Un
+            // canal distinct, parce que « appelé » et « relancé par e-mail »
+            // n'appellent pas la même action suivante.
+            $yes = ($_POST['value'] ?? '') === '1';
+            $st = $pdo->prepare("UPDATE asso_prospects
+                                 SET emailed = ?, emailed_at = " . ($yes ? 'NOW()' : 'NULL') . ",
+                                     updated_by = ?, updated_at = NOW()
+                                 WHERE id = ? AND org_id = ? AND deleted_at IS NULL");
+            $st->execute([$yes ? 1 : 0, $uid, $pid, $org_id]);
+            if ($st->rowCount() > 0) {
+                prosp_log($pdo, $org_id, $pid, $uid, $yes ? 'mail_yes' : 'mail_no');
+                $msg = $yes ? "E-mail enregistré." : "E-mail annulé.";
+            }
+
         } elseif ($action === 'callback' && $pid > 0) {
             $when = prosp_dt($_POST['callback_at'] ?? '');
             $st = $pdo->prepare("UPDATE asso_prospects SET callback_at = ?, updated_by = ?, updated_at = NOW()
@@ -176,6 +196,8 @@ if ($filtre === 'corbeille') {
     $where[] = 'p.deleted_at IS NULL';
     if ($filtre === 'a_appeler')      $where[] = 'p.called = 0';
     elseif ($filtre === 'appeles')    $where[] = 'p.called = 1';
+    elseif ($filtre === 'emails')     $where[] = 'p.emailed = 1';
+    elseif ($filtre === 'jamais')     $where[] = 'p.called = 0 AND p.emailed = 0';
     elseif ($filtre === 'a_rappeler') $where[] = 'p.callback_at IS NOT NULL';
     elseif ($filtre === 'en_retard')  $where[] = 'p.callback_at IS NOT NULL AND p.callback_at <= NOW()';
 }
@@ -185,7 +207,7 @@ if ($q !== '') {
     array_push($params, $like, $like, $like, $like);
 }
 
-$rows = []; $stats = ['total' => 0, 'a_appeler' => 0, 'appeles' => 0, 'a_rappeler' => 0, 'en_retard' => 0];
+$rows = []; $stats = ['total' => 0, 'a_appeler' => 0, 'appeles' => 0, 'emails' => 0, 'a_rappeler' => 0, 'en_retard' => 0];
 $events = [];
 $qr_labels = [];
 
@@ -210,6 +232,7 @@ try {
             COUNT(*) AS total,
             SUM(called = 0) AS a_appeler,
             SUM(called = 1) AS appeles,
+            SUM(emailed = 1) AS emails,
             SUM(callback_at IS NOT NULL) AS a_rappeler,
             SUM(callback_at IS NOT NULL AND callback_at <= NOW()) AS en_retard
           FROM asso_prospects WHERE org_id = ? AND deleted_at IS NULL");
@@ -248,6 +271,8 @@ $EVENT_LABEL = [
     'edit'           => 'Fiche modifiée',
     'call_yes'       => 'Marquée appelée',
     'call_no'        => 'Appel annulé',
+    'mail_yes'       => 'E-mail envoyé',
+    'mail_no'        => 'E-mail annulé',
     'callback_set'   => 'Rappel programmé',
     'callback_clear' => 'Rappel retiré',
     'delete'         => 'Supprimée',
@@ -258,6 +283,8 @@ $FILTRES = [
     'tous'       => 'Tous',
     'a_appeler'  => 'À appeler',
     'appeles'    => 'Appelés',
+    'emails'     => 'E-mail envoyé',
+    'jamais'     => 'Jamais contactés',
     'a_rappeler' => 'À rappeler',
     'en_retard'  => 'Rappels dus',
     'corbeille'  => 'Corbeille',
@@ -305,6 +332,7 @@ render_sidebar('prospection');
   .pr-bg.cb{background:#FEF3C7;color:#92400E}
   .pr-bg.due{background:#FEE2E2;color:#991B1B}
   .pr-bg.qr{background:#EDE9FE;color:#5B21B6}
+  .pr-bg.ml{background:#DBEAFE;color:#1E40AF}
   .pr-acts{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .pr-detail{border-top:1px solid var(--sep,#F1F5F4);padding:14px 16px;background:#FBFDFC;display:grid;grid-template-columns:1fr 300px;gap:20px}
   .pr-detail h4{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3,#5F6D66);margin:0 0 9px}
@@ -336,10 +364,10 @@ render_sidebar('prospection');
 
 <div class="pr-top">
   <div>
-    <h1 style="font-size:23px;margin:0 0 4px">Prospection téléphonique</h1>
-    <p style="color:var(--ink-3,#5F6D66);font-size:14px;margin:0">
-      Marquez l'appel d'un clic — la date est posée automatiquement — et programmez le rappel.
-      Chaque geste est daté et signé dans l'historique de la fiche.
+    <h1 style="font-size:23px;margin:0 0 4px">Prospection</h1>
+    <p style="color:var(--ink-3,#5F6D66);font-size:14px;margin:0;max-width:680px">
+      Marquez l'appel ou l'e-mail d'un clic — la date est posée automatiquement — et
+      programmez le rappel. Chaque geste est daté et signé dans l'historique de la fiche.
     </p>
   </div>
   <div class="pr-kpis">
@@ -350,6 +378,7 @@ render_sidebar('prospection');
     <div class="pr-kpi"><b><?= $stats['total'] ?></b><span>fiches</span></div>
     <div class="pr-kpi"><b><?= $stats['a_appeler'] ?></b><span>à appeler</span></div>
     <div class="pr-kpi"><b><?= $stats['appeles'] ?></b><span>appelés</span></div>
+    <div class="pr-kpi"><b><?= $stats['emails'] ?></b><span>e-mails</span></div>
     <div class="pr-kpi <?= $stats['en_retard'] > 0 ? 'hot' : '' ?>"><b><?= $stats['en_retard'] ?></b><span>rappels dus</span></div>
   </div>
 </div>
@@ -426,6 +455,9 @@ render_sidebar('prospection');
         <?php else: ?>
           <span class="pr-bg no">NON APPELÉ</span>
         <?php endif; ?>
+        <?php if (!empty($p['emailed'])): ?>
+          <span class="pr-bg ml">E-MAIL<?= !empty($p['emailed_at']) ? ' · ' . h(date('d/m/Y H:i', strtotime((string) $p['emailed_at']))) : '' ?></span>
+        <?php endif; ?>
         <?php if (!empty($p['callback_at'])): ?>
           <span class="pr-bg <?= $due ? 'due' : 'cb' ?>">RAPPEL <?= h(date('d/m/Y H:i', strtotime((string) $p['callback_at']))) ?></span>
         <?php endif; ?>
@@ -455,6 +487,18 @@ render_sidebar('prospection');
           <button type="submit" name="value" value="0" class="<?= empty($p['called']) ? 'on off' : '' ?>"
                   <?= empty($p['called']) ? 'aria-pressed="true"' : '' ?>>NON</button>
         </form>
+
+        <form method="post" action="/prospection<?= $qs_keep ? '?' . h($qs_keep) : '' ?>" class="pr-seg">
+          <input type="hidden" name="action" value="mail">
+          <input type="hidden" name="id" value="<?= $pid ?>">
+          <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+          <span class="pr-seg-lab">E-mail</span>
+          <button type="submit" name="value" value="1" class="<?= !empty($p['emailed']) ? 'on' : '' ?>"
+                  <?= !empty($p['emailed']) ? 'aria-pressed="true"' : '' ?>>OUI</button>
+          <button type="submit" name="value" value="0" class="<?= empty($p['emailed']) ? 'on off' : '' ?>"
+                  <?= empty($p['emailed']) ? 'aria-pressed="true"' : '' ?>>NON</button>
+        </form>
+
 
         <form method="post" action="/prospection<?= $qs_keep ? '?' . h($qs_keep) : '' ?>" class="pr-cb">
           <input type="hidden" name="action" value="callback">
