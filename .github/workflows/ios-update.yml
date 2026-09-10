@@ -1,0 +1,81 @@
+# Publier une mise à jour OTA — corrige le JavaScript de l'app sans repasser
+# par l'App Store, et sans Mac.
+#
+# À quoi ça sert : runtimeVersion vaut appVersion (1.0.0), donc chaque build
+# exécute le dernier bundle publié sur son canal, pas celui qu'il embarque.
+# Publier ici remplace ce bundle par le code de la branche — l'app installée
+# se corrige toute seule au lancement suivant.
+#
+# Prérequis : le même secret EXPO_TOKEN que pour le build (voir ios-build.yml).
+#
+# Côté téléphone : fermer complètement l'app, la rouvrir (elle télécharge),
+# la refermer, la rouvrir (elle applique). Deux lancements, parce que
+# fallbackToCacheTimeout vaut 0 : l'app ne fait jamais attendre au démarrage.
+
+name: Publier une mise à jour OTA
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Canal EAS"
+        type: choice
+        default: production
+        options: [production, preview]
+      message:
+        description: "Message de la mise à jour (visible sur expo.dev)"
+        type: string
+        default: "Correctif depuis GitHub"
+
+concurrency:
+  group: ios-update-${{ inputs.branch }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: eas update
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier le jeton Expo
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Le secret EXPO_TOKEN est absent. Voir l'en-tête de .github/workflows/ios-build.yml."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      # Ce qui tourne actuellement sur le canal, avant de le remplacer :
+      # si le tableau de bord natif n'apparaissait pas, la réponse est ici.
+      - name: État du canal avant publication
+        run: eas update:list --branch ${{ inputs.branch }} --limit 5 --non-interactive || true
+
+      - name: Publier
+        run: eas update --branch ${{ inputs.branch }} --message "${{ inputs.message }}" --non-interactive
+
+      - name: Rappel
+        run: |
+          echo "Sur le téléphone : fermer l'app complètement, la rouvrir (téléchargement),"
+          echo "la refermer, la rouvrir (application). Puis Réglages -> la ligne du bas"
+          echo "doit afficher la révision d'interface 2026-09-10-a et un identifiant OTA."
