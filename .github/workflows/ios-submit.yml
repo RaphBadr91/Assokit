@@ -1,0 +1,71 @@
+# Envoyer le dernier build iOS vers TestFlight.
+#
+# Séparé du workflow de build à dessein : recompiler seulement pour envoyer
+# coûte de longues minutes pour rien. Ici on prend le dernier build terminé
+# sur EAS et on le transmet à Apple.
+#
+# Prérequis : le secret EXPO_TOKEN, et les identifiants App Store Connect
+# déjà enregistrés côté EAS — c'est le cas depuis la soumission du build 39
+# (« App Store Connect API Key already set up · Key Source: EAS servers »).
+# Sans eux, `eas submit --non-interactive` s'arrête au lieu de demander.
+
+name: Envoyer vers TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Profil EAS"
+        type: choice
+        default: production
+        options: [production, preview]
+
+concurrency:
+  group: ios-submit
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    name: eas submit --latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier le jeton Expo
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Le secret EXPO_TOKEN est absent."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # Quel build va partir, et depuis quel commit : la seule vérification
+      # qui compte, après plusieurs envois partis d'un dossier périmé.
+      - name: Build qui sera envoyé
+        run: eas build:list --platform ios --status finished --limit 3 --non-interactive
+
+      - name: Envoyer
+        run: eas submit --platform ios --latest --profile ${{ inputs.profile }} --non-interactive
+
+      - name: Suite
+        run: |
+          echo "Apple traite le binaire en 10 à 30 min, puis il apparaît dans TestFlight."
+          echo "Sur le téléphone : installer la mise à jour, ouvrir Réglages,"
+          echo "et lire la ligne du bas — elle doit afficher 2026-09-10-a."
