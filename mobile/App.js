@@ -720,13 +720,21 @@ function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
   // tourne. Sinon, l'app exécute une mise à jour téléchargée — et son identifiant
   // est la seule façon de savoir laquelle.
-  const surOTA = Updates.isEmbeddedLaunch === false && !!Updates.updateId;
-  const bundle = surOTA ? 'OTA ' + String(Updates.updateId).slice(0, 8) : 'embarqué';
+  // Lire Updates.* plante si le module natif est absent du binaire — ce fut
+  // le cas des builds antérieurs au 5 septembre, compilés avant l'ajout
+  // d'expo-updates. Cet écran porte la suppression de compte exigée par
+  // Apple : il ne doit jamais tomber.
+  let canal = 'sans OTA', bundle = 'embarqué';
+  try {
+    canal = Updates.channel || 'sans canal';
+    if (Updates.isEmbeddedLaunch === false && Updates.updateId) {
+      bundle = 'OTA ' + String(Updates.updateId).slice(0, 8);
+    }
+  } catch (e) { /* binaire sans expo-updates */ }
+
   const ligne = 'v' + (Constants.nativeAppVersion || '?')
     + ' (' + (Constants.nativeBuildVersion || '?') + ')'
-    + ' · ' + UI_REV
-    + ' · ' + (Updates.channel || 'sans canal')
-    + ' · ' + bundle;
+    + ' · ' + UI_REV + ' · ' + canal + ' · ' + bundle;
 
   return (
     <View style={{ marginTop: 22, alignItems: 'center' }} accessible accessibilityLabel={'Version : ' + ligne}>
