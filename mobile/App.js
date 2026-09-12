@@ -714,7 +714,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-09-10-a';
+const UI_REV = '2026-09-12-a';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -5533,6 +5533,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [kpi, setKpi] = useState(null);
   const [kpiLoading, setKpiLoading] = useState(false);
   const [kpiError, setKpiError] = useState(false);
+  // Juste après la connexion, la première demande de chiffres part parfois
+  // avant que la session de la WebView soit posée : elle échoue, et l'accueil
+  // affichait « Connexion impossible » pendant deux à trois secondes avant
+  // qu'une seconde tentative aboutisse. On réessaie donc une fois en silence
+  // et on ne montre l'erreur que si la seconde échoue aussi.
+  const kpiRetry = useRef(0);
+  const kpiRetryTimer = useRef(null);
   const [projects, setProjects] = useState(null);
   const [projLoading, setProjLoading] = useState(false);
   const [people, setPeople] = useState(null);
@@ -5686,11 +5693,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (webRef.current) webRef.current.injectJavaScript(js);
   }, []);
 
-  const fetchKpis = useCallback(() => {
+  const fetchKpis = useCallback((silencieux) => {
+    if (!silencieux) kpiRetry.current = 0;
     setKpiLoading(true);
     setKpiError(false);
     inject(FETCH_KPIS_JS);
   }, [inject]);
+
+  // onMessage n'a pas fetchKpis dans ses dépendances : on passe par une
+  // référence pour ne pas rejouer une version périmée de la fonction.
+  const fetchKpisRef = useRef(fetchKpis);
+  useEffect(() => { fetchKpisRef.current = fetchKpis; }, [fetchKpis]);
 
   const fetchProjects = useCallback(() => {
     setProjLoading(true);
@@ -6263,6 +6276,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (actTimer.current) clearTimeout(actTimer.current);
     if (formTimer.current) clearTimeout(formTimer.current);
     if (logoutTimer.current) clearTimeout(logoutTimer.current);
+    if (kpiRetryTimer.current) clearTimeout(kpiRetryTimer.current);
   }, []);
 
   const onMessage = (e) => {
@@ -6289,8 +6303,21 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       // On NE stocke PAS cet objet comme donnee (sinon ecrans a "0 EUR" trompeurs) :
       // on coupe le loader, on marque l'erreur, et on conserve d'eventuelles donnees deja chargees.
       if (msg && msg.__akkpi) {
-        if (msg.__akkpi.ok === false) { setKpiLoading(false); setKpiError(true); }
-        else { setKpi(msg.__akkpi); setKpiError(false); setKpiLoading(false); }
+        if (msg.__akkpi.ok === false) {
+          if (kpiRetry.current < 1) {
+            // Première panne : on reste sur le squelette de chargement plutôt
+            // que d'accuser le réseau, et on retente une fois.
+            kpiRetry.current += 1;
+            clearTimeout(kpiRetryTimer.current);
+            kpiRetryTimer.current = setTimeout(() => { fetchKpisRef.current(true); }, 1200);
+          } else {
+            setKpiLoading(false);
+            setKpiError(true);
+          }
+        } else {
+          kpiRetry.current = 0;
+          setKpi(msg.__akkpi); setKpiError(false); setKpiLoading(false);
+        }
       }
       if (msg && msg.__akprojects) {
         if (msg.__akprojects.ok === false) { setProjLoading(false); }
