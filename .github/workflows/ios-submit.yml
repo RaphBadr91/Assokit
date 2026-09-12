@@ -58,14 +58,32 @@ jobs:
 
       # Quel build va partir, et depuis quel commit : la seule vérification
       # qui compte, après plusieurs envois partis d'un dossier périmé.
+      # Et si aucun build n'est terminé, autant le dire ici plutôt que de
+      # laisser `--latest` échouer trois lignes plus bas sans expliquer.
       - name: Build qui sera envoyé
-        run: eas build:list --platform ios --status finished --limit 3 --non-interactive
+        run: |
+          set -o pipefail
+          eas build:list --platform ios --status finished --limit 3 --non-interactive 2>&1 | tee /tmp/builds.log
+          if ! grep -qi 'ID' /tmp/builds.log; then
+            echo "::error::Aucun build iOS terminé sur EAS. Le build est-il encore en file d'attente ? Lancez d'abord « Build iOS (TestFlight) » et attendez qu'il passe en Finished."
+            exit 1
+          fi
 
+      # La sortie d'EAS est reprise en annotation : sans cela GitHub n'affiche
+      # que « exit code 1 », ce qui n'apprend rien sur la cause.
       - name: Envoyer
-        run: eas submit --platform ios --latest --profile ${{ inputs.profile }} --non-interactive
+        run: |
+          set +e
+          eas submit --platform ios --latest --profile ${{ inputs.profile }} --non-interactive 2>&1 | tee /tmp/submit.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            # Joint sur une ligne : une annotation GitHub ne rend pas les retours.
+            echo "::error::$(tail -n 20 /tmp/submit.log | tr '\n' ' ' | tr -s ' ' | cut -c1-900)"
+            exit "$code"
+          fi
 
       - name: Suite
         run: |
           echo "Apple traite le binaire en 10 à 30 min, puis il apparaît dans TestFlight."
           echo "Sur le téléphone : installer la mise à jour, ouvrir Réglages,"
-          echo "et lire la ligne du bas — elle doit afficher 2026-09-10-a."
+          echo "et lire la ligne du bas — elle doit afficher 2026-09-12-a."

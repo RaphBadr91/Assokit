@@ -86,4 +86,12 @@ jobs:
 
       - name: Envoyer à TestFlight
         if: ${{ inputs.submit }}
-        run: eas submit --platform ios --latest --non-interactive
+        run: |
+          set +e
+          eas submit --platform ios --latest --non-interactive 2>&1 | tee /tmp/submit.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            # Sans cela GitHub n'affiche que « exit code 1 » dans les annotations.
+            echo "::error::$(tail -n 20 /tmp/submit.log | tr '\n' ' ' | tr -s ' ' | cut -c1-900)"
+            exit "$code"
+          fi
