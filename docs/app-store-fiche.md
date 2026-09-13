@@ -220,13 +220,26 @@ Obligatoires : **6,7 pouces** (iPhone 15/16 Pro Max), 3 minimum, 10 maximum.
 Prenez-les depuis le build TestFlight, sur un compte contenant de vraies
 données. Apple rejette les captures qui ne correspondent pas à l'app.
 
-Ordre conseillé, du plus parlant au plus détaillé :
+Dix planches vides sont prêtes dans `assets/app-store/` (JPEG 1290 × 2796),
+avec un emplacement au ratio exact d'une capture 6,7 pouces. Le fichier
+Figma correspondant s'appelle **Assokit — Captures App Store**. Le mode
+d'emploi est dans `assets/app-store/README.md`.
 
-1. Accueil avec ses indicateurs
-2. Liste des adhérents
-3. Tableau de bord complet
-4. Une facture ou un devis
-5. Agenda
+Les trois premières sont les seules visibles sans faire défiler sur la fiche
+App Store : ce sont elles qui décident du téléchargement.
+
+| # | Planche | Écran à y déposer |
+|---|---|---|
+| 1 | Tableau de bord | l'accueil avec ses indicateurs |
+| 2 | Adhérents | la liste, bien remplie |
+| 3 | Cotisations | qui a payé, qui reste à relancer |
+| 4 | Facturation | une facture ou un devis |
+| 5 | Projets | un projet et ses étapes |
+| 6 | Agenda | le mois en cours |
+| 7 | Subventions | les six demandes, leurs statuts |
+| 8 | Communication | un canal de discussion |
+| 9 | Codes QR | un code généré |
+| 10 | Fait en France | l'écran de votre choix |
 
 ---
 
