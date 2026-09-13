@@ -21,6 +21,9 @@ require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/stripe-helpers.php';
 
 require_login();
+// Apple 3.1.1 : aucun tunnel d'achat ne doit s'ouvrir dans l'app.
+ak_block_billing_page();
+
 $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 

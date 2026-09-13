@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/ak-icons.php';   // jeu d'icônes maison (ak_icon, ak_icon_badge, ak_dot)
+require_once __DIR__ . '/app-context.php'; // ak_billing_hidden() : rien qui ressemble à un achat dans l'app (Apple 3.1.1)
 
 if (!function_exists('ak_render_rich_text')) {
     /**
@@ -1283,6 +1284,8 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
  */
 function render_trial_banner() {
     global $pdo;
+    // Le bandeau porte un bouton « S'abonner » : interdit dans l'app (Apple 3.1.1).
+    if (ak_billing_hidden()) return;
     if (!function_exists('current_user')) return;
     $user = current_user();
     if (!$user || empty($user['org_id'])) return;
@@ -1719,10 +1722,13 @@ function render_sidebar($active = 'accueil') {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
           Archives
         </a>
+<?php // Aucune entrée « Abonnement » dans l'app : Apple 3.1.1 interdit d'y mener vers un achat externe. ?>
+<?php if (!ak_billing_hidden()): ?>
         <a href="/abonnement" class="sb-link <?= $active === 'abonnement' ? 'active' : '' ?>">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
           Abonnement
         </a>
+<?php endif; ?>
 <?php endif; ?>
       </div>
       <?php endif; ?>

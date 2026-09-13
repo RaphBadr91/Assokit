@@ -102,14 +102,19 @@ Assokit is a management platform for French non-profit associations (loi 1901)
 and small businesses. It requires an account.
 
 DEMO ACCOUNT
-Email: [à compléter]
-Password: [à compléter]
-This account contains sample members, projects, invoices and events.
+Email: apple.review@assokit.fr
+Password: AppleReview2026!
+The account is an administrator of a sample association with 50 members,
+38 membership fees, 40 invoices, 10 clients, 12 events, projects, grant
+applications and message channels. All data is fictional.
 
 NO IN-APP PURCHASE
-The app does not sell anything. Assokit subscriptions are purchased only on our
-website, outside the app. No pricing or subscription page is reachable from the
-app: navigation to those URLs is blocked in code.
+The app does not sell anything and shows no price, no subscription button and
+no link to any purchase page. The server detects requests coming from the app
+(user agent "AssokitApp") and removes every billing surface before rendering:
+the subscription pages redirect, the payment endpoint refuses, and the upgrade
+banners are not emitted. Assokit subscriptions are purchased only on our
+website, in a web browser, outside the app.
 
 ACCOUNT DELETION
 Settings > Delete my account (RGPD). The account is anonymised and deactivated
@@ -119,6 +124,69 @@ LANGUAGE
 The app is in French, as it targets French associations and their legal
 obligations.
 ```
+
+---
+
+## Compte de démonstration
+
+```
+apple.review@assokit.fr
+AppleReview2026!
+```
+
+Créé par `demo-sql/08-compte-apple-review.sql`. Pour l'installer ou le
+réinstaller sur le serveur :
+
+```bash
+php seed-compte-apple-review.php
+```
+
+Le script applique le SQL **puis vérifie** que le compte se connecte vraiment :
+mot de passe conforme à l'empreinte, compte actif, pas de 2FA, pas de
+changement de mot de passe imposé, et des données dans chaque écran. Il sort en
+erreur si l'une de ces conditions manque — un compte de démo cassé découvert
+par l'examinateur coûte une semaine d'aller-retour.
+
+Le compte est administrateur de « Solidarité Évry » : 50 adhérents, 38
+cotisations (30 payées, 8 en attente), 6 subventions dans six états différents,
+40 factures, 10 clients, 12 événements, des projets et des canaux de
+discussion. Les dates des subventions sont relatives au jour courant, donc la
+démo ne périme jamais.
+
+Le fichier porte le numéro 08 pour une raison précise : `cron-demo-reset.php`
+rejoue chaque nuit tous les `.sql` du dossier par ordre alphabétique, et le
+snapshot (00) commence par `DELETE FROM users WHERE org_id IN (23,24,25,26)`.
+Un compte ajouté à une asso de démo disparaîtrait donc toutes les nuits. En
+passant après, le 08 le recrée — et l'examinateur retrouve chaque matin des
+données propres.
+
+---
+
+## Aucun paiement dans l'app (directive 3.1.1)
+
+C'est le motif de rejet le plus fréquent pour une app de ce type, et il ne
+suffit pas de bloquer la navigation : **afficher** un bouton « S'abonner » ou un
+prix suffit à faire rejeter.
+
+`app-context.php` reconnaît les requêtes venant de l'app à son agent utilisateur
+(`AssokitApp`, posé par `applicationNameForUserAgent` dans `mobile/App.js`) et
+retire la surface d'achat avant le rendu :
+
+| Surface | Traitement dans l'app |
+|---|---|
+| Bandeau d'essai avec « ⚡ S'abonner » | non émis |
+| Entrée « Abonnement » du menu | non émise |
+| `/abonnement`, `/mon-asso-plan`, `/mon-asso-paiement`, `/mon-asso-paiement-success`, `/mon-asso-annuler-abonnement`, `/tarifs` | redirigées vers le tableau de bord |
+| `stripe-create-payment-intent.php` | refuse en 403 |
+| Encart « Passer au plan Assokit (49,99 €/mois) » de la diffusion e-mail | remplacé par une phrase neutre |
+| Boutons « Passer au plan Pro » des exports | non émis |
+| `upgrade_url` renvoyée par l'IA | `null` |
+
+Le même masquage s'applique au compte d'examen même hors de l'app, au cas où
+l'examinateur ouvrirait le site à côté.
+
+Sur assokit.fr depuis un navigateur, **rien ne change** : les clients gèrent
+leur abonnement normalement.
 
 ---
 
@@ -165,7 +233,8 @@ Ordre conseillé, du plus parlant au plus détaillé :
 ## Avant de cliquer sur « Envoyer pour examen »
 
 - [ ] Le build sélectionné est bien le dernier, construit depuis la branche à jour
-- [ ] Compte de démonstration créé, testé, et ses identifiants dans les notes
+- [ ] `php seed-compte-apple-review.php` lancé sur le serveur, sortie sans erreur
+- [ ] Connexion à `apple.review@assokit.fr` testée **depuis l'app**, pas depuis le navigateur
 - [ ] Captures 6,7" importées
 - [ ] Questionnaire de confidentialité rempli
 - [ ] Trois URL renseignées

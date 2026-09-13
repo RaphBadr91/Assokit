@@ -172,7 +172,7 @@ render_sidebar('factures');
   </div>
 
   <p style="text-align:center;margin-top:18px;color:#64748B;font-size:13px;">
-    Vos factures émises à vos clients. Les factures d'abonnement Assokit sont dans <a href="/abonnement" style="color:#059669;font-weight:600;text-decoration:none;">Abonnement</a>.
+    Vos factures émises à vos clients.<?php if (!ak_billing_hidden()): ?> Les factures d'abonnement Assokit sont dans <a href="/abonnement" style="color:#059669;font-weight:600;text-decoration:none;">Abonnement</a>.<?php endif; ?>
   </p>
 </main>
 <?php render_foot(); ?>

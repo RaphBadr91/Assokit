@@ -7,6 +7,7 @@
  * --------------------------------------------------------------
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/app-context.php'; // pas d'incitation à l'achat dans l'app (Apple 3.1.1)
 require_once __DIR__ . '/rate-limit-helper.php';
 ak_rate_limit_or_die('ia_generate', 20, 60, (string)($_SESSION['user_id'] ?? ($_SERVER['REMOTE_ADDR'] ?? 'anon')));
 require_once __DIR__ . '/asso-ai-helpers.php';
@@ -70,7 +71,9 @@ if (function_exists('ak_can_use_ai_text') && function_exists('ak_can_use_ai_imag
             ],
             'blocked_by_plan'  => true,
             'blocked_by_quota' => true,
-            'upgrade_url'      => '/mon-asso-plan',
+            // Pas d'URL de montée en gamme dans l'app : le front en ferait un
+            // bouton d'achat, ce qu'Apple interdit (3.1.1).
+            'upgrade_url'      => ak_billing_hidden() ? null : '/mon-asso-plan',
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }

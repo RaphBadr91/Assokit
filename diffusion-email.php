@@ -146,6 +146,8 @@ render_sidebar('diffusion-email');
             <li>✓ Limite anti-spam intégrée pour préserver votre réputation</li>
             <li>✓ <strong>2 000 emails/mois</strong> inclus dans le plan Assokit</li>
           </ul>
+          <?php // Dans l'app : ni prix, ni bouton d'achat, ni lien vers les plans (Apple 3.1.1). ?>
+          <?php if (!ak_billing_hidden()): ?>
           <div class="ak-blur-cta">
             <a href="/contact?subject=demo&plan=assokit" class="ak-blur-btn-primary">↗ Passer au plan Assokit (49,99€/mois)</a>
             <a href="/mon-asso-plan" class="ak-blur-btn-secondary">Voir tous les plans</a>
@@ -153,6 +155,11 @@ render_sidebar('diffusion-email');
           <p class="ak-blur-footer">
             🌿 Aucun engagement · Activation immédiate après paiement · Support inclus &lt;24h
           </p>
+          <?php else: ?>
+          <p class="ak-blur-footer">
+            Cette fonctionnalité n'est pas incluse dans votre offre actuelle.
+          </p>
+          <?php endif; ?>
         </div>
       </div>
     </div>

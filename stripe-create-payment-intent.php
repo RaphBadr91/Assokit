@@ -21,8 +21,18 @@
 header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/app-context.php';
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
+
+// Aucun paiement ne peut naître d'une requête de l'app : masquer le bouton ne
+// suffirait pas, l'endpoint lui-même doit refuser (Apple 3.1.1).
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+if (ak_billing_hidden()) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Paiement indisponible ici. Rendez-vous sur assokit.fr.']);
+    exit;
+}
 
 // Vérification AJAX
 if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'XMLHttpRequest') {

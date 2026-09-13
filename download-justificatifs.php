@@ -5,6 +5,7 @@
  * Usage : download-justificatifs.php?project=<id>[&all=1]
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/app-context.php'; // pas d'incitation à l'achat dans l'app (Apple 3.1.1)
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/pca-mapping.php';
 
@@ -103,8 +104,9 @@ if (PHP_SAPI !== 'cli') {
                . '<div style="max-width:540px;margin:80px auto;font-family:system-ui,Segoe UI,Arial,sans-serif;text-align:center;color:#1e293b;">'
                . '<div style="font-size:42px;">🔒</div>'
                . '<h1 style="font-size:20px;margin:14px 0 8px;">Export réservé à 1 génération en essai</h1>'
-               . '<p style="font-size:14px;color:#475569;line-height:1.55;">Votre offre <strong>' . $pn . '</strong> autorise cet export une seule fois en essai. Passez au plan <strong>Pro</strong> pour des exports illimités.</p>'
-               . '<a href="/abonnement" style="display:inline-block;margin-top:18px;background:#1D4ED8;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:14px;">Passer au plan Pro</a>'
+               . '<p style="font-size:14px;color:#475569;line-height:1.55;">Votre offre <strong>' . $pn . '</strong> autorise cet export une seule fois en essai.</p>'
+               . (ak_billing_hidden() ? ''
+                  : '<a href="/abonnement" style="display:inline-block;margin-top:18px;background:#1D4ED8;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:14px;">Passer au plan Pro</a>')
                . '</div>';
             exit;
         }

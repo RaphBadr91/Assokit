@@ -9,6 +9,9 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_login();
 
+// Apple 3.1.1 : aucun tunnel d'achat ne doit s'ouvrir dans l'app.
+ak_block_billing_page();
+
 // Source unique de l'abonnement : /mon-asso-plan (PACK 6.4, table asso_subscriptions).
 // Cette ancienne page (table legacy `subscriptions`) affichait un plan pouvant
 // diverger de /mon-asso-plan → on redirige vers la page canonique.
