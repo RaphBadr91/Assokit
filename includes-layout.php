@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/ak-icons.php';   // jeu d'icônes maison (ak_icon, ak_icon_badge, ak_dot)
 require_once __DIR__ . '/app-context.php'; // ak_billing_hidden() : rien qui ressemble à un achat dans l'app (Apple 3.1.1)
+require_once __DIR__ . '/includes-nav.php'; // familles du menu latéral (ak_nav_rendre)
 
 if (!function_exists('ak_render_rich_text')) {
     /**
@@ -231,31 +232,53 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .sb-backto-sa-title > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 .sb-backto-sa-arrow { font-size: 13px; opacity: 0.7; flex-shrink: 0; }
 
-/* ===== Groupe déroulant (Facturation) ===== */
-.sb-group { display: flex; flex-direction: column; }
-.sb-group-toggle { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; font-weight: 500; cursor: pointer; user-select: none; transition: background 0.12s; width: 100%; text-align: left; }
-.sb-group-toggle:hover { background: var(--bg-3); color: var(--ink); }
-.sb-group-toggle.has-active { color: var(--acc-dark); }
-.sb-group-chevron { margin-left: auto; transition: transform 0.2s; opacity: 0.5; }
-.sb-group.open .sb-group-chevron { transform: rotate(180deg); }
-.sb-group-items { display: none; flex-direction: column; padding-left: 10px; margin-top: 2px; gap: 1px; border-left: 1px solid var(--border); margin-left: 17px; }
-.sb-group.open .sb-group-items { display: flex; }
-.sb-group-items .sb-link { padding: 6px 10px; font-size: 12.5px; }
-.ak-collapse { display: flex; flex-direction: column; }
-.ak-collapse-row { display: flex; align-items: center; gap: 2px; }
-.ak-collapse-toggle { background: transparent; border: 0; padding: 6px 8px; cursor: pointer; color: var(--ink-4); border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s, background 0.15s, opacity 0.15s; flex-shrink: 0; opacity: 0; }
+/* ===== Familles du menu latéral =====
+   Une famille = un en-tête cliquable + ses entrées. Repliée par défaut,
+   une seule ouverte à la fois : le menu tient dans l'écran quoi qu'on ouvre. */
+.ak-nav-fam { display: flex; flex-direction: column; }
+.ak-nav-fam-tete {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 9px 11px; border: 0; background: transparent; cursor: pointer;
+  border-radius: 11px; font: inherit; font-size: 13.5px; font-weight: 500;
+  color: var(--ink-2); text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.ak-nav-fam-tete:hover { background: var(--bg-2); color: var(--ink); }
+.ak-nav-fam-tete:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
+.ak-nav-fam-tete > svg { color: var(--ink-3); flex-shrink: 0; }
+.ak-nav-fam-nom { flex: 1; min-width: 0; }
+/* Repère discret quand la famille est fermée mais contient la page courante :
+   sans lui, on perd de vue où l'on se trouve dès qu'on ouvre une autre famille. */
+.ak-nav-fam-pastille { width: 6px; height: 6px; border-radius: 50%; background: var(--acc); flex-shrink: 0; display: none; }
+/* Le compte remonté sur l'en-tête n'a plus lieu d'être quand la famille est
+   ouverte : le badge de l'entrée elle-même est alors visible juste en dessous. */
+.ak-nav-fam.est-ouverte .ak-nav-fam-urgence { display: none; }
+.ak-nav-fam.contient-active:not(.est-ouverte) .ak-nav-fam-pastille { display: block; }
+.ak-nav-fam.contient-active .ak-nav-fam-tete { color: var(--acc-dark); }
+.ak-nav-fam.contient-active .ak-nav-fam-tete > svg { color: var(--acc); }
+.ak-nav-fam-chevron { display: flex; flex-shrink: 0; opacity: 0.45; transition: transform 0.2s ease; }
+.ak-nav-fam.est-ouverte .ak-nav-fam-chevron { transform: rotate(180deg); opacity: 0.8; }
+.ak-nav-fam-corps {
+  display: flex; flex-direction: column; gap: 1px;
+  margin: 0 0 0 24px; padding-left: 8px; border-left: 1px solid var(--border);
+  /* max-height plutôt que display:none, pour que l'ouverture soit animée.
+     520px couvre largement la plus longue famille (9 entrées ≈ 290px). */
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.24s ease, margin-top 0.24s ease, opacity 0.18s ease;
+  opacity: 0;
+}
+.ak-nav-fam.est-ouverte .ak-nav-fam-corps { max-height: 520px; margin-top: 2px; opacity: 1; }
+.ak-nav-fam-corps .sb-link { padding: 7px 10px; font-size: 12.5px; }
+/* Sans transition, les familles ne s'animent pas au chargement de la page. */
+@media (prefers-reduced-motion: reduce) {
+  .ak-nav-fam-corps, .ak-nav-fam-chevron { transition: none; }
+}
+
 /* Écrans tactiles : pas de survol possible, ces commandes doivent rester atteignables. */
 @media (hover: none) {
-  .ak-collapse-toggle { opacity: 1; }
   .ak-sound-tgl, .ak-push-tgl { opacity: .6; visibility: visible; }
 }
 .sb-link-notif:focus-within .ak-sound-tgl, .sb-link-notif:focus-within .ak-push-tgl { opacity: .6; visibility: visible; }
-.ak-collapse-toggle:focus-visible, .ak-collapse:focus-within .ak-collapse-toggle,
-.ak-collapse-row:hover .ak-collapse-toggle, .ak-collapse.is-open .ak-collapse-toggle { opacity: 1; }
-.ak-collapse-toggle:hover { background: var(--bg-2); color: var(--ink); }
-.ak-collapse.is-open .ak-collapse-toggle { transform: rotate(180deg); color: var(--acc); }
-.ak-collapse-body { display: none; flex-direction: column; margin-left: 24px; border-left: 1px solid var(--border); padding-left: 8px; gap: 1px; margin-top: 2px; }
-.ak-collapse.is-open .ak-collapse-body { display: flex; }
 
 
 /* ===== MOBILE BURGER ===== */
@@ -1489,105 +1512,9 @@ function render_sidebar($active = 'accueil') {
         </button>
       </a>
 
-      <?php // Projets : tout le monde voit sauf les followers purs (mais on affiche quand même, filtré côté contenu) ?>
-      <a href="/projets" class="sb-link <?= $active === 'projets' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
-        <?= is_follower() ? 'Projets suivis' : 'Projets' ?>
-        <?php if (!is_follower()): ?><span class="sb-badge"><?= $proj_count ?></span><?php endif; ?>
-      </a>
-
-      <?php // Tags (catégorisation des projets) — rattaché aux Projets ?>
-      <?php if (can('manage_finances')): ?>
-      <a href="/mon-asso-tags" class="sb-link <?= $active === 'tags' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-        Tags
-      </a>
-      <?php endif; ?>
-
-      <?php // Adhérents (+ sous-menu Cotisations toggleable) ?>
-      <?php if (!is_follower()): ?>
-      <?php $adh_open = in_array($active, ['adherents','cotisations'], true); ?>
-      <div class="ak-collapse <?= $adh_open ? 'is-open' : '' ?>">
-        <div class="ak-collapse-row">
-          <a href="/adherents" class="sb-link ak-collapse-link <?= $active === 'adherents' ? 'active' : '' ?>" style="flex:1;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 5"/></svg>
-            Adhérents
-            <span class="sb-badge"><?= $user_count ?></span>
-          </a>
-          <?php if (in_array(($user['role'] ?? ''), ['admin','coordinator'], true)): ?>
-          <button type="button" class="ak-collapse-toggle" onclick="this.closest('.ak-collapse').classList.toggle('is-open')" aria-label="Déplier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-          <?php endif; ?>
-        </div>
-        <?php if (in_array(($user['role'] ?? ''), ['admin','coordinator'], true)): ?>
-        <div class="ak-collapse-body">
-          <a href="/cotisations" class="sb-link <?= $active === 'cotisations' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><circle cx="6" cy="14.5" r="1.2"/></svg>
-            Cotisations
-          </a>
-        </div>
-        <?php endif; ?>
-      </div>
-      <?php endif; ?>
-
-      <?php // Agenda (+ sous-menu Emploi du temps toggleable) ?>
-      <?php $ag_open = in_array($active, ['agenda','emploi-du-temps'], true); ?>
-      <div class="ak-collapse <?= $ag_open ? 'is-open' : '' ?>">
-        <div class="ak-collapse-row">
-          <a href="/agenda" class="sb-link ak-collapse-link <?= $active === 'agenda' ? 'active' : '' ?>" style="flex:1;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>
-            Agenda
-          </a>
-          <?php if (!is_follower()): ?>
-          <button type="button" class="ak-collapse-toggle" onclick="this.closest('.ak-collapse').classList.toggle('is-open')" aria-label="Déplier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-          <?php endif; ?>
-        </div>
-        <?php if (!is_follower()): ?>
-        <div class="ak-collapse-body">
-          <a href="/emploi-du-temps" class="sb-link <?= $active === 'emploi-du-temps' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            Emploi du temps
-          </a>
-        </div>
-        <?php endif; ?>
-      </div>
-
-      <?php // Assemblées (+ sous-menu Émargement) ?>
-      <?php if (($user['role'] ?? '') === 'admin'): ?>
-      <?php $ag_grp_open = in_array($active, ['assemblees','emargement'], true); ?>
-      <div class="ak-collapse <?= $ag_grp_open ? 'is-open' : '' ?>">
-        <div class="ak-collapse-row">
-          <a href="/assemblees" class="sb-link ak-collapse-link <?= $active === 'assemblees' ? 'active' : '' ?>" style="flex:1;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V10l7-5 7 5v11M9 21V12h6v9"/></svg>
-            Assemblées
-          </a>
-          <button type="button" class="ak-collapse-toggle" onclick="this.closest('.ak-collapse').classList.toggle('is-open')" aria-label="Déplier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-        </div>
-        <div class="ak-collapse-body">
-          <a href="/emargement" class="sb-link <?= $active === 'emargement' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            Émargement
-          </a>
-        </div>
-      </div>
-      <?php endif; ?>
-            <?php // Coach Assokit : admin uniquement ?>
-      <?php if (($user['role'] ?? '') === 'admin'): ?>
-      <a href="/coach-ia" class="sb-link <?= $active === 'coach-ia' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="10" r=".8" fill="currentColor"/><circle cx="15" cy="10" r=".8" fill="currentColor"/><path d="M12 3v2M5 6l1.4 1.4M19 6l-1.4 1.4"/></svg>
-        Coach Assokit
-      </a>
-      <?php endif; ?>
-
-      <?php // Messages : tout le monde sauf followers ?>
-      <?php if (!is_follower()): ?>
-      <a href="/messages" class="sb-link <?= $active === 'messages' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 3z"/></svg>
-        Messages
-      </a>
-      <?php endif; ?>
-
       <?php
-      // Support : tous les users de l'asso voient les tickets
+      // Support : tous les utilisateurs de l'asso voient les tickets de leur
+      // organisation. Calculé ici parce que le compteur alimente un badge du menu.
       $support_unread = 0;
       if ($user_org_id > 0) {
           try {
@@ -1604,134 +1531,21 @@ function render_sidebar($active = 'accueil') {
               $support_unread = (int) $stmt->fetchColumn();
           } catch (Throwable $e) {}
       }
+
+      // Le reste du menu est rangé par famille : voir includes-nav.php, où
+      // chaque entrée tient sur une ligne, avec sa condition de visibilité.
+      ak_nav_rendre([
+          'active'         => $active,
+          'role'           => $user['role'] ?? '',
+          'is_follower'    => is_follower(),
+          'peut_finances'  => can('manage_finances'),
+          'peut_marketing' => can('access_marketing'),
+          'peut_admin'     => can('admin'),
+          'proj_count'     => $proj_count,
+          'user_count'     => $user_count,
+          'support_unread' => $support_unread,
+      ]);
       ?>
-      <a href="/support" class="sb-link <?= $active === 'support' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10H4z"/><path d="M8 20h8M12 15v5"/></svg>
-        Support
-        <?php if ($support_unread > 0): ?>
-          <span class="sb-badge" style="background:#EF4444; color:white;"><?= $support_unread ?></span>
-        <?php endif; ?>
-      </a>
-
-      <?php // 💶 Finances : regroupe Facturation, Relances, Anomalies, Prévisions, Subventions ?>
-      <?php if (can('manage_finances')):
-          $is_admin_nav = (($user['role'] ?? '') === 'admin');
-          $fin_children = ['devis','factures','clients','stats','relances','anomalies','previsions','comptabilite','export-fec','facturx','subventions','financements'];
-          $fin_open = in_array($active, $fin_children, true);
-      ?>
-      <div class="ak-collapse <?= $fin_open ? 'is-open' : '' ?>">
-        <div class="ak-collapse-row">
-          <a href="/mon-asso-factures-client" class="sb-link ak-collapse-link <?= $fin_open ? 'active' : '' ?>" style="flex:1;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h12l4 4v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M7 8h7M7 12h9M7 16h5"/></svg>
-            Finances
-          </a>
-          <button type="button" class="ak-collapse-toggle" onclick="this.closest('.ak-collapse').classList.toggle('is-open')" aria-label="Déplier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-        </div>
-        <div class="ak-collapse-body">
-          <a href="/mon-asso-factures-client" class="sb-link <?= in_array($active, ['devis','factures','clients','stats'], true) ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg>
-            Facturation
-          </a>
-          <a href="/relances" class="sb-link <?= $active === 'relances' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M16 3l2 2-2 2"/></svg>
-            Relances
-          </a>
-          <a href="/anomalies" class="sb-link <?= $active === 'anomalies' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            Anomalies
-          </a>
-          <a href="/previsions" class="sb-link <?= $active === 'previsions' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
-            Prévisions
-          </a>
-          <a href="/comptabilite" class="sb-link <?= $active === 'comptabilite' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 0 2 2h13M9 8h6"/></svg>
-            Comptabilité
-          </a>
-          <a href="/export-fec" class="sb-link <?= $active === 'export-fec' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 15h6M9 12h2"/></svg>
-            Export FEC
-          </a>
-          <a href="/facturx" class="sb-link <?= $active === 'facturx' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 3v6c0 5-3.4 8.5-8 11-4.6-2.5-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg>
-            E-facture (Factur-X)
-          </a>
-          <?php if ($is_admin_nav): ?>
-          <a href="/financements" class="sb-link <?= $active === 'financements' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-3.5-3.5M11 7v4l2.5 2.5"/></svg>
-            Radar subventions
-          </a>
-          <a href="/subventions" class="sb-link <?= $active === 'subventions' ? 'active' : '' ?>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            Mes candidatures
-          </a>
-          <?php endif; ?>
-        </div>
-      </div>
-      <?php endif; ?>
-
-      <?php // Notes de frais : accessible à tous les membres (chacun gère les siennes) ?>
-      <?php if (!is_follower()): ?>
-      <a href="/notes-de-frais" class="sb-link <?= $active === 'notes-de-frais' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg>
-        Notes de frais
-      </a>
-      <?php endif; ?>
-
-      <?php // Prospection téléphonique : même public que Communication, plus
-            // les admins et coordinateurs — ce sont eux qui décrochent. ?>
-      <?php if (can('access_marketing') || in_array($user['role'] ?? '', ['admin', 'coordinator'], true)): ?>
-      <a href="/prospection" class="sb-link <?= $active === 'prospection' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        Prospection
-      </a>
-      <a href="/mon-asso-qr" class="sb-link <?= $active === 'mon-asso-qr' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14h1M14 20h1M18 18h3v3h-3z"/></svg>
-        Codes QR
-      </a>
-      <?php endif; ?>
-
-      <?php // Communication : uniquement si capacité access_marketing ?>
-      <?php if (can('access_marketing')): ?>
-      <a href="/communication" class="sb-link <?= $active === 'communication' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-7-7 18-3-8z"/></svg>
-        Communication
-      </a>
-      <?php endif; ?>
-
-      <?php // ⚙️ Paramètres : visible pour tous les users connectés ?>
-      <a href="/parametres" class="sb-link <?= $active === 'parametres' ? 'active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.4l2-1.5-2-3.5-2.3 1a7 7 0 0 0-2.4-1.4L15.8 2h-4l-.4 2.7A7 7 0 0 0 9 6.1L6.7 5 4.7 8.5l2 1.5A7 7 0 0 0 6.6 12a7 7 0 0 0 .1 1.4l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 2.4 1.4l.4 2.7h4l.4-2.7a7 7 0 0 0 2.4-1.4l2.3 1 2-3.5-2-1.5A7 7 0 0 0 19 12z"/></svg>
-        Paramètres
-      </a>
-
-      <?php // Bloc Admin : uniquement si admin ?>
-      <?php if (can('admin') || $user['role'] === 'admin'): ?>
-      <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);">
-        <div style="font-size: 10.5px; color: var(--ink-4); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 0 10px 6px;">Admin</div>
-        <a href="/admin" class="sb-link <?= $active === 'admin' ? 'active' : '' ?>">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1l9 4v6c0 5.55-3.84 10.74-9 12-5.16-1.26-9-6.45-9-12V5l9-4z"/></svg>
-          Administration
-        </a>
-        <a href="/mon-asso-sso" class="sb-link <?= $active === 'mon-asso-sso' ? 'active' : '' ?>">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
-          Intégration WordPress
-        </a>
-<?php if (in_array($active, ['admin', 'archives', 'abonnement'], true)): ?>
-        <a href="/archives" class="sb-link <?= $active === 'archives' ? 'active' : '' ?>">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-          Archives
-        </a>
-<?php // Aucune entrée « Abonnement » dans l'app : Apple 3.1.1 interdit d'y mener vers un achat externe. ?>
-<?php if (!ak_billing_hidden()): ?>
-        <a href="/abonnement" class="sb-link <?= $active === 'abonnement' ? 'active' : '' ?>">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-          Abonnement
-        </a>
-<?php endif; ?>
-<?php endif; ?>
-      </div>
-      <?php endif; ?>
     </nav>
 
     <div class="sb-foot">
