@@ -2,8 +2,8 @@
 -- Migration : Prospection téléphonique (par association)
 -- Cible : MariaDB 10.x. Idempotent (IF NOT EXISTS).
 --
---   asso_prospects        : la fiche, état courant
---   asso_prospect_events  : ce qui lui est arrivé, et quand
+--   asso_prospection        : la fiche, état courant
+--   asso_prospection_events  : ce qui lui est arrivé, et quand
 --
 -- Deux tables plutôt qu'une : `updated_at` répond à « quand », jamais à
 -- « quoi » ni « qui ». En prospection téléphonique c'est l'historique qui
@@ -14,7 +14,7 @@
 -- session d'appels doit pouvoir revenir, et son historique avec lui.
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS asso_prospects (
+CREATE TABLE IF NOT EXISTS asso_prospection (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   org_id       INT NOT NULL,
   prenom       VARCHAR(120) NOT NULL DEFAULT '',
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS asso_prospects (
   KEY idx_org_supprime (org_id, deleted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS asso_prospect_events (
+CREATE TABLE IF NOT EXISTS asso_prospection_events (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   org_id      INT NOT NULL,
   prospect_id INT NOT NULL,

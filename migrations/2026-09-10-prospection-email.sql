@@ -10,6 +10,6 @@
 -- Comme called_at, emailed_at est posé par le serveur et jamais saisi.
 -- ============================================================
 
-ALTER TABLE asso_prospects
+ALTER TABLE asso_prospection
   ADD COLUMN IF NOT EXISTS emailed    TINYINT(1) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS emailed_at DATETIME NULL;

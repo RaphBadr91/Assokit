@@ -8,7 +8,7 @@
 --   être devinable à partir de l'identifiant de l'organisation.
 --
 -- Les contacts collectés n'ont PAS de table à eux : ils atterrissent dans
--- asso_prospects, la table de l'onglet Prospection. Une personne rencontrée
+-- asso_prospection, la table de l'onglet Prospection. Une personne rencontrée
 -- sur un stand est exactement un prospect à rappeler — lui donner une liste
 -- séparée aurait obligé à la recopier avant de pouvoir l'appeler.
 -- D'où les trois colonnes ajoutées ci-dessous : d'où vient la fiche, par
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS asso_qr_codes (
 
 -- Provenance des fiches de prospection. `IF NOT EXISTS` sur ADD COLUMN est
 -- une extension MariaDB : la migration reste rejouable sans erreur.
-ALTER TABLE asso_prospects
+ALTER TABLE asso_prospection
   ADD COLUMN IF NOT EXISTS source     VARCHAR(16) NOT NULL DEFAULT 'manuel',
   ADD COLUMN IF NOT EXISTS qr_id      INT NULL,
   ADD COLUMN IF NOT EXISTS consent_at DATETIME NULL;

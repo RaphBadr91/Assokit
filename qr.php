@@ -7,7 +7,7 @@
  *
  * Deux usages en une page, parce que c'est le même geste sur un stand :
  * la personne enregistre l'association dans son téléphone, et laisse ses
- * coordonnées. Les contacts collectés atterrissent dans asso_prospects,
+ * coordonnées. Les contacts collectés atterrissent dans asso_prospection,
  * la table de l'onglet Prospection : ils sont donc rappelables sans
  * recopie.
  *
@@ -108,7 +108,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         elseif (!$ok)                                  $err = 'Merci de cocher la case d\'accord.';
         else {
             try {
-                $pdo->prepare("INSERT INTO asso_prospects
+                $pdo->prepare("INSERT INTO asso_prospection
                         (org_id, prenom, nom, telephone, email, notes, source, qr_id, consent_at, updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, 'qr', ?, NOW(), NOW())")
                     ->execute([$org_id, mb_substr($prenom, 0, 120), mb_substr($nom, 0, 120),
@@ -117,7 +117,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $pid = (int) $pdo->lastInsertId();
 
                 $etiquette = trim((string) $qr['label']) !== '' ? (string) $qr['label'] : 'QR';
-                $pdo->prepare("INSERT INTO asso_prospect_events (org_id, prospect_id, user_id, type, detail)
+                $pdo->prepare("INSERT INTO asso_prospection_events (org_id, prospect_id, user_id, type, detail)
                                VALUES (?, ?, NULL, 'create', ?)")
                     ->execute([$org_id, $pid, mb_substr('Coordonnées laissées via ' . $etiquette, 0, 255)]);
 

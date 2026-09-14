@@ -45,7 +45,7 @@ unset($_SESSION['flash_prospection']);
  *  empêcher l'action elle-même d'aboutir. */
 function prosp_log(PDO $pdo, int $org_id, int $pid, int $uid, string $type, string $detail = ''): void {
     try {
-        $pdo->prepare("INSERT INTO asso_prospect_events (org_id, prospect_id, user_id, type, detail)
+        $pdo->prepare("INSERT INTO asso_prospection_events (org_id, prospect_id, user_id, type, detail)
                        VALUES (?, ?, ?, ?, ?)")
             ->execute([$org_id, $pid, $uid, $type, mb_substr($detail, 0, 255)]);
     } catch (Throwable $e) { /* sans importance */ }
@@ -75,25 +75,27 @@ $migration_erreur = '';       // message SQL brut, si la cause est ailleurs
  */
 function pr_migrations_manquantes(PDO $pdo): array
 {
-    try {
-        $pdo->query("SELECT 1 FROM asso_prospects LIMIT 1")->closeCursor();
-    } catch (Throwable $e) {
-        // Sans la table, tout le reste en découle : une seule ligne à donner.
-        return ['2026-09-09-prospection-asso.sql'];
-    }
+    // Un seul script répare tout : il crée les tables manquantes et reprend,
+    // le cas échéant, celles de l'ancien nom `asso_prospects` — lequel
+    // appartenait déjà à la prospection du fondateur.
+    $reparation = ['2026-09-14-prospection-tables-dediees.php'];
 
-    $manque = [];
     try {
-        $pdo->query("SELECT emailed, emailed_at FROM asso_prospects LIMIT 1")->closeCursor();
+        $pdo->query("SELECT 1 FROM asso_prospection LIMIT 1")->closeCursor();
     } catch (Throwable $e) {
-        $manque[] = '2026-09-10-prospection-email.sql';
+        return $reparation;
     }
     try {
-        $pdo->query("SELECT 1 FROM asso_prospect_events LIMIT 1")->closeCursor();
+        $pdo->query("SELECT emailed, emailed_at FROM asso_prospection LIMIT 1")->closeCursor();
     } catch (Throwable $e) {
-        array_unshift($manque, '2026-09-09-prospection-asso.sql');
+        return $reparation;
     }
-    return $manque;
+    try {
+        $pdo->query("SELECT 1 FROM asso_prospection_events LIMIT 1")->closeCursor();
+    } catch (Throwable $e) {
+        return $reparation;
+    }
+    return [];
 }
 
 // ── Écritures ───────────────────────────────────────────────────────────────
@@ -117,7 +119,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             if ($prenom === '' && $nom === '' && $tel === '') {
                 $msg = "Renseignez au moins un nom ou un numéro.";
             } else {
-                $st = $pdo->prepare("INSERT INTO asso_prospects
+                $st = $pdo->prepare("INSERT INTO asso_prospection
                         (org_id, prenom, nom, telephone, email, created_by, updated_by, updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
                 $st->execute([$org_id, $prenom, $nom, $tel, $email, $uid, $uid]);
@@ -129,7 +131,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             // « Appelé : oui / non ». La date est posée par le serveur, jamais
             // saisie : c'est le seul moyen qu'elle reflète l'appel réel.
             $yes = ($_POST['value'] ?? '') === '1';
-            $st = $pdo->prepare("UPDATE asso_prospects
+            $st = $pdo->prepare("UPDATE asso_prospection
                                  SET called = ?, called_at = " . ($yes ? 'NOW()' : 'NULL') . ",
                                      updated_by = ?, updated_at = NOW()
                                  WHERE id = ? AND org_id = ? AND deleted_at IS NULL");
@@ -144,7 +146,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             // canal distinct, parce que « appelé » et « relancé par e-mail »
             // n'appellent pas la même action suivante.
             $yes = ($_POST['value'] ?? '') === '1';
-            $st = $pdo->prepare("UPDATE asso_prospects
+            $st = $pdo->prepare("UPDATE asso_prospection
                                  SET emailed = ?, emailed_at = " . ($yes ? 'NOW()' : 'NULL') . ",
                                      updated_by = ?, updated_at = NOW()
                                  WHERE id = ? AND org_id = ? AND deleted_at IS NULL");
@@ -156,7 +158,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
         } elseif ($action === 'callback' && $pid > 0) {
             $when = prosp_dt($_POST['callback_at'] ?? '');
-            $st = $pdo->prepare("UPDATE asso_prospects SET callback_at = ?, updated_by = ?, updated_at = NOW()
+            $st = $pdo->prepare("UPDATE asso_prospection SET callback_at = ?, updated_by = ?, updated_at = NOW()
                                  WHERE id = ? AND org_id = ? AND deleted_at IS NULL");
             $st->execute([$when, $uid, $pid, $org_id]);
             if ($st->rowCount() > 0) {
@@ -166,7 +168,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             }
 
         } elseif ($action === 'edit' && $pid > 0) {
-            $st = $pdo->prepare("SELECT prenom, nom, telephone, email, notes FROM asso_prospects
+            $st = $pdo->prepare("SELECT prenom, nom, telephone, email, notes FROM asso_prospection
                                  WHERE id = ? AND org_id = ? AND deleted_at IS NULL LIMIT 1");
             $st->execute([$pid, $org_id]);
             $old = $st->fetch(PDO::FETCH_ASSOC);
@@ -185,7 +187,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $changed = [];
                 foreach ($new as $k => $v) if ((string) $old[$k] !== $v) $changed[] = $labels[$k];
 
-                $pdo->prepare("UPDATE asso_prospects
+                $pdo->prepare("UPDATE asso_prospection
                                SET prenom = ?, nom = ?, telephone = ?, email = ?, notes = ?,
                                    updated_by = ?, updated_at = NOW()
                                WHERE id = ? AND org_id = ?")
@@ -196,13 +198,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             }
 
         } elseif ($action === 'delete' && $pid > 0) {
-            $st = $pdo->prepare("UPDATE asso_prospects SET deleted_at = NOW(), updated_by = ?, updated_at = NOW()
+            $st = $pdo->prepare("UPDATE asso_prospection SET deleted_at = NOW(), updated_by = ?, updated_at = NOW()
                                  WHERE id = ? AND org_id = ? AND deleted_at IS NULL");
             $st->execute([$uid, $pid, $org_id]);
             if ($st->rowCount() > 0) { prosp_log($pdo, $org_id, $pid, $uid, 'delete'); $msg = "Prospect supprimé."; }
 
         } elseif ($action === 'restore' && $pid > 0) {
-            $st = $pdo->prepare("UPDATE asso_prospects SET deleted_at = NULL, updated_by = ?, updated_at = NOW()
+            $st = $pdo->prepare("UPDATE asso_prospection SET deleted_at = NULL, updated_by = ?, updated_at = NOW()
                                  WHERE id = ? AND org_id = ? AND deleted_at IS NOT NULL");
             $st->execute([$uid, $pid, $org_id]);
             if ($st->rowCount() > 0) { prosp_log($pdo, $org_id, $pid, $uid, 'restore'); $msg = "Prospect restauré."; }
@@ -252,7 +254,7 @@ try {
     // users porte first_name/last_name, pas name : CONCAT_WS ignore les NULL
     // et ne laisse pas d'espace orphelin si le nom de famille manque.
     $sql = "SELECT p.*, TRIM(CONCAT_WS(' ', uu.first_name, uu.last_name)) AS updated_name
-            FROM asso_prospects p
+            FROM asso_prospection p
             LEFT JOIN users uu ON uu.id = p.updated_by
             WHERE " . implode(' AND ', $where) . "
             ORDER BY (p.callback_at IS NOT NULL AND p.callback_at <= NOW()) DESC,
@@ -270,7 +272,7 @@ try {
             SUM(emailed = 1) AS emails,
             SUM(callback_at IS NOT NULL) AS a_rappeler,
             SUM(callback_at IS NOT NULL AND callback_at <= NOW()) AS en_retard
-          FROM asso_prospects WHERE org_id = ? AND deleted_at IS NULL");
+          FROM asso_prospection WHERE org_id = ? AND deleted_at IS NULL");
     $st->execute([$org_id]);
     $stats = array_map('intval', $st->fetch(PDO::FETCH_ASSOC) ?: $stats);
 
@@ -290,7 +292,7 @@ try {
         $ids = array_column($rows, 'id');
         $in  = implode(',', array_fill(0, count($ids), '?'));
         $st  = $pdo->prepare("SELECT e.*, TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS user_name
-                              FROM asso_prospect_events e
+                              FROM asso_prospection_events e
                               LEFT JOIN users u ON u.id = e.user_id
                               WHERE e.org_id = ? AND e.prospect_id IN ($in)
                               ORDER BY e.id DESC");
@@ -428,10 +430,11 @@ render_sidebar('prospection');
   <div class="pr-flash" style="background:#FEF2F2;border-color:#FECACA;color:#991B1B">
     <?php if ($migration_manquantes): ?>
       <?= count($migration_manquantes) > 1
-            ? 'Deux migrations n’ont pas encore été passées. Sur le serveur, dans cet ordre :'
-            : 'Une migration n’a pas encore été passée. Sur le serveur :' ?>
+            ? 'Les tables de prospection ne sont pas en place. Sur le serveur, dans cet ordre :'
+            : 'Les tables de prospection ne sont pas en place. Sur le serveur :' ?>
       <?php foreach ($migration_manquantes as $f): ?>
-        <code style="display:block;margin-top:6px">php migrations/run.php <?= h($f) ?></code>
+        <?php // Un script .php se lance directement ; un .sql passe par run.php. ?>
+        <code style="display:block;margin-top:6px">php migrations/<?= str_ends_with($f, '.php') ? '' : 'run.php ' ?><?= h($f) ?></code>
       <?php endforeach; ?>
     <?php else: ?>
       La prospection n’a pas pu être chargée, et ce n’est pas une migration
