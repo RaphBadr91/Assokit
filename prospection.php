@@ -60,6 +60,41 @@ function prosp_dt(?string $v): ?string {
 }
 
 $migration_missing = false;
+$migration_manquantes = [];   // fichiers .sql à passer, dans l'ordre
+$migration_erreur = '';       // message SQL brut, si la cause est ailleurs
+
+/**
+ * Quelles migrations manquent réellement ?
+ *
+ * On interroge le schéma au lieu de lire le message d'erreur : celui-ci
+ * change selon la version de MariaDB et la langue du serveur, et l'ancienne
+ * version de cette page désignait la première migration quelle que soit la
+ * panne — y compris quand la table existait mais qu'il manquait seulement
+ * les colonnes du canal e-mail. On envoyait alors l'utilisateur relancer
+ * une migration déjà passée, indéfiniment.
+ */
+function pr_migrations_manquantes(PDO $pdo): array
+{
+    try {
+        $pdo->query("SELECT 1 FROM asso_prospects LIMIT 1")->closeCursor();
+    } catch (Throwable $e) {
+        // Sans la table, tout le reste en découle : une seule ligne à donner.
+        return ['2026-09-09-prospection-asso.sql'];
+    }
+
+    $manque = [];
+    try {
+        $pdo->query("SELECT emailed, emailed_at FROM asso_prospects LIMIT 1")->closeCursor();
+    } catch (Throwable $e) {
+        $manque[] = '2026-09-10-prospection-email.sql';
+    }
+    try {
+        $pdo->query("SELECT 1 FROM asso_prospect_events LIMIT 1")->closeCursor();
+    } catch (Throwable $e) {
+        array_unshift($manque, '2026-09-09-prospection-asso.sql');
+    }
+    return $manque;
+}
 
 // ── Écritures ───────────────────────────────────────────────────────────────
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
@@ -264,6 +299,10 @@ try {
     }
 } catch (Throwable $e) {
     $migration_missing = true;
+    $migration_manquantes = pr_migrations_manquantes($pdo);
+    // Si le schéma est complet, la panne vient d'ailleurs : autant le dire
+    // plutôt que de faire relancer une migration qui n'y changera rien.
+    if (!$migration_manquantes) $migration_erreur = $e->getMessage();
 }
 
 $EVENT_LABEL = [
@@ -387,8 +426,18 @@ render_sidebar('prospection');
 
 <?php if ($migration_missing): ?>
   <div class="pr-flash" style="background:#FEF2F2;border-color:#FECACA;color:#991B1B">
-    Les tables de prospection n'existent pas encore. Sur le serveur :
-    <code style="display:inline-block;margin-top:6px">php migrations/run.php 2026-09-09-prospection-asso.sql</code>
+    <?php if ($migration_manquantes): ?>
+      <?= count($migration_manquantes) > 1
+            ? 'Deux migrations n’ont pas encore été passées. Sur le serveur, dans cet ordre :'
+            : 'Une migration n’a pas encore été passée. Sur le serveur :' ?>
+      <?php foreach ($migration_manquantes as $f): ?>
+        <code style="display:block;margin-top:6px">php migrations/run.php <?= h($f) ?></code>
+      <?php endforeach; ?>
+    <?php else: ?>
+      La prospection n’a pas pu être chargée, et ce n’est pas une migration
+      manquante : le schéma est complet. Erreur renvoyée par la base :
+      <code style="display:block;margin-top:6px"><?= h($migration_erreur) ?></code>
+    <?php endif; ?>
   </div>
 <?php else: ?>
 
