@@ -783,7 +783,34 @@ render_sidebar('prospection');
   .pr-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
   .pr-tab{padding:8px 14px;border-radius:999px;border:1px solid var(--line,#E7EEEA);background:#fff;font-size:13px;font-weight:600;color:var(--ink-2,#45544D);text-decoration:none}
   .pr-tab.on{background:#059669;border-color:#059669;color:#fff}
-  .pr-search{display:flex;gap:8px;margin-left:auto}
+  .pr-search{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;align-items:center}
+  /* input.pr-in vaut 100 % par défaut : dans une rangée qui peut passer à la
+     ligne, il s'accaparait toute la largeur et repoussait le bouton. */
+  .pr-search .pr-in{width:auto;flex:1 1 190px;max-width:300px}
+  /* Listes de filtre : même pastille que les onglets au-dessus. Le chevron
+     natif diffère d'un navigateur à l'autre et cassait l'alignement — on le
+     remplace par le nôtre, dessiné en SVG et donc net à tout zoom. */
+  .pr-sel{
+    appearance:none;-webkit-appearance:none;-moz-appearance:none;
+    padding:8px 32px 8px 14px;border:1px solid var(--line,#E7EEEA);border-radius:999px;
+    font:inherit;font-size:13px;font-weight:600;color:var(--ink-2,#45544D);
+    background-color:#fff;background-repeat:no-repeat;background-position:right 12px center;
+    background-size:11px 11px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235F6D66' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    cursor:pointer;max-width:200px;text-overflow:ellipsis;
+    transition:border-color .12s ease,background-color .12s ease,color .12s ease;
+  }
+  .pr-sel:hover{border-color:#B9CFC5;color:var(--ink,#0B1A13)}
+  .pr-sel:focus-visible{outline:2px solid #059669;outline-offset:1px}
+  /* Filtre actif : sans repère, on oublie que la liste est restreinte et on
+     croit avoir perdu des fiches. */
+  /* Variante pour la rangée d'import, dont les voisins ont des angles à 10 px :
+     une pastille ronde y détonnerait. */
+  .pr-sel.carre{border-radius:10px;padding-top:9px;padding-bottom:9px}
+  .pr-sel.on{
+    background-color:#ECFDF5;border-color:#6EE7B7;color:#025C43;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23059669' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  }
   .pr-row{background:#fff;border:1px solid var(--line,#E7EEEA);border-radius:14px;margin-bottom:10px;overflow:hidden}
   .pr-row.due{border-color:#FCA5A5;box-shadow:0 0 0 3px #FEE2E233}
   .pr-main{display:flex;align-items:center;gap:14px;padding:13px 16px;flex-wrap:wrap}
@@ -899,7 +926,8 @@ render_sidebar('prospection');
       </label>
       <?php // Un annuaire ne mélange presque jamais les genres : le dire une
             // fois évite de qualifier trois cents fiches à la main. ?>
-      <select class="pr-in" name="type_defaut" title="Nature des contacts de ce fichier" style="max-width:170px">
+      <select class="pr-sel carre" name="type_defaut" title="Nature des contacts de ce fichier"
+              aria-label="Nature des contacts de ce fichier" style="max-width:180px">
         <option value="">Nature — au choix</option>
         <?php foreach (PROSP_TYPES as $k => $lab): ?>
           <option value="<?= h($k) ?>"><?= h($lab) ?></option>
@@ -1005,7 +1033,8 @@ render_sidebar('prospection');
           // entreprise comme une association, et une tournée se prépare
           // département par département. ?>
     <?php if ($facettes['type']): ?>
-      <select class="pr-in" name="type" onchange="this.form.submit()">
+      <select class="pr-sel<?= $fType !== '' ? ' on' : '' ?>" name="type" onchange="this.form.submit()"
+              aria-label="Filtrer par nature">
         <option value="">Toutes natures</option>
         <?php foreach ($facettes['type'] as $k => $n): ?>
           <option value="<?= h($k) ?>" <?= $fType === $k ? 'selected' : '' ?>>
@@ -1015,9 +1044,14 @@ render_sidebar('prospection');
       </select>
     <?php endif; ?>
     <?php if ($facettes['dept']): ?>
-      <select class="pr-in" name="dept" onchange="this.form.submit()">
+      <select class="pr-sel<?= $fDept !== '' ? ' on' : '' ?>" name="dept" onchange="this.form.submit()"
+              aria-label="Filtrer par département">
         <option value="">Tous départements</option>
-        <?php foreach ($facettes['dept'] as $k => $n): ?>
+        <?php // PHP convertit « 91 » en entier quand il sert de clé de tableau :
+              // sans ce cast, la comparaison stricte échouait et le département
+              // choisi n'apparaissait jamais sélectionné. « 2A » et « 974 »
+              // passaient, eux, ce qui rendait le défaut discret. ?>
+        <?php foreach ($facettes['dept'] as $k => $n): $k = (string) $k; ?>
           <option value="<?= h($k) ?>" <?= $fDept === $k ? 'selected' : '' ?>><?= h($k) ?> (<?= $n ?>)</option>
         <?php endforeach; ?>
       </select>
