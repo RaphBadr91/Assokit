@@ -123,6 +123,58 @@ function prosp_tel(string $brut): string
     return $t;
 }
 
+/** Natures de prospect proposées. La clé est ce qui est stocké. */
+const PROSP_TYPES = [
+    'asso'       => 'Association',
+    'entreprise' => 'Entreprise',
+    'collectiv'  => 'Collectivité',
+    'autre'      => 'Autre',
+];
+
+/** Normalise une nature saisie ou importée ('' si non reconnue). */
+function prosp_type(string $brut): string
+{
+    $k = prosp_cle($brut);
+    if ($k === '') return '';
+    if (isset(PROSP_TYPES[$k])) return $k;
+    $synonymes = [
+        'asso' => ['association', 'associations', 'assoc', 'asso', 'loi1901', '1901', 'club'],
+        'entreprise' => ['entreprise', 'entreprises', 'societe', 'societes', 'tpe', 'pme',
+                         'sarl', 'sas', 'eurl', 'company', 'business', 'pro'],
+        'collectiv' => ['collectivite', 'collectivites', 'mairie', 'mairies', 'commune',
+                        'communes', 'ville', 'villes', 'municipal', 'servicemunicipal',
+                        'epci', 'departement', 'region', 'ccas'],
+        'autre' => ['autre', 'autres', 'divers'],
+    ];
+    foreach ($synonymes as $type => $mots) {
+        if (in_array($k, $mots, true)) return $type;
+    }
+    return '';
+}
+
+/**
+ * Département d'un code postal français.
+ *
+ * Deux exceptions que la simple troncature à deux caractères rate : la
+ * Corse, dont les codes en 20 se répartissent entre 2A et 2B, et
+ * l'outre-mer, dont le département tient sur trois chiffres.
+ */
+function prosp_departement(string $cp): string
+{
+    $cp = preg_replace('/[^0-9A-Za-z]/', '', $cp);
+    if (strlen($cp) < 4) return '';
+    $cp = str_pad(substr($cp, 0, 5), 5, '0', STR_PAD_LEFT);
+    if (!ctype_digit($cp)) return '';
+
+    $deux = substr($cp, 0, 2);
+    if ($deux === '97' || $deux === '98') return substr($cp, 0, 3);
+    if ($deux === '20') {
+        // Corse-du-Sud jusqu'à 20190, Haute-Corse au-delà.
+        return ((int) $cp) <= 20190 ? '2A' : '2B';
+    }
+    return $deux;
+}
+
 /** Forme canonique servant à repérer les doublons. */
 function prosp_empreinte_tel(string $tel): string
 {
@@ -212,6 +264,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                     'telephone' => ['telephone', 'tel', 'phone', 'portable', 'mobile', 'numero', 'telmobile'],
                     'email'     => ['email', 'mail', 'courriel', 'adresseemail', 'emailaddress'],
                     'notes'     => ['notes', 'note', 'commentaire', 'commentaires', 'remarque', 'observations'],
+                    'type'      => ['type', 'nature', 'categorie', 'category', 'structure', 'formejuridique'],
+                    'cp'        => ['codepostal', 'cp', 'zip', 'zipcode', 'postal', 'postcode'],
+                    'ville'     => ['ville', 'commune', 'city', 'localite'],
+                    'dept'      => ['departement', 'dept', 'dpt', 'department'],
                 ];
 
                 $map = [];
@@ -251,13 +307,29 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $lire = fn(array $l, string $champ) => isset($map[$champ], $l[$map[$champ]])
                     ? trim((string) $l[$map[$champ]]) : '';
 
+                // Nature appliquée aux lignes qui n'en portent pas : « ce
+                // fichier, ce sont des mairies ». C'est le cas courant, un
+                // annuaire ne mélange presque jamais les genres.
+                $typeDefaut = prosp_type((string) ($_POST['type_defaut'] ?? ''));
+
                 $ins = $pdo->prepare("INSERT INTO asso_prospection
-                        (org_id, prenom, nom, telephone, email, notes, source,
+                        (org_id, prenom, nom, telephone, email, notes, type,
+                         code_postal, ville, departement, source, import_id,
                          created_by, updated_by, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, 'import', ?, ?, NOW())");
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', ?, ?, ?, NOW())");
 
                 $pdo->beginTransaction();
                 try {
+                    // Le lot est créé avant les fiches : c'est lui qui porte le
+                    // nom du fichier, et c'est par lui qu'on pourra tout retirer
+                    // si l'import s'avère hors sujet.
+                    $pdo->prepare("INSERT INTO asso_prospection_imports
+                                   (org_id, fichier, lignes, type_defaut, created_by)
+                                   VALUES (?, ?, ?, ?, ?)")
+                        ->execute([$org_id, mb_substr((string) $f['name'], 0, 255),
+                                   max(0, count($lignes) - $debut), $typeDefaut, $uid]);
+                    $lot = (int) $pdo->lastInsertId();
+
                     for ($i = $debut; $i < count($lignes); $i++) {
                         $l = $lignes[$i];
                         if (!$l) { $vides++; continue; }
@@ -284,8 +356,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                             $doublons++; continue;
                         }
 
+                        $type  = prosp_type($lire($l, 'type')) ?: $typeDefaut;
+                        $cp    = mb_substr(preg_replace('/\s+/', '', $lire($l, 'cp')), 0, 10);
+                        $ville = mb_substr($lire($l, 'ville'), 0, 120);
+                        // Le département vient du code postal ; une colonne
+                        // « département » explicite reste prioritaire.
+                        $dept  = mb_substr(strtoupper($lire($l, 'dept')), 0, 3) ?: prosp_departement($cp);
+
                         $ins->execute([$org_id, $prenom, $nom, mb_substr($tel, 0, 40),
-                                       $email, $notes, $uid, $uid]);
+                                       $email, $notes, $type, $cp, $ville, $dept,
+                                       $lot, $uid, $uid]);
                         prosp_log($pdo, $org_id, (int) $pdo->lastInsertId(), $uid, 'import',
                                   trim("$prenom $nom") ?: $tel);
                         $ajoutes++;
@@ -293,6 +373,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                         if ($eMail !== '') $vus['mail'][$eMail] = true;
                         if ($eNom !== '')  $vus['nom'][$eNom] = true;
                     }
+                    $pdo->prepare("UPDATE asso_prospection_imports
+                                   SET ajoutes = ?, doublons = ?, ignorees = ?
+                                   WHERE id = ? AND org_id = ?")
+                        ->execute([$ajoutes, $doublons, $vides, $lot, $org_id]);
                     $pdo->commit();
                 } catch (Throwable $e) {
                     $pdo->rollBack();
@@ -305,6 +389,75 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 if ($doublons) $bouts[] = $doublons . ' ' . ($doublons > 1 ? 'doublons ignorés' : 'doublon ignoré');
                 if ($vides)    $bouts[] = $vides . ' ' . ($vides > 1 ? 'lignes vides ou sans contact' : 'ligne vide ou sans contact');
                 $msg = implode(' · ', $bouts) . '.';
+            }
+
+        } elseif (in_array($action, ['import_delete', 'import_restore', 'import_purge'], true)) {
+            $lot = (int) ($_POST['import_id'] ?? 0);
+
+            $st = $pdo->prepare("SELECT * FROM asso_prospection_imports WHERE id = ? AND org_id = ?");
+            $st->execute([$lot, $org_id]);
+            $info = $st->fetch(PDO::FETCH_ASSOC);
+
+            if (!$info) {
+                $msg = "Import introuvable.";
+            } elseif (!($role === 'admin' || (int) $info['created_by'] === $uid)) {
+                // Retirer cinq cents fiches d'un coup n'est pas du même ordre
+                // que supprimer une fiche : on nettoie ce qu'on a soi-même
+                // versé, et l'administrateur nettoie pour tout le monde.
+                $msg = "Seul un administrateur, ou la personne qui a fait cet import, peut le retirer.";
+            } elseif ($action === 'import_delete') {
+                // Un seul horodatage pour le lot et pour ses fiches. Deux
+                // NOW() posés par deux requêtes peuvent tomber sur deux
+                // secondes différentes, et la restauration — qui compare les
+                // deux — ne retrouverait alors plus rien.
+                $quand = date('Y-m-d H:i:s');
+                $st = $pdo->prepare("UPDATE asso_prospection
+                                     SET deleted_at = ?, updated_by = ?, updated_at = ?
+                                     WHERE org_id = ? AND import_id = ? AND deleted_at IS NULL");
+                $st->execute([$quand, $uid, $quand, $org_id, $lot]);
+                $n = $st->rowCount();
+                $pdo->prepare("UPDATE asso_prospection_imports SET deleted_at = ? WHERE id = ? AND org_id = ?")
+                    ->execute([$quand, $lot, $org_id]);
+                $_SESSION['flash_prospection_annuler'] = $lot;
+                $msg = "Import « " . $info['fichier'] . " » retiré : "
+                     . $n . ' ' . ($n > 1 ? 'fiches masquées' : 'fiche masquée') . '.';
+
+            } elseif ($action === 'import_restore') {
+                // Seules les fiches retirées avec le lot reviennent : une fiche
+                // supprimée à la main avant cela doit le rester.
+                $st = $pdo->prepare("UPDATE asso_prospection
+                                     SET deleted_at = NULL, updated_by = ?, updated_at = NOW()
+                                     WHERE org_id = ? AND import_id = ? AND deleted_at IS NOT NULL
+                                       AND deleted_at = ?");
+                $st->execute([$uid, $org_id, $lot, (string) $info['deleted_at']]);
+                $n = $st->rowCount();
+                $pdo->prepare("UPDATE asso_prospection_imports SET deleted_at = NULL WHERE id = ? AND org_id = ?")
+                    ->execute([$lot, $org_id]);
+                $msg = "Import « " . $info['fichier'] . " » restauré : "
+                     . $n . ' ' . ($n > 1 ? 'fiches revenues' : 'fiche revenue') . '.';
+
+            } else { // import_purge
+                if (empty($info['deleted_at'])) {
+                    $msg = "Retirez d'abord cet import : la suppression définitive ne s'applique qu'à un import déjà retiré.";
+                } else {
+                    $pdo->beginTransaction();
+                    try {
+                        // L'historique part avec les fiches : le conserver
+                        // laisserait des événements pointant dans le vide.
+                        $pdo->prepare("DELETE e FROM asso_prospection_events e
+                                       JOIN asso_prospection p ON p.id = e.prospect_id
+                                       WHERE p.org_id = ? AND p.import_id = ?")
+                            ->execute([$org_id, $lot]);
+                        $st = $pdo->prepare("DELETE FROM asso_prospection WHERE org_id = ? AND import_id = ?");
+                        $st->execute([$org_id, $lot]);
+                        $n = $st->rowCount();
+                        $pdo->prepare("DELETE FROM asso_prospection_imports WHERE id = ? AND org_id = ?")
+                            ->execute([$lot, $org_id]);
+                        $pdo->commit();
+                    } catch (Throwable $e) { $pdo->rollBack(); throw $e; }
+                    $msg = "Import « " . $info['fichier'] . " » supprimé définitivement : "
+                         . $n . ' ' . ($n > 1 ? 'fiches effacées' : 'fiche effacée') . '.';
+                }
             }
 
         } elseif ($action === 'call' && $pid > 0) {
@@ -403,9 +556,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 // ── Lecture ─────────────────────────────────────────────────────────────────
 $filtre = (string) ($_GET['f'] ?? 'tous');
 $q      = trim((string) ($_GET['q'] ?? ''));
+$lotVu  = (int) ($_GET['import'] ?? 0);   // n'afficher qu'un import
+$fType  = prosp_type((string) ($_GET['type'] ?? ''));
+$fDept  = mb_substr(strtoupper(preg_replace('/[^0-9A-Za-z]/', '', (string) ($_GET['dept'] ?? ''))), 0, 3);
 
 $where  = ['p.org_id = ?'];
 $params = [$org_id];
+
+if ($lotVu > 0) { $where[] = 'p.import_id = ?'; $params[] = $lotVu; }
+if ($fType !== '') { $where[] = 'p.type = ?'; $params[] = $fType; }
+if ($fDept !== '') { $where[] = 'p.departement = ?'; $params[] = $fDept; }
 
 if ($filtre === 'corbeille') {
     $where[] = 'p.deleted_at IS NOT NULL';
@@ -417,6 +577,11 @@ if ($filtre === 'corbeille') {
     elseif ($filtre === 'jamais')     $where[] = 'p.called = 0 AND p.emailed = 0';
     elseif ($filtre === 'a_rappeler') $where[] = 'p.callback_at IS NOT NULL';
     elseif ($filtre === 'en_retard')  $where[] = 'p.callback_at IS NOT NULL AND p.callback_at <= NOW()';
+    // Préparer une tournée d'appels et préparer un envoi d'e-mails ne
+    // demandent pas la même liste : on sépare les deux.
+    elseif ($filtre === 'avec_tel')   $where[] = "p.telephone <> ''";
+    elseif ($filtre === 'avec_email') $where[] = "p.email <> ''";
+    elseif ($filtre === 'email_seul') $where[] = "p.email <> '' AND p.telephone = ''";
 }
 if ($q !== '') {
     $where[] = '(p.nom LIKE ? OR p.prenom LIKE ? OR p.telephone LIKE ? OR p.email LIKE ?)';
@@ -427,6 +592,9 @@ if ($q !== '') {
 $rows = []; $stats = ['total' => 0, 'a_appeler' => 0, 'appeles' => 0, 'emails' => 0, 'a_rappeler' => 0, 'en_retard' => 0];
 $events = [];
 $qr_labels = [];
+$imports = [];
+$imports_indispo = false;
+$facettes = ['type' => [], 'dept' => []];
 
 try {
     // Les rappels dus remontent en tête : c'est l'ordre dans lequel on
@@ -455,6 +623,38 @@ try {
           FROM asso_prospection WHERE org_id = ? AND deleted_at IS NULL");
     $st->execute([$org_id]);
     $stats = array_map('intval', $st->fetch(PDO::FETCH_ASSOC) ?: $stats);
+
+    // Les imports du fichier, et ce qu'il en reste. Requête tolérante : la
+    // prospection doit rester utilisable si cette migration-ci n'est pas
+    // passée, comme elle l'est déjà pour celle des codes QR.
+    try {
+        $st = $pdo->prepare("SELECT i.*,
+                    TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS auteur,
+                    (SELECT COUNT(*) FROM asso_prospection p
+                      WHERE p.import_id = i.id AND p.deleted_at IS NULL) AS restantes
+                 FROM asso_prospection_imports i
+                 LEFT JOIN users u ON u.id = i.created_by
+                 WHERE i.org_id = ?
+                 ORDER BY i.id DESC LIMIT 60");
+        $st->execute([$org_id]);
+        $imports = $st->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) { $imports_indispo = true; }
+
+    // Les natures et départements réellement présents : proposer un filtre
+    // sur un département vide n'aiderait personne.
+    try {
+        $st = $pdo->prepare("SELECT type, COUNT(*) n FROM asso_prospection
+                             WHERE org_id = ? AND deleted_at IS NULL AND type <> ''
+                             GROUP BY type ORDER BY n DESC");
+        $st->execute([$org_id]);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $facettes['type'][$r['type']] = (int) $r['n'];
+
+        $st = $pdo->prepare("SELECT departement, COUNT(*) n FROM asso_prospection
+                             WHERE org_id = ? AND deleted_at IS NULL AND departement <> ''
+                             GROUP BY departement ORDER BY departement ASC");
+        $st->execute([$org_id]);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $facettes['dept'][$r['departement']] = (int) $r['n'];
+    } catch (Throwable $e) { /* colonnes pas encore là */ }
 
     // Libellés des codes QR, en requête séparée et tolérante : si la migration
     // des QR n'a pas été passée, la prospection doit continuer de fonctionner.
@@ -509,11 +709,22 @@ $FILTRES = [
     'jamais'     => 'Jamais contactés',
     'a_rappeler' => 'À rappeler',
     'en_retard'  => 'Rappels dus',
+    'avec_tel'   => 'Avec téléphone',
+    'avec_email' => 'Avec e-mail',
+    'email_seul' => 'E-mail seulement',
     'corbeille'  => 'Corbeille',
 ];
 
 /** Conserve le filtre courant à travers les redirections. */
-$qs_keep = http_build_query(array_filter(['f' => $filtre !== 'tous' ? $filtre : '', 'q' => $q]));
+// Le contexte est rendu après chaque écriture : on ne veut pas perdre son
+// filtre par département dès qu'on a coché un appel.
+$qs_keep = http_build_query(array_filter([
+    'f'      => $filtre !== 'tous' ? $filtre : '',
+    'q'      => $q,
+    'import' => $lotVu > 0 ? $lotVu : '',
+    'type'   => $fType,
+    'dept'   => $fDept,
+]));
 
 render_head('Prospection');
 render_sidebar('prospection');
@@ -545,7 +756,24 @@ render_sidebar('prospection');
   .pr-io-liens a{color:#059669;font-weight:600;text-decoration:none}
   .pr-io-liens a:hover{text-decoration:underline}
   .pr-io-aide{margin:9px 0 0;font-size:12.5px;color:var(--ink-3,#5F6D66);line-height:1.5}
-  @media (max-width:760px){ .pr-io-liens{margin-left:0} }
+  /* Les fichiers déjà versés */
+  .pr-lots{margin-top:14px;border-top:1px solid var(--line,#E7EEEA);padding-top:12px}
+  .pr-lots-titre{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--ink-4,#9AA8A2);margin-bottom:8px}
+  .pr-lot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 10px;border-radius:10px;min-width:0}
+  .pr-lot + .pr-lot{margin-top:2px}
+  .pr-lot:hover{background:#F7FAF9}
+  .pr-lot.est-vu{background:#ECFDF5;box-shadow:inset 0 0 0 1px #A7F3D0}
+  .pr-lot.est-sup{opacity:.62}
+  .pr-lot-nom{min-width:0;flex:1}
+  .pr-lot-nom a{color:#059669;font-weight:600;text-decoration:none;font-size:13.5px}
+  .pr-lot-nom a:hover{text-decoration:underline}
+  .pr-lot-nom span{font-weight:600;font-size:13.5px;color:var(--ink-2,#45544D)}
+  .pr-lot-nom small{display:block;color:var(--ink-3,#5F6D66);font-size:12px;margin-top:2px}
+  .pr-lot-acts{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap}
+  .pr-btn.danger{background:#FEF2F2;color:#991B1B;border-color:#FECACA}
+  .pr-btn.danger:hover{background:#FEE2E2}
+  @media (max-width:760px){ .pr-io-liens{margin-left:0} .pr-lot-acts{width:100%} }
   input.pr-in,textarea.pr-in{width:100%;padding:9px 12px;border:1px solid var(--line,#E7EEEA);border-radius:9px;font:inherit;font-size:13.5px;background:#fff}
   input.pr-in:focus,textarea.pr-in:focus{outline:2px solid #05966933;border-color:#059669}
   .pr-btn{padding:10px 17px;border-radius:10px;border:none;background:#059669;color:#fff;font:inherit;font-weight:600;font-size:13.5px;cursor:pointer;white-space:nowrap}
@@ -663,21 +891,94 @@ render_sidebar('prospection');
                onchange="this.nextElementSibling.textContent = this.files[0] ? this.files[0].name : 'Choisir un fichier…'">
         <span>Choisir un fichier…</span>
       </label>
+      <?php // Un annuaire ne mélange presque jamais les genres : le dire une
+            // fois évite de qualifier trois cents fiches à la main. ?>
+      <select class="pr-in" name="type_defaut" title="Nature des contacts de ce fichier" style="max-width:170px">
+        <option value="">Nature — au choix</option>
+        <?php foreach (PROSP_TYPES as $k => $lab): ?>
+          <option value="<?= h($k) ?>"><?= h($lab) ?></option>
+        <?php endforeach; ?>
+      </select>
       <button class="pr-btn" type="submit">Importer</button>
     </form>
 
     <div class="pr-io-liens">
       <a href="/prospection-export.php?quoi=modele">Modèle Excel</a>
-      <a href="/prospection-export.php?<?= h(http_build_query(array_filter(['f' => $filtre !== 'tous' ? $filtre : '', 'q' => $q]))) ?>">Exporter la liste</a>
+      <a href="/prospection-export.php<?= $qs_keep ? '?' . h($qs_keep) : '' ?>">Exporter la liste</a>
       <a href="/prospection-export.php?quoi=historique">Exporter l’historique</a>
     </div>
   </div>
 
   <p class="pr-io-aide">
     Excel ou CSV. Les colonnes sont reconnues à leur intitulé — <em>Prénom, Nom,
-    Téléphone, E-mail, Notes</em> — dans n’importe quel ordre. Les numéros déjà
-    présents ne sont pas réimportés.
+    Téléphone, E-mail, Notes, Type, Code postal, Ville</em> — dans n’importe quel
+    ordre. Le département se déduit du code postal. Les numéros déjà présents ne
+    sont pas réimportés.
   </p>
+
+  <?php // Les fichiers déjà versés, et de quoi en retirer un en entier. ?>
+  <?php if ($imports_indispo): ?>
+    <p class="pr-io-aide" style="color:#991B1B">
+      Le suivi des imports demande une migration :
+      <code>php migrations/run.php 2026-09-15-prospection-imports.sql</code>
+    </p>
+  <?php elseif ($imports): ?>
+    <div class="pr-lots">
+      <div class="pr-lots-titre">Fichiers importés</div>
+      <?php foreach ($imports as $it):
+            $sup = !empty($it['deleted_at']);
+            $mien = (int) $it['created_by'] === $uid;
+            $peut = ($role === 'admin' || $mien);
+            $t = strtotime((string) $it['created_at']); ?>
+        <div class="pr-lot<?= $sup ? ' est-sup' : '' ?><?= $lotVu === (int) $it['id'] ? ' est-vu' : '' ?>">
+          <div class="pr-lot-nom">
+            <?php if ($sup): ?>
+              <span><?= h($it['fichier']) ?></span>
+            <?php else: ?>
+              <a href="/prospection?import=<?= (int) $it['id'] ?>"><?= h($it['fichier']) ?></a>
+            <?php endif; ?>
+            <small>
+              <?= $t ? date('d/m/Y à H\hi', $t) : '' ?>
+              <?php if (!empty($it['auteur'])): ?> · <?= h($it['auteur']) ?><?php endif; ?>
+              <?php if (!empty($it['type_defaut']) && isset(PROSP_TYPES[$it['type_defaut']])): ?>
+                · <?= h(PROSP_TYPES[$it['type_defaut']]) ?>
+              <?php endif; ?>
+              · <?= (int) $it['restantes'] ?> fiche<?= (int) $it['restantes'] > 1 ? 's' : '' ?>
+              <?php if ((int) $it['doublons'] > 0): ?> · <?= (int) $it['doublons'] ?> doublon<?= (int) $it['doublons'] > 1 ? 's' : '' ?> écarté<?= (int) $it['doublons'] > 1 ? 's' : '' ?><?php endif; ?>
+              <?php if ($sup): ?> · <strong>retiré</strong><?php endif; ?>
+            </small>
+          </div>
+          <?php if ($peut): ?>
+          <div class="pr-lot-acts">
+            <?php if ($sup): ?>
+              <form method="post" action="/prospection" style="display:inline">
+                <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+                <input type="hidden" name="action" value="import_restore">
+                <input type="hidden" name="import_id" value="<?= (int) $it['id'] ?>">
+                <button class="pr-btn sec" type="submit">Restaurer</button>
+              </form>
+              <form method="post" action="/prospection" style="display:inline"
+                    onsubmit="return confirm('Supprimer définitivement « <?= h(addslashes($it['fichier'])) ?> » et toutes ses fiches ? Cette action est irréversible.')">
+                <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+                <input type="hidden" name="action" value="import_purge">
+                <input type="hidden" name="import_id" value="<?= (int) $it['id'] ?>">
+                <button class="pr-btn danger" type="submit">Supprimer définitivement</button>
+              </form>
+            <?php else: ?>
+              <form method="post" action="/prospection" style="display:inline"
+                    onsubmit="return confirm('Retirer les <?= (int) $it['restantes'] ?> fiches de « <?= h(addslashes($it['fichier'])) ?> » ?')">
+                <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+                <input type="hidden" name="action" value="import_delete">
+                <input type="hidden" name="import_id" value="<?= (int) $it['id'] ?>">
+                <button class="pr-btn sec" type="submit">Retirer cet import</button>
+              </form>
+            <?php endif; ?>
+          </div>
+          <?php endif; ?>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
 </div>
 
 <div class="pr-tabs">
@@ -688,6 +989,28 @@ render_sidebar('prospection');
   <?php endforeach; ?>
   <form method="get" action="/prospection" class="pr-search">
     <input type="hidden" name="f" value="<?= h($filtre) ?>">
+    <?php if ($lotVu > 0): ?><input type="hidden" name="import" value="<?= $lotVu ?>"><?php endif; ?>
+    <?php // Deux axes de tri demandés sur le terrain : on n'appelle pas une
+          // entreprise comme une association, et une tournée se prépare
+          // département par département. ?>
+    <?php if ($facettes['type']): ?>
+      <select class="pr-in" name="type" onchange="this.form.submit()">
+        <option value="">Toutes natures</option>
+        <?php foreach ($facettes['type'] as $k => $n): ?>
+          <option value="<?= h($k) ?>" <?= $fType === $k ? 'selected' : '' ?>>
+            <?= h(PROSP_TYPES[$k] ?? $k) ?> (<?= $n ?>)
+          </option>
+        <?php endforeach; ?>
+      </select>
+    <?php endif; ?>
+    <?php if ($facettes['dept']): ?>
+      <select class="pr-in" name="dept" onchange="this.form.submit()">
+        <option value="">Tous départements</option>
+        <?php foreach ($facettes['dept'] as $k => $n): ?>
+          <option value="<?= h($k) ?>" <?= $fDept === $k ? 'selected' : '' ?>><?= h($k) ?> (<?= $n ?>)</option>
+        <?php endforeach; ?>
+      </select>
+    <?php endif; ?>
     <input class="pr-in" name="q" value="<?= h($q) ?>" placeholder="Nom, téléphone, e-mail…" style="min-width:180px">
     <button class="pr-btn sec" type="submit">Rechercher</button>
   </form>

@@ -70,10 +70,14 @@ foreach ($files as $path) {
             // bloquer l'instruction suivante en connexion non-bufferisée.
             $res = $pdo->query($stmt);
             if ($res instanceof PDOStatement) { $res->closeCursor(); $res = null; }
-            echo "  ✓ $label…\n";
+            // Accolades obligatoires : PHP accepte les octets ≥ 0x80 dans un
+            // nom de variable, donc « $label… » désignait une variable nommée
+            // « label… », jamais définie — d'où un avertissement à chaque
+            // instruction, et un libellé toujours vide.
+            echo "  ✓ {$label}…\n";
             $totalOk++;
         } catch (Throwable $e) {
-            echo "  ✗ $label… : " . $e->getMessage() . "\n";
+            echo "  ✗ {$label}… : " . $e->getMessage() . "\n";
             $totalErr++;
         }
     }

@@ -32,6 +32,10 @@ if (!$autorise) { http_response_code(403); die('Accès refusé.'); }
 $quoi = (string) ($_GET['quoi'] ?? 'liste');
 $jour = date('Y-m-d');
 
+/** Natures de prospect. Doit rester aligné sur PROSP_TYPES de prospection.php. */
+$TYPES = ['asso' => 'Association', 'entreprise' => 'Entreprise',
+          'collectiv' => 'Collectivité', 'autre' => 'Autre'];
+
 /** Nom de fichier sans accent ni espace : certains navigateurs les massacrent. */
 function exp_nom(string $base, string $jour): string
 {
@@ -53,17 +57,20 @@ function exp_date($v, bool $avecHeure = true): string
 // Le modèle à remplir
 // ------------------------------------------------------------------
 if ($quoi === 'modele') {
-    $entetes = ['Prénom', 'Nom', 'Téléphone', 'E-mail', 'Notes'];
+    $entetes = ['Prénom', 'Nom', 'Type', 'Code postal', 'Ville', 'Téléphone', 'E-mail', 'Notes'];
     $lignes = [array_map(fn($h) => ['v' => $h, 'entete' => true], $entetes)];
-    $lignes[] = ['Amélie', 'Rousseau', '06 01 02 03 04', 'amelie@exemple.fr', 'Rencontrée au forum des assos'];
-    $lignes[] = ['Karim', 'Benali', '07 88 99 00 11', 'karim@exemple.fr', ''];
+    $lignes[] = ['Amélie', 'Rousseau', 'Association', '91000', 'Évry-Courcouronnes',
+                 '06 01 02 03 04', 'amelie@exemple.fr', 'Rencontrée au forum des assos'];
+    $lignes[] = ['Karim', 'Benali', 'Entreprise', '75011', 'Paris',
+                 '07 88 99 00 11', 'karim@exemple.fr', ''];
     $lignes[] = [];
     $lignes[] = [['v' => 'Remplacez les deux lignes d’exemple par vos contacts, puis importez ce fichier.', 'entete' => false]];
     $lignes[] = ['L’ordre des colonnes peut changer : l’import lit les en-têtes. Seule la première ligne doit les contenir.'];
     $lignes[] = ['Une fiche sans nom ni téléphone est ignorée — elle ne serait pas rappelable.'];
+    $lignes[] = ['Type accepte Association, Entreprise, Collectivité ou Autre. Le département se déduit du code postal.'];
 
     ak_tableur_envoyer(
-        ak_xlsx_octets($lignes, 'Modèle', [16, 18, 20, 30, 46]),
+        ak_xlsx_octets($lignes, 'Modèle', [16, 18, 14, 12, 20, 20, 30, 46]),
         exp_nom('modele-prospection', $jour)
     );
 }
@@ -125,6 +132,19 @@ elseif ($filtre === 'emails')     $where[] = 'p.emailed = 1';
 elseif ($filtre === 'jamais')     $where[] = 'p.called = 0 AND p.emailed = 0';
 elseif ($filtre === 'a_rappeler') $where[] = 'p.callback_at IS NOT NULL';
 elseif ($filtre === 'en_retard')  $where[] = 'p.callback_at IS NOT NULL AND p.callback_at <= NOW()';
+elseif ($filtre === 'avec_tel')   $where[] = "p.telephone <> ''";
+elseif ($filtre === 'avec_email') $where[] = "p.email <> ''";
+elseif ($filtre === 'email_seul') $where[] = "p.email <> '' AND p.telephone = ''";
+
+// Les mêmes axes qu'à l'écran : ce qu'on voit est ce qu'on exporte.
+$lotVu = (int) ($_GET['import'] ?? 0);
+if ($lotVu > 0) { $where[] = 'p.import_id = ?'; $params[] = $lotVu; }
+
+$fType = preg_replace('/[^a-z]/', '', strtolower((string) ($_GET['type'] ?? '')));
+if ($fType !== '' && isset($TYPES[$fType])) { $where[] = 'p.type = ?'; $params[] = $fType; }
+
+$fDept = mb_substr(strtoupper(preg_replace('/[^0-9A-Za-z]/', '', (string) ($_GET['dept'] ?? ''))), 0, 3);
+if ($fDept !== '') { $where[] = 'p.departement = ?'; $params[] = $fDept; }
 
 if ($q !== '') {
     $where[] = '(p.nom LIKE ? OR p.prenom LIKE ? OR p.telephone LIKE ? OR p.email LIKE ?)';
@@ -152,19 +172,40 @@ try {
     foreach ($s2->fetchAll(PDO::FETCH_ASSOC) as $r) $qr[(int) $r['id']] = (string) $r['label'];
 } catch (Throwable $e) { /* sans importance */ }
 
-$entetes = ['Prénom', 'Nom', 'Téléphone', 'E-mail', 'Appelé', 'Date d’appel',
+// Le nom du fichier d'origine, pour que « Provenance » dise quelque chose.
+$lots = [];
+try {
+    $s3 = $pdo->prepare("SELECT id, fichier FROM asso_prospection_imports WHERE org_id = ?");
+    $s3->execute([$org_id]);
+    foreach ($s3->fetchAll(PDO::FETCH_ASSOC) as $r) $lots[(int) $r['id']] = (string) $r['fichier'];
+} catch (Throwable $e) { /* migration des imports pas encore passée */ }
+
+$entetes = ['Prénom', 'Nom', 'Type', 'Code postal', 'Ville', 'Département',
+            'Téléphone', 'E-mail', 'Appelé', 'Date d’appel',
             'E-mail envoyé', 'Date d’e-mail', 'À rappeler le', 'Provenance',
             'Notes', 'Créée le', 'Modifiée le', 'Modifiée par'];
 $lignes = [array_map(fn($h) => ['v' => $h, 'entete' => true], $entetes)];
 
 foreach ($rows as $r) {
-    $provenance = ($r['source'] ?? 'manuel') === 'qr'
-        ? 'Code QR' . (!empty($r['qr_id']) && isset($qr[(int) $r['qr_id']]) ? ' — ' . $qr[(int) $r['qr_id']] : '')
-        : 'Saisie manuelle';
+    $src = $r['source'] ?? 'manuel';
+    if ($src === 'qr') {
+        $provenance = 'Code QR'
+            . (!empty($r['qr_id']) && isset($qr[(int) $r['qr_id']]) ? ' — ' . $qr[(int) $r['qr_id']] : '');
+    } elseif ($src === 'import') {
+        $provenance = 'Import'
+            . (!empty($r['import_id']) && isset($lots[(int) $r['import_id']]) ? ' — ' . $lots[(int) $r['import_id']] : '');
+    } else {
+        $provenance = 'Saisie manuelle';
+    }
     $lignes[] = [
         (string) $r['prenom'],
         (string) $r['nom'],
-        // Forcé en texte : sinon Excel avale le zéro initial du 06.
+        $TYPES[$r['type'] ?? ''] ?? '',
+        // Forcés en texte : Excel avale le zéro initial d'un code postal
+        // comme celui d'un numéro en 06.
+        (string) ($r['code_postal'] ?? ''),
+        (string) ($r['ville'] ?? ''),
+        (string) ($r['departement'] ?? ''),
         (string) $r['telephone'],
         (string) $r['email'],
         !empty($r['called'])  ? 'Oui' : 'Non',
@@ -185,6 +226,6 @@ if (count($lignes) === 1) {
 }
 
 ak_tableur_envoyer(
-    ak_xlsx_octets($lignes, 'Prospection', [15, 17, 18, 28, 9, 17, 14, 17, 17, 24, 40, 17, 17, 22]),
+    ak_xlsx_octets($lignes, 'Prospection', [15, 17, 14, 12, 18, 12, 18, 28, 9, 17, 14, 17, 17, 24, 40, 17, 17, 22]),
     exp_nom('prospection' . ($filtre !== 'tous' ? '-' . $filtre : ''), $jour)
 );
