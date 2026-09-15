@@ -98,7 +98,61 @@ function pr_migrations_manquantes(PDO $pdo): array
     return [];
 }
 
+/** Réduit un intitulé de colonne à sa forme comparable : sans accent, sans ponctuation. */
+function prosp_cle(string $s): string
+{
+    $s = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s) ?: $s;
+    return preg_replace('/[^a-z0-9]/', '', strtolower($s));
+}
+
+/**
+ * Remet un numéro français d'aplomb.
+ *
+ * Excel stocke volontiers « 0601020304 » comme le nombre 601020304 et perd le
+ * zéro. Un fichier venu d'ailleurs écrit « +33 6 01 02 03 04 ». Les deux
+ * doivent donner le même numéro, sinon le dédoublonnage ne sert à rien.
+ */
+function prosp_tel(string $brut): string
+{
+    $t = preg_replace('/[^0-9+]/', '', $brut);
+    if ($t === '') return '';
+    if (str_starts_with($t, '+33'))  $t = '0' . substr($t, 3);
+    elseif (str_starts_with($t, '0033')) $t = '0' . substr($t, 4);
+    // Neuf chiffres commençant par 1-9 : c'est un numéro amputé de son zéro.
+    if (strlen($t) === 9 && $t[0] !== '0' && ctype_digit($t)) $t = '0' . $t;
+    return $t;
+}
+
+/** Forme canonique servant à repérer les doublons. */
+function prosp_empreinte_tel(string $tel): string
+{
+    return preg_replace('/[^0-9]/', '', prosp_tel($tel));
+}
+
+/**
+ * Empreinte de repli, quand la fiche n'a ni téléphone ni e-mail.
+ *
+ * Sans elle, une ligne réduite à un nom n'a aucune clé de comparaison et
+ * le même fichier réimporté la recrée à chaque fois. Le nom est un
+ * repère imparfait — deux Jean Martin existent — mais dans un même
+ * fichier de prospection le doublon est bien plus probable que l'homonyme.
+ */
+function prosp_empreinte_nom(string $prenom, string $nom): string
+{
+    return prosp_cle($prenom . '|' . $nom);
+}
+
 // ── Écritures ───────────────────────────────────────────────────────────────
+// Un envoi de fichier trop lourd arrive avec $_POST vide : PHP a jeté le
+// corps de la requête. Sans ce test, l'utilisateur verrait « Jeton CSRF
+// invalide », message qui ne dit rien de la vraie cause.
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST'
+    && !$_POST && !$_FILES && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+    $_SESSION['flash_prospection'] = 'Fichier trop volumineux (limite du serveur : '
+        . ini_get('post_max_size') . '). Découpez-le ou enregistrez-le en CSV.';
+    header('Location: /prospection'); exit;
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!hash_equals($csrf, (string) ($_POST['csrf_token'] ?? ''))) {
         http_response_code(419); exit('Jeton CSRF invalide.');
@@ -125,6 +179,132 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $st->execute([$org_id, $prenom, $nom, $tel, $email, $uid, $uid]);
                 prosp_log($pdo, $org_id, (int) $pdo->lastInsertId(), $uid, 'create', trim("$prenom $nom"));
                 $msg = "Prospect ajouté.";
+            }
+
+        } elseif ($action === 'import') {
+            require_once __DIR__ . '/xlsx-helper.php';
+            $f = $_FILES['fichier'] ?? null;
+
+            if (!$f || ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                $codes = [
+                    UPLOAD_ERR_INI_SIZE   => 'Fichier trop volumineux pour le serveur.',
+                    UPLOAD_ERR_FORM_SIZE  => 'Fichier trop volumineux.',
+                    UPLOAD_ERR_PARTIAL    => 'Envoi interrompu, réessayez.',
+                    UPLOAD_ERR_NO_FILE    => 'Choisissez un fichier avant d’importer.',
+                    UPLOAD_ERR_NO_TMP_DIR => 'Dossier temporaire absent sur le serveur.',
+                    UPLOAD_ERR_CANT_WRITE => 'Écriture impossible sur le serveur.',
+                ];
+                $msg = $codes[$f['error'] ?? UPLOAD_ERR_NO_FILE] ?? 'Envoi impossible.';
+
+            } elseif (!is_uploaded_file($f['tmp_name'])) {
+                $msg = 'Envoi invalide.';
+
+            } else {
+                $lignes = ak_tableur_lire($f['tmp_name'], (string) $f['name'], 5000);
+
+                // Les colonnes sont reconnues par leur intitulé, pas par leur
+                // position : un fichier venu d'ailleurs range rarement dans
+                // le même ordre, et exiger un ordre ferait échouer l'import
+                // sans que l'utilisateur comprenne pourquoi.
+                $synonymes = [
+                    'prenom'    => ['prenom', 'firstname', 'first', 'prenoms', 'givenname'],
+                    'nom'       => ['nom', 'lastname', 'last', 'name', 'nomdefamille', 'surname'],
+                    'telephone' => ['telephone', 'tel', 'phone', 'portable', 'mobile', 'numero', 'telmobile'],
+                    'email'     => ['email', 'mail', 'courriel', 'adresseemail', 'emailaddress'],
+                    'notes'     => ['notes', 'note', 'commentaire', 'commentaires', 'remarque', 'observations'],
+                ];
+
+                $map = [];
+                $debut = 0;
+                foreach (($lignes[0] ?? []) as $i => $cel) {
+                    $k = prosp_cle((string) $cel);
+                    if ($k === '') continue;
+                    foreach ($synonymes as $champ => $mots) {
+                        if (in_array($k, $mots, true) && !isset($map[$champ])) { $map[$champ] = $i; break; }
+                    }
+                }
+                if ($map) {
+                    $debut = 1;  // la première ligne était l'en-tête
+                } else {
+                    // Aucun intitulé reconnu : on suppose l'ordre du modèle et
+                    // on lit dès la première ligne, qui contient des données.
+                    $map = ['prenom' => 0, 'nom' => 1, 'telephone' => 2, 'email' => 3, 'notes' => 4];
+                }
+
+                // Ce qui est déjà en base, pour ne pas créer de doublon.
+                $vus = ['tel' => [], 'mail' => [], 'nom' => []];
+                $st = $pdo->prepare("SELECT prenom, nom, telephone, email FROM asso_prospection
+                                     WHERE org_id = ? AND deleted_at IS NULL");
+                $st->execute([$org_id]);
+                foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $e = prosp_empreinte_tel((string) $r['telephone']);
+                    if ($e !== '') $vus['tel'][$e] = true;
+                    $m = mb_strtolower(trim((string) $r['email']));
+                    if ($m !== '') $vus['mail'][$m] = true;
+                    if ($e === '' && $m === '') {
+                        $n = prosp_empreinte_nom((string) $r['prenom'], (string) $r['nom']);
+                        if ($n !== '') $vus['nom'][$n] = true;
+                    }
+                }
+
+                $ajoutes = 0; $doublons = 0; $vides = 0;
+                $lire = fn(array $l, string $champ) => isset($map[$champ], $l[$map[$champ]])
+                    ? trim((string) $l[$map[$champ]]) : '';
+
+                $ins = $pdo->prepare("INSERT INTO asso_prospection
+                        (org_id, prenom, nom, telephone, email, notes, source,
+                         created_by, updated_by, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'import', ?, ?, NOW())");
+
+                $pdo->beginTransaction();
+                try {
+                    for ($i = $debut; $i < count($lignes); $i++) {
+                        $l = $lignes[$i];
+                        if (!$l) { $vides++; continue; }
+
+                        $prenom = mb_substr($lire($l, 'prenom'), 0, 120);
+                        $nom    = mb_substr($lire($l, 'nom'), 0, 120);
+                        $tel    = prosp_tel($lire($l, 'telephone'));
+                        $email  = mb_substr($lire($l, 'email'), 0, 190);
+                        $notes  = $lire($l, 'notes');
+
+                        // Même règle que la saisie manuelle : sans nom ni
+                        // numéro, la fiche ne sert à personne.
+                        if ($prenom === '' && $nom === '' && $tel === '') { $vides++; continue; }
+
+                        $eTel  = prosp_empreinte_tel($tel);
+                        $eMail = mb_strtolower($email);
+                        // Le nom ne sert de clé que faute de mieux : deux
+                        // homonymes joignables restent deux fiches.
+                        $eNom  = ($eTel === '' && $eMail === '')
+                               ? prosp_empreinte_nom($prenom, $nom) : '';
+                        if (($eTel !== '' && isset($vus['tel'][$eTel]))
+                            || ($eMail !== '' && isset($vus['mail'][$eMail]))
+                            || ($eNom !== '' && isset($vus['nom'][$eNom]))) {
+                            $doublons++; continue;
+                        }
+
+                        $ins->execute([$org_id, $prenom, $nom, mb_substr($tel, 0, 40),
+                                       $email, $notes, $uid, $uid]);
+                        prosp_log($pdo, $org_id, (int) $pdo->lastInsertId(), $uid, 'import',
+                                  trim("$prenom $nom") ?: $tel);
+                        $ajoutes++;
+                        if ($eTel !== '')  $vus['tel'][$eTel] = true;
+                        if ($eMail !== '') $vus['mail'][$eMail] = true;
+                        if ($eNom !== '')  $vus['nom'][$eNom] = true;
+                    }
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    $pdo->rollBack();
+                    throw $e;
+                }
+
+                // Un compte rendu chiffré : « import terminé » laisserait
+                // croire que les lignes ignorées ont été prises.
+                $bouts = [$ajoutes . ' ' . ($ajoutes > 1 ? 'fiches ajoutées' : 'fiche ajoutée')];
+                if ($doublons) $bouts[] = $doublons . ' ' . ($doublons > 1 ? 'doublons ignorés' : 'doublon ignoré');
+                if ($vides)    $bouts[] = $vides . ' ' . ($vides > 1 ? 'lignes vides ou sans contact' : 'ligne vide ou sans contact');
+                $msg = implode(' · ', $bouts) . '.';
             }
 
         } elseif ($action === 'call' && $pid > 0) {
@@ -318,6 +498,7 @@ $EVENT_LABEL = [
     'callback_clear' => 'Rappel retiré',
     'delete'         => 'Supprimée',
     'restore'        => 'Restaurée',
+    'import'         => 'Importée depuis un fichier',
 ];
 
 $FILTRES = [
@@ -350,6 +531,21 @@ render_sidebar('prospection');
   .pr-panel{background:#fff;border:1px solid var(--line,#E7EEEA);border-radius:16px;padding:16px;margin-bottom:16px}
   .pr-new{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,165px),1fr));gap:10px;align-items:end}
   .pr-new label{display:block;font-size:12px;font-weight:600;color:var(--ink-2,#45544D);margin-bottom:5px}
+  /* Import / export */
+  .pr-io{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--line,#E7EEEA)}
+  .pr-io-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
+  /* L'input natif est illisible et impossible à styler : on l'enveloppe. */
+  .pr-io-file{position:relative;overflow:hidden;display:inline-flex;align-items:center;
+    border:1px dashed #A9BDB3;border-radius:10px;padding:8px 13px;cursor:pointer;
+    font-size:13px;color:var(--ink-2,#45544D);background:#F7FAF9;max-width:100%}
+  .pr-io-file:hover{border-color:#059669;color:#059669}
+  .pr-io-file input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+  .pr-io-file span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .pr-io-liens{display:flex;gap:14px;flex-wrap:wrap;margin-left:auto;font-size:13px}
+  .pr-io-liens a{color:#059669;font-weight:600;text-decoration:none}
+  .pr-io-liens a:hover{text-decoration:underline}
+  .pr-io-aide{margin:9px 0 0;font-size:12.5px;color:var(--ink-3,#5F6D66);line-height:1.5}
+  @media (max-width:760px){ .pr-io-liens{margin-left:0} }
   input.pr-in,textarea.pr-in{width:100%;padding:9px 12px;border:1px solid var(--line,#E7EEEA);border-radius:9px;font:inherit;font-size:13.5px;background:#fff}
   input.pr-in:focus,textarea.pr-in:focus{outline:2px solid #05966933;border-color:#059669}
   .pr-btn{padding:10px 17px;border-radius:10px;border:none;background:#059669;color:#fff;font:inherit;font-weight:600;font-size:13.5px;cursor:pointer;white-space:nowrap}
@@ -454,6 +650,34 @@ render_sidebar('prospection');
     <div><label>E-mail</label><input class="pr-in" name="email" type="email" autocomplete="off"></div>
     <div><button class="pr-btn" type="submit">Ajouter</button></div>
   </form>
+
+  <?php // Import / export. Ajouter un à un convient pour trois contacts,
+        // pas pour la liste d'un forum des associations. ?>
+  <div class="pr-io">
+    <form method="post" action="/prospection<?= $qs_keep ? '?' . h($qs_keep) : '' ?>"
+          enctype="multipart/form-data" class="pr-io-form">
+      <input type="hidden" name="action" value="import">
+      <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+      <label class="pr-io-file">
+        <input type="file" name="fichier" accept=".xlsx,.xlsm,.csv,.txt,.tsv" required
+               onchange="this.nextElementSibling.textContent = this.files[0] ? this.files[0].name : 'Choisir un fichier…'">
+        <span>Choisir un fichier…</span>
+      </label>
+      <button class="pr-btn" type="submit">Importer</button>
+    </form>
+
+    <div class="pr-io-liens">
+      <a href="/prospection-export.php?quoi=modele">Modèle Excel</a>
+      <a href="/prospection-export.php?<?= h(http_build_query(array_filter(['f' => $filtre !== 'tous' ? $filtre : '', 'q' => $q]))) ?>">Exporter la liste</a>
+      <a href="/prospection-export.php?quoi=historique">Exporter l’historique</a>
+    </div>
+  </div>
+
+  <p class="pr-io-aide">
+    Excel ou CSV. Les colonnes sont reconnues à leur intitulé — <em>Prénom, Nom,
+    Téléphone, E-mail, Notes</em> — dans n’importe quel ordre. Les numéros déjà
+    présents ne sont pas réimportés.
+  </p>
 </div>
 
 <div class="pr-tabs">
