@@ -74,6 +74,7 @@ $groups = [
         'label' => 'Supervision & sécurité',
         'accent' => '#F87171',
         'items' => [
+            ['ic' => '📊', 'title' => 'Connexions et usage',  'desc' => 'Par association, par membre, minute par minute', 'url' => '/fondateur-connexions'],
             ['ic' => '🕵️', 'title' => 'Activité utilisateurs', 'desc' => 'Journal d\'activité de la plateforme',   'url' => '/fondateur-activity.php'],
             ['ic' => '🔐', 'title' => 'Journal d\'accès',      'desc' => 'Connexions et accès sensibles',          'url' => '/fondateur-cockpit/access-logs'],
             ['ic' => '🛡️', 'title' => 'Cockpit CRON',         'desc' => 'Relances, essais, renouvellements',       'url' => '/admin-cron-login', 'tag' => 'RÉAUTH 15 MIN'],
