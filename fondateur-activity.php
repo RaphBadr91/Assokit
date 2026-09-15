@@ -118,6 +118,27 @@ try {
     error_log('fondateur-activity stats: ' . $e->getMessage());
 }
 
+// Les associations, avec leur nombre d'événements sur la période choisie.
+// Un LEFT JOIN plutôt qu'un filtre : une association silencieuse doit
+// rester sélectionnable, c'est justement une information.
+$orgs_liste = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT o.id, o.name, COUNT(l.id) AS n
+        FROM organizations o
+        LEFT JOIN assokit_activity_log l
+               ON l.organization_id = o.id
+              AND l.created_at >= DATE_SUB(NOW(), INTERVAL {$interval})
+        WHERE o.deleted_at IS NULL
+        GROUP BY o.id, o.name
+        ORDER BY n DESC, o.name ASC
+    ");
+    $stmt->execute();
+    $orgs_liste = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    error_log('fondateur-activity orgs: ' . $e->getMessage());
+}
+
 // Top utilisateurs
 $top_users = [];
 try {
@@ -342,8 +363,16 @@ table.activity-table { width: 100%; border-collapse: collapse; font-size: 12px; 
         <input type="text" name="email" value="<?= h_act($filter_user_email) ?>" placeholder="user@email.com">
     </div>
     <div class="filter-group">
-        <label>Org. ID</label>
-        <input type="number" name="org" value="<?= $filter_org ?: '' ?>" placeholder="42">
+        <label>Association</label>
+        <?php // Un numéro d'organisation ne parle à personne : on liste les noms. ?>
+        <select name="org">
+            <option value="">Toutes</option>
+            <?php foreach ($orgs_liste as $o): ?>
+                <option value="<?= (int) $o['id'] ?>" <?= $filter_org === (int) $o['id'] ? 'selected' : '' ?>>
+                    <?= h_act($o['name']) ?><?= $o['n'] > 0 ? ' (' . (int) $o['n'] . ')' : '' ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
     </div>
     <div class="filter-group">
         <label>Action</label>

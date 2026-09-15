@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/activity-tracker.php';  // journal fondateur : qui a fait quoi, à la minute près
+activity_log_request();
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-attendance.php';
 require_login();

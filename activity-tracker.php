@@ -399,4 +399,98 @@ function activity_get_ip(): string
     return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 }
 
+/**
+ * Journalise automatiquement l'écriture en cours.
+ * ------------------------------------------------------------------
+ * À appeler en tête d'un point d'entrée qui modifie des données :
+ *
+ *     require_once __DIR__ . '/activity-tracker.php';
+ *     activity_log_request();
+ *
+ * Le journal était jusqu'ici alimenté par les pages vues et les
+ * connexions seulement : on savait qui était passé où, jamais ce qui
+ * avait été fait. Les actions sont pourtant ce qu'on cherche quand on
+ * remonte un incident.
+ *
+ * L'écriture est différée à la fin de la requête, pour trois raisons :
+ * la session est alors renseignée quel que soit l'ordre des require, le
+ * code HTTP final est connu — donc on sait si l'action a abouti ou
+ * échoué — et un journal en panne ne peut pas faire tomber l'action
+ * elle-même.
+ */
+function activity_log_request(?string $libelle = null): void
+{
+    static $arme = false;
+    if ($arme) return;                 // un seul enregistrement par requête
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') return;
+    $arme = true;
+
+    $debut = microtime(true);
+
+    register_shutdown_function(function () use ($libelle, $debut) {
+        try {
+            if (empty($_SESSION['user_id'])) return;   // visiteur anonyme : rien à tracer
+
+            $script = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''), '.php');
+            $sous   = (string) ($_POST['action'] ?? '');
+            $nom    = $libelle ?? ($sous !== '' ? $script . ':' . $sous : $script);
+
+            // La cible : le premier identifiant reconnaissable du formulaire.
+            $cible = null;
+            foreach (['id', 'project_id', 'projet_id', 'facture_id', 'invoice_id', 'adherent_id',
+                      'user_id', 'event_id', 'evenement_id', 'campaign_id', 'grant_id',
+                      'prospect_id', 'ticket_id', 'canal_id', 'folder_id'] as $k) {
+                if (isset($_POST[$k]) && $_POST[$k] !== '') { $cible = $k . '=' . (string) $_POST[$k]; break; }
+            }
+
+            $meta = activity_meta_sure($_POST);
+            // http_response_code() rend `false` hors contexte web : ne rien
+            // écrire vaut mieux qu'un « http: 0 » qui ferait croire à une panne.
+            $code = (int) (http_response_code() ?: 0);
+            if ($code >= 100 && $code < 600) {
+                $meta['http'] = $code;
+                // Une action refusée est aussi intéressante qu'une réussie.
+                if ($code >= 400) $meta['echec'] = true;
+            }
+            $meta['ms'] = (int) round((microtime(true) - $debut) * 1000);
+
+            activity_log_action($nom, $meta, $cible);
+        } catch (Throwable $e) {
+            error_log('activity_log_request: ' . $e->getMessage());
+        }
+    });
+}
+
+/**
+ * Nettoie les champs d'un formulaire avant de les écrire au journal.
+ *
+ * Un journal d'audit ne doit jamais devenir une fuite : mots de passe,
+ * jetons et coordonnées bancaires n'y ont pas leur place, même sous
+ * couvert de « traçabilité ». Tout ce qui ressemble à un secret est
+ * écarté sur le nom du champ, et le reste est tronqué — on veut savoir
+ * ce qui a été fait, pas archiver le contenu d'un message.
+ */
+function activity_meta_sure(array $champs): array
+{
+    $interdits = ['password', 'pass', 'pwd', 'mot_de_passe', 'motdepasse', 'new_password',
+                  'confirm', 'csrf', 'token', 'secret', 'api_key', 'apikey', 'cle',
+                  'iban', 'bic', 'card', 'cvv', 'cvc', 'stripe', 'totp', 'code_2fa', 'otp'];
+
+    $sortie = [];
+    foreach ($champs as $k => $v) {
+        $kl = strtolower((string) $k);
+        if ($kl === 'action') continue;                       // déjà dans le libellé
+        foreach ($interdits as $mot) {
+            if (str_contains($kl, $mot)) continue 2;
+        }
+        if (is_array($v)) { $sortie[$k] = '[' . count($v) . ' valeurs]'; continue; }
+        $s = trim((string) $v);
+        if ($s === '') continue;
+        // Un corps de message ou une note n'a pas à être recopié en entier.
+        $sortie[$k] = mb_strlen($s) > 120 ? mb_substr($s, 0, 120) . '…' : $s;
+        if (count($sortie) >= 15) break;
+    }
+    return $sortie;
+}
+
 }

@@ -13,6 +13,8 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/activity-tracker.php';  // journal fondateur : qui a fait quoi, à la minute près
+activity_log_request();
 require_once __DIR__ . '/notification-helpers.php';
 
 header('Content-Type: application/json; charset=utf-8');

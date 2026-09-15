@@ -3,6 +3,8 @@
  * /action-cotisation-payment - Enregistrer / mettre à jour un paiement
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/activity-tracker.php';  // journal fondateur : qui a fait quoi, à la minute près
+activity_log_request();
 require_once __DIR__ . '/includes-cotisations.php';
 require_login();
 $user = current_user(); $org_id = (int)$user['org_id'];
