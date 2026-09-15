@@ -8,7 +8,7 @@
  *                      affichés à l'écran. Ce qu'on voit est ce qu'on exporte.
  *   modele           : un classeur vide avec les bons en-têtes et deux lignes
  *                      d'exemple, à remplir puis réimporter.
- *   historique       : chaque geste daté et signé, une ligne par événement.
+ *   historique       : quand chaque action a été faite, une ligne par geste.
  *
  * Le fichier sort en .xlsx et non en CSV : un CSV ouvert par double-clic
  * sous Excel français découpe mal les colonnes une fois sur deux, et

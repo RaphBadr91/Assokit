@@ -832,8 +832,13 @@ render_sidebar('prospection');
   <div>
     <h1 style="font-size:23px;margin:0 0 4px">Prospection</h1>
     <p style="color:var(--ink-3,#5F6D66);font-size:14px;margin:0;max-width:680px">
+      <?php // Formulation tournée vers ce que l'outil apporte à celui qui
+            // l'utilise. La version précédente — « chaque geste est daté et
+            // signé » — décrivait la même chose mais sonnait comme une
+            // surveillance de l'équipe, ce qui n'est pas le propos. ?>
       Marquez l'appel ou l'e-mail d'un clic — la date est posée automatiquement — et
-      programmez le rappel. Chaque geste est daté et signé dans l'historique de la fiche.
+      programmez le rappel. Vous savez ainsi quand chaque action a été faite et où en
+      sont vos rappels.
     </p>
   </div>
   <div class="pr-kpis">
