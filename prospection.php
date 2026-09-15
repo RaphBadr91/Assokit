@@ -400,11 +400,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
             if (!$info) {
                 $msg = "Import introuvable.";
-            } elseif (!($role === 'admin' || (int) $info['created_by'] === $uid)) {
-                // Retirer cinq cents fiches d'un coup n'est pas du même ordre
-                // que supprimer une fiche : on nettoie ce qu'on a soi-même
-                // versé, et l'administrateur nettoie pour tout le monde.
-                $msg = "Seul un administrateur, ou la personne qui a fait cet import, peut le retirer.";
+            } elseif ($role !== 'admin') {
+                // Réservé à l'administrateur, et à lui seul. Retirer un import
+                // efface le travail d'appel de toute l'équipe sur des centaines
+                // de fiches : ce n'est pas une opération que l'on confie à
+                // quiconque décroche le téléphone, fût-il l'auteur de l'import.
+                $msg = "Seul un administrateur peut retirer un import.";
             } elseif ($action === 'import_delete') {
                 // Un seul horodatage pour le lot et pour ses fiches. Deux
                 // NOW() posés par deux requêtes peuvent tomber sur deux
@@ -924,11 +925,16 @@ render_sidebar('prospection');
     </p>
   <?php elseif ($imports): ?>
     <div class="pr-lots">
-      <div class="pr-lots-titre">Fichiers importés</div>
+      <div class="pr-lots-titre">Fichiers importés<?php if ($role !== 'admin'): ?>
+        <span style="font-weight:500;text-transform:none;letter-spacing:0">
+          · seul un administrateur peut en retirer un</span>
+      <?php endif; ?></div>
       <?php foreach ($imports as $it):
             $sup = !empty($it['deleted_at']);
-            $mien = (int) $it['created_by'] === $uid;
-            $peut = ($role === 'admin' || $mien);
+            // Le retrait est réservé à l'administrateur : les commandes ne
+            // s'affichent même pas pour les autres, plutôt que de proposer
+            // un bouton qui refusera.
+            $peut = ($role === 'admin');
             $t = strtotime((string) $it['created_at']); ?>
         <div class="pr-lot<?= $sup ? ' est-sup' : '' ?><?= $lotVu === (int) $it['id'] ? ' est-vu' : '' ?>">
           <div class="pr-lot-nom">
