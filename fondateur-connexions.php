@@ -270,6 +270,10 @@ h1 { margin: 0 0 6px; font-size: 25px; }
 
 .bloc { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
 .bloc h2 { margin: 0 0 14px; font-size: 15px; }
+/* Un tableau large glisse au doigt dans son cadre, au lieu de pousser
+   toute la page et de créer un défilement horizontal du document. */
+.tableau { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tableau table { min-width: 540px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th { text-align: left; color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
      padding: 0 10px 9px; font-weight: 600; white-space: nowrap; }
@@ -295,7 +299,10 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 700px) {
   body { padding: 14px; }
   .ev { flex-wrap: wrap; gap: 6px; }
-  th:nth-child(n+4), td:nth-child(n+4) { display: none; }
+  /* Les colonnes ne sont plus masquées : le tableau défile. Cacher
+     « Connexions » ou « Actions » sur téléphone aurait retiré
+     précisément les chiffres qu'on vient consulter. */
+  th, td { padding-left: 8px; padding-right: 8px; }
 }
 </style>
 </head>
@@ -372,6 +379,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
     <?php if (!$sessions): ?>
       <div class="vide">Aucune session sur la période.</div>
     <?php else: ?>
+      <div class="tableau">
       <table>
         <tr><th>Début</th><th>Fin</th><th class="num">Durée</th><th class="num">Pages</th><th class="num">Actions</th><th>Adresse IP</th></tr>
         <?php foreach ($sessions as $s):
@@ -386,6 +394,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
         </tr>
         <?php endforeach; ?>
       </table>
+      </div>
     <?php endif; ?>
   </div>
 
@@ -434,6 +443,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
     <?php if (!$membres): ?>
       <div class="vide">Aucun membre dans cette association.</div>
     <?php else: ?>
+      <div class="tableau">
       <table>
         <tr><th>Membre</th><th>Rôle</th><th>Dernière activité</th><th class="num">Connexions</th>
             <th class="num">Sessions</th><th class="num">Pages</th><th class="num">Actions</th></tr>
@@ -453,6 +463,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
         </tr>
         <?php endforeach; ?>
       </table>
+      </div>
     <?php endif; ?>
   </div>
 
@@ -463,6 +474,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
     <?php if (!$assos): ?>
       <div class="vide">Aucune association.</div>
     <?php else: ?>
+      <div class="tableau">
       <table>
         <tr><th>Association</th><th>Dernière activité</th><th class="num">Membres actifs</th>
             <th class="num">Connexions</th><th class="num">Pages</th><th class="num">Actions</th></tr>
@@ -478,6 +490,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
         </tr>
         <?php endforeach; ?>
       </table>
+      </div>
     <?php endif; ?>
   </div>
 <?php endif; ?>
