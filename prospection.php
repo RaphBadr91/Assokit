@@ -615,6 +615,8 @@ $events = [];
 $qr_labels = [];
 $imports = [];
 $imports_indispo = false;
+$jour_liste = [];
+$jour_total = 0;
 $facettes = ['type' => [], 'dept' => []];
 
 try {
@@ -644,6 +646,24 @@ try {
           FROM asso_prospection WHERE org_id = ? AND deleted_at IS NULL");
     $st->execute([$org_id]);
     $stats = array_map('intval', $st->fetch(PDO::FETCH_ASSOC) ?: $stats);
+
+    // Les rappels à traiter aujourd'hui — en retard compris. Indépendant du
+    // filtre affiché : on doit les voir depuis n'importe quel onglet.
+    $st = $pdo->prepare("SELECT id, prenom, nom, telephone, callback_at
+                         FROM asso_prospection
+                         WHERE org_id = ? AND deleted_at IS NULL
+                           AND callback_at IS NOT NULL
+                           AND callback_at < CURDATE() + INTERVAL 1 DAY
+                         ORDER BY callback_at ASC LIMIT 6");
+    $st->execute([$org_id]);
+    $jour_liste = $st->fetchAll(PDO::FETCH_ASSOC);
+
+    $st = $pdo->prepare("SELECT COUNT(*) FROM asso_prospection
+                         WHERE org_id = ? AND deleted_at IS NULL
+                           AND callback_at IS NOT NULL
+                           AND callback_at < CURDATE() + INTERVAL 1 DAY");
+    $st->execute([$org_id]);
+    $jour_total = (int) $st->fetchColumn();
 
     // Les imports du fichier, et ce qu'il en reste. Requête tolérante : la
     // prospection doit rester utilisable si cette migration-ci n'est pas
@@ -798,6 +818,35 @@ render_sidebar('prospection');
   .pr-lots.est-ouvert .pr-lots-compte{background:#fff}
   .pr-lots-note{color:var(--ink-4,#9AA8A2);font-weight:500}
   .pr-lots > .pr-lot:first-of-type{margin-top:10px}
+  /* Rappels du jour, en tête de page */
+  .pr-jour{background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1px solid #FCD34D;
+    border-radius:14px;padding:14px 16px;margin-bottom:16px}
+  .pr-jour.retard{background:linear-gradient(135deg,#FEF2F2,#FEE2E2);border-color:#FCA5A5}
+  .pr-jour-tete{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:11px}
+  .pr-jour-ic{display:flex;color:#B45309}
+  .pr-jour.retard .pr-jour-ic{color:#DC2626}
+  .pr-jour-tete strong{font-size:14.5px;color:#78350F}
+  .pr-jour.retard .pr-jour-tete strong{color:#7F1D1D}
+  .pr-jour-tout{margin-left:auto;font-size:13px;font-weight:600;color:#92400E;text-decoration:none;white-space:nowrap}
+  .pr-jour.retard .pr-jour-tout{color:#991B1B}
+  .pr-jour-tout:hover{text-decoration:underline}
+  .pr-jour-liste{display:flex;flex-direction:column;gap:6px}
+  .pr-jour-item{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;
+    background:rgba(255,255,255,.72);border-radius:10px;padding:8px 11px}
+  .pr-jour-h{font-variant-numeric:tabular-nums;font-weight:700;font-size:12.5px;color:#92400E;
+    background:#FDE68A;border-radius:6px;padding:2px 7px;white-space:nowrap}
+  .pr-jour-item.late .pr-jour-h{background:#FECACA;color:#991B1B}
+  .pr-jour-nom{font-weight:600;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pr-jour-tel{font-size:13px;color:#059669;font-weight:600;text-decoration:none;white-space:nowrap}
+  .pr-jour-tel:hover{text-decoration:underline}
+  .pr-jour-item form{margin-left:auto}
+  .pr-jour-ok{border:1px solid #059669;background:#fff;color:#047857;font:inherit;font-weight:700;
+    font-size:12.5px;padding:6px 13px;border-radius:999px;cursor:pointer;white-space:nowrap}
+  .pr-jour-ok:hover{background:#059669;color:#fff}
+  @media (max-width:640px){
+    .pr-jour-item form{margin-left:0;width:100%}
+    .pr-jour-ok{width:100%}
+  }
   /* Séparateurs d'échéance sur l'onglet « À rappeler » */
   .pr-groupe{display:flex;align-items:center;gap:10px;margin:18px 0 8px;
     font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
@@ -928,6 +977,66 @@ render_sidebar('prospection');
 
 <?php if ($flash): ?><div class="pr-flash"><?= h($flash) ?></div><?php endif; ?>
 
+<?php
+// ── Les rappels du jour, en tête et cliquables ──────────────────────────────
+// Le compteur « rappels dus » disait combien, jamais qui. On pose ici les
+// fiches elles-mêmes, avec leur numéro en lien tel: et le bouton « appelé »,
+// pour que la journée d'appels commence sans un clic de navigation.
+// Inutile sur l'onglet « À rappeler » : la page entière est déjà cela.
+if ($jour_liste && $filtre !== 'a_rappeler'):
+    $jour_retard = 0;
+    foreach ($jour_liste as $j) if (strtotime((string) $j['callback_at']) < time()) $jour_retard++;
+?>
+<div class="pr-jour<?= $jour_retard > 0 ? ' retard' : '' ?>">
+  <div class="pr-jour-tete">
+    <span class="pr-jour-ic" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>
+      </svg>
+    </span>
+    <strong>
+      <?php if ($jour_retard > 0): ?>
+        <?= $jour_retard ?> rappel<?= $jour_retard > 1 ? 's' : '' ?> en retard<?php
+          $reste = $jour_total - $jour_retard;
+          if ($reste > 0) echo ', ' . $reste . ' pour aujourd\'hui'; ?>
+      <?php else: ?>
+        <?= $jour_total ?> rappel<?= $jour_total > 1 ? 's' : '' ?> à faire aujourd'hui
+      <?php endif; ?>
+    </strong>
+    <a class="pr-jour-tout" href="/prospection?f=a_rappeler">Tout voir<?= $jour_total > count($jour_liste) ? ' (' . $jour_total . ')' : '' ?> →</a>
+  </div>
+  <div class="pr-jour-liste">
+    <?php foreach ($jour_liste as $j):
+          $jt   = strtotime((string) $j['callback_at']);
+          $late = $jt < time();
+          $jnom = trim((string) $j['prenom'] . ' ' . (string) $j['nom']) ?: (string) $j['telephone'];
+          $jtel = preg_replace('/[^0-9+]/', '', (string) $j['telephone']); ?>
+      <div class="pr-jour-item<?= $late ? ' late' : '' ?>">
+        <?php // Un rappel d'avant-hier affiché « 10h13 » se lit comme s'il
+              // était de ce matin : on rappelle le jour quand ce n'est pas
+              // aujourd'hui. ?>
+        <span class="pr-jour-h"><?= h(date('Y-m-d', $jt) === date('Y-m-d')
+              ? date('H\hi', $jt)
+              : date('d/m', $jt) . ' · ' . date('H\hi', $jt)) ?></span>
+        <span class="pr-jour-nom"><?= h($jnom) ?></span>
+        <?php if ($jtel !== ''): ?>
+          <a class="pr-jour-tel" href="tel:<?= h($jtel) ?>"><?= h($j['telephone']) ?></a>
+        <?php endif; ?>
+        <?php // Marquer l'appel sans quitter le bandeau : c'est le geste
+              // qui suit immédiatement le coup de fil. ?>
+        <form method="post" action="/prospection<?= $qs_keep ? '?' . h($qs_keep) : '' ?>">
+          <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+          <input type="hidden" name="action" value="call">
+          <input type="hidden" name="id" value="<?= (int) $j['id'] ?>">
+          <button type="submit" name="value" value="1" class="pr-jour-ok">Appelé</button>
+        </form>
+      </div>
+    <?php endforeach; ?>
+  </div>
+</div>
+<?php endif; ?>
+
 <?php if ($migration_missing): ?>
   <div class="pr-flash" style="background:#FEF2F2;border-color:#FECACA;color:#991B1B">
     <?php if ($migration_manquantes): ?>
@@ -1012,11 +1121,12 @@ render_sidebar('prospection');
       foreach ($imports as $it) if (empty($it['deleted_at'])) $actifs++;
     ?>
     <?php
-      // Un <button> plutôt qu'un <details> : le triangle que Chromium peint
-      // pour un <summary> a résisté à list-style, à ::marker et à
-      // ::-webkit-details-marker, et doublait notre chevron. Quatre lignes
-      // de script donnent un contrôle total, et l'accessibilité au clavier
-      // est portée par aria-expanded.
+      // Un <button> plutôt qu'un <details>. J'avais d'abord pris <details>,
+      // natif et sans script, mais un triangle doublait notre chevron. La
+      // cause n'était pas le navigateur : cette page définit plus bas
+      // `summary::before{content:"▸"}` pour les historiques de fiche, et la
+      // règle s'appliquait aussi au nôtre. Le bouton s'affranchit de cet
+      // héritage, et aria-expanded porte l'accessibilité au clavier.
     ?>
     <div class="pr-lots" data-lots>
       <button type="button" class="pr-lots-tete" aria-expanded="false" aria-controls="ak-lots-corps">
