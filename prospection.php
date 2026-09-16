@@ -176,6 +176,49 @@ function prosp_departement(string $cp): string
 }
 
 /**
+ * Affiche le panneau « Notes » d'une fiche : la note modifiable, puis ce
+ * qu'on sait déjà des échanges.
+ *
+ * Le même bloc sert dans le bandeau des rappels du jour et dans la liste.
+ * L'écrire deux fois aurait garanti qu'ils divergent à la première retouche.
+ *
+ * @param array  $f   La fiche (notes, called_at, emailed_at, updated_at, …)
+ * @param string $ref Identifiant du panneau, pour aria-controls
+ */
+function prosp_panneau_note(array $f, string $ref, string $csrf, string $qs): void
+{
+    $note = trim((string) ($f['notes'] ?? ''));
+    $auteur = $f['updated_name'] ?? $f['modifie_par'] ?? '';
+    ?>
+    <div class="pr-note-box" id="<?= h($ref) ?>" hidden>
+      <form method="post" action="/prospection<?= $qs !== '' ? '?' . h($qs) : '' ?>" class="pr-note-form">
+        <input type="hidden" name="action" value="note">
+        <input type="hidden" name="id" value="<?= (int) $f['id'] ?>">
+        <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+        <textarea name="notes" class="pr-note-champ" rows="3"
+                  aria-label="Note sur ce contact"
+                  placeholder="Ce qui a été dit, qui décide, quand rappeler…"><?= h($note) ?></textarea>
+        <div class="pr-note-pied">
+          <p class="pr-note-meta">
+            <?php
+              $bits = [];
+              if (!empty($f['called_at']))  $bits[] = 'appelé le ' . date('d/m/Y à H\hi', strtotime((string) $f['called_at']));
+              if (!empty($f['emailed_at'])) $bits[] = 'e-mail le ' . date('d/m/Y à H\hi', strtotime((string) $f['emailed_at']));
+              if (!empty($f['updated_at'])) {
+                  $bits[] = 'modifié le ' . date('d/m/Y à H\hi', strtotime((string) $f['updated_at']))
+                          . ($auteur !== '' ? ' par ' . $auteur : '');
+              }
+              echo $bits ? h(ucfirst(implode(' · ', $bits))) : 'Aucun échange enregistré pour l’instant.';
+            ?>
+          </p>
+          <button class="pr-btn" type="submit">Mettre à jour la note</button>
+        </div>
+      </form>
+    </div>
+    <?php
+}
+
+/**
  * Range une échéance de rappel dans son groupe.
  *
  * @return array{0:string,1:string,2:bool} clé de groupe, libellé, urgent
@@ -521,6 +564,32 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $msg = $when ? "Rappel programmé le " . date('d/m/Y à H:i', strtotime($when)) . "." : "Rappel retiré.";
             }
 
+        } elseif ($action === 'note' && $pid > 0) {
+            // Action dédiée plutôt que de passer par « edit » : on ne touche
+            // qu'aux notes, donc rien d'autre ne peut être écrasé par
+            // inadvertance, et l'historique dit précisément « note modifiée ».
+            $note = trim((string) ($_POST['notes'] ?? ''));
+
+            $st = $pdo->prepare("SELECT notes FROM asso_prospection
+                                 WHERE id = ? AND org_id = ? AND deleted_at IS NULL LIMIT 1");
+            $st->execute([$pid, $org_id]);
+            $avant = $st->fetch(PDO::FETCH_ASSOC);
+
+            if (!$avant) {
+                $msg = "Fiche introuvable.";
+            } elseif (trim((string) $avant['notes']) === $note) {
+                $msg = "Aucun changement dans la note.";
+            } else {
+                $pdo->prepare("UPDATE asso_prospection SET notes = ?, updated_by = ?, updated_at = NOW()
+                               WHERE id = ? AND org_id = ? AND deleted_at IS NULL")
+                    ->execute([$note, $uid, $pid, $org_id]);
+                // L'extrait dans l'historique permet de suivre l'évolution
+                // d'une note sans rouvrir chaque fiche.
+                prosp_log($pdo, $org_id, $pid, $uid, $note === '' ? 'note_clear' : 'note',
+                          mb_substr($note, 0, 120));
+                $msg = $note === '' ? "Note effacée." : "Note mise à jour.";
+            }
+
         } elseif ($action === 'edit' && $pid > 0) {
             $st = $pdo->prepare("SELECT prenom, nom, telephone, email, notes FROM asso_prospection
                                  WHERE id = ? AND org_id = ? AND deleted_at IS NULL LIMIT 1");
@@ -745,6 +814,8 @@ $EVENT_LABEL = [
     'delete'         => 'Supprimée',
     'restore'        => 'Restaurée',
     'import'         => 'Importée depuis un fichier',
+    'note'           => 'Note mise à jour',
+    'note_clear'     => 'Note effacée',
 ];
 
 $FILTRES = [
@@ -863,7 +934,16 @@ render_sidebar('prospection');
     border-radius:10px;padding:10px 13px;margin-top:2px}
   .pr-note-txt{margin:0;font-size:13px;line-height:1.55;color:var(--ink-2,#45544D);white-space:pre-line}
   .pr-note-txt.vide{color:var(--ink-4,#9AA8A2);font-style:italic}
-  .pr-note-meta{margin:7px 0 0;font-size:11.5px;color:var(--ink-4,#9AA8A2)}
+  .pr-note-meta{margin:0;font-size:11.5px;color:var(--ink-4,#9AA8A2);flex:1 1 200px;min-width:0}
+  .pr-note-form{display:block}
+  .pr-note-champ{width:100%;box-sizing:border-box;border:1px solid var(--line,#E7EEEA);border-radius:9px;
+    padding:9px 11px;font:inherit;font-size:13px;line-height:1.55;color:var(--ink-2,#45544D);
+    background:#fff;resize:vertical;min-height:62px}
+  .pr-note-champ:focus{outline:2px solid #059669;outline-offset:-1px;border-color:#059669}
+  .pr-note-champ::placeholder{color:var(--ink-4,#9AA8A2)}
+  .pr-note-pied{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:9px}
+  .pr-note-pied .pr-btn{margin-left:auto;padding:8px 15px;font-size:12.5px}
+  @media (max-width:640px){ .pr-note-pied .pr-btn{margin-left:0;width:100%} }
   /* Dans la liste, le panneau se déplie sous toute la ligne. */
   .pr-row .pr-note-box{margin:0 16px 14px}
   .pr-jour-h{font-variant-numeric:tabular-nums;font-weight:700;font-size:12.5px;color:#92400E;
@@ -1104,26 +1184,7 @@ if ($jour_liste && $filtre !== 'a_rappeler'):
           </form>
         </div>
 
-        <div class="pr-note-box" id="note-<?= (int) $j['id'] ?>" hidden>
-          <?php $jnotes = trim((string) ($j['notes'] ?? '')); ?>
-          <?php if ($jnotes !== ''): ?>
-            <p class="pr-note-txt"><?= nl2br(h($jnotes)) ?></p>
-          <?php else: ?>
-            <p class="pr-note-txt vide">Aucune note sur cette fiche.</p>
-          <?php endif; ?>
-          <p class="pr-note-meta">
-            <?php
-              $bits = [];
-              if (!empty($j['called_at']))  $bits[] = 'appelé le ' . date('d/m/Y à H\hi', strtotime((string) $j['called_at']));
-              if (!empty($j['emailed_at'])) $bits[] = 'e-mail le ' . date('d/m/Y à H\hi', strtotime((string) $j['emailed_at']));
-              if (!empty($j['updated_at'])) {
-                  $bits[] = 'modifié le ' . date('d/m/Y à H\hi', strtotime((string) $j['updated_at']))
-                          . (!empty($j['modifie_par']) ? ' par ' . $j['modifie_par'] : '');
-              }
-              echo $bits ? h(ucfirst(implode(' · ', $bits))) : 'Aucun échange enregistré pour l’instant.';
-            ?>
-          </p>
-        </div>
+        <?php prosp_panneau_note($j, "note-" . (int) $j['id'], $csrf, $qs_keep); ?>
       </div>
     <?php endforeach; ?>
   </div>
@@ -1464,26 +1525,7 @@ foreach ($rows as $p):
     </div>
   </div>
 
-  <div class="pr-note-box" id="fnote-<?= $pid ?>" hidden>
-    <?php $pnotes = trim((string) ($p['notes'] ?? '')); ?>
-    <?php if ($pnotes !== ''): ?>
-      <p class="pr-note-txt"><?= nl2br(h($pnotes)) ?></p>
-    <?php else: ?>
-      <p class="pr-note-txt vide">Aucune note sur cette fiche.</p>
-    <?php endif; ?>
-    <p class="pr-note-meta">
-      <?php
-        $bits = [];
-        if (!empty($p['called_at']))  $bits[] = 'appelé le ' . date('d/m/Y à H\hi', strtotime((string) $p['called_at']));
-        if (!empty($p['emailed_at'])) $bits[] = 'e-mail le ' . date('d/m/Y à H\hi', strtotime((string) $p['emailed_at']));
-        if (!empty($p['updated_at'])) {
-            $bits[] = 'modifié le ' . date('d/m/Y à H\hi', strtotime((string) $p['updated_at']))
-                    . (!empty($p['updated_name']) ? ' par ' . $p['updated_name'] : '');
-        }
-        echo $bits ? h(ucfirst(implode(' · ', $bits))) : 'Aucun échange enregistré pour l’instant.';
-      ?>
-    </p>
-  </div>
+  <?php prosp_panneau_note($p, "fnote-" . $pid, $csrf, $qs_keep); ?>
 
   <details>
     <summary style="padding:9px 16px;font-size:12.5px;color:var(--ink-3,#5F6D66);border-top:1px solid var(--sep,#F1F5F4)">
