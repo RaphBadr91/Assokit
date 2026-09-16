@@ -555,10 +555,32 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
         } elseif ($action === 'callback' && $pid > 0) {
             $when = prosp_dt($_POST['callback_at'] ?? '');
-            $st = $pdo->prepare("UPDATE asso_prospection SET callback_at = ?, updated_by = ?, updated_at = NOW()
-                                 WHERE id = ? AND org_id = ? AND deleted_at IS NULL");
-            $st->execute([$when, $uid, $pid, $org_id]);
-            if ($st->rowCount() > 0) {
+
+            // Le segmenté « À rappeler : OUI / NON » envoie `rappel`.
+            // NON efface l'échéance quoi qu'il y ait dans le champ ; OUI la
+            // pose, et si le champ est vide propose demain 9 h plutôt que de
+            // ne rien faire — un clic doit toujours produire un effet visible.
+            $seg = $_POST['rappel'] ?? null;
+            if ($seg === '0') {
+                $when = null;
+            } elseif ($seg === '1' && $when === null) {
+                $when = date('Y-m-d 09:00:00', strtotime('tomorrow'));
+            }
+            // On vérifie l'existence puis on écrit, au lieu de déduire le
+            // résultat de rowCount(). MySQL ne compte pas une ligne dont
+            // aucune valeur ne change : reposer le même rappel dans la même
+            // seconde renvoyait 0, et le clic restait sans réponse — un coup
+            // il y avait un message, un coup non.
+            $st = $pdo->prepare("SELECT 1 FROM asso_prospection
+                                 WHERE id = ? AND org_id = ? AND deleted_at IS NULL LIMIT 1");
+            $st->execute([$pid, $org_id]);
+
+            if (!$st->fetchColumn()) {
+                $msg = "Fiche introuvable.";
+            } else {
+                $pdo->prepare("UPDATE asso_prospection SET callback_at = ?, updated_by = ?, updated_at = NOW()
+                               WHERE id = ? AND org_id = ? AND deleted_at IS NULL")
+                    ->execute([$when, $uid, $pid, $org_id]);
                 prosp_log($pdo, $org_id, $pid, $uid, $when ? 'callback_set' : 'callback_clear',
                           $when ? date('d/m/Y à H:i', strtotime($when)) : '');
                 $msg = $when ? "Rappel programmé le " . date('d/m/Y à H:i', strtotime($when)) . "." : "Rappel retiré.";
@@ -1177,10 +1199,17 @@ if ($jour_liste && $filtre !== 'a_rappeler'):
             <input type="hidden" name="action" value="callback">
             <input type="hidden" name="id" value="<?= (int) $j['id'] ?>">
             <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+            <?php // Ces fiches ont toutes une échéance — elles sont là pour
+                  // ça : OUI reprogramme à la date saisie, NON retire le
+                  // rappel et la fiche quitte le bandeau. ?>
+            <span class="pr-seg">
+              <span class="pr-seg-lab">À rappeler</span>
+              <button type="submit" name="rappel" value="1" class="on" aria-pressed="true">OUI</button>
+              <button type="submit" name="rappel" value="0">NON</button>
+            </span>
             <input class="pr-in" type="datetime-local" name="callback_at"
                    value="<?= h(date('Y-m-d\TH:i', $jt)) ?>"
                    aria-label="Reprogrammer le rappel de <?= h($jnom) ?>">
-            <button class="pr-btn sec" type="submit">Reprogrammer</button>
           </form>
         </div>
 
@@ -1512,14 +1541,24 @@ foreach ($rows as $p):
         </form>
 
 
+        <?php // Même segmenté que Appel et E-mail, pour que les trois se
+              // lisent d'un coup d'œil. OUI pose l'échéance saisie — ou
+              // demain 9 h si le champ est vide — et NON l'efface. ?>
+        <?php $aRappel = !empty($p['callback_at']); ?>
         <form method="post" action="/prospection<?= $qs_keep ? '?' . h($qs_keep) : '' ?>" class="pr-cb">
           <input type="hidden" name="action" value="callback">
           <input type="hidden" name="id" value="<?= $pid ?>">
           <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+          <span class="pr-seg">
+            <span class="pr-seg-lab">À rappeler</span>
+            <button type="submit" name="rappel" value="1" class="<?= $aRappel ? 'on' : '' ?>"
+                    <?= $aRappel ? 'aria-pressed="true"' : '' ?>>OUI</button>
+            <button type="submit" name="rappel" value="0" class="<?= $aRappel ? '' : 'on off' ?>"
+                    <?= $aRappel ? '' : 'aria-pressed="true"' ?>>NON</button>
+          </span>
           <input class="pr-in" type="datetime-local" name="callback_at"
-                 value="<?= !empty($p['callback_at']) ? h(date('Y-m-d\TH:i', strtotime((string) $p['callback_at']))) : '' ?>"
+                 value="<?= $aRappel ? h(date('Y-m-d\TH:i', strtotime((string) $p['callback_at']))) : '' ?>"
                  aria-label="Date de rappel">
-          <button class="pr-btn sec" type="submit">À rappeler</button>
         </form>
       <?php endif; ?>
     </div>
