@@ -649,12 +649,17 @@ try {
 
     // Les rappels à traiter aujourd'hui — en retard compris. Indépendant du
     // filtre affiché : on doit les voir depuis n'importe quel onglet.
-    $st = $pdo->prepare("SELECT id, prenom, nom, telephone, callback_at
-                         FROM asso_prospection
-                         WHERE org_id = ? AND deleted_at IS NULL
-                           AND callback_at IS NOT NULL
-                           AND callback_at < CURDATE() + INTERVAL 1 DAY
-                         ORDER BY callback_at ASC LIMIT 6");
+    // notes et dernier intervenant compris : quand quelqu'un d'autre reprend
+    // le rappel, il doit savoir ce qui a déjà été dit avant de composer.
+    $st = $pdo->prepare("SELECT p.id, p.prenom, p.nom, p.telephone, p.email, p.callback_at,
+                                p.called, p.called_at, p.emailed, p.emailed_at, p.notes, p.updated_at,
+                                TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS modifie_par
+                         FROM asso_prospection p
+                         LEFT JOIN users u ON u.id = p.updated_by
+                         WHERE p.org_id = ? AND p.deleted_at IS NULL
+                           AND p.callback_at IS NOT NULL
+                           AND p.callback_at < CURDATE() + INTERVAL 1 DAY
+                         ORDER BY p.callback_at ASC LIMIT 6");
     $st->execute([$org_id]);
     $jour_liste = $st->fetchAll(PDO::FETCH_ASSOC);
 
@@ -831,21 +836,42 @@ render_sidebar('prospection');
   .pr-jour.retard .pr-jour-tout{color:#991B1B}
   .pr-jour-tout:hover{text-decoration:underline}
   .pr-jour-liste{display:flex;flex-direction:column;gap:6px}
-  .pr-jour-item{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;
-    background:rgba(255,255,255,.72);border-radius:10px;padding:8px 11px}
+  .pr-jour-item{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;min-width:0;
+    background:rgba(255,255,255,.78);border-radius:10px;padding:9px 11px}
+  .pr-jour-id{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;flex:1 1 260px}
+  /* Les commandes gardent leur bloc : elles passent à la ligne ensemble
+     plutôt que de se disperser entre le nom et le numéro. */
+  .pr-jour-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .pr-jour-acts .pr-seg button{padding:7px 12px;font-size:12.5px}
+  .pr-jour-acts .pr-seg-lab{font-size:11px;padding:0 8px}
+  .pr-jour-acts .pr-in{padding:7px 10px;font-size:12.5px;max-width:200px}
+  .pr-jour-acts .pr-btn{padding:8px 13px;font-size:12.5px}
+  .pr-jour-mail{font-size:12.5px;color:var(--ink-3,#5F6D66);text-decoration:none;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .pr-jour-mail:hover{text-decoration:underline}
+  .pr-jour-plus{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line,#E7EEEA);
+    background:#fff;color:var(--ink-3,#5F6D66);font:inherit;font-size:11.5px;font-weight:700;
+    padding:4px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+  .pr-jour-plus:hover{border-color:#B9CFC5;color:var(--ink,#0B1A13)}
+  .pr-jour-plus[aria-expanded="true"]{background:var(--ink-2,#45544D);border-color:var(--ink-2,#45544D);color:#fff}
+  /* Une pastille dit qu'il y a quelque chose à lire, avant même d'ouvrir. */
+  .pr-jour-pastille{width:6px;height:6px;border-radius:50%;background:#059669;flex-shrink:0}
+  .pr-jour-plus[aria-expanded="true"] .pr-jour-pastille{background:#6EE7B7}
+  .pr-jour-note{flex:1 1 100%;background:#fff;border:1px solid var(--line,#E7EEEA);
+    border-radius:10px;padding:10px 13px;margin-top:2px}
+  .pr-jour-note-txt{margin:0;font-size:13px;line-height:1.55;color:var(--ink-2,#45544D);white-space:pre-line}
+  .pr-jour-note-txt.vide{color:var(--ink-4,#9AA8A2);font-style:italic}
+  .pr-jour-note-meta{margin:7px 0 0;font-size:11.5px;color:var(--ink-4,#9AA8A2)}
   .pr-jour-h{font-variant-numeric:tabular-nums;font-weight:700;font-size:12.5px;color:#92400E;
     background:#FDE68A;border-radius:6px;padding:2px 7px;white-space:nowrap}
   .pr-jour-item.late .pr-jour-h{background:#FECACA;color:#991B1B}
   .pr-jour-nom{font-weight:600;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pr-jour-tel{font-size:13px;color:#059669;font-weight:600;text-decoration:none;white-space:nowrap}
   .pr-jour-tel:hover{text-decoration:underline}
-  .pr-jour-item form{margin-left:auto}
-  .pr-jour-ok{border:1px solid #059669;background:#fff;color:#047857;font:inherit;font-weight:700;
-    font-size:12.5px;padding:6px 13px;border-radius:999px;cursor:pointer;white-space:nowrap}
-  .pr-jour-ok:hover{background:#059669;color:#fff}
-  @media (max-width:640px){
-    .pr-jour-item form{margin-left:0;width:100%}
-    .pr-jour-ok{width:100%}
+  @media (max-width:820px){
+    .pr-jour-acts{margin-left:0;width:100%}
+    .pr-jour-acts .pr-cb{flex:1 1 100%}
+    .pr-jour-acts .pr-in{max-width:none;flex:1 1 150px}
   }
   /* Séparateurs d'échéance sur l'onglet « À rappeler » */
   .pr-groupe{display:flex;align-items:center;gap:10px;margin:18px 0 8px;
@@ -1013,28 +1039,108 @@ if ($jour_liste && $filtre !== 'a_rappeler'):
           $jnom = trim((string) $j['prenom'] . ' ' . (string) $j['nom']) ?: (string) $j['telephone'];
           $jtel = preg_replace('/[^0-9+]/', '', (string) $j['telephone']); ?>
       <div class="pr-jour-item<?= $late ? ' late' : '' ?>">
-        <?php // Un rappel d'avant-hier affiché « 10h13 » se lit comme s'il
-              // était de ce matin : on rappelle le jour quand ce n'est pas
-              // aujourd'hui. ?>
-        <span class="pr-jour-h"><?= h(date('Y-m-d', $jt) === date('Y-m-d')
-              ? date('H\hi', $jt)
-              : date('d/m', $jt) . ' · ' . date('H\hi', $jt)) ?></span>
-        <span class="pr-jour-nom"><?= h($jnom) ?></span>
-        <?php if ($jtel !== ''): ?>
-          <a class="pr-jour-tel" href="tel:<?= h($jtel) ?>"><?= h($j['telephone']) ?></a>
-        <?php endif; ?>
-        <?php // Marquer l'appel sans quitter le bandeau : c'est le geste
-              // qui suit immédiatement le coup de fil. ?>
-        <form method="post" action="/prospection<?= $qs_keep ? '?' . h($qs_keep) : '' ?>">
-          <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
-          <input type="hidden" name="action" value="call">
-          <input type="hidden" name="id" value="<?= (int) $j['id'] ?>">
-          <button type="submit" name="value" value="1" class="pr-jour-ok">Appelé</button>
-        </form>
+        <div class="pr-jour-id">
+          <?php // Un rappel d'avant-hier affiché « 10h13 » se lit comme s'il
+                // était de ce matin : on rappelle le jour quand ce n'est pas
+                // aujourd'hui. ?>
+          <span class="pr-jour-h"><?= h(date('Y-m-d', $jt) === date('Y-m-d')
+                ? date('H\hi', $jt)
+                : date('d/m', $jt) . ' · ' . date('H\hi', $jt)) ?></span>
+          <span class="pr-jour-nom"><?= h($jnom) ?></span>
+          <?php if ($jtel !== ''): ?>
+            <a class="pr-jour-tel" href="tel:<?= h($jtel) ?>"><?= h($j['telephone']) ?></a>
+          <?php endif; ?>
+          <?php if (!empty($j['email'])): ?>
+            <a class="pr-jour-mail" href="mailto:<?= h($j['email']) ?>"><?= h($j['email']) ?></a>
+          <?php endif; ?>
+          <?php // Ce qu'on sait déjà de ce contact, à un clic. Sans cela,
+                // celui qui reprend le rappel d'un collègue compose à l'aveugle. ?>
+          <button type="button" class="pr-jour-plus" aria-expanded="false"
+                  aria-controls="note-<?= (int) $j['id'] ?>">
+            Notes<?php if (trim((string) ($j['notes'] ?? '')) !== ''): ?><span class="pr-jour-pastille" aria-label="notes présentes"></span><?php endif; ?>
+          </button>
+        </div>
+
+        <?php // Les mêmes commandes que sur la fiche, aux mêmes classes : on
+              // traite le rappel de bout en bout sans quitter le bandeau —
+              // marquer l'appel, marquer l'e-mail, reprogrammer. ?>
+        <div class="pr-jour-acts">
+          <form method="post" action="/prospection<?= $qs_keep ? '?' . h($qs_keep) : '' ?>" class="pr-seg">
+            <input type="hidden" name="action" value="call">
+            <input type="hidden" name="id" value="<?= (int) $j['id'] ?>">
+            <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+            <span class="pr-seg-lab">Appel</span>
+            <button type="submit" name="value" value="1" class="<?= !empty($j['called']) ? 'on' : '' ?>"
+                    <?= !empty($j['called']) ? 'aria-pressed="true"' : '' ?>>OUI</button>
+            <button type="submit" name="value" value="0" class="<?= empty($j['called']) ? 'on off' : '' ?>"
+                    <?= empty($j['called']) ? 'aria-pressed="true"' : '' ?>>NON</button>
+          </form>
+
+          <form method="post" action="/prospection<?= $qs_keep ? '?' . h($qs_keep) : '' ?>" class="pr-seg">
+            <input type="hidden" name="action" value="mail">
+            <input type="hidden" name="id" value="<?= (int) $j['id'] ?>">
+            <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+            <span class="pr-seg-lab">E-mail</span>
+            <button type="submit" name="value" value="1" class="<?= !empty($j['emailed']) ? 'on' : '' ?>"
+                    <?= !empty($j['emailed']) ? 'aria-pressed="true"' : '' ?>>OUI</button>
+            <button type="submit" name="value" value="0" class="<?= empty($j['emailed']) ? 'on off' : '' ?>"
+                    <?= empty($j['emailed']) ? 'aria-pressed="true"' : '' ?>>NON</button>
+          </form>
+
+          <?php // Prérempli avec l'échéance en cours : reprogrammer, c'est
+                // décaler une date déjà là, pas en ressaisir une. ?>
+          <form method="post" action="/prospection<?= $qs_keep ? '?' . h($qs_keep) : '' ?>" class="pr-cb">
+            <input type="hidden" name="action" value="callback">
+            <input type="hidden" name="id" value="<?= (int) $j['id'] ?>">
+            <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+            <input class="pr-in" type="datetime-local" name="callback_at"
+                   value="<?= h(date('Y-m-d\TH:i', $jt)) ?>"
+                   aria-label="Reprogrammer le rappel de <?= h($jnom) ?>">
+            <button class="pr-btn sec" type="submit">Reprogrammer</button>
+          </form>
+        </div>
+
+        <div class="pr-jour-note" id="note-<?= (int) $j['id'] ?>" hidden>
+          <?php $jnotes = trim((string) ($j['notes'] ?? '')); ?>
+          <?php if ($jnotes !== ''): ?>
+            <p class="pr-jour-note-txt"><?= nl2br(h($jnotes)) ?></p>
+          <?php else: ?>
+            <p class="pr-jour-note-txt vide">Aucune note sur cette fiche.</p>
+          <?php endif; ?>
+          <p class="pr-jour-note-meta">
+            <?php
+              $bits = [];
+              if (!empty($j['called_at']))  $bits[] = 'appelé le ' . date('d/m/Y à H\hi', strtotime((string) $j['called_at']));
+              if (!empty($j['emailed_at'])) $bits[] = 'e-mail le ' . date('d/m/Y à H\hi', strtotime((string) $j['emailed_at']));
+              if (!empty($j['updated_at'])) {
+                  $bits[] = 'modifié le ' . date('d/m/Y à H\hi', strtotime((string) $j['updated_at']))
+                          . (!empty($j['modifie_par']) ? ' par ' . $j['modifie_par'] : '');
+              }
+              echo $bits ? h(ucfirst(implode(' · ', $bits))) : 'Aucun échange enregistré pour l’instant.';
+            ?>
+          </p>
+        </div>
       </div>
     <?php endforeach; ?>
   </div>
 </div>
+<script>
+(function () {
+  // Délégation : une seule écoute pour toutes les fiches du bandeau, y
+  // compris si la liste change de longueur d'un rechargement à l'autre.
+  var bandeau = document.querySelector('.pr-jour');
+  if (!bandeau) return;
+  bandeau.addEventListener('click', function (e) {
+    var b = e.target.closest('.pr-jour-plus');
+    if (!b) return;
+    var cible = document.getElementById(b.getAttribute('aria-controls'));
+    if (!cible) return;
+    var ouvert = b.getAttribute('aria-expanded') === 'true';
+    b.setAttribute('aria-expanded', ouvert ? 'false' : 'true');
+    cible.hidden = ouvert;
+  });
+})();
+</script>
 <?php endif; ?>
 
 <?php if ($migration_missing): ?>
