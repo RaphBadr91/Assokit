@@ -63,7 +63,10 @@ render_public_nav('');
       <p>RBPS conserve les données 30 jours après résiliation pour permettre à l'Utilisateur de les exporter, puis les supprime définitivement.</p>
 
       <h2>9. Propriété intellectuelle</h2>
-      <p>Le Service, son code, sa marque et ses contenus sont la propriété exclusive de RBPS. Aucune licence n'est accordée à l'Utilisateur en dehors du droit d'usage du Service.</p>
+      <p>Le Service — son code source, sa conception, son architecture, ses interfaces, ses textes, ses bases de données, sa marque et son identité visuelle — est la propriété exclusive de <strong>Raphaël Badr Pujol-Siwane</strong>, auteur et titulaire de l'ensemble des droits de propriété intellectuelle qui s'y attachent, y compris ceux portant sur l'innovation qu'il met en œuvre. RBPS exploite le Service sur autorisation du titulaire des droits.</p>
+      <p>« Assokit » est une <strong>marque déposée</strong> auprès de l'INPI sous le numéro national <strong>26 5259962</strong> (dépôt du 20 mai 2026). Le logo et l'identité visuelle sont protégés au même titre.</p>
+      <p>Aucune licence n'est accordée à l'Utilisateur en dehors d'un droit d'usage personnel, non exclusif et non cessible du Service pendant la durée de son abonnement. Sont notamment interdites, sans autorisation écrite préalable : la reproduction, l'adaptation, la traduction, la diffusion, la mise à disposition de tiers, la décompilation en dehors des cas prévus par la loi, ainsi que l'extraction ou la réutilisation substantielle des bases de données.</p>
+      <p>Les contenus téléversés par l'Utilisateur (données de son association, documents, fichiers) restent sa propriété pleine et entière. L'ensemble est régi par le droit français, et notamment par le Code de la propriété intellectuelle. Voir également les <a href="/mentions-legales">mentions légales</a>.</p>
 
       <h2>10. Limitation de responsabilité</h2>
       <p>RBPS ne pourra être tenue responsable des dommages indirects (perte d'exploitation, perte de bénéfices, etc.) résultant de l'utilisation du Service. Sa responsabilité est en tout état de cause limitée au montant des sommes versées par l'Utilisateur sur les 12 derniers mois.</p>
