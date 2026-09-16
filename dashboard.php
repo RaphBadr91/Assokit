@@ -1330,6 +1330,11 @@ render_sidebar('accueil');
     </div>
   </div>
 
+  <!-- ====== RAPPELS DE PROSPECTION (compte exact, avant les suggestions) ====== -->
+  <?php // Placé avant le copilote : c'est une échéance datée, pas une
+        // suggestion. Ce qui est dû passe avant ce qui est conseillé. ?>
+  <?php require __DIR__ . '/_relances-prospection.php'; ?>
+
   <!-- ====== AUJOURD'HUI (Copilote IA) ====== -->
   <?php require __DIR__ . '/_today-suggestions.php'; ?>
 

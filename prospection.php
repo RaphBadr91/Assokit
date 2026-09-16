@@ -175,6 +175,26 @@ function prosp_departement(string $cp): string
     return $deux;
 }
 
+/**
+ * Range une échéance de rappel dans son groupe.
+ *
+ * @return array{0:string,1:string,2:bool} clé de groupe, libellé, urgent
+ */
+function prosp_echeance(int $t): array
+{
+    $jour  = strtotime('today');
+    $demain = strtotime('tomorrow');
+    if ($t < $jour)              return ['retard', 'En retard', true];
+    if ($t < $demain)            return ['auj', "Aujourd'hui", true];
+    if ($t < $demain + 86400)    return ['dem', 'Demain', false];
+    // « Cette semaine » s'arrête au dimanche soir : au-delà, on ne prépare
+    // plus la même journée d'appels.
+    $finSemaine = strtotime('next monday', $jour);
+    if ($t < $finSemaine)        return ['sem', 'Cette semaine', false];
+    if ($t < $finSemaine + 7 * 86400) return ['sem2', 'La semaine prochaine', false];
+    return ['apres', 'Plus tard', false];
+}
+
 /** Forme canonique servant à repérer les doublons. */
 function prosp_empreinte_tel(string $tel): string
 {
@@ -400,12 +420,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
             if (!$info) {
                 $msg = "Import introuvable.";
-            } elseif ($role !== 'admin') {
-                // Réservé à l'administrateur, et à lui seul. Retirer un import
-                // efface le travail d'appel de toute l'équipe sur des centaines
-                // de fiches : ce n'est pas une opération que l'on confie à
-                // quiconque décroche le téléphone, fût-il l'auteur de l'import.
-                $msg = "Seul un administrateur peut retirer un import.";
+            } elseif (!in_array($role, ['admin', 'coordinator'], true)) {
+                // Administrateur et coordinateur : ce sont eux qui pilotent la
+                // prospection et qui versent les fichiers. Retirer un import
+                // reste hors de portée des autres membres — cela efface le
+                // travail d'appel de toute l'équipe sur des centaines de fiches.
+                $msg = "Seuls un administrateur ou un coordinateur peuvent retirer un import.";
             } elseif ($action === 'import_delete') {
                 // Un seul horodatage pour le lot et pour ses fiches. Deux
                 // NOW() posés par deux requêtes peuvent tomber sur deux
@@ -759,8 +779,33 @@ render_sidebar('prospection');
   .pr-io-aide{margin:9px 0 0;font-size:12.5px;color:var(--ink-3,#5F6D66);line-height:1.5}
   /* Les fichiers déjà versés */
   .pr-lots{margin-top:14px;border-top:1px solid var(--line,#E7EEEA);padding-top:12px}
-  .pr-lots-titre{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-    color:var(--ink-4,#9AA8A2);margin-bottom:8px}
+  /* Le marqueur natif du <summary> ne disparaît de façon fiable qu'avec
+     display:block + list-style:none. La pastille est donc portée par un
+     élément interne : tenter de styler le <summary> lui-même laissait un
+     triangle qui doublait notre chevron. */
+  .pr-lots-tete{display:block;padding:0;border:0;background:none;font:inherit;
+    cursor:pointer;user-select:none;text-align:left}
+  .pr-lots-pill{display:inline-flex;align-items:center;gap:8px;
+    padding:7px 13px;border:1px solid var(--line,#E7EEEA);border-radius:999px;background:#fff;
+    font-size:12.5px;font-weight:600;color:var(--ink-2,#45544D);
+    transition:border-color .12s ease,color .12s ease,background .12s ease}
+  .pr-lots-tete:hover .pr-lots-pill{border-color:#B9CFC5;color:var(--ink,#0B1A13)}
+  .pr-lots-tete:focus-visible .pr-lots-pill{outline:2px solid #059669;outline-offset:1px}
+  .pr-lots-chevron{display:flex;color:var(--ink-4,#9AA8A2);transition:transform .18s ease}
+  .pr-lots.est-ouvert .pr-lots-chevron{transform:rotate(90deg)}
+  .pr-lots.est-ouvert .pr-lots-pill{border-color:#6EE7B7;background:#ECFDF5;color:#025C43}
+  .pr-lots-compte{background:#ECFDF5;color:#047857;border-radius:999px;padding:1px 8px;font-size:11.5px;font-weight:700}
+  .pr-lots.est-ouvert .pr-lots-compte{background:#fff}
+  .pr-lots-note{color:var(--ink-4,#9AA8A2);font-weight:500}
+  .pr-lots > .pr-lot:first-of-type{margin-top:10px}
+  /* Séparateurs d'échéance sur l'onglet « À rappeler » */
+  .pr-groupe{display:flex;align-items:center;gap:10px;margin:18px 0 8px;
+    font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--ink-4,#9AA8A2)}
+  .pr-groupe::after{content:"";flex:1;height:1px;background:var(--line,#E7EEEA)}
+  .pr-groupe.urgent{color:#B91C1C}
+  .pr-groupe.urgent::after{background:#FECACA}
+  .pr-groupe:first-of-type{margin-top:0}
   .pr-lot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 10px;border-radius:10px;min-width:0}
   .pr-lot + .pr-lot{margin-top:2px}
   .pr-lot:hover{background:#F7FAF9}
@@ -957,17 +1002,42 @@ render_sidebar('prospection');
       <code>php migrations/run.php 2026-09-15-prospection-imports.sql</code>
     </p>
   <?php elseif ($imports): ?>
-    <div class="pr-lots">
-      <div class="pr-lots-titre">Fichiers importés<?php if ($role !== 'admin'): ?>
-        <span style="font-weight:500;text-transform:none;letter-spacing:0">
-          · seul un administrateur peut en retirer un</span>
-      <?php endif; ?></div>
+    <?php
+      // Replié par défaut : la liste des fichiers n'est consultée qu'au moment
+      // de retirer un import, alors que les fiches, elles, servent tous les
+      // jours. <details> plutôt qu'un bouton en JavaScript — c'est natif,
+      // ça fonctionne au clavier et sans script.
+      $pilote = in_array($role, ['admin', 'coordinator'], true);
+      $actifs = 0;
+      foreach ($imports as $it) if (empty($it['deleted_at'])) $actifs++;
+    ?>
+    <?php
+      // Un <button> plutôt qu'un <details> : le triangle que Chromium peint
+      // pour un <summary> a résisté à list-style, à ::marker et à
+      // ::-webkit-details-marker, et doublait notre chevron. Quatre lignes
+      // de script donnent un contrôle total, et l'accessibilité au clavier
+      // est portée par aria-expanded.
+    ?>
+    <div class="pr-lots" data-lots>
+      <button type="button" class="pr-lots-tete" aria-expanded="false" aria-controls="ak-lots-corps">
+        <span class="pr-lots-pill">
+          <span class="pr-lots-chevron" aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </span>
+          Fichiers importés
+          <span class="pr-lots-compte"><?= count($imports) ?></span>
+          <?php if (!$pilote): ?>
+            <span class="pr-lots-note">consultation seule</span>
+          <?php endif; ?>
+        </span>
+      </button>
+      <div class="pr-lots-corps" id="ak-lots-corps" hidden>
       <?php foreach ($imports as $it):
             $sup = !empty($it['deleted_at']);
-            // Le retrait est réservé à l'administrateur : les commandes ne
-            // s'affichent même pas pour les autres, plutôt que de proposer
-            // un bouton qui refusera.
-            $peut = ($role === 'admin');
+            // Les commandes ne s'affichent pas pour les autres rôles, plutôt
+            // que de proposer un bouton qui refusera.
+            $peut = $pilote;
             $t = strtotime((string) $it['created_at']); ?>
         <div class="pr-lot<?= $sup ? ' est-sup' : '' ?><?= $lotVu === (int) $it['id'] ? ' est-vu' : '' ?>">
           <div class="pr-lot-nom">
@@ -1016,7 +1086,22 @@ render_sidebar('prospection');
           <?php endif; ?>
         </div>
       <?php endforeach; ?>
+      </div>
     </div>
+    <script>
+    (function () {
+      var bloc = document.querySelector('[data-lots]');
+      if (!bloc) return;
+      var bouton = bloc.querySelector('.pr-lots-tete');
+      var corps  = bloc.querySelector('.pr-lots-corps');
+      bouton.addEventListener('click', function () {
+        var ouvert = bouton.getAttribute('aria-expanded') === 'true';
+        bouton.setAttribute('aria-expanded', ouvert ? 'false' : 'true');
+        corps.hidden = ouvert;
+        bloc.classList.toggle('est-ouvert', !ouvert);
+      });
+    })();
+    </script>
   <?php endif; ?>
 </div>
 
@@ -1067,12 +1152,25 @@ render_sidebar('prospection');
   </div>
 <?php endif; ?>
 
-<?php foreach ($rows as $p):
+<?php
+// Sur l'onglet « À rappeler », les fiches sont regroupées par échéance :
+// une liste plate de deux cents rappels ne dit pas lesquels sont pour
+// aujourd'hui. Les séparateurs sont insérés au fil de la boucle.
+$groupeVu = null;
+foreach ($rows as $p):
   $pid = (int) $p['id'];
   $due = !empty($p['callback_at']) && strtotime((string) $p['callback_at']) <= time();
   $who = trim((string) $p['prenom'] . ' ' . (string) $p['nom']);
   $deleted = !empty($p['deleted_at']);
   $telClean = preg_replace('/[^0-9+]/', '', (string) $p['telephone']);
+
+  if ($filtre === 'a_rappeler' && !empty($p['callback_at'])) {
+      $g = prosp_echeance(strtotime((string) $p['callback_at']));
+      if ($g[0] !== $groupeVu) {
+          $groupeVu = $g[0];
+          echo '<div class="pr-groupe' . ($g[2] ? ' urgent' : '') . '">' . h($g[1]) . '</div>';
+      }
+  }
 ?>
 <div class="pr-row <?= $due && !$deleted ? 'due' : '' ?>">
   <div class="pr-main">
