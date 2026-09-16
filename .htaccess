@@ -517,6 +517,12 @@ RewriteRule ^admin-cron-logout/?$            admin-cron-logout.php [L,QSA]
     Require all denied
 </Files>
 
+# Outil de diagnostic : expose la taille et la structure de la base.
+# Il se refuse deja lui-meme hors CLI ; on ferme aussi la porte cote serveur.
+<Files "diagnostic-charge.php">
+    Require all denied
+</Files>
+
 <Files "support-helper.php">
     Require all denied
 </Files>
