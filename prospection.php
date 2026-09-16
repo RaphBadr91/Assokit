@@ -849,19 +849,23 @@ render_sidebar('prospection');
   .pr-jour-mail{font-size:12.5px;color:var(--ink-3,#5F6D66);text-decoration:none;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .pr-jour-mail:hover{text-decoration:underline}
-  .pr-jour-plus{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line,#E7EEEA);
+  /* Bouton et panneau « Notes » — employés dans le bandeau du jour comme
+     sur chaque fiche de la liste, d'où un nom qui ne cite ni l'un ni l'autre. */
+  .pr-note-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line,#E7EEEA);
     background:#fff;color:var(--ink-3,#5F6D66);font:inherit;font-size:11.5px;font-weight:700;
     padding:4px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
-  .pr-jour-plus:hover{border-color:#B9CFC5;color:var(--ink,#0B1A13)}
-  .pr-jour-plus[aria-expanded="true"]{background:var(--ink-2,#45544D);border-color:var(--ink-2,#45544D);color:#fff}
+  .pr-note-btn:hover{border-color:#B9CFC5;color:var(--ink,#0B1A13)}
+  .pr-note-btn[aria-expanded="true"]{background:var(--ink-2,#45544D);border-color:var(--ink-2,#45544D);color:#fff}
   /* Une pastille dit qu'il y a quelque chose à lire, avant même d'ouvrir. */
-  .pr-jour-pastille{width:6px;height:6px;border-radius:50%;background:#059669;flex-shrink:0}
-  .pr-jour-plus[aria-expanded="true"] .pr-jour-pastille{background:#6EE7B7}
-  .pr-jour-note{flex:1 1 100%;background:#fff;border:1px solid var(--line,#E7EEEA);
+  .pr-note-dot{width:6px;height:6px;border-radius:50%;background:#059669;flex-shrink:0}
+  .pr-note-btn[aria-expanded="true"] .pr-note-dot{background:#6EE7B7}
+  .pr-note-box{flex:1 1 100%;background:#fff;border:1px solid var(--line,#E7EEEA);
     border-radius:10px;padding:10px 13px;margin-top:2px}
-  .pr-jour-note-txt{margin:0;font-size:13px;line-height:1.55;color:var(--ink-2,#45544D);white-space:pre-line}
-  .pr-jour-note-txt.vide{color:var(--ink-4,#9AA8A2);font-style:italic}
-  .pr-jour-note-meta{margin:7px 0 0;font-size:11.5px;color:var(--ink-4,#9AA8A2)}
+  .pr-note-txt{margin:0;font-size:13px;line-height:1.55;color:var(--ink-2,#45544D);white-space:pre-line}
+  .pr-note-txt.vide{color:var(--ink-4,#9AA8A2);font-style:italic}
+  .pr-note-meta{margin:7px 0 0;font-size:11.5px;color:var(--ink-4,#9AA8A2)}
+  /* Dans la liste, le panneau se déplie sous toute la ligne. */
+  .pr-row .pr-note-box{margin:0 16px 14px}
   .pr-jour-h{font-variant-numeric:tabular-nums;font-weight:700;font-size:12.5px;color:#92400E;
     background:#FDE68A;border-radius:6px;padding:2px 7px;white-space:nowrap}
   .pr-jour-item.late .pr-jour-h{background:#FECACA;color:#991B1B}
@@ -1055,9 +1059,9 @@ if ($jour_liste && $filtre !== 'a_rappeler'):
           <?php endif; ?>
           <?php // Ce qu'on sait déjà de ce contact, à un clic. Sans cela,
                 // celui qui reprend le rappel d'un collègue compose à l'aveugle. ?>
-          <button type="button" class="pr-jour-plus" aria-expanded="false"
+          <button type="button" class="pr-note-btn" aria-expanded="false"
                   aria-controls="note-<?= (int) $j['id'] ?>">
-            Notes<?php if (trim((string) ($j['notes'] ?? '')) !== ''): ?><span class="pr-jour-pastille" aria-label="notes présentes"></span><?php endif; ?>
+            Notes<?php if (trim((string) ($j['notes'] ?? '')) !== ''): ?><span class="pr-note-dot" aria-label="notes présentes"></span><?php endif; ?>
           </button>
         </div>
 
@@ -1100,14 +1104,14 @@ if ($jour_liste && $filtre !== 'a_rappeler'):
           </form>
         </div>
 
-        <div class="pr-jour-note" id="note-<?= (int) $j['id'] ?>" hidden>
+        <div class="pr-note-box" id="note-<?= (int) $j['id'] ?>" hidden>
           <?php $jnotes = trim((string) ($j['notes'] ?? '')); ?>
           <?php if ($jnotes !== ''): ?>
-            <p class="pr-jour-note-txt"><?= nl2br(h($jnotes)) ?></p>
+            <p class="pr-note-txt"><?= nl2br(h($jnotes)) ?></p>
           <?php else: ?>
-            <p class="pr-jour-note-txt vide">Aucune note sur cette fiche.</p>
+            <p class="pr-note-txt vide">Aucune note sur cette fiche.</p>
           <?php endif; ?>
-          <p class="pr-jour-note-meta">
+          <p class="pr-note-meta">
             <?php
               $bits = [];
               if (!empty($j['called_at']))  $bits[] = 'appelé le ' . date('d/m/Y à H\hi', strtotime((string) $j['called_at']));
@@ -1124,23 +1128,6 @@ if ($jour_liste && $filtre !== 'a_rappeler'):
     <?php endforeach; ?>
   </div>
 </div>
-<script>
-(function () {
-  // Délégation : une seule écoute pour toutes les fiches du bandeau, y
-  // compris si la liste change de longueur d'un rechargement à l'autre.
-  var bandeau = document.querySelector('.pr-jour');
-  if (!bandeau) return;
-  bandeau.addEventListener('click', function (e) {
-    var b = e.target.closest('.pr-jour-plus');
-    if (!b) return;
-    var cible = document.getElementById(b.getAttribute('aria-controls'));
-    if (!cible) return;
-    var ouvert = b.getAttribute('aria-expanded') === 'true';
-    b.setAttribute('aria-expanded', ouvert ? 'false' : 'true');
-    cible.hidden = ouvert;
-  });
-})();
-</script>
 <?php endif; ?>
 
 <?php if ($migration_missing): ?>
@@ -1420,6 +1407,12 @@ foreach ($rows as $p):
           <span class="pr-bg <?= $due ? 'due' : 'cb' ?>">RAPPEL <?= h(date('d/m/Y H:i', strtotime((string) $p['callback_at']))) ?></span>
         <?php endif; ?>
       <?php endif; ?>
+      <?php // Le même bouton qu'en haut de page : la note à un clic, sans
+            // ouvrir « Détails et historique » qui déploie aussi le
+            // formulaire d'édition et tout le journal. ?>
+      <button type="button" class="pr-note-btn" aria-expanded="false" aria-controls="fnote-<?= $pid ?>">
+        Notes<?php if (trim((string) ($p['notes'] ?? '')) !== ''): ?><span class="pr-note-dot" aria-label="notes présentes"></span><?php endif; ?>
+      </button>
     </div>
 
     <div class="pr-acts">
@@ -1469,6 +1462,27 @@ foreach ($rows as $p):
         </form>
       <?php endif; ?>
     </div>
+  </div>
+
+  <div class="pr-note-box" id="fnote-<?= $pid ?>" hidden>
+    <?php $pnotes = trim((string) ($p['notes'] ?? '')); ?>
+    <?php if ($pnotes !== ''): ?>
+      <p class="pr-note-txt"><?= nl2br(h($pnotes)) ?></p>
+    <?php else: ?>
+      <p class="pr-note-txt vide">Aucune note sur cette fiche.</p>
+    <?php endif; ?>
+    <p class="pr-note-meta">
+      <?php
+        $bits = [];
+        if (!empty($p['called_at']))  $bits[] = 'appelé le ' . date('d/m/Y à H\hi', strtotime((string) $p['called_at']));
+        if (!empty($p['emailed_at'])) $bits[] = 'e-mail le ' . date('d/m/Y à H\hi', strtotime((string) $p['emailed_at']));
+        if (!empty($p['updated_at'])) {
+            $bits[] = 'modifié le ' . date('d/m/Y à H\hi', strtotime((string) $p['updated_at']))
+                    . (!empty($p['updated_name']) ? ' par ' . $p['updated_name'] : '');
+        }
+        echo $bits ? h(ucfirst(implode(' · ', $bits))) : 'Aucun échange enregistré pour l’instant.';
+      ?>
+    </p>
   </div>
 
   <details>
@@ -1535,5 +1549,23 @@ foreach ($rows as $p):
 <?php endif; ?>
 
 <?php endif; // migration ?>
+
+<script>
+(function () {
+  // Délégation sur le document : les boutons « Notes » existent dans le
+  // bandeau du jour comme sur chaque fiche de la liste, et cette liste
+  // change de longueur d'un filtre à l'autre. Une seule écoute les couvre
+  // tous, et continuera de le faire si d'autres s'ajoutent ailleurs.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.pr-note-btn');
+    if (!b) return;
+    var cible = document.getElementById(b.getAttribute('aria-controls'));
+    if (!cible) return;
+    var ouvert = b.getAttribute('aria-expanded') === 'true';
+    b.setAttribute('aria-expanded', ouvert ? 'false' : 'true');
+    cible.hidden = ouvert;
+  });
+})();
+</script>
 </main>
 <?php render_foot(); ?>
