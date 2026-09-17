@@ -57,20 +57,21 @@ function exp_date($v, bool $avecHeure = true): string
 // Le modèle à remplir
 // ------------------------------------------------------------------
 if ($quoi === 'modele') {
-    $entetes = ['Prénom', 'Nom', 'Type', 'Code postal', 'Ville', 'Téléphone', 'E-mail', 'Notes'];
+    $entetes = ['Prénom', 'Nom', 'Type', 'Salariés', 'Code postal', 'Ville', 'Téléphone', 'E-mail', 'Notes'];
     $lignes = [array_map(fn($h) => ['v' => $h, 'entete' => true], $entetes)];
-    $lignes[] = ['Amélie', 'Rousseau', 'Association', '91000', 'Évry-Courcouronnes',
+    $lignes[] = ['Amélie', 'Rousseau', 'Association', '3', '91000', 'Évry-Courcouronnes',
                  '06 01 02 03 04', 'amelie@exemple.fr', 'Rencontrée au forum des assos'];
-    $lignes[] = ['Karim', 'Benali', 'Entreprise', '75011', 'Paris',
+    $lignes[] = ['Karim', 'Benali', 'Entreprise', 'non', '75011', 'Paris',
                  '07 88 99 00 11', 'karim@exemple.fr', ''];
     $lignes[] = [];
     $lignes[] = [['v' => 'Remplacez les deux lignes d’exemple par vos contacts, puis importez ce fichier.', 'entete' => false]];
     $lignes[] = ['L’ordre des colonnes peut changer : l’import lit les en-têtes. Seule la première ligne doit les contenir.'];
     $lignes[] = ['Une fiche sans nom ni téléphone est ignorée — elle ne serait pas rappelable.'];
     $lignes[] = ['Type accepte Association, Entreprise, Collectivité ou Autre. Le département se déduit du code postal.'];
+    $lignes[] = ['Salariés accepte oui, non, ou directement un nombre. Laissée vide, la fiche reste « à qualifier ».'];
 
     ak_tableur_envoyer(
-        ak_xlsx_octets($lignes, 'Modèle', [16, 18, 14, 12, 20, 20, 30, 46]),
+        ak_xlsx_octets($lignes, 'Modèle', [16, 18, 14, 10, 12, 20, 20, 30, 46]),
         exp_nom('modele-prospection', $jour)
     );
 }
@@ -146,6 +147,13 @@ if ($fType !== '' && isset($TYPES[$fType])) { $where[] = 'p.type = ?'; $params[]
 $fDept = mb_substr(strtoupper(preg_replace('/[^0-9A-Za-z]/', '', (string) ($_GET['dept'] ?? ''))), 0, 3);
 if ($fDept !== '') { $where[] = 'p.departement = ?'; $params[] = $fDept; }
 
+// Le même filtre que la page : l'export doit rendre ce qui est affiché,
+// sinon on croit exporter sa sélection et on repart avec tout.
+$fSal = (string) ($_GET['sal'] ?? '');
+if ($fSal === 'oui')         $where[] = 'p.salaries = 1';
+elseif ($fSal === 'non')     $where[] = 'p.salaries = 0';
+elseif ($fSal === 'inconnu') $where[] = 'p.salaries IS NULL';
+
 if ($q !== '') {
     $where[] = '(p.nom LIKE ? OR p.prenom LIKE ? OR p.telephone LIKE ? OR p.email LIKE ?)';
     $like = '%' . $q . '%';
@@ -180,7 +188,8 @@ try {
     foreach ($s3->fetchAll(PDO::FETCH_ASSOC) as $r) $lots[(int) $r['id']] = (string) $r['fichier'];
 } catch (Throwable $e) { /* migration des imports pas encore passée */ }
 
-$entetes = ['Prénom', 'Nom', 'Type', 'Code postal', 'Ville', 'Département',
+$entetes = ['Prénom', 'Nom', 'Type', 'Salariés', 'Nb salariés',
+            'Code postal', 'Ville', 'Département',
             'Téléphone', 'E-mail', 'Appelé', 'Date d’appel',
             'E-mail envoyé', 'Date d’e-mail', 'À rappeler le', 'Provenance',
             'Notes', 'Créée le', 'Modifiée le', 'Modifiée par'];
@@ -201,6 +210,11 @@ foreach ($rows as $r) {
         (string) $r['prenom'],
         (string) $r['nom'],
         $TYPES[$r['type'] ?? ''] ?? '',
+        // Vide et non « Non » quand la question n'a pas été posée : sur un
+        // export qu'on retravaille, « Non » partout ferait passer pour
+        // vérifiées des fiches qui ne l'ont jamais été.
+        $r['salaries'] === null ? '' : ((int) $r['salaries'] === 1 ? 'Oui' : 'Non'),
+        $r['nb_salaries'] === null ? '' : (int) $r['nb_salaries'],
         // Forcés en texte : Excel avale le zéro initial d'un code postal
         // comme celui d'un numéro en 06.
         (string) ($r['code_postal'] ?? ''),
@@ -226,6 +240,6 @@ if (count($lignes) === 1) {
 }
 
 ak_tableur_envoyer(
-    ak_xlsx_octets($lignes, 'Prospection', [15, 17, 14, 12, 18, 12, 18, 28, 9, 17, 14, 17, 17, 24, 40, 17, 17, 22]),
+    ak_xlsx_octets($lignes, 'Prospection', [15, 17, 14, 10, 11, 12, 18, 12, 18, 28, 9, 17, 14, 17, 17, 24, 40, 17, 17, 22]),
     exp_nom('prospection' . ($filtre !== 'tous' ? '-' . $filtre : ''), $jour)
 );

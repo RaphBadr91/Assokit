@@ -238,6 +238,37 @@ function prosp_echeance(int $t): array
     return ['apres', 'Plus tard', false];
 }
 
+/**
+ * Ce qu'une colonne « salariés » d'un fichier importé veut dire.
+ *
+ * Les annuaires écrivent la même chose de dix façons : « oui », « non »,
+ * « 0 », « 12 », « 12 salariés », « 3 ETP », « n/c ». On en tire les deux
+ * seules informations utiles.
+ *
+ * Un nombre l'emporte sur un mot, parce qu'il en dit plus : « 0 » signifie
+ * non, tout nombre au-dessus signifie oui ET donne l'effectif.
+ *
+ * @return array{0:?int,1:?int} [a des salariés (1/0/null), combien (ou null)]
+ */
+function prosp_salaries(string $brut): array
+{
+    $brut = trim($brut);
+    if ($brut === '') return [null, null];
+
+    // Un nombre quelque part dans la cellule : « 12 », « 12 salariés », « 3 ETP ».
+    if (preg_match('/\d+/', $brut, $m)) {
+        $n = (int) $m[0];
+        if ($n === 0) return [0, null];
+        return [1, min($n, 65535)];   // borne de la colonne SMALLINT
+    }
+
+    $k = prosp_cle($brut);
+    if (in_array($k, ['oui', 'o', 'yes', 'y', 'vrai', 'true', 'x'], true))        return [1, null];
+    if (in_array($k, ['non', 'n', 'no', 'aucun', 'faux', 'false', 'benevole',
+                      'benevoles', 'quedesbenevoles'], true))                      return [0, null];
+    return [null, null];   // « n/c », « ? », tout ce qu'on ne sait pas lire
+}
+
 /** Forme canonique servant à repérer les doublons. */
 function prosp_empreinte_tel(string $tel): string
 {
@@ -331,6 +362,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                     'cp'        => ['codepostal', 'cp', 'zip', 'zipcode', 'postal', 'postcode'],
                     'ville'     => ['ville', 'commune', 'city', 'localite'],
                     'dept'      => ['departement', 'dept', 'dpt', 'department'],
+                    // Deux colonnes distinctes et non une seule : nos propres
+                    // exports en produisent deux (« Salariés » oui/non et
+                    // « Nb salariés »). Confondues, la première gagnait et
+                    // l'effectif se perdait à la réimportation.
+                    'salaries'  => ['salaries', 'salarie', 'salaris',
+                                    'employes', 'employe', 'staff', 'personnel'],
+                    'nbsal'     => ['nbsalaries', 'nbsalarie', 'nombredesalaries',
+                                    'nombresalaries', 'effectif', 'effectifs',
+                                    'etp', 'headcount', 'employees'],
                 ];
 
                 $map = [];
@@ -377,9 +417,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
                 $ins = $pdo->prepare("INSERT INTO asso_prospection
                         (org_id, prenom, nom, telephone, email, notes, type,
-                         code_postal, ville, departement, source, import_id,
-                         created_by, updated_by, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', ?, ?, ?, NOW())");
+                         code_postal, ville, departement, salaries, nb_salaries,
+                         source, import_id, created_by, updated_by, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', ?, ?, ?, NOW())");
 
                 $pdo->beginTransaction();
                 try {
@@ -425,9 +465,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                         // Le département vient du code postal ; une colonne
                         // « département » explicite reste prioritaire.
                         $dept  = mb_substr(strtoupper($lire($l, 'dept')), 0, 3) ?: prosp_departement($cp);
+                        // La colonne absente ou illisible laisse la fiche « non
+                        // renseigné », pas « non » : on ne déduit rien d'un vide.
+                        [$sal, $nbSal]   = prosp_salaries($lire($l, 'salaries'));
+                        [$sal2, $nbSal2] = prosp_salaries($lire($l, 'nbsal'));
+                        // Une colonne d'effectif l'emporte quand elle porte un
+                        // nombre : elle dit tout ce que dit « oui », et combien.
+                        if ($nbSal2 !== null)                { $sal = 1; $nbSal = $nbSal2; }
+                        elseif ($sal === null && $sal2 !== null) { $sal = $sal2; }
 
                         $ins->execute([$org_id, $prenom, $nom, mb_substr($tel, 0, 40),
-                                       $email, $notes, $type, $cp, $ville, $dept,
+                                       $email, $notes, $type, $cp, $ville, $dept, $sal, $nbSal,
                                        $lot, $uid, $uid]);
                         prosp_log($pdo, $org_id, (int) $pdo->lastInsertId(), $uid, 'import',
                                   trim("$prenom $nom") ?: $tel);
@@ -586,6 +634,62 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $msg = $when ? "Rappel programmé le " . date('d/m/Y à H:i', strtotime($when)) . "." : "Rappel retiré.";
             }
 
+        } elseif ($action === 'salaries' && $pid > 0) {
+            // Trois états, deux boutons : recliquer celui qui est déjà allumé
+            // remet la fiche à « non renseigné ». Sans ça, un clic de travers
+            // serait définitif — on ne pourrait plus revenir à « on ne sait
+            // pas », qui est une réponse à part entière ici.
+            $st = $pdo->prepare("SELECT salaries, nb_salaries FROM asso_prospection
+                                 WHERE id = ? AND org_id = ? AND deleted_at IS NULL LIMIT 1");
+            $st->execute([$pid, $org_id]);
+            $avant = $st->fetch(PDO::FETCH_ASSOC);
+
+            if (!$avant) {
+                $msg = "Fiche introuvable.";
+            } else {
+                $clic   = $_POST['salaries'] ?? null;          // '1', '0' ou absent
+                $ancien = $avant['salaries'] === null ? null : (int) $avant['salaries'];
+                $nbBrut = trim((string) ($_POST['nb_salaries'] ?? ''));
+                $nb     = ($nbBrut !== '' && ctype_digit($nbBrut)) ? min((int) $nbBrut, 65535) : null;
+
+                if ($clic === '1' || $clic === '0') {
+                    $nouveau = (int) $clic;
+                    if ($nouveau === $ancien) { $nouveau = null; $nb = null; }
+                } elseif ($nb !== null) {
+                    // Nombre saisi seul, validé au clavier sans toucher aux
+                    // boutons : un effectif vaut une réponse. Sans ce cas,
+                    // taper « 12 » puis Entrée n'aurait eu aucun effet.
+                    $nouveau = $nb > 0 ? 1 : 0;
+                } else {
+                    $nouveau = $ancien;
+                }
+
+                // Le nombre n'a de sens qu'avec un oui : « non, 12 salariés »
+                // ne veut rien dire, et laisser l'ancien nombre traîner
+                // derrière un non finirait par ressortir à l'export.
+                if ($nouveau !== 1)    $nb = null;
+                elseif ($nb === 0)     { $nouveau = 0; $nb = null; }
+
+                $pdo->prepare("UPDATE asso_prospection
+                               SET salaries = ?, nb_salaries = ?, updated_by = ?, updated_at = NOW()
+                               WHERE id = ? AND org_id = ? AND deleted_at IS NULL")
+                    ->execute([$nouveau, $nb, $uid, $pid, $org_id]);
+
+                if ($nouveau === null) {
+                    prosp_log($pdo, $org_id, $pid, $uid, 'salaries', 'non renseigné');
+                    $msg = "Salariés : information effacée.";
+                } elseif ($nouveau === 0) {
+                    prosp_log($pdo, $org_id, $pid, $uid, 'salaries', 'non');
+                    $msg = "Noté : pas de salarié.";
+                } else {
+                    prosp_log($pdo, $org_id, $pid, $uid, 'salaries',
+                              $nb !== null ? "oui, $nb" : 'oui');
+                    $msg = $nb !== null
+                        ? "Noté : $nb salarié" . ($nb > 1 ? 's' : '') . "."
+                        : "Noté : des salariés (nombre inconnu).";
+                }
+            }
+
         } elseif ($action === 'note' && $pid > 0) {
             // Action dédiée plutôt que de passer par « edit » : on ne touche
             // qu'aux notes, donc rien d'autre ne peut être écrasé par
@@ -613,7 +717,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             }
 
         } elseif ($action === 'edit' && $pid > 0) {
-            $st = $pdo->prepare("SELECT prenom, nom, telephone, email, notes FROM asso_prospection
+            $st = $pdo->prepare("SELECT prenom, nom, telephone, email, notes, salaries, nb_salaries
+                                 FROM asso_prospection
                                  WHERE id = ? AND org_id = ? AND deleted_at IS NULL LIMIT 1");
             $st->execute([$pid, $org_id]);
             $old = $st->fetch(PDO::FETCH_ASSOC);
@@ -632,12 +737,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $changed = [];
                 foreach ($new as $k => $v) if ((string) $old[$k] !== $v) $changed[] = $labels[$k];
 
+                // Salariés à part : ce sont des entiers qui acceptent NULL, et
+                // la comparaison en chaîne du dessus confondrait « non » (0)
+                // avec « non renseigné » (NULL), qui ne disent pas la même chose.
+                $sp  = (string) ($_POST['salaries'] ?? '');
+                $sal = $sp === '1' ? 1 : ($sp === '0' ? 0 : null);
+                $nbB = trim((string) ($_POST['nb_salaries'] ?? ''));
+                $nb  = ($sal === 1 && $nbB !== '' && ctype_digit($nbB)) ? min((int) $nbB, 65535) : null;
+                if ($sal === 1 && $nb === 0) { $sal = 0; $nb = null; }
+
+                $salAv = $old['salaries'] === null ? null : (int) $old['salaries'];
+                $nbAv  = $old['nb_salaries'] === null ? null : (int) $old['nb_salaries'];
+                if ($sal !== $salAv || $nb !== $nbAv) $changed[] = 'salariés';
+
                 $pdo->prepare("UPDATE asso_prospection
                                SET prenom = ?, nom = ?, telephone = ?, email = ?, notes = ?,
+                                   salaries = ?, nb_salaries = ?,
                                    updated_by = ?, updated_at = NOW()
                                WHERE id = ? AND org_id = ?")
                     ->execute([$new['prenom'], $new['nom'], $new['telephone'], $new['email'],
-                               $new['notes'], $uid, $pid, $org_id]);
+                               $new['notes'], $sal, $nb, $uid, $pid, $org_id]);
                 if ($changed) prosp_log($pdo, $org_id, $pid, $uid, 'edit', implode(', ', $changed));
                 $msg = $changed ? "Fiche mise à jour (" . implode(', ', $changed) . ")." : "Aucun changement.";
             }
@@ -671,6 +790,8 @@ $q      = trim((string) ($_GET['q'] ?? ''));
 $lotVu  = (int) ($_GET['import'] ?? 0);   // n'afficher qu'un import
 $fType  = prosp_type((string) ($_GET['type'] ?? ''));
 $fDept  = mb_substr(strtoupper(preg_replace('/[^0-9A-Za-z]/', '', (string) ($_GET['dept'] ?? ''))), 0, 3);
+$fSal   = (string) ($_GET['sal'] ?? '');
+if (!in_array($fSal, ['oui', 'non', 'inconnu'], true)) $fSal = '';
 
 $where  = ['p.org_id = ?'];
 $params = [$org_id];
@@ -678,6 +799,11 @@ $params = [$org_id];
 if ($lotVu > 0) { $where[] = 'p.import_id = ?'; $params[] = $lotVu; }
 if ($fType !== '') { $where[] = 'p.type = ?'; $params[] = $fType; }
 if ($fDept !== '') { $where[] = 'p.departement = ?'; $params[] = $fDept; }
+// « inconnu » se teste sur NULL et non sur une valeur : c'est justement
+// l'absence de réponse qu'on cherche.
+if ($fSal === 'oui')          $where[] = 'p.salaries = 1';
+elseif ($fSal === 'non')      $where[] = 'p.salaries = 0';
+elseif ($fSal === 'inconnu')  $where[] = 'p.salaries IS NULL';
 
 if ($filtre === 'corbeille') {
     $where[] = 'p.deleted_at IS NOT NULL';
@@ -708,7 +834,7 @@ $imports = [];
 $imports_indispo = false;
 $jour_liste = [];
 $jour_total = 0;
-$facettes = ['type' => [], 'dept' => []];
+$facettes = ['type' => [], 'dept' => [], 'sal' => []];
 
 try {
     // Les rappels dus remontent en tête : c'est l'ordre dans lequel on
@@ -793,6 +919,23 @@ try {
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $facettes['dept'][$r['departement']] = (int) $r['n'];
     } catch (Throwable $e) { /* colonnes pas encore là */ }
 
+    // Salariés : requête à part et tolérante, comme les deux précédentes. La
+    // migration du jour peut ne pas être passée, la page doit tenir quand même.
+    try {
+        $st = $pdo->prepare("SELECT
+                    SUM(salaries = 1)     AS oui,
+                    SUM(salaries = 0)     AS non,
+                    SUM(salaries IS NULL) AS inconnu
+                  FROM asso_prospection WHERE org_id = ? AND deleted_at IS NULL");
+        $st->execute([$org_id]);
+        foreach (($st->fetch(PDO::FETCH_ASSOC) ?: []) as $k => $n) {
+            if ((int) $n > 0) $facettes['sal'][$k] = (int) $n;
+        }
+        // Un seul choix possible n'est pas un filtre : tant que rien n'est
+        // qualifié, le menu n'apporterait qu'une ligne « À qualifier (300) ».
+        if (count($facettes['sal']) < 2) $facettes['sal'] = [];
+    } catch (Throwable $e) { /* migration salariés pas encore passée */ }
+
     // Libellés des codes QR, en requête séparée et tolérante : si la migration
     // des QR n'a pas été passée, la prospection doit continuer de fonctionner.
     // Une jointure aurait fait tomber toute la page.
@@ -838,6 +981,7 @@ $EVENT_LABEL = [
     'import'         => 'Importée depuis un fichier',
     'note'           => 'Note mise à jour',
     'note_clear'     => 'Note effacée',
+    'salaries'       => 'Salariés',
 ];
 
 $FILTRES = [
@@ -863,6 +1007,7 @@ $qs_keep = http_build_query(array_filter([
     'import' => $lotVu > 0 ? $lotVu : '',
     'type'   => $fType,
     'dept'   => $fDept,
+    'sal'    => $fSal,
 ]));
 
 render_head('Prospection');
@@ -1052,6 +1197,13 @@ render_sidebar('prospection');
   .pr-bg.due{background:#FEE2E2;color:#991B1B}
   .pr-bg.qr{background:#EDE9FE;color:#5B21B6}
   .pr-bg.ml{background:#DBEAFE;color:#1E40AF}
+  /* Salariés : une structure qui emploie a un budget et un interlocuteur
+     salarié — teinte soutenue. Le tout-bénévole reste discret, c'est une
+     précision utile, pas un signal. */
+  .pr-bg.sal{background:#CCFBF1;color:#115E59}
+  .pr-bg.ben{background:#F1F5F9;color:#475569}
+  /* Le champ « combien » : assez large pour cinq chiffres, pas plus. */
+  .pr-nb{width:104px}
   .pr-acts{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .pr-detail{border-top:1px solid var(--sep,#F1F5F4);padding:14px 16px;background:#FBFDFC;display:grid;grid-template-columns:1fr 300px;gap:20px}
   .pr-detail h4{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3,#5F6D66);margin:0 0 9px}
@@ -1434,6 +1586,23 @@ if ($jour_liste && $filtre !== 'a_rappeler'):
         <?php endforeach; ?>
       </select>
     <?php endif; ?>
+    <?php // Troisième axe : une structure qui emploie n'a ni le même budget
+          // ni le même interlocuteur qu'une équipe tout bénévole.
+          // « À qualifier » sert à finir le travail : ce sont les fiches dont
+          // on ne sait encore rien. ?>
+    <?php if ($facettes['sal']): ?>
+      <select class="pr-sel<?= $fSal !== '' ? ' on' : '' ?>" name="sal" onchange="this.form.submit()"
+              aria-label="Filtrer selon les salariés">
+        <option value="">Salariés ou non</option>
+        <?php foreach (['oui' => 'Avec salariés', 'non' => '100 % bénévole',
+                        'inconnu' => 'À qualifier'] as $k => $lab):
+              if (empty($facettes['sal'][$k])) continue; ?>
+          <option value="<?= h($k) ?>" <?= $fSal === $k ? 'selected' : '' ?>>
+            <?= h($lab) ?> (<?= (int) $facettes['sal'][$k] ?>)
+          </option>
+        <?php endforeach; ?>
+      </select>
+    <?php endif; ?>
     <input class="pr-in" name="q" value="<?= h($q) ?>" placeholder="Nom, téléphone, e-mail…" style="min-width:180px">
     <button class="pr-btn sec" type="submit">Rechercher</button>
   </form>
@@ -1495,6 +1664,16 @@ foreach ($rows as $p):
         <?php endif; ?>
         <?php if (!empty($p['callback_at'])): ?>
           <span class="pr-bg <?= $due ? 'due' : 'cb' ?>">RAPPEL <?= h(date('d/m/Y H:i', strtotime((string) $p['callback_at']))) ?></span>
+        <?php endif; ?>
+        <?php // Rien quand personne n'a répondu : un badge « SALARIÉS : ? » sur
+              // toutes les fiches non qualifiées ne serait que du bruit. ?>
+        <?php if ($p['salaries'] !== null): ?>
+          <?php if ((int) $p['salaries'] === 1): ?>
+            <span class="pr-bg sal">SALARIÉS<?php
+              if ($p['nb_salaries'] !== null) echo ' · ' . (int) $p['nb_salaries']; ?></span>
+          <?php else: ?>
+            <span class="pr-bg ben">100 % BÉNÉVOLE</span>
+          <?php endif; ?>
         <?php endif; ?>
       <?php endif; ?>
       <?php // Le même bouton qu'en haut de page : la note à un clic, sans
@@ -1560,6 +1739,29 @@ foreach ($rows as $p):
                  value="<?= $aRappel ? h(date('Y-m-d\TH:i', strtotime((string) $p['callback_at']))) : '' ?>"
                  aria-label="Date de rappel">
         </form>
+
+        <?php // Salariés : même segmenté, avec l'effectif à côté quand il est
+              // connu. Aucun bouton allumé tant que personne n'a répondu —
+              // « on ne sait pas » ne doit pas ressembler à « non ». ?>
+        <?php $sal = $p['salaries'] === null ? null : (int) $p['salaries']; ?>
+        <form method="post" action="/prospection<?= $qs_keep ? '?' . h($qs_keep) : '' ?>" class="pr-cb">
+          <input type="hidden" name="action" value="salaries">
+          <input type="hidden" name="id" value="<?= $pid ?>">
+          <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+          <span class="pr-seg">
+            <span class="pr-seg-lab">Salariés</span>
+            <button type="submit" name="salaries" value="1" class="<?= $sal === 1 ? 'on' : '' ?>"
+                    title="<?= $sal === 1 ? 'Recliquer pour revenir à « non renseigné »' : 'Cette structure emploie' ?>"
+                    <?= $sal === 1 ? 'aria-pressed="true"' : '' ?>>OUI</button>
+            <button type="submit" name="salaries" value="0" class="<?= $sal === 0 ? 'on off' : '' ?>"
+                    title="<?= $sal === 0 ? 'Recliquer pour revenir à « non renseigné »' : 'Que des bénévoles' ?>"
+                    <?= $sal === 0 ? 'aria-pressed="true"' : '' ?>>NON</button>
+          </span>
+          <input class="pr-in pr-nb" type="number" name="nb_salaries" min="0" max="65535"
+                 value="<?= $p['nb_salaries'] !== null ? (int) $p['nb_salaries'] : '' ?>"
+                 placeholder="combien ?" aria-label="Nombre de salariés"
+                 title="Facultatif — à laisser vide si on ne connaît pas l’effectif">
+        </form>
       <?php endif; ?>
     </div>
   </div>
@@ -1588,6 +1790,19 @@ foreach ($rows as $p):
           <div><label>Nom</label><input class="pr-in" name="nom" value="<?= h($p['nom']) ?>"></div>
           <div><label>Téléphone</label><input class="pr-in" name="telephone" type="tel" value="<?= h($p['telephone']) ?>"></div>
           <div><label>E-mail</label><input class="pr-in" name="email" type="email" value="<?= h($p['email']) ?>"></div>
+          <div>
+            <label>Salariés</label>
+            <select class="pr-in" name="salaries">
+              <option value=""  <?= $p['salaries'] === null   ? 'selected' : '' ?>>Non renseigné</option>
+              <option value="1" <?= (string) $p['salaries'] === '1' ? 'selected' : '' ?>>Oui</option>
+              <option value="0" <?= (string) $p['salaries'] === '0' ? 'selected' : '' ?>>Non</option>
+            </select>
+          </div>
+          <div>
+            <label>Combien <span style="font-weight:400;color:var(--ink-3,#5F6D66)">(si connu)</span></label>
+            <input class="pr-in" name="nb_salaries" type="number" min="0" max="65535"
+                   value="<?= $p['nb_salaries'] !== null ? (int) $p['nb_salaries'] : '' ?>">
+          </div>
         </div>
         <label style="display:block;font-size:12px;font-weight:600;color:var(--ink-2,#45544D);margin-bottom:5px">Notes d'appel</label>
         <textarea class="pr-in" name="notes" rows="3" placeholder="Ce qui s'est dit, l'objection, le bon moment pour rappeler…"><?= h($p['notes']) ?></textarea>
