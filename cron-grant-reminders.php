@@ -1,7 +1,9 @@
 <?php
 /**
  * AssoKit — CRON Rappels subventions
- * À lancer 1x par jour (matin).
+ * À LANCER TOUTES LES 10 MINUTES (et non plus 1x par jour) : chaque
+ * passage examine un lot de DOSSIERS, en commençant par ceux vus il y
+ * a le plus longtemps.
  *   /usr/bin/php /home/pura7044/public_html/cron-grant-reminders.php
  *
  * Envoie un email aux admins de l'org pour :
@@ -21,15 +23,43 @@ $is_cli = (PHP_SAPI === 'cli');
 $has_key = isset($_GET['key']) && defined('CRON_SECRET') && hash_equals(CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) { http_response_code(403); die('Forbidden'); }
 
-$started = microtime(true);
-echo "[" . date('Y-m-d H:i:s') . "] CRON Grant reminders démarré\n";
+require_once __DIR__ . '/cron-lots.php';
+if (!ak_lot_demarrer($pdo, 'grant-reminders')) exit(0);
 
 $today = date('Y-m-d');
 
-// Charger toutes les subventions à scanner
-$stmt = $pdo->query("SELECT g.* FROM grants g WHERE g.archived_at IS NULL AND g.status NOT IN ('rejected','reported','archived')");
-$grants = $stmt->fetchAll();
-echo "→ " . count($grants) . " dossiers à scanner\n";
+// Les identifiants d'abord, les dossiers ensuite. L'ancienne version
+// chargeait toutes les subventions actives de la base d'un coup : à
+// 10 000 associations, des dizaines de milliers de lignes en mémoire
+// pour n'en traiter que quelques-unes.
+//
+// Ici le tour de rôle porte sur les DOSSIERS, pas sur les associations :
+// c'est le dossier qui porte l'échéance, et grant_reminders_sent note
+// déjà par dossier ce qui est parti.
+//
+// La requête est protégée, comme celle du radar : une table absente doit
+// laisser le cron finir proprement et rendre son verrou, pas le tuer au
+// milieu sans compte rendu.
+$ids = [];
+try {
+    $ids = $pdo->query("SELECT g.id FROM grants g
+                        WHERE g.archived_at IS NULL
+                          AND g.status NOT IN ('rejected','reported','archived')")
+               ->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) {
+    echo "  ! " . $e->getMessage() . "\n";
+}
+echo "→ " . count($ids) . " dossier(s) actif(s)\n";
+
+$aVoir = ak_tour_prochains($pdo, 'grant-reminders', array_map('intval', $ids), ak_lot_place());
+$grants = [];
+if ($aVoir) {
+    $ph = implode(',', array_fill(0, count($aVoir), '?'));
+    $stmt = $pdo->prepare("SELECT g.* FROM grants g WHERE g.id IN ($ph)");
+    $stmt->execute($aVoir);
+    $grants = $stmt->fetchAll();
+}
+echo "→ " . count($grants) . " scanné(s) ce passage\n";
 
 $sent_total = 0;
 
@@ -88,6 +118,12 @@ function build_email(array $grant, string $title, string $urgency_color, string 
 }
 
 foreach ($grants as $g) {
+    if (!ak_lot_encore()) break;
+    ak_lot_fait();
+    // Vu, qu'on ait envoyé ou non : sinon un dossier sans rappel dû
+    // repasserait en tête à chaque fois et bloquerait la file.
+    ak_tour_vu($pdo, 'grant-reminders', (int) $g['id']);
+
     // === DEADLINE DÉPÔT ===
     if (in_array($g['status'], ['draft','submitted','in_review'], true) && $g['deadline_apply']) {
         $diff = (int)((strtotime($g['deadline_apply']) - strtotime($today)) / 86400);
@@ -129,6 +165,6 @@ foreach ($grants as $g) {
     }
 }
 
-$elapsed = round(microtime(true) - $started, 2);
-echo "\n[" . date('Y-m-d H:i:s') . "] Terminé en {$elapsed}s · {$sent_total} rappels envoyés\n";
+echo "\n{$sent_total} rappel(s) envoyé(s)\n";
+ak_lot_terminer($pdo, count($aVoir) < count($ids));
 exit(0);

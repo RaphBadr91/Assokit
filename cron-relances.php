@@ -1,7 +1,9 @@
 <?php
 /**
  * AssoKit — CRON Relances intelligentes (auto)
- * À lancer 1x par jour (matin).
+ * À LANCER TOUTES LES 10 MINUTES (et non plus 1x par jour) : chaque
+ * passage examine un lot d'associations, en commençant par celles vues
+ * il y a le plus longtemps.
  *   /usr/bin/php /home/pura7044/public_html/cron-relances.php
  *
  * Pour chaque org ayant activé l'auto-relance (org_relance_prefs) :
@@ -21,8 +23,8 @@ $is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
 $has_key = isset($_GET['key']) && defined('CRON_SECRET') && hash_equals(CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) { http_response_code(403); die('Forbidden'); }
 
-$started = microtime(true);
-echo "[" . date('Y-m-d H:i:s') . "] CRON Relances auto démarré\n";
+require_once __DIR__ . '/cron-lots.php';
+if (!ak_lot_demarrer($pdo, 'relances')) exit(0);
 
 $orgs = [];
 try {
@@ -32,10 +34,24 @@ try {
 } catch (Throwable $e) { fwrite(STDERR, $e->getMessage()."\n"); }
 echo "→ " . count($orgs) . " org(s) en auto-relance\n";
 
+// Ce qui est fait est noté sur la facture, pas sur l'association : on ne
+// peut donc pas demander « celles qu'il reste à voir ». On prend celles
+// examinées il y a le plus longtemps, pour que le tour avance.
+$parOrg = [];
+foreach ($orgs as $o) $parOrg[(int) $o['org_id']] = $o;
+$aVoir = ak_tour_prochains($pdo, 'relances', array_keys($parOrg), ak_lot_place());
+echo "→ " . count($aVoir) . " examinée(s) ce passage\n";
+
 $total_inv = 0; $total_mem = 0; $fail = 0;
 
-foreach ($orgs as $o) {
-    $org_id = (int)$o['org_id'];
+foreach ($aVoir as $org_id) {
+    if (!ak_lot_encore()) break;
+    ak_lot_fait();
+    // Noté dès maintenant : même si cette association n'a rien à
+    // relancer, elle a été examinée et doit laisser passer les autres.
+    ak_tour_vu($pdo, 'relances', $org_id);
+
+    $o = $parOrg[$org_id];
     $maxStage = max(1, min(3, (int)$o['max_stage']));
 
     if (!empty($o['auto_invoices'])) {
@@ -63,6 +79,6 @@ foreach ($orgs as $o) {
     }
 }
 
-$elapsed = round(microtime(true) - $started, 2);
-echo "\n[" . date('Y-m-d H:i:s') . "] Terminé en {$elapsed}s · $total_inv facture(s), $total_mem cotisation(s), $fail échec(s)\n";
+echo "\n$total_inv facture(s), $total_mem cotisation(s), $fail échec(s)\n";
+ak_lot_terminer($pdo, count($aVoir) < count($parOrg));
 exit(0);

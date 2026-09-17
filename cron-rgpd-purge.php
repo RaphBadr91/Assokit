@@ -56,6 +56,14 @@ purge($pdo, $LIVE, 'Prospects inactifs > 3 ans', 'asso_prospects',
 purge($pdo, $LIVE, 'Journaux activité > 12 mois', 'assokit_activity_log',
       'created_at < DATE_SUB(NOW(), INTERVAL 12 MONTH)');
 
+// 3 bis) Carnet des envois des crons > 6 mois.
+// Il ne sert qu'à ne pas envoyer deux fois le même message ; passé
+// l'échéance concernée, la ligne ne répond plus à aucune question. Sans
+// cette purge, la table grossirait d'une ligne par rappel et par
+// association, pour toujours.
+purge($pdo, $LIVE, 'Carnet d’envois des crons > 6 mois', 'cron_envois',
+      'sent_at < DATE_SUB(NOW(), INTERVAL 6 MONTH)');
+
 // NB : on ne purge JAMAIS asso_invoices / subscription_invoices ici
 // (conservation légale comptable = 10 ans).
 

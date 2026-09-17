@@ -1,7 +1,9 @@
 <?php
 /**
  * AssoKit — CRON Radar de subventions (alertes)
- * À lancer 1x par jour (matin).
+ * À LANCER TOUTES LES 10 MINUTES (et non plus 1x par jour) : chaque
+ * passage scanne un lot d'associations, en commençant par celles vues
+ * il y a le plus longtemps.
  *   /usr/bin/php /home/pura7044/public_html/cron-grant-radar.php
  *
  * Pour chaque org qui utilise le radar :
@@ -18,6 +20,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/financements-engine.php';
 @require_once __DIR__ . '/notification-helpers.php';
 @require_once __DIR__ . '/resend-helper.php';
+require_once __DIR__ . '/cron-lots.php';
 
 // CLI true si SAPI cli OU exécution hors contexte web (binaire CGI lancé en cron :
 // aucune requête HTTP -> REQUEST_METHOD absent).
@@ -25,7 +28,7 @@ $is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
 $has_key = isset($_GET['key']) && defined('CRON_SECRET') && hash_equals(CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) { http_response_code(403); die('Forbidden'); }
 
-$started = microtime(true);
+if (!ak_lot_demarrer($pdo, 'grant-radar')) exit(0);
 echo "[" . date('Y-m-d H:i:s') . "] CRON Radar subventions démarré\n";
 
 /** Prefs par défaut si l'org n'a rien configuré. */
@@ -100,12 +103,22 @@ try {
     foreach ($pdo->query("SELECT DISTINCT org_id FROM grant_matches")->fetchAll(PDO::FETCH_COLUMN) as $o) $orgIds[(int)$o] = true;
 } catch (Throwable $e) { fwrite(STDERR, $e->getMessage()."\n"); }
 $orgIds = array_keys($orgIds);
-echo "→ " . count($orgIds) . " org(s) à scanner\n";
+echo "→ " . count($orgIds) . " org(s) utilisant le radar\n";
+
+// Le recalcul des correspondances est la partie coûteuse, et ce qui est
+// déjà alerté est noté sur la subvention, pas sur l'association : on
+// prend donc celles examinées il y a le plus longtemps, par lots.
+$aVoir = ak_tour_prochains($pdo, 'grant-radar', $orgIds, ak_lot_place());
+echo "→ " . count($aVoir) . " scannée(s) ce passage\n";
 
 $today = date('Y-m-d');
 $sent_new = 0; $sent_dl = 0;
 
-foreach ($orgIds as $org_id) {
+foreach ($aVoir as $org_id) {
+    if (!ak_lot_encore()) break;
+    ak_lot_fait();
+    ak_tour_vu($pdo, 'grant-radar', $org_id);
+
     // 1) rafraîchir les correspondances
     try { fin_compute_matches($pdo, $org_id); } catch (Throwable $e) { continue; }
 
@@ -201,6 +214,6 @@ foreach ($orgIds as $org_id) {
     }
 }
 
-$elapsed = round(microtime(true) - $started, 2);
-echo "\n[" . date('Y-m-d H:i:s') . "] Terminé en {$elapsed}s · $sent_new piste(s) neuve(s), $sent_dl échéance(s)\n";
+echo "\n$sent_new piste(s) neuve(s), $sent_dl échéance(s)\n";
+ak_lot_terminer($pdo, count($aVoir) < count($orgIds));
 exit(0);

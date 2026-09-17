@@ -38,12 +38,24 @@ $seq = ak_prospect_sequence();
 $LAST_STEP = max(array_keys($seq));
 $log = function ($m) use ($CLI) { if ($CLI) echo $m . "\n"; error_log('[prospect-cron] ' . $m); };
 
+// Ce cron avait déjà tout ce qu'il faut pour travailler par lots : un
+// plafond quotidien, un LIMIT, un tri par échéance et une marque après
+// envoi. On ne lui ajoute que le verrou.
+//
+// Il en a d'autant plus besoin que son plafond se calcule en comptant
+// les envois du jour : deux passages simultanés liraient le même
+// compteur avant que l'un ou l'autre n'ait écrit, et dépasseraient le
+// plafond à deux — précisément ce qu'une adresse en warm-up ne
+// pardonne pas.
+require_once __DIR__ . '/cron-lots.php';
+if (!ak_lot_demarrer($pdo, 'prospect-send', ['max' => PHP_INT_MAX])) exit(0);
+
 // Combien déjà envoyés aujourd'hui ? (respect du plafond warm-up)
 $sentToday = 0;
 try { $sentToday = (int) $pdo->query("SELECT COUNT(*) FROM asso_prospect_events WHERE type='sent' AND created_at >= CURDATE()")->fetchColumn(); } catch (Throwable $e) {}
 $budget = max(0, AK_PROSPECT_DAILY_CAP - $sentToday);
 $log(($DRY ? '[DRY-RUN] ' : '') . "Plafond du jour : $sentToday/" . AK_PROSPECT_DAILY_CAP . " → budget restant $budget");
-if ($budget <= 0) { $log('Plafond atteint, rien à envoyer.'); exit(0); }
+if ($budget <= 0) { $log('Plafond atteint, rien à envoyer.'); ak_lot_terminer($pdo); exit(0); }
 
 // Sélectionne les prospects dus (jamais désinscrits/répondus/RDV)
 $due = [];
@@ -93,4 +105,5 @@ foreach ($due as $p) {
 }
 
 $log(($DRY ? '[DRY-RUN] ' : '') . "Terminé : $done traité(s).");
+ak_lot_terminer($pdo, $done >= $budget);
 exit(0);
