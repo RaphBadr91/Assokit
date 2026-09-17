@@ -11,7 +11,12 @@
  *
  * Jobs disponibles :
  *   - impayes          → Relances factures J+3 / J+7 / J+15
- *   - essai            → Rappels fin d'essai J-7 / J-3 / J-0
+ *   - essai            → Bascule les essais expirés (organizations.status).
+ *                        Les rappels J-7 / J-3 / J-1 / J-0 ne partent plus
+ *                        d'ici mais de cron-trial-check, qui était le second
+ *                        à les envoyer : une association à J-3 en recevait
+ *                        deux. Ce job n'envoie donc plus d'e-mail, et sa
+ *                        ligne « Emails » reste à 0 — ce n'est pas une panne.
  *   - renouvellements  → Génère factures mensuelles + emails
  *   - all              → Les 3 ci-dessus, dans l'ordre
  *

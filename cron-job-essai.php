@@ -1,23 +1,29 @@
 <?php
 /**
  * ============================================================
- * ASSOKIT — cron-job-essai.php (v2 PATCHED)
- * Job : Rappels fin d'essai gratuit (J-7, J-3, J-0)
+ * ASSOKIT — cron-job-essai.php
+ * Job : bascule des essais expirés dans organizations.
  * ============================================================
  * Appelé uniquement par cron.php.
  *
- * Changements v2 :
- *   - Scanne `organizations` (au lieu de `subscriptions`)
- *   - Utilise `trial_ends_at` (au lieu de `trial_end_at`)
- *   - Récupère le destinataire via cron_get_org_admin()
+ * Ce job envoyait aussi les rappels J-7 / J-3 / J-0. Il ne le fait
+ * plus : cron-trial-check les envoyait en parallèle depuis
+ * subscriptions, et une association à J-3 recevait deux e-mails.
+ * C'est subscriptions qui fait foi sur le cycle de vie de l'essai —
+ * c'est elle que lit includes-layout pour afficher le bandeau — donc
+ * cron-trial-check est désormais seul à écrire, et il a repris J-7 et
+ * J-0 au passage.
+ *
+ * Ce qui reste ici, et qui n'est PAS un doublon : la bascule de
+ * organizations.status. cron-trial-check bascule subscriptions.status,
+ * une autre colonne, lue ailleurs — organizations.status par les pages
+ * super-admin et les statistiques fondateur, subscriptions.status par
+ * le bandeau d'essai. Supprimer l'une laisserait un compte suspendu
+ * d'un côté et actif de l'autre.
  *
  * Logique :
  *   - Scanne organizations.status = 'trial'
- *   - Calcule les jours restants avant trial_ends_at
- *       J-7 (entre 4 et 7 jours) → essai_j7  + notified_trial_j7 = 1
- *       J-3 (entre 1 et 3 jours) → essai_j3  + notified_trial_j3 = 1
- *       J-0 (aujourd'hui)        → essai_j0  + notified_trial_j0 = 1
- *   - Si trial_ends_at dépassé et status toujours 'trial' → bascule en 'suspended'
+ *   - Si trial_ends_at dépassé → bascule en 'suspended'
  * ============================================================
  */
 
@@ -29,12 +35,15 @@ if (!defined('CRON_EXECUTING')) {
 /** @var PDO $pdo */
 /** @var int $runId */
 
+// Plus de compteurs j7 / j3 / j0 ni d'emails : ce job n'envoie plus
+// rien. Les laisser à zéro dans le rapport du cron aurait fait croire
+// à une panne d'envoi, alors que les rappels partent de
+// cron-trial-check.
 $stats = [
     'processed' => 0,
     'succeeded' => 0,
     'failed'    => 0,
-    'emails'    => 0,
-    'details'   => ['j7' => 0, 'j3' => 0, 'j0' => 0, 'suspended' => 0, 'errors' => []],
+    'details'   => ['suspended' => 0, 'errors' => []],
 ];
 
 // ----- Récupération des essais actifs
@@ -43,9 +52,6 @@ $sql = "
         o.id                AS org_id,
         o.name              AS org_name,
         o.trial_ends_at,
-        o.notified_trial_j7,
-        o.notified_trial_j3,
-        o.notified_trial_j0,
         o.status,
         DATEDIFF(DATE(o.trial_ends_at), CURDATE()) AS days_left
     FROM organizations o
@@ -78,63 +84,30 @@ foreach ($orgs as $org) {
             continue;
         }
 
-        // ----- Détermination de la relance
-        $type    = null;
-        $flagCol = null;
-
-        if ($days === 0 && empty($org['notified_trial_j0'])) {
-            $type = 'essai_j0';
-            $flagCol = 'notified_trial_j0';
-        } elseif ($days >= 1 && $days <= 3 && empty($org['notified_trial_j3'])) {
-            $type = 'essai_j3';
-            $flagCol = 'notified_trial_j3';
-        } elseif ($days >= 4 && $days <= 7 && empty($org['notified_trial_j7'])) {
-            $type = 'essai_j7';
-            $flagCol = 'notified_trial_j7';
-        }
-
-        if ($type === null) {
-            continue; // Déjà notifié à ce palier ou pas encore l'heure
-        }
-
-        // ----- Récupération du destinataire (admin de l'orga)
-        $admin = cron_get_org_admin($pdo, (int) $org['org_id']);
-        if (!$admin) {
-            $stats['failed']++;
-            $stats['details']['errors'][] = 'Org #' . $org['org_id'] . ' — aucun admin trouvé';
-            continue;
-        }
-
-        // ----- Préparation et envoi de l'email
-        $vars = [
-            'first_name'     => $admin['first_name'] ?: 'bonjour',
-            'asso_name'      => $org['org_name'] ?: 'votre association',
-            'trial_end_date' => cron_format_date_fr($org['trial_ends_at']),
-            'upgrade_url'    => 'https://assokit.fr/tarifs',
-        ];
-        $email = cron_email_render($type, $vars);
-
-        $ok = cron_send_email(
-            $pdo, $runId,
-            $admin['email'], $type,
-            $email['subject'], $email['html'],
-            [
-                'user_id' => (int) $admin['id'],
-                'org_id'  => (int) $org['org_id'],
-            ]
-        );
-
-        if ($ok) {
-            $pdo->prepare("UPDATE organizations SET {$flagCol} = 1 WHERE id = :id")
-                ->execute([':id' => (int) $org['org_id']]);
-
-            $stats['emails']++;
-            $stats['succeeded']++;
-            $stats['details'][substr($type, -2)]++; // j7, j3, j0
-        } else {
-            $stats['failed']++;
-            $stats['details']['errors'][] = 'Org #' . $org['org_id'] . ' — échec envoi ' . $type;
-        }
+        // ----- Les rappels J-7 / J-3 / J-0 ne partent plus d'ici.
+        //
+        // Ce cron et cron-trial-check les envoyaient tous les deux : une
+        // association à J-3 recevait deux e-mails, l'un d'ici (à partir
+        // de organizations) et l'autre de là (à partir de subscriptions).
+        // C'est subscriptions qui fait foi sur le cycle de vie de
+        // l'essai — c'est elle que lit includes-layout pour afficher le
+        // bandeau —, donc cron-trial-check est désormais le seul à
+        // écrire aux adhérents, et il a repris J-7 et J-0 au passage.
+        //
+        // Ce qui reste ici : la bascule de organizations.status
+        // ci-dessus. Elle n'est PAS un doublon de celle de
+        // cron-trial-check, qui écrit subscriptions.status. Ce sont deux
+        // colonnes différentes, lues à des endroits différents —
+        // organizations.status par les pages super-admin et les
+        // statistiques fondateur, subscriptions.status par le bandeau
+        // d'essai. En supprimer une laisserait un compte suspendu d'un
+        // côté et actif de l'autre.
+        //
+        // Les colonnes notified_trial_j7/j3/j0 sont laissées en place :
+        // elles portent l'historique de ce qui a déjà été envoyé, et les
+        // effacer ferait repartir des rappels pour des essais terminés
+        // depuis des mois.
+        $stats['succeeded']++;
 
     } catch (Throwable $ex) {
         $stats['failed']++;

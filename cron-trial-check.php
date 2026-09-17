@@ -64,8 +64,19 @@ foreach ($expired as $row) {
     } catch (Throwable $e) { error_log('[cron-trial-check] bascule: ' . $e->getMessage()); }
 }
 
-// 2. Rappels J-3 et J-1
-foreach ([3, 1] as $days_left) {
+// 2. Rappels J-7, J-3, J-1 et J-0
+//
+// J-7 et J-0 viennent de cron-job-essai, qui envoyait les mêmes rappels
+// en parallèle depuis organizations : une association à J-3 recevait
+// donc deux e-mails. Ce cron-ci est désormais le seul à les envoyer,
+// parce que c'est subscriptions que lit includes-layout pour décider
+// d'afficher le bandeau d'essai — c'est donc elle qui fait foi sur le
+// cycle de vie de l'essai.
+//
+// Ils sont DÉPLACÉS et non supprimés : ne garder que J-3 et J-1 aurait
+// fait disparaître sans bruit l'alerte d'une semaine avant et celle du
+// dernier jour.
+foreach ([7, 3, 1, 0] as $days_left) {
     // trial_ends_at est ramenée : elle sert de clé de dédoublonnage.
     // Sans elle, la clé serait « j3: » pour tout le monde et le premier
     // rappel envoyé bloquerait tous les autres.
@@ -106,10 +117,21 @@ foreach ([3, 1] as $days_left) {
             foreach ($admins->fetchAll() as $a) {
                 if (!filter_var($a['email'], FILTER_VALIDATE_EMAIL)) continue;
                 try {
-                    $title = $days_left === 1 ? "⏰ Votre essai se termine demain" : "⏰ Plus que " . $days_left . " jours d'essai gratuit";
+                    // Le dernier jour et la veille se disent, ils ne se
+                    // comptent pas : « plus que 0 jour » ne veut rien dire.
+                    if ($days_left === 0) {
+                        $title  = "⏰ Votre essai se termine aujourd'hui";
+                        $corps  = "C'est le <strong>dernier jour</strong> de votre essai pour ";
+                    } elseif ($days_left === 1) {
+                        $title  = "⏰ Votre essai se termine demain";
+                        $corps  = "Votre essai se termine <strong>demain</strong> pour ";
+                    } else {
+                        $title  = "⏰ Plus que " . $days_left . " jours d'essai gratuit";
+                        $corps  = "Plus que <strong>" . $days_left . " jours</strong> avant la fin de votre essai pour ";
+                    }
                     $html = ak_email_template_wrap(
                         "Bonjour " . htmlspecialchars($a['first_name']) . ",",
-                        "Plus que <strong>" . $days_left . " jour" . ($days_left > 1 ? 's' : '') . "</strong> avant la fin de votre essai pour <strong>" . htmlspecialchars($row['org_name']) . "</strong>.",
+                        $corps . "<strong>" . htmlspecialchars($row['org_name']) . "</strong>.",
                         "https://assokit.fr/abonnement", "Choisir une formule", "AssoKit"
                     );
                     ak_asso_send_resend($a['email'], $title, $html, null, null, 'AssoKit');
