@@ -180,6 +180,26 @@ try {
     foreach ($s2->fetchAll(PDO::FETCH_ASSOC) as $r) $qr[(int) $r['id']] = (string) $r['label'];
 } catch (Throwable $e) { /* sans importance */ }
 
+// L'historique des rappels : combien par fiche, et l'issue du dernier.
+// Requête tolérante et groupée — une par fiche ferait 20 000 allers-retours.
+$relances = [];
+try {
+    $s4 = $pdo->prepare("SELECT r.prospect_id, COUNT(*) n,
+                SUBSTRING_INDEX(GROUP_CONCAT(r.issue ORDER BY r.fait_at DESC, r.id DESC), ',', 1) AS derniere
+              FROM asso_prospection_rappels r
+             WHERE r.org_id = ? AND r.fait_at IS NOT NULL
+             GROUP BY r.prospect_id");
+    $s4->execute([$org_id]);
+    $LIB_ISSUE = ['repondu' => 'A répondu', 'absent' => 'Pas de réponse',
+                  'reporte' => 'À rappeler plus tard', 'refus' => 'Ne veut plus être appelé'];
+    foreach ($s4->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $relances[(int) $r['prospect_id']] = [
+            'n'     => (int) $r['n'],
+            'issue' => $LIB_ISSUE[(string) $r['derniere']] ?? '',
+        ];
+    }
+} catch (Throwable $e) { /* migration des rappels pas encore passée */ }
+
 // Le nom du fichier d'origine, pour que « Provenance » dise quelque chose.
 $lots = [];
 try {
@@ -191,7 +211,8 @@ try {
 $entetes = ['Prénom', 'Nom', 'Type', 'Salariés', 'Nb salariés',
             'Code postal', 'Ville', 'Département',
             'Téléphone', 'E-mail', 'Appelé', 'Date d’appel',
-            'E-mail envoyé', 'Date d’e-mail', 'À rappeler le', 'Provenance',
+            'E-mail envoyé', 'Date d’e-mail', 'À rappeler le',
+            'Relances faites', 'Dernière issue', 'Provenance',
             'Notes', 'Créée le', 'Modifiée le', 'Modifiée par'];
 $lignes = [array_map(fn($h) => ['v' => $h, 'entete' => true], $entetes)];
 
@@ -227,6 +248,11 @@ foreach ($rows as $r) {
         !empty($r['emailed']) ? 'Oui' : 'Non',
         exp_date($r['emailed_at']),
         exp_date($r['callback_at']),
+        // Combien de fois on a déjà appelé, et ce que ça a donné la
+        // dernière fois : sur un fichier qu'on retravaille hors ligne,
+        // c'est ce qui dit s'il faut insister ou laisser tomber.
+        (int) ($relances[(int) $r['id']]['n'] ?? 0),
+        (string) ($relances[(int) $r['id']]['issue'] ?? ''),
         $provenance,
         (string) ($r['notes'] ?? ''),
         exp_date($r['created_at']),
@@ -240,6 +266,6 @@ if (count($lignes) === 1) {
 }
 
 ak_tableur_envoyer(
-    ak_xlsx_octets($lignes, 'Prospection', [15, 17, 14, 10, 11, 12, 18, 12, 18, 28, 9, 17, 14, 17, 17, 24, 40, 17, 17, 22]),
+    ak_xlsx_octets($lignes, 'Prospection', [15, 17, 14, 10, 11, 12, 18, 12, 18, 28, 9, 17, 14, 17, 17, 14, 20, 24, 40, 17, 17, 22]),
     exp_nom('prospection' . ($filtre !== 'tous' ? '-' . $filtre : ''), $jour)
 );

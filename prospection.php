@@ -185,12 +185,13 @@ function prosp_departement(string $cp): string
  * @param array  $f   La fiche (notes, called_at, emailed_at, updated_at, …)
  * @param string $ref Identifiant du panneau, pour aria-controls
  */
-function prosp_panneau_note(array $f, string $ref, string $csrf, string $qs): void
+function prosp_panneau_note(array $f, string $ref, string $csrf, string $qs, array $rappels = []): void
 {
     $note = trim((string) ($f['notes'] ?? ''));
     $auteur = $f['updated_name'] ?? $f['modifie_par'] ?? '';
     ?>
     <div class="pr-note-box" id="<?= h($ref) ?>" hidden>
+      <?php prosp_bloc_rappels((int) $f['id'], $rappels, $csrf, $qs); ?>
       <form method="post" action="/prospection<?= $qs !== '' ? '?' . h($qs) : '' ?>" class="pr-note-form">
         <input type="hidden" name="action" value="note">
         <input type="hidden" name="id" value="<?= (int) $f['id'] ?>">
@@ -219,6 +220,85 @@ function prosp_panneau_note(array $f, string $ref, string $csrf, string $qs): vo
 }
 
 /**
+ * La suite des rappels d'une fiche : ceux qui ont eu lieu, puis celui
+ * qui est prévu avec de quoi le clore et enchaîner.
+ *
+ * Affiché dans le panneau « Notes », qui est déjà l'endroit qu'on ouvre
+ * avant de décrocher. Un second panneau à ouvrir aurait surtout garanti
+ * qu'on ne le regarde pas.
+ */
+function prosp_bloc_rappels(int $pid, array $rappels, string $csvf_csrf, string $qs): void
+{
+    $faits   = array_values(array_filter($rappels, fn($r) => !empty($r['fait_at'])));
+    $attente = array_values(array_filter($rappels, fn($r) => empty($r['fait_at'])));
+    if (!$faits && !$attente) return;
+
+    // Les appels passés se lisent dans l'ordre où ils ont EU LIEU, pas
+    // dans celui où ils avaient été prévus. Un rappel programmé pour
+    // jeudi mais passé mardi doit se lire à sa vraie place, sinon
+    // l'historique raconte une chronologie qui n'a pas existé.
+    // À seconde égale — deux appels notés dans la même minute — on
+    // départage par l'ordre de création, qui est celui dans lequel la
+    // chaîne a avancé. Sans ce départage, l'affichage retombait sur
+    // l'ordre des dates PRÉVUES et inversait deux appels voisins.
+    $ordre = fn(string $champ) => function ($a, $b) use ($champ) {
+        $c = strcmp((string) $a[$champ], (string) $b[$champ]);
+        return $c !== 0 ? $c : ((int) $a['id'] <=> (int) $b['id']);
+    };
+    usort($faits, $ordre('fait_at'));
+    usort($attente, $ordre('du_at'));
+    ?>
+    <div class="pr-rap">
+      <?php if ($faits): ?>
+        <p class="pr-rap-t"><?= count($faits) ?> rappel<?= count($faits) > 1 ? 's' : '' ?> déjà fait<?= count($faits) > 1 ? 's' : '' ?></p>
+        <ol class="pr-rap-liste">
+          <?php foreach ($faits as $r): $iss = (string) ($r['issue'] ?? ''); ?>
+            <li>
+              <span class="pr-rap-iss <?= h($iss) ?>"><?= h(PROSP_ISSUES[$iss] ?? '—') ?></span>
+              <time><?= h(date('d/m/Y à H\hi', strtotime((string) $r['fait_at']))) ?></time>
+              <?php if (!empty($r['par'])): ?><span class="pr-rap-par">· <?= h($r['par']) ?></span><?php endif; ?>
+              <?php if (!empty($r['note'])): ?><div class="pr-rap-note"><?= h($r['note']) ?></div><?php endif; ?>
+            </li>
+          <?php endforeach; ?>
+        </ol>
+      <?php endif; ?>
+
+      <?php // Le rappel en cours : on le clôt et on programme le suivant
+            // dans le même formulaire. Séparés, la suite n'était presque
+            // jamais programmée — c'est en raccrochant qu'on sait quand
+            // rappeler, pas dix minutes plus tard. ?>
+      <?php if ($attente): $a = $attente[0]; ?>
+        <form method="post" action="/prospection<?= $qs !== '' ? '?' . h($qs) : '' ?>" class="pr-rap-form">
+          <input type="hidden" name="action" value="rappel_fait">
+          <input type="hidden" name="id" value="<?= $pid ?>">
+          <input type="hidden" name="rappel_id" value="<?= (int) $a['id'] ?>">
+          <input type="hidden" name="csrf_token" value="<?= h($csvf_csrf) ?>">
+          <p class="pr-rap-t">
+            <?= (int) $a['rang'] ?><?= (int) $a['rang'] === 1 ? 'er' : 'e' ?> rappel prévu le
+            <strong><?= h(date('d/m/Y à H\hi', strtotime((string) $a['du_at']))) ?></strong>
+          </p>
+          <div class="pr-rap-ligne">
+            <label>Ce que ça a donné
+              <select class="pr-in" name="issue">
+                <?php foreach (PROSP_ISSUES as $k => $lab): ?>
+                  <option value="<?= h($k) ?>"><?= h($lab) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+            <label>Rappeler ensuite le <span class="pr-rap-opt">(laisser vide si c'est fini)</span>
+              <input class="pr-in" type="datetime-local" name="suite_at">
+            </label>
+          </div>
+          <input class="pr-in" name="issue_note" maxlength="500"
+                 placeholder="Ce qui s'est dit sur cet appel…">
+          <button class="pr-btn" type="submit">Noter ce rappel</button>
+        </form>
+      <?php endif; ?>
+    </div>
+    <?php
+}
+
+/**
  * Range une échéance de rappel dans son groupe.
  *
  * @return array{0:string,1:string,2:bool} clé de groupe, libellé, urgent
@@ -236,6 +316,83 @@ function prosp_echeance(int $t): array
     if ($t < $finSemaine)        return ['sem', 'Cette semaine', false];
     if ($t < $finSemaine + 7 * 86400) return ['sem2', 'La semaine prochaine', false];
     return ['apres', 'Plus tard', false];
+}
+
+/**
+ * Les issues possibles d'un rappel. La clé est ce qui est stocké.
+ *
+ * Quatre, pas douze : une liste qu'on ne peut pas parcourir d'un coup
+ * d'œil pendant qu'on a quelqu'un au téléphone ne sera pas remplie.
+ */
+const PROSP_ISSUES = [
+    'repondu' => 'A répondu',
+    'absent'  => 'Pas de réponse',
+    'reporte' => 'À rappeler plus tard',
+    'refus'   => 'Ne veut plus être appelé',
+];
+
+/**
+ * Remet callback_at d'accord avec les rappels en attente.
+ *
+ * La colonne reste sur la fiche et porte la date du PROCHAIN rappel dû.
+ * Le bandeau du jour, l'onglet « À rappeler », la notification du
+ * tableau de bord et l'export la lisent tous : la tenir à jour évite de
+ * réécrire cinq endroits qui marchent, et garde la liste triable sans
+ * jointure.
+ *
+ * Appelée après toute écriture sur les rappels — c'est le seul endroit
+ * qui touche callback_at, pour qu'elle ne puisse pas diverger.
+ */
+function prosp_sync_callback(PDO $pdo, int $org_id, int $pid): ?string
+{
+    $st = $pdo->prepare("SELECT MIN(du_at) FROM asso_prospection_rappels
+                         WHERE org_id = ? AND prospect_id = ? AND fait_at IS NULL");
+    $st->execute([$org_id, $pid]);
+    $prochain = $st->fetchColumn() ?: null;
+
+    $pdo->prepare("UPDATE asso_prospection SET callback_at = ?
+                   WHERE id = ? AND org_id = ?")
+        ->execute([$prochain, $pid, $org_id]);
+    return $prochain;
+}
+
+/**
+ * Programme un rappel. Renvoie son quantième (1er, 2e, 3e…).
+ *
+ * Le rang compte TOUS les rappels de la fiche, faits et à venir : ce
+ * qu'on veut lire, c'est « c'est la 4e fois que je le relance », pas
+ * « il y a 1 rappel en attente ».
+ */
+function prosp_rappel_creer(PDO $pdo, int $org_id, int $pid, string $quand, int $uid): int
+{
+    $st = $pdo->prepare("SELECT COUNT(*) FROM asso_prospection_rappels
+                         WHERE org_id = ? AND prospect_id = ?");
+    $st->execute([$org_id, $pid]);
+    $rang = ((int) $st->fetchColumn()) + 1;
+
+    $pdo->prepare("INSERT INTO asso_prospection_rappels
+                    (org_id, prospect_id, rang, du_at, cree_par)
+                   VALUES (?, ?, ?, ?, ?)")
+        ->execute([$org_id, $pid, $rang, $quand, $uid]);
+    return $rang;
+}
+
+/** Les rappels d'une fiche, du plus ancien au plus récent. */
+function prosp_rappels(PDO $pdo, int $org_id, array $pids): array
+{
+    if (!$pids) return [];
+    $ph = implode(',', array_fill(0, count($pids), '?'));
+    // Une seule requête pour toute la page : une par fiche ferait 300
+    // allers-retours sur une liste pleine.
+    $st = $pdo->prepare("SELECT r.*, TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS par
+                         FROM asso_prospection_rappels r
+                         LEFT JOIN users u ON u.id = IFNULL(r.fait_par, r.cree_par)
+                         WHERE r.org_id = ? AND r.prospect_id IN ($ph)
+                         ORDER BY r.prospect_id, r.du_at ASC, r.id ASC");
+    $st->execute(array_merge([$org_id], $pids));
+    $out = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $out[(int) $r['prospect_id']][] = $r;
+    return $out;
 }
 
 /**
@@ -625,13 +782,81 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
             if (!$st->fetchColumn()) {
                 $msg = "Fiche introuvable.";
+            } elseif ($when === null) {
+                // NON : on annule ce qui était prévu. On efface les rappels
+                // EN ATTENTE seulement — ceux déjà faits sont l'historique
+                // des appels passés, et l'effacer reviendrait à oublier
+                // qu'on a déjà relancé quatre fois.
+                $st = $pdo->prepare("DELETE FROM asso_prospection_rappels
+                                     WHERE org_id = ? AND prospect_id = ? AND fait_at IS NULL");
+                $st->execute([$org_id, $pid]);
+                prosp_sync_callback($pdo, $org_id, $pid);
+                $pdo->prepare("UPDATE asso_prospection SET updated_by = ?, updated_at = NOW()
+                               WHERE id = ? AND org_id = ?")->execute([$uid, $pid, $org_id]);
+                prosp_log($pdo, $org_id, $pid, $uid, 'callback_clear');
+                $msg = "Rappel retiré.";
             } else {
-                $pdo->prepare("UPDATE asso_prospection SET callback_at = ?, updated_by = ?, updated_at = NOW()
-                               WHERE id = ? AND org_id = ? AND deleted_at IS NULL")
-                    ->execute([$when, $uid, $pid, $org_id]);
-                prosp_log($pdo, $org_id, $pid, $uid, $when ? 'callback_set' : 'callback_clear',
-                          $when ? date('d/m/Y à H:i', strtotime($when)) : '');
-                $msg = $when ? "Rappel programmé le " . date('d/m/Y à H:i', strtotime($when)) . "." : "Rappel retiré.";
+                // OUI : on AJOUTE un rappel au lieu de remplacer le
+                // précédent. C'est tout l'objet du changement — on relance
+                // souvent trois ou quatre fois, et chaque tentative doit
+                // rester lisible.
+                $rang = prosp_rappel_creer($pdo, $org_id, $pid, $when, $uid);
+                prosp_sync_callback($pdo, $org_id, $pid);
+                $pdo->prepare("UPDATE asso_prospection SET updated_by = ?, updated_at = NOW()
+                               WHERE id = ? AND org_id = ?")->execute([$uid, $pid, $org_id]);
+                prosp_log($pdo, $org_id, $pid, $uid, 'callback_set',
+                          $rang . ($rang === 1 ? 'er' : 'e') . ' rappel · ' . date('d/m/Y à H:i', strtotime($when)));
+                $msg = ($rang > 1 ? "$rang" . "e rappel programmé le " : "Rappel programmé le ")
+                     . date('d/m/Y à H:i', strtotime($when)) . ".";
+            }
+
+        } elseif ($action === 'rappel_fait' && $pid > 0) {
+            // Marquer un rappel fait ET programmer le suivant, d'un seul
+            // geste. C'est ce que demande le terrain : on raccroche, on
+            // note ce qu'on a obtenu, on redonne rendez-vous. En deux
+            // formulaires séparés, la moitié des suites n'était jamais
+            // programmée.
+            $rid   = (int) ($_POST['rappel_id'] ?? 0);
+            $issue = (string) ($_POST['issue'] ?? '');
+            if (!isset(PROSP_ISSUES[$issue])) $issue = 'absent';
+            $note  = mb_substr(trim((string) ($_POST['issue_note'] ?? '')), 0, 500);
+            $suite = prosp_dt($_POST['suite_at'] ?? '');
+
+            $st = $pdo->prepare("SELECT rang FROM asso_prospection_rappels
+                                 WHERE id = ? AND org_id = ? AND prospect_id = ? AND fait_at IS NULL
+                                 LIMIT 1");
+            $st->execute([$rid, $org_id, $pid]);
+            $rang = $st->fetchColumn();
+
+            if ($rang === false) {
+                $msg = "Ce rappel a déjà été traité ou n'existe plus.";
+            } else {
+                $pdo->prepare("UPDATE asso_prospection_rappels
+                               SET fait_at = NOW(), issue = ?, note = ?, fait_par = ?
+                               WHERE id = ? AND org_id = ?")
+                    ->execute([$issue, $note !== '' ? $note : null, $uid, $rid, $org_id]);
+
+                $bouts = [(int) $rang . ((int) $rang === 1 ? 'er' : 'e') . ' rappel fait — ' . PROSP_ISSUES[$issue]];
+
+                // « Ne veut plus être appelé » ferme la suite : proposer
+                // une date après ce choix-là serait absurde, et la
+                // programmer par inadvertance serait pire.
+                if ($issue === 'refus') {
+                    $pdo->prepare("DELETE FROM asso_prospection_rappels
+                                   WHERE org_id = ? AND prospect_id = ? AND fait_at IS NULL")
+                        ->execute([$org_id, $pid]);
+                    $bouts[] = "plus de rappel programmé";
+                } elseif ($suite !== null) {
+                    $suivant = prosp_rappel_creer($pdo, $org_id, $pid, $suite, $uid);
+                    $bouts[] = $suivant . "e rappel le " . date('d/m/Y à H:i', strtotime($suite));
+                }
+
+                prosp_sync_callback($pdo, $org_id, $pid);
+                $pdo->prepare("UPDATE asso_prospection SET updated_by = ?, updated_at = NOW()
+                               WHERE id = ? AND org_id = ?")->execute([$uid, $pid, $org_id]);
+                prosp_log($pdo, $org_id, $pid, $uid, 'rappel_fait',
+                          implode(' · ', $bouts) . ($note !== '' ? ' — ' . mb_substr($note, 0, 80) : ''));
+                $msg = implode(' · ', $bouts) . '.';
             }
 
         } elseif ($action === 'salaries' && $pid > 0) {
@@ -835,6 +1060,7 @@ $imports_indispo = false;
 $jour_liste = [];
 $jour_total = 0;
 $facettes = ['type' => [], 'dept' => [], 'sal' => []];
+$rappels = [];
 
 try {
     // Les rappels dus remontent en tête : c'est l'ordre dans lequel on
@@ -886,6 +1112,19 @@ try {
                            AND callback_at < CURDATE() + INTERVAL 1 DAY");
     $st->execute([$org_id]);
     $jour_total = (int) $st->fetchColumn();
+
+    // Les rappels de toutes les fiches affichées, en une requête. Le
+    // bandeau du jour et la liste n'affichent pas les mêmes fiches : on
+    // demande l'union des deux, sinon l'un des deux panneaux serait vide.
+    // Requête tolérante : la page doit rester utilisable si la migration
+    // des rappels n'est pas passée.
+    try {
+        $pidsVus = array_unique(array_merge(
+            array_map(fn($r) => (int) $r['id'], $rows),
+            array_map(fn($r) => (int) $r['id'], $jour_liste)
+        ));
+        $rappels = prosp_rappels($pdo, $org_id, $pidsVus);
+    } catch (Throwable $e) { $rappels = []; }
 
     // Les imports du fichier, et ce qu'il en reste. Requête tolérante : la
     // prospection doit rester utilisable si cette migration-ci n'est pas
@@ -982,6 +1221,7 @@ $EVENT_LABEL = [
     'note'           => 'Note mise à jour',
     'note_clear'     => 'Note effacée',
     'salaries'       => 'Salariés',
+    'rappel_fait'    => 'Rappel effectué',
 ];
 
 $FILTRES = [
@@ -1202,6 +1442,28 @@ render_sidebar('prospection');
      précision utile, pas un signal. */
   .pr-bg.sal{background:#CCFBF1;color:#115E59}
   .pr-bg.ben{background:#F1F5F9;color:#475569}
+  .pr-bg.rel{background:#EEF2FF;color:#3730A3}
+
+  /* La suite des rappels, dans le panneau Notes */
+  .pr-rap{border-bottom:1px solid var(--sep,#F1F5F4);padding-bottom:12px;margin-bottom:12px}
+  .pr-rap-t{font-size:12.5px;font-weight:700;color:var(--ink-2,#45544D);margin:0 0 7px}
+  .pr-rap-liste{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:6px}
+  .pr-rap-liste li{font-size:12.5px;color:var(--ink-3,#5F6D66);line-height:1.5}
+  .pr-rap-iss{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin-right:6px}
+  /* L'issue se lit à la couleur : on parcourt une colonne de dix appels,
+     pas une phrase. */
+  .pr-rap-iss.repondu{background:#D1FAE5;color:#065F46}
+  .pr-rap-iss.absent {background:#F1F5F9;color:#64748B}
+  .pr-rap-iss.reporte{background:#FEF3C7;color:#92400E}
+  .pr-rap-iss.refus  {background:#FEE2E2;color:#991B1B}
+  .pr-rap-par{font-size:11.5px}
+  .pr-rap-note{color:var(--ink-2,#45544D);margin-top:2px}
+  .pr-rap-form{display:flex;flex-direction:column;gap:8px}
+  .pr-rap-ligne{display:flex;gap:10px;flex-wrap:wrap}
+  .pr-rap-ligne label{flex:1;min-width:190px;font-size:12px;font-weight:600;
+    color:var(--ink-2,#45544D);display:flex;flex-direction:column;gap:4px}
+  .pr-rap-opt{font-weight:400;color:var(--ink-3,#5F6D66)}
+  .pr-rap-form .pr-btn{align-self:flex-start}
   /* Le champ « combien » : assez large pour cinq chiffres, pas plus. */
   .pr-nb{width:104px}
   .pr-acts{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -1365,7 +1627,8 @@ if ($jour_liste && $filtre !== 'a_rappeler'):
           </form>
         </div>
 
-        <?php prosp_panneau_note($j, "note-" . (int) $j['id'], $csrf, $qs_keep); ?>
+        <?php prosp_panneau_note($j, "note-" . (int) $j['id'], $csrf, $qs_keep,
+                                 $rappels[(int) $j['id']] ?? []); ?>
       </div>
     <?php endforeach; ?>
   </div>
@@ -1665,6 +1928,13 @@ foreach ($rows as $p):
         <?php if (!empty($p['callback_at'])): ?>
           <span class="pr-bg <?= $due ? 'due' : 'cb' ?>">RAPPEL <?= h(date('d/m/Y H:i', strtotime((string) $p['callback_at']))) ?></span>
         <?php endif; ?>
+        <?php // Combien de fois on a déjà relancé. C'est l'information qui
+              // décide si on insiste encore ou si on passe à la suivante —
+              // elle doit se lire sans ouvrir la fiche. ?>
+        <?php $nFaits = count(array_filter($rappels[$pid] ?? [], fn($r) => !empty($r['fait_at']))); ?>
+        <?php if ($nFaits > 0): ?>
+          <span class="pr-bg rel" title="Nombre d’appels déjà passés sur cette fiche"><?= $nFaits ?> RELANCE<?= $nFaits > 1 ? 'S' : '' ?></span>
+        <?php endif; ?>
         <?php // Rien quand personne n'a répondu : un badge « SALARIÉS : ? » sur
               // toutes les fiches non qualifiées ne serait que du bruit. ?>
         <?php if ($p['salaries'] !== null): ?>
@@ -1766,7 +2036,7 @@ foreach ($rows as $p):
     </div>
   </div>
 
-  <?php prosp_panneau_note($p, "fnote-" . $pid, $csrf, $qs_keep); ?>
+  <?php prosp_panneau_note($p, "fnote-" . $pid, $csrf, $qs_keep, $rappels[$pid] ?? []); ?>
 
   <details>
     <summary style="padding:9px 16px;font-size:12.5px;color:var(--ink-3,#5F6D66);border-top:1px solid var(--sep,#F1F5F4)">
