@@ -240,6 +240,10 @@ const EVENTS = {
 
 const COTISATIONS = {
   ok: true,
+  // L'écran lit `stats` pour ses deux compteurs de tête (encaissé, campagnes
+  // actives) — comme /api/app-cotisations.php, qui les calcule côté serveur.
+  // Sans ce bloc, l'aperçu affichait « 0 € » au-dessus de campagnes remplies.
+  stats: { total: 13830, pending: 1750, payers: 142, year: 2026, active: 1, nb: 2 },
   campaigns: [
     { id: 1, name: 'Adhésion 2026', year: 2026, active: true, total: 13830, paid: 142, pending: 18, payers: 160, nb: 160 },
     { id: 2, name: 'Adhésion 2025', year: 2025, active: false, total: 12100, paid: 151, pending: 0, payers: 151, nb: 151 },
