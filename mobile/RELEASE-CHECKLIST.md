@@ -1,6 +1,6 @@
 # Assokit Mobile — Checklist de mise en ligne (App Store + Google Play)
 
-Application Expo SDK 57 / React Native 0.86 · bundle `fr.assokit.app` · EAS project `dae894d1-…`.
+Application Expo SDK 57 / React Native 0.86.3 · bundle `fr.assokit.app` · EAS project `dae894d1-…`.
 Ce document liste tout ce qui reste à faire pour publier. ✅ = déjà en place · ⏳ = à faire.
 
 ---
@@ -22,8 +22,8 @@ test **interne** ne passe pas par la revue Apple.
 Prérequis : compte Apple Developer actif (99 $/an) et l'app créée dans App Store Connect avec le
 bundle `fr.assokit.app`. EAS gère les certificats de signature tout seul si tu le laisses faire.
 
-> ⚠️ `supportsTablet: true` dans `app.json` n'empêche **pas** TestFlight, mais obligera à fournir des
-> captures iPad le jour de la soumission en production. Voir §1.
+> ℹ️ `app.json` porte `ios.supportsTablet: false` : l'app ne vise que l'iPhone au
+> lancement, donc **aucune capture iPad n'est à fournir**.
 
 ### 0-bis. Mises à jour suivantes : OTA sans repasser par un build
 
@@ -44,6 +44,11 @@ Ces changements sont dans le code mais **ne prennent effet qu'au prochain build 
 - ✅ Sécurité : auto-login biométrique fail-closed, validation stricte du domaine (`isAssokitUrl`), `originWhitelist` HTTPS uniquement, permission Android `READ_EXTERNAL_STORAGE` retirée.
 - ✅ Fonctionnel : message chat non perdu sur échec, scan facture MIME réel, raccourcis TPE Devis/Recettes natifs, menu « Plus » filtré par profil.
 - ✅ Accessibilité : labels sur champs / œil mot de passe / switch, contraste MUTE relevé.
+- ✅ Moteur JS : React Native passé de 0.86.0 à **0.86.3**, et toutes les dépendances
+  alignées sur ce que le SDK 57 attend. La 0.86.0 embarquait une version de Hermes
+  affectée par une régression connue — `npx expo-doctor` la signalait. Un binaire
+  construit avant cette montée de version reste exposé : **elle impose un rebuild**,
+  aucun `eas update` ne la livre.
 
 ---
 
@@ -56,10 +61,9 @@ Ces changements sont dans le code mais **ne prennent effet qu'au prochain build 
 | iOS `infoPlist` : Face ID, Caméra, Photos + `ITSAppUsesNonExemptEncryption:false` | ✅ | descriptions présentes (évite le prompt export chiffrement). |
 | Permissions Android (CAMERA, biometric) | ✅ | minimales. |
 | Icônes (1024²) + splash (2732²) | ✅ | présents dans `assets/`. |
-| **`supportsTablet: true`** | ⚠️ | **Oblige à fournir des captures iPad à Apple.** Si tu ne vises pas l'iPad au lancement → passe à `false` (plus simple, moins de tests). C'est un choix produit. |
+| `supportsTablet: false` | ✅ | iPhone seulement au lancement : pas de captures iPad à produire. |
+| Version de React Native | ✅ | 0.86.3 — corrige la régression du moteur Hermes présente en 0.86.0 (voir §0-ter). |
 | Icône avec canal alpha | ℹ️ | EAS régénère l'icône store (opaque). OK en pratique. |
-
-> 💡 Recommandation lancement rapide : `supportsTablet: false` pour ne gérer que l'iPhone au départ.
 
 ---
 
@@ -68,7 +72,9 @@ Ces changements sont dans le code mais **ne prennent effet qu'au prochain build 
 - ⏳ **Compte Apple Developer** (99 $/an) — https://developer.apple.com
 - ⏳ **Compte Google Play Developer** (25 $ une fois) — https://play.google.com/console
 - ✅ **Politique de confidentialité** en ligne : https://assokit.fr/confidentialite (URL demandée par les 2 stores)
-- ⏳ **Compte de démo pour la revue** (email + mot de passe d'une asso de test) — **OBLIGATOIRE** : Apple et Google se connectent pour tester. À mettre dans les notes de revue. Sans ça = rejet quasi certain (login requis).
+- ✅ **Compte de démo pour la revue** : `apple.review@assokit.fr` / `AppleReview2026!`.
+  À réinstaller sur le serveur avant chaque soumission — `php seed-compte-apple-review.php`,
+  qui vérifie lui-même que le compte se connecte. Détails dans `docs/APP-REVIEW-APPLE-GOOGLE.md`.
 
 ---
 
@@ -97,7 +103,10 @@ eas submit --platform android --latest
 - ⏳ Créer l'app (bundle `fr.assokit.app`).
 - ⏳ **App Privacy** (« nutrition label ») : déclarer les données collectées. Assokit collecte au moins : e-mail/identifiant (compte), contenu utilisateur (via le compte web), usage. Caméra & Face ID = **locaux, non collectés**.
 - ⏳ **Politique de confidentialité URL** : https://assokit.fr/confidentialite
-- ⏳ **Captures d'écran** : iPhone 6.7" **et** 6.5" (obligatoires). iPad **si** `supportsTablet:true`.
+- ✅ **Captures d'écran** : dix planches prêtes en 1290 × 2796 (iPhone 6,7"), dans
+  `assets/app-store/capture-01.jpg` … `capture-10.jpg`. À relire avant de les téléverser.
+  Regénération : `node assets/app-store/generer-captures.js`. Pas de captures iPad
+  (`supportsTablet: false`).
 - ⏳ **Notes de revue** : identifiants du compte de démo + « app compagnon du SaaS assokit.fr pour la gestion d'associations/TPE ».
 - ⏳ Description, mots-clés, URL support (https://assokit.fr/contact), catégorie (Business/Productivité).
 - ⚠️ **Guideline 4.2 (minimum functionality)** : Apple rejette les simples « wrappers de site web ». Assokit a de vrais écrans **natifs** (accueil KPI, projets, factures, chat, scan…) → mets-les en avant dans les captures et la description pour prouver la valeur native.
@@ -111,7 +120,8 @@ eas submit --platform android --latest
 - ⏳ **Data safety form** : mêmes déclarations que le nutrition label Apple.
 - ⏳ **Content rating** : questionnaire (app pro → tout public probable).
 - ⏳ **Politique de confidentialité URL** : https://assokit.fr/confidentialite
-- ⏳ **Assets** : icône 512×512, feature graphic 1024×500, captures téléphone (min. 2).
+- ⏳ **Assets** : icône 512×512, feature graphic 1024×500. Captures téléphone :
+  `assets/app-store/brut/ecran-*.png` (1290 × 2796), déjà prêtes.
 - ⏳ **Target API level** : Play exige API récente (34+). Expo SDK 57 la cible → OK.
 - ⏳ Publier d'abord en **test interne** (rapide) → valider → promouvoir en production.
 - ⏳ Compte de démo dans les instructions de test.
@@ -130,13 +140,14 @@ eas submit --platform android --latest
 
 ---
 
-## 7. Récap listing (à rédiger)
+## 7. Récap listing
 
-- ⏳ **Nom** : Assokit — Gestion d'association & TPE
-- ⏳ **Sous-titre / court** : Adhérents, cotisations, compta, factures — en un seul outil français.
-- ⏳ **Description longue** : reprendre les arguments du site (tout-en-un, IA intégrée, hébergé en France, RGPD), en insistant sur les écrans natifs.
-- ⏳ **Mots-clés** : association, gestion association, adhérents, cotisations, facturation, compta, TPE.
-- ⏳ **Captures** : accueil KPI, projets, facture, scan, chat (montrer le natif, pas la WebView).
+✅ **Déjà rédigé** — nom, sous-titre, texte promotionnel, description, mots-clés,
+catégorie, classification d'âge et notes d'examen (FR et EN) sont dans
+**`docs/app-store-fiche.md`**, longueurs vérifiées contre les limites d'Apple.
+Il n'y a qu'à copier-coller.
+
+Le déroulé complet des deux stores est dans `docs/APP-REVIEW-APPLE-GOOGLE.md`.
 
 ---
 

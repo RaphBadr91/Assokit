@@ -217,29 +217,53 @@ la catégorie est déclarée.
 ## Captures d'écran
 
 Obligatoires : **6,7 pouces** (iPhone 15/16 Pro Max), 3 minimum, 10 maximum.
-Prenez-les depuis le build TestFlight, sur un compte contenant de vraies
-données. Apple rejette les captures qui ne correspondent pas à l'app.
 
-Dix planches vides sont prêtes dans `assets/app-store/` (JPEG 1290 × 2796),
-avec un emplacement au ratio exact d'une capture 6,7 pouces. Le fichier
-Figma correspondant s'appelle **Assokit — Captures App Store**. Le mode
-d'emploi est dans `assets/app-store/README.md`.
+Dix planches **déjà remplies** attendent dans `assets/app-store/` :
+`capture-01.jpg` … `capture-10.jpg`, en 1290 × 2796 — le format exact
+qu'attend App Store Connect. Elles se téléversent telles quelles.
+
+Elles sont produites automatiquement à partir du vrai code de l'app :
+
+```bash
+cd mobile && npm install && npx expo export --platform web --output-dir dist-web
+cd .. && node assets/app-store/generer-captures.js
+```
+
+Le script compile `mobile/App.js` — le même fichier que le binaire iOS —,
+le remplit avec les données de démonstration de `mobile/preview/mock-api.js`,
+parcourt les écrans et pose chaque capture dans sa planche. Mise en page,
+couleurs, typographie et navigation sont donc celles qui seront livrées.
+
+Ce qui diffère d'un iPhone : le rendu passe par Chromium (le flou, les ombres
+et le lissage des polices varient légèrement) et la zone de statut est dessinée
+par le script. **Regardez les dix planches avant de les téléverser** : Apple
+rejette les captures qui ne correspondent pas à l'app. Si un écran a changé
+depuis, relancez la commande — ou reprenez la capture depuis TestFlight et
+déposez-la dans la planche vide correspondante (`maquette-XX.jpg`,
+mode d'emploi dans `assets/app-store/README.md`).
+
+Les écrans seuls, sans habillage marketing, sont dans
+`assets/app-store/brut/` — c'est ce qu'attend Google Play.
 
 Les trois premières sont les seules visibles sans faire défiler sur la fiche
 App Store : ce sont elles qui décident du téléchargement.
 
-| # | Planche | Écran à y déposer |
+| # | Planche | Écran capturé |
 |---|---|---|
-| 1 | Tableau de bord | l'accueil avec ses indicateurs |
-| 2 | Adhérents | la liste, bien remplie |
-| 3 | Cotisations | qui a payé, qui reste à relancer |
-| 4 | Facturation | une facture ou un devis |
-| 5 | Projets | un projet et ses étapes |
-| 6 | Agenda | le mois en cours |
-| 7 | Subventions | les six demandes, leurs statuts |
-| 8 | Communication | un canal de discussion |
-| 9 | Codes QR | un code généré |
-| 10 | Fait en France | l'écran de votre choix |
+| 1 | Tableau de bord | l'accueil et ses indicateurs |
+| 2 | Adhérents | la liste des membres |
+| 3 | Cotisations | campagnes, encaissé, restes à relancer |
+| 4 | Facturation | la liste des factures et ses totaux |
+| 5 | Projets | une fiche projet et ses étapes |
+| 6 | Agenda | les événements à venir |
+| 7 | Subventions | les demandes et leurs statuts |
+| 8 | Communication | les canaux de discussion |
+| 9 | Tous vos outils | le menu « Plus », tous modules visibles |
+| 10 | Fait en France | l'écran d'accueil de l'app |
+
+> Les codes QR, qui occupaient la planche 9, sont une page du site affichée en
+> WebView : il n'y a pas d'écran natif à capturer. La planche montre désormais
+> le menu complet, qui prouve mieux l'étendue de l'app.
 
 ---
 
@@ -248,7 +272,7 @@ App Store : ce sont elles qui décident du téléchargement.
 - [ ] Le build sélectionné est bien le dernier, construit depuis la branche à jour
 - [ ] `php seed-compte-apple-review.php` lancé sur le serveur, sortie sans erreur
 - [ ] Connexion à `apple.review@assokit.fr` testée **depuis l'app**, pas depuis le navigateur
-- [ ] Captures 6,7" importées
+- [ ] Captures 6,7" relues puis importées (`assets/app-store/capture-*.jpg`)
 - [ ] Questionnaire de confidentialité rempli
 - [ ] Trois URL renseignées
 - [ ] Droits d'exportation : « Non » (ITSAppUsesNonExemptEncryption est déjà à false)
