@@ -152,11 +152,14 @@ Ce qu'il faut savoir en plus :
 
 ### 4.4 Assets de la fiche
 
-| Élément | Format | Où le trouver |
+| Élément | Format | Fichier |
 |---|---|---|
-| Icône | 512 × 512 | `mobile/assets/icon.png` (1024², à réduire) |
+| Icône | 512 × 512 | `assets/app-store/play-icone-512.png` |
+| Feature graphic | 1024 × 500 | `assets/app-store/play-feature-graphic.jpg` |
 | Captures téléphone (2 min.) | 1290 × 2796 | `assets/app-store/brut/ecran-*.png` |
-| Feature graphic | 1024 × 500 | à produire |
+
+Les trois sont prêts. L'icône et le visuel se regénèrent avec
+`node assets/app-store/generer-play.js`.
 
 Google n'attend pas d'habillage marketing : les écrans seuls de `brut/`
 conviennent. Les planches habillées d'`assets/app-store/` fonctionnent aussi.

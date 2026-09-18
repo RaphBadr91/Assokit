@@ -120,8 +120,8 @@ eas submit --platform android --latest
 - ⏳ **Data safety form** : mêmes déclarations que le nutrition label Apple.
 - ⏳ **Content rating** : questionnaire (app pro → tout public probable).
 - ⏳ **Politique de confidentialité URL** : https://assokit.fr/confidentialite
-- ⏳ **Assets** : icône 512×512, feature graphic 1024×500. Captures téléphone :
-  `assets/app-store/brut/ecran-*.png` (1290 × 2796), déjà prêtes.
+- ✅ **Assets** : tous prêts dans `assets/app-store/` — `play-icone-512.png`,
+  `play-feature-graphic.jpg`, et les captures téléphone `brut/ecran-*.png`.
 - ⏳ **Target API level** : Play exige API récente (34+). Expo SDK 57 la cible → OK.
 - ⏳ Publier d'abord en **test interne** (rapide) → valider → promouvoir en production.
 - ⏳ Compte de démo dans les instructions de test.

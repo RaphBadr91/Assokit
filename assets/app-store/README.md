@@ -7,6 +7,8 @@ Tout est au format exact qu'Apple exige pour le 6,7 pouces : **1290 × 2796 px**
 | `capture-01.jpg` … `capture-10.jpg` | **Planches prêtes à téléverser** : habillage marketing + capture de l'app |
 | `brut/ecran-01.png` … `ecran-10.png` | Les écrans seuls, sans habillage — pour Google Play |
 | `maquette-01.jpg` … `maquette-10.jpg` | Les mêmes planches, **vides**, si vous préférez y déposer vos propres captures |
+| `play-feature-graphic.jpg` | Le visuel de présentation Google Play, 1024 × 500 |
+| `play-icone-512.png` | L'icône Google Play, 512 × 512 |
 
 Apple en demande **trois au minimum**, dix au maximum. Les trois premières sont
 celles qui comptent : ce sont les seules visibles sans faire défiler.
@@ -55,6 +57,23 @@ déborder de la colonne de 1090 px.
 La planche 9 montrait un code QR dans une version précédente. Les codes QR sont
 une page du site affichée en WebView : il n'y a pas d'écran natif à capturer.
 La planche montre désormais le menu complet, qui prouve mieux l'étendue de l'app.
+
+---
+
+## Les deux assets Google Play
+
+```bash
+node assets/app-store/generer-play.js
+```
+
+Produit le visuel de présentation (1024 × 500) et l'icône (512 × 512), les deux
+champs obligatoires de la fiche Play. Mêmes couleurs et même symbole que les
+planches App Store, pour que les deux fiches se ressemblent. L'icône est réduite
+depuis `mobile/assets/icon.png`, celle du binaire.
+
+Play affiche parfois le visuel très réduit, et parfois recadré sur sa moitié
+centrale : rien d'essentiel n'est placé sur les bords, et aucun texte ne descend
+sous 34 px.
 
 ---
 
