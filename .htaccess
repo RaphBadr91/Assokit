@@ -523,6 +523,12 @@ RewriteRule ^admin-cron-logout/?$            admin-cron-logout.php [L,QSA]
     Require all denied
 </Files>
 
+# Pieces jointes des campagnes. Elles sont normalement rangees HORS du
+# dossier web ; ce blocage couvre le repli, quand l'hebergeur ne permet
+# pas d'ecrire un cran au-dessus de public_html. Un document commercial
+# n'a pas a etre telechargeable par qui devine son nom.
+RedirectMatch 404 /private_campagnes
+
 <Files "support-helper.php">
     Require all denied
 </Files>

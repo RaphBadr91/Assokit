@@ -14,6 +14,11 @@ admin-blog/config.php
 !config.sample.php
 !admin-blog/config.sample.php
 
+# ---- Pieces jointes des campagnes (donnees, pas du code) ----
+# Le dossier vit normalement hors de public_html ; cette ligne couvre le
+# repli quand l'hebergeur ne permet pas d'ecrire un cran plus haut.
+private_campagnes/
+
 # ---- Logs & backups ----
 error_log
 *.log

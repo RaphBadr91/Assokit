@@ -56,6 +56,8 @@ $groups = [
         'accent' => '#A78BFA',
         'items' => [
             ['ic' => '🚀', 'title' => 'Prospection',           'desc' => 'Emailing rentrée · relances · suivi',        'url' => '/fondateur-prospection', 'tag' => 'EMAILING'],
+            ['ic' => '📣', 'title' => 'Campagnes e-mail',      'desc' => 'Objet, message, pièce jointe · envoi par lots', 'url' => '/fondateur-campagnes', 'tag' => 'CAMPAGNE'],
+            ['ic' => '📋', 'title' => 'Listes d\'adresses',     'desc' => 'Groupes de contacts · import Excel ou CSV',  'url' => '/fondateur-listes'],
             ['ic' => '🌱', 'title' => 'Créer un compte',       'desc' => 'Nouvelle organisation en création directe', 'url' => '/fondateur-create-organization'],
             ['ic' => '🏛️', 'title' => 'Collectivités & Mairies', 'desc' => 'Mairies, CAF, départements…',              'url' => '/super-admin-mairies', 'tag' => 'MULTI-ASSO'],
             ['ic' => '🌐', 'title' => 'Domaines',              'desc' => 'Sous-domaines et domaines personnalisés',   'url' => '/fondateur-domains'],

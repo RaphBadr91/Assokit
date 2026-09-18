@@ -46,6 +46,11 @@ if (!defined('RESEND_API_KEY')) {
  *
  * @return array  ['success' => bool, 'id' => string|null, 'error' => string|null]
  */
+// Garde function_exists, comme les autres helpers du projet : plusieurs
+// fichiers chargent celui-ci en @require_once puis testent function_exists,
+// preuve qu'ils s'attendent à ce qu'un double chargement soit sans effet.
+// Sans le garde, c'était une erreur fatale.
+if (!function_exists('send_transactional_email')) {
 function send_transactional_email($to, string $subject, string $html, array $options = []): array {
     global $pdo;
 
@@ -82,6 +87,23 @@ function send_transactional_email($to, string $subject, string $html, array $opt
     if (!empty($options['tag'])) {
         $payload['tags'] = [['name' => 'category', 'value' => $options['tag']]];
     }
+    // Pièces jointes : Resend les attend en base64, sous la forme
+    // [['filename' => 'x.pdf', 'content' => '<base64>'], …].
+    // L'appelant fournit déjà le contenu encodé — c'est lui qui sait où
+    // vit le fichier, et ce helper n'a pas à lire le disque.
+    if (!empty($options['attachments']) && is_array($options['attachments'])) {
+        $pieces = [];
+        foreach ($options['attachments'] as $a) {
+            if (empty($a['filename']) || empty($a['content'])) continue;
+            $pieces[] = [
+                // Les retours à la ligne dans un nom de fichier cassent
+                // l'en-tête MIME côté destinataire.
+                'filename' => preg_replace('/[\r\n"]/', '', (string) $a['filename']),
+                'content'  => (string) $a['content'],
+            ];
+        }
+        if ($pieces) $payload['attachments'] = $pieces;
+    }
 
     // Appel API Resend
     $ch = curl_init('https://api.resend.com/emails');
@@ -93,7 +115,11 @@ function send_transactional_email($to, string $subject, string $html, array $opt
             'Authorization: Bearer ' . RESEND_API_KEY,
             'Content-Type: application/json',
         ],
-        CURLOPT_TIMEOUT => 10,
+        // Dix secondes suffisent à un message transactionnel. Avec une
+        // pièce jointe, il faut d'abord téléverser plusieurs mégaoctets
+        // de base64 : au même délai, l'envoi échouerait sur les gros
+        // fichiers alors que tout va bien.
+        CURLOPT_TIMEOUT => empty($payload['attachments']) ? 10 : 60,
         CURLOPT_CONNECTTIMEOUT => 5,
     ]);
 
@@ -144,6 +170,7 @@ function send_transactional_email($to, string $subject, string $html, array $opt
         'error' => $error_msg,
     ];
 }
+}   // fin du garde function_exists
 
 // ====================================================================
 // TEMPLATE DE BASE (wrapper commun a tous les emails)
