@@ -342,7 +342,7 @@ php migrations/run.php 2026-09-18-fondateur-campagnes.sql</code></pre>
       <label class="fc-lab">Pièce jointe <span style="font-weight:400">(facultative, <?= round(AK_CAMP_PJ_MAX / 1048576) ?> Mo max)</span></label>
       <input class="fc-in" type="file" name="piece_jointe"
              accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.odt,.ods,.txt">
-      <div class="fc-actions"><button class="sa-btn" type="submit">Créer le brouillon</button></div>
+      <div class="fc-actions"><button class="sa-btn sa-btn-primary" type="submit">Créer le brouillon</button></div>
     </form>
     <?php endif; ?>
   </div>
@@ -406,7 +406,7 @@ php migrations/run.php 2026-09-18-fondateur-campagnes.sql</code></pre>
             <input type="hidden" name="action" value="lancer">
             <input type="hidden" name="campagne_id" value="<?= (int) $detail['id'] ?>">
             <input type="hidden" name="csrf_token" value="<?= h($CSRF) ?>">
-            <button class="sa-btn" type="submit"><?= $detail['statut'] === 'pause' ? 'Reprendre l’envoi' : 'Lancer la campagne' ?></button>
+            <button class="sa-btn sa-btn-primary" type="submit"><?= $detail['statut'] === 'pause' ? 'Reprendre l’envoi' : 'Lancer la campagne' ?></button>
           </form>
         <?php endif; ?>
         <?php if ($detail['statut'] === 'en_cours'): ?>

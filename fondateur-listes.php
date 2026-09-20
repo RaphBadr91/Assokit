@@ -197,7 +197,7 @@ php migrations/run.php 2026-09-18-fondateur-campagnes.sql</code></pre>
         <div><label class="fl-lab">Description <span style="font-weight:400">(facultatif)</span></label>
           <input class="fl-in" name="description" maxlength="500"></div>
       </div>
-      <div class="fl-actions"><button class="sa-btn" type="submit">Créer la liste</button></div>
+      <div class="fl-actions"><button class="sa-btn sa-btn-primary" type="submit">Créer la liste</button></div>
     </form>
   </div>
 
@@ -245,7 +245,7 @@ php migrations/run.php 2026-09-18-fondateur-campagnes.sql</code></pre>
         <input type="hidden" name="csrf_token" value="<?= h($CSRF) ?>">
         <input class="fl-in" type="file" name="fichier" accept=".xlsx,.xlsm,.csv,.txt" required>
         <div class="fl-actions">
-          <button class="sa-btn" type="submit">Importer dans cette liste</button>
+          <button class="sa-btn sa-btn-primary" type="submit">Importer dans cette liste</button>
         </div>
       </form>
       <?php // Formulaire séparé, et non imbriqué dans celui du dessus :
