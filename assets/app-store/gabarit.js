@@ -19,6 +19,23 @@ const BLOC = { x: MARGE, y: 300, largeur: 1090, ecart: 30 };
 const COQUE = { x: 189, y: 730, largeur: 912, hauteur: 1944, rayon: 96, bord: 14 };
 const SLOT = { largeur: 884, hauteur: 1916, rayon: 82 };
 
+/**
+ * Gabarit Google Play.
+ *
+ * Play impose du 9:16 et refuse qu'une dimension dépasse le double de l'autre :
+ * les 1290 × 2796 d'Apple font 2,167:1 et seraient rejetés au téléversement.
+ * D'où une planche à part, en 1080 × 1920 — exactement 9:16, et le minimum que
+ * Play demande. La capture de l'app, elle, reste la même : c'est la planche qui
+ * change de proportions, pas l'écran.
+ */
+const PLAY = {
+  L: 1080, H: 1920,
+  marge: 72,
+  symbole: 58,
+  bloc: { y: 178, largeur: 936, ecart: 22 },
+  coque: { y: 478, largeur: 675, hauteur: 1412, rayon: 71, bord: 12 },
+};
+
 const COULEURS = {
   fondHaut: '#0B3B2A',
   fondMilieu: '#0E7A5A',
@@ -176,6 +193,71 @@ iPhone 15/16 Pro Max</div>
 </body></html>`;
 }
 
+/**
+ * Rend une planche Google Play (1080 × 1920).
+ *
+ * Même discours et mêmes couleurs que la planche App Store, mais une
+ * composition plus ramassée : Play affiche les captures en vignette, dans un
+ * carrousel, et souvent sur un écran plus petit.
+ */
+function pagePlay(ecran, fontB64, capture) {
+  const C = PLAY.coque;
+  const slot = { largeur: C.largeur - C.bord * 2, hauteur: C.hauteur - C.bord * 2, rayon: C.rayon - C.bord };
+  const x = Math.round((PLAY.L - C.largeur) / 2);
+  const contenuSlot = capture
+    ? `<img class="capture" src="${capture}" alt="">`
+    : `<div class="consigne">Capture à déposer<br>${slot.largeur} × ${slot.hauteur}</div>`;
+
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  @font-face {
+    font-family: 'Geist';
+    src: url(data:font/woff2;base64,${fontB64}) format('woff2');
+    font-weight: 100 900; font-style: normal;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: ${PLAY.L}px; height: ${PLAY.H}px; overflow: hidden; }
+  body {
+    font-family: 'Geist', system-ui, sans-serif;
+    background: linear-gradient(180deg,
+      ${COULEURS.fondHaut} 0%, ${COULEURS.fondMilieu} 48%, ${COULEURS.fondBas} 100%);
+    -webkit-font-smoothing: antialiased;
+  }
+  .marque { position: absolute; left: ${PLAY.marge}px; top: 76px; line-height: 0; }
+  .bloc   { position: absolute; left: ${PLAY.marge}px; top: ${PLAY.bloc.y}px; width: ${PLAY.bloc.largeur}px; }
+  .titre {
+    font-weight: 700; font-size: 66px; line-height: 74px;
+    letter-spacing: -0.025em; color: #fff; white-space: pre-line;
+  }
+  .sous {
+    margin-top: ${PLAY.bloc.ecart}px;
+    font-weight: 500; font-size: 31px; line-height: 42px;
+    color: rgba(255,255,255,0.74);
+  }
+  .coque {
+    position: absolute; left: ${x}px; top: ${C.y}px;
+    width: ${C.largeur}px; height: ${C.hauteur}px;
+    background: ${COULEURS.coque}; border-radius: ${C.rayon}px;
+    box-shadow: 0 30px 66px rgba(3, 23, 15, 0.55);
+  }
+  .slot {
+    position: absolute; left: ${C.bord}px; top: ${C.bord}px;
+    width: ${slot.largeur}px; height: ${slot.hauteur}px;
+    background: ${COULEURS.slot}; border-radius: ${slot.rayon}px;
+    overflow: hidden; display: flex; align-items: center; justify-content: center;
+  }
+  .capture { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .consigne { text-align: center; color: ${COULEURS.encreClaire}; font-size: 28px; line-height: 40px; }
+</style></head><body>
+  <div class="marque">${SYMBOLE.replace('width="84" height="84"', `width="${PLAY.symbole}" height="${PLAY.symbole}"`)}</div>
+  <div class="bloc">
+    <div class="titre">${echap(ecran.titre)}</div>
+    <div class="sous">${echap(ecran.sous)}</div>
+  </div>
+  <div class="coque"><div class="slot">${contenuSlot}</div></div>
+</body></html>`;
+}
+
 /** Playwright : installé globalement, ou dans mobile/node_modules. */
 function chargerPlaywright() {
   if (process.env.PW_MODULE) return require(process.env.PW_MODULE);
@@ -186,4 +268,4 @@ function chargerPlaywright() {
   }
 }
 
-module.exports = { L, H, MARGE, BLOC, COQUE, SLOT, COULEURS, ECRANS, SYMBOLE, page, chargerPlaywright };
+module.exports = { L, H, MARGE, BLOC, COQUE, SLOT, PLAY, COULEURS, ECRANS, SYMBOLE, page, pagePlay, chargerPlaywright };

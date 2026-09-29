@@ -4,9 +4,14 @@ Le déroulé complet, de la branche à jour jusqu'au bouton « Envoyer pour exam
 
 | Vous cherchez | C'est ici |
 |---|---|
-| Les textes de la fiche Apple, les notes d'examen, le questionnaire de confidentialité | **`docs/app-store-fiche.md`** |
-| Le déroulé de bout en bout, et tout Google Play | ce fichier |
+| Les textes de la fiche **Google Play** | **`docs/play-fiche.md`** |
+| Les textes de la fiche **Apple**, les notes d'examen, le questionnaire de confidentialité | **`docs/app-store-fiche.md`** |
+| Le déroulé de bout en bout, et les formulaires Google Play | ce fichier |
 | Le détail des commandes EAS | `mobile/RELEASE-CHECKLIST.md` |
+
+> **Vous sortez d'abord sur Android ?** Lisez §1 (compte d'examen), puis §2 en ne
+> gardant que les deux commandes Android, puis §4 en entier — et gardez
+> `docs/play-fiche.md` ouvert à côté. Apple (§3) attendra.
 
 `app-store-fiche.md` fait foi pour tout ce qui se colle dans App Store Connect.
 Ce fichier ne recopie pas ses textes : deux copies finissent toujours par se
@@ -152,17 +157,26 @@ Ce qu'il faut savoir en plus :
 
 ### 4.4 Assets de la fiche
 
-| Élément | Format | Fichier |
+| Élément | Format exigé | Fichier |
 |---|---|---|
 | Icône | 512 × 512 | `assets/app-store/play-icone-512.png` |
-| Feature graphic | 1024 × 500 | `assets/app-store/play-feature-graphic.jpg` |
-| Captures téléphone (2 min.) | 1290 × 2796 | `assets/app-store/brut/ecran-*.png` |
+| Image de présentation | 1024 × 500 | `assets/app-store/play-feature-graphic.jpg` |
+| Captures téléphone (**4 minimum**, 8 max.) | 9:16, min. 1080 × 1920 | `assets/app-store/play/capture-01.jpg` … `capture-08.jpg` |
 
-Les trois sont prêts. L'icône et le visuel se regénèrent avec
-`node assets/app-store/generer-play.js`.
+Les trois sont prêts. Regénération :
 
-Google n'attend pas d'habillage marketing : les écrans seuls de `brut/`
-conviennent. Les planches habillées d'`assets/app-store/` fonctionnent aussi.
+```bash
+node assets/app-store/generer-play.js           # icône + image de présentation
+node assets/app-store/generer-play-captures.js  # les 8 captures 1080 × 1920
+```
+
+> ⚠️ Les captures d'`assets/app-store/capture-*.jpg` et de `brut/` sont au format
+> d'Apple : 1290 × 2796, soit 2,167:1. Play refuse qu'une dimension dépasse le
+> double de l'autre — elles seraient rejetées au téléversement. N'utilisez pour
+> Play que celles du dossier `play/`.
+
+Les textes de la fiche (nom, descriptions, catégorie) sont dans
+**`docs/play-fiche.md`** : les champs de Play ne sont pas ceux d'Apple.
 
 ### 4.5 Déroulé conseillé
 

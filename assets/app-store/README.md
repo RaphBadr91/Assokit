@@ -1,12 +1,15 @@
-# 📱 Captures App Store
+# 📱 Captures et visuels des deux stores
 
-Tout est au format exact qu'Apple exige pour le 6,7 pouces : **1290 × 2796 px**.
+Tout est au format exact qu'attend chaque store : **1290 × 2796** pour Apple
+(iPhone 6,7"), **1080 × 1920** pour Google Play. Les deux sont produits par
+script, à partir du vrai code de l'app.
 
 | Fichier | Quoi |
 |---|---|
 | `capture-01.jpg` … `capture-10.jpg` | **Planches prêtes à téléverser** : habillage marketing + capture de l'app |
-| `brut/ecran-01.png` … `ecran-10.png` | Les écrans seuls, sans habillage — pour Google Play |
+| `brut/ecran-01.png` … `ecran-10.png` | Les écrans seuls, sans habillage, 1290 × 2796 |
 | `maquette-01.jpg` … `maquette-10.jpg` | Les mêmes planches, **vides**, si vous préférez y déposer vos propres captures |
+| `play/capture-01.jpg` … `capture-08.jpg` | **Les planches Google Play**, 1080 × 1920 (9:16) |
 | `play-feature-graphic.jpg` | Le visuel de présentation Google Play, 1024 × 500 |
 | `play-icone-512.png` | L'icône Google Play, 512 × 512 |
 
@@ -23,7 +26,8 @@ npm install
 npx expo export --platform web --output-dir dist-web
 
 cd ..
-node assets/app-store/generer-captures.js
+node assets/app-store/generer-captures.js       # les 10 planches App Store
+node assets/app-store/generer-play-captures.js  # les 8 planches Google Play
 ```
 
 Le script compile `mobile/App.js` — le **même fichier que le binaire iOS** —,
@@ -60,7 +64,22 @@ La planche montre désormais le menu complet, qui prouve mieux l'étendue de l'a
 
 ---
 
-## Les deux assets Google Play
+## Pourquoi deux jeux de captures
+
+Apple veut du 1290 × 2796. Google Play veut du **9:16, au moins 1080 × 1920**,
+et refuse qu'une dimension dépasse le double de l'autre : le 1290 × 2796 fait
+2,167:1 et serait rejeté au téléversement. Play en exige aussi **quatre au
+minimum**, contre trois chez Apple, et en accepte huit au plus.
+
+D'où deux scripts et deux dossiers. La capture de l'app est rigoureusement la
+même dans les deux : c'est la planche qui change de proportions, jamais l'écran
+montré. Le gabarit des deux formats vit dans `gabarit.js`, et la mécanique qui
+fait tourner l'app dans `capture-app.js` — partagée, donc les deux fiches ne
+peuvent pas montrer des écrans différents.
+
+---
+
+## Les deux autres assets Google Play
 
 ```bash
 node assets/app-store/generer-play.js

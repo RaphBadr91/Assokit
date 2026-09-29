@@ -121,7 +121,11 @@ eas submit --platform android --latest
 - ⏳ **Content rating** : questionnaire (app pro → tout public probable).
 - ⏳ **Politique de confidentialité URL** : https://assokit.fr/confidentialite
 - ✅ **Assets** : tous prêts dans `assets/app-store/` — `play-icone-512.png`,
-  `play-feature-graphic.jpg`, et les captures téléphone `brut/ecran-*.png`.
+  `play-feature-graphic.jpg`, et les 8 captures `play/capture-*.jpg` en
+  1080 × 1920. Play impose du 9:16 : les captures au format Apple (1290 × 2796)
+  y seraient refusées.
+- ✅ **Textes de la fiche Play** : `docs/play-fiche.md` (nom 30, description
+  courte 80, description complète 4 000 — des champs différents d'Apple).
 - ⏳ **Target API level** : Play exige API récente (34+). Expo SDK 57 la cible → OK.
 - ⏳ Publier d'abord en **test interne** (rapide) → valider → promouvoir en production.
 - ⏳ Compte de démo dans les instructions de test.
