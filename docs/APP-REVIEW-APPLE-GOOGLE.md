@@ -178,10 +178,31 @@ node assets/app-store/generer-play-captures.js  # les 8 captures 1080 × 1920
 Les textes de la fiche (nom, descriptions, catégorie) sont dans
 **`docs/play-fiche.md`** : les champs de Play ne sont pas ceux d'Apple.
 
-### 4.5 Déroulé conseillé
+### 4.5 Le délai des 12 testeurs — à vérifier avant toute chose
 
-Publier d'abord en **test interne** (disponible en quelques minutes), vérifier
-sur un vrai téléphone, puis promouvoir en production.
+Google impose aux **comptes personnels créés après le 13 novembre 2023** un test
+fermé réunissant **au moins 12 testeurs, inscrits en continu pendant 14 jours**,
+avant de pouvoir demander l'accès à la production. Les comptes
+**organisation** n'y sont pas soumis.
+
+Ce n'est pas une formalité de fin de parcours : c'est le chemin critique. Si le
+compte est personnel et récent, la production est à quatorze jours au plus tôt,
+et l'horloge ne démarre qu'une fois douze testeurs inscrits. Un testeur qui se
+désinscrit puis revient remet son compteur à zéro.
+
+À faire, dans cet ordre :
+
+1. Ouvrir la Play Console et regarder le type du compte (personnel ou
+   organisation) et sa date de création.
+2. Si le compte est personnel et postérieur au 13 novembre 2023 : créer le
+   **test fermé** et y inscrire douze personnes dès le premier build, avant même
+   d'avoir fini la fiche. Les quatorze jours courent pendant que vous la
+   remplissez.
+3. Sinon : **test interne** (disponible en quelques minutes), vérification sur un
+   vrai téléphone, puis production.
+
+Dans les deux cas, ne promouvez en production qu'après avoir installé et ouvert
+l'app depuis le Play Store sur un vrai téléphone Android.
 
 ---
 

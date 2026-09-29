@@ -127,6 +127,10 @@ Le détail — accès pour la revue, Data safety, classification — est dans
 
 ## Avant de cliquer sur « Envoyer pour examen »
 
+- [ ] **Type du compte vérifié** : un compte *personnel* créé après le
+      13/11/2023 impose 12 testeurs inscrits en continu pendant 14 jours avant
+      l'accès à la production. Voir `docs/APP-REVIEW-APPLE-GOOGLE.md` §4.5 —
+      c'est le chemin critique du calendrier.
 - [ ] `php seed-compte-apple-review.php` lancé sur le serveur, sortie sans erreur
 - [ ] Connexion au compte de démo testée **depuis l'app**, pas depuis le navigateur
 - [ ] Les 8 captures 1080 × 1920 relues puis importées
