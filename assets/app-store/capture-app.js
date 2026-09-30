@@ -55,7 +55,7 @@ function cheminBundle() {
  *   blanche — tous les autres écrans natifs la repassent en blanc ;
  *   fondu   — l'écran d'accueil public s'étend sous la barre, qu'on superpose.
  */
-function coque(bundleUrl, barre) {
+function coque(bundleUrl, barre, epreuve) {
   const fondu = barre === 'fondu';
   const fond = barre === 'accueil' ? '#0B3B2A' : '#FFFFFF';
   const encre = barre === 'blanche' ? '#0B1A13' : '#FFFFFF';
@@ -109,6 +109,7 @@ function coque(bundleUrl, barre) {
     </div>
     <div id="root"></div>
   </div>
+  <script>globalThis.__AK_EPREUVE = ${JSON.stringify(epreuve || 'normal')};</script>
   <script src="${bundleUrl}"></script>
 </body></html>`;
 }
@@ -129,9 +130,9 @@ function servir() {
     const url = decodeURIComponent(chemin);
 
     if (url === '/coque.html') {
-      const barre = new URLSearchParams(requete || '').get('barre') || 'blanche';
+      const q = new URLSearchParams(requete || '');
       res.writeHead(200, { 'Content-Type': TYPES['.html'] });
-      res.end(coque(bundleUrl, barre));
+      res.end(coque(bundleUrl, q.get('barre') || 'blanche', q.get('epreuve') || 'normal'));
       return;
     }
     // path.join normalise « .. » : rien hors de l'export ne peut être servi.
@@ -164,8 +165,8 @@ function contexteTelephone(navigateur) {
  * Touche un libellé. On prend la DERNIÈRE occurrence : la WebView simulée
  * reste montée sous les écrans natifs, et son texte précède le leur dans le DOM.
  */
-async function toucher(onglet, libelle) {
-  await onglet.getByText(libelle, { exact: true }).last().click({ timeout: 8000 });
+async function toucher(onglet, libelle, delai = 8000) {
+  await onglet.getByText(libelle, { exact: true }).last().click({ timeout: delai });
 }
 
 /** Les pictogrammes sont posés par une police : tant qu'elle charge, ils sont vides. */

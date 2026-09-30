@@ -455,8 +455,27 @@ function lireId(url) {
   return m ? m[1] : null;
 }
 
+/**
+ * Mode d'épreuve, posé par la coque avant le chargement du bundle.
+ *
+ *   normal — les données de démonstration ;
+ *   vide   — le serveur répond « ok » sans charge utile (compte neuf, asso sans
+ *            données, réponse tronquée) ;
+ *   erreur — le serveur répond en échec (panne, session expirée, hors ligne).
+ *
+ * Les deux derniers servent à vérifier qu'aucun écran ne se brise sur une
+ * réponse qu'il n'attendait pas. C'est ce qui arrive en production, et c'est ce
+ * que l'examinateur d'un store finit toujours par croiser.
+ */
+function modeEpreuve() {
+  try { return globalThis.__AK_EPREUVE || 'normal'; } catch (e) { return 'normal'; }
+}
+
 export function mockResponse(url, isPost) {
   const path = String(url).split('?')[0];
+  const mode = modeEpreuve();
+  if (mode === 'erreur') return { ok: false, error: 'epreuve' };
+  if (mode === 'vide') return { ok: true };
   if (isPost) {
     // Les écritures réussissent, sans rien persister : l'aperçu est hors ligne.
     return { ok: true, id: Math.floor(Math.random() * 900) + 100, message: 'Aperçu hors ligne : rien n’est enregistré.' };

@@ -132,7 +132,29 @@ eas submit --platform android --latest
 
 ---
 
-## 6. Tests avant soumission (build `preview` ou `development`)
+## 6. Tests avant soumission
+
+### 6.0 Le banc d'essai automatique (à lancer en premier)
+
+```bash
+cd mobile && npx expo export --platform web --output-dir dist-web
+cd .. && node mobile/preview/verifier-ecrans.js
+```
+
+Ouvre chaque écran natif sous trois régimes de réponse serveur — données
+normales, réponse vide (compte neuf, association sans données), réponse en
+échec (panne, session expirée) — et signale tout écran qui se vide, blanchit ou
+lève une exception. Sortie non nulle au premier écran tombé : utilisable dans
+une chaîne d'intégration.
+
+Un écran qui affiche « aucune donnée » ou un message d'erreur est un succès.
+C'est un écran qui *disparaît* qu'on cherche — et c'est ce que l'examinateur
+d'un store croise, puisqu'il ouvre l'app sur un compte qu'il vient de recevoir.
+
+Cela ne remplace pas les essais ci-dessous sur un vrai appareil : le banc ne
+teste ni la caméra, ni Face ID, ni les notifications, ni le tactile.
+
+### 6.1 Sur un vrai appareil (build `preview` ou `development`)
 
 - ⏳ Connexion + auto-login biométrique (accepter / refuser / annuler Face ID).
 - ⏳ Scan facture depuis **appareil photo ET galerie** (PNG/HEIC inclus) → rattachement à une dépense.
