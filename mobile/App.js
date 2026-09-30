@@ -16,6 +16,7 @@ import {
   Easing,
   AccessibilityInfo,
   ScrollView,
+  FlatList,
   RefreshControl,
   TextInput,
   Switch,
@@ -962,18 +963,45 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
 /*  PROJETS (liste native)                                             */
 /* ================================================================== */
 // Chargement de liste : si ça reste bloqué (échec réseau), propose « Réessayer » après 4 s.
+/**
+ * L'attente d'une liste.
+ *
+ * Un sablier au centre dit « ça charge ». Des lignes fantômes à la forme des
+ * cartes disent « voilà ce qui arrive » : la page paraît déjà construite, et
+ * l'attente plus courte, à durée égale. Le lecteur d'écran, lui, reçoit une
+ * annonce — sans quoi ces rectangles ne diraient rien.
+ *
+ * Le filet de sécurité reste : au bout de quatre secondes, on nomme la lenteur
+ * et on propose de réessayer.
+ */
 function ListLoader({ onRefresh }) {
   const [showRetry, setShowRetry] = useState(false);
+  const still = useReducedMotion();
   useEffect(() => { const t = setTimeout(() => setShowRetry(true), 4000); return () => clearTimeout(t); }, []);
   return (
-    <View style={styles.homeLoader}>
-      <ActivityIndicator size="large" color={BRAND} />
-      <Text style={styles.homeLoaderTxt}>{showRetry ? 'Connexion lente…' : 'Chargement…'}</Text>
-      {showRetry && onRefresh ? (
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Réessayer" onPress={onRefresh} activeOpacity={0.85}
-          style={{ marginTop: 16, backgroundColor: BRAND, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 12 }}>
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Réessayer</Text>
-        </TouchableOpacity>
+    <View style={{ flex: 1 }} accessible accessibilityLabel="Chargement de la liste en cours">
+      <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <View key={i} style={styles.skelCard}>
+            <Skeleton still={still} style={{ width: 42, height: 42, borderRadius: 21 }} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Skeleton still={still} style={{ width: '58%', height: 13 }} />
+              <Skeleton still={still} style={{ width: '38%', height: 11, marginTop: 8 }} />
+            </View>
+            <Skeleton still={still} style={{ width: 54, height: 20, borderRadius: 10 }} />
+          </View>
+        ))}
+      </View>
+      {showRetry ? (
+        <View style={{ alignItems: 'center', paddingTop: 14 }}>
+          <Text style={styles.homeLoaderTxt}>Connexion lente…</Text>
+          {onRefresh ? (
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Réessayer" onPress={onRefresh} activeOpacity={0.85}
+              style={{ marginTop: 14, backgroundColor: BRAND, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 12 }}>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Réessayer</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       ) : null}
     </View>
   );
@@ -1074,13 +1102,21 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView
+        // L'API renvoie jusqu'à 500 adhérents ou clients. Une ScrollView les
+        // montait tous d'un coup : sur un téléphone d'entrée de gamme, l'écran
+        // se figeait une seconde à l'ouverture et défilait par à-coups. FlatList
+        // ne monte que ce qui approche de l'écran.
+        <FlatList
+          data={list}
+          keyExtractor={(p) => String(p.id)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
-        >
-          {list.map((p) => (
-            <TouchableOpacity accessibilityRole="button" key={p.id} style={styles.personCard} activeOpacity={0.85} onPress={() => onOpen(p.id)}>
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={9}
+          renderItem={({ item: p }) => (
+            <TouchableOpacity accessibilityRole="button" style={styles.personCard} activeOpacity={0.85} onPress={() => onOpen(p.id)}>
               <View style={[styles.personAvatar, { backgroundColor: (p.color || BRAND) }]}>
                 <Text style={styles.personAvatarTxt}>{p.initials}</Text>
               </View>
@@ -1101,8 +1137,8 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
                 </View>
               )}
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          )}
+        />
       )}
     </View>
   );
@@ -1137,36 +1173,47 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
       {!list ? (
         <ListLoader onRefresh={onRefresh} />
       ) : (
-        <ScrollView
+        // Jusqu'à 200 factures : même raison que pour les adhérents, on ne monte
+        // que les lignes proches de l'écran. Les compteurs et l'encart IA
+        // deviennent l'en-tête de la liste — ils défilent comme avant.
+        <FlatList
+          data={list}
+          keyExtractor={(inv) => String(inv.id)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
-        >
-          <View style={styles.miniKpiRow}>
-            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(t.total)}</Text><Text style={styles.miniKpiLbl}>Total</Text></View>
-            <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(t.paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé</Text></View>
-            <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: (t.overdue + t.pending) > 0 ? '#B45309' : '#047857' }]}>{fmtEuro(t.overdue + t.pending)}</Text><Text style={styles.miniKpiLbl}>Impayés</Text></View>
-          </View>
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={9}
+          ListHeaderComponent={
+            <>
+              <View style={styles.miniKpiRow}>
+                <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(t.total)}</Text><Text style={styles.miniKpiLbl}>Total</Text></View>
+                <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(t.paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé</Text></View>
+                <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: (t.overdue + t.pending) > 0 ? '#B45309' : '#047857' }]}>{fmtEuro(t.overdue + t.pending)}</Text><Text style={styles.miniKpiLbl}>Impayés</Text></View>
+              </View>
 
-          <View style={styles.aiCard}>
-            <View style={styles.aiHead}><Ionicons name="sparkles" size={15} color="#7C3AED" /><Text style={styles.aiTitle}>Analyse IA</Text></View>
-            {aiText ? <Text style={styles.aiTxt}>{aiText}</Text> : <Text style={styles.aiMuted}>Un conseil de trésorerie personnalisé sur vos factures.</Text>}
-            <TouchableOpacity accessibilityRole="button" style={[styles.aiBtn, aiLoading ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={aiLoading ? undefined : onAnalyze}>
-              {aiLoading ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="sparkles" size={15} color="#7C3AED" />}
-              <Text style={styles.aiBtnTxt}>{aiLoading ? 'Analyse…' : (aiText ? 'Actualiser l\'analyse' : 'Analyser via IA')}</Text>
-            </TouchableOpacity>
-          </View>
-
-          {list.length === 0 ? (
+              <View style={styles.aiCard}>
+                <View style={styles.aiHead}><Ionicons name="sparkles" size={15} color="#7C3AED" /><Text style={styles.aiTitle}>Analyse IA</Text></View>
+                {aiText ? <Text style={styles.aiTxt}>{aiText}</Text> : <Text style={styles.aiMuted}>Un conseil de trésorerie personnalisé sur vos factures.</Text>}
+                <TouchableOpacity accessibilityRole="button" style={[styles.aiBtn, aiLoading ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={aiLoading ? undefined : onAnalyze}>
+                  {aiLoading ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="sparkles" size={15} color="#7C3AED" />}
+                  <Text style={styles.aiBtnTxt}>{aiLoading ? 'Analyse…' : (aiText ? 'Actualiser l\'analyse' : 'Analyser via IA')}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          }
+          ListEmptyComponent={
             <View style={styles.emptyBox}>
               <Ionicons name="receipt-outline" size={44} color="#CBD5D1" />
               <Text style={styles.emptyTxt}>Aucune facture</Text>
               <TouchableOpacity accessibilityRole="button" style={[styles.emptyBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Créer une facture</Text></TouchableOpacity>
             </View>
-          ) : list.map((inv) => {
+          }
+          renderItem={({ item: inv }) => {
             const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
             return (
-              <TouchableOpacity accessibilityRole="button" key={inv.id} style={styles.invCard} activeOpacity={0.85} onPress={() => onOpen(inv.id)}>
+              <TouchableOpacity accessibilityRole="button" style={styles.invCard} activeOpacity={0.85} onPress={() => onOpen(inv.id)}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={styles.invNum} numberOfLines={1}>{inv.number}</Text>
                   <Text style={styles.invClient} numberOfLines={1}>{inv.client || '—'}{inv.date ? '  ·  ' + inv.date : ''}</Text>
@@ -1179,8 +1226,8 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
                 </View>
               </TouchableOpacity>
             );
-          })}
-        </ScrollView>
+          }}
+        />
       )}
     </View>
   );
@@ -7299,6 +7346,13 @@ const styles = StyleSheet.create({
   hAvatarImg: { width: 42, height: 42, borderRadius: 11 },
 
   homeLoader: { paddingTop: 60, alignItems: 'center' },
+  // Ligne fantôme d'attente : même gabarit que les cartes de liste, pour que le
+  // contenu prenne la place du fantôme sans que la page bouge.
+  skelCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    borderRadius: R_CARD, borderWidth: 1, borderColor: LINE,
+    paddingVertical: 15, paddingHorizontal: 14, marginBottom: 10,
+  },
   homeLoaderTxt: { color: MUTE, marginTop: 12, fontSize: 14 },
 
   /* Carte vedette — verre liquide */
