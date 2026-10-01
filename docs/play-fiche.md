@@ -125,6 +125,24 @@ Le détail — accès pour la revue, Data safety, classification — est dans
 
 ---
 
+## Téléverser le premier AAB
+
+`eas submit --platform android` passe par l'API de Google Play, qui exige un
+**compte de service** : un fichier JSON créé dans la Google Cloud Console, à qui
+l'on donne des droits dans la Play Console, puis à déclarer dans `eas.json` sous
+`submit.production.android.serviceAccountKeyPath`. Aujourd'hui, la section
+`submit` du projet est vide : la commande vous le demandera.
+
+**Pour la première mise en ligne, le plus court est de ne pas le faire.** Le
+build EAS produit un `.aab` téléchargeable depuis la page du build : créez l'app
+dans la Play Console et téléversez ce fichier à la main. Rien à configurer, et
+c'est le chemin le plus rapide quand on est pressé.
+
+Le compte de service vaut le détour ensuite, quand les mises en ligne deviennent
+régulières — il permet alors `eas submit` en une commande.
+
+---
+
 ## Avant de cliquer sur « Envoyer pour examen »
 
 - [ ] **Type du compte vérifié** : un compte *personnel* créé après le
