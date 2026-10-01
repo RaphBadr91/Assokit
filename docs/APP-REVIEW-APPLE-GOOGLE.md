@@ -9,9 +9,24 @@ Le déroulé complet, de la branche à jour jusqu'au bouton « Envoyer pour exam
 | Le déroulé de bout en bout, et les formulaires Google Play | ce fichier |
 | Le détail des commandes EAS | `mobile/RELEASE-CHECKLIST.md` |
 
-> **Vous sortez d'abord sur Android ?** Lisez §1 (compte d'examen), puis §2 en ne
-> gardant que les deux commandes Android, puis §4 en entier — et gardez
-> `docs/play-fiche.md` ouvert à côté. Apple (§3) attendra.
+> **Lequel des deux sort le plus vite ?** Pas forcément celui qu'on croit.
+>
+> **iOS** : `eas submit` crée lui-même la fiche App Store Connect, le build est
+> installable par TestFlight interne en 5 à 20 minutes sans aucune revue, et
+> l'examen d'Apple prend généralement un à deux jours.
+>
+> **Android** : si le compte Play est un compte **personnel créé après le
+> 13 novembre 2023**, Google impose 12 testeurs inscrits en continu pendant
+> **14 jours** avant d'autoriser la production (§4.5). Les comptes organisation
+> en sont dispensés.
+>
+> Autrement dit : si cette règle s'applique à vous, **iOS sera en ligne avant
+> Android**, quel que soit l'ordre dans lequel vous lancez les builds. Vérifiez
+> le type de votre compte Play d'abord — c'est lui qui décide du calendrier, pas
+> la plateforme que vous préférez.
+>
+> Dans tous les cas, lancez les deux builds en même temps : `eas build
+> --platform all`. Rien n'oblige à les séquencer.
 
 `app-store-fiche.md` fait foi pour tout ce qui se colle dans App Store Connect.
 Ce fichier ne recopie pas ses textes : deux copies finissent toujours par se

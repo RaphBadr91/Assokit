@@ -267,6 +267,31 @@ App Store : ce sont elles qui décident du téléchargement.
 
 ---
 
+## Téléverser le premier build
+
+Contrairement à Google Play, **rien n'est à créer à la main** : `eas submit`
+crée lui-même la fiche dans App Store Connect lors de la première soumission,
+avec le bundle `fr.assokit.app`.
+
+```bash
+cd mobile
+eas build --platform ios --profile production
+eas submit --platform ios --latest
+```
+
+La commande demande de quoi s'authentifier auprès d'Apple. En interactif,
+l'identifiant Apple suffit. Pour automatiser plus tard, on passe par une **clé
+d'API App Store Connect** (`ascApiKeyPath`, `ascApiKeyIssuerId`, `ascApiKeyId`
+dans `eas.json`) — à créer depuis un compte **Account Holder ou Admin**, seuls
+habilités. Une fois la fiche créée, renseigner `ascAppId` évite de refaire
+l'étape à chaque fois.
+
+Le build apparaît ensuite dans **TestFlight** après traitement par Apple
+(5 à 20 minutes). Un groupe de test **interne** ne passe pas par la revue : on
+peut donc l'installer immédiatement, avant même de soumettre pour examen.
+
+---
+
 ## Avant de cliquer sur « Envoyer pour examen »
 
 - [ ] Le build sélectionné est bien le dernier, construit depuis la branche à jour
