@@ -15,6 +15,7 @@ import {
   Animated,
   Easing,
   AccessibilityInfo,
+  AppState,
   ScrollView,
   FlatList,
   RefreshControl,
@@ -741,6 +742,175 @@ function BuildStamp() {
     <View style={{ marginTop: 22, alignItems: 'center' }} accessible accessibilityLabel={'Version : ' + ligne}>
       <Text selectable style={{ fontSize: 11.5, color: INK_3, textAlign: 'center' }}>{ligne}</Text>
     </View>
+  );
+}
+
+/* ================================================================== */
+/*  MISES À JOUR PAR-DESSUS L'AIR (OTA)                                */
+/* ================================================================== */
+
+/**
+ * Le pilotage des mises à jour OTA.
+ *
+ * Sans ce code, `expo-updates` fait déjà son travail tout seul : au lancement
+ * à froid, il interroge le canal, télécharge en arrière-plan, et applique la
+ * mise à jour au lancement SUIVANT. Correct, mais aveugle — personne ne sait
+ * qu'une mise à jour attend, et il faut fermer puis rouvrir l'app pour
+ * l'obtenir. Un correctif urgent met alors un jour à se répandre.
+ *
+ * Ici on garde la même mécanique, mais on la rend visible et actionnable :
+ * on cherche au lancement et à chaque retour au premier plan, et quand une
+ * mise à jour est téléchargée on propose de l'appliquer tout de suite.
+ *
+ * On n'applique JAMAIS d'autorité : `reloadAsync()` relance l'app, et le faire
+ * pendant qu'un adhérent est à moitié saisi perdrait son travail. L'utilisateur
+ * décide ; s'il ignore la bannière, la mise à jour s'appliquera d'elle-même à
+ * la prochaine ouverture.
+ *
+ * Ce que l'OTA NE couvre PAS : le code natif. Ajouter un module, changer une
+ * permission, l'icône ou la version du SDK impose un nouveau `eas build`.
+ *
+ * Toutes les lectures d'`Updates.*` sont protégées : dans Expo Go, dans un
+ * build de développement, et dans un binaire compilé sans le module, elles
+ * lèvent. Le reste de l'app ne doit pas tomber pour autant.
+ */
+const MAJ = {
+  INACTIF: 'inactif',               // rien à signaler, ou OTA indisponible ici
+  RECHERCHE: 'recherche',           // on interroge le canal
+  TELECHARGEMENT: 'telechargement', // une mise à jour arrive
+  PRETE: 'prete',                   // téléchargée, en attente d'application
+  AUCUNE: 'aucune',                 // à jour (réponse à une recherche manuelle)
+  ERREUR: 'erreur',
+};
+
+/** Ce qu'on affiche à l'utilisateur pour chaque état. */
+function majLibelle(maj) {
+  if (!maj || !maj.actif) return 'Indisponible sur cette version';
+  switch (maj.etat) {
+    case MAJ.RECHERCHE: return 'Recherche en cours…';
+    case MAJ.TELECHARGEMENT: return 'Téléchargement en cours…';
+    case MAJ.PRETE: return 'Prête — l’application va redémarrer';
+    case MAJ.AUCUNE: return 'L’application est à jour';
+    case MAJ.ERREUR: return maj.erreur || 'Échec de la recherche';
+    default: return 'Recherche automatique à chaque ouverture';
+  }
+}
+
+/**
+ * L'OTA est-elle utilisable ici ?
+ *
+ * Faux dans Expo Go, dans un build de développement, et dans un binaire compilé
+ * sans le module — `Updates.isEnabled` lève alors, d'où le filet. Faux aussi sur
+ * le web : la prévisualisation navigateur répond « activé », mais mettre à jour
+ * un bundle web par-dessus l'air n'a pas de sens, et proposer un bouton
+ * inopérant serait pire que ne rien proposer.
+ */
+function otaDisponible() {
+  if (Platform.OS === 'web') return false;
+  try { return !!Updates.isEnabled; } catch (e) { return false; }
+}
+
+function useMiseAJour() {
+  const [etat, setEtat] = useState(MAJ.INACTIF);
+  const [erreur, setErreur] = useState('');
+  const enCours = useRef(false);
+  const monte = useRef(true);
+  const actif = otaDisponible();
+
+  useEffect(() => () => { monte.current = false; }, []);
+
+  /**
+   * @param {boolean} manuelle  Une recherche lancée depuis les réglages doit
+   *   répondre quelque chose, même « à jour » ou « échec ». Une recherche
+   *   automatique reste muette : une panne de réseau n'est pas une nouvelle.
+   */
+  const verifier = useCallback(async (manuelle = false) => {
+    if (!actif || enCours.current) return;
+    enCours.current = true;
+    if (manuelle) { setErreur(''); setEtat(MAJ.RECHERCHE); }
+    try {
+      const dispo = await Updates.checkForUpdateAsync();
+      if (!dispo || !dispo.isAvailable) {
+        if (monte.current && manuelle) setEtat(MAJ.AUCUNE);
+        else if (monte.current) setEtat((e) => (e === MAJ.RECHERCHE ? MAJ.INACTIF : e));
+        return;
+      }
+      if (monte.current) setEtat(MAJ.TELECHARGEMENT);
+      const recu = await Updates.fetchUpdateAsync();
+      if (monte.current) setEtat(recu && recu.isNew ? MAJ.PRETE : (manuelle ? MAJ.AUCUNE : MAJ.INACTIF));
+    } catch (e) {
+      if (!monte.current) return;
+      if (manuelle) { setEtat(MAJ.ERREUR); setErreur('Recherche impossible. Vérifiez votre connexion.'); }
+      else setEtat((p) => (p === MAJ.RECHERCHE || p === MAJ.TELECHARGEMENT ? MAJ.INACTIF : p));
+    } finally {
+      enCours.current = false;
+    }
+  }, [actif]);
+
+  // « L'application est à jour » n'est vrai qu'à l'instant où on le dit. On
+  // laisse la réponse le temps d'être lue, puis la ligne revient à son texte
+  // d'attente — plutôt que d'affirmer indéfiniment quelque chose d'invérifié.
+  useEffect(() => {
+    if (etat !== MAJ.AUCUNE && etat !== MAJ.ERREUR) return undefined;
+    const t = setTimeout(() => { if (monte.current) setEtat(MAJ.INACTIF); }, 6000);
+    return () => clearTimeout(t);
+  }, [etat]);
+
+  const appliquer = useCallback(async () => {
+    try {
+      await Updates.reloadAsync();
+    } catch (e) {
+      if (monte.current) { setEtat(MAJ.ERREUR); setErreur('Redémarrage impossible. Fermez puis rouvrez l’application.'); }
+    }
+  }, []);
+
+  // Au lancement, puis à chaque retour au premier plan : c'est le moment où
+  // l'utilisateur revient, et le seul où une recherche ne coûte rien.
+  useEffect(() => {
+    if (!actif) return undefined;
+    verifier(false);
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') verifier(false); });
+    return () => { try { sub.remove(); } catch (e) {} };
+  }, [actif, verifier]);
+
+  return { actif, etat, erreur, verifier, appliquer };
+}
+
+/**
+ * La bannière « mise à jour prête ».
+ *
+ * Posée au-dessus de la barre d'onglets, sur tous les écrans. Discrète, et
+ * refermable : qui la repousse gardera sa mise à jour à la prochaine ouverture.
+ */
+function MajBanner({ visible, onAppliquer, onFermer, still }) {
+  const y = useRef(new Animated.Value(60)).current;
+  useEffect(() => {
+    if (still) { y.setValue(visible ? 0 : 60); return undefined; }
+    Animated.timing(y, {
+      toValue: visible ? 0 : 60,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+    return undefined;
+  }, [visible, still, y]);
+
+  if (!visible) return null;
+  return (
+    <Animated.View style={[styles.majBanner, { transform: [{ translateY: y }] }]} pointerEvents="box-none">
+      <View style={styles.majInner}>
+        <View style={styles.majDot}><Ionicons name="arrow-down" size={14} color="#fff" /></View>
+        <Text style={styles.majTxt} numberOfLines={1}>Mise à jour prête</Text>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Appliquer la mise à jour maintenant"
+          style={styles.majBtn} activeOpacity={0.85} onPress={onAppliquer}>
+          <Text style={styles.majBtnTxt}>Appliquer</Text>
+        </TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Plus tard"
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={onFermer}>
+          <Ionicons name="close" size={18} color={INK_3} />
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -5483,7 +5653,7 @@ function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack 
   );
 }
 
-function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav }) {
+function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav, maj }) {
   const a = (data && data.account) || null;
   const [f, setF] = useState(null);
   useEffect(() => { if (a && !f) setF({ first_name: a.first_name, last_name: a.last_name, email: a.email, phone: a.phone, city: a.city }); }, [a]);
@@ -5543,6 +5713,32 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
           </TouchableOpacity>
         )}
 
+        {/* Mise à jour OTA : l'état, et de quoi la chercher ou l'appliquer à la
+            main. La recherche automatique tourne déjà en fond ; cette ligne
+            sert à ne pas attendre, et à vérifier qu'un correctif est bien
+            arrivé — c'est le pendant actionnable de l'empreinte ci-dessous. */}
+        {maj ? (
+          <View style={styles.settingsRow} accessible accessibilityLabel={'Mise à jour : ' + majLibelle(maj)}>
+            <Ionicons name="cloud-download-outline" size={20} color="#45544D" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingsRowTxt}>Mise à jour</Text>
+              <Text style={styles.majEtatTxt}>{majLibelle(maj)}</Text>
+            </View>
+            {!maj.actif ? null
+              : (maj.etat === MAJ.RECHERCHE || maj.etat === MAJ.TELECHARGEMENT) ? (
+                <ActivityIndicator size="small" color={BRAND} />
+              ) : maj.etat === MAJ.PRETE ? (
+                <TouchableOpacity accessibilityRole="button" style={styles.majBtn} activeOpacity={0.85} onPress={maj.appliquer}>
+                  <Text style={styles.majBtnTxt}>Appliquer</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity accessibilityRole="button" style={styles.majBtnGhost} activeOpacity={0.85} onPress={() => maj.verifier(true)}>
+                  <Text style={styles.majBtnGhostTxt}>Rechercher</Text>
+                </TouchableOpacity>
+              )}
+          </View>
+        ) : null}
+
         <BuildStamp />
       </ScrollView>
     </KeyboardAvoidingView>
@@ -5552,7 +5748,7 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
 /* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
-function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, onLogout, onExitToWelcome }) {
+function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, onLogout, onExitToWelcome, maj }) {
   const webRef = useRef(null);
   const pushRegistered = useRef(false);
   const founderInit = useRef(false);
@@ -5574,6 +5770,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [pdfBusy, setPdfBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
+
+  // `majFermee` retient que l'utilisateur a repoussé la bannière : on ne la lui
+  // remet pas à chaque écran. La mise à jour s'appliquera d'elle-même à la
+  // prochaine ouverture. Une nouvelle mise à jour, elle, redonne droit à la
+  // bannière.
+  const [majFermee, setMajFermee] = useState(false);
+  const majEtat = maj ? maj.etat : null;
+  useEffect(() => { if (majEtat === MAJ.PRETE) setMajFermee(false); }, [majEtat]);
   const [active, setActive] = useState('accueil');
   const [quickOpen, setQuickOpen] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -6958,7 +7162,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'settings' ? (
               <NativeSettings data={account} onBack={() => setMenuScreen(null)} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
                 onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb} onNav={openMenuScreen}
-                onLogout={doLogout} />
+                onLogout={doLogout} maj={maj} />
             ) : menuScreen === 'messages' ? (
               openChannel ? (
                 <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg} sendResult={msgSendResult}
@@ -7132,6 +7336,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         </TouchableOpacity>
       )}
 
+      {/* Mise à jour téléchargée : on la propose, on ne l'impose pas — `reloadAsync`
+          relance l'app, et le faire pendant une saisie perdrait le travail en cours. */}
+      {authed && maj && (
+        <MajBanner
+          visible={maj.etat === MAJ.PRETE && !majFermee}
+          onAppliquer={maj.appliquer}
+          onFermer={() => setMajFermee(true)}
+        />
+      )}
+
       {/* Barre d'onglets + bouton « + » FLOTTANT : le « + » est un frère de la barre,
           posé par-dessus son bord supérieur (maquette 22:2). S'il était un enfant de
           la barre, celle-ci le rognerait — c'est le défaut corrigé sur la maquette. */}
@@ -7206,6 +7420,13 @@ export default function App() {
   const [autoCreds, setAutoCreds] = useState(null);
   const [ready, setReady] = useState(false);
 
+  // Les mises à jour OTA sont pilotées depuis ici, et non depuis AppShell :
+  // la recherche doit commencer au lancement de l'app, pas à la connexion.
+  // `app.json` met `checkAutomatically` à ON_ERROR_RECOVERY, donc la couche
+  // native ne cherche plus de son côté — ce hook est le seul chercheur, et
+  // l'état affiché correspond toujours à ce qui se passe vraiment.
+  const maj = useMiseAJour();
+
   // Au lancement : si des identifiants sont mémorisés, déverrouiller par Face ID puis auto-login
   useEffect(() => {
     (async () => {
@@ -7264,6 +7485,7 @@ export default function App() {
   return (
     <AppShell
       startPath={path}
+      maj={maj}
       pushToken={pushToken}
       autoCreds={autoCreds}
       onSaveCreds={saveCreds}
@@ -7346,6 +7568,24 @@ const styles = StyleSheet.create({
   hAvatarImg: { width: 42, height: 42, borderRadius: 11 },
 
   homeLoader: { paddingTop: 60, alignItems: 'center' },
+  // Bannière « mise à jour prête ». Posée dans le flux, juste au-dessus de la
+  // barre d'onglets : elle n'a donc rien à recouvrir, et rien à décaler quand
+  // elle disparaît.
+  majBanner: { marginHorizontal: 16, marginBottom: 8 },
+  majInner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: LINE,
+    paddingVertical: 10, paddingHorizontal: 12,
+    shadowColor: '#0A3B29', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 6,
+  },
+  majDot: { width: 26, height: 26, borderRadius: 13, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' },
+  majTxt: { flex: 1, fontSize: 13.5, fontWeight: '700', color: INK },
+  majBtn: { backgroundColor: BRAND, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 11 },
+  majBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  majBtnGhost: { backgroundColor: SOFT, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 11, borderWidth: 1, borderColor: LINE },
+  majBtnGhostTxt: { color: INK_2, fontWeight: '700', fontSize: 13 },
+  majEtatTxt: { fontSize: 12, color: MUTE, marginTop: 2 },
+
   // Ligne fantôme d'attente : même gabarit que les cartes de liste, pour que le
   // contenu prenne la place du fantôme sans que la page bouge.
   skelCard: {

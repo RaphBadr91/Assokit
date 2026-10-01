@@ -83,6 +83,9 @@ eas update --channel production --message "…"
 Un module natif, une permission ou une icône imposent en revanche un nouveau
 `eas build`.
 
+📘 Publier, vérifier qu'une mise à jour est bien descendue, revenir en arrière,
+et le piège du `runtimeVersion` : **`docs/MISES-A-JOUR-OTA.md`**.
+
 ---
 
 ## 3. 🍏 Apple — App Store Connect

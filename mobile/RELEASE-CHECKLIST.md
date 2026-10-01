@@ -38,6 +38,14 @@ eas update --channel production --message "…"
 Rappel : l'OTA ne couvre que le JavaScript. Ajouter un module natif, changer une permission ou une
 icône impose un nouveau `eas build`.
 
+L'app pilote désormais ses mises à jour : elle cherche au lancement et à chaque retour au premier
+plan, télécharge en fond, et propose d'appliquer par une bannière — sans jamais redémarrer
+d'autorité. *Plus → Paramètres* porte l'état, un bouton « Rechercher », et l'empreinte qui dit si
+le bundle qui tourne est celui du binaire ou une OTA.
+
+📘 **Tout le mode d'emploi — publier, vérifier, revenir en arrière, et le piège du
+`runtimeVersion` — est dans `docs/MISES-A-JOUR-OTA.md`.**
+
 ## 0-ter. Correctifs déjà intégrés (nécessitent un rebuild pour être actifs)
 
 Ces changements sont dans le code mais **ne prennent effet qu'au prochain build EAS** :
