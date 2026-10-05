@@ -15,6 +15,7 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/includes-grants.php';
 @require_once __DIR__ . '/resend-helper.php';
 
@@ -79,7 +80,9 @@ function reminder_send(PDO $pdo, array $grant, string $type, string $subject, st
     foreach ($admins as $a) {
         if (!filter_var($a['email'], FILTER_VALIDATE_EMAIL)) continue;
         try {
-            if (function_exists('send_email_resend')) {
+            if (ak_demo_mail_blocked($a['email'])) {
+                $sent_any = true;   // démo : envoi simulé
+            } elseif (function_exists('send_email_resend')) {
                 send_email_resend($a['email'], $subject, $bodyHtml, $bodyText);
                 $sent_any = true;
             } else {

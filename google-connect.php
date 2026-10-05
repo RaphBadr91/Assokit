@@ -16,6 +16,11 @@ require_login();
 $user = current_user();
 
 // Seuls les admins peuvent connecter Google
+require_once __DIR__ . '/demo-guard.php';
+if (ak_demo_session()) {   // démo : pas de vrai agenda Google relié à un compte partagé
+    header('Location: /mon-agenda?error=demo');
+    exit;
+}
 if ($user['role'] !== 'admin') {
     header('Location: /mon-agenda?error=not_admin');
     exit;

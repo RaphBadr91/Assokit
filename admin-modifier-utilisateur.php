@@ -94,6 +94,7 @@ $colors = [
   <?php elseif (isset($_GET['error'])):
     $err_labels = [
       'cannot_deactivate_self' => 'Vous ne pouvez pas désactiver votre propre compte.',
+      'demo' => 'Action désactivée dans l’espace de démonstration : ce compte est partagé. Tout est remis à zéro chaque nuit.',
     ];
     $err_msg = $err_labels[$_GET['error']] ?? $_GET['error'];
   ?>

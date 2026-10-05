@@ -8,6 +8,7 @@
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/includes-layout.php';
 
 require_login();
@@ -94,7 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     }
 
     // Validation
-    if ($form['first_name'] === '' || $form['last_name'] === '') {
+    if (ak_demo_protected_account($id)) {
+        $error = ak_demo_message();
+    } elseif ($form['first_name'] === '' || $form['last_name'] === '') {
         $error = 'Le prénom et le nom sont obligatoires.';
     } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
         $error = 'Email invalide.';

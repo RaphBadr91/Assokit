@@ -54,6 +54,12 @@ if (!function_exists('send_transactional_email')) {
 function send_transactional_email($to, string $subject, string $html, array $options = []): array {
     global $pdo;
 
+    // Espace de démonstration : envoi simulé (voir demo-guard.php)
+    require_once __DIR__ . '/demo-guard.php';
+    if (ak_demo_mail_blocked($to)) {
+        return ['success' => true, 'id' => 'demo-simule', 'error' => null];
+    }
+
     // Config check
     if (!defined('RESEND_API_KEY') || !RESEND_API_KEY || strpos(RESEND_API_KEY, 're_') !== 0) {
         error_log('[Resend] API key manquante ou invalide');

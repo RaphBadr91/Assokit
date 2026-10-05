@@ -5,6 +5,7 @@
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/activity-tracker.php';  // journal fondateur : qui a fait quoi, à la minute près
 activity_log_request();
 require_once __DIR__ . '/includes-layout.php';
@@ -44,6 +45,14 @@ if ($action === 'update_account') {
     if (function_exists('app_founder_emails') && in_array(strtolower($email), app_founder_emails(), true)
         && (!function_exists('app_is_founder') || !app_is_founder($pdo, function_exists('current_user') ? current_user() : null))) {
         header('Location: /parametres?tab=compte&flash=' . urlencode('Cette adresse email est réservée.') . '&ft=error'); exit;
+    }
+
+    // Démo : l'e-mail de connexion d'un compte partagé ne change pas
+    if (ak_demo_protected_account($user_id)) {
+        $cur = $pdo->prepare("SELECT email FROM users WHERE id = ?"); $cur->execute([$user_id]);
+        if (strtolower($email) !== strtolower((string)$cur->fetchColumn())) {
+            header('Location: /parametres?tab=compte&flash=' . urlencode(ak_demo_message()) . '&ft=error'); exit;
+        }
     }
 
     // Email unique
@@ -141,6 +150,9 @@ if ($action === 'change_password') {
     $new_pw = $_POST['new_password'] ?? '';
     $confirm_pw = $_POST['confirm_password'] ?? '';
 
+    if (ak_demo_protected_account($user_id)) {
+        header('Location: /parametres?tab=securite&flash=' . urlencode(ak_demo_message()) . '&ft=error'); exit;
+    }
     if (strlen($new_pw) < 8) {
         header('Location: /parametres?tab=securite&flash=' . urlencode('Nouveau mot de passe trop court (min 8 caractères).') . '&ft=error'); exit;
     }

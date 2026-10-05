@@ -54,7 +54,12 @@ function ak_billing_hidden(): bool
     if (ak_is_mobile_app()) return true;
 
     $email = $_SESSION['user_email'] ?? '';
-    return is_string($email) && strcasecmp($email, AK_APPLE_REVIEW_EMAIL) === 0;
+    if (!is_string($email)) return false;
+    // Espace de démonstration DEMO F : pas d'abonnement Assokit à souscrire
+    $login = $email !== '' ? $email
+        : (string)((function_exists('current_user') ? ((current_user() ?: [])['email'] ?? '') : ''));
+    if (substr(strtolower($login), -strlen('@demo-f.assokit.fr')) === '@demo-f.assokit.fr') return true;
+    return strcasecmp($email, AK_APPLE_REVIEW_EMAIL) === 0;
 }
 
 /**

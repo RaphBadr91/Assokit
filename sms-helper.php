@@ -39,6 +39,15 @@
 function send_sms(string $to_phone, string $body, array $options = []): array {
     global $pdo;
 
+    // Espace de démonstration (session DEMO F, ou numéro fictif ARCEP
+    // 06 39 98 xx xx / 01 99 00 xx xx) : envoi simulé, rien ne part.
+    require_once __DIR__ . '/demo-guard.php';
+    $num = preg_replace('/^(?:\+33|0033|0)/', '', preg_replace('/[\s.\-]+/', '', $to_phone));
+    if (ak_demo_session() || preg_match('/^(63998|19900)\d{4}$/', $num)) {
+        sms_log_entry($to_phone, mb_substr($body, 0, 1600), $options['tag'] ?? null, 'demo', 'demo-simule', 'sent', null, 0.0);
+        return ['success' => true, 'id' => 'demo-simule'];
+    }
+
     $provider = defined('SMS_PROVIDER') ? SMS_PROVIDER : null;
     if (!$provider) {
         sms_log_entry($to_phone, $body, $options['tag'] ?? null, null, null, 'failed', 'SMS_PROVIDER non configure', null);

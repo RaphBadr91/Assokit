@@ -88,6 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['target_org_id'])) {
             FROM users 
             WHERE org_id = ? AND role = 'admin' AND is_active = 1 
               AND email != 'demo@assokit.fr'
+            ORDER BY (email LIKE 'admin@%') DESC, id
             LIMIT 1
         ");
         $stmt->execute([$target_org_id]);
@@ -151,6 +152,7 @@ $demos = $pdo->query("
             WHEN 'demo-corbeil' THEN 2
             WHEN 'demo-paris' THEN 3
             WHEN 'demo-tpe' THEN 4
+            WHEN 'demo-formation' THEN 5
         END
 ")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -163,6 +165,7 @@ $org_configs = [
     'demo-evry' => ['icon' => '🤝', 'color' => '#10b981', 'tagline' => 'Petite asso de proximité', 'pitch' => 'Idéal pour démontrer Assokit à une petite asso loi 1901 qui démarre', 'cible_membres' => 50, 'cible_projets' => 20, 'cible_factures' => 40],
     'demo-corbeil' => ['icon' => '💜', 'color' => '#a855f7', 'tagline' => 'Asso dynamique de taille moyenne', 'pitch' => 'Parfait pour montrer la puissance d\'Assokit à une asso en croissance', 'cible_membres' => 120, 'cible_projets' => 50, 'cible_factures' => 120],
     'demo-paris' => ['icon' => '🏛️', 'color' => '#3b82f6', 'tagline' => 'Grande asso parisienne — full max', 'pitch' => 'Démo VIP : version SUR-MESURE white-label, domaine perso, support dédié', 'cible_membres' => 250, 'cible_projets' => 80, 'cible_factures' => 300],
+    'demo-formation' => ['icon' => '🎓', 'color' => '#6366f1', 'tagline' => 'Organisme de formation associatif (Qualiopi)', 'pitch' => 'La démo la plus complète : projets avec comptes-rendus d\'étape, financeurs, subventions, AG, facturation, IA — 5 comptes (admin, coordinateur, bénévole, adhérent, financeur)', 'cible_membres' => 120, 'cible_projets' => 19, 'cible_factures' => 160],
     'demo-tpe' => ['icon' => '🏢', 'color' => '#f59e0b', 'tagline' => 'Petite entreprise (TPE/SARL)', 'pitch' => 'Pour démontrer Assokit à un dirigeant de TPE — gestion équipe & facturation client', 'cible_membres' => 4, 'cible_projets' => 20, 'cible_factures' => 170],
 ];
 

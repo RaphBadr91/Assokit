@@ -99,6 +99,13 @@ function cron_send_email(
     PDO $pdo, int $runId, string $emailTo, string $emailType,
     string $subject, string $htmlBody, array $context = []
 ): bool {
+    // Espace de démonstration : envoi simulé (voir demo-guard.php)
+    require_once __DIR__ . '/demo-guard.php';
+    if (ak_demo_mail_blocked($emailTo)) {
+        cron_log_email($pdo, $runId, $emailTo, $emailType, $subject, 'sent', 'demo-simule', null, $context);
+        return true;
+    }
+
     $apiKey = defined('RESEND_API_KEY') ? RESEND_API_KEY : '';
     $from   = defined('RESEND_FROM')    ? RESEND_FROM    : 'noreply@assokit.fr';
 

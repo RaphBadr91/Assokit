@@ -17,6 +17,7 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/financements-engine.php';
 @require_once __DIR__ . '/notification-helpers.php';
 @require_once __DIR__ . '/resend-helper.php';
@@ -73,7 +74,8 @@ function radar_send_email(array $admins, string $subject, string $html, string $
     foreach ($admins as $a) {
         if (!filter_var($a['email'] ?? '', FILTER_VALIDATE_EMAIL)) continue;
         try {
-            if (function_exists('send_email_resend')) { send_email_resend($a['email'], $subject, $html, $text); $ok = true; }
+            if (ak_demo_mail_blocked($a['email'])) { $ok = true; }   // démo : envoi simulé
+            elseif (function_exists('send_email_resend')) { send_email_resend($a['email'], $subject, $html, $text); $ok = true; }
             else {
                 $headers = "MIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\nFrom: AssoKit <noreply@assokit.fr>\r\n";
                 if (@mail($a['email'], $subject, $html, $headers)) $ok = true;

@@ -10,6 +10,9 @@
  * tester le mot de passe actuel en boucle depuis une session volée.
  */
 require_once __DIR__ . '/_app-write-boot.php';
+require_once __DIR__ . '/../demo-guard.php';
+if (ak_demo_protected_account($uid)) app_fail(403, 'demo', ak_demo_message());
+
 
 if (!function_exists('ak_rate_limit_or_die')) {
     @require_once __DIR__ . '/../rate-limit-helper.php';

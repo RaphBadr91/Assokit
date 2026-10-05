@@ -5,6 +5,9 @@
  * NE MODIFIE PAS le site.
  */
 require __DIR__ . '/_app-write-boot.php';
+require_once __DIR__ . '/../demo-guard.php';
+if (ak_demo_protected_account($uid)) app_fail(403, 'demo', ak_demo_message());
+
 
 if (($input['confirm'] ?? '') !== 'SUPPRIMER') {
     app_fail(422, 'confirm', 'Confirmation manquante.');

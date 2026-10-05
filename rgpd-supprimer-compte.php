@@ -4,6 +4,7 @@
  * POST /rgpd-supprimer-compte — anonymise + soft-delete le compte du user connecté
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/includes-layout.php';
 require_login();
 
@@ -18,6 +19,7 @@ function redir($msg, $type='error'){
 if ($_SERVER['REQUEST_METHOD'] !== 'POST')        redir('Requête invalide.');
 if (!check_csrf($_POST['csrf_token'] ?? ''))      redir('Session expirée, merci de réessayer.');
 if (($_POST['confirm'] ?? '') !== 'SUPPRIMER')    redir('Confirmation manquante.');
+if (ak_demo_protected_account((int)(current_user()['id'] ?? 0))) redir(ak_demo_message());
 
 // Recharger le user pour vérifier les statuts critiques
 $st = $pdo->prepare("SELECT is_founder, is_platform_admin FROM users WHERE id = ? LIMIT 1");

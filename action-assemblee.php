@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/activity-tracker.php';  // journal fondateur : qui a fait quoi, à la minute près
 activity_log_request();
 require_once __DIR__ . '/includes-layout.php';
@@ -128,7 +129,8 @@ if ($action === 'send_invitations') {
             . '</div></div>';
         $text = "Convocation : " . $ag['title'] . "\n\n" . $when . "\n\nLien personnel : " . $url;
         try {
-            if (function_exists('send_email_resend')) { send_email_resend($a['email'], $subject, $html, $text); }
+            if (ak_demo_mail_blocked($a['email'])) { /* démo : envoi simulé */ }
+            elseif (function_exists('send_email_resend')) { send_email_resend($a['email'], $subject, $html, $text); }
             else {
                 $headers = "MIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\nFrom: AssoKit <noreply@assokit.fr>\r\n";
                 @mail($a['email'], $subject, $html, $headers);

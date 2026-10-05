@@ -9,6 +9,7 @@
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/demo-guard.php';
 
 require_login();
 $user = current_user();
@@ -20,6 +21,8 @@ $is_forced = !empty($user['must_change_password']);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!check_csrf($_POST['csrf_token'] ?? '')) {
         $error = 'Session expirée, rechargez la page.';
+    } elseif (ak_demo_protected_account($user)) {
+        $error = ak_demo_message();
     } else {
         $current_pwd = $_POST['current_password'] ?? '';
         $new_pwd = $_POST['new_password'] ?? '';

@@ -4,6 +4,13 @@
  * Reproduit action-parametres.php (update_account). Retour JSON. NE MODIFIE PAS le site.
  */
 require __DIR__ . '/_app-write-boot.php';
+require_once __DIR__ . '/../demo-guard.php';
+// Démo : le nom peut changer, pas l'e-mail de connexion d'un compte partagé
+if (ak_demo_protected_account($uid)) {
+    $__cur = $pdo->prepare('SELECT email FROM users WHERE id = ?'); $__cur->execute([$uid]);
+    if (strtolower(trim((string)($input['email'] ?? ''))) !== strtolower((string)$__cur->fetchColumn())) app_fail(403, 'demo', ak_demo_message());
+}
+
 
 $first = trim((string) ($input['first_name'] ?? ''));
 $last  = trim((string) ($input['last_name'] ?? ''));

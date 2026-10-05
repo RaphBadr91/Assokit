@@ -16,6 +16,7 @@
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/includes-layout.php';
 
 require_login();
@@ -83,7 +84,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     $confirm_name = trim($_POST['confirm_name'] ?? '');
 
     // Validation : le nom saisi doit etre EXACTEMENT le nom complet
-    if (mb_strtolower($confirm_name) !== mb_strtolower($full_name)) {
+    if (ak_demo_protected_account($id)) {
+        $error = ak_demo_message();
+    } elseif (mb_strtolower($confirm_name) !== mb_strtolower($full_name)) {
         $error = 'Le nom saisi ne correspond pas. Merci de taper exactement « ' . $full_name . ' ».';
     } else {
         $pdo->beginTransaction();

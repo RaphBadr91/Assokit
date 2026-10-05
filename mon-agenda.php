@@ -99,6 +99,7 @@ render_sidebar('agenda');
   <?php elseif (isset($_GET['error'])):
     $err_labels = [
       'not_admin' => 'Seul un administrateur peut connecter Google Calendar.',
+      'demo' => 'Connexion Google Calendar désactivée dans l’espace de démonstration (compte partagé).',
       'not_configured' => 'L\'OAuth Google n\'est pas configuré côté serveur.',
       'invalid_state' => 'Session OAuth invalide. Réessayez.',
       'no_code' => 'Code d\'autorisation manquant.',

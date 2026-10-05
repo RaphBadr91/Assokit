@@ -12,6 +12,7 @@
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/activity-tracker.php';  // journal fondateur : qui a fait quoi, à la minute près
 activity_log_request();
 
@@ -35,6 +36,13 @@ if (!check_csrf($_POST['csrf_token'] ?? '')) {
 }
 
 $action = $_POST['action'] ?? '';
+
+// Démo : les comptes de connexion partagés (admin@, salarie@…) ne se
+// modifient pas, ne se désactivent pas et ne voient pas leur mot de passe réinitialisé.
+if ($action !== 'create' && ak_demo_protected_account((int)($_POST['user_id'] ?? 0))) {
+    header('Location: /admin-modifier-utilisateur/' . (int)$_POST['user_id'] . '?error=demo');
+    exit;
+}
 
 // Helper : logger une action admin
 function log_admin_action($admin_id, $target_id, $action_name, $details = null) {

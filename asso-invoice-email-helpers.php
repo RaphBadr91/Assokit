@@ -117,6 +117,10 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
  */
 function ak_asso_send_resend(string $to, string $subject, string $html, ?string $cc, ?array $attachment, ?string $from_name): bool
 {
+    // Espace de démonstration : envoi simulé (voir demo-guard.php)
+    require_once __DIR__ . '/demo-guard.php';
+    if (ak_demo_mail_blocked($to)) return true;
+
     // Vérifier la clé Resend
     $api_key = defined('RESEND_API_KEY') ? RESEND_API_KEY : (getenv('RESEND_API_KEY') ?: '');
     if (empty($api_key)) {

@@ -217,6 +217,27 @@ try {
     log_msg('   ⚠️ Impossible de faire les vérifs : ' . $e->getMessage());
 }
 
+// =============================================================
+// DÉMO DE FORMATION « DEMO F » (seed PHP, indépendant des .sql)
+// =============================================================
+// Remet l'espace de démonstration à neuf, dates recalées sur aujourd'hui.
+// Transaction unique : en cas d'échec, la démo de la veille reste intacte.
+log_msg('');
+log_msg('───────────────────────────────────────');
+log_msg('🎓 Démo de formation DEMO F');
+log_msg('───────────────────────────────────────');
+if (is_file(__DIR__ . '/demo-formation/run.php')) {
+    try {
+        $pdo->exec("SET SESSION sql_mode = @@GLOBAL.sql_mode");   // le seed PHP valide lui-même ses données
+        require_once __DIR__ . '/demo-formation/run.php';
+        $df_t0 = microtime(true);
+        $df = df_run($pdo, function (string $l): void { if (trim($l) !== '') log_msg('   ' . $l); });
+        log_msg(sprintf('   ✅ DEMO F régénérée en %.1f s (%d lignes)', microtime(true) - $df_t0, array_sum($df['inseres'] ?? [])));
+    } catch (Throwable $e) {
+        log_msg('   💥 DEMO F non régénérée (démo précédente conservée) : ' . $e->getMessage());
+    }
+}
+
 log_msg('');
 log_msg('===== RESET DEMO END =====');
 log_msg('');

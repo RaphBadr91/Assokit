@@ -947,6 +947,9 @@ if (!function_exists('ak_ai_collect_recipients')) {
 // --------------------------------------------------------------
 if (!function_exists('ak_ai_send_email_resend')) {
     function ak_ai_send_email_resend(string $to_email, string $to_name, string $subject, string $html): array {
+        // Espace de démonstration : envoi simulé (voir demo-guard.php)
+        require_once __DIR__ . '/demo-guard.php';
+        if (ak_demo_mail_blocked($to_email)) return ['ok' => true, 'id' => 'demo-simule'];
         $key  = defined('RESEND_API_KEY')    ? RESEND_API_KEY    : (getenv('RESEND_API_KEY') ?: '');
         $from = defined('RESEND_FROM_EMAIL') ? RESEND_FROM_EMAIL : (getenv('RESEND_FROM_EMAIL') ?: 'noreply@assokit.fr');
         if (!$key) return ['ok' => false, 'error' => 'RESEND_API_KEY manquante'];

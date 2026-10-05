@@ -4,6 +4,7 @@
  * URL : /securite-2fa
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/totp-helper.php';
 require_login();
@@ -25,6 +26,8 @@ $backup_codes_show = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!check_csrf($_POST['csrf_token'] ?? '')) {
         $flash = 'Session expirée, réessayez.'; $flash_type = 'error';
+    } elseif (ak_demo_protected_account($uid)) {
+        $flash = ak_demo_message(); $flash_type = 'error';
     } else {
         $act = $_POST['act'] ?? '';
         if ($act === 'confirm') {
