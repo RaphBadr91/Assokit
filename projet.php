@@ -712,7 +712,7 @@ render_sidebar('projets');
           <span>Générer le bilan</span>
           <span class="ck-bilan-date"><?= h($today_fr) ?></span>
         </button>
-        <form id="ck-bilan-pop" class="ck-bilan-pop" method="POST" action="/action-ia" hidden>
+        <form id="ck-bilan-pop" class="ck-bilan-pop" method="POST" action="/action-ia" data-ia-stream hidden>
           <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
           <input type="hidden" name="project_id" value="<?= (int)$project['id'] ?>">
           <input type="hidden" name="mode" value="generate">
@@ -2429,7 +2429,7 @@ render_sidebar('projets');
       <div class="section-head-meta">Un clic pour générer un document</div>
     </div>
 
-    <form method="POST" action="/action-ia" style="margin-bottom: 24px;">
+    <form method="POST" action="/action-ia" data-ia-stream style="margin-bottom: 24px;">
       <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
       <input type="hidden" name="project_id" value="<?= $project_id ?>">
       <input type="hidden" name="mode" value="generate">
@@ -2843,6 +2843,190 @@ render_sidebar('projets');
   <?php endif; ?>
 
 </main>
+
+<!-- Génération IA en direct : le document s'écrit sous les yeux de l'utilisateur -->
+<div class="iast" id="iast" hidden>
+  <div class="iast-card" role="dialog" aria-modal="true" aria-labelledby="iast-title">
+    <div class="iast-head">
+      <div>
+        <div class="iast-title" id="iast-title">Rédaction en cours…</div>
+        <div class="iast-sub" id="iast-sub">L'IA écrit le document à partir des données du projet.</div>
+      </div>
+      <div class="iast-time" id="iast-time">0 s</div>
+    </div>
+    <div class="iast-bar"><span id="iast-bar"></span></div>
+    <div class="iast-body" id="iast-body"><div class="iast-wait">Lecture du projet : étapes, échanges, fichiers, dépenses…</div></div>
+    <div class="iast-foot">
+      <span class="iast-note" id="iast-note">Vous pouvez fermer cette fenêtre : le document sera enregistré dans l'onglet IA.</span>
+      <button type="button" class="ck-btn-ghost" id="iast-close">Fermer</button>
+    </div>
+  </div>
+</div>
+<style>
+  .iast { position: fixed; inset: 0; z-index: 3000; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .iast[hidden] { display: none; }
+  .iast-card { background: #fff; border-radius: 16px; width: 100%; max-width: 760px; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(0,0,0,.25); overflow: hidden; }
+  .iast-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 18px 22px 12px; }
+  .iast-title { font-size: 16px; font-weight: 700; color: #111827; }
+  .iast-sub { font-size: 12.5px; color: #6b7280; margin-top: 3px; }
+  .iast-time { font-size: 12px; color: #6b7280; font-variant-numeric: tabular-nums; background: #f3f4f6; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+  .iast-bar { height: 3px; background: #eef2ff; overflow: hidden; }
+  .iast-bar span { display: block; height: 100%; width: 30%; background: linear-gradient(90deg,#6366f1,#8b5cf6); animation: iast-slide 1.4s ease-in-out infinite; }
+  .iast.is-done .iast-bar span { width: 100%; animation: none; background: #10b981; }
+  .iast.is-error .iast-bar span { width: 100%; animation: none; background: #ef4444; }
+  @keyframes iast-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
+  .iast-body { padding: 18px 22px; overflow-y: auto; font-size: 14px; line-height: 1.65; color: #1f2937; flex: 1; min-height: 160px; }
+  .iast-body h3 { font-size: 15px; font-weight: 700; color: #111827; margin: 18px 0 6px; padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; }
+  .iast-body h3:first-child { margin-top: 0; }
+  .iast-body h4 { font-size: 14px; font-weight: 700; margin: 12px 0 4px; }
+  .iast-body p { margin: 0 0 8px; }
+  .iast-body ul { margin: 0 0 8px; padding-left: 20px; }
+  .iast-body hr { border: 0; border-top: 1px solid #e5e7eb; margin: 14px 0; }
+  .iast-body .iast-tr { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; color: #374151; }
+  .iast-wait { color: #9ca3af; font-style: italic; }
+  .iast-caret { display: inline-block; width: 7px; height: 15px; background: #6366f1; vertical-align: -2px; margin-left: 2px; animation: iast-blink 1s steps(1) infinite; }
+  @keyframes iast-blink { 50% { opacity: 0; } }
+  .iast-err { background: #FEE2E2; color: #991B1B; border-radius: 8px; padding: 10px 12px; margin-top: 10px; font-size: 13px; }
+  .iast-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 22px; border-top: 1px solid #f3f4f6; }
+  .iast-note { font-size: 12px; color: #6b7280; }
+  @media (max-width: 600px) { .iast { padding: 0; align-items: stretch; } .iast-card { max-height: none; border-radius: 0; } .iast-note { display: none; } }
+</style>
+<script>
+(function () {
+  var box = document.getElementById('iast');
+  if (!box || !window.fetch || !window.TextDecoder || !window.FormData) return;
+  var body = document.getElementById('iast-body'), title = document.getElementById('iast-title'),
+      sub = document.getElementById('iast-sub'), time = document.getElementById('iast-time'),
+      note = document.getElementById('iast-note');
+  var timer = null, follow = true;
+
+  document.getElementById('iast-close').addEventListener('click', function () { box.hidden = true; });
+  body.addEventListener('scroll', function () {
+    follow = body.scrollTop + body.clientHeight >= body.scrollHeight - 40;
+  });
+
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function inline(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'); }
+  // Aperçu Markdown volontairement simple : la mise en forme finale est
+  // faite côté serveur une fois le document enregistré.
+  function render(md) {
+    var out = [], list = false;
+    md.split('\n').forEach(function (l) {
+      var t = l.trim(), m;
+      if (/^[-*] /.test(t)) { if (!list) { out.push('<ul>'); list = true; } out.push('<li>' + inline(t.slice(2)) + '</li>'); return; }
+      if (list) { out.push('</ul>'); list = false; }
+      if (t === '') return;
+      if ((m = t.match(/^#{1,2} (.*)/))) out.push('<h3>' + inline(m[1]) + '</h3>');
+      else if ((m = t.match(/^#{3,} (.*)/))) out.push('<h4>' + inline(m[1]) + '</h4>');
+      else if (/^-{3,}$/.test(t)) out.push('<hr>');
+      else if (t.charAt(0) === '|') { if (!/^\|[\s:|-]+\|$/.test(t)) out.push('<div class="iast-tr">' + esc(t) + '</div>'); }
+      else out.push('<p>' + inline(t) + '</p>');
+    });
+    if (list) out.push('</ul>');
+    return out.join('');
+  }
+
+  function fallback(form, docType) {
+    // Pas de flux possible (navigateur, proxy…) : envoi classique du formulaire
+    box.hidden = true;
+    if (docType) {
+      var h = document.createElement('input');
+      h.type = 'hidden'; h.name = 'doc_type'; h.value = docType;
+      form.appendChild(h);
+    }
+    form.dataset.iaNoStream = '1';
+    HTMLFormElement.prototype.submit.call(form);
+  }
+
+  function run(form, docType) {
+    var fd = new FormData(form);
+    if (docType) fd.set('doc_type', docType);
+    fd.set('stream', '1');
+
+    var md = '', started = Date.now(), finished = false, frame = 0;
+    box.className = 'iast'; box.hidden = false; follow = true;
+    title.textContent = 'Rédaction en cours…';
+    sub.textContent = "L'IA écrit le document à partir des données du projet.";
+    note.textContent = "Vous pouvez fermer cette fenêtre : le document sera enregistré dans l'onglet IA.";
+    body.innerHTML = '<div class="iast-wait">Lecture du projet : étapes, échanges, fichiers, dépenses…</div>';
+    clearInterval(timer);
+    time.textContent = '0 s';
+    timer = setInterval(function () { time.textContent = Math.round((Date.now() - started) / 1000) + ' s'; }, 1000);
+
+    function paint() {
+      frame = 0;
+      body.innerHTML = render(md) + (finished ? '' : '<span class="iast-caret"></span>');
+      if (follow) body.scrollTop = body.scrollHeight;
+    }
+    function end(ok, msg, url) {
+      finished = true; clearInterval(timer);
+      if (md) paint();
+      if (ok) {
+        box.classList.add('is-done');
+        title.textContent = 'Document prêt ✓';
+        sub.textContent = 'Enregistré dans l’onglet IA du projet — ouverture…';
+        setTimeout(function () { window.location.href = url; }, 900);
+      } else {
+        box.classList.add('is-error');
+        title.textContent = 'La génération n’a pas abouti';
+        sub.textContent = '';
+        note.textContent = '';
+        body.insertAdjacentHTML('beforeend', '<div class="iast-err">' + esc(msg) + '</div>');
+      }
+    }
+
+    fetch(form.getAttribute('action') || '/action-ia', { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (res) {
+        var ct = res.headers.get('Content-Type') || '';
+        if (!res.ok || ct.indexOf('text/event-stream') === -1 || !res.body) { clearInterval(timer); fallback(form, docType); return; }
+        var reader = res.body.getReader(), dec = new TextDecoder(), buf = '', gotEnd = false;
+        function pump() {
+          return reader.read().then(function (r) {
+            if (r.done) {
+              if (!gotEnd) end(false, "La connexion a été coupée avant la fin. Si la rédaction a pu se terminer côté serveur, le document apparaîtra dans l'onglet IA dans une minute.");
+              return;
+            }
+            buf += dec.decode(r.value, { stream: true }).replace(/\r\n/g, '\n');
+            var i;
+            while ((i = buf.indexOf('\n\n')) !== -1) {
+              var chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+              var data = chunk.split('\n').filter(function (l) { return l.indexOf('data:') === 0; })
+                              .map(function (l) { return l.slice(5).trim(); }).join('');
+              if (!data) continue;
+              var ev; try { ev = JSON.parse(data); } catch (e) { continue; }
+              if (ev.type === 'start' && ev.title) title.textContent = ev.title;
+              else if (ev.type === 'text') { md += ev.text; if (!frame) frame = requestAnimationFrame(paint); }
+              else if (ev.type === 'done') { gotEnd = true; end(true, '', ev.url); }
+              else if (ev.type === 'error') { gotEnd = true; end(false, ev.error || 'Erreur inconnue'); }
+            }
+            return pump();
+          });
+        }
+        return pump();
+      })
+      .catch(function () { if (!finished && !md) { clearInterval(timer); fallback(form, docType); } else if (!finished) end(false, 'La connexion a été coupée.'); });
+  }
+
+  document.querySelectorAll('form[data-ia-stream]').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      if (form.dataset.iaNoStream === '1') return;
+      var docType = e.submitter && e.submitter.name === 'doc_type' ? e.submitter.value : null;
+      if (!docType && !form.querySelector('[name=doc_type]')) return; // submitter inconnu : envoi classique
+      e.preventDefault();
+      var pop = document.getElementById('ck-bilan-pop');
+      if (pop && form === pop) pop.hidden = true;
+      run(form, docType);
+      // Réarme le bouton du popover pour une prochaine génération
+      var sb = document.getElementById('ck-bilan-submit');
+      if (sb) setTimeout(function () {
+        sb.disabled = false;
+        var a = sb.querySelector('.ck-bilan-submit-lbl'), b = sb.querySelector('.ck-bilan-submit-loading');
+        if (a) a.style.display = ''; if (b) b.style.display = 'none';
+      }, 0);
+    });
+  });
+})();
+</script>
 
 <script>
 (function () {

@@ -111,6 +111,49 @@ if ($mode === 'generate') {
     ];
 
     $p = $prompts[$doc_type];
+
+    // L'appel dure jusqu'à une minute : on libère la session pour que les
+    // autres onglets de l'utilisateur ne restent pas bloqués derrière.
+    session_write_close();
+
+    if (($_POST['stream'] ?? '') === '1') {
+        // ======= VERSION EN DIRECT (fetch + flux SSE) =======
+        // Le texte s'affiche au fil de l'écriture ; le document est enregistré
+        // à la fin même si l'utilisateur ferme la fenêtre entre-temps.
+        ignore_user_abort(true);
+        @set_time_limit(320);
+        @ini_set('zlib.output_compression', '0');
+        @ini_set('output_buffering', '0');
+        if (function_exists('apache_setenv')) @apache_setenv('no-gzip', '1');
+        while (ob_get_level() > 0) ob_end_clean();
+        header('Content-Type: text/event-stream; charset=utf-8');
+        header('Cache-Control: no-cache, no-transform');
+        header('X-Accel-Buffering: no');
+        $send = function (array $ev) {
+            echo 'data: ' . json_encode($ev, JSON_UNESCAPED_UNICODE) . "\n\n";
+            flush();
+        };
+        // Quelques Ko de remplissage : certains proxys retiennent les petits envois
+        echo ':' . str_repeat(' ', 2048) . "\n\n";
+        $send(['type' => 'start', 'title' => $p['title']]);
+
+        $result = ask_claude_stream($system, [['role' => 'user', 'content' => $p['user_msg']]], function ($t) use ($send) {
+            $send(['type' => 'text', 'text' => $t]);
+        });
+        if (!$result['success']) {
+            $send(['type' => 'error', 'error' => $result['error']]);
+            exit;
+        }
+        $pdo->prepare("
+            INSERT INTO ai_generated_docs (project_id, user_id, doc_type, title, content)
+            VALUES (?, ?, ?, ?, ?)
+        ")->execute([
+            $project_id, $user['id'], $doc_type, $p['title'], $result['content']
+        ]);
+        $send(['type' => 'done', 'url' => '/projet/' . $project_id . '/ia?generated=1']);
+        exit;
+    }
+
     $result = ask_claude($system, [['role' => 'user', 'content' => $p['user_msg']]]);
 
     if (!$result['success']) {
@@ -167,7 +210,8 @@ $messages[] = ['role' => 'user', 'content' => $user_message];
 $pdo->prepare("INSERT INTO ai_messages (conversation_id, role, content) VALUES (?, 'user', ?)")
     ->execute([$conv_id, $user_message]);
 
-// Appel à l'IA
+// Appel à l'IA (session libérée : les autres onglets restent utilisables)
+session_write_close();
 $result = ask_claude($system, $messages);
 
 if (!$result['success']) {

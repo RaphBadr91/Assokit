@@ -331,6 +331,128 @@ function ask_claude($system_prompt, $messages, $max_tokens = null) {
 }
 
 /**
+ * Même appel que ask_claude(), mais en streaming : $on_text reçoit chaque
+ * morceau de texte dès que Claude l'écrit. Un bilan complet prend le même
+ * temps à être rédigé, mais le premier paragraphe s'affiche en 2-3 s au
+ * lieu d'un écran figé jusqu'à la fin.
+ *
+ * @param callable $on_text function(string $morceau): void
+ * @return array Même forme que ask_claude() (content = texte complet)
+ */
+function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_tokens = null) {
+    if (!is_ai_enabled()) {
+        return [
+            'success' => false,
+            'content' => '',
+            'error' => 'L\'IA n\'est pas configurée. Demandez à l\'administrateur d\'ajouter la clé API Anthropic dans config.php.',
+            'tokens' => 0,
+        ];
+    }
+
+    $max_tokens = $max_tokens ?: AI_MAX_TOKENS;
+
+    $payload = [
+        'model' => ANTHROPIC_MODEL,
+        'max_tokens' => (int)$max_tokens,
+        'system' => $system_prompt,
+        'messages' => $messages,
+        'stream' => true,
+    ];
+
+    $buffer = '';       // flux SSE pas encore découpé en événements
+    $raw = '';          // corps brut si l'API répond une erreur (JSON, pas SSE)
+    $content_text = '';
+    $tokens_in = 0;
+    $tokens_out = 0;
+    $stream_err = null;
+
+    $ch = curl_init(defined('ANTHROPIC_API_URL') ? ANTHROPIC_API_URL : 'https://api.anthropic.com/v1/messages');
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'Accept: text/event-stream',
+        'x-api-key: ' . ANTHROPIC_API_KEY,
+        'anthropic-version: 2023-06-01',
+    ]);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+    // Coupe si plus rien n'arrive pendant 60 s (le serveur envoie des pings)
+    curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, 1);
+    curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, 60);
+    curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $chunk) use (&$buffer, &$raw, &$content_text, &$tokens_in, &$tokens_out, &$stream_err, $on_text) {
+        if ((int)curl_getinfo($ch, CURLINFO_HTTP_CODE) !== 200) {
+            $raw .= $chunk;
+            return strlen($chunk);
+        }
+        $buffer .= str_replace("\r\n", "\n", $chunk);
+        while (($pos = strpos($buffer, "\n\n")) !== false) {
+            $event = substr($buffer, 0, $pos);
+            $buffer = substr($buffer, $pos + 2);
+            $data = '';
+            foreach (explode("\n", $event) as $line) {
+                if (strncmp($line, 'data:', 5) === 0) {
+                    $data .= ltrim(substr($line, 5));
+                }
+            }
+            $ev = $data !== '' ? json_decode($data, true) : null;
+            if (!is_array($ev)) continue;
+            switch ($ev['type'] ?? '') {
+                case 'message_start':
+                    $tokens_in = (int)($ev['message']['usage']['input_tokens'] ?? 0);
+                    break;
+                case 'content_block_delta':
+                    if (($ev['delta']['type'] ?? '') === 'text_delta') {
+                        $t = (string)($ev['delta']['text'] ?? '');
+                        $content_text .= $t;
+                        if ($t !== '') $on_text($t);
+                    }
+                    break;
+                case 'message_delta':
+                    $tokens_out = (int)($ev['usage']['output_tokens'] ?? $tokens_out);
+                    break;
+                case 'error':
+                    $stream_err = $ev['error']['message'] ?? 'Erreur pendant la génération';
+                    break;
+            }
+        }
+        return strlen($chunk);
+    });
+
+    curl_exec($ch);
+    $http_code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_err = curl_error($ch);
+    curl_close($ch);
+
+    if ($http_code !== 200) {
+        $data = json_decode($raw, true);
+        $msg = $data['error']['message'] ?? ($curl_err ?: 'Erreur inconnue (code ' . $http_code . ')');
+        return [
+            'success' => false,
+            'content' => '',
+            'error' => $http_code ? 'L\'IA a répondu avec une erreur : ' . $msg : 'Problème de connexion à l\'IA : ' . $msg,
+            'tokens' => 0,
+        ];
+    }
+
+    if ($stream_err || $curl_err) {
+        return [
+            'success' => false,
+            'content' => $content_text,
+            'error' => 'L\'IA a été interrompue : ' . ($stream_err ?: $curl_err),
+            'tokens' => $tokens_in + $tokens_out,
+        ];
+    }
+
+    return [
+        'success' => true,
+        'content' => $content_text,
+        'error' => null,
+        'tokens' => $tokens_in + $tokens_out,
+    ];
+}
+
+/**
  * Extrait les infos d'une facture depuis une image ou un PDF.
  * Utilise Claude Vision pour "lire" la photo et retourner les champs structurés.
  *
