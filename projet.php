@@ -118,8 +118,26 @@ $is_coord = ($current['role'] === 'coordinator');
 $is_referent = ($project['referent_id'] == $current['id']);
 // Édition des étapes : admin, coord, référent (comme avant)
 $can_edit_steps = $is_admin || $is_coord || $is_referent;
-// Édition du projet lui-même : admin + référent UNIQUEMENT
-$can_edit_project = $is_admin || $is_referent;
+// Dernière modification de la fiche projet (qui, quand) : lue dans
+// project_activity_log, que action-projet.php remplit champ par champ.
+$last_edit = null;
+try {
+    $le = $pdo->prepare("
+        SELECT l.created_at, u.first_name, u.last_name
+        FROM project_activity_log l
+        LEFT JOIN users u ON u.id = l.user_id
+        WHERE l.project_id = ?
+          AND l.action_type IN ('project_updated', 'status_changed', 'budget_changed', 'referent_changed')
+        ORDER BY l.created_at DESC, l.id DESC
+        LIMIT 1
+    ");
+    $le->execute([$project_id]);
+    $last_edit = $le->fetch(PDO::FETCH_ASSOC) ?: null;
+} catch (Throwable $e) { $last_edit = null; }
+
+// Édition du projet lui-même : admin, référent et coordinateur
+// (l'archivage reste réservé à l'admin, le budget à qui voit les finances).
+$can_edit_project = $is_admin || $is_referent || $is_coord;
 // Partage public : admin + référent + coordinateur
 $can_share_public = $is_admin || $is_referent || $is_coord;
 
@@ -566,7 +584,7 @@ render_sidebar('projets');
     </div>
   <?php elseif (isset($_GET['error'])):
     $err_labels = [
-      'permission' => 'Seuls l\'administrateur et le référent du projet peuvent modifier ce projet.',
+      'permission' => 'Seuls l\'administrateur, les coordinateurs et le référent du projet peuvent modifier ce projet.',
       'csrf' => 'Session expirée, réessayez.',
       'forbidden' => 'Vous n\'avez pas accès à ce projet.',
     ];
@@ -595,6 +613,12 @@ render_sidebar('projets');
           </span>
         <?php endif; ?>
       </div>
+      <?php if ($last_edit): ?>
+        <div class="proj-header-edited" style="margin-top:6px; font-size:12.5px; color:#6b7280;">
+          ✏️ Modifié le <?= h(format_date_p($last_edit['created_at'])) ?> à <?= h(date('H\hi', strtotime($last_edit['created_at']))) ?>
+          <?php if (!empty($last_edit['first_name'])): ?>par <strong style="color:#374151; font-weight:600;"><?= h($last_edit['first_name'] . ' ' . $last_edit['last_name']) ?></strong><?php endif; ?>
+        </div>
+      <?php endif; ?>
     </div>
     <?php if ($can_edit_project || $is_admin): ?>
     <div class="head-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -1438,34 +1462,110 @@ render_sidebar('projets');
                 $by_color = in_array($step['by_color'], ['blue','purple','amber','pink','teal'], true)
                   ? 'av-' . $step['by_color'] : 'av-blue';
               ?>
-              <div class="step-item <?= $step['is_completed'] ? 'done' : '' ?>">
+              <?php
+                $step_done = !empty($step['is_completed']);
+                // Compte-rendu : colonne ajoutée par migrations/2026-10-05-etapes-compte-rendu.sql.
+                $note_ok   = array_key_exists('completion_note', $step);
+                $step_note = $note_ok ? trim((string)$step['completion_note']) : '';
+                $note_form = 'note-' . (int)$step['id'];
+              ?>
+              <div class="step-item <?= $step_done ? 'done' : '' ?>" id="etape-<?= (int)$step['id'] ?>">
                 <?php if ($can_edit_steps): ?>
-                  <form method="POST" action="/action-etape" style="display: inline; margin: 0;">
+                  <form method="POST" action="/action-etape" style="display: inline; margin: 0;"<?= (!$step_done && $note_ok) ? ' data-step-note="' . h($note_form) . '"' : '' ?>>
                     <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
                     <input type="hidden" name="step_id" value="<?= (int)$step['id'] ?>">
                     <input type="hidden" name="project_id" value="<?= (int)$project['id'] ?>">
-                    <button type="submit" class="step-check <?= $step['is_completed'] ? 'done' : '' ?>">
+                    <button type="submit" class="step-check <?= $step_done ? 'done' : '' ?>" title="<?= $step_done ? 'Dévalider l’étape' : 'Valider l’étape' ?>">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                     </button>
                   </form>
                 <?php else: ?>
-                  <span class="step-check readonly <?= $step['is_completed'] ? 'done' : '' ?>">
+                  <span class="step-check readonly <?= $step_done ? 'done' : '' ?>">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                   </span>
                 <?php endif; ?>
                 <div class="step-body">
                   <div class="step-title"><?= h($step['title']) ?></div>
                   <?php if ($step['description']): ?><div class="step-desc"><?= nl2br(h($step['description'])) ?></div><?php endif; ?>
-                  <?php if ($step['is_completed'] && $step['by_first']): ?>
+                  <?php if ($step_done && $step['by_first']): ?>
                     <div class="step-meta">
                       <span class="<?= $by_color ?>" style="width:16px;height:16px;font-size:8px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;font-weight:500;"><?= h(user_initials($step['by_first'], $step['by_last'])) ?></span>
-                      Validée par <?= h($step['by_first'] . ' ' . $step['by_last']) ?> · <?= h(format_date_p($step['completed_at'])) ?>
+                      Validée par <?= h($step['by_first'] . ' ' . $step['by_last']) ?> · <?= h(format_date_p($step['completed_at'])) ?> à <?= h(date('H\hi', strtotime($step['completed_at']))) ?>
                     </div>
+                  <?php endif; ?>
+                  <?php if ($step_done && $step_note !== ''): ?>
+                    <div class="step-note">
+                      <div class="step-note-lbl">Ce qui a été fait</div>
+                      <?= nl2br(h($step_note)) ?>
+                    </div>
+                  <?php endif; ?>
+                  <?php if ($can_edit_steps && $note_ok): ?>
+                    <?php if ($step_done): ?>
+                      <button type="button" class="step-note-link" data-open-note="<?= h($note_form) ?>">
+                        <?= $step_note !== '' ? '✏️ Modifier le compte-rendu' : '📝 Ajouter un compte-rendu' ?>
+                      </button>
+                    <?php endif; ?>
+                    <form method="POST" action="/action-etape" class="step-note-form" id="<?= h($note_form) ?>" hidden>
+                      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+                      <input type="hidden" name="step_id" value="<?= (int)$step['id'] ?>">
+                      <input type="hidden" name="project_id" value="<?= (int)$project['id'] ?>">
+                      <input type="hidden" name="action" value="<?= $step_done ? 'note' : 'toggle' ?>">
+                      <label for="<?= h($note_form) ?>-txt">Qu'est-ce qui a été fait ? <span>facultatif — visible par toute l'équipe du projet</span></label>
+                      <textarea id="<?= h($note_form) ?>-txt" name="completion_note" rows="3" maxlength="2000"
+                                placeholder="Ex : salle réservée pour 3 séances, 12 participants confirmés, supports envoyés par e-mail."><?= h($step_note) ?></textarea>
+                      <div class="step-note-actions">
+                        <button type="submit" class="step-note-ok"><?= $step_done ? 'Enregistrer' : '✓ Valider l’étape' ?></button>
+                        <button type="button" class="step-note-cancel" data-close-note="<?= h($note_form) ?>">Annuler</button>
+                      </div>
+                    </form>
                   <?php endif; ?>
                 </div>
               </div>
               <?php endforeach; ?>
             </div>
+            <style>
+              .step-note{margin-top:8px;padding:9px 12px;border-left:3px solid #059669;background:#f0fdf4;border-radius:0 8px 8px 0;font-size:13px;line-height:1.5;color:#1f2937}
+              .step-note-lbl{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#047857;margin-bottom:2px}
+              .step-note-link{margin-top:6px;padding:0;border:0;background:none;color:#4f46e5;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+              .step-note-link:hover{text-decoration:underline}
+              .step-note-form{margin-top:10px;padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#fff}
+              .step-note-form label{display:block;font-size:13px;font-weight:600;color:#111827;margin-bottom:6px}
+              .step-note-form label span{font-weight:400;color:#6b7280;font-size:12px}
+              .step-note-form textarea{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font:inherit;font-size:14px;resize:vertical;min-height:72px}
+              .step-note-form textarea:focus{outline:none;border-color:#059669;box-shadow:0 0 0 3px rgba(5,150,105,.15)}
+              .step-note-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+              .step-note-ok{padding:8px 14px;border:0;border-radius:8px;background:#059669;color:#fff;font-weight:600;cursor:pointer}
+              .step-note-cancel{padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;cursor:pointer}
+            </style>
+            <script>
+            (function () {
+              function ouvrir(id) {
+                var f = document.getElementById(id);
+                if (!f) return false;
+                f.hidden = false;
+                var t = f.querySelector('textarea');
+                if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+                return true;
+              }
+              // Cocher une étape ouvre d'abord le compte-rendu (facultatif).
+              document.querySelectorAll('form[data-step-note]').forEach(function (form) {
+                form.addEventListener('submit', function (e) {
+                  if (ouvrir(form.getAttribute('data-step-note'))) e.preventDefault();
+                });
+              });
+              document.querySelectorAll('[data-open-note]').forEach(function (b) {
+                b.addEventListener('click', function () { ouvrir(b.getAttribute('data-open-note')); b.hidden = true; });
+              });
+              document.querySelectorAll('[data-close-note]').forEach(function (b) {
+                b.addEventListener('click', function () {
+                  var f = document.getElementById(b.getAttribute('data-close-note'));
+                  if (f) f.hidden = true;
+                  var lien = document.querySelector('[data-open-note="' + b.getAttribute('data-close-note') + '"]');
+                  if (lien) lien.hidden = false;
+                });
+              });
+            })();
+            </script>
           <?php endif; ?>
         </div>
       </div>

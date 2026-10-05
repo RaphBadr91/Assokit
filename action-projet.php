@@ -49,10 +49,12 @@ if (!$project || $project['org_id'] != $org_id) {
     exit;
 }
 
-// Permissions : admin OU référent du projet
+// Permissions : admin OU référent du projet ; les coordinateurs peuvent
+// aussi MODIFIER (action update), mais ni archiver ni dupliquer.
 $is_admin = ($user['role'] === 'admin');
+$is_coord = ($user['role'] === 'coordinator');
 $is_referent = ((int)$project['referent_id'] === (int)$user['id']);
-$can_edit = $is_admin || $is_referent;
+$can_edit = $is_admin || $is_referent || ($is_coord && $action === 'update');
 
 if (!$can_edit) {
     header('Location: /projet/' . $project_id . '?error=permission');
@@ -108,6 +110,14 @@ if ($action === 'update') {
     $participants = (int)($_POST['participants_count'] ?? 0);
     $budget_planned = (float)str_replace([' ', ','], ['', '.'], $_POST['budget_planned'] ?? $project['budget_planned']);
     $budget_used = (float)str_replace([' ', ','], ['', '.'], $_POST['budget_used'] ?? $project['budget_used']);
+    // Politique finances stricte (finance-permissions.php) : qui ne voit pas
+    // l'argent ne peut pas non plus le modifier. Le formulaire ne lui montre
+    // pas le budget ; on garde ici les valeurs en base quoi qu'on reçoive.
+    require_once __DIR__ . '/finance-permissions.php';
+    if (!user_can_view_finances($user)) {
+        $budget_planned = (float)$project['budget_planned'];
+        $budget_used = (float)$project['budget_used'];
+    }
     $start_date = $_POST['start_date'] ?? null;
     $end_date = $_POST['end_date'] ?? null;
 

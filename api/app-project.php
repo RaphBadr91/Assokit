@@ -59,7 +59,10 @@ try {
     $steps = [];
     $done = 0;
     try {
-        $st = $pdo->prepare("SELECT id, title, description, is_completed FROM project_steps WHERE project_id = ? ORDER BY position ASC, id ASC");
+        // s.* : le compte-rendu (completion_note) n'existe qu'après la migration du 2026-10-05.
+        $st = $pdo->prepare("SELECT s.*, u.first_name AS by_first, u.last_name AS by_last
+                             FROM project_steps s LEFT JOIN users u ON u.id = s.completed_by
+                             WHERE s.project_id = ? ORDER BY s.position ASC, s.id ASC");
         $st->execute([$id]);
         foreach (($st->fetchAll(PDO::FETCH_ASSOC) ?: []) as $s) {
             $d = !empty($s['is_completed']);
@@ -69,6 +72,10 @@ try {
                 'title' => (string) ($s['title'] ?? ''),
                 'desc'  => (string) ($s['description'] ?? ''),
                 'done'  => $d,
+                // Validation : qui, quand (date et heure), et ce qui a été fait.
+                'done_at' => $d && !empty($s['completed_at']) ? date('c', strtotime($s['completed_at'])) : null,
+                'done_by' => $d ? trim(($s['by_first'] ?? '') . ' ' . ($s['by_last'] ?? '')) : null,
+                'note'    => $d ? (string)($s['completion_note'] ?? '') : '',
             ];
         }
     } catch (Throwable $e) {}

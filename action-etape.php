@@ -4,14 +4,16 @@
  * ASSOKIT — Action : gestion des étapes d'un projet
  * ============================================================
  * Actions supportées (POST) :
- *   - toggle  : valider/dévalider une étape (existant)
+ *   - toggle  : valider/dévalider une étape (existant) ; à la validation,
+ *               un compte-rendu facultatif (completion_note)
+ *   - note    : écrire ou corriger le compte-rendu d'une étape validée
  *   - add     : ajouter une nouvelle étape
  *   - edit    : modifier le titre/description d'une étape
  *   - delete  : supprimer une étape
  *   - reorder : réordonner les étapes
  * 
  * Permissions :
- *   - toggle : admin, coordinator, référent du projet
+ *   - toggle, note : admin, coordinator, référent du projet
  *   - add/edit/delete/reorder : admin OU référent du projet uniquement
  * ============================================================
  */
@@ -100,6 +102,29 @@ function recalc_project_progress(PDO $pdo, int $project_id): void {
     }
 }
 
+/**
+ * La colonne completion_note arrive par migration
+ * (migrations/2026-10-05-etapes-compte-rendu.sql) : tant qu'elle manque,
+ * on valide l'étape comme avant, sans compte-rendu.
+ */
+function step_note_available(PDO $pdo): bool {
+    static $ok = null;
+    if ($ok === null) {
+        try {
+            $q = $pdo->query("SHOW COLUMNS FROM project_steps LIKE 'completion_note'");
+            $ok = (bool)$q->fetch();
+        } catch (Throwable $e) { $ok = false; }
+    }
+    return $ok;
+}
+
+/** Compte-rendu saisi : texte libre, borné, vide => NULL. */
+function step_note_input(): ?string {
+    $n = trim(str_replace("\r\n", "\n", (string)($_POST['completion_note'] ?? '')));
+    if ($n === '') return null;
+    return mb_substr($n, 0, 2000);
+}
+
 function log_step_activity(PDO $pdo, int $project_id, int $user_id, string $msg): void {
     try {
         $pdo->prepare("INSERT INTO project_activity_log (project_id, user_id, action_type, action_label, ip_address) VALUES (?, ?, 'step_updated', ?, ?)")
@@ -138,12 +163,40 @@ switch ($action) {
             $pdo->prepare("UPDATE project_steps SET is_completed = 0, completed_at = NULL, completed_by = NULL WHERE id = ?")->execute([$step_id]);
             log_step_activity($pdo, $project_id, $user_id, 'a dévalidé l\'étape « ' . mb_substr($step['title'], 0, 80) . ' »');
         } else {
-            $pdo->prepare("UPDATE project_steps SET is_completed = 1, completed_at = NOW(), completed_by = ? WHERE id = ?")->execute([$user_id, $step_id]);
-            log_step_activity($pdo, $project_id, $user_id, 'a validé l\'étape « ' . mb_substr($step['title'], 0, 80) . ' »');
+            $note = step_note_input();
+            if (step_note_available($pdo)) {
+                $pdo->prepare("UPDATE project_steps SET is_completed = 1, completed_at = NOW(), completed_by = ?, completion_note = ? WHERE id = ?")
+                    ->execute([$user_id, $note, $step_id]);
+            } else {
+                $pdo->prepare("UPDATE project_steps SET is_completed = 1, completed_at = NOW(), completed_by = ? WHERE id = ?")->execute([$user_id, $step_id]);
+            }
+            log_step_activity($pdo, $project_id, $user_id, 'a validé l\'étape « ' . mb_substr($step['title'], 0, 80) . ' »'
+                . ($note !== null ? ' — ' . mb_substr($note, 0, 120) . (mb_strlen($note) > 120 ? '…' : '') : ''));
         }
         
         recalc_project_progress($pdo, $project_id);
         header('Location: /projet/' . $project_id);
+        exit;
+
+    // ============= NOTE (compte-rendu d'une étape validée) =============
+    case 'note':
+        $step_id = (int)($_POST['step_id'] ?? 0);
+        if (!$is_admin && !$is_coord && !$is_referent) {
+            http_response_code(403);
+            die('Vous n\'avez pas le droit de modifier cette étape.');
+        }
+        if ($step_id > 0 && step_note_available($pdo)) {
+            $stmt = $pdo->prepare("SELECT title FROM project_steps WHERE id = ? AND project_id = ? AND is_completed = 1");
+            $stmt->execute([$step_id, $project_id]);
+            $title = $stmt->fetchColumn();
+            if ($title !== false) {
+                $note = step_note_input();
+                $pdo->prepare("UPDATE project_steps SET completion_note = ? WHERE id = ? AND project_id = ?")
+                    ->execute([$note, $step_id, $project_id]);
+                log_step_activity($pdo, $project_id, $user_id, 'a ' . ($note === null ? 'retiré' : 'complété') . ' le compte-rendu de l\'étape « ' . mb_substr($title, 0, 80) . ' »');
+            }
+        }
+        header('Location: /projet/' . $project_id . '#etape-' . $step_id);
         exit;
 
     // ============= ADD (ajouter une étape) =============

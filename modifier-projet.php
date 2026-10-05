@@ -36,11 +36,15 @@ if (!$project || $project['org_id'] != $org_id) {
     exit;
 }
 
-// Permissions : admin OU référent
+// Permissions : admin, référent du projet ou coordinateur
 $is_admin = ($current['role'] === 'admin');
+$is_coord = ($current['role'] === 'coordinator');
 $is_referent = ((int)$project['referent_id'] === (int)$current['id']);
+// Budget : seulement pour qui a le droit de voir l'argent (finance-permissions.php).
+require_once __DIR__ . '/finance-permissions.php';
+$can_see_budget = user_can_view_finances($current);
 
-if (!$is_admin && !$is_referent) {
+if (!$is_admin && !$is_referent && !$is_coord) {
     header('Location: /projet/' . $project_id . '?error=permission');
     exit;
 }
@@ -233,6 +237,7 @@ $avatar_colors = [
     </div>
 
     <!-- Budget -->
+    <?php if ($can_see_budget): ?>
     <div class="form-section">
       <h2 class="form-section-title">💰 Budget</h2>
 
@@ -249,6 +254,7 @@ $avatar_colors = [
         </div>
       </div>
     </div>
+    <?php endif; ?>
 
     <!-- Actions -->
     <div class="form-actions">
