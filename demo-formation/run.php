@@ -23,6 +23,7 @@
 require_once __DIR__ . '/lib.php';
 require_once __DIR__ . '/purge.php';
 require_once __DIR__ . '/00-organisation.php';
+require_once __DIR__ . '/catalogue.php';
 
 /** Fichiers de modules, triés : [nom => chemin]. */
 function df_modules(): array
@@ -36,6 +37,13 @@ function df_modules(): array
     }
     // Ordre des numéros de fichier, pas des noms.
     uasort($mods, fn($a, $b) => strcmp(basename($a), basename($b)));
+    // Mise au point : DF_MODULES=projets,agenda ne joue que ces modules
+    // (l'abonnement est toujours joué). Jamais utilisé en production.
+    $filtre = getenv('DF_MODULES');
+    if ($filtre) {
+        $garder = array_flip(array_merge(['abonnement'], array_map('trim', explode(',', $filtre))));
+        $mods = array_intersect_key($mods, $garder);
+    }
     return $mods;
 }
 
@@ -54,7 +62,7 @@ function df_run(PDO $pdo, callable $log): array
     DF::$ids = [];
     DF::$rapport = [
         'inseres' => [], 'tables_absentes' => [], 'colonnes_ignorees' => [],
-        'enum' => [], 'erreurs' => [], 'modules' => [], 'purge_notes' => [],
+        'enum' => [], 'erreurs' => [], 'modules' => [], 'purge_notes' => [], 'notes' => [],
     ];
     DF::reset_caches();
     df_graine();

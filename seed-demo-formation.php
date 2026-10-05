@@ -160,6 +160,8 @@ try {
 $dire(sprintf('  terminé en %.1f s, %d lignes', microtime(true) - $debut, array_sum($r['inseres'])));
 $dire('');
 
+foreach ($r['notes'] ?? [] as $note) $dire('Note : ' . $note);
+
 // Écarts de schéma : utiles pour comprendre un écran vide, sans être bloquants.
 if ($r['tables_absentes']) {
     $dire('Tables absentes sur ce serveur (modules sautés) : ' . implode(', ', array_keys($r['tables_absentes'])));

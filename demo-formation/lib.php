@@ -429,3 +429,108 @@ function df_id(string $groupe, string $cle): ?int
 {
     return DF::$ids[$groupe][$cle] ?? null;
 }
+
+// ------------------------------------------------------------------
+// Fichiers de démo : de vrais petits fichiers, pour qu'un clic sur un
+// document ne réponde jamais « Fichier introuvable » devant un prospect.
+// ------------------------------------------------------------------
+
+/** Un PDF d'une page, texte simple (Helvetica, accents en WinAnsi). */
+function df_pdf(string $titre, array $lignes): string
+{
+    $enc = function (string $s): string {
+        $t = @iconv('UTF-8', 'Windows-1252//TRANSLIT', $s);
+        if ($t === false) $t = df_ascii($s);
+        return str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $t);
+    };
+    $flux = "BT /F2 18 Tf 56 780 Td (" . $enc($titre) . ") Tj ET\n";
+    $flux .= "BT /F1 9 Tf 56 760 Td (" . $enc('Association DEMO F — Formation & Insertion · document de démonstration') . ") Tj ET\n";
+    $y = 728;
+    foreach ($lignes as $l) {
+        foreach (explode("\n", wordwrap((string)$l, 95, "\n", true)) as $morceau) {
+            if ($y < 60) break 2;
+            $flux .= "BT /F1 11 Tf 56 $y Td (" . $enc($morceau) . ") Tj ET\n";
+            $y -= 16;
+        }
+        $y -= 4;
+    }
+    $objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
+        "<< /Length " . strlen($flux) . " >>\nstream\n" . $flux . "endstream",
+    ];
+    $pdf = "%PDF-1.4\n";
+    $pos = [];
+    foreach ($objs as $i => $o) {
+        $pos[] = strlen($pdf);
+        $pdf .= ($i + 1) . " 0 obj\n$o\nendobj\n";
+    }
+    $xref = strlen($pdf);
+    $pdf .= "xref\n0 " . (count($objs) + 1) . "\n0000000000 65535 f \n";
+    foreach ($pos as $p) $pdf .= sprintf("%010d 00000 n \n", $p);
+    $pdf .= "trailer\n<< /Size " . (count($objs) + 1) . " /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n";
+    return $pdf;
+}
+
+/** Une image (jpg ou png) unie avec un motif, ou null sans GD. */
+function df_image(string $ext, int $graine = 0): ?string
+{
+    if (!function_exists('imagecreatetruecolor')) return null;
+    $w = 960; $h = 640;
+    $img = imagecreatetruecolor($w, $h);
+    $teintes = [[79, 70, 229], [5, 150, 105], [217, 119, 6], [219, 39, 119], [8, 145, 178]];
+    [$r, $g, $b] = $teintes[$graine % count($teintes)];
+    imagefill($img, 0, 0, imagecolorallocate($img, $r, $g, $b));
+    $clair = imagecolorallocatealpha($img, 255, 255, 255, 90);
+    for ($i = 0; $i < 9; $i++) {
+        $x = (($graine + 1) * 131 * ($i + 3)) % $w;
+        $y = (($graine + 7) * 97 * ($i + 1)) % $h;
+        imagefilledellipse($img, $x, $y, 120 + 40 * ($i % 4), 120 + 40 * ($i % 4), $clair);
+    }
+    ob_start();
+    $ext === 'png' ? imagepng($img) : imagejpeg($img, null, 78);
+    $bin = (string)ob_get_clean();
+    imagedestroy($img);
+    return $bin;
+}
+
+/**
+ * Écrit un fichier sous <webroot>/uploads/ et renvoie sa taille (0 si échec).
+ * $rel est relatif à la racine du site : 'uploads/projet_12/x.pdf'.
+ */
+function df_ecrire(string $rel, string $contenu): int
+{
+    if (strpos($rel, 'uploads/') !== 0 || strpos($rel, '..') !== false) return 0;
+    $abs = dirname(__DIR__) . '/' . $rel;
+    $dir = dirname($abs);
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) return 0;
+    return @file_put_contents($abs, $contenu) === false ? 0 : strlen($contenu);
+}
+
+/** Supprime un fichier de démo sous uploads/projet_<id>/ (et le dossier s'il est vide). */
+function df_effacer_fichier(?string $rel, array $projetsDemo): void
+{
+    if (!$rel || strpos($rel, '..') !== false) return;
+    $rel = ltrim($rel, '/');
+    if (!preg_match('#^uploads/projet_(\d+)/#', $rel, $m) || !in_array((int)$m[1], $projetsDemo, true)) return;
+    $abs = dirname(__DIR__) . '/' . $rel;
+    if (is_file($abs)) @unlink($abs);
+    foreach ([dirname($abs), dirname(dirname($abs))] as $d) {
+        if (preg_match('#/uploads/projet_\d+(/factures)?$#', $d) && is_dir($d) && count(scandir($d)) === 2) @rmdir($d);
+    }
+}
+
+/**
+ * Date-heure d'un événement PASSÉ : jamais dans le futur, même si la démo
+ * est reconstruite à la main en pleine journée (un message « dans 2 h »
+ * se verrait devant un prospect).
+ */
+function df_passe(int $j, string $h): string
+{
+    $d = df_jh($j, $h);
+    $limite = time() - 300;
+    return strtotime($d) > $limite ? date('Y-m-d H:i:s', $limite - 60 * mt_rand(0, 40)) : $d;
+}

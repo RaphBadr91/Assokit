@@ -42,6 +42,7 @@ function df_purge_ensembles(): array
         'cotis_campaigns' => ['cotisation_campaigns', "SELECT id FROM cotisation_campaigns WHERE org_id = :org"],
         'channels'     => ['channels',                "SELECT id FROM channels WHERE org_id = :org"],
         'assemblies'   => ['assemblies',              "SELECT id FROM assemblies WHERE org_id = :org"],
+        'resolutions'  => ['assembly_resolutions',    "SELECT id FROM assembly_resolutions WHERE assembly_id IN (SELECT id FROM assemblies WHERE org_id = :org)"],
         'attendance'   => ['attendance_sessions',     "SELECT id FROM attendance_sessions WHERE org_id = :org"],
         'tickets'      => ['support_tickets',         "SELECT id FROM support_tickets WHERE org_id = :org"],
         'ai_convs'     => ['ai_conversations',        "SELECT id FROM ai_conversations WHERE project_id IN (SELECT p.id FROM projects p JOIN folders f ON f.id = p.folder_id WHERE f.org_id = :org)"],
@@ -79,6 +80,7 @@ function df_purge_plan(): array
         ['user_pinned_folders',         'folder_id',       'folders'],
         ['projects',                    'id',              'projects'],
         ['folders',                     'org_id',          'org'],
+        ['archive_logs',                'org_id',          'org'],
 
         // Facturation
         ['asso_invoice_lines',          'invoice_id',      'invoices'],
@@ -106,6 +108,8 @@ function df_purge_plan(): array
         ['org_grant_profile',           'org_id',          'org'],
         ['grant_alert_prefs',           'org_id',          'org'],
         ['grant_alert_sent',            'org_id',          'org'],
+        // Dispositifs du radar propres à DEMO F (jamais le catalogue national : org_id IS NULL).
+        ['grant_catalog',               'org_id',          'org'],
 
         // Agenda, équipe
         ['event_participants',          'event_id',        'events'],
@@ -115,7 +119,7 @@ function df_purge_plan(): array
         ['assokit_absences',            'org_id',          'org'],
 
         // Assemblées, émargement
-        ['assembly_votes',              'assembly_id',     'assemblies'],
+        ['assembly_votes',              'resolution_id',   'resolutions'],
         ['assembly_resolutions',        'assembly_id',     'assemblies'],
         ['assembly_attendees',          'assembly_id',     'assemblies'],
         ['assemblies',                  'org_id',          'org'],
@@ -149,14 +153,15 @@ function df_purge_plan(): array
         ['cotisation_tiers',            'campaign_id',     'cotis_campaigns'],
         ['cotisation_campaigns',        'org_id',          'org'],
         ['asso_membership_reminders',   'org_id',          'org'],
+        ['org_payment_settings',        'org_id',          'org'],
 
         // Notes de frais
         ['expense_report_lines',        'report_id',       'expense_reports'],
         ['expense_reports',             'org_id',          'org'],
 
         // Prospection et codes QR
-        ['asso_prospection_rappels',    'prospection_id',  'prospection'],
-        ['asso_prospection_events',     'prospection_id',  'prospection'],
+        ['asso_prospection_rappels',    'prospect_id',     'prospection'],
+        ['asso_prospection_events',     'prospect_id',     'prospection'],
         ['asso_prospection',            'org_id',          'org'],
         ['asso_prospection_imports',    'org_id',          'org'],
         ['asso_qr_codes',               'org_id',          'org'],
@@ -185,8 +190,10 @@ function df_purge_plan(): array
         // Ce qui est rattaché aux personnes
         ['user_notifications',          'user_id',         'users'],
         ['user_calendar_tokens',        'user_id',         'users'],
+        ['asso_push_tokens',            'user_id',         'users'],
         ['user_password_tokens',        'user_id',         'users'],
-        ['users',                       'org_id',          'org'],
+        // Les comptes de connexion ne sont pas supprimés (voir df_purger).
+        ['users',                       'id',              'figurants'],
     ];
 }
 
@@ -219,6 +226,51 @@ function df_purger(int $org): array
             // Une colonne absente sur cette installation : ensemble vide, on continue.
             DF::$rapport['purge_notes'][] = "ensemble $nom : " . substr($e->getMessage(), 0, 160);
         }
+    }
+
+    // Les comptes de connexion gardent leur id d'une nuit à l'autre : on ne
+    // supprime que les autres personnes. Un compte dont l'e-mail a été modifié
+    // pendant la journée n'est plus reconnu et part avec les figurants.
+    $comptes = [];
+    foreach (df_comptes() as [, , , , , $local]) $comptes[] = strtolower($local . '@' . DF_DOMAINE);
+    $ens['figurants'] = [];
+    if ($ens['users']) {
+        $q = $pdo->prepare("SELECT id, email FROM users WHERE org_id = ?");
+        $q->execute([$org]);
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $u) {
+            if (!in_array(strtolower((string)$u['email']), $comptes, true)) $ens['figurants'][] = (int)$u['id'];
+        }
+    }
+
+    // Les fichiers déposés sur les projets de démo (y compris ceux ajoutés
+    // pendant la journée) : uniquement sous uploads/projet_<id d'un projet démo>/.
+    if ($ens['projects']) {
+        $in = implode(',', array_map('intval', $ens['projects']));
+        foreach ([['project_files', 'filepath'], ['project_invoices', 'file_path'], ['project_invoices', 'filepath']] as [$t, $c]) {
+            if (!df_a_colonne($t, $c)) continue;
+            try {
+                foreach ($pdo->query("SELECT `$c` FROM `$t` WHERE project_id IN ($in)")->fetchAll(PDO::FETCH_COLUMN) as $chemin) {
+                    df_effacer_fichier($chemin, $ens['projects']);
+                }
+            } catch (Throwable $e) {}
+        }
+    }
+
+    // PDF de factures et devis générés pendant la journée : seulement ceux que
+    // référencent les pièces de DEMO F, et dont le nom porte son préfixe.
+    foreach ([['asso_invoices', 'uploads/asso-invoices/', '/^' . preg_quote(DF_SLUG, '/') . '-\d{4}-\d{6}[-_][A-Za-z0-9_-]*\.(pdf|html)$/'],
+              ['asso_quotes', 'uploads/asso-quotes/', '/^DEVIS-' . preg_quote(DF_SLUG, '/') . '-\d{4}-\d{6}[-_][A-Za-z0-9_-]*\.(pdf|html)$/']] as [$t, $dossier, $motif]) {
+        if (!df_a_colonne($t, 'pdf_path')) continue;
+        try {
+            $q = $pdo->prepare("SELECT pdf_path FROM `$t` WHERE org_id = ? AND pdf_path IS NOT NULL");
+            $q->execute([$org]);
+            foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $chemin) {
+                $chemin = ltrim((string)$chemin, '/');
+                if (strpos($chemin, $dossier) !== 0 || strpos($chemin, '..') !== false || !preg_match($motif, basename($chemin))) continue;
+                $abs = dirname(__DIR__) . '/' . $chemin;
+                if (is_file($abs)) @unlink($abs);
+            }
+        } catch (Throwable $e) {}
     }
 
     // 2. Supprimer, enfants d'abord, par paquets de 500 ids.
