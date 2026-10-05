@@ -425,6 +425,7 @@ RewriteRule ^modifier-adherent/(\d+)/?$      modifier-adherent.php?id=$1 [L,QSA]
 # ============================================================
 RewriteCond %{REQUEST_METHOD} !=POST
 RewriteCond %{REQUEST_URI} !^/api/
+RewriteCond %{REQUEST_URI} !^/(vendor|demo-sql|demo-formation|migrations)/ [NC]
 RewriteCond %{THE_REQUEST} \s/+(.+?)\.php[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
 
