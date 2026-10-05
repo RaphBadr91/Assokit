@@ -5,11 +5,15 @@
  * ============================================================
  * GET /download-bilan.php?id=NN
  *
- * v2 — Avec graphiques SVG analytiques :
- *   - Donut d'avancement (étapes)
- *   - Barre budget prévu vs dépensé
- *   - Timeline chronologique des étapes
- *   - Histogramme activité 6 mois
+ * v3 — Mise en page « rapport » :
+ *   - En-tête sobre (logo, association, type de document, date d'édition)
+ *   - Fiche d'identité du projet + 4 indicateurs clés
+ *   - Tableau des étapes (validée le / par), budget, activité 6 mois
+ *   - Corps Markdown avec sections numérotées et vrais tableaux
+ *
+ * mPDF ne gère ni display:table sur des <div>, ni les emojis avec
+ * DejaVu : toute la mise en page passe par des <table>, et les
+ * pictogrammes couleur sont retirés du texte.
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
@@ -28,13 +32,16 @@ $stmt = $pdo->prepare("
            p.id AS project_id, p.name AS project_name, p.location AS project_location,
            p.start_date, p.end_date, p.budget_planned, p.budget_used,
            p.progress_percent, p.participants_count,
+           f.name AS folder_name,
            o.name AS org_name, o.id AS org_id, o.logo_path,
-           u.first_name AS author_first, u.last_name AS author_last
+           u.first_name AS author_first, u.last_name AS author_last,
+           r.first_name AS ref_first, r.last_name AS ref_last
     FROM ai_generated_docs g
     JOIN projects p ON p.id = g.project_id
     JOIN folders f ON f.id = p.folder_id
     JOIN organizations o ON o.id = f.org_id
     LEFT JOIN users u ON u.id = g.user_id
+    LEFT JOIN users r ON r.id = p.referent_id
     WHERE g.id = ? AND f.org_id = ?
 ");
 $stmt->execute([$doc_id, $user['org_id']]);
@@ -47,11 +54,18 @@ if (!$doc) {
 $project_id = (int)$doc['project_id'];
 
 // ============================================================
-// 📊 ANALYTICS POUR GRAPHIQUES
+// DONNÉES
 // ============================================================
 
 function ak_pdf_load_steps(PDO $pdo, int $project_id): array {
-    $stmt = $pdo->prepare("SELECT id, title, is_completed, completed_at, position FROM project_steps WHERE project_id = ? ORDER BY position ASC, id ASC");
+    $stmt = $pdo->prepare("
+        SELECT s.id, s.title, s.is_completed, s.completed_at, s.position,
+               u.first_name AS by_first, u.last_name AS by_last
+        FROM project_steps s
+        LEFT JOIN users u ON u.id = s.completed_by
+        WHERE s.project_id = ?
+        ORDER BY s.position ASC, s.id ASC
+    ");
     $stmt->execute([$project_id]);
     return $stmt->fetchAll();
 }
@@ -67,20 +81,20 @@ function ak_pdf_load_budget(PDO $pdo, int $project_id, array $project): array {
         if ($row) $invoiced = (float)$row['total'];
     } catch (Throwable $e) {}
     $used = max($invoiced, $used_db);
-    $pct = $planned > 0 ? min(100, round(($used / $planned) * 100, 1)) : 0;
+    $pct = $planned > 0 ? round(($used / $planned) * 100) : 0;
     return ['planned' => $planned, 'used' => $used, 'pct' => $pct, 'remaining' => max(0, $planned - $used)];
 }
 
 function ak_pdf_load_activity_6m(PDO $pdo, int $project_id): array {
     $months = [];
     for ($i = 5; $i >= 0; $i--) {
-        $key = date('Y-m', strtotime("-$i months"));
+        $key = date('Y-m', strtotime(date('Y-m-01') . " -$i months"));
         $months[$key] = ['key' => $key, 'label' => '', 'msg' => 0, 'step' => 0, 'file' => 0, 'total' => 0];
     }
-    $mois_short = ['', 'Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+    $mois_short = ['', 'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
     foreach ($months as $k => &$m) {
         list($y, $mo) = explode('-', $k);
-        $m['label'] = $mois_short[(int)$mo] . ' ' . substr($y, 2);
+        $m['label'] = $mois_short[(int)$mo];
     }
     unset($m);
     try {
@@ -99,200 +113,250 @@ function ak_pdf_load_activity_6m(PDO $pdo, int $project_id): array {
     return array_values($months);
 }
 
+/** Date SQL valide ? (écarte NULL, '0000-00-00' et les dates absurdes) */
+function ak_pdf_date_ok($d): bool {
+    if (empty($d) || strncmp((string)$d, '0000', 4) === 0) return false;
+    $t = strtotime((string)$d);
+    return $t !== false && (int)date('Y', $t) >= 1990;
+}
+
+function ak_pdf_date_fr($d, bool $long = true): string {
+    if (!ak_pdf_date_ok($d)) return '';
+    $t = strtotime((string)$d);
+    if (!$long) return date('d/m/Y', $t);
+    $mois = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    return (int)date('j', $t) . ($t && date('j', $t) === '1' ? 'er' : '') . ' ' . $mois[(int)date('n', $t)] . ' ' . date('Y', $t);
+}
+
+function ak_pdf_eur(float $n): string {
+    return number_format($n, 0, ',', "\u{202F}") . "\u{00A0}€";
+}
+
+/** Retire les pictogrammes couleur que la police du PDF ne sait pas dessiner */
+function ak_pdf_strip_emoji(string $s): string {
+    $s = preg_replace('/[\x{1F000}-\x{1FAFF}\x{1F900}-\x{1F9FF}\x{2B50}\x{2B55}\x{2614}\x{2615}\x{2648}-\x{2653}\x{267F}\x{2693}\x{26A1}\x{26AA}\x{26AB}\x{26BD}\x{26BE}\x{26C4}\x{26C5}\x{26CE}\x{26D4}\x{26EA}\x{26F2}-\x{26F5}\x{26FA}\x{26FD}\x{2705}\x{270A}\x{270B}\x{2728}\x{274C}\x{274E}\x{2753}-\x{2755}\x{2757}\x{2795}-\x{2797}\x{27B0}\x{27BF}\x{231A}\x{231B}\x{23E9}-\x{23FA}\x{FE0F}\x{200D}\x{20E3}]/u', '', $s);
+    // Espaces orphelins laissés en tête de ligne ou de titre
+    $s = preg_replace('/^([#>*\-\d.| \t]*?)[ \t]{2,}/m', '$1 ', $s);
+    return preg_replace('/[ \t]+([.,])/', '$1', $s);
+}
+
 $steps = ak_pdf_load_steps($pdo, $project_id);
 $total_steps = count($steps);
 $done_steps = 0;
 foreach ($steps as $s) if ($s['is_completed']) $done_steps++;
-$progress_pct = $total_steps > 0 ? round(($done_steps / $total_steps) * 100) : (int)$doc['progress_percent'];
+$progress_pct = $total_steps > 0 ? (int)round(($done_steps / $total_steps) * 100) : (int)$doc['progress_percent'];
 $budget = ak_pdf_load_budget($pdo, $project_id, $doc);
 $activity_6m = ak_pdf_load_activity_6m($pdo, $project_id);
+$activity_total = array_sum(array_column($activity_6m, 'total'));
 
 // ============================================================
-// 🎨 GÉNÉRATEURS SVG
+// PALETTE
+// ============================================================
+const AKP_INK    = '#0F172A';
+const AKP_TEXT   = '#334155';
+const AKP_MUTED  = '#64748B';
+const AKP_LINE   = '#E2E8F0';
+const AKP_SOFT   = '#F8FAFC';
+const AKP_ACCENT = '#0F766E';
+const AKP_ACC_2  = '#14B8A6';
+const AKP_ACC_3  = '#99F6E4';
+const AKP_WARN   = '#B45309';
+const AKP_ALERT  = '#B91C1C';
+
+// ============================================================
+// GRAPHIQUES (SVG — rendus nativement par mPDF)
 // ============================================================
 
-function ak_pdf_svg_donut(int $pct, int $done, int $total): string {
-    $r = 50; $cx = 70; $cy = 70; $sw = 12;
-    $circ = 2 * M_PI * $r;
-    $offset = $circ - ($pct / 100) * $circ;
-    $color = $pct >= 75 ? '#10B981' : ($pct >= 40 ? '#3B82F6' : '#F59E0B');
-    $label_done = htmlspecialchars($done . ' / ' . $total, ENT_QUOTES);
-    return '<svg width="140" height="140" viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg">'
-         . '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . $r . '" fill="none" stroke="#F3F4F6" stroke-width="' . $sw . '"/>'
-         . '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . $r . '" fill="none" stroke="' . $color . '" stroke-width="' . $sw . '" '
-         . 'stroke-linecap="round" stroke-dasharray="' . round($circ, 2) . '" stroke-dashoffset="' . round($offset, 2) . '" '
-         . 'transform="rotate(-90 ' . $cx . ' ' . $cy . ')"/>'
-         . '<text x="' . $cx . '" y="' . ($cy + 4) . '" text-anchor="middle" font-family="DejaVu Sans" font-size="22" font-weight="bold" fill="#111827">' . $pct . '%</text>'
-         . '<text x="' . $cx . '" y="' . ($cy + 22) . '" text-anchor="middle" font-family="DejaVu Sans" font-size="10" fill="#6B7280">' . $label_done . '</text>'
+function ak_pdf_svg_progress(int $pct, string $color, int $w = 150): string {
+    $pct = max(0, min(100, $pct));
+    $fill = (int)round($w * $pct / 100);
+    return '<svg width="' . $w . '" height="6" viewBox="0 0 ' . $w . ' 6" xmlns="http://www.w3.org/2000/svg">'
+         . '<rect x="0" y="0" width="' . $w . '" height="6" rx="3" fill="' . AKP_LINE . '"/>'
+         . ($fill > 0 ? '<rect x="0" y="0" width="' . max(6, $fill) . '" height="6" rx="3" fill="' . $color . '"/>' : '')
          . '</svg>';
-}
-
-function ak_pdf_svg_budget(array $b): string {
-    if ($b['planned'] <= 0) {
-        return '<div style="font-size:10pt;color:#6b7280;font-style:italic;padding:10px 0;">Aucun budget défini pour ce projet.</div>';
-    }
-    $pct = $b['pct'];
-    $color = $pct >= 90 ? '#EF4444' : ($pct >= 70 ? '#F59E0B' : '#10B981');
-    $bar_w = 360; $bar_h = 22;
-    $fill_w = round(($pct / 100) * $bar_w);
-    $fmt = function($n) {
-        if ($n >= 1000) return number_format($n / 1000, 1, ',', ' ') . ' k€';
-        return number_format($n, 0, ',', ' ') . ' €';
-    };
-    return '<svg width="' . $bar_w . '" height="46" viewBox="0 0 ' . $bar_w . ' 46" xmlns="http://www.w3.org/2000/svg">'
-         . '<rect x="0" y="14" width="' . $bar_w . '" height="' . $bar_h . '" rx="6" fill="#F3F4F6"/>'
-         . '<rect x="0" y="14" width="' . $fill_w . '" height="' . $bar_h . '" rx="6" fill="' . $color . '"/>'
-         . '<text x="' . ($fill_w > 50 ? $fill_w - 6 : $fill_w + 6) . '" y="29" '
-         . 'text-anchor="' . ($fill_w > 50 ? 'end' : 'start') . '" font-family="DejaVu Sans" font-size="10" font-weight="bold" '
-         . 'fill="' . ($fill_w > 50 ? '#FFFFFF' : '#111827') . '">' . $pct . ' %</text>'
-         . '<text x="0" y="10" font-family="DejaVu Sans" font-size="9" font-weight="bold" fill="#6B7280">DÉPENSÉ</text>'
-         . '<text x="' . $bar_w . '" y="10" text-anchor="end" font-family="DejaVu Sans" font-size="9" font-weight="bold" fill="#6B7280">BUDGET PRÉVU</text>'
-         . '<text x="0" y="44" font-family="DejaVu Sans" font-size="11" font-weight="bold" fill="#111827">' . htmlspecialchars($fmt($b['used']), ENT_QUOTES) . '</text>'
-         . '<text x="' . $bar_w . '" y="44" text-anchor="end" font-family="DejaVu Sans" font-size="11" font-weight="bold" fill="#111827">' . htmlspecialchars($fmt($b['planned']), ENT_QUOTES) . '</text>'
-         . '</svg>';
-}
-
-function ak_pdf_svg_timeline(array $steps): string {
-    $n = count($steps);
-    if ($n === 0) {
-        return '<div style="font-size:10pt;color:#6b7280;font-style:italic;padding:10px 0;">Aucune étape définie.</div>';
-    }
-    $w = 480; $h = 80;
-    $pad = 30;
-    $usable = $w - 2 * $pad;
-    $step_x = $n > 1 ? $usable / ($n - 1) : 0;
-    $svg = '<svg width="' . $w . '" height="' . $h . '" viewBox="0 0 ' . $w . ' ' . $h . '" xmlns="http://www.w3.org/2000/svg">';
-    $svg .= '<line x1="' . $pad . '" y1="32" x2="' . ($w - $pad) . '" y2="32" stroke="#E5E7EB" stroke-width="2"/>';
-    $last_done = -1;
-    foreach ($steps as $i => $s) if ($s['is_completed']) $last_done = $i;
-    if ($last_done >= 0) {
-        $end_x = $pad + ($last_done * $step_x);
-        $svg .= '<line x1="' . $pad . '" y1="32" x2="' . round($end_x) . '" y2="32" stroke="#10B981" stroke-width="3"/>';
-    }
-    foreach ($steps as $i => $s) {
-        $x = $pad + ($i * $step_x);
-        $done = !empty($s['is_completed']);
-        $color = $done ? '#10B981' : '#D1D5DB';
-        $svg .= '<circle cx="' . round($x) . '" cy="32" r="7" fill="#fff" stroke="' . $color . '" stroke-width="2.5"/>';
-        if ($done) $svg .= '<circle cx="' . round($x) . '" cy="32" r="3.5" fill="' . $color . '"/>';
-        $svg .= '<text x="' . round($x) . '" y="18" text-anchor="middle" font-family="DejaVu Sans" font-size="8" font-weight="bold" fill="#6B7280">' . ($i + 1) . '</text>';
-        $label = mb_substr($s['title'], 0, 12);
-        if (mb_strlen($s['title']) > 12) $label .= '…';
-        $svg .= '<text x="' . round($x) . '" y="55" text-anchor="middle" font-family="DejaVu Sans" font-size="7" fill="' . ($done ? '#065F46' : '#9CA3AF') . '">' . htmlspecialchars($label, ENT_QUOTES) . '</text>';
-        if ($done && !empty($s['completed_at'])) {
-            $d = date('d/m', strtotime($s['completed_at']));
-            $svg .= '<text x="' . round($x) . '" y="68" text-anchor="middle" font-family="DejaVu Sans" font-size="6.5" fill="#6B7280">' . $d . '</text>';
-        }
-    }
-    return $svg . '</svg>';
 }
 
 function ak_pdf_svg_activity(array $months): string {
-    $w = 480; $h = 130;
-    $pad_l = 32; $pad_b = 28; $pad_t = 14; $pad_r = 8;
+    $w = 300; $h = 120;
+    $pad_l = 22; $pad_b = 22; $pad_t = 14; $pad_r = 4;
     $chart_w = $w - $pad_l - $pad_r;
     $chart_h = $h - $pad_b - $pad_t;
     $max = 1;
     foreach ($months as $m) if ($m['total'] > $max) $max = $m['total'];
-    $bar_w = ($chart_w / count($months)) * 0.62;
-    $gap = ($chart_w / count($months)) - $bar_w;
+    $slot = $chart_w / count($months);
+    $bar_w = $slot * 0.56;
     $svg = '<svg width="' . $w . '" height="' . $h . '" viewBox="0 0 ' . $w . ' ' . $h . '" xmlns="http://www.w3.org/2000/svg">';
-    for ($g = 0; $g <= 4; $g++) {
-        $y = $pad_t + ($chart_h * $g / 4);
-        $val = round($max * (4 - $g) / 4);
-        $svg .= '<line x1="' . $pad_l . '" y1="' . $y . '" x2="' . ($w - $pad_r) . '" y2="' . $y . '" stroke="#F3F4F6" stroke-width="0.8" stroke-dasharray="2 3"/>';
-        $svg .= '<text x="' . ($pad_l - 4) . '" y="' . ($y + 3) . '" text-anchor="end" font-family="DejaVu Sans" font-size="7" fill="#9CA3AF">' . $val . '</text>';
+    for ($g = 0; $g <= 2; $g++) {
+        $y = $pad_t + ($chart_h * $g / 2);
+        $val = round($max * (2 - $g) / 2);
+        $svg .= '<line x1="' . $pad_l . '" y1="' . $y . '" x2="' . ($w - $pad_r) . '" y2="' . $y . '" stroke="' . AKP_LINE . '" stroke-width="0.6"/>';
+        $svg .= '<text x="' . ($pad_l - 5) . '" y="' . ($y + 2.5) . '" text-anchor="end" font-family="DejaVu Sans" font-size="7" fill="' . AKP_MUTED . '">' . $val . '</text>';
     }
     foreach ($months as $i => $m) {
-        $x = $pad_l + ($i * ($bar_w + $gap)) + ($gap / 2);
-        $y_base = $pad_t + $chart_h;
-        $h_msg = $max > 0 ? ($m['msg'] / $max) * $chart_h : 0;
-        $h_step = $max > 0 ? ($m['step'] / $max) * $chart_h : 0;
-        $h_file = $max > 0 ? ($m['file'] / $max) * $chart_h : 0;
-        $y_msg = $y_base - $h_msg;
-        $y_step = $y_msg - $h_step;
-        $y_file = $y_step - $h_file;
-        if ($h_msg > 0) $svg .= '<rect x="' . round($x) . '" y="' . round($y_msg) . '" width="' . round($bar_w) . '" height="' . round($h_msg) . '" fill="#3B82F6" rx="1"/>';
-        if ($h_step > 0) $svg .= '<rect x="' . round($x) . '" y="' . round($y_step) . '" width="' . round($bar_w) . '" height="' . round($h_step) . '" fill="#10B981" rx="1"/>';
-        if ($h_file > 0) $svg .= '<rect x="' . round($x) . '" y="' . round($y_file) . '" width="' . round($bar_w) . '" height="' . round($h_file) . '" fill="#8B5CF6" rx="1"/>';
-        if ($m['total'] > 0) {
-            $svg .= '<text x="' . round($x + $bar_w / 2) . '" y="' . round($y_file - 3) . '" text-anchor="middle" font-family="DejaVu Sans" font-size="7" font-weight="bold" fill="#374151">' . $m['total'] . '</text>';
+        $x = $pad_l + $i * $slot + ($slot - $bar_w) / 2;
+        $y = $pad_t + $chart_h;
+        foreach ([['msg', AKP_ACCENT], ['step', AKP_ACC_2], ['file', AKP_ACC_3]] as [$k, $c]) {
+            $hh = $m[$k] / $max * $chart_h;
+            if ($hh <= 0) continue;
+            $y -= $hh;
+            $svg .= '<rect x="' . round($x, 1) . '" y="' . round($y, 1) . '" width="' . round($bar_w, 1) . '" height="' . round($hh, 1) . '" fill="' . $c . '"/>';
         }
-        $svg .= '<text x="' . round($x + $bar_w / 2) . '" y="' . ($h - 14) . '" text-anchor="middle" font-family="DejaVu Sans" font-size="8" fill="#6B7280">' . htmlspecialchars($m['label'], ENT_QUOTES) . '</text>';
+        if ($m['total'] > 0) {
+            $svg .= '<text x="' . round($x + $bar_w / 2, 1) . '" y="' . round($y - 3, 1) . '" text-anchor="middle" font-family="DejaVu Sans" font-size="7" font-weight="bold" fill="' . AKP_INK . '">' . $m['total'] . '</text>';
+        }
+        $svg .= '<text x="' . round($x + $bar_w / 2, 1) . '" y="' . ($h - 8) . '" text-anchor="middle" font-family="DejaVu Sans" font-size="7.5" fill="' . AKP_MUTED . '">' . htmlspecialchars($m['label'], ENT_QUOTES) . '</text>';
     }
-    $lg_y = $h - 4;
-    $svg .= '<rect x="' . $pad_l . '" y="' . ($lg_y - 7) . '" width="8" height="8" fill="#3B82F6" rx="1"/>';
-    $svg .= '<text x="' . ($pad_l + 11) . '" y="' . ($lg_y - 1) . '" font-family="DejaVu Sans" font-size="7.5" fill="#374151">Messages</text>';
-    $svg .= '<rect x="' . ($pad_l + 64) . '" y="' . ($lg_y - 7) . '" width="8" height="8" fill="#10B981" rx="1"/>';
-    $svg .= '<text x="' . ($pad_l + 75) . '" y="' . ($lg_y - 1) . '" font-family="DejaVu Sans" font-size="7.5" fill="#374151">Étapes</text>';
-    $svg .= '<rect x="' . ($pad_l + 116) . '" y="' . ($lg_y - 7) . '" width="8" height="8" fill="#8B5CF6" rx="1"/>';
-    $svg .= '<text x="' . ($pad_l + 127) . '" y="' . ($lg_y - 1) . '" font-family="DejaVu Sans" font-size="7.5" fill="#374151">Fichiers</text>';
     return $svg . '</svg>';
 }
 
 // ============================================================
-// 📝 Markdown → HTML
+// Markdown → HTML (titres numérotés, listes, tableaux)
 // ============================================================
-function ak_md_to_html(string $md): string {
-    $lines = explode("\n", $md);
-    $html = ''; $in_list = false; $in_para = false; $pending = '';
-    $flush_para = function() use (&$pending, &$html, &$in_para) {
-        if ($in_para && trim($pending) !== '') $html .= '<p>' . trim($pending) . '</p>';
-        $pending = ''; $in_para = false;
+
+function ak_pdf_inline(string $text): string {
+    $text = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+    $text = preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', $text);
+    $text = preg_replace('/(?<![\*\w])\*(?!\s)([^\*]+?)\*(?!\w)/u', '<em>$1</em>', $text);
+    $text = preg_replace('/`([^`]+)`/', '<code>$1</code>', $text);
+    return $text;
+}
+
+function ak_pdf_table(array $rows): string {
+    $cells = function ($line) {
+        $line = trim($line);
+        $line = preg_replace('/^\||\|$/', '', $line);
+        return array_map('trim', explode('|', $line));
     };
-    $close_list = function() use (&$in_list, &$html) {
-        if ($in_list) { $html .= '</ul>'; $in_list = false; }
+    $head = $cells(array_shift($rows));
+    $align = array_fill(0, count($head), 'left');
+    if ($rows && preg_match('/^\|?\s*:?-{2,}/', trim($rows[0]))) {
+        foreach ($cells(array_shift($rows)) as $i => $spec) {
+            if (preg_match('/^-+:$/', $spec)) $align[$i] = 'right';
+            elseif (preg_match('/^:-+:$/', $spec)) $align[$i] = 'center';
+        }
+    }
+    // Colonnes chiffrées alignées à droite même sans « ---: »
+    foreach ($head as $i => $_) {
+        if ($align[$i] !== 'left' || $i === 0) continue;
+        $num = 0; $all = 0;
+        foreach ($rows as $r) {
+            $v = strip_tags(str_replace('**', '', $cells($r)[$i] ?? ''));
+            if ($v === '') continue;
+            $all++;
+            if (preg_match('/^[-+]?[\d\s\x{202F}\x{00A0}.,]+\s*(€|%|k€)?$/u', $v)) $num++;
+        }
+        if ($all && $num === $all) $align[$i] = 'right';
+    }
+    $html = '<table class="md-table" cellspacing="0"><thead><tr>';
+    foreach ($head as $i => $c) $html .= '<th style="text-align:' . $align[$i] . '">' . ak_pdf_inline($c) . '</th>';
+    $html .= '</tr></thead><tbody>';
+    foreach ($rows as $n => $r) {
+        $cs = $cells($r);
+        $is_total = preg_match('/^\*\*?\s*total/i', $cs[0] ?? '');
+        $html .= '<tr class="' . ($is_total ? 'tot' : ($n % 2 ? 'alt' : '')) . '">';
+        foreach ($head as $i => $_) $html .= '<td style="text-align:' . $align[$i] . '">' . ak_pdf_inline($cs[$i] ?? '') . '</td>';
+        $html .= '</tr>';
+    }
+    return $html . '</tbody></table>';
+}
+
+function ak_md_to_html(string $md): string {
+    $lines = explode("\n", str_replace("\r\n", "\n", $md));
+    $html = ''; $list = null; $para = []; $table = []; $h2 = 0;
+    $flush_para = function () use (&$para, &$html) {
+        // Retours à la ligne conservés (signatures, adresses de courrier)
+        if ($para) $html .= '<p>' . implode('<br/>', $para) . '</p>';
+        $para = [];
+    };
+    $close_list = function () use (&$list, &$html) {
+        if ($list) { $html .= '</' . $list . '>'; $list = null; }
+    };
+    $flush_table = function () use (&$table, &$html) {
+        if ($table) $html .= ak_pdf_table($table);
+        $table = [];
     };
     foreach ($lines as $line) {
-        $trimmed = rtrim($line);
-        $process_inline = function($text) {
-            $text = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
-            $text = preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', $text);
-            $text = preg_replace('/(?<![\*\w])\*(?!\s)([^\*]+?)\*(?!\w)/', '<em>$1</em>', $text);
-            $text = preg_replace('/`([^`]+)`/', '<code>$1</code>', $text);
-            return $text;
-        };
-        if (preg_match('/^##\s+(.+)$/', $trimmed, $m)) { $flush_para(); $close_list(); $html .= '<h2>' . $process_inline($m[1]) . '</h2>'; continue; }
-        if (preg_match('/^###\s+(.+)$/', $trimmed, $m)) { $flush_para(); $close_list(); $html .= '<h3>' . $process_inline($m[1]) . '</h3>'; continue; }
-        if (preg_match('/^#\s+(.+)$/', $trimmed, $m)) { $flush_para(); $close_list(); $html .= '<h1>' . $process_inline($m[1]) . '</h1>'; continue; }
-        if (preg_match('/^---+$/', $trimmed)) { $flush_para(); $close_list(); $html .= '<hr/>'; continue; }
-        if (preg_match('/^[-*]\s+(.+)$/', $trimmed, $m)) {
-            $flush_para();
-            if (!$in_list) { $html .= '<ul>'; $in_list = true; }
-            $html .= '<li>' . $process_inline($m[1]) . '</li>'; continue;
+        $t = trim($line);
+        if ($t !== '' && $t[0] === '|') { $flush_para(); $close_list(); $table[] = $t; continue; }
+        $flush_table();
+        if (preg_match('/^#{1,2}\s+(.+)$/', $t, $m)) {
+            $flush_para(); $close_list(); $h2++;
+            $html .= '<h2><span class="num">' . str_pad((string)$h2, 2, '0', STR_PAD_LEFT) . '</span>&nbsp;&nbsp;' . ak_pdf_inline($m[1]) . '</h2>';
+            continue;
         }
-        if (preg_match('/^\d+\.\s+(.+)$/', $trimmed, $m)) {
+        if (preg_match('/^#{3,}\s+(.+)$/', $t, $m)) { $flush_para(); $close_list(); $html .= '<h3>' . ak_pdf_inline($m[1]) . '</h3>'; continue; }
+        if (preg_match('/^(---+|\*\*\*+)$/', $t)) { $flush_para(); $close_list(); $html .= '<hr/>'; continue; }
+        $tag = null;
+        if (preg_match('/^[-*•]\s+(.+)$/u', $t, $m)) $tag = 'ul';
+        elseif (preg_match('/^\d+[.)]\s+(.+)$/', $t, $m)) $tag = 'ol';
+        if ($tag) {
             $flush_para();
-            if (!$in_list) { $html .= '<ul>'; $in_list = true; }
-            $html .= '<li>' . $process_inline($m[1]) . '</li>'; continue;
+            if ($list !== $tag) { $close_list(); $html .= '<' . $tag . '>'; $list = $tag; }
+            $html .= '<li>' . ak_pdf_inline($m[1]) . '</li>';
+            continue;
         }
-        if ($trimmed === '') { $flush_para(); $close_list(); continue; }
+        if ($t === '') { $flush_para(); $close_list(); continue; }
+        if (preg_match('/^>\s?(.*)$/', $t, $m)) { $flush_para(); $close_list(); $html .= '<blockquote>' . ak_pdf_inline($m[1]) . '</blockquote>'; continue; }
         $close_list();
-        if ($in_para) $pending .= ' ' . $process_inline($trimmed);
-        else { $pending = $process_inline($trimmed); $in_para = true; }
+        $para[] = ak_pdf_inline($t);
     }
-    $flush_para(); $close_list();
+    $flush_table(); $flush_para(); $close_list();
     return $html;
 }
 
-$body_html = ak_md_to_html($doc['content']);
+// ============================================================
+// MISE EN FORME
+// ============================================================
 
-$today_fr = date('d/m/Y');
-$author_full = trim(($doc['author_first'] ?? '') . ' ' . ($doc['author_last'] ?? '')) ?: 'AssoKit IA';
+$doc_labels = [
+    'bilan_date'         => 'Bilan de projet',
+    'bilan_ag'           => 'Bilan pour l’Assemblée générale',
+    'rapport_subvention' => 'Rapport de subvention',
+    'synthese_etape'     => 'Point d’avancement',
+    'email_parents'      => 'Courrier d’information',
+    'fiche_com'          => 'Fiche de communication',
+];
+$doc_label = $doc_labels[$doc['doc_type']] ?? 'Document de projet';
+// Les indicateurs n'ont pas leur place dans un courrier ou une fiche de com
+$with_dashboard = !in_array($doc['doc_type'], ['email_parents', 'fiche_com'], true);
+
+$body_html = ak_md_to_html(ak_pdf_strip_emoji((string)$doc['content']));
+$doc_title = trim(ak_pdf_strip_emoji((string)$doc['title']));
+
+$today_long = ak_pdf_date_fr(date('Y-m-d'));
+$author_full = trim(($doc['author_first'] ?? '') . ' ' . ($doc['author_last'] ?? '')) ?: 'Assokit';
+$referent = trim(($doc['ref_first'] ?? '') . ' ' . ($doc['ref_last'] ?? ''));
+$period = '';
+if (ak_pdf_date_ok($doc['start_date']) && ak_pdf_date_ok($doc['end_date'])) {
+    $period = ak_pdf_date_fr($doc['start_date'], false) . ' → ' . ak_pdf_date_fr($doc['end_date'], false);
+} elseif (ak_pdf_date_ok($doc['start_date'])) {
+    $period = 'Depuis le ' . ak_pdf_date_fr($doc['start_date'], false);
+}
 $logo_full_path = '';
 if (!empty($doc['logo_path'])) {
-    $candidate = __DIR__ . $doc['logo_path'];
-    if (file_exists($candidate)) $logo_full_path = $candidate;
+    $candidate = __DIR__ . '/' . ltrim($doc['logo_path'], '/');
+    if (is_file($candidate)) $logo_full_path = $candidate;
 }
 $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 
-$svg_donut = ak_pdf_svg_donut($progress_pct, $done_steps, $total_steps);
-$svg_budget = ak_pdf_svg_budget($budget);
-$svg_timeline = ak_pdf_svg_timeline($steps);
-$svg_activity = ak_pdf_svg_activity($activity_6m);
+$facts = [['Association', $doc['org_name']]];
+if (!empty($doc['folder_name'])) $facts[] = ['Programme', $doc['folder_name']];
+if (!empty($doc['project_location'])) $facts[] = ['Lieu', $doc['project_location']];
+if ($period) $facts[] = ['Période', $period];
+if ($referent) $facts[] = ['Référent', $referent];
+$facts[] = ['Rédigé par', $author_full];
 
-$has_activity = false;
-foreach ($activity_6m as $m) if ($m['total'] > 0) { $has_activity = true; break; }
+$budget_color = $budget['pct'] >= 95 ? AKP_ALERT : ($budget['pct'] >= 80 ? AKP_WARN : AKP_ACCENT);
+$kpis = [
+    ['Avancement', $progress_pct . ' %', $total_steps ? $done_steps . ' étape' . ($done_steps > 1 ? 's' : '') . ' sur ' . $total_steps : 'Aucune étape définie', ak_pdf_svg_progress($progress_pct, AKP_ACCENT)],
+    ['Budget engagé', $budget['planned'] > 0 ? $budget['pct'] . ' %' : '—', $budget['planned'] > 0 ? ak_pdf_eur($budget['used']) . ' sur ' . ak_pdf_eur($budget['planned']) : 'Budget non renseigné', $budget['planned'] > 0 ? ak_pdf_svg_progress((int)$budget['pct'], $budget_color) : ''],
+    ['Participants', (int)$doc['participants_count'] > 0 ? (string)(int)$doc['participants_count'] : '—', 'personnes accompagnées', ''],
+    ['Activité', (string)$activity_total, 'actions sur 6 mois', ''],
+];
+
+// Étape « en cours » = première non validée
+$current_idx = null;
+foreach ($steps as $i => $s) if (!$s['is_completed']) { $current_idx = $i; break; }
 
 ob_start();
 ?>
@@ -301,129 +365,178 @@ ob_start();
 <head>
 <meta charset="UTF-8">
 <style>
-@page { margin: 28mm 18mm 22mm 18mm; }
-body { font-family: 'DejaVu Sans', sans-serif; font-size: 10.5pt; line-height: 1.55; color: #1f2937; }
-.pdf-head { padding-bottom: 14px; border-bottom: 2px solid #10B981; margin-bottom: 18px; }
-.pdf-head-row { width: 100%; display: table; }
-.pdf-head-l { display: table-cell; vertical-align: middle; width: 70%; }
-.pdf-head-r { display: table-cell; vertical-align: middle; text-align: right; width: 30%; }
-.pdf-logo { max-width: 110px; max-height: 50px; }
-.pdf-org { font-size: 9pt; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; font-weight: bold; }
-.pdf-doctitle { font-size: 18pt; font-weight: bold; color: #111827; margin: 4px 0 0; }
-.pdf-projname { font-size: 11pt; color: #4b5563; margin-top: 2px; }
-.pdf-meta-tag { display: inline-block; padding: 4px 10px; background: #ECFDF5; color: #065F46; font-size: 9pt; font-weight: bold; border-radius: 4px; }
-.pdf-meta-date { font-size: 9pt; color: #6b7280; margin-top: 4px; }
-.pdf-meta-row { display: table; width: 100%; margin: 14px 0 18px; padding: 10px 14px; background: #F9FAFB; border-radius: 6px; border-left: 3px solid #10B981; }
-.pdf-meta-cell { display: table-cell; padding: 0 8px; font-size: 9pt; }
-.pdf-meta-lbl { color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; font-size: 8pt; font-weight: bold; }
-.pdf-meta-val { color: #111827; font-weight: bold; margin-top: 2px; }
+body { font-family: 'DejaVu Sans', sans-serif; font-size: 9.5pt; line-height: 1.55; color: <?= AKP_TEXT ?>; }
+table { border-collapse: collapse; }
 
-.pdf-charts { margin: 0 0 22px; padding: 16px 18px; background: #F9FAFB; border-radius: 8px; border: 1px solid #E5E7EB; }
-.pdf-charts-title { font-size: 11pt; font-weight: bold; color: #065F46; margin: 0 0 14px; padding-bottom: 6px; border-bottom: 1px solid #D1FAE5; }
-.pdf-chart-row { display: table; width: 100%; margin-bottom: 16px; }
-.pdf-chart-cell { display: table-cell; vertical-align: middle; }
-.pdf-chart-cell-l { width: 35%; padding-right: 14px; text-align: center; }
-.pdf-chart-cell-r { width: 65%; vertical-align: middle; }
-.pdf-chart-block { margin-bottom: 16px; }
-.pdf-chart-block:last-child { margin-bottom: 0; }
-.pdf-chart-lbl { font-size: 9pt; font-weight: bold; color: #374151; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
-.pdf-chart-help { font-size: 8.5pt; color: #6b7280; margin-top: 4px; line-height: 1.4; }
+.top { width: 100%; }
+.top td { vertical-align: middle; padding: 0; }
+.top-logo { width: 16mm; padding-right: 4mm !important; }
+.top-org { font-size: 10pt; font-weight: bold; color: <?= AKP_INK ?>; }
+.top-r { text-align: right; }
+.top-type { font-size: 7.5pt; font-weight: bold; color: <?= AKP_ACCENT ?>; letter-spacing: 1.2pt; text-transform: uppercase; }
+.top-date { font-size: 8pt; color: <?= AKP_MUTED ?>; margin-top: 1mm; }
+.rule { height: 0; border-top: 0.6pt solid <?= AKP_LINE ?>; margin: 5mm 0 7mm; }
 
-.pdf-body h1 { font-size: 16pt; color: #111827; margin: 18px 0 10px; padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; }
-.pdf-body h2 { font-size: 13pt; color: #065F46; margin: 16px 0 8px; padding: 6px 0 6px 10px; border-left: 3px solid #10B981; background: #F0FDF4; }
-.pdf-body h3 { font-size: 11pt; color: #1f2937; margin: 12px 0 6px; font-weight: bold; }
-.pdf-body p { margin: 0 0 8px; text-align: justify; }
-.pdf-body ul { margin: 4px 0 10px; padding-left: 18px; }
-.pdf-body li { margin: 2px 0; }
-.pdf-body strong { color: #111827; }
-.pdf-body code { font-family: 'DejaVu Sans Mono', monospace; background: #F3F4F6; padding: 1px 4px; border-radius: 3px; font-size: 9.5pt; }
-.pdf-body hr { border: 0; border-top: 1px dashed #d1d5db; margin: 16px 0; }
+.title { font-size: 21pt; font-weight: bold; color: <?= AKP_INK ?>; line-height: 1.2; margin: 1.5mm 0 1.5mm; }
+.subtitle { font-size: 11pt; color: <?= AKP_MUTED ?>; margin-bottom: 7mm; }
+
+.facts { width: 100%; border-top: 0.6pt solid <?= AKP_LINE ?>; border-bottom: 0.6pt solid <?= AKP_LINE ?>; margin-bottom: 7mm; }
+.facts td { padding: 2.6mm 3mm 2.6mm 0; vertical-align: top; }
+.f-lbl { font-size: 7pt; color: <?= AKP_MUTED ?>; text-transform: uppercase; letter-spacing: 0.6pt; font-weight: bold; }
+.f-val { font-size: 9pt; color: <?= AKP_INK ?>; font-weight: bold; margin-top: 0.8mm; }
+
+.kpis { width: 100%; margin-bottom: 8mm; }
+td.kpi { width: 23.5%; vertical-align: top; background: <?= AKP_SOFT ?>; border-top: 1.4pt solid <?= AKP_ACCENT ?>; padding: 3mm 3.5mm 3.4mm; }
+td.kpi-gap { width: 2%; }
+.kpi-lbl { font-size: 7pt; color: <?= AKP_MUTED ?>; text-transform: uppercase; letter-spacing: 0.6pt; font-weight: bold; }
+.kpi-val { font-size: 18pt; font-weight: bold; color: <?= AKP_INK ?>; line-height: 1.15; margin-top: 1.2mm; }
+.kpi-sub { font-size: 7.5pt; color: <?= AKP_MUTED ?>; margin-top: 0.6mm; }
+.kpi-bar { margin-top: 2mm; }
+
+.blk-title { font-size: 8pt; font-weight: bold; color: <?= AKP_INK ?>; text-transform: uppercase; letter-spacing: 0.8pt; padding-bottom: 2mm; border-bottom: 0.6pt solid <?= AKP_LINE ?>; margin-bottom: 2mm; }
+.steps { width: 100%; margin-bottom: 8mm; }
+.steps td { padding: 1.9mm 2mm; border-bottom: 0.4pt solid <?= AKP_LINE ?>; font-size: 8.5pt; vertical-align: middle; }
+.steps th { padding: 1.6mm 2mm; font-size: 7pt; color: <?= AKP_MUTED ?>; text-transform: uppercase; letter-spacing: 0.5pt; text-align: left; border-bottom: 0.6pt solid #CBD5E1; }
+.steps .n { width: 7mm; color: <?= AKP_MUTED ?>; font-weight: bold; }
+.steps .st { width: 22mm; }
+.steps .when { width: 26mm; color: <?= AKP_MUTED ?>; }
+.steps .who { width: 34mm; color: <?= AKP_MUTED ?>; }
+.pill { font-size: 7pt; font-weight: bold; padding: 0.6mm 2mm; }
+.pill-done { color: <?= AKP_ACCENT ?>; background: #CCFBF1; }
+.pill-cur { color: <?= AKP_WARN ?>; background: #FEF3C7; }
+.pill-todo { color: <?= AKP_MUTED ?>; background: #F1F5F9; }
+
+.duo { width: 100%; margin-bottom: 4mm; }
+.duo td { vertical-align: top; }
+.legend { font-size: 7pt; color: <?= AKP_MUTED ?>; margin-top: 1mm; }
+.sw { font-size: 9pt; }
+.bud td { padding: 1.4mm 0; font-size: 8.5pt; border-bottom: 0.4pt solid <?= AKP_LINE ?>; }
+.bud td.r { text-align: right; font-weight: bold; color: <?= AKP_INK ?>; }
+.bud-note { font-size: 7.5pt; color: <?= AKP_MUTED ?>; margin-top: 2mm; }
+
+.body h2 { font-size: 12.5pt; color: <?= AKP_INK ?>; margin: 8mm 0 3mm; padding-bottom: 1.8mm; border-bottom: 0.8pt solid <?= AKP_ACCENT ?>; page-break-after: avoid; }
+.body h2 .num { color: <?= AKP_ACCENT ?>; }
+.body h3 { font-size: 10pt; color: <?= AKP_INK ?>; margin: 4.5mm 0 1.5mm; font-weight: bold; page-break-after: avoid; }
+.body p { margin: 0 0 2.6mm; }
+.body ul, .body ol { margin: 0 0 3mm 0; padding-left: 6mm; }
+.body li { margin: 0 0 1mm; }
+.body strong { color: <?= AKP_INK ?>; }
+.body code { font-family: 'DejaVu Sans Mono', monospace; font-size: 8.5pt; background: #F1F5F9; }
+.body hr { border: 0; height: 0; border-top: 0.6pt solid <?= AKP_LINE ?>; margin: 6mm 0 4mm; }
+.body blockquote { margin: 3mm 0; padding: 2mm 4mm; border-left: 1.4pt solid <?= AKP_ACC_2 ?>; background: <?= AKP_SOFT ?>; color: <?= AKP_INK ?>; }
+.md-table { width: 100%; margin: 2mm 0 4mm; page-break-inside: avoid; }
+.md-table th { background: <?= AKP_INK ?>; color: #FFFFFF; font-size: 7.5pt; font-weight: bold; padding: 2mm 2.5mm; text-transform: uppercase; letter-spacing: 0.4pt; }
+.md-table td { font-size: 8.5pt; padding: 1.8mm 2.5mm; border-bottom: 0.4pt solid <?= AKP_LINE ?>; }
+.md-table tr.alt td { background: <?= AKP_SOFT ?>; }
+.md-table tr.tot td { background: #F0FDFA; border-top: 0.8pt solid <?= AKP_ACCENT ?>; border-bottom: 0; font-weight: bold; color: <?= AKP_INK ?>; }
 </style>
 </head>
 <body>
 
-<div class="pdf-head">
-  <div class="pdf-head-row">
-    <div class="pdf-head-l">
-      <?php if ($logo_full_path): ?>
-        <img src="<?= $h($logo_full_path) ?>" class="pdf-logo" alt="Logo">
-      <?php else: ?>
-        <div class="pdf-org"><?= $h($doc['org_name']) ?></div>
-      <?php endif; ?>
-      <div class="pdf-doctitle"><?= $h($doc['title']) ?></div>
-      <div class="pdf-projname"><?= $h($doc['project_name']) ?></div>
-    </div>
-    <div class="pdf-head-r">
-      <div class="pdf-meta-tag">📋 BILAN</div>
-      <div class="pdf-meta-date">Édité le <?= $h($today_fr) ?></div>
-    </div>
-  </div>
-</div>
+<table class="top">
+  <tr>
+    <?php if ($logo_full_path): ?>
+    <td class="top-logo"><img src="<?= $h($logo_full_path) ?>" style="height:13mm;" alt=""></td>
+    <?php endif; ?>
+    <td>
+      <div class="top-org"><?= $h($doc['org_name']) ?></div>
+    </td>
+    <td class="top-r">
+      <div class="top-type"><?= $h($doc_label) ?></div>
+      <div class="top-date">Édité le <?= $h($today_long) ?></div>
+    </td>
+  </tr>
+</table>
+<div class="rule"></div>
 
-<div class="pdf-meta-row">
-  <div class="pdf-meta-cell">
-    <div class="pdf-meta-lbl">Association</div>
-    <div class="pdf-meta-val"><?= $h($doc['org_name']) ?></div>
-  </div>
-  <?php if (!empty($doc['project_location'])): ?>
-  <div class="pdf-meta-cell">
-    <div class="pdf-meta-lbl">Lieu</div>
-    <div class="pdf-meta-val"><?= $h($doc['project_location']) ?></div>
-  </div>
-  <?php endif; ?>
-  <?php if (!empty($doc['start_date'])): ?>
-  <div class="pdf-meta-cell">
-    <div class="pdf-meta-lbl">Démarrage</div>
-    <div class="pdf-meta-val"><?= $h(date('d/m/Y', strtotime($doc['start_date']))) ?></div>
-  </div>
-  <?php endif; ?>
-  <div class="pdf-meta-cell">
-    <div class="pdf-meta-lbl">Auteur</div>
-    <div class="pdf-meta-val"><?= $h($author_full) ?></div>
-  </div>
-</div>
+<div class="title"><?= $h($doc['project_name']) ?></div>
+<?php if ($doc_title !== '' && $doc_title !== $doc['project_name']): ?>
+<div class="subtitle"><?= $h($doc_title) ?></div>
+<?php else: ?>
+<div style="height:5mm"></div>
+<?php endif; ?>
 
-<div class="pdf-charts">
-  <div class="pdf-charts-title">📊 Synthèse visuelle du projet</div>
+<table class="facts">
+  <tr>
+    <?php foreach ($facts as [$lbl, $val]): ?>
+    <td><div class="f-lbl"><?= $h($lbl) ?></div><div class="f-val"><?= $h($val) ?></div></td>
+    <?php endforeach; ?>
+  </tr>
+</table>
 
-  <div class="pdf-chart-row">
-    <div class="pdf-chart-cell pdf-chart-cell-l">
-      <div class="pdf-chart-lbl">Avancement</div>
-      <?= $svg_donut ?>
-    </div>
-    <div class="pdf-chart-cell pdf-chart-cell-r">
-      <div class="pdf-chart-lbl">Budget</div>
-      <?= $svg_budget ?>
+<?php if ($with_dashboard): ?>
+<table class="kpis">
+  <tr>
+    <?php foreach ($kpis as $i => [$lbl, $val, $sub, $bar]): ?>
+    <?php if ($i > 0): ?><td class="kpi-gap"></td><?php endif; ?>
+    <td class="kpi">
+      <div class="kpi-lbl"><?= $h($lbl) ?></div>
+      <div class="kpi-val"><?= $h($val) ?></div>
+      <div class="kpi-sub"><?= $h($sub) ?></div>
+      <?php if ($bar): ?><div class="kpi-bar"><?= $bar ?></div><?php endif; ?>
+    </td>
+    <?php endforeach; ?>
+  </tr>
+</table>
+
+<?php if ($total_steps > 0): ?>
+<div class="blk-title">Étapes du projet — <?= $done_steps ?> validée<?= $done_steps > 1 ? 's' : '' ?> sur <?= $total_steps ?></div>
+<table class="steps">
+  <thead><tr><th class="n">N°</th><th>Étape</th><th class="st">Statut</th><th class="when">Validée le</th><th class="who">Par</th></tr></thead>
+  <tbody>
+  <?php foreach ($steps as $i => $s):
+      $done = !empty($s['is_completed']);
+      $by = trim(($s['by_first'] ?? '') . ' ' . ($s['by_last'] ?? '')); ?>
+    <tr>
+      <td class="n"><?= str_pad((string)($i + 1), 2, '0', STR_PAD_LEFT) ?></td>
+      <td style="color:<?= $done ? AKP_INK : AKP_TEXT ?>"><?= $h(ak_pdf_strip_emoji((string)$s['title'])) ?></td>
+      <td class="st">
+        <?php if ($done): ?><span class="pill pill-done">VALIDÉE</span>
+        <?php elseif ($i === $current_idx): ?><span class="pill pill-cur">EN COURS</span>
+        <?php else: ?><span class="pill pill-todo">À VENIR</span><?php endif; ?>
+      </td>
+      <td class="when"><?= $done ? $h(ak_pdf_date_fr($s['completed_at'], false)) : '—' ?></td>
+      <td class="who"><?= $done && $by ? $h($by) : '—' ?></td>
+    </tr>
+  <?php endforeach; ?>
+  </tbody>
+</table>
+<?php endif; ?>
+
+<table class="duo" style="page-break-inside: avoid;">
+  <tr>
+    <td style="width:48%; padding-right:6mm;">
+      <div class="blk-title">Budget</div>
       <?php if ($budget['planned'] > 0): ?>
-      <div class="pdf-chart-help">
-        <?php if ($budget['pct'] >= 90): ?>
-          ⚠️ Budget proche de la limite — vigilance recommandée.
-        <?php elseif ($budget['pct'] >= 70): ?>
-          Budget bien engagé — reste à dépenser mesuré.
-        <?php else: ?>
-          Budget maîtrisé — marge confortable.
-        <?php endif; ?>
+      <table class="bud" style="width:100%">
+        <tr><td>Budget prévu</td><td class="r"><?= $h(ak_pdf_eur($budget['planned'])) ?></td></tr>
+        <tr><td>Dépenses engagées</td><td class="r"><?= $h(ak_pdf_eur($budget['used'])) ?></td></tr>
+        <tr><td>Reste à engager</td><td class="r"><?= $h(ak_pdf_eur($budget['remaining'])) ?></td></tr>
+        <tr><td>Taux d’exécution</td><td class="r" style="color:<?= $budget_color ?>"><?= (int)$budget['pct'] ?> %</td></tr>
+      </table>
+      <div class="bud-note">
+        <?php if ($budget['pct'] > 100): ?>Dépassement du budget prévu : un arbitrage est nécessaire.
+        <?php elseif ($budget['pct'] >= 80): ?>Budget presque entièrement engagé : à surveiller d’ici la fin du projet.
+        <?php else: ?>Exécution maîtrisée au regard de l’avancement.<?php endif; ?>
       </div>
+      <?php else: ?>
+      <div class="bud-note">Aucun budget n’a été renseigné pour ce projet.</div>
       <?php endif; ?>
-    </div>
-  </div>
+    </td>
+    <td style="width:52%;">
+      <div class="blk-title">Activité de l’équipe — 6 derniers mois</div>
+      <?= ak_pdf_svg_activity($activity_6m) ?>
+      <div class="legend">
+        <span class="sw" style="color:<?= AKP_ACCENT ?>">■</span> Messages&nbsp;&nbsp;&nbsp;
+        <span class="sw" style="color:<?= AKP_ACC_2 ?>">■</span> Étapes validées&nbsp;&nbsp;&nbsp;
+        <span class="sw" style="color:<?= AKP_ACC_3 ?>">■</span> Fichiers déposés
+      </div>
+    </td>
+  </tr>
+</table>
+<?php endif; ?>
 
-  <?php if ($total_steps > 0): ?>
-  <div class="pdf-chart-block">
-    <div class="pdf-chart-lbl">Timeline des étapes (<?= $done_steps ?> validées sur <?= $total_steps ?>)</div>
-    <?= $svg_timeline ?>
-  </div>
-  <?php endif; ?>
-
-  <?php if ($has_activity): ?>
-  <div class="pdf-chart-block">
-    <div class="pdf-chart-lbl">Activité du projet — 6 derniers mois</div>
-    <?= $svg_activity ?>
-  </div>
-  <?php endif; ?>
-</div>
-
-<div class="pdf-body">
+<div class="body">
   <?= $body_html ?>
 </div>
 
@@ -437,19 +550,25 @@ try {
         'mode' => 'utf-8',
         'format' => 'A4',
         'tempDir' => sys_get_temp_dir(),
-        'default_font' => 'DejaVuSans',
-        'margin_top' => 18,
-        'margin_bottom' => 14,
+        'default_font' => 'dejavusans',
+        'margin_left' => 18,
+        'margin_right' => 18,
+        'margin_top' => 16,
+        'margin_bottom' => 20,
+        'margin_footer' => 9,
     ]);
-    $footer = '<table width="100%" style="border-top: 1px solid #e5e7eb; padding-top: 4px; font-size: 8pt; color: #6B7280;"><tr>'
-            . '<td>' . $h($doc['org_name']) . ' · ' . $h($doc['project_name']) . '</td>'
-            . '<td align="right">{PAGENO} / {nbpg}</td>'
+    $mpdf->SetTitle($doc_label . ' — ' . $doc['project_name']);
+    $mpdf->SetAuthor((string)$doc['org_name']);
+    $mpdf->SetCreator('Assokit');
+    $footer = '<table width="100%" style="border-top: 0.5pt solid ' . AKP_LINE . '; font-family: dejavusans; font-size: 7pt; color: ' . AKP_MUTED . ';"><tr>'
+            . '<td style="padding-top: 2mm;">' . $h($doc['org_name']) . ' · ' . $h($doc['project_name']) . '</td>'
+            . '<td style="padding-top: 2mm;" align="right">' . $h($doc_label) . ' · page {PAGENO} / {nbpg}</td>'
             . '</tr></table>';
     $mpdf->SetHTMLFooter($footer);
     $mpdf->WriteHTML($html);
-    $safe_proj = preg_replace('/[^a-zA-Z0-9_-]/', '_', $doc['project_name']);
-    $safe_title = preg_replace('/[^a-zA-Z0-9_-]/', '_', $doc['title']);
-    $filename = 'Bilan_' . $safe_proj . '_' . $safe_title . '_' . date('Ymd') . '.pdf';
+    $safe_proj = trim(preg_replace('/[^a-zA-Z0-9_-]+/', '_', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $doc['project_name']) ?: 'projet'), '_');
+    $filename = str_replace(' ', '_', $doc_label) . '_' . $safe_proj . '_' . date('Ymd') . '.pdf';
+    $filename = preg_replace('/[^a-zA-Z0-9_.-]+/', '', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $filename) ?: 'Bilan.pdf');
     $mpdf->Output($filename, \Mpdf\Output\Destination::DOWNLOAD);
     exit;
 } catch (Throwable $e) {
