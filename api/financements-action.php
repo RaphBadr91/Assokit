@@ -22,7 +22,7 @@ $uid    = (int)($user['id'] ?? 0);
 if ($org_id <= 0) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'no_org']); exit; }
 
 $role = strtolower((string)($user['role'] ?? ''));
-$is_priv = in_array($role, ['admin','founder'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
+$is_priv = in_array($role, ['admin','founder','coordinator'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
 if (!$is_priv) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'forbidden']); exit; }
 
 $body = json_decode(file_get_contents('php://input'), true);

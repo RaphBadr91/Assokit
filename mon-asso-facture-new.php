@@ -20,7 +20,7 @@ $org_id = (int)$user['org_id'];
 
 // [PACK 6.5 - SECURITY] Accès finances obligatoire
 require_once __DIR__ . '/finance-permissions.php';
-require_finance_access('factures', 'la création de factures');
+require_billing_access('factures', 'la création de factures');
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));

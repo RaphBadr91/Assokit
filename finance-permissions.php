@@ -12,7 +12,8 @@
  * AUCUN autre rôle ne voit les budgets / factures :
  *   ❌ Responsable
  *   ❌ Référent (Projet)
- *   ❌ Coordinateur
+ *   ❌ Coordinateur (sauf Facturation, Relances et Radar subventions :
+ *      voir user_can_access_billing())
  *   ❌ Suiveur (Follower)
  *   ❌ Membre
  *
@@ -44,6 +45,31 @@ if (!function_exists('user_can_view_finances')) {
         $is_super_admin = !empty($user['is_super_admin']);
 
         return $is_authorized_role || $is_founder || $is_super_admin;
+    }
+}
+
+if (!function_exists('user_can_access_billing')) {
+    /**
+     * Facturation (factures, devis, clients, récurrences), Relances et Radar
+     * subventions : ouverts aussi aux Coordinateurs, qui pilotent l'activité
+     * au quotidien. Le reste des finances (comptabilité, FEC, prévisions,
+     * anomalies, budgets) reste réservé aux rôles de user_can_view_finances().
+     */
+    function user_can_access_billing(?array $user = null): bool {
+        if ($user === null) {
+            if (!function_exists('current_user')) return false;
+            $user = current_user();
+        }
+        if (!$user || !is_array($user)) return false;
+        return user_can_view_finances($user) || ($user['role'] ?? '') === 'coordinator';
+    }
+}
+
+if (!function_exists('require_billing_access')) {
+    /** Comme require_finance_access(), avec la règle de user_can_access_billing(). */
+    function require_billing_access(string $sidebar_active = 'dashboard', string $context = 'cette page'): void {
+        if (user_can_access_billing()) return;
+        require_finance_access($sidebar_active, $context);   // affiche le refus et s'arrête
     }
 }
 

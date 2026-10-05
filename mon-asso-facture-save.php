@@ -18,8 +18,8 @@ if (empty($user['org_id'])) {
 }
 $org_id = (int)$user['org_id'];
 
-// Même politique que l'affichage/formulaire : Admin / Founder / Super Admin.
-if (!user_can_view_finances($user)) {
+// Même politique que l'affichage/formulaire : Admin / Founder / Super Admin / Coordinateur.
+if (!user_can_access_billing($user)) {
     http_response_code(403);
     die('Accès réservé aux administrateurs.');
 }

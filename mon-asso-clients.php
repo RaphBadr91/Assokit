@@ -20,7 +20,7 @@ $is_admin = false;
 try {
     $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
     $stmt->execute([':id' => (int)$user['id']]);
-    $is_admin = in_array($stmt->fetchColumn(), ['admin', 'founder', 'super_admin'], true)
+    $is_admin = in_array($stmt->fetchColumn(), ['admin', 'founder', 'super_admin', 'coordinator'], true)
         || !empty($user['is_founder']) || !empty($user['is_super_admin']);
 } catch (Throwable $e) {}
 if (!$is_admin) {

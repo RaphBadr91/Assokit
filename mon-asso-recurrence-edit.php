@@ -17,7 +17,7 @@ $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
 
 require_once __DIR__ . '/finance-permissions.php';
-require_finance_access('recurrences', "l'edition de recurrences");
+require_billing_access('recurrences', "l'edition de recurrences");
 
 $rec_id = (int)($_GET['id'] ?? 0);
 $rec = ak_recurrence_load($pdo, $rec_id, $org_id);

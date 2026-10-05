@@ -7,6 +7,7 @@
  * --------------------------------------------------------------
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/finance-permissions.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/facturation-hub.php';
 @require_once __DIR__ . '/stripe-helpers.php';
@@ -17,11 +18,8 @@ $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
 
 // [PACK 6.5 - SECURITY STRICT] Accès finances : SEULS Admin / Founder / Super Admin
-$can_view_finances = (
-    in_array($user['role'] ?? '', ['admin', 'founder', 'super_admin'], true)
-    || !empty($user['is_founder'])
-    || !empty($user['is_super_admin'])
-);
+// Admin / Founder / Super Admin, et Coordinateurs (cf. finance-permissions.php)
+$can_view_finances = user_can_access_billing($user);
 if (!$can_view_finances) {
     http_response_code(403);
     render_head('Accès refusé');

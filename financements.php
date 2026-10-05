@@ -16,9 +16,9 @@ require_login();
 $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 $role = strtolower((string)($user['role'] ?? ''));
-$can_manage = in_array($role, ['admin','founder'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
+$can_manage = in_array($role, ['admin','founder','coordinator'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
 if ($org_id <= 0 || !$can_manage) {
-    $_SESSION['flash_error'] = 'Le radar de subventions est réservé aux administrateurs.';
+    $_SESSION['flash_error'] = 'Le radar de subventions est réservé aux administrateurs et coordinateurs.';
     header('Location: /dashboard'); exit;
 }
 

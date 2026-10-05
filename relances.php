@@ -14,7 +14,8 @@ require_login();
 
 $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
-if ($org_id <= 0 || !can('manage_finances')) {
+// Gestion financière, ou Coordinateur (suivi des impayés au quotidien)
+if ($org_id <= 0 || !(can('manage_finances') || ($user['role'] ?? '') === 'coordinator')) {
     $_SESSION['flash_error'] = 'Les relances sont réservées aux rôles de gestion financière.';
     header('Location: /dashboard'); exit;
 }

@@ -39,6 +39,8 @@ function ak_nav_familles(array $ctx): array
     $role        = (string)($ctx['role'] ?? '');
     $estAdmin    = ($role === 'admin');
     $estCoord    = in_array($role, ['admin', 'coordinator'], true);
+    // Facturation, Relances et Radar subventions : aussi pour les Coordinateurs
+    $billing     = !empty($ctx['peut_finances']) || $role === 'coordinator';
     $membre      = empty($ctx['is_follower']);        // « pas un simple suiveur »
     $finances    = !empty($ctx['peut_finances']);
     $marketing   = !empty($ctx['peut_marketing']);
@@ -82,14 +84,14 @@ function ak_nav_familles(array $ctx): array
             'label' => 'Finances',
             'icone' => $i('finances', 16),
             'entrees' => [
-                ['facturation',  '/mon-asso-factures-client', 'Facturation',          $finances, ['devis','factures','clients','stats']],
-                ['relances',     '/relances',                 'Relances',             $finances, ['relances']],
+                ['facturation',  '/mon-asso-factures-client', 'Facturation',          $billing,  ['devis','factures','clients','stats']],
+                ['relances',     '/relances',                 'Relances',             $billing,  ['relances']],
                 ['anomalies',    '/anomalies',                'Anomalies',            $finances, ['anomalies']],
                 ['previsions',   '/previsions',               'Prévisions',           $finances, ['previsions']],
                 ['comptabilite', '/comptabilite',             'Comptabilité',         $finances, ['comptabilite']],
                 ['export-fec',   '/export-fec',               'Export FEC',           $finances, ['export-fec']],
                 ['facturx',      '/facturx',                  'E-facture (Factur-X)', $finances, ['facturx']],
-                ['financements', '/financements',             'Radar subventions',    $finances && $estAdmin, ['financements']],
+                ['financements', '/financements',             'Radar subventions',    ($finances && $estAdmin) || $role === 'coordinator', ['financements']],
                 ['subventions',  '/subventions',              'Mes candidatures',     $finances && $estAdmin, ['subventions']],
             ],
         ],

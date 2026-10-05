@@ -18,7 +18,7 @@ $org_id = (int)$user['org_id'];
 
 // [PACK 6.5 - SECURITY] Accès finances obligatoire
 require_once __DIR__ . '/finance-permissions.php';
-require_finance_access('factures', 'l\'envoi de factures');
+require_billing_access('factures', 'l\'envoi de factures');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: /mon-asso-factures'); exit;

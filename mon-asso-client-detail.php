@@ -16,7 +16,7 @@ $org_id = (int)$user['org_id'];
 
 // [PACK 6.5 - SECURITY] Accès finances obligatoire (factures clients = données comptables)
 require_once __DIR__ . '/finance-permissions.php';
-require_finance_access('factures', 'la fiche détaillée d\'un client');
+require_billing_access('factures', 'la fiche détaillée d\'un client');
 
 $client_id = (int)($_GET['id'] ?? 0);
 if ($client_id <= 0) { header('Location: /mon-asso-clients.php'); exit; }

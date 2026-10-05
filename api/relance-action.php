@@ -5,7 +5,7 @@
  * Endpoint JSON des relances intelligentes.
  * Actions : send-invoice | send-invoice-custom | send-membership |
  *           send-membership-custom | ai-draft | save-prefs | batch
- * Sécurité : login + can('manage_finances') + CSRF ; org_id = session.
+ * Sécurité : login + can('manage_finances') ou Coordinateur + CSRF ; org_id = session.
  * ------------------------------------------------------------------
  */
 require_once __DIR__ . '/../config.php';
@@ -21,7 +21,7 @@ $user   = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 $uid    = (int)($user['id'] ?? 0);
 if ($org_id <= 0) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'no_org']); exit; }
-if (!function_exists('can') || !can('manage_finances')) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'forbidden']); exit; }
+if (!function_exists('can') || !(can('manage_finances') || ($user['role'] ?? '') === 'coordinator')) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'forbidden']); exit; }
 
 $body = json_decode(file_get_contents('php://input'), true);
 if (!is_array($body)) $body = $_POST;

@@ -19,7 +19,7 @@ if ($org_id <= 0) { header('Location: /'); exit; }
 
 // [PACK 6.5 - SECURITY] Accès finances obligatoire
 require_once __DIR__ . '/finance-permissions.php';
-require_finance_access('recurrences', 'la création de récurrences');
+require_billing_access('recurrences', 'la création de récurrences');
 
 $page_error = null;
 $clients = [];
