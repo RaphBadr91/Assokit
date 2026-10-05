@@ -49,7 +49,15 @@ function mail_can_access(?array $user): bool {
         || !empty($user['is_founder']) || !empty($user['is_super_admin']);
 }
 
-/** Qui relie / délie la boîte et règle les catégories. */
+/**
+ * Qui relie, change ou déconnecte la boîte de l'association : administrateurs
+ * et coordinateurs. (Les catégories et leur visibilité restent aux admins.)
+ */
+function mail_can_connect(?array $user): bool {
+    return mail_can_access($user);
+}
+
+/** Qui règle les catégories et voit toutes les catégories. */
 function mail_can_manage(?array $user): bool {
     if (!$user) return false;
     return in_array($user['role'] ?? '', ['admin', 'founder', 'super_admin'], true)
@@ -96,26 +104,44 @@ function mail_get_account(PDO $pdo, int $org_id): ?array {
 /** Catégories proposées à la première ouverture (modifiables ensuite). */
 function mail_default_categories(): array {
     return [
-        ['facturation',    'Facturation',             '#0EA5E9', 'receipt',   'facture, devis, bon de commande, paiement de la facture, règlement, virement, avoir, impayé, relance, acompte', 'admin,coordinator'],
+        ['facturation',    'Facturation & paiements', '#0EA5E9', 'receipt',   'facture, devis, bon de commande, paiement de la facture, règlement, virement reçu, avoir, impayé, relance de paiement, acompte, mise en demeure', 'admin,coordinator'],
+        ['subventions',    'Subventions & financeurs','#8B5CF6', 'euro',      'subvention, appel à projets, AAP, appel à manifestation, AMI, financement, demande de financement, convention, bilan financier, compte rendu financier, CERFA, dossier de demande, OPCO, fondation, FDVA, FSE, politique de la ville, cité éducative, contrat de ville, ANCT', 'admin,coordinator'],
+        ['institutions',   'Institutions & administrations', '#DC2626', 'building', 'préfecture, sous-préfecture, mairie, conseil départemental, département, conseil régional, région, DREETS, DRAJES, SDJES, CAF, rectorat, éducation nationale, académie, inspection, ministère, @gouv.fr, @interieur.gouv.fr, @education.gouv.fr', 'admin,coordinator'],
         ['adherents',      'Adhérents',               '#10B981', 'users',     'adhésion, adhérent, cotisation, inscription, réinscription, renouvellement, carte de membre, désinscription', ''],
-        ['subventions',    'Subventions & financeurs','#8B5CF6', 'euro',      'subvention, appel à projets, AAP, financement, demande de financement, convention, bilan financier, CERFA, dossier de demande, OPCO, fondation', 'admin,coordinator'],
         ['formations',     'Formations & stagiaires', '#F59E0B', 'book',      'formation, stage, stagiaire, apprenant, session, convocation, attestation de formation, positionnement, Qualiopi, CPF, émargement', ''],
-        ['partenaires',    'Partenaires',             '#EC4899', 'handshake', 'partenariat, partenaire, mécénat, mécène, sponsor, collaboration, proposition', ''],
+        ['partenaires',    'Partenaires',             '#EC4899', 'handshake', 'partenariat, partenaire, mécénat, mécène, sponsor, collaboration', ''],
         ['benevoles',      'Bénévoles',               '#14B8A6', 'heart',     'bénévole, bénévolat, mission, disponibilité, volontaire, candidature spontanée', ''],
         ['evenements',     'Événements & réunions',   '#6366F1', 'calendar',  'événement, invitation, réunion, assemblée, AG, conseil d\'administration, rendez-vous, atelier, salon, forum', ''],
-        ['administratif',  'Administratif',           '#64748B', 'building',  'assurance, URSSAF, impôts, préfecture, banque, contrat, RGPD, statuts, mutuelle, déclaration sociale, DSN', 'admin'],
+        ['achats',         'Achats & fournisseurs',   '#0891B2', 'credit-card','commande, livraison, colis, expédition, reçu, receipt, your receipt, order, abonnement, renouvellement de votre abonnement', ''],
+        ['administratif',  'Administratif',           '#64748B', 'clipboard', 'assurance, URSSAF, impôts, banque, contrat, RGPD, statuts, mutuelle, déclaration sociale, DSN', 'admin'],
+        ['promos',         'Newsletters & promotions','#A3A3A3', 'megaphone', '', ''],
         ['autre',          'Autres',                  '#94A3B8', 'inbox',     '', ''],
     ];
 }
 
+/** Crée les catégories manquantes (nouvelle asso, ou catégories ajoutées depuis). */
 function mail_ensure_categories(PDO $pdo, int $org_id): void {
-    $s = $pdo->prepare("SELECT COUNT(*) FROM mail_categories WHERE org_id = ?");
+    static $done = [];
+    if (isset($done[$org_id])) return;
+    $done[$org_id] = true;
+    $s = $pdo->prepare("SELECT slug, position FROM mail_categories WHERE org_id = ?");
     $s->execute([$org_id]);
-    if ((int)$s->fetchColumn() > 0) return;
+    $have = $s->fetchAll(PDO::FETCH_KEY_PAIR);
     $ins = $pdo->prepare("INSERT IGNORE INTO mail_categories (org_id, slug, label, color, icon, keywords, roles, position, is_system) VALUES (?,?,?,?,?,?,?,?,?)");
-    foreach (mail_default_categories() as $i => [$slug, $label, $color, $icon, $kw, $roles]) {
-        $ins->execute([$org_id, $slug, $label, $color, $icon, $kw, $roles, $i + 1, $slug === 'autre' ? 1 : 0]);
+    if (!$have) {
+        foreach (mail_default_categories() as $i => [$slug, $label, $color, $icon, $kw, $roles]) {
+            $ins->execute([$org_id, $slug, $label, $color, $icon, $kw, $roles, $i + 1, in_array($slug, ['autre', 'promos'], true) ? 1 : 0]);
+        }
+        return;
     }
+    // Boîte déjà en place : on ajoute seulement les catégories nouvelles,
+    // juste avant « Autres » (les réglages de l'association restent intacts).
+    $autre = (int)($have['autre'] ?? 100);
+    foreach (mail_default_categories() as [$slug, $label, $color, $icon, $kw, $roles]) {
+        if (isset($have[$slug]) || $slug === 'autre') continue;
+        $ins->execute([$org_id, $slug, $label, $color, $icon, $kw, $roles, $autre, $slug === 'promos' ? 1 : 0]);
+    }
+    $pdo->prepare("UPDATE mail_categories SET position = ? WHERE org_id = ? AND slug = 'autre'")->execute([$autre + 1, $org_id]);
 }
 
 function mail_categories(PDO $pdo, int $org_id): array {
@@ -153,7 +179,7 @@ function mail_oauth_url(string $state, string $login_hint = ''): string {
         'response_type'          => 'code',
         'scope'                  => MAIL_SCOPES,
         'access_type'            => 'offline',
-        'prompt'                 => 'consent',
+        'prompt'                 => 'consent select_account',   // choisir le compte : changer de boîte facilement
         'include_granted_scopes' => 'true',
         'state'                  => $state,
     ];
@@ -319,12 +345,22 @@ function mail_part_text(array $part): string {
     foreach ($part['headers'] ?? [] as $h) {
         if (strcasecmp($h['name'], 'Content-Type') === 0 && preg_match('/charset="?([\w\-]+)/i', $h['value'], $m)) $charset = strtoupper($m[1]);
     }
-    if ($charset !== 'UTF-8' && $charset !== 'US-ASCII') {
+    // Certains expéditeurs annoncent ISO-8859-1 mais envoient de l'UTF-8 :
+    // convertir donnerait « Ã© ». On ne convertit que si ce n'est pas déjà de l'UTF-8.
+    $is_utf8 = mb_check_encoding($raw, 'UTF-8') && preg_match('/[\xC2-\xF4][\x80-\xBF]/', $raw);
+    if (!$is_utf8 && $charset !== 'UTF-8' && $charset !== 'US-ASCII') {
         $conv = @mb_convert_encoding($raw, 'UTF-8', $charset);
         if ($conv !== false) $raw = $conv;
     }
-    if (!mb_check_encoding($raw, 'UTF-8')) $raw = mb_convert_encoding($raw, 'UTF-8', 'ISO-8859-1');
-    return $raw;
+    if (!mb_check_encoding($raw, 'UTF-8')) $raw = mb_convert_encoding($raw, 'UTF-8', 'Windows-1252');
+    return mail_fix_mojibake($raw);
+}
+
+/** Répare le texte doublement encodé (« Ã© » → « é », « â€™ » → « ’ »). */
+function mail_fix_mojibake(string $s): string {
+    if (!preg_match('/Ã[\x{0080}-\x{00BF}]|â€|Â[\x{00A0}-\x{00BF} ]/u', $s)) return $s;
+    $t = @mb_convert_encoding($s, 'Windows-1252', 'UTF-8');
+    return ($t !== false && $t !== '' && mb_check_encoding($t, 'UTF-8')) ? $t : $s;
 }
 
 function mail_walk_parts(array $part, array &$acc): void {
@@ -349,6 +385,11 @@ function mail_parse_gmail(array $m): array {
     $from = mail_parse_addresses(mail_decode_header($h['from'] ?? ''))[0] ?? ['email' => '', 'name' => ''];
     $reply = mail_parse_addresses(mail_decode_header($h['reply-to'] ?? ''))[0]['email'] ?? null;
     $ts = !empty($m['internalDate']) ? (int)floor($m['internalDate'] / 1000) : (strtotime($h['date'] ?? '') ?: time());
+    // Newsletter / promotion : catégories de Gmail, en-têtes de liste de diffusion
+    $labels = $m['labelIds'] ?? [];
+    $bulk = (bool)array_intersect($labels, ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL'])
+         || isset($h['list-unsubscribe']) || isset($h['list-id'])
+         || preg_match('/^(bulk|list|junk)$/i', trim($h['precedence'] ?? ''));
     return [
         'gmail_id'    => $m['id'],
         'thread_id'   => $m['threadId'],
@@ -360,12 +401,13 @@ function mail_parse_gmail(array $m): array {
         'reply_to'    => $reply,
         'to'          => mail_parse_addresses(mail_decode_header($h['to'] ?? '')),
         'cc'          => mail_parse_addresses(mail_decode_header($h['cc'] ?? '')),
-        'subject'     => mail_decode_header($h['subject'] ?? ''),
+        'subject'     => mail_fix_mojibake(mail_decode_header($h['subject'] ?? '')),
+        'bulk'        => $bulk,
         'text'        => mb_substr(str_replace("\r\n", "\n", $text), 0, 200000),
         'html'        => mb_substr($parts['html'], 0, 500000),
         'attachments' => $parts['attachments'],
         'sent_at'     => date('Y-m-d H:i:s', $ts),
-        'snippet'     => html_entity_decode($m['snippet'] ?? '', ENT_QUOTES, 'UTF-8'),
+        'snippet'     => mail_fix_mojibake(html_entity_decode($m['snippet'] ?? '', ENT_QUOTES, 'UTF-8')),
     ];
 }
 
@@ -405,34 +447,51 @@ function mail_store(PDO $pdo, array $acc, array $p, ?int $sent_by = null): ?int 
         }
     }
 
-    $pdo->prepare("
+    $ins = $pdo->prepare("
         INSERT INTO mail_messages (org_id, thread_id, gmail_message_id, rfc_message_id, references_hdr, direction, from_email, from_name, reply_to,
-                                   to_list, cc_list, subject, body_text, body_html, sent_at, label_ids, attachments_json, sent_by_user_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                   to_list, cc_list, subject, body_text, body_html, sent_at, label_ids, is_bulk, attachments_json, sent_by_user_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON DUPLICATE KEY UPDATE label_ids = VALUES(label_ids), thread_id = VALUES(thread_id)
-    ")->execute([
+    ");
+    $ins->execute([
         $org, $thread_id, $p['gmail_id'], mb_substr($p['rfc_id'], 0, 500), $p['references'] ?: null, $dir,
         $p['from_email'], $p['from_name'] ?: null, $p['reply_to'],
         json_encode($p['to'], JSON_UNESCAPED_UNICODE), json_encode($p['cc'], JSON_UNESCAPED_UNICODE),
         mb_substr($p['subject'], 0, 500), $p['text'], $p['html'] ?: null, $p['sent_at'],
-        implode(',', $p['labels']), $p['attachments'] ? json_encode($p['attachments'], JSON_UNESCAPED_UNICODE) : null, $sent_by,
+        implode(',', $p['labels']), !empty($p['bulk']) ? 1 : 0, $p['attachments'] ? json_encode($p['attachments'], JSON_UNESCAPED_UNICODE) : null, $sent_by,
     ]);
+    // Nouveau message reçu : la priorité est réévaluée au prochain tri
+    if ($ins->rowCount() === 1 && $dir === 'in') {
+        $pdo->prepare("UPDATE mail_threads SET ai_done = 0 WHERE id = ?")->execute([$thread_id]);
+    }
     mail_refresh_thread($pdo, $thread_id);
     return $thread_id;
 }
 
 /** Recalcule les champs agrégés d'un fil (dernier message, non-lu, extrait…). */
 function mail_refresh_thread(PDO $pdo, int $thread_id): void {
-    $s = $pdo->prepare("SELECT direction, body_text, sent_at, label_ids FROM mail_messages WHERE thread_id = ? ORDER BY sent_at ASC, id ASC");
+    $s = $pdo->prepare("SELECT direction, body_text, sent_at, label_ids, is_bulk FROM mail_messages WHERE thread_id = ? ORDER BY sent_at ASC, id ASC");
     $s->execute([$thread_id]);
     $msgs = $s->fetchAll(PDO::FETCH_ASSOC);
     if (!$msgs) { $pdo->prepare("DELETE FROM mail_threads WHERE id = ?")->execute([$thread_id]); return; }
     $last = end($msgs);
-    $unread = 0;
-    foreach ($msgs as $m) if ($m['direction'] === 'in' && in_array('UNREAD', explode(',', (string)$m['label_ids']), true)) $unread = 1;
-    $snippet = mb_substr(preg_replace('/\s+/u', ' ', mail_strip_quoted((string)$last['body_text'])), 0, 300);
-    $pdo->prepare("UPDATE mail_threads SET last_message_at = ?, last_direction = ?, message_count = ?, unread = ?, snippet = ? WHERE id = ?")
-        ->execute([$last['sent_at'], $last['direction'], count($msgs), $unread, $snippet, $thread_id]);
+    $unread = 0; $in = 0; $bulk = 0;
+    foreach ($msgs as $m) {
+        if ($m['direction'] !== 'in') continue;
+        $in++; $bulk += (int)$m['is_bulk'];
+        if (in_array('UNREAD', explode(',', (string)$m['label_ids']), true)) $unread = 1;
+    }
+    $pdo->prepare("UPDATE mail_threads SET last_message_at = ?, last_direction = ?, message_count = ?, unread = ?, snippet = ?, is_bulk = ? WHERE id = ?")
+        ->execute([$last['sent_at'], $last['direction'], count($msgs), $unread, mail_snippet((string)$last['body_text']), ($in > 0 && $bulk === $in) ? 1 : 0, $thread_id]);
+}
+
+/** Extrait lisible : sans citation, sans lignes de tirets, sans liens. */
+function mail_snippet(string $text): string {
+    $t = mail_fix_mojibake(mail_strip_quoted($text));
+    $t = preg_replace('~https?://\S+~u', ' ', $t);
+    $t = preg_replace('/[-_=*~#]{3,}/u', ' ', $t);
+    $t = preg_replace('/\s+/u', ' ', $t);
+    return mb_substr(trim($t), 0, 300);
 }
 
 // ============================================================
@@ -629,58 +688,141 @@ function mail_rule_category(array $cats, string $subject, string $from): ?array 
     return null;
 }
 
-/** Trie les fils en attente : règles, puis IA par lots, puis « Autres ». */
+const MAIL_PRIORITIES = ['urgent', 'important', 'normal', 'faible'];
+
+/** Ce que recouvre chaque catégorie par défaut (guide l'IA). */
+function mail_category_guide(): array {
+    return [
+        'facturation'   => 'factures émises par l\'association à ses clients, devis, paiements reçus, relances d\'impayés',
+        'subventions'   => 'financeurs, subventions, appels à projets (AAP/AMI), conventions, bilans et comptes rendus financiers, OPCO, fondations, cité éducative, politique de la ville',
+        'institutions'  => 'messages d\'administrations et collectivités : préfecture, mairie, département, région, DREETS, CAF, éducation nationale, rectorat, ministères',
+        'adherents'     => 'adhésions, cotisations, questions d\'adhérents, inscriptions à l\'association',
+        'formations'    => 'stagiaires, apprenants, sessions de formation, convocations, attestations, Qualiopi, parents d\'élèves',
+        'partenaires'   => 'partenariats, mécénat, dons de matériel, entreprises et associations partenaires',
+        'benevoles'     => 'bénévoles, candidatures de bénévolat, disponibilités',
+        'evenements'    => 'invitations, réunions, AG, conseils d\'administration, forums, rendez-vous',
+        'achats'        => 'achats et commandes de l\'association, livraisons, reçus d\'abonnements, factures de fournisseurs (Amazon, logiciels…)',
+        'administratif' => 'assurance, URSSAF, impôts, banque, contrats, statuts, juridique',
+        'promos'        => 'newsletters, publicités, promotions commerciales, réseaux sociaux, notifications marketing',
+        'autre'         => 'tout ce qui n\'entre dans aucune autre catégorie',
+    ];
+}
+
+/** Priorité sans IA : mots d'alerte dans l'objet ou le début du message. */
+function mail_priority_fallback(string $subject, string $body, ?string $cat_slug, bool $bulk): array {
+    if ($bulk) return ['faible', null];
+    $hay = mail_norm($subject . ' ' . mb_substr($body, 0, 1500));
+    foreach (['urgent', 'urgence', 'dernier delai', 'date limite', 'au plus tard', 'mise en demeure', 'avant le', 'impaye', 'controle',
+              'dossier incomplet', 'pieces manquantes', 'sous 48', 'relance', 'echeance', 'expire'] as $k) {
+        if (strpos($hay, ' ' . $k) !== false) return ['urgent', 'Mot d\'alerte : « ' . $k . ' »'];
+    }
+    if (in_array($cat_slug, ['subventions', 'institutions'], true)) return ['important', null];
+    return ['normal', null];
+}
+
+/**
+ * Trie les conversations à (re)traiter : catégorie (règles, sinon IA, sinon
+ * « Autres ») et priorité (IA, sinon mots d'alerte). Les promotions repérées
+ * par Gmail sont rangées sans appel à l'IA.
+ */
 function mail_classify_pending(PDO $pdo, array $acc, int $limit = 60): int {
     $org = (int)$acc['org_id'];
     $cats = mail_categories($pdo, $org);
-    $by_slug = []; foreach ($cats as $c) $by_slug[$c['slug']] = $c;
+    $by_slug = []; $by_id = [];
+    foreach ($cats as $c) { $by_slug[$c['slug']] = $c; $by_id[(int)$c['id']] = $c; }
     $autre = $by_slug['autre'] ?? end($cats);
-    $s = $pdo->prepare("SELECT t.id, t.subject, t.counterpart_email, t.counterpart_name,
-                               (SELECT body_text FROM mail_messages m WHERE m.thread_id = t.id ORDER BY sent_at ASC LIMIT 1) AS body
-                          FROM mail_threads t WHERE t.org_id = ? AND t.category_source = 'none' ORDER BY t.last_message_at DESC LIMIT " . (int)$limit);
+    $promos = $by_slug['promos'] ?? $autre;
+    $s = $pdo->prepare("SELECT t.id, t.subject, t.counterpart_email, t.counterpart_name, t.category_id, t.category_source, t.is_bulk,
+                               (SELECT body_text FROM mail_messages m WHERE m.thread_id = t.id AND m.direction = 'in' ORDER BY sent_at DESC LIMIT 1) AS body,
+                               (SELECT COUNT(*) FROM mail_messages m WHERE m.thread_id = t.id AND (m.label_ids LIKE '%CATEGORY_PROMOTIONS%' OR m.label_ids LIKE '%CATEGORY_SOCIAL%')) AS promo_lbl
+                          FROM mail_threads t WHERE t.org_id = ? AND (t.ai_done = 0 OR t.category_source = 'none')
+                         ORDER BY t.last_message_at DESC LIMIT " . (int)$limit);
     $s->execute([$org]);
     $todo = $s->fetchAll(PDO::FETCH_ASSOC);
     if (!$todo) return 0;
-    $set = $pdo->prepare("UPDATE mail_threads SET category_id = ?, category_source = ? WHERE id = ?");
-    $reste = [];
+
+    $save = $pdo->prepare("UPDATE mail_threads SET category_id = ?, category_source = ?, priority = ?, priority_reason = ?, ai_done = 1 WHERE id = ?");
+    $ai_on = !empty($acc['ai_sort']) && function_exists('ask_claude') && function_exists('is_ai_enabled') && is_ai_enabled();
+    $pour_ia = [];
     foreach ($todo as $t) {
-        $c = mail_rule_category($cats, (string)$t['subject'], (string)$t['counterpart_email']);
-        if ($c) $set->execute([$c['id'], 'rule', $t['id']]);
-        else $reste[] = $t;
-    }
-    if ($reste && !empty($acc['ai_sort']) && function_exists('ask_claude') && function_exists('is_ai_enabled') && is_ai_enabled()) {
-        foreach (array_chunk($reste, 20) as $lot) {
-            $ai = mail_ai_classify($cats, $lot);
-            foreach ($lot as $t) {
-                $slug = $ai[(string)$t['id']] ?? null;
-                if ($slug && isset($by_slug[$slug])) $set->execute([$by_slug[$slug]['id'], 'ai', $t['id']]);
-                else $set->execute([$autre['id'], 'default', $t['id']]);
-            }
+        $t['rule'] = mail_rule_category($cats, (string)$t['subject'], (string)$t['counterpart_email']);
+        $t['manual'] = $t['category_source'] === 'manual' && isset($by_id[(int)$t['category_id']]);
+        $bulk = (int)$t['is_bulk'] === 1;
+        if ($bulk && (int)$t['promo_lbl'] > 0 && !$t['rule'] && !$t['manual']) {
+            $save->execute([$promos['id'], 'auto', 'faible', null, $t['id']]);   // publicité repérée par Gmail
+            continue;
         }
-    } else {
-        foreach ($reste as $t) $set->execute([$autre['id'], 'default', $t['id']]);
+        if ($ai_on) { $pour_ia[] = $t; continue; }
+        $cat = $t['manual'] ? $by_id[(int)$t['category_id']] : ($t['rule'] ?: ($bulk ? $promos : $autre));
+        [$p, $r] = mail_priority_fallback((string)$t['subject'], (string)$t['body'], $cat['slug'], $bulk);
+        $save->execute([$cat['id'], $t['manual'] ? 'manual' : ($t['rule'] ? 'rule' : 'default'), $p, $r, $t['id']]);
+    }
+
+    foreach (array_chunk($pour_ia, 15) as $lot) {
+        $ai = mail_ai_triage($cats, $lot);
+        foreach ($lot as $t) {
+            $bulk = (int)$t['is_bulk'] === 1;
+            $res = $ai[(string)$t['id']] ?? null;
+            if ($t['manual'])      { $cat = $by_id[(int)$t['category_id']]; $src = 'manual'; }
+            elseif ($t['rule'])    { $cat = $t['rule']; $src = 'rule'; }
+            elseif ($res && isset($by_slug[$res['c']])) { $cat = $by_slug[$res['c']]; $src = 'ai'; }
+            else                   { $cat = $bulk ? $promos : $autre; $src = 'default'; }
+            if ($res && in_array($res['p'], MAIL_PRIORITIES, true)) {
+                $p = $res['p']; $r = $res['r'] !== '' ? mb_substr($res['r'], 0, 150) : null;
+                if ($bulk && $p === 'urgent') $p = 'important';      // une lettre d'information n'est jamais « urgente »
+                if ($cat['slug'] === 'promos') { $p = 'faible'; $r = null; }
+            } else {
+                [$p, $r] = mail_priority_fallback((string)$t['subject'], (string)$t['body'], $cat['slug'], $bulk);
+            }
+            $save->execute([$cat['id'], $src, $p, $r, $t['id']]);
+        }
     }
     return count($todo);
 }
 
-/** Demande à l'IA la catégorie d'un lot de fils. @return array id => slug */
-function mail_ai_classify(array $cats, array $lot): array {
+/**
+ * IA : catégorie + priorité + raison pour un lot de conversations.
+ * @return array id => ['c' => slug, 'p' => priorité, 'r' => raison]
+ */
+function mail_ai_triage(array $cats, array $lot): array {
+    $guide = mail_category_guide();
     $liste = '';
-    foreach ($cats as $c) $liste .= "- {$c['slug']} : {$c['label']}" . ($c['keywords'] ? " (ex. : " . mb_substr($c['keywords'], 0, 160) . ")" : '') . "\n";
+    foreach ($cats as $c) {
+        $desc = $guide[$c['slug']] ?? ($c['keywords'] ? 'mots-clés : ' . mb_substr($c['keywords'], 0, 160) : '');
+        $liste .= "- {$c['slug']} ({$c['label']}) : {$desc}\n";
+    }
     $mails = '';
     foreach ($lot as $t) {
-        $corps = mb_substr(preg_replace('/\s+/u', ' ', mail_strip_quoted((string)$t['body'])), 0, 400);
-        $mails .= "[{$t['id']}] De : {$t['counterpart_name']} <{$t['counterpart_email']}>\nObjet : {$t['subject']}\nDébut : {$corps}\n\n";
+        $corps = mb_substr(preg_replace('/\s+/u', ' ', mail_strip_quoted((string)$t['body'])), 0, 600);
+        $mails .= "[{$t['id']}]" . ((int)$t['is_bulk'] ? ' (envoi de masse / newsletter)' : '')
+                . "\nDe : {$t['counterpart_name']} <{$t['counterpart_email']}>\nObjet : {$t['subject']}\nDébut : {$corps}\n\n";
     }
-    $prompt = "Classe chaque e-mail reçu par une association dans UNE des catégories suivantes :\n{$liste}\n"
-            . "Utilise « autre » si aucune ne convient vraiment.\n\nE-mails :\n{$mails}"
-            . "Réponds UNIQUEMENT par un objet JSON {\"<numéro>\": \"<slug>\"}, sans texte autour.";
-    $r = ask_claude('Tu tries la boîte mail d\'une association française. Tu réponds uniquement en JSON valide.', [['role' => 'user', 'content' => $prompt]], 800);
+    $today = date('d/m/Y');
+    $prompt = "Tu tries la boîte mail d'une association française (loi 1901 : formation, insertion, éducation, vie locale). Nous sommes le {$today}.\n\n"
+            . "CATÉGORIES (c) :\n{$liste}\n"
+            . "PRIORITÉS (p) :\n"
+            . "- urgent : une action est attendue de l'association avec une échéance proche ou un enjeu fort — demande d'un financeur ou d'une administration (préfecture, mairie, département, région, DREETS, CAF, éducation nationale, cité éducative…), dossier de subvention ou appel à projets avec date limite, pièces manquantes, contrôle, convocation officielle, impayé ou mise en demeure, problème sur un projet en cours.\n"
+            . "- important : une vraie personne (adhérent, bénévole, stagiaire, parent, partenaire, financeur, client) attend une réponse, sans urgence datée.\n"
+            . "- normal : information utile sans action requise : confirmations, reçus, notifications de services, livraisons.\n"
+            . "- faible : newsletters, publicités, promotions, réseaux sociaux.\n\n"
+            . "RÈGLES : une publicité n'est jamais urgente ni importante. Un reçu ou une commande auprès d'un fournisseur va dans « achats », pas dans « facturation ». "
+            . "Une newsletter d'un financeur annonçant un appel à projets peut être « important » et va dans « subventions ». "
+            . "r = raison en français, 4 à 10 mots, factuelle, avec la date limite si elle est citée (ex. « Dépôt du dossier avant le 15/12 ») ; r vide si p vaut normal ou faible.\n\n"
+            . "E-MAILS :\n{$mails}"
+            . "Réponds UNIQUEMENT par un objet JSON : {\"<numéro>\": {\"c\": \"<slug>\", \"p\": \"urgent|important|normal|faible\", \"r\": \"<raison>\"}}";
+    $r = ask_claude('Tu es l\'assistant de tri d\'une boîte mail associative. Tu réponds uniquement en JSON valide, sans texte autour.', [['role' => 'user', 'content' => $prompt]], 1500);
     if (empty($r['success'])) return [];
     $txt = trim((string)$r['content']);
     if (preg_match('/\{.*\}/s', $txt, $m)) $txt = $m[0];
     $d = json_decode($txt, true);
-    return is_array($d) ? array_map('strval', $d) : [];
+    if (!is_array($d)) return [];
+    $out = [];
+    foreach ($d as $id => $v) {
+        if (is_string($v)) $v = ['c' => $v];
+        if (!is_array($v)) continue;
+        $out[(string)$id] = ['c' => (string)($v['c'] ?? ''), 'p' => strtolower((string)($v['p'] ?? '')), 'r' => trim((string)($v['r'] ?? ''))];
+    }
+    return $out;
 }
 
 // ============================================================

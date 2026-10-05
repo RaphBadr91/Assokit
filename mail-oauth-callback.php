@@ -17,7 +17,7 @@ $back = function (string $msg, bool $ok = false) {
 };
 unset($_SESSION['mail_oauth_state'], $_SESSION['mail_oauth_time']);
 
-if (!mail_can_manage($user)) $back('Seul un administrateur peut relier la boîte mail.');
+if (!mail_can_connect($user)) $back('Seuls les administrateurs et coordinateurs peuvent relier la boîte mail.');
 if (isset($_GET['error']))   $back($_GET['error'] === 'access_denied' ? 'Autorisation refusée sur l’écran Google.' : 'Google : ' . $_GET['error']);
 $code = (string)($_GET['code'] ?? '');
 if ($code === '') $back('Réponse Google incomplète.');

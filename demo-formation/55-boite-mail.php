@@ -118,6 +118,18 @@ function df_seed_boite_mail(): void
             ['in', 0, "Bonjour,\n\nPour information, le virement de la facture $f_tilleul a été effectué ce jour.\n\nMerci encore pour les ateliers FLE, les retours des familles sont excellents !\n\nFatima Ziani"],
             ['out', 40, "Bonjour Fatima,\n\nMerci pour l'information et pour ces beaux retours, ils feront plaisir à l'équipe !\n\nBien à vous,\nSophie Laurent"],
         ], false, null],
+        ['vie-associative@pref-demo.example', 'Préfecture (démo) — Bureau de la vie associative', 0, '09:12', 'Dossier FDVA 2027 : pièces manquantes', [
+            ['in', 0, "Madame la Présidente,\n\nVotre demande de subvention FDVA « fonctionnement et innovation » est incomplète : il manque le budget prévisionnel 2027 et le dernier rapport d'activité approuvé.\n\nMerci de déposer ces pièces sur Le Compte Asso avant le 14 octobre, faute de quoi le dossier ne pourra pas être instruit.\n\nLe bureau de la vie associative"],
+        ], true, 'subventions'],
+        ['cite-educative@demoville.example', 'Cité éducative de Démoville', -1, '17:30', 'Cité éducative : appel à projets 2027 — dépôt avant le 30 octobre', [
+            ['in', 0, "Bonjour,\n\nL'appel à projets 2027 de la Cité éducative est ouvert. Priorités : accompagnement à la scolarité, parentalité, numérique éducatif.\n\nLes dossiers sont à déposer avant le 30 octobre ; un comité de sélection se réunira le 12 novembre. Votre projet « aide aux devoirs » correspond parfaitement.\n\nLa coordination de la Cité éducative"],
+        ], true, null],
+        ['newsletter@fournitures-bureau.example', 'Bureau Plus', 0, '07:05', 'Soldes d\'automne : -40 % sur les cartouches d\'encre', [
+            ['in', 0, "Profitez de -40 % sur toute la papeterie et les cartouches jusqu'à dimanche. Livraison gratuite dès 49 €."],
+        ], true, 'promos', true],
+        ['infos@webinaires-asso.example', 'Webinaires Asso', -3, '12:00', 'Nouveauté : 3 webinaires gratuits en novembre', [
+            ['in', 0, "Au programme : mécénat de compétences, communication sur les réseaux sociaux, Excel pour les trésoriers. Inscriptions ouvertes."],
+        ], false, 'promos', true],
         ['qualite@certif-demo.example', 'Certif\'Démo — organisme certificateur', -20, '10:10', 'Audit de surveillance Qualiopi : proposition de dates', [
             ['in', 0, "Madame, Monsieur,\n\nVotre audit de surveillance Qualiopi doit avoir lieu avant le 31 janvier. Nous vous proposons les 8, 9 ou 15 décembre (une journée, sur site).\n\nMerci de nous indiquer la date retenue.\n\nService qualité"],
         ], true, null],
@@ -128,7 +140,25 @@ function df_seed_boite_mail(): void
     $me = 'contact@' . DF_DOMAINE;
     $users_nom = ['admin' => 'Sophie Laurent', 'salarie' => 'Karim Benali', 'benevole' => 'Julie Moreau'];
 
-    foreach ($fils as $n => [$from, $nom, $j, $h, $objet, $msgs, $nonlu, $ia]) {
+    // Priorités qu'aurait données l'IA (la démo ne l'appelle pas)
+    $prio = [
+        'Dossier FDVA'             => ['urgent', 'Pièces à déposer avant le 14 octobre'],
+        'Cité éducative'           => ['urgent', 'Dépôt du projet avant le 30 octobre'],
+        'AAP « Compétences'        => ['urgent', 'Candidature avant le 15 décembre'],
+        'Facture demo-formation-2026-000083' => ['urgent', 'Bon de commande requis pour être payé'],
+        'Audit de surveillance'    => ['urgent', 'Choisir une date d\'audit avant le 31/01'],
+        'Urssaf'                   => ['urgent', 'Déclaration à transmettre avant le 15/11'],
+        'Renouvellement de mon'    => ['important', 'Un adhérent attend une réponse'],
+        'Relance : facture'        => ['important', 'Mandatement annoncé pour le 20'],
+        'Invitation : forum'       => ['important', 'Confirmer la participation avant le 7/11'],
+        'Proposition de partenariat' => ['important', 'Proposition de job dating à étudier'],
+        'Orientation de deux'      => ['important', 'Deux inscriptions à confirmer'],
+        'Devis pour trois'         => ['important', 'Dates de janvier à confirmer au CCAS'],
+    ];
+
+    foreach ($fils as $n => $fil) {
+        [$from, $nom, $j, $h, $objet, $msgs, $nonlu, $ia] = $fil;
+        $bulk = !empty($fil[8]);
         if (!$from) continue;
         $gtid = 'demo-t-' . ($n + 1);
         $debut = strtotime(df_passe($j, $h));
@@ -150,7 +180,8 @@ function df_seed_boite_mail(): void
                 'to_list' => json_encode([$out ? ['email' => strtolower($from), 'name' => $nom] : ['email' => $me, 'name' => 'DEMO F']], JSON_UNESCAPED_UNICODE),
                 'cc_list' => '[]', 'subject' => ($k > 0 ? 'Re: ' : '') . $objet, 'body_text' => $texte, 'body_html' => null,
                 'sent_at' => date('Y-m-d H:i:s', $quand),
-                'label_ids' => $out ? 'SENT' : ('INBOX' . ($nonlu && $k === count($msgs) - 1 ? ',UNREAD' : '')),
+                'label_ids' => $out ? 'SENT' : ('INBOX' . ($bulk ? ',CATEGORY_PROMOTIONS' : '') . ($nonlu && $k === count($msgs) - 1 ? ',UNREAD' : '')),
+                'is_bulk' => $bulk ? 1 : 0,
                 'attachments_json' => null,
                 'sent_by_user_id' => $out ? (array_search($signataire, $users_nom, true) ? DF::$u[array_search($signataire, $users_nom, true)] : DF::$u['admin']) : null,
                 'created_at' => date('Y-m-d H:i:s', $quand),
@@ -158,9 +189,13 @@ function df_seed_boite_mail(): void
         }
         mail_refresh_thread($pdo, $tid);
         mail_link_thread($pdo, $org, $tid);
-        $c = mail_rule_category($cats, $objet, strtolower($from));
+        $c = $bulk ? null : mail_rule_category($cats, $objet, strtolower($from));
         if ($c) $src = 'rule';
-        else { $c = $by_slug[$ia ?: 'autre'] ?? $by_slug['autre']; $src = 'ai'; }
-        $pdo->prepare("UPDATE mail_threads SET category_id = ?, category_source = ? WHERE id = ?")->execute([$c['id'], $src, $tid]);
+        else { $c = $by_slug[$ia ?: 'autre'] ?? $by_slug['autre']; $src = $bulk ? 'auto' : 'ai'; }
+        [$p, $r] = ['normal', null];
+        foreach ($prio as $debut_objet => $pr) if (strpos($objet, $debut_objet) !== false) { [$p, $r] = $pr; break; }
+        if ($bulk) [$p, $r] = ['faible', null];
+        $pdo->prepare("UPDATE mail_threads SET category_id = ?, category_source = ?, priority = ?, priority_reason = ?, ai_done = 1 WHERE id = ?")
+            ->execute([$c['id'], $src, $p, $r, $tid]);
     }
 }

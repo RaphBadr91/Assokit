@@ -115,7 +115,7 @@ case 'settings':
 case 'reclassify':
     if (!$manage) $out(['ok' => false, 'error' => 'Réservé aux administrateurs.'], 403);
     @set_time_limit(120);
-    $pdo->prepare("UPDATE mail_threads SET category_source = 'none' WHERE org_id = ? AND category_source IN ('rule','ai','default','none')")->execute([$org]);
+    $pdo->prepare("UPDATE mail_threads SET category_source = IF(category_source = 'manual', 'manual', 'none'), ai_done = 0 WHERE org_id = ?")->execute([$org]);
     $n = 0;
     for ($i = 0; $i < 10; $i++) { $k = mail_classify_pending($pdo, $acc, 60); $n += $k; if ($k < 60) break; }
     $out(['ok' => true, 'count' => $n]);
@@ -160,7 +160,7 @@ case 'category_order':
     $out(['ok' => true]);
 
 case 'disconnect':
-    if (!$manage) $out(['ok' => false, 'error' => 'Réservé aux administrateurs.'], 403);
+    if (!mail_can_connect($user)) $out(['ok' => false, 'error' => 'Réservé aux administrateurs et coordinateurs.'], 403);
     require_once __DIR__ . '/demo-guard.php';
     if (ak_demo_session()) $out(['ok' => false, 'error' => 'Désactivé dans l’espace de démonstration.'], 403);
     mail_disconnect($pdo, $org, true);
