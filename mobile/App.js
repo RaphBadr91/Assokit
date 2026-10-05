@@ -714,7 +714,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-08-mail-ia';
+const UI_REV = '2026-10-08-mail-ia2';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -3307,6 +3307,8 @@ function NativeMailThread({ data, loading, busy, draft, onBack, onReply, onDraft
                   <Ionicons name="color-wand-outline" size={15} color="#6D28D9" /><Text style={mailStyles.btnImproveTxt}>Améliorer</Text>
                 </TouchableOpacity>
               ) : null}
+            </View>
+            <View style={[mailStyles.replyBtns, { paddingTop: 0 }]}>
               <TouchableOpacity style={[mailStyles.btnSend, (!body.trim() || busy) ? { opacity: 0.5 } : null]} onPress={send} activeOpacity={0.85}>
                 {busy === 'reply' ? <ActivityIndicator color="#fff" size="small" /> : <><Ionicons name="send" size={15} color="#fff" /><Text style={mailStyles.btnPrimaryTxt}>Envoyer</Text></>}
               </TouchableOpacity>
@@ -3382,7 +3384,7 @@ const mailStyles = StyleSheet.create({
   toneOn: { borderColor: '#8B5CF6', backgroundColor: '#F5F3FF' },
   toneTxt: { fontSize: 12, color: INK_2, fontWeight: '600' },
   toneTxtOn: { color: '#6D28D9' },
-  btnImprove: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 44, borderRadius: 12, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#fff' },
+  btnImprove: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 14, height: 44, borderRadius: 12, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#fff' },
   btnImproveTxt: { color: '#6D28D9', fontWeight: '700', fontSize: 13 },
   todo: { marginHorizontal: 12, marginTop: 8, padding: 8, borderRadius: 9, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', color: '#92400E', fontSize: 12 },
   msgTxt: { fontSize: 14.5, lineHeight: 21, color: '#1F2937' },
