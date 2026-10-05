@@ -621,7 +621,7 @@ Options -Indexes
 </IfModule>
 
 # Bloquer l'accès aux fichiers sensibles (defense in depth vs mod_security)
-<FilesMatch "\.(bak|bak[0-9]|sql|zip|tar|gz|old|save|swp|log|ini|sh|env|dist|orig|tmp)$|~$|\.bak\.|\.bak[0-9]\.">
+<FilesMatch "\.(bak|bak[0-9]|sql|zip|tar|gz|old|save|swp|log|err|out|ini|sh|env|dist|orig|tmp)$|~$|\.bak\.|\.bak[0-9]\.">
     Require all denied
 </FilesMatch>
 
