@@ -714,7 +714,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-08-mail-ia2';
+const UI_REV = '2026-10-08-mail-accueil';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -746,7 +746,7 @@ function BuildStamp() {
 /* ================================================================== */
 /*  ACCUEIL NATIF (KPIs premium)                                       */
 /* ================================================================== */
-function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick, onNotifs, notifCount, quickActions }) {
+function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick, onNotifs, notifCount, quickActions, showMail, onMail }) {
   const k = (data && data.kpis) || {};
   const isTpe = profile === 'tpe';
   const still = useReducedMotion();
@@ -887,6 +887,29 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
                 </View>
               ))}
             </View>
+
+            {showMail ? (
+              <FadeUp still={still} delay={400}>
+                <Tap accessibilityRole="button" scale={0.97} style={styles.fgMail} onPress={onMail}
+                  accessibilityLabel={'Boîte mail' + (data.mail_prio > 0 ? ', ' + data.mail_prio + ' prioritaires' : '') + (data.mail_unread > 0 ? ', ' + data.mail_unread + ' non lus' : '')}>
+                  <View style={styles.fgMailIc}>
+                    <Ionicons name="mail-unread" size={21} color={BRAND} />
+                    {data.mail_unread > 0 ? <View style={styles.fgMailDot}><Text style={styles.fgMailDotTxt}>{data.mail_unread > 99 ? '99+' : data.mail_unread}</Text></View> : null}
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.fgMailTitle}>Boîte mail</Text>
+                    <Text style={styles.fgMailSub} numberOfLines={1}>
+                      {data.mail_connected === false ? 'Reliez la boîte Gmail de l’association'
+                        : data.mail_prio > 0 ? '⚡ ' + data.mail_prio + ' à traiter en priorité' + (data.mail_unread > 0 ? ' · ' + data.mail_unread + ' non lu' + (data.mail_unread > 1 ? 's' : '') : '')
+                        : data.mail_unread > 0 ? data.mail_unread + ' e-mail' + (data.mail_unread > 1 ? 's' : '') + ' non lu' + (data.mail_unread > 1 ? 's' : '') + ' · réponse avec l’IA'
+                        : 'Tout est lu · réponse avec l’IA'}
+                    </Text>
+                  </View>
+                  {data.mail_prio > 0 ? <View style={styles.fgMailPrio}><Text style={styles.fgMailPrioTxt}>Urgent</Text></View> : null}
+                  <Ionicons name="chevron-forward" size={18} color={INK_3} />
+                </Tap>
+              </FadeUp>
+            ) : null}
 
             {actions.length > 0 && (
               <>
@@ -3436,9 +3459,9 @@ const MORE_GROUPS = [
   {
     title: 'Communication',
     items: [
+      { label: 'Boîte mail', icon: 'mail-unread', nav: { screen: 'mail' }, badge: 'mail', mail: true },
       { label: 'Copilote IA', icon: 'sparkles', nav: { web: '/mon-asso-copilote' }, admin: true },
       { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' }, badge: 'msg' },
-      { label: 'Boîte mail', icon: 'mail-unread', nav: { screen: 'mail' }, badge: 'mail', manage: true },
       { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' }, badge: 'notif' },
       { label: 'Communication', icon: 'mail', nav: { screen: 'broadcasts' }, admin: true },
       { label: 'Coach IA', icon: 'sparkles', nav: { screen: 'coach' }, admin: true },
@@ -3462,7 +3485,7 @@ const FOUNDER_SHORTCUTS = [
   { label: 'Pilotage', icon: 'grid', fk: 'cockpit' },
 ];
 
-function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, isTpe, counts, onNav, onLogout }) {
+function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, canMail, isTpe, counts, onNav, onLogout }) {
   const cnt = counts || {};
   return (
     <View style={styles.detailWrap}>
@@ -3499,7 +3522,7 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, is
         {MORE_GROUPS.map((g) => {
           // Masque les fonctions propres aux associations pour un profil TPE.
           // admin → admins seuls ; manage → admins ET coordinateurs (mêmes règles que le serveur)
-          const items = g.items.filter((it) => (!it.admin || isAdmin) && (!it.manage || isAdmin || canManage) && (!it.assoOnly || !isTpe));
+          const items = g.items.filter((it) => (!it.admin || isAdmin) && (!it.manage || isAdmin || canManage) && (!it.mail || canMail) && (!it.assoOnly || !isTpe));
           if (items.length === 0) return null;
           return (
           <View key={g.title} style={{ marginBottom: 20 }}>
@@ -7150,7 +7173,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           <View style={styles.homeOverlay}>
             <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} profile={profile} error={kpiError}
               onQuick={onQuick} quickActions={QUICK_ACTIONS} onNotifs={() => openMenuScreen('notifications')}
-              notifCount={(kpi && kpi.notif_unread) || 0} />
+              notifCount={(kpi && kpi.notif_unread) || 0}
+              showMail={!!kpi && (kpi.mail_access === true || (kpi.mail_access === undefined && canManageOrg))}
+              onMail={() => openMenuScreen('mail')} />
           </View>
         )}
         {showProjects && (
@@ -7374,6 +7399,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 initials={kpi && kpi.org_initials}
                 logo={kpi && kpi.org_logo}
                 canManage={canManageOrg}
+                canMail={!!kpi && (kpi.mail_access === true || (kpi.mail_access === undefined && canManageOrg))}
                 isFounder={!!(kpi && kpi.is_founder)}
                 isAdmin={!!(kpi && (kpi.role === 'admin' || kpi.is_founder))}
                 isTpe={isTpe}
@@ -7637,6 +7663,14 @@ const styles = StyleSheet.create({
   fgKpiLbl: { fontSize: 9.5, fontWeight: '700', color: MUTE, letterSpacing: 0.6 },
   fgKpiVal: { fontSize: 23, fontWeight: '800', letterSpacing: -0.4 },
   fgKpiSub: { fontSize: 11, color: MUTE },
+  fgMail: { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 14, padding: 14, backgroundColor: '#fff', borderRadius: R_CARD, borderWidth: 1, borderColor: LINE },
+  fgMailIc: { width: 42, height: 42, borderRadius: R_CHIP, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
+  fgMailDot: { position: 'absolute', top: -5, right: -7, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
+  fgMailDotTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  fgMailTitle: { fontSize: 15, fontWeight: '800', color: INK },
+  fgMailSub: { fontSize: 12.5, color: MUTE, marginTop: 2 },
+  fgMailPrio: { backgroundColor: '#FEE2E2', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  fgMailPrioTxt: { color: '#B91C1C', fontSize: 11, fontWeight: '800' },
 
   fgSection: { fontSize: 10, fontWeight: '700', color: MUTE, letterSpacing: 0.7, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginHorizontal: 20 },
   fgActions: { flexDirection: 'row', paddingHorizontal: 20, gap: 10 },

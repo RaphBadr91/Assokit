@@ -17,6 +17,8 @@
  * ============================================================
  */
 
+require_once __DIR__ . '/platform-flags.php';
+
 if (!defined('MAIL_GMAIL_API'))     define('MAIL_GMAIL_API', 'https://gmail.googleapis.com/gmail/v1/users/me/');
 if (!defined('MAIL_GOOGLE_AUTH'))   define('MAIL_GOOGLE_AUTH', 'https://accounts.google.com/o/oauth2/v2/auth');
 if (!defined('MAIL_GOOGLE_TOKEN'))  define('MAIL_GOOGLE_TOKEN', 'https://oauth2.googleapis.com/token');
@@ -45,6 +47,7 @@ function mail_schema_ready(PDO $pdo): bool {
 /** Qui ouvre la boîte : administrateurs et coordinateurs. */
 function mail_can_access(?array $user): bool {
     if (!$user) return false;
+    $user = ak_platform_flags($user);
     return in_array($user['role'] ?? '', ['admin', 'coordinator', 'founder', 'super_admin'], true)
         || !empty($user['is_founder']) || !empty($user['is_super_admin']);
 }
@@ -60,6 +63,7 @@ function mail_can_connect(?array $user): bool {
 /** Qui règle les catégories et voit toutes les catégories. */
 function mail_can_manage(?array $user): bool {
     if (!$user) return false;
+    $user = ak_platform_flags($user);
     return in_array($user['role'] ?? '', ['admin', 'founder', 'super_admin'], true)
         || !empty($user['is_founder']) || !empty($user['is_super_admin']);
 }

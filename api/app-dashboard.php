@@ -250,10 +250,23 @@ try {
     } catch (Throwable $e) {}
 
     // Boîte mail : conversations non lues visibles (admins et coordinateurs)
-    $mail_unread = 0;
+    $mail_unread = 0; $mail_prio = 0; $mail_access = false; $mail_connected = false;
     try {
         require_once __DIR__ . '/../mail-helpers.php';
-        $mail_unread = mail_unread_count($pdo, $user);
+        $mail_user = $user + ['is_founder' => $is_founder ? 1 : 0];
+        $mail_access = mail_can_access($mail_user);
+        if ($mail_access && mail_schema_ready($pdo)) {
+            $mail_unread = mail_unread_count($pdo, $mail_user);
+            $mail_connected = (bool)mail_get_account($pdo, (int)$user['org_id']);
+            if ($mail_connected) {
+                $cats = mail_visible_categories($pdo, (int)$user['org_id'], $mail_user);
+                $ids = $cats ? implode(',', array_map(fn($c) => (int)$c['id'], $cats)) : '0';
+                $st = $pdo->prepare("SELECT COUNT(*) FROM mail_threads WHERE org_id = ? AND is_archived = 0 AND last_direction = 'in'
+                                     AND priority IN ('urgent','important') AND (category_id IN ($ids) OR category_id IS NULL)");
+                $st->execute([(int)$user['org_id']]);
+                $mail_prio = (int)$st->fetchColumn();
+            }
+        }
     } catch (Throwable $e) {}
 
     echo json_encode([
@@ -267,6 +280,9 @@ try {
         'msg_unread'   => $msg_unread,
         'support_unread' => $support_unread,
         'mail_unread'  => $mail_unread,
+        'mail_access'  => $mail_access,
+        'mail_connected' => $mail_connected,
+        'mail_prio'    => $mail_prio,
         'first_name'   => $first_name,
         'org_name'     => $org_name,
         'org_initials' => $initials,
