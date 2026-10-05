@@ -1033,10 +1033,25 @@ function mail_unread_count(PDO $pdo, array $user): int {
         $cats = mail_visible_categories($pdo, (int)$user['org_id'], $user);
         if (!$cats) return 0;
         $ids = implode(',', array_map(fn($c) => (int)$c['id'], $cats));
-        $s = $pdo->prepare("SELECT COUNT(*) FROM mail_threads WHERE org_id = ? AND unread = 1 AND is_archived = 0 AND category_id IN ($ids)");
+        $s = $pdo->prepare("SELECT COUNT(*) FROM mail_threads WHERE org_id = ? AND unread = 1 AND is_archived = 0 AND (category_id IN ($ids) OR category_id IS NULL)");
         $s->execute([(int)$user['org_id']]);
         return (int)$s->fetchColumn();
     } catch (Throwable $e) { return 0; }
+}
+
+/** Ajoute 'author' (prénom nom du membre de l'équipe) aux messages envoyés depuis Assokit. */
+function mail_with_authors(PDO $pdo, int $org_id, array $msgs): array {
+    $ids = array_values(array_unique(array_filter(array_map(fn($m) => (int)($m['sent_by_user_id'] ?? 0), $msgs))));
+    $names = [];
+    if ($ids) {
+        try {
+            $s = $pdo->prepare("SELECT id, TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) FROM users WHERE org_id = ? AND id IN (" . implode(',', $ids) . ")");
+            $s->execute([$org_id]);
+            $names = $s->fetchAll(PDO::FETCH_KEY_PAIR);
+        } catch (Throwable $e) {}
+    }
+    foreach ($msgs as &$m) $m['author'] = $names[(int)($m['sent_by_user_id'] ?? 0)] ?? null;
+    return $msgs;
 }
 
 /** Fil accessible à cet utilisateur (même asso, catégorie visible). */
@@ -1047,7 +1062,7 @@ function mail_thread_for_user(PDO $pdo, array $user, int $thread_id): ?array {
     $t = $s->fetch(PDO::FETCH_ASSOC);
     if (!$t) return null;
     if (mail_can_manage($user)) return $t;
-    if ($t['category_id'] === null) return null;   // pas encore trié : réservé aux admins
+    if ($t['category_id'] === null) return $t;     // pas encore trié : visible de toute l'équipe mail
     foreach (mail_visible_categories($pdo, (int)$user['org_id'], $user) as $c) {
         if ((int)$c['id'] === (int)$t['category_id']) return $t;
     }

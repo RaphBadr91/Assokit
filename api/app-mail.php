@@ -55,7 +55,7 @@ $cats = mail_visible_categories($pdo, $org, $user);
 $by_id = []; $by_slug = [];
 foreach ($cats as $c) { $by_id[(int)$c['id']] = $c; $by_slug[$c['slug']] = $c; }
 $in = $by_id ? implode(',', array_keys($by_id)) : '0';
-$scope = mail_can_manage($user) ? "(t.category_id IN ($in) OR t.category_id IS NULL)" : "t.category_id IN ($in)";
+$scope = "(t.category_id IN ($in) OR t.category_id IS NULL)";   // non triés : visibles de toute l'équipe mail
 $promos = (int)($by_slug['promos']['id'] ?? 0);
 
 // ---------- Conversation ----------
@@ -66,11 +66,12 @@ if (isset($_GET['thread'])) {
     $s = $pdo->prepare("SELECT * FROM mail_messages WHERE thread_id = ? ORDER BY sent_at ASC, id ASC");
     $s->execute([$t['id']]);
     $msgs = []; $reply_to = '';
-    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $m) {
+    foreach (mail_with_authors($pdo, $org, $s->fetchAll(PDO::FETCH_ASSOC)) as $m) {
         $text = mail_fix_mojibake(mail_strip_quoted((string)$m['body_text']) ?: (string)$m['body_text']);
         $msgs[] = [
             'id' => (int)$m['id'], 'out' => $m['direction'] === 'out',
             'from' => $m['direction'] === 'out' ? ($m['from_name'] ?: 'Vous') : ($m['from_name'] ?: $m['from_email']),
+            'by' => $m['direction'] === 'out' ? $m['author'] : null,
             'email' => $m['from_email'], 'initials' => $initials((string)$m['from_name'], (string)$m['from_email']),
             'color' => $m['direction'] === 'out' ? '#059669' : $color($m['from_email']),
             'date' => date('d/m/Y H:i', strtotime($m['sent_at'])),

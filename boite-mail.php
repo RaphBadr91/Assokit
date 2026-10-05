@@ -47,7 +47,8 @@ $cats = $ready ? mail_visible_categories($pdo, $org, $user) : [];
 $cat_by_id = []; $cat_by_slug = [];
 foreach ($cats as $c) { $cat_by_id[(int)$c['id']] = $c; $cat_by_slug[$c['slug']] = $c; }
 $in_cats = $cat_by_id ? implode(',', array_keys($cat_by_id)) : '0';
-$scope = $manage ? "(t.category_id IN ($in_cats) OR t.category_id IS NULL)" : "t.category_id IN ($in_cats)";
+// Les e-mails pas encore triés restent visibles de toute l'équipe mail
+$scope = "(t.category_id IN ($in_cats) OR t.category_id IS NULL)";
 $promos_id = isset($cat_by_slug['promos']) ? (int)$cat_by_slug['promos']['id'] : 0;
 $has_prio = $ready && (function () use ($pdo) { try { $pdo->query("SELECT priority FROM mail_threads LIMIT 0"); return true; } catch (Throwable $e) { return false; } })();
 
@@ -173,6 +174,7 @@ function bm_thread_data(PDO $pdo, array $acc, array $user, int $org, int $id): ?
     $s = $pdo->prepare("SELECT * FROM mail_messages WHERE thread_id = ? ORDER BY sent_at ASC, id ASC");
     $s->execute([$t['id']]);
     $msgs = $s->fetchAll(PDO::FETCH_ASSOC);
+    $msgs = mail_with_authors($pdo, $org, $msgs);
     $links = [];
     $statuts = ['paid' => 'payée', 'pending' => 'en attente', 'overdue' => 'en retard', 'sent' => 'envoyée', 'draft' => 'brouillon', 'cancelled' => 'annulée'];
     try {
@@ -239,6 +241,7 @@ function bm_reader_html(array $d, array $cats, array $cat_by_id, array $acc, boo
           <span class="bm-av sm" style="background:<?= $out ? '#059669' : bm_color($m['from_email']) ?>"><?= h(bm_initials((string)$m['from_name'], (string)$m['from_email'])) ?></span>
           <span class="bm-msg-who"><strong><?= h($out ? ($m['from_name'] ?: 'Vous') : ($m['from_name'] ?: $m['from_email'])) ?></strong>
             <small>&lt;<?= h($m['from_email']) ?>&gt;<?= $to ? ' → ' . h(implode(', ', array_slice($to, 0, 3))) : '' ?></small>
+            <?php if ($out && !empty($m['author'])): ?><span class="bm-by">Envoyé par <?= h($m['author']) ?> via Assokit</span><?php endif; ?>
             <em class="bm-msg-prev"><?= h(mb_substr(mail_snippet($full), 0, 120)) ?></em></span>
           <span class="bm-date"><?= h(date('d/m/Y H:i', strtotime($m['sent_at']))) ?></span>
         </header>
@@ -562,6 +565,8 @@ render_sidebar('boite-mail');
 .bm-msg-who { flex: 1; min-width: 0; font-size: 13.5px; color: #0F172A; } .bm-msg-who small { color: #64748B; font-size: 12px; }
 .bm-msg-prev { display: none; font-style: normal; color: #64748B; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bm-msg.folded .bm-msg-prev { display: block; } .bm-msg.folded .bm-msg-who small { display: none; }
+.bm-by { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #ECFDF5; color: #047857; font-size: 11.5px; font-weight: 600; }
+.bm-msg.folded .bm-by { display: none; }
 .bm-msg-body { padding: 0 16px 14px 52px; }
 .bm-msg.folded .bm-msg-body { display: none; }
 .bm-txt { font-size: 14px; line-height: 1.6; color: #1F2937; overflow-wrap: anywhere; } .bm-txt a { color: #2563EB; }

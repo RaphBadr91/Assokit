@@ -714,7 +714,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-07-mail';
+const UI_REV = '2026-10-07-mail2';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -3268,6 +3268,7 @@ function NativeMailThread({ data, loading, busy, draft, onBack, onReply, onDraft
                 <View style={{ flex: 1 }}>
                   <Text style={mailStyles.msgFrom} numberOfLines={1}>{m.from}</Text>
                   <Text style={mailStyles.msgMeta} numberOfLines={1}>{m.email} · {m.date}</Text>
+                  {m.by ? <Text style={mailStyles.msgBy} numberOfLines={1}>Envoyé par {m.by} via Assokit</Text> : null}
                 </View>
               </View>
               <Text style={mailStyles.msgTxt} selectable>{m.text}</Text>
@@ -3355,6 +3356,7 @@ const mailStyles = StyleSheet.create({
   msgHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   msgFrom: { fontSize: 14, fontWeight: '800', color: INK },
   msgMeta: { fontSize: 12, color: MUTE },
+  msgBy: { fontSize: 11.5, color: '#047857', fontWeight: '700', marginTop: 2 },
   msgTxt: { fontSize: 14.5, lineHeight: 21, color: '#1F2937' },
   att: { marginTop: 10, fontSize: 12.5, color: INK_2 },
   reply: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: R_CARD - 6, marginTop: 6, overflow: 'hidden' },
