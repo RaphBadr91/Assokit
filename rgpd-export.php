@@ -31,7 +31,7 @@ try {
     $st = $pdo->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
     $st->execute([$uid]);
     $u = $st->fetch(PDO::FETCH_ASSOC) ?: [];
-    foreach (['password_hash','ics_token','must_change_password'] as $secret) unset($u[$secret]);
+    foreach (['password_hash','ics_token','must_change_password','totp_secret','totp_backup_codes'] as $secret) unset($u[$secret]);
     $export['profil'] = $u;
 } catch (Throwable $e) { $export['profil'] = []; }
 

@@ -707,10 +707,16 @@ function mail_text_to_html(string $text): string {
  * @param array $to / $cc  listes d'adresses e-mail
  */
 function mail_build_reply(array $acc, array $thread, array $last_in, array $to, array $cc, string $body): string {
+    // Les valeurs viennent d'e-mails reçus : aucun retour à la ligne ne doit
+    // passer dans les en-têtes (sinon ajout de destinataires cachés).
+    $one = fn($v) => trim(preg_replace('/[\r\n\t]+/', ' ', (string)$v));
+    foreach (['subject', 'references_hdr', 'rfc_message_id'] as $k) if (isset($last_in[$k])) $last_in[$k] = $one($last_in[$k]);
+    $thread['subject'] = $one($thread['subject'] ?? '');
+    $to = array_map($one, $to); $cc = array_map($one, $cc);
     $subject = (string)($last_in['subject'] ?: $thread['subject']);
     if (!preg_match('/^re\s*:/i', $subject)) $subject = 'Re: ' . $subject;
     $refs = trim(((string)($last_in['references_hdr'] ?? '')) . ' ' . ((string)($last_in['rfc_message_id'] ?? '')));
-    $refs = implode(' ', array_slice(array_unique(preg_split('/\s+/', $refs, -1, PREG_SPLIT_NO_EMPTY)), -20));
+    $refs = implode(' ', array_slice(array_unique(array_filter(preg_split('/\s+/', $refs, -1, PREG_SPLIT_NO_EMPTY), fn($r) => preg_match('/^<[^<>\s]+>$/', $r))), -20));
     $b = 'ak_' . bin2hex(random_bytes(8));
     $h = [
         'From: ' . mail_format_address($acc['email'], (string)$acc['display_name']),
@@ -718,7 +724,7 @@ function mail_build_reply(array $acc, array $thread, array $last_in, array $to, 
     ];
     if ($cc) $h[] = 'Cc: ' . implode(', ', $cc);
     $h[] = 'Subject: ' . mail_mime_header($subject);
-    if (!empty($last_in['rfc_message_id'])) $h[] = 'In-Reply-To: ' . $last_in['rfc_message_id'];
+    if (!empty($last_in['rfc_message_id']) && preg_match('/^<[^<>\s]+>$/', $last_in['rfc_message_id'])) $h[] = 'In-Reply-To: ' . $last_in['rfc_message_id'];
     if ($refs !== '') $h[] = 'References: ' . $refs;
     $h[] = 'MIME-Version: 1.0';
     $h[] = 'Content-Type: multipart/alternative; boundary="' . $b . '"';

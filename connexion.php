@@ -62,6 +62,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ((int)(function_exists('__ak_bf_count') ? __ak_bf_count($pdo, $email) : (function() use ($pdo, $email) {
                     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+                    // Comptes de démo partagés : blocage par IP seulement, sinon
+                    // n'importe qui bloquerait la démo en se trompant 10 fois.
+                    if (preg_match('/@demo-f\.assokit\.fr$/i', $email)) {
+                        $s = $pdo->prepare("SELECT COUNT(*) FROM assokit_activity_log WHERE event_type='login_failed' AND ip = ? AND created_at > (NOW() - INTERVAL 15 MINUTE)");
+                        $s->execute([$ip]);
+                        return (int)$s->fetchColumn();
+                    }
                     $s = $pdo->prepare("SELECT COUNT(*) FROM assokit_activity_log WHERE event_type='login_failed' AND (user_email = ? OR ip = ?) AND created_at > (NOW() - INTERVAL 15 MINUTE)");
                     $s->execute([$email, $ip]);
                     return (int)$s->fetchColumn();

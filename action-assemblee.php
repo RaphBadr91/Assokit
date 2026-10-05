@@ -15,6 +15,11 @@ if ($user['role'] !== 'admin') { http_response_code(403); die('Admin requis.'); 
 $action = $_POST['action'] ?? '';
 $id = (int)($_POST['id'] ?? 0);
 
+// Toute action sur une AG existante : elle doit appartenir à l'association
+// (sinon un admin d'une autre asso pourrait agir sur ses participants ou
+// clore ses résolutions en changeant l'id).
+if ($action !== 'create' && !ag_load($pdo, $id, $org_id)) { http_response_code(404); die('AG introuvable.'); }
+
 // CREATE / UPDATE
 if ($action === 'create' || $action === 'update') {
     $title = trim($_POST['title'] ?? ''); if (!$title) die('Titre requis.');

@@ -223,8 +223,8 @@ if ($action === 'validate') {
     recompute_project_budget($pdo, $project_id);
 
     // Log
-    $inv_stmt = $pdo->prepare("SELECT supplier_name, amount_ttc FROM project_invoices WHERE id = ?");
-    $inv_stmt->execute([$invoice_id]);
+    $inv_stmt = $pdo->prepare("SELECT supplier_name, amount_ttc FROM project_invoices WHERE id = ? AND project_id = ?");
+    $inv_stmt->execute([$invoice_id, $project_id]);
     if ($inv = $inv_stmt->fetch()) {
         log_invoice_activity($project_id, $user['id'], 'invoice_updated',
             'a validé la facture de ' . $inv['supplier_name'] . ' (' . number_format((float)$inv['amount_ttc'], 2, ',', ' ') . ' €)');
@@ -245,8 +245,8 @@ if ($action === 'reject') {
     $invoice_id = (int)($_POST['invoice_id'] ?? 0);
 
     // Récupérer les infos pour le log AVANT le changement de statut
-    $inv_stmt = $pdo->prepare("SELECT supplier_name, amount_ttc FROM project_invoices WHERE id = ?");
-    $inv_stmt->execute([$invoice_id]);
+    $inv_stmt = $pdo->prepare("SELECT supplier_name, amount_ttc FROM project_invoices WHERE id = ? AND project_id = ?");
+    $inv_stmt->execute([$invoice_id, $project_id]);
     $inv_info = $inv_stmt->fetch();
 
     $stmt = $pdo->prepare("

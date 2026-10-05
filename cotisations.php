@@ -12,6 +12,9 @@ $org_id = (int)$user['org_id'];
 $is_admin = ($user['role'] === 'admin');
 $is_coord = ($user['role'] === 'coordinator');
 $can_manage = $is_admin || $is_coord;
+// Liste des payeurs (noms, e-mails, montants) : réservée à la gestion,
+// comme l'entrée du menu.
+if (!$can_manage) { http_response_code(403); die('Accès réservé aux administrateurs et coordinateurs.'); }
 
 // Charger campagnes (actives + archivées)
 $stmt = $pdo->prepare("SELECT c.*,

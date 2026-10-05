@@ -5,7 +5,7 @@
 # (empêche un attaquant d'uploader un fichier .php et de l'exécuter)
 # ============================================================
 
-<FilesMatch "\.(php|phtml|php3|php4|php5|php7|php8|pl|py|jsp|asp|htm|shtml|sh|cgi)$">
+<FilesMatch "\.(php|phtml|php3|php4|php5|php7|php8|phar|pht|phps|pl|py|jsp|asp|htm|html|xhtml|shtml|svg|svgz|xml|sh|cgi)$">
     Require all denied
 </FilesMatch>
 

@@ -5,6 +5,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-assemblies.php';
+require_once __DIR__ . '/includes-layout.php';   // fr_format_date()
 
 $token = trim($_GET['t'] ?? '');
 if (!preg_match('/^[a-f0-9]{32,64}$/', $token)) { http_response_code(404); die('Lien invalide.'); }

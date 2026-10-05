@@ -7,7 +7,7 @@
  *    Cmd   : php -f /home/pura7044/public_html/cron-demo-reset.php
  * 
  * Ou en URL secrète :
- *    https://assokit.fr/cron-demo-reset.php?token=AssokitDemoReset2026Secret
+ *    https://assokit.fr/cron-demo-reset.php?token=<CRON_TOKEN_DEMO défini dans config.php>
  * 
  * ⚠️ IMPORTANT : ce script attend les 6 fichiers SQL dans /demo-sql/ :
  *    01-demo-seed-v2.sql        — Fondations (4 orgs, équipes, sélecteur)

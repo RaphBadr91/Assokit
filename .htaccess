@@ -625,6 +625,10 @@ Options -Indexes
     Require all denied
 </FilesMatch>
 
+# Dépendances, données de démo et fichiers Composer : jamais servis par le web
+RedirectMatch 404 ^/(vendor|demo-sql|demo-formation)(/|$)
+RedirectMatch 404 ^/composer\.(json|lock)$
+
 # Bloquer TOUT le dossier .git (le FilesMatch ci-dessus ne couvre pas
 # /.git/config, /.git/HEAD... dont le nom de fichier ne commence pas par un point)
 RedirectMatch 404 /\.git
