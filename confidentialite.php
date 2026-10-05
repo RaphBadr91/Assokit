@@ -59,8 +59,8 @@ render_public_nav('');
         <li><strong>O2Switch</strong> (France) — hébergement</li>
         <li><strong>Resend</strong> (UE) — envoi d'emails transactionnels</li>
         <li><strong>Stripe</strong> (UE) — traitement des paiements (à venir)</li>
-        <li><strong>Anthropic</strong> (USA) — pour les fonctions IA, uniquement les contenus que vous générez volontairement</li>
-        <li><strong>Google LLC</strong> (USA) — uniquement si vous activez la connexion Google Calendar (voir section 12)</li>
+        <li><strong>Anthropic</strong> (USA) — pour les fonctions IA : contenus que vous générez volontairement et, si la Boîte mail est reliée, tri et brouillons de réponse (voir section 12.3). Pas d'entraînement de modèles sur vos données.</li>
+        <li><strong>Google LLC</strong> (USA) — uniquement si vous reliez Gmail ou Google Agenda (voir section 12)</li>
         <li><strong>Google Analytics</strong> (Google LLC, USA) — mesure d'audience anonymisée sur le site public uniquement (pas dans l'application). IP anonymisée. Aucune publicité.</li>
       </ul>
       <p>Aucun partage à des fins publicitaires.</p>
@@ -95,49 +95,59 @@ render_public_nav('');
       <h2>10. Réclamation</h2>
       <p>Si vous estimez que vos droits ne sont pas respectés, vous pouvez introduire une réclamation auprès de la <a href="https://www.cnil.fr" target="_blank" rel="noopener">CNIL</a>.</p>
 
-      <h2 id="google-api">12. Connexion à Google Calendar (OAuth)</h2>
-      <p>Si vous activez la synchronisation Google Calendar dans votre espace Assokit, nous accédons à votre compte Google via le protocole sécurisé <strong>OAuth 2.0</strong>. Cette connexion est <strong>strictement optionnelle</strong> et peut être révoquée à tout moment.</p>
+      <h2 id="google-api">12. Connexion à Google (Gmail et Google Agenda)</h2>
+      <p>Deux connexions à Google sont proposées dans Assokit, toutes deux <strong>facultatives</strong>, activées uniquement par un administrateur de l'association et <strong>révocables à tout moment</strong> : la <strong>Boîte mail</strong> (Gmail) et la <strong>synchronisation de l'agenda</strong> (Google Agenda). L'accès passe par le protocole sécurisé <strong>OAuth 2.0</strong> : Assokit ne connaît jamais votre mot de passe Google.</p>
 
       <h3 style="font-size:18px;margin-top:18px;">12.1 Quelles données Google sont accédées ?</h3>
-      <p>Nous demandons uniquement le périmètre minimum nécessaire (« scope ») :</p>
+      <p>Nous demandons uniquement les autorisations (« scopes ») nécessaires aux fonctionnalités que vous activez :</p>
       <ul>
-        <li><code>https://www.googleapis.com/auth/calendar.events</code> — pour <strong>lire et écrire les événements</strong> de votre calendrier sélectionné. Nous ne pouvons pas modifier les paramètres du calendrier, ses partages ou ses listes.</li>
-        <li><code>https://www.googleapis.com/auth/userinfo.email</code> — pour identifier le compte Google connecté.</li>
+        <li><code>https://www.googleapis.com/auth/gmail.modify</code> — <strong>Boîte mail</strong> : lire les e-mails reçus et envoyés de la boîte reliée, les marquer lus ou non lus, et envoyer les réponses que vous rédigez dans Assokit. Assokit <strong>ne supprime jamais</strong> d'e-mail dans Gmail.</li>
+        <li><code>https://www.googleapis.com/auth/calendar.events</code> — <strong>Agenda</strong> : lire et écrire les événements du calendrier sélectionné. Nous ne pouvons pas modifier les paramètres du calendrier, ses partages ou ses listes.</li>
+        <li><code>openid</code>, <code>https://www.googleapis.com/auth/userinfo.email</code> — identifier le compte Google relié.</li>
       </ul>
-      <p>Nous <strong>n'accédons à aucune autre donnée Google</strong> : ni Gmail, ni Drive, ni Photos, ni Contacts, ni aucun autre service.</p>
+      <p>Nous n'accédons à <strong>aucun autre service Google</strong> : ni Drive, ni Photos, ni Contacts.</p>
 
-      <h3 style="font-size:18px;margin-top:18px;">12.2 Comment ces données sont utilisées ?</h3>
-      <p>Les données reçues de Google sont utilisées <strong>exclusivement</strong> pour :</p>
+      <h3 style="font-size:18px;margin-top:18px;">12.2 Comment ces données sont-elles utilisées ?</h3>
+      <p>Les données reçues de Google servent <strong>exclusivement</strong> aux fonctionnalités visibles dans Assokit :</p>
       <ul>
-        <li><strong>Synchroniser</strong> les événements entre votre Google Calendar et votre espace Assokit (création, modification, suppression)</li>
-        <li><strong>Afficher</strong> dans Assokit les événements importés</li>
-        <li><strong>Identifier</strong> le compte Google associé à votre connexion</li>
+        <li><strong>Boîte mail</strong> : afficher les conversations aux administrateurs et coordinateurs de l'association ; les <strong>ranger par catégorie</strong> (facturation, adhérents, subventions…) selon l'objet et l'expéditeur ; les <strong>relier</strong> à la fiche de l'adhérent, du client ou de la facture concernée ; <strong>répondre</strong> depuis Assokit dans le même fil Gmail, depuis l'adresse de l'association ; synchroniser l'état lu / non lu.</li>
+        <li><strong>Agenda</strong> : synchroniser les événements entre Google Agenda et Assokit.</li>
       </ul>
-      <p>Nous <strong>ne lisons jamais</strong> le contenu de vos événements à des fins d'analyse, de profilage, de publicité ou de revente.</p>
+      <p>Nous n'utilisons jamais ces données à des fins de <strong>publicité</strong>, de profilage, de revente ou d'étude de marché.</p>
 
-      <h3 style="font-size:18px;margin-top:18px;">12.3 Limited Use — conformité Google</h3>
-      <p>L'utilisation et le transfert d'informations reçues des API Google par Assokit respectent strictement la <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener"><strong>Google API Services User Data Policy</strong></a>, y compris les exigences de <strong>Limited Use</strong>. En particulier :</p>
+      <h3 style="font-size:18px;margin-top:18px;">12.3 Fonctions d'intelligence artificielle</h3>
+      <p>Deux fonctions de la Boîte mail utilisent l'IA (Anthropic, États-Unis, en tant que sous-traitant) :</p>
       <ul>
-        <li>Nous n'utilisons les données Google que pour fournir et améliorer les fonctionnalités visibles par l'utilisateur (la synchronisation de calendrier).</li>
-        <li>Nous ne transférons ces données à aucun tiers, sauf pour fournir ou améliorer le service, ou si la loi l'exige.</li>
-        <li>Nous n'utilisons pas ces données pour de la publicité.</li>
-        <li>Nous ne permettons à aucun humain de lire ces données, sauf : (a) avec votre consentement explicite, (b) pour la sécurité (enquête sur un abus), (c) pour respecter une obligation légale, ou (d) si les données sont agrégées et anonymisées.</li>
+        <li><strong>Tri automatique</strong> : pour les seuls e-mails qu'aucune règle de l'association ne reconnaît, l'expéditeur, l'objet et le début du message sont transmis à l'IA afin de proposer une catégorie. Cette fonction peut être <strong>désactivée</strong> par l'administrateur (Boîte mail › Réglages).</li>
+        <li><strong>Brouillon de réponse</strong> : uniquement quand un utilisateur clique sur « Brouillon IA », la conversation concernée est transmise afin de proposer une réponse, que l'utilisateur relit et modifie avant tout envoi.</li>
       </ul>
+      <p>Ces transmissions servent uniquement à fournir la fonction demandée. Les données reçues des API Google <strong>ne sont jamais utilisées pour entraîner ou améliorer des modèles d'intelligence artificielle</strong>, ni par Assokit ni par son sous-traitant (les contenus transmis via l'API d'Anthropic ne servent pas à l'entraînement de ses modèles).</p>
 
-      <h3 style="font-size:18px;margin-top:18px;">12.4 Stockage &amp; sécurité</h3>
+      <h3 style="font-size:18px;margin-top:18px;">12.4 Limited Use — conformité Google</h3>
+      <p>L'utilisation et le transfert vers toute autre application d'informations reçues des API Google par Assokit respectent la <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener"><strong>Google API Services User Data Policy</strong></a>, y compris les exigences de <strong>Limited Use</strong>.</p>
+      <p lang="en"><em>Assokit's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements.</em></p>
+      <p>En particulier :</p>
       <ul>
-        <li>Les jetons d'accès Google (access_token, refresh_token) sont stockés <strong>chiffrés</strong> en base de données chez O2Switch (France).</li>
-        <li>Les événements importés sont stockés dans votre espace Assokit, en France, soumis aux mêmes mesures de sécurité que vos autres données (TLS, sauvegardes, journaux d'accès).</li>
-        <li>Aucune donnée Google n'est transférée hors de l'Union Européenne en dehors des appels API techniques nécessaires à la synchronisation.</li>
+        <li>Nous n'utilisons les données Google que pour fournir et améliorer les fonctionnalités visibles décrites ci-dessus.</li>
+        <li>Nous ne transférons ces données à aucun tiers, sauf au sous-traitant nécessaire à une fonctionnalité (section 12.3), pour la sécurité, ou si la loi l'exige.</li>
+        <li>Nous n'utilisons pas ces données pour de la publicité, ni pour entraîner des modèles d'IA généralistes.</li>
+        <li>Aucun membre de l'équipe Assokit ne lit ces données, sauf : (a) avec votre consentement explicite (par exemple pour une demande de support), (b) pour la sécurité (enquête sur un abus), (c) pour respecter une obligation légale, ou (d) si les données sont agrégées et anonymisées. Seuls les administrateurs et coordinateurs <strong>de votre propre association</strong> voient vos e-mails dans Assokit.</li>
       </ul>
 
-      <h3 style="font-size:18px;margin-top:18px;">12.5 Comment révoquer l'accès ?</h3>
-      <p>Vous pouvez révoquer notre accès à votre compte Google <strong>à tout moment</strong>, de deux façons :</p>
+      <h3 style="font-size:18px;margin-top:18px;">12.5 Stockage, sécurité et durée de conservation</h3>
+      <ul>
+        <li>Les jetons d'accès Google (access_token, refresh_token) sont stockés <strong>chiffrés (AES-256)</strong> en base de données chez O2Switch (France).</li>
+        <li>Une copie des e-mails de la boîte reliée (en-têtes, texte, liste des pièces jointes) est conservée dans votre espace Assokit, en France, pour l'affichage, la recherche et le tri. Les pièces jointes ne sont pas copiées : elles sont téléchargées depuis Gmail à la demande.</li>
+        <li>Par défaut, seuls les e-mails des 30 derniers jours sont importés lors de la connexion. La copie locale est <strong>effacée automatiquement</strong> au-delà de la durée de conservation choisie par l'administrateur (24 mois par défaut, réglable de 6 mois à 5 ans). Les e-mails restent dans Gmail.</li>
+        <li>Les données sont soumises aux mêmes mesures de sécurité que vos autres données (TLS, sauvegardes chiffrées, journaux d'accès, cloisonnement strict entre associations).</li>
+      </ul>
+
+      <h3 style="font-size:18px;margin-top:18px;">12.6 Comment révoquer l'accès et supprimer les données ?</h3>
       <ol>
-        <li>Depuis Assokit : <strong>Paramètres → Intégrations → Google Calendar → Déconnecter</strong>. Les jetons sont immédiatement révoqués et supprimés.</li>
-        <li>Depuis votre compte Google : <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a> → trouver « Assokit » → Supprimer l'accès.</li>
+        <li>Depuis Assokit : <strong>Boîte mail › Réglages › Déconnecter et effacer la copie locale</strong> (ou <strong>Paramètres › Intégrations › Google Calendar › Déconnecter</strong> pour l'agenda). L'accès est immédiatement révoqué auprès de Google et, pour la boîte mail, toute la copie locale des e-mails est supprimée.</li>
+        <li>Depuis votre compte Google : <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a> → « Assokit » → Supprimer l'accès.</li>
       </ol>
-      <p>Les événements déjà synchronisés dans Assokit restent dans votre espace après révocation. Vous pouvez demander leur suppression via <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>.</p>
+      <p>Pour toute demande de suppression ou question : <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>.</p>
 
       <h2>13. Modifications</h2>
       <p>Cette politique peut évoluer. Toute modification substantielle vous sera notifiée par email avec un préavis de 30 jours.</p>
