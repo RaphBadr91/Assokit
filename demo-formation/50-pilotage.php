@@ -61,7 +61,7 @@ function df_seed_pilotage(): void
             $s('👋', $c['nouveaux7'] . ' nouveaux adhérents cette semaine', $c['nouveaux30'] . ' sur les 30 derniers jours : la rentrée bat son plein.', '/adherents', 'Les accueillir', 'info'),
             $s('🧾', $c['notes_frais'] . ' notes de frais à valider', 'Déposées par l\'équipe cette semaine.', '/notes-de-frais', 'Valider', 'info'),
         ]],
-        'salarie' => ['coordinator', [
+        'salarie' => ['referent', [
             $s('✍️', $c['emargements'] . ' émargements ouverts ce matin', 'Les apprenants signent sur la tablette de l\'accueil.', '/emargement', 'Suivre', 'urgent'),
             $s('📞', 'Rappels de prospection du jour', 'Trois rappels prévus aujourd\'hui, dont un déjà en retard.', '/prospection', 'Appeler', 'important'),
             $s('🎯', 'Qualiopi : preuves de l\'indicateur 22', 'L\'audit de renouvellement approche, une étape vous est assignée.', '/projets', 'Voir l\'étape', 'important'),
@@ -80,7 +80,7 @@ function df_seed_pilotage(): void
             $s('🗳️', 'Assemblée générale dans 3 semaines', 'Votre convocation est arrivée, vous pouvez voter en ligne le jour J.', '/agenda', 'En savoir plus', 'info'),
         ]],
     ];
-    foreach (['secretaire' => 'coordinator', 'tresoriere' => 'coordinator'] as $k => $profil) {
+    foreach (['secretaire' => 'referent', 'tresoriere' => 'referent'] as $k => $profil) {
         if (!empty($u[$k])) $suggestions[$k] = [$profil, $suggestions['salarie'][1]];
     }
     foreach ($suggestions as $k => [$profil, $liste]) {

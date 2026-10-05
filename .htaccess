@@ -19,6 +19,11 @@ ErrorDocument 404 /404.php
 # Active le moteur de réécriture
 RewriteEngine On
 
+# Fichiers internes jamais servis par le web (avant toute autre règle, pour
+# que la réécriture « /fichier.php → /fichier » ne puisse pas les atteindre)
+RewriteRule ^(vendor|demo-sql|demo-formation|migrations)(/|$) - [F,L,NC]
+RewriteRule ^composer\.(json|lock)$ - [F,L,NC]
+
 # ============================================================
 # 0. DOMAINE CANONIQUE : www -> non-www (en un seul saut, force aussi HTTPS)
 # ============================================================
@@ -625,9 +630,10 @@ Options -Indexes
     Require all denied
 </FilesMatch>
 
-# Dépendances, données de démo et fichiers Composer : jamais servis par le web
-RedirectMatch 404 ^/(vendor|demo-sql|demo-formation)(/|$)
-RedirectMatch 404 ^/composer\.(json|lock)$
+# Dépendances et fichiers Composer : bloqués aussi hors mod_rewrite
+<FilesMatch "^composer\.(json|lock)$">
+    Require all denied
+</FilesMatch>
 
 # Bloquer TOUT le dossier .git (le FilesMatch ci-dessus ne couvre pas
 # /.git/config, /.git/HEAD... dont le nom de fichier ne commence pas par un point)
