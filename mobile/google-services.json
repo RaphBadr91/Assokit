@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "797499069605",
+    "project_id": "assokit-ddca2",
+    "storage_bucket": "assokit-ddca2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:797499069605:android:c5daa494a57a95c96b294c",
+        "android_client_info": {
+          "package_name": "fr.assokit.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBK5e60S3oXvsfZsIVDO5eox1fkXPzjmXs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
