@@ -3112,6 +3112,269 @@ function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh
 }
 
 /* ================================================================== */
+/*  BOÎTE MAIL (Gmail de l'association) — liste, conversation, réponse  */
+/* ================================================================== */
+const MAIL_PRIO = {
+  urgent: { label: 'Urgent', bg: '#FEE2E2', fg: '#B91C1C' },
+  important: { label: 'Important', bg: '#FEF3C7', fg: '#B45309' },
+};
+
+function MailPrio({ p }) {
+  const m = MAIL_PRIO[p];
+  if (!m) return null;
+  return <View style={[mailStyles.pill, { backgroundColor: m.bg }]}><Text style={[mailStyles.pillTxt, { color: m.fg }]}>{m.label}</Text></View>;
+}
+
+function NativeMailbox({ data, loading, view, onView, onSearch, onOpen, onMore, onSync, syncing, onBack, onConnect }) {
+  const [q, setQ] = useState(view.q || '');
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    const t = setTimeout(() => onSearch(q.trim()), 380);
+    return () => clearTimeout(t);
+  }, [q]); // eslint-disable-line
+
+  const acc = data && data.account;
+  const counts = (data && data.counts) || {};
+  const tabs = [
+    { key: 'prio', label: '⚡ Prioritaires', n: counts.prio, red: true },
+    { key: 'main', label: 'Principale', n: counts.main },
+    { key: 'unread', label: 'Non lus' },
+  ].concat(((data && data.categories) || []).map((c) => ({ key: 'cat:' + c.slug, label: c.label, n: c.slug === 'promos' ? 0 : c.unread, color: c.color })))
+   .concat([{ key: 'archived', label: 'Archivés' }]);
+  const current = view.view === 'cat' ? 'cat:' + view.cat : view.view;
+
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Boîte mail" onBack={onBack} onAction={acc ? onSync : null} actionIcon={syncing ? 'hourglass' : 'refresh'} />
+      {!data ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : data.ok === false ? (
+        <View style={styles.emptyBox}><Ionicons name="lock-closed-outline" size={44} color="#CBD5D1" /><Text style={styles.emptyTxt}>{data.error || data.message || 'Boîte mail indisponible.'}</Text></View>
+      ) : !acc ? (
+        <View style={styles.emptyBox}>
+          <Ionicons name="mail-outline" size={48} color={BRAND} />
+          <Text style={[styles.emptyTxt, { fontWeight: '700', color: INK }]}>Aucune boîte reliée</Text>
+          <Text style={[styles.dMuted, { textAlign: 'center', paddingHorizontal: 30, marginTop: 6 }]}>
+            {data.can_connect
+              ? 'Google n’autorise pas la connexion depuis une application : reliez la boîte Gmail de l’association depuis le site, dans votre navigateur. Elle apparaîtra ensuite ici.'
+              : 'Demandez à un administrateur ou un coordinateur de relier la boîte Gmail de l’association.'}
+          </Text>
+          {data.can_connect ? (
+            <TouchableOpacity style={mailStyles.btnPrimary} activeOpacity={0.85} onPress={() => onConnect(data.connect_url)}>
+              <Ionicons name="logo-google" size={16} color="#fff" /><Text style={mailStyles.btnPrimaryTxt}>Relier la boîte sur le site</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : (
+        <View style={{ flex: 1 }}>
+          {acc.status !== 'active' ? <View style={mailStyles.warn}><Text style={mailStyles.warnTxt}>{acc.error || 'Connexion Gmail interrompue : reconnectez la boîte depuis le site.'}</Text></View> : null}
+          <View style={mailStyles.searchBox}>
+            <Ionicons name="search" size={16} color={INK_3} />
+            <TextInput style={mailStyles.searchInput} value={q} onChangeText={setQ} placeholder="Rechercher (objet, expéditeur…)" placeholderTextColor={INK_3} returnKeyType="search" />
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ paddingHorizontal: 12, gap: 6, paddingBottom: 8 }}>
+            {tabs.map((t) => {
+              const on = t.key === current;
+              return (
+                <TouchableOpacity key={t.key} activeOpacity={0.8} onPress={() => onView(t.key)} style={[mailStyles.tab, on ? mailStyles.tabOn : null]}>
+                  {t.color ? <View style={[mailStyles.dot, { backgroundColor: t.color }]} /> : null}
+                  <Text style={[mailStyles.tabTxt, on ? { color: '#fff' } : null]} numberOfLines={1}>{t.label}</Text>
+                  {t.n ? <View style={[mailStyles.tabN, t.red ? { backgroundColor: '#DC2626' } : null]}><Text style={mailStyles.tabNTxt}>{t.n}</Text></View> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <ScrollView contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={!!syncing} onRefresh={onSync} tintColor={BRAND} colors={[BRAND]} />}>
+            {(data.threads || []).length === 0 && !loading ? (
+              <View style={{ alignItems: 'center', paddingTop: 50 }}>
+                <Ionicons name="mail-open-outline" size={40} color="#CBD5D1" />
+                <Text style={styles.dMuted}>{current === 'prio' ? 'Rien d’urgent : tout est traité.' : 'Aucun e-mail ici.'}</Text>
+              </View>
+            ) : (data.threads || []).map((t) => (
+              <TouchableOpacity key={t.id} style={mailStyles.row} activeOpacity={0.75} onPress={() => onOpen(t)}>
+                <View style={[mailStyles.av, { backgroundColor: t.color }, t.unread ? mailStyles.avUnread : null]}><Text style={mailStyles.avTxt}>{t.initials}</Text></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={mailStyles.r1}>
+                    <Text style={[mailStyles.from, t.unread ? mailStyles.bold : null]} numberOfLines={1}>{t.from}{t.count > 1 ? '  ' + t.count : ''}</Text>
+                    <Text style={mailStyles.date}>{t.date}</Text>
+                  </View>
+                  <Text style={[mailStyles.subj, t.unread ? mailStyles.bold : null]} numberOfLines={1}>{t.replied ? '↩ ' : ''}{t.subject}</Text>
+                  <Text style={mailStyles.snip} numberOfLines={1}>{t.snippet}</Text>
+                  {(MAIL_PRIO[t.priority] || (t.category && current !== 'cat:' + view.cat)) ? (
+                    <View style={mailStyles.r3}>
+                      <MailPrio p={t.priority} />
+                      {t.category && view.view !== 'cat' ? <Text style={[mailStyles.cat, { color: t.cat_color || INK_3 }]} numberOfLines={1}>{t.category}</Text> : null}
+                      {MAIL_PRIO[t.priority] && t.reason ? <Text style={mailStyles.reason} numberOfLines={1}>{t.reason}</Text> : null}
+                    </View>
+                  ) : null}
+                </View>
+              </TouchableOpacity>
+            ))}
+            {data.more ? (
+              <TouchableOpacity style={mailStyles.more} onPress={onMore} activeOpacity={0.8}>
+                {loading ? <ActivityIndicator color={BRAND} /> : <Text style={mailStyles.moreTxt}>Afficher les e-mails plus anciens</Text>}
+              </TouchableOpacity>
+            ) : null}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function NativeMailThread({ data, loading, busy, draft, onBack, onReply, onDraft, onAction, onCategory, onRefresh }) {
+  const [body, setBody] = useState('');
+  const [to, setTo] = useState('');
+  const [consigne, setConsigne] = useState('');
+  const [catOpen, setCatOpen] = useState(false);
+  const th = data && data.thread;
+  useEffect(() => { if (data && data.reply_to) setTo(data.reply_to); }, [data && data.reply_to]); // eslint-disable-line
+  useEffect(() => { if (draft) setBody(draft.text || ''); }, [draft]);
+  const send = () => { if (!body.trim() || busy) return; onReply(th.id, to, body); };
+
+  return (
+    <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <DetailHeader title={th ? th.subject : 'Conversation'} onBack={onBack} />
+      {!data ? (
+        <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
+      ) : data.ok === false ? (
+        <View style={styles.emptyBox}><Text style={styles.emptyTxt}>{data.error || data.message || 'Conversation introuvable.'}</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 30 }} keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          <Text style={mailStyles.tSubject}>{th.subject}</Text>
+          {MAIL_PRIO[th.priority] ? (
+            <View style={[mailStyles.prioBanner, { backgroundColor: MAIL_PRIO[th.priority].bg }]}>
+              <Text style={{ color: MAIL_PRIO[th.priority].fg, fontWeight: '700', fontSize: 13 }}>
+                ⚡ {th.priority === 'urgent' ? 'À traiter en urgence' : 'Réponse attendue'}{th.reason ? ' — ' + th.reason : ''}
+              </Text>
+            </View>
+          ) : null}
+          <View style={mailStyles.tools}>
+            <TouchableOpacity style={[mailStyles.chip, { borderLeftColor: th.color || '#94A3B8' }]} onPress={() => setCatOpen(true)} activeOpacity={0.8}>
+              <Text style={mailStyles.chipTxt} numberOfLines={1}>{th.category || 'Catégorie'}</Text><Ionicons name="chevron-down" size={14} color={INK_2} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity style={mailStyles.ic} onPress={() => onAction('unread', th.id)} accessibilityLabel="Marquer non lu"><Ionicons name="mail-unread-outline" size={18} color={INK_2} /></TouchableOpacity>
+            <TouchableOpacity style={mailStyles.ic} onPress={() => onAction(th.archived ? 'unarchive' : 'archive', th.id)} accessibilityLabel="Archiver"><Ionicons name="archive-outline" size={18} color={INK_2} /></TouchableOpacity>
+          </View>
+
+          {(data.messages || []).map((m) => (
+            <View key={m.id} style={[mailStyles.msg, m.out ? mailStyles.msgOut : null]}>
+              <View style={mailStyles.msgHead}>
+                <View style={[mailStyles.avSm, { backgroundColor: m.color }]}><Text style={mailStyles.avTxt}>{m.initials}</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={mailStyles.msgFrom} numberOfLines={1}>{m.from}</Text>
+                  <Text style={mailStyles.msgMeta} numberOfLines={1}>{m.email} · {m.date}</Text>
+                </View>
+              </View>
+              <Text style={mailStyles.msgTxt} selectable>{m.text}</Text>
+              {m.attachments && m.attachments.length ? (
+                <Text style={mailStyles.att}>📎 {m.attachments.join(', ')} — à ouvrir depuis le site</Text>
+              ) : null}
+            </View>
+          ))}
+
+          <View style={mailStyles.reply}>
+            <View style={mailStyles.replyRow}><Text style={mailStyles.replyLbl}>À</Text>
+              <TextInput style={mailStyles.replyTo} value={to} onChangeText={setTo} autoCapitalize="none" keyboardType="email-address" /></View>
+            <TextInput style={mailStyles.replyBody} value={body} onChangeText={setBody} multiline placeholder="Votre réponse…" placeholderTextColor={INK_3} textAlignVertical="top" />
+            <TextInput style={mailStyles.consigne} value={consigne} onChangeText={setConsigne} placeholder="Consigne pour l’IA (facultatif)" placeholderTextColor={INK_3} />
+            <View style={mailStyles.replyBtns}>
+              <TouchableOpacity style={mailStyles.btnAi} onPress={() => onDraft(th.id, consigne)} activeOpacity={0.85} disabled={!!busy}>
+                {busy === 'draft' ? <ActivityIndicator color="#fff" size="small" /> : <><Ionicons name="sparkles" size={15} color="#fff" /><Text style={mailStyles.btnPrimaryTxt}>Brouillon IA</Text></>}
+              </TouchableOpacity>
+              <TouchableOpacity style={[mailStyles.btnSend, (!body.trim() || busy) ? { opacity: 0.5 } : null]} onPress={send} activeOpacity={0.85}>
+                {busy === 'reply' ? <ActivityIndicator color="#fff" size="small" /> : <><Ionicons name="send" size={15} color="#fff" /><Text style={mailStyles.btnPrimaryTxt}>Envoyer</Text></>}
+              </TouchableOpacity>
+            </View>
+            {data.account && data.account.demo ? <Text style={mailStyles.demoNote}>Démonstration : la réponse est rangée dans le fil, aucun e-mail ne part.</Text> : null}
+          </View>
+        </ScrollView>
+      )}
+      <Modal visible={catOpen} transparent animationType="fade" onRequestClose={() => setCatOpen(false)}>
+        <Pressable style={mailStyles.modalBg} onPress={() => setCatOpen(false)}>
+          <View style={mailStyles.modalCard}>
+            <Text style={mailStyles.modalTitle}>Ranger dans…</Text>
+            <ScrollView style={{ maxHeight: 420 }}>
+              {((data && data.categories) || []).map((c) => (
+                <TouchableOpacity key={c.id} style={mailStyles.modalItem} onPress={() => { setCatOpen(false); onCategory(th.id, c.id); }}>
+                  <View style={[mailStyles.dot, { backgroundColor: c.color }]} />
+                  <Text style={[mailStyles.modalItemTxt, th && th.category_id === c.id ? { fontWeight: '800', color: BRAND } : null]}>{c.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+    </KeyboardAvoidingView>
+  );
+}
+
+const mailStyles = StyleSheet.create({
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginTop: 10, marginBottom: 8, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: LINE, paddingHorizontal: 12, height: 42 },
+  searchInput: { flex: 1, fontSize: 14, color: INK },
+  tab: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff', borderWidth: 1, borderColor: LINE, borderRadius: 999, paddingHorizontal: 12, height: 34 },
+  tabOn: { backgroundColor: INK, borderColor: INK },
+  tabTxt: { fontSize: 13, fontWeight: '600', color: INK_2, maxWidth: 170 },
+  tabN: { backgroundColor: BRAND, borderRadius: 999, minWidth: 20, height: 18, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
+  tabNTxt: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  dot: { width: 9, height: 9, borderRadius: 3 },
+  row: { flexDirection: 'row', gap: 11, paddingHorizontal: 14, paddingVertical: 11, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: SEP },
+  av: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  avUnread: { borderWidth: 2, borderColor: '#10B981' },
+  avSm: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  avTxt: { color: '#fff', fontWeight: '800', fontSize: 12 },
+  r1: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  from: { flex: 1, fontSize: 14.5, color: INK_2 },
+  bold: { fontWeight: '800', color: INK },
+  date: { fontSize: 12, color: INK_3 },
+  subj: { fontSize: 14, color: INK, marginTop: 1 },
+  snip: { fontSize: 13, color: MUTE, marginTop: 1 },
+  r3: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
+  pill: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  pillTxt: { fontSize: 10.5, fontWeight: '800', textTransform: 'uppercase' },
+  cat: { fontSize: 11.5, fontWeight: '700', maxWidth: 130 },
+  reason: { flex: 1, fontSize: 12, color: '#B91C1C' },
+  more: { alignItems: 'center', padding: 16 },
+  moreTxt: { color: BRAND, fontWeight: '700', fontSize: 14 },
+  warn: { backgroundColor: '#FEF2F2', margin: 12, marginBottom: 0, borderRadius: 10, padding: 10 },
+  warnTxt: { color: '#991B1B', fontSize: 13 },
+  btnPrimary: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: BRAND, borderRadius: R_BTN, paddingHorizontal: 18, height: 46, marginTop: 18 },
+  btnPrimaryTxt: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  tSubject: { fontSize: 19, fontWeight: '800', color: INK, marginBottom: 10 },
+  prioBanner: { borderRadius: 10, padding: 10, marginBottom: 10 },
+  tools: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff', borderWidth: 1, borderColor: LINE, borderLeftWidth: 4, borderRadius: 10, paddingHorizontal: 10, height: 36, maxWidth: 220 },
+  chipTxt: { fontSize: 13, fontWeight: '700', color: INK, flexShrink: 1 },
+  ic: { width: 38, height: 36, borderRadius: 10, borderWidth: 1, borderColor: LINE, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  msg: { backgroundColor: '#fff', borderWidth: 1, borderColor: LINE, borderRadius: R_CARD - 6, padding: 13, marginBottom: 10 },
+  msgOut: { backgroundColor: '#F4FBF8', borderColor: '#D1FAE5' },
+  msgHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  msgFrom: { fontSize: 14, fontWeight: '800', color: INK },
+  msgMeta: { fontSize: 12, color: MUTE },
+  msgTxt: { fontSize: 14.5, lineHeight: 21, color: '#1F2937' },
+  att: { marginTop: 10, fontSize: 12.5, color: INK_2 },
+  reply: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: R_CARD - 6, marginTop: 6, overflow: 'hidden' },
+  replyRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: SEP, paddingHorizontal: 12 },
+  replyLbl: { fontSize: 13, color: MUTE, width: 26 },
+  replyTo: { flex: 1, fontSize: 14, color: INK, paddingVertical: 10 },
+  replyBody: { minHeight: 130, fontSize: 14.5, color: INK, padding: 12 },
+  consigne: { marginHorizontal: 12, borderWidth: 1, borderColor: LINE, borderRadius: 10, paddingHorizontal: 10, height: 40, fontSize: 13, color: INK, backgroundColor: SOFT },
+  replyBtns: { flexDirection: 'row', gap: 8, padding: 12 },
+  btnAi: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#7C3AED', borderRadius: 12, height: 44 },
+  btnSend: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: BRAND, borderRadius: 12, height: 44 },
+  demoNote: { fontSize: 12, color: MUTE, paddingHorizontal: 12, paddingBottom: 12 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 34 },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: INK, marginBottom: 10 },
+  modalItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: SEP },
+  modalItemTxt: { fontSize: 15, color: INK },
+});
+
+/* ================================================================== */
 /*  MENU « PLUS » (hub natif)                                           */
 /* ================================================================== */
 // admin: true  → visible uniquement pour les admins (mêmes autorisations que le site),
@@ -3143,6 +3406,7 @@ const MORE_GROUPS = [
     items: [
       { label: 'Copilote IA', icon: 'sparkles', nav: { web: '/mon-asso-copilote' }, admin: true },
       { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' }, badge: 'msg' },
+      { label: 'Boîte mail', icon: 'mail-unread', nav: { screen: 'mail' }, badge: 'mail', manage: true },
       { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' }, badge: 'notif' },
       { label: 'Communication', icon: 'mail', nav: { screen: 'broadcasts' }, admin: true },
       { label: 'Coach IA', icon: 'sparkles', nav: { screen: 'coach' }, admin: true },
@@ -5569,6 +5833,18 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [channels, setChannels] = useState(null);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [openChannel, setOpenChannel] = useState(null);
+  // Boîte mail
+  const [mail, setMail] = useState(null);
+  const [mailLoading, setMailLoading] = useState(false);
+  const [mailView, setMailView] = useState({ view: 'main', cat: '', q: '' });
+  const [mailOpenId, setMailOpenId] = useState(null);
+  const [mailThread, setMailThread] = useState(null);
+  const [mailThreadLoading, setMailThreadLoading] = useState(false);
+  const [mailBusy, setMailBusy] = useState('');
+  const [mailDraft, setMailDraft] = useState(null);
+  const mailAppend = useRef(false);
+  const mailActKind = useRef('');
+  const mailPage = useRef(1);
   const [chanMsgs, setChanMsgs] = useState(null);
   const [chanLoading, setChanLoading] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
@@ -5846,6 +6122,30 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   // --- Écrans du menu « Plus » (natifs) ------------------------------
   const fetchEvents = useCallback(() => { setEventsLoading(true); inject(fetchJS('/api/app-events.php', '__akevents')); }, [inject]);
+  const mailUrl = (v, p) => ('/api/app-mail.php?view=' + encodeURIComponent(v.view) + '&cat=' + encodeURIComponent(v.cat || '')
+    + '&q=' + encodeURIComponent(v.q || '') + '&p=' + p).replace(/'/g, '%27');
+  const fetchMail = useCallback((v, p) => {
+    const page = p || 1; mailPage.current = page; mailAppend.current = page > 1;
+    setMailLoading(true); inject(fetchJS(mailUrl(v, page), '__akmail'));
+  }, [inject]); // eslint-disable-line
+  const fetchMailThread = useCallback((id) => { setMailThreadLoading(true); inject(fetchJS('/api/app-mail.php?thread=' + (+id), '__akmailthread')); }, [inject]);
+  const mailAct = useCallback((kind, payload) => {
+    if (!csrf) { inject(FETCH_CSRF_JS); Alert.alert('Un instant', 'Session en préparation, réessayez dans un instant.'); return; }
+    mailActKind.current = kind; setMailBusy(kind);
+    inject(postJS('/boite-mail-action', { ...payload, csrf_token: csrf }, '__akmailact'));
+  }, [csrf, inject]);
+  const mailSetView = useCallback((key) => {
+    const v = key.indexOf('cat:') === 0 ? { view: 'cat', cat: key.slice(4), q: mailView.q } : { view: key, cat: '', q: mailView.q };
+    setMailView(v); fetchMail(v, 1);
+  }, [mailView, fetchMail]);
+  const mailSearch = useCallback((q) => { const v = { ...mailView, q }; setMailView(v); fetchMail(v, 1); }, [mailView, fetchMail]);
+  const mailOpen = useCallback((t) => {
+    setMailOpenId(t.id); setMailThread(null); setMailDraft(null); fetchMailThread(t.id);
+    setMail((m) => m ? { ...m, threads: (m.threads || []).map((x) => x.id === t.id ? { ...x, unread: false } : x) } : m);
+    if (t.unread) setKpi((k) => k ? { ...k, mail_unread: Math.max(0, (k.mail_unread || 0) - 1) } : k);
+  }, [fetchMailThread]);
+  const mailClose = useCallback(() => { setMailOpenId(null); setMailThread(null); fetchMail(mailView, 1); }, [mailView, fetchMail]);
+
   const fetchChannels = useCallback(() => { setChannelsLoading(true); inject(fetchJS('/api/app-channels.php', '__akchannels')); }, [inject]);
   const fetchSubInv = useCallback(() => { setSubInvLoading(true); inject(fetchJS('/api/app-subscription-invoices.php', '__aksubinv')); }, [inject]);
   const fetchChanMsgs = useCallback((chId) => { setChanLoading(true); inject(fetchJS('/api/app-channel-messages.php?channel_id=' + chId, '__akchanmsgs')); }, [inject]);
@@ -5967,6 +6267,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(screen);
     if (screen === 'agenda') fetchEvents();
     else if (screen === 'messages') { setChannels(null); fetchChannels(); }
+    else if (screen === 'mail') { setMail(null); setMailOpenId(null); setMailThread(null); fetchMail(mailView, 1); inject(FETCH_CSRF_JS); }
     else if (screen === 'subinvoices') fetchSubInv();
     else if (screen === 'devis') fetchQuotes();
     else if (screen === 'stats') fetchStats();
@@ -5985,7 +6286,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (screen === 'tickets') fetchTickets();
     else if (screen === 'coach') fetchCoach();
     else if (screen === 'settings') { setSettingsErr(''); setAccount(null); fetchAccount(); inject(FETCH_CSRF_JS); }
-  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchFounder, fetchCoti, fetchGrants, fetchDash, fetchOrgSettings, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, inject]);
+  }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchFounder, fetchCoti, fetchGrants, fetchDash, fetchOrgSettings, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, fetchMail, mailView, inject]);
 
   const onFounderTile = useCallback((key, filter) => {
     if (key === 'associations') openFdOrgs(filter || 'all');
@@ -6208,6 +6509,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (webMode && canGoBack && webRef.current) { webRef.current.goBack(); return true; }
       if (webMode) { setWebMode(false); return true; }
       if (active === 'menu' && openChannel) { setOpenChannel(null); return true; }
+      if (active === 'menu' && menuScreen === 'mail' && mailOpenId) { mailClose(); return true; }
       // Écrans du cockpit Fondateur (fd…) : retour vers le cockpit, comme les boutons de l'interface
       if (active === 'menu' && menuScreen) { setMenuScreen(String(menuScreen).indexOf('fd') === 0 ? 'founder' : null); return true; }
       if (active !== 'accueil') { setActive('accueil'); return true; }
@@ -6217,7 +6519,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
     // eslint-disable-next-line
-  }, [canGoBack, quickOpen, active, webMode, stack.length, form, submitting, menuScreen, openChannel, popDetail, closeForm, onExitToWelcome]);
+  }, [canGoBack, quickOpen, active, webMode, stack.length, form, submitting, menuScreen, openChannel, mailOpenId, mailClose, popDetail, closeForm, onExitToWelcome]);
 
   const onNav = (nav) => {
     setCanGoBack(nav.canGoBack);
@@ -6293,7 +6595,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       // Échec de chargement d'un écran de données (réseau/serveur) : on prévient (au plus une fois / 5 s)
       // au lieu d'afficher silencieusement un écran vide ; le tirer-pour-rafraîchir relance.
-      const DATA_KEYS = ['__akevents', '__akchannels', '__akchanmsgs', '__aksubinv', '__akquotes', '__akstats', '__aknotifs', '__akfounder', '__akfdorgs', '__akfdorgdet', '__akfdproj', '__akfdactiv', '__akfdpros', '__akfddir', '__akfdset', '__akfdplansm', '__akfdbill', '__akfdstats', '__akfdblog', '__akfdsup', '__akfdthread', '__akfdcontacts', '__akfdctcthread', '__akfdplans', '__akcoti', '__akgrants', '__akdash', '__akorgset', '__akassemblies', '__akattendance', '__akbroadcasts', '__aktickets', '__akcoach', '__akaccount'];
+      const DATA_KEYS = ['__akevents', '__akchannels', '__akchanmsgs', '__aksubinv', '__akquotes', '__akstats', '__aknotifs', '__akfounder', '__akfdorgs', '__akfdorgdet', '__akfdproj', '__akfdactiv', '__akfdpros', '__akfddir', '__akfdset', '__akfdplansm', '__akfdbill', '__akfdstats', '__akfdblog', '__akfdsup', '__akfdthread', '__akfdcontacts', '__akfdctcthread', '__akfdplans', '__akcoti', '__akgrants', '__akdash', '__akorgset', '__akassemblies', '__akattendance', '__akbroadcasts', '__aktickets', '__akcoach', '__akaccount', '__akmail'];
       const failedKey = DATA_KEYS.find((k) => msg[k] && msg[k].ok === false);
       if (failedKey && Date.now() - (lastLoadAlert.current || 0) > 5000) {
         lastLoadAlert.current = Date.now();
@@ -6371,6 +6673,33 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akevents) { setEvents(msg.__akevents); setEventsLoading(false); }
       if (msg && msg.__akchannels) { setChannels(msg.__akchannels); setChannelsLoading(false); }
       if (msg && msg.__akchanmsgs) { setChanMsgs(msg.__akchanmsgs); setChanLoading(false); }
+      if (msg && msg.__akmail) {
+        const d = msg.__akmail;
+        setMailLoading(false);
+        setMail((prev) => (mailAppend.current && prev && d.ok && prev.threads) ? { ...d, threads: prev.threads.concat(d.threads || []) } : d);
+      }
+      if (msg && msg.__akmailthread) { setMailThread(msg.__akmailthread); setMailThreadLoading(false); }
+      if (msg && msg.__akmailact) {
+        const r = msg.__akmailact, kind = mailActKind.current;
+        setMailBusy('');
+        if (!r.ok) {
+          Alert.alert('Boîte mail', r.error || r.message || 'Action impossible.');
+        } else if (kind === 'draft') {
+          setMailDraft({ text: r.text || '', n: Date.now() });
+        } else if (kind === 'reply') {
+          setMailDraft({ text: '', n: Date.now() });
+          if (r.simulated) Alert.alert('Démonstration', 'Réponse rangée dans le fil : aucun e-mail n’est parti.');
+          setMailOpenId((id) => { if (id) fetchMailThread(id); return id; });
+        } else if (kind === 'category') {
+          setMailOpenId((id) => { if (id) fetchMailThread(id); return id; });
+        } else if (kind === 'sync') {
+          if (r.more) { mailAct('sync', { action: 'sync' }); return; }
+          fetchMail(mailView, 1);
+          if (typeof r.unread === 'number') setKpi((k) => k ? { ...k, mail_unread: r.unread } : k);
+        } else {
+          setMailOpenId(null); setMailThread(null); fetchMail(mailView, 1);
+        }
+      }
       if (msg && msg.__aksubinv) { setSubInv(msg.__aksubinv); setSubInvLoading(false); }
       if (msg && msg.__akquotes) { setQuotes(msg.__akquotes); setQuotesLoading(false); }
       if (msg && msg.__akstats) { setStats(msg.__akstats); setStatsLoading(false); }
@@ -6912,6 +7241,22 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeSettings data={account} onBack={() => setMenuScreen(null)} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
                 onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb} onNav={openMenuScreen}
                 onLogout={doLogout} />
+            ) : menuScreen === 'mail' ? (
+              mailOpenId ? (
+                <NativeMailThread data={mailThread} loading={mailThreadLoading} busy={mailBusy} draft={mailDraft}
+                  onBack={mailClose} onRefresh={() => fetchMailThread(mailOpenId)}
+                  onReply={(id, to, body) => mailAct('reply', { action: 'reply', thread_id: id, to, body })}
+                  onDraft={(id, consigne) => mailAct('draft', { action: 'draft', thread_id: id, consigne })}
+                  onAction={(act, id) => mailAct(act, { action: act, thread_id: id })}
+                  onCategory={(id, cid) => mailAct('category', { action: 'category', thread_id: id, category_id: cid })} />
+              ) : (
+                <NativeMailbox data={mail} loading={mailLoading} view={mailView} syncing={mailBusy === 'sync'}
+                  onView={mailSetView} onSearch={mailSearch} onOpen={mailOpen}
+                  onMore={() => fetchMail(mailView, mailPage.current + 1)}
+                  onSync={() => mailAct('sync', { action: 'sync' })}
+                  onConnect={(url) => Linking.openURL(url)}
+                  onBack={() => setMenuScreen(null)} />
+              )
             ) : menuScreen === 'messages' ? (
               openChannel ? (
                 <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg} sendResult={msgSendResult}
@@ -7000,7 +7345,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 isFounder={!!(kpi && kpi.is_founder)}
                 isAdmin={!!(kpi && (kpi.role === 'admin' || kpi.is_founder))}
                 isTpe={isTpe}
-                counts={{ msg: kpi && kpi.msg_unread, support: kpi && kpi.support_unread, notif: kpi && kpi.notif_unread }}
+                counts={{ msg: kpi && kpi.msg_unread, support: kpi && kpi.support_unread, notif: kpi && kpi.notif_unread, mail: kpi && kpi.mail_unread }}
                 onNav={onMoreNav}
                 onLogout={doLogout}
               />

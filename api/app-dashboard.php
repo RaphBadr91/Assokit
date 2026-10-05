@@ -249,6 +249,13 @@ try {
         $support_unread = (int) $sst->fetchColumn();
     } catch (Throwable $e) {}
 
+    // Boîte mail : conversations non lues visibles (admins et coordinateurs)
+    $mail_unread = 0;
+    try {
+        require_once __DIR__ . '/../mail-helpers.php';
+        $mail_unread = mail_unread_count($pdo, $user);
+    } catch (Throwable $e) {}
+
     echo json_encode([
         'ok'           => true,
         'profile'      => $profile,
@@ -259,6 +266,7 @@ try {
         'notif_unread' => $notif_unread,
         'msg_unread'   => $msg_unread,
         'support_unread' => $support_unread,
+        'mail_unread'  => $mail_unread,
         'first_name'   => $first_name,
         'org_name'     => $org_name,
         'org_initials' => $initials,
