@@ -62,8 +62,8 @@ try {
             $author_name = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: 'Un membre';
             $excerpt = mb_substr($content, 0, 150) . (mb_strlen($content) > 150 ? '…' : '');
             if ($ch['type'] === 'private') {
-                $rs = $pdo->prepare("SELECT user_id FROM channel_members WHERE channel_id = ? AND user_id != ?");
-                $rs->execute([$channel_id, $uid]);
+                $rs = $pdo->prepare("SELECT cm.user_id FROM channel_members cm JOIN users u ON u.id = cm.user_id AND u.org_id = ? WHERE cm.channel_id = ? AND cm.user_id != ?");
+                $rs->execute([$org_id, $channel_id, $uid]);
             } else {
                 $rs = $pdo->prepare("SELECT id AS user_id FROM users WHERE org_id = ? AND is_active = 1 AND id != ?");
                 $rs->execute([$org_id, $uid]);

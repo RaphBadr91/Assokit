@@ -113,6 +113,17 @@ foreach ($files_to_process as $file) {
     $stored_name = $safe_name . '_' . time() . '_' . mt_rand(1000, 9999) . '.' . $ext;
     $stored_path = $uploads_dir . '/' . $stored_name;
     
+    // Type réel lu dans le contenu (jamais celui annoncé par le navigateur, falsifiable)
+    $real_mime = 'application/octet-stream';
+    try { $real_mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']) ?: $real_mime; } catch (Throwable $e) {}
+    if (in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'], true)
+        && !in_array($real_mime, ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'], true)) {
+        $errors[] = $file['name'] . ' : le contenu ne correspond pas à l’extension';
+        continue;
+    }
+    $stored_name = $safe_name . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+    $stored_path = $uploads_dir . '/' . $stored_name;
+
     if (!move_uploaded_file($file['tmp_name'], $stored_path)) {
         $errors[] = $file['name'] . ' : échec du déplacement';
         continue;
@@ -124,7 +135,7 @@ foreach ($files_to_process as $file) {
         INSERT INTO project_files (project_id, uploaded_by, filename, filepath, filesize_bytes, mime_type)
         VALUES (?, ?, ?, ?, ?, ?)
     ")->execute([
-        $project_id, $user['id'], $file['name'], $relative_path, $file['size'], $file['type']
+        $project_id, $user['id'], $file['name'], $relative_path, $file['size'], $real_mime
     ]);
     
     $uploaded_count++;

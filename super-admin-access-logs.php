@@ -10,6 +10,7 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/csv-safe.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-auth-helpers.php';
@@ -39,8 +40,8 @@ if (($_GET['export'] ?? '') === 'csv') {
             ORDER BY a.accessed_at DESC LIMIT 5000
         ")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as $r) {
-            fputcsv($out, [$r['id'], trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? '')),
-                           $r['email'] ?? '', $r['method'], $r['url'], $r['ip_address'], $r['accessed_at']]);
+            fputcsv($out, ak_csv_safe([$r['id'], trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? '')),
+                           $r['email'] ?? '', $r['method'], $r['url'], $r['ip_address'], $r['accessed_at']]));
         }
     } else {
         fputcsv($out, ['ID', 'Email', 'Status', 'IP', 'User-Agent', 'Error', 'Date']);
@@ -50,8 +51,8 @@ if (($_GET['export'] ?? '') === 'csv') {
             ORDER BY attempted_at DESC LIMIT 5000
         ")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as $r) {
-            fputcsv($out, [$r['id'], $r['email_attempted'], $r['status'], $r['ip_address'],
-                           $r['user_agent'], $r['error_detail'], $r['attempted_at']]);
+            fputcsv($out, ak_csv_safe([$r['id'], $r['email_attempted'], $r['status'], $r['ip_address'],
+                           $r['user_agent'], $r['error_detail'], $r['attempted_at']]));
         }
     }
     fclose($out);

@@ -32,6 +32,10 @@ try {
     $st->execute([$id]);
     $proj_org = (int) ($st->fetchColumn() ?: 0);
     if ($proj_org !== $org_id) { http_response_code(404); echo json_encode(['ok' => false, 'error' => 'not_found']); exit; }
+    // Bilan financier du projet : rôles finances uniquement (admin, coordinateur, fondateur)
+    require_once __DIR__ . '/../finance-permissions.php';
+    require_once __DIR__ . '/../platform-flags.php';
+    if (!user_can_access_billing(ak_platform_flags($user))) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
     // Gate Pro sans effet de bord (ne consomme pas l'export gratuit)
     $allowed = true;

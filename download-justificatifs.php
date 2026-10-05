@@ -92,6 +92,10 @@ if (PHP_SAPI !== 'cli') {
     if (!$ctx) { http_response_code(404); die('Projet introuvable.'); }
     require_once __DIR__ . '/includes-permissions.php';
     if (!user_can_view_org((int)$ctx['proj_org_id'])) { http_response_code(403); die('Accès refusé à ce projet.'); }
+    // Justificatifs, montants et bilans financiers : mêmes rôles que l'onglet Factures du projet
+    require_once __DIR__ . '/finance-permissions.php';
+    require_once __DIR__ . '/platform-flags.php';
+    if (!user_can_access_billing(ak_platform_flags(current_user()))) { http_response_code(403); die('Accès réservé aux administrateurs et coordinateurs.'); }
 
     require_once __DIR__ . '/plan-helpers.php';
     if (function_exists('ak_trial_gate')) {

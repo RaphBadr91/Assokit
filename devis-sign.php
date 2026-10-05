@@ -117,8 +117,8 @@ function notif_asso_quote_signed(PDO $pdo, array $quote, string $signature_name)
     $org = $stmt->fetch();
     if (!$org || empty($org['billing_email'])) return;
 
-    $public_url = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr') . '/devis/' . $quote['public_uuid'];
-    $admin_link = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr') . '/mon-asso-devis-edit?id=' . $quote['id'];
+    $public_url = 'https://assokit.fr/devis/' . $quote['public_uuid'];
+    $admin_link = 'https://assokit.fr/mon-asso-devis-edit?id=' . $quote['id'];
     $amount = number_format($quote['amount_ttc_cents'] / 100, 2, ',', ' ') . ' €';
 
     $subject = '✓ Devis ' . $quote['quote_number'] . ' signé par le client !';
@@ -154,7 +154,7 @@ function notif_asso_quote_refused(PDO $pdo, array $quote, string $reason): void
     $org = $stmt->fetch();
     if (!$org || empty($org['billing_email'])) return;
 
-    $admin_link = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr') . '/mon-asso-devis-edit?id=' . $quote['id'];
+    $admin_link = 'https://assokit.fr/mon-asso-devis-edit?id=' . $quote['id'];
 
     $subject = '✗ Devis ' . $quote['quote_number'] . ' refusé par le client';
     $body_html = "<p>Bonjour,</p>"

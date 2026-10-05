@@ -52,6 +52,11 @@ if ($action === 'create' || $action === 'update') {
     $funder_type = in_array($_POST['funder_type'] ?? '', $valid_types, true) ? $_POST['funder_type'] : 'autre';
     $status = in_array($_POST['status'] ?? '', $valid_statuses, true) ? $_POST['status'] : 'draft';
     $project_id = (int)($_POST['project_id'] ?? 0) ?: null;
+    if ($project_id) {   // le projet doit appartenir à cette association
+        $ckp = $pdo->prepare("SELECT p.id FROM projects p JOIN folders f ON f.id = p.folder_id WHERE p.id = ? AND f.org_id = ?");
+        $ckp->execute([$project_id, $org_id]);
+        if (!$ckp->fetchColumn()) $project_id = null;
+    }
     $description = trim($_POST['description'] ?? '') ?: null;
     $notes = trim($_POST['notes'] ?? '') ?: null;
     $amount_req = $_POST['amount_requested'] !== '' ? (float)$_POST['amount_requested'] : null;

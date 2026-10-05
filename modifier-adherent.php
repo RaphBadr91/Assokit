@@ -50,6 +50,13 @@ if ((int)$adherent['id'] === (int)$current['id']) {
     exit;
 }
 
+// Compte plateforme (fondateur / super admin) : jamais modifiable depuis une asso
+$plat = ak_platform_flags(['id' => (int)$adherent['id']]);
+if (!empty($plat['is_founder']) || !empty($plat['is_super_admin']) || in_array($adherent['role'], ['super_admin', 'founder'], true)) {
+    http_response_code(403);
+    die('Ce compte ne peut pas être modifié depuis cette page.');
+}
+
 // Empecher un coordinator de modifier un admin
 if ($current['role'] === 'coordinator' && $adherent['role'] === 'admin') {
     http_response_code(403);
@@ -85,6 +92,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     $form['can_create_folders'] = isset($_POST['can_create_folders']) ? '1' : '0';
     $form['adhesion_date'] = trim($_POST['adhesion_date'] ?? '');
     $form['adhesion_valid_until'] = trim($_POST['adhesion_valid_until'] ?? '');
+
+    // Seul un admin change l'adresse email d'un compte (sinon : changement d'email puis
+    // « mot de passe oublié » = prise de contrôle du compte)
+    if (($current['role'] ?? '') !== 'admin') $form['email'] = $adherent['email'];
 
     $valid_roles = ['admin', 'coordinator', 'referent', 'member', 'follower'];
     if (!in_array($form['role'], $valid_roles, true)) $form['role'] = 'member';
@@ -195,7 +206,7 @@ render_sidebar('adherents');
     <div style="font-size:11.5px; color:var(--ink-3); font-weight:500; text-transform:uppercase; letter-spacing:0.05em; margin:20px 0 10px;">Contact</div>
     <div style="margin-bottom:14px;">
       <label for="email" style="display:block; font-size:13px; font-weight:500; margin-bottom:6px;">Email *</label>
-      <input type="email" id="email" name="email" required maxlength="200"
+      <input type="email" id="email" name="email" required maxlength="200"<?= ($current['role'] ?? '') !== 'admin' ? ' readonly title="Seul un administrateur peut changer l’adresse email"' : '' ?>
              value="<?= h($form['email']) ?>"
              style="width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:14px; color:var(--ink);">
       <div style="font-size:11.5px; color:var(--ink-4); margin-top:4px; display:flex; align-items:flex-start; gap:5px;">

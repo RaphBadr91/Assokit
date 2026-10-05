@@ -19,16 +19,16 @@ require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/plan-helpers.php';
 
 require_login();
-$user = current_user();
+$user = ak_platform_flags(current_user());
 $org_id = (int)($user['org_id'] ?? 0);
 
-// === Critères d'accès assouplis ===
+// === Accès : fondateur uniquement (page de test) ===
 $is_founder       = !empty($user['is_founder']);
 $is_super_admin   = !empty($user['is_super_admin']);
 $is_super_admin_role = ($user['role'] ?? '') === 'super_admin';
 $is_first_org     = $org_id === 1;
 
-$has_access = $is_founder || $is_super_admin || $is_super_admin_role || $is_first_org;
+$has_access = $is_founder;
 
 // === Si pas d'accès : diagnostic clair ===
 if (!$has_access) {

@@ -227,7 +227,13 @@ if ($action === 'add_member') {
         exit;
     }
 
-    // Vérifs
+    // Vérifs : le canal doit appartenir à cette association
+    $chk = $pdo->prepare("SELECT id FROM channels WHERE id = ? AND org_id = ?");
+    $chk->execute([$channel_id, $org_id]);
+    if (!$chk->fetch()) {
+        header('Location: /canal/' . urlencode($channel_slug) . '/parametres?error=invalid');
+        exit;
+    }
     $check = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ?");
     $check->execute([$new_user_id, $org_id]);
     if (!$check->fetch()) {
@@ -254,8 +260,9 @@ if ($action === 'remove_member') {
     $remove_user_id = (int)($_POST['user_id'] ?? 0);
     $channel_slug = $_POST['channel_slug'] ?? '';
 
-    $pdo->prepare("DELETE FROM channel_members WHERE channel_id = ? AND user_id = ?")
-        ->execute([$channel_id, $remove_user_id]);
+    $pdo->prepare("DELETE cm FROM channel_members cm JOIN channels c ON c.id = cm.channel_id AND c.org_id = ?
+                   WHERE cm.channel_id = ? AND cm.user_id = ?")
+        ->execute([$org_id, $channel_id, $remove_user_id]);
 
     header('Location: /canal/' . urlencode($channel_slug) . '/parametres?member_removed=1');
     exit;

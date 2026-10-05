@@ -16,7 +16,7 @@ require_once __DIR__ . '/mail-helpers.php';
 @require_once __DIR__ . '/ai-helper.php';
 
 $is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
-$has_key = isset($_GET['key']) && defined('CRON_SECRET') && hash_equals(CRON_SECRET, (string)$_GET['key']);
+$has_key = is_string($_GET['key'] ?? null) && defined('CRON_SECRET') && (string)CRON_SECRET !== '' && hash_equals((string)CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) { http_response_code(403); die('Forbidden'); }
 if (!mail_schema_ready($pdo)) { echo "Tables absentes : lancer migrations/2026-10-06-boite-mail.sql\n"; exit(0); }
 

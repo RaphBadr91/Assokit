@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/csv-safe.php';
 /**
  * ============================================================
  * ASSOKIT — Export CSV des adhérents
@@ -81,6 +82,7 @@ $role_labels = [
 
 // Fonction pour échapper un champ CSV
 function csv_escape($value, $separator = ';') {
+    $value = ak_csv_safe((string)$value);
     $value = (string) $value;
     // Si contient le séparateur, un guillemet ou un retour ligne → entourer de "
     if (strpos($value, $separator) !== false || strpos($value, '"') !== false || strpos($value, "\n") !== false || strpos($value, "\r") !== false) {

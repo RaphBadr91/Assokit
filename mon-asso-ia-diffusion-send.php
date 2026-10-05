@@ -74,6 +74,24 @@ if (count($recipients) > 200) {
     exit;
 }
 
+// Anti-relais : les adresses saisies à la main (hors membres de l'asso) sont limitées,
+// et chaque association a un quota quotidien — sinon le domaine sert à envoyer du spam.
+$manual_n = count(array_filter($recipients, fn($r) => ($r['source'] ?? '') === 'manual'));
+if ($manual_n > 30) {
+    $_SESSION['flash_error'] = 'Maximum 30 adresses saisies à la main par envoi. Ajoutez plutôt ces contacts comme membres ou clients.';
+    header('Location: /mon-asso-ia-diffusion');
+    exit;
+}
+try {
+    $q = $pdo->prepare("SELECT COALESCE(SUM(recipients_count), 0) FROM asso_ai_diffusions WHERE org_id = ? AND created_at > NOW() - INTERVAL 1 DAY");
+    $q->execute([$org_id]);
+    if ((int)$q->fetchColumn() + count($recipients) > 500) {
+        $_SESSION['flash_error'] = 'Quota atteint : 500 destinataires par 24 h et par association. Réessayez demain ou contactez le support Assokit.';
+        header('Location: /mon-asso-ia-diffusion');
+        exit;
+    }
+} catch (Throwable $e) {}
+
 // Construction HTML email avec template propre
 $body_html_inner = ak_ai_md_to_html($body_md);
 $org_ctx = ak_ai_get_org_context($pdo, $org_id);

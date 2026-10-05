@@ -384,19 +384,42 @@ function activity_cleanup_inactive_sessions(int $minutes_threshold = 30): int
  */
 function activity_get_ip(): string
 {
-    $candidates = [
-        'HTTP_CF_CONNECTING_IP',
-        'HTTP_X_FORWARDED_FOR',
-        'HTTP_X_REAL_IP',
-        'REMOTE_ADDR',
-    ];
-    foreach ($candidates as $key) {
-        if (!empty($_SERVER[$key])) {
-            $ip = trim(explode(',', $_SERVER[$key])[0]);
-            if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
-        }
+    // Les en-têtes « IP du client » ne sont crus que s'ils viennent d'un proxy connu :
+    // sinon n'importe qui envoie un X-Forwarded-For au hasard et contourne le blocage
+    // des tentatives de connexion par IP.
+    $remote = (string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+    $pick = function (string $key) {
+        if (empty($_SERVER[$key])) return null;
+        $ip = trim(explode(',', (string)$_SERVER[$key])[0]);
+        return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : null;
+    };
+    if (activity_is_cloudflare_ip($remote) && ($ip = $pick('HTTP_CF_CONNECTING_IP'))) return $ip;
+    $is_private = filter_var($remote, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+    if ($is_private) {
+        foreach (['HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP'] as $k) if ($ip = $pick($k)) return $ip;
     }
-    return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    return filter_var($remote, FILTER_VALIDATE_IP) ? $remote : '0.0.0.0';
+}
+
+/** L'adresse appartient-elle à Cloudflare (plages publiées) ? */
+function activity_is_cloudflare_ip(string $ip): bool
+{
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        $n = ip2long($ip);
+        foreach (['173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18',
+                  '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17',
+                  '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22'] as $cidr) {
+            [$net, $bits] = explode('/', $cidr);
+            $mask = -1 << (32 - (int)$bits);
+            if ((ip2long($net) & $mask) === ($n & $mask)) return true;
+        }
+        return false;
+    }
+    $ip = strtolower($ip);
+    foreach (['2400:cb00:', '2606:4700:', '2803:f800:', '2405:b500:', '2405:8100:', '2c0f:f248:', '2a06:98c'] as $pre) {
+        if (strpos($ip, $pre) === 0) return true;
+    }
+    return false;
 }
 
 /**

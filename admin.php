@@ -145,7 +145,8 @@ render_sidebar('admin');
   </div>
 
   <?php if (isset($_GET['created'])): ?>
-    <div class="alert alert-success">✅ Compte créé avec succès. L'utilisateur peut maintenant se connecter.</div>
+    <div class="alert alert-success">✅ Compte créé avec succès. L'utilisateur peut maintenant se connecter.
+      <?php if (!empty($_SESSION['admin_temp_password'])): ?><br>🔑 Mot de passe temporaire : <code style="background: #fff; padding: 3px 8px; border-radius: 4px;"><?= h($_SESSION['admin_temp_password']) ?></code><?php unset($_SESSION['admin_temp_password']); ?><?php endif; ?></div>
   <?php elseif (isset($_GET['updated'])): ?>
     <div class="alert alert-success">✅ Profil mis à jour.</div>
   <?php elseif (isset($_GET['deactivated'])): ?>
@@ -155,7 +156,7 @@ render_sidebar('admin');
   <?php elseif (isset($_GET['password_reset'])): ?>
     <div class="alert alert-success">
       🔑 Mot de passe réinitialisé. <strong>Nouveau mot de passe temporaire :</strong>
-      <code style="background: #fff; padding: 3px 8px; border-radius: 4px; margin-left: 8px;"><?= h($_GET['password_reset']) ?></code>
+      <code style="background: #fff; padding: 3px 8px; border-radius: 4px; margin-left: 8px;"><?= h($_SESSION['admin_temp_password'] ?? '(déjà affiché)') ?><?php unset($_SESSION['admin_temp_password']); ?></code>
       (l'utilisateur devra le changer à sa prochaine connexion)
     </div>
   <?php endif; ?>

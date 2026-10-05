@@ -198,8 +198,10 @@ $budget_remaining = (float)$project['budget_planned'] - $total_validated;
 $active_conv_id = (int)($_GET['conv'] ?? 0);
 $active_conv_messages = [];
 if ($active_conv_id > 0) {
-    $stmt = $pdo->prepare("SELECT role, content FROM ai_messages WHERE conversation_id = ? ORDER BY created_at ASC, id ASC");
-    $stmt->execute([$active_conv_id]);
+    $stmt = $pdo->prepare("SELECT m.role, m.content FROM ai_messages m
+                           JOIN ai_conversations c ON c.id = m.conversation_id AND c.project_id = ?
+                           WHERE m.conversation_id = ? ORDER BY m.created_at ASC, m.id ASC");
+    $stmt->execute([(int)$project['id'], $active_conv_id]);
     $active_conv_messages = $stmt->fetchAll();
 }
 

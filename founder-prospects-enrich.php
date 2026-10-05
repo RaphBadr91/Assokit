@@ -20,13 +20,9 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/api/_app-prospect.php';
 require_once __DIR__ . '/api/_app-directory.php';
 
-const ENRICH_SECRET = 'assokit-enrich-5c2b90';
-
+// Ligne de commande uniquement (l'ancienne clé web était écrite dans le dépôt, donc publique).
 $is_cli = (PHP_SAPI === 'cli');
-if (!$is_cli) {
-    header('Content-Type: text/plain; charset=utf-8');
-    if (($_GET['key'] ?? '') !== ENRICH_SECRET) { http_response_code(403); exit("403 — clé invalide.\n"); }
-}
+if (!$is_cli) { http_response_code(403); exit("403 — à lancer en SSH : php founder-prospects-enrich.php\n"); }
 function say($m) { echo $m . "\n"; @flush(); }
 
 ak_prospect_tables_ensure($pdo);

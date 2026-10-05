@@ -267,7 +267,7 @@ render_sidebar('messages');
             }
           ?>
           <a href="/messages?c=<?= h($c['slug']) ?>" class="msg-channel-link <?= $is_active ? 'active' : '' ?>">
-            <span class="msg-channel-icon"><?= $c['icon'] ?: '#' ?></span>
+            <span class="msg-channel-icon"><?= h($c['icon'] ?: '#') ?></span>
             <span class="msg-channel-name"><?= h($c['name']) ?></span>
             <?php if ($c['type'] !== 'public'): ?>
               <span class="msg-channel-type-icon" title="<?= $c['type'] === 'private' ? 'Privé' : 'Annonces' ?>">
@@ -297,7 +297,7 @@ render_sidebar('messages');
         <!-- Header du canal -->
         <header class="msg-head">
           <button type="button" class="btn btn-ghost msg-toggle" aria-label="Afficher les canaux" title="Canaux" onclick="document.querySelector('.msg-channels').classList.toggle('mobile-open')" style="padding:8px 10px; margin-right:8px;">☰</button>
-          <div class="msg-head-icon"><?= $active_channel['icon'] ?: '💬' ?></div>
+          <div class="msg-head-icon"><?= h($active_channel['icon'] ?: '💬') ?></div>
           <div class="msg-head-info">
             <div class="msg-head-name">
               <?= h($active_channel['name']) ?>
@@ -329,7 +329,7 @@ render_sidebar('messages');
         <div class="msg-list" id="msgList">
           <?php if (empty($messages)): ?>
             <div class="msg-empty">
-              <div class="msg-empty-icon"><?= $active_channel['icon'] ?: '💬' ?></div>
+              <div class="msg-empty-icon"><?= h($active_channel['icon'] ?: '💬') ?></div>
               <div class="msg-empty-title">Bienvenue dans <?= h($active_channel['name']) ?> !</div>
               <div class="msg-empty-desc">Aucun message pour l'instant. Soyez le premier à écrire quelque chose.</div>
             </div>

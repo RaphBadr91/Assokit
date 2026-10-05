@@ -27,6 +27,11 @@ $is_edit = $rec_id > 0;
 
 $title           = trim((string)($_POST['title'] ?? ''));
 $client_id       = (int)($_POST['client_id'] ?? 0); $client_id = $client_id > 0 ? $client_id : null;
+if ($client_id) {   // le client doit appartenir à cette association
+    $ck = $pdo->prepare("SELECT id FROM asso_clients WHERE id = ? AND org_id = ? LIMIT 1");
+    $ck->execute([$client_id, $org_id]);
+    if (!$ck->fetchColumn()) $client_id = null;
+}
 $frequency       = (string)($_POST['frequency'] ?? 'monthly');
 $interval_count  = max(1, (int)($_POST['interval_count'] ?? 1));
 $day_of_month_in = trim((string)($_POST['day_of_month'] ?? ''));

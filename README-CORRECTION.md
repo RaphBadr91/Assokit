@@ -42,7 +42,7 @@ cPanel → Gestionnaire de fichiers → `public_html/`
 
 ### 3. Test
 
-`https://assokit.fr/connexion` → demo@assokit.fr / Demo2026!
+`https://assokit.fr/connexion` → compte démo commercial (identifiants communiqués à part, jamais dans le dépôt)
 → Tu vois maintenant :
 - 3 cards "ASSOKIT 49,99 €/mois"
 - 1 card "SUR-MESURE Sur devis" (Paris 11e avec badge ⭐ FULL MAX)

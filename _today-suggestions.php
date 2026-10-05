@@ -78,7 +78,9 @@ $priority_colors = [
         <?php
           $priority = $sugg['priority'] ?? 'info';
           $colors = $priority_colors[$priority] ?? $priority_colors['info'];
-          $link = $sugg['link'] ?? '#';
+          $link = (string)($sugg['link'] ?? '#');
+          // Lien produit par l'IA : chemin interne uniquement (jamais javascript:, ni autre site)
+          if (!preg_match('#^/(?![/\\\\])[A-Za-z0-9/_\-?=&.%\#]*$#', $link)) $link = '#';
           $icon = $sugg['icon'] ?? '✨';
         ?>
         <a href="<?= h($link) ?>" class="today-item" style="text-decoration:none; color:inherit;">

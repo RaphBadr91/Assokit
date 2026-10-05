@@ -21,3 +21,6 @@ Options -Indexes
 # ============================================================
 RewriteEngine On
 RewriteRule ^projet_ - [F,L]
+
+# Scans de factures en attente (dossier temp) : jamais servis en direct.
+RewriteRule ^temp/ - [F,L]

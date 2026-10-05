@@ -51,6 +51,7 @@ try {
 
 // ----- URL de retour (selon d'où vient le post)
 $return_url = $_POST['return_url'] ?? null;
+if (!is_string($return_url) || !preg_match('#^/(?![/\\\\])#', $return_url)) $return_url = null;   // chemin interne uniquement
 if (empty($return_url)) {
     // Par défaut : même page
     $return_url = '/super-admin/associations/facturation?id=' . $org_id;

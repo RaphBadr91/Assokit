@@ -54,6 +54,13 @@ try {
         http_response_code(403);
         die("Vous n'êtes pas membre de ce channel.");
     }
+    // Canal mairie uniquement, et l'auteur appartient à l'asso du canal ou à la mairie parente
+    $my_org = (int)($current['org_id'] ?? 0);
+    if ((int)$channel['is_mairie_channel'] !== 1
+        || ($my_org !== (int)$channel['org_id'] && $my_org !== (int)$channel['parent_org_id'])) {
+        http_response_code(403);
+        die("Vous n'êtes pas membre de ce channel.");
+    }
     if ($channel['is_archived']) {
         $_SESSION['flash_error'] = "Ce channel est archivé.";
         header('Location: /mairie-messages'); exit;

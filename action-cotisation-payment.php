@@ -22,6 +22,17 @@ if ($action === 'create') {
 
     $tier_id = (int)($_POST['tier_id'] ?? 0) ?: null;
     $adherent_id = (int)($_POST['adherent_id'] ?? 0) ?: null;
+    // Identifiants secondaires : doivent appartenir à cette association
+    if ($tier_id) {   // la formule doit appartenir à cette campagne
+        $ck = $pdo->prepare("SELECT id FROM cotisation_tiers WHERE id = ? AND campaign_id = ?");
+        $ck->execute([$tier_id, $campaign_id]);
+        if (!$ck->fetchColumn()) $tier_id = null;
+    }
+    if ($adherent_id) {
+        $ck = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ?");
+        $ck->execute([$adherent_id, $org_id]);
+        if (!$ck->fetchColumn()) $adherent_id = null;
+    }
     $payer_name = trim($_POST['payer_name'] ?? '');
     $payer_email = trim($_POST['payer_email'] ?? '') ?: null;
     $amount = (float)str_replace(',', '.', $_POST['amount'] ?? 0);

@@ -34,7 +34,7 @@ try {
             SELECT r.id, r.title, r.next_run_date, r.frequency, r.interval_count,
                    c.display_name AS client_name, r.occurrences_count, r.max_occurrences
             FROM asso_invoice_recurrences r
-            LEFT JOIN asso_clients c ON c.id = r.client_id
+            LEFT JOIN asso_clients c ON c.id = r.client_id AND c.org_id = r.org_id
             WHERE r.org_id = :o AND r.status = 'active'
             ORDER BY r.next_run_date ASC
             LIMIT 5

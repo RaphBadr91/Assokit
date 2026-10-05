@@ -23,7 +23,7 @@ if (PHP_SAPI !== 'cli' && !isset($_GET['cron_token'])) {
 // Si appel HTTP, verifier le token (a definir dans config.php : CRON_TOKEN)
 if (PHP_SAPI !== 'cli') {
     require_once __DIR__ . '/config.php';
-    if (!defined('CRON_TOKEN') || $_GET['cron_token'] !== CRON_TOKEN) {
+    if (!defined('CRON_TOKEN') || (string)CRON_TOKEN === '' || !hash_equals((string)CRON_TOKEN, (string)($_GET['cron_token'] ?? ''))) {
         http_response_code(403);
         die('Invalid token');
     }

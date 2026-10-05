@@ -96,6 +96,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
                             'suiveur'        => 'follower', 'follower' => 'follower',
                         ];
                         $row['role'] = $role_map[$role_lower] ?? 'member';
+                        // Seul un admin peut créer des admins (comme nouveau-adherent.php)
+                        if ($row['role'] === 'admin' && ($user['role'] ?? '') !== 'admin') $row['role'] = 'member';
 
                         if ($row['first_name'] === '' || $row['last_name'] === '') {
                             $row['status'] = 'error';
@@ -156,6 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
                 $colors = ['blue','purple','amber','pink','teal'];
                 $avatar_color = $colors[array_rand($colors)];
 
+                if ($row['role'] === 'admin' && ($user['role'] ?? '') !== 'admin') $row['role'] = 'member';
                 $perms = match($row['role']) {
                     'admin'       => [1, 1, 1, 1, 1, 1],
                     'coordinator' => [1, 1, 0, 1, 1, 1],

@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/csv-safe.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/asso-search-helpers.php';
 
@@ -41,7 +42,7 @@ function ak_export_csv(string $filename, array $headers, array $rows): void {
     $out = fopen('php://output', 'w');
     fputcsv($out, $headers, ';');
     foreach ($rows as $row) {
-        fputcsv($out, $row, ';');
+        fputcsv($out, ak_csv_safe($row), ';');
     }
     fclose($out);
     exit;

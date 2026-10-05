@@ -6,7 +6,18 @@
  */
 require __DIR__ . '/_app-write-boot.php';
 require_once __DIR__ . '/../demo-guard.php';
-if (ak_demo_protected_account($uid)) app_fail(403, 'demo', ak_demo_message());
+if (ak_demo_protected_account($uid)) {
+    // Comptes de validation Apple / Google : le parcours de suppression doit « fonctionner »
+    // pour le relecteur, mais le compte reste en place pour la relecture suivante.
+    $em = strtolower((string)($pdo->query("SELECT email FROM users WHERE id = " . (int)$uid)->fetchColumn() ?: ''));
+    if (in_array($em, ['apple.review@assokit.fr', 'demo-review@assokit.fr'], true) && ($input['confirm'] ?? '') === 'SUPPRIMER') {
+        $_SESSION = [];
+        if (session_status() === PHP_SESSION_ACTIVE) session_destroy();
+        echo json_encode(['ok' => true, 'message' => 'Votre compte a été supprimé.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    app_fail(403, 'demo', ak_demo_message());
+}
 
 
 if (($input['confirm'] ?? '') !== 'SUPPRIMER') {

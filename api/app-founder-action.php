@@ -15,6 +15,7 @@ $target = (int) ($input['org_id'] ?? 0);
 $action = (string) ($input['action'] ?? '');
 if ($target <= 0) app_fail(400, 'org_id');
 if (!in_array($action, ['validate', 'reject', 'suspend', 'activate', 'resiliate', 'edit'], true)) app_fail(400, 'action');
+if (in_array($action, ['validate', 'reject'], true) && !$is_founder) app_fail(403, 'founder_only');   // valider / refuser une asso : fondateur uniquement
 
 try {
     // Vérifie que l'org existe

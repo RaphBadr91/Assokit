@@ -543,6 +543,11 @@ RedirectMatch 404 /private_campagnes
     Require all denied
 </Files>
 
+# Fichiers d'information WordPress (révèlent la version installée)
+<FilesMatch "^(readme\.html|wp-config-sample\.php)$">
+    Require all denied
+</FilesMatch>
+
 <FilesMatch "\.(sql|md|log|env|bak|swp|txt)$">
     Require all denied
 </FilesMatch>

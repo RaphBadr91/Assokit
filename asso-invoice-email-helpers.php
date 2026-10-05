@@ -21,7 +21,7 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
         SELECT i.*, c.email AS client_email, c.display_name AS client_name,
                o.name AS org_name, o.billing_email AS org_email
         FROM asso_invoices i
-        LEFT JOIN asso_clients c ON c.id = i.client_id
+        LEFT JOIN asso_clients c ON c.id = i.client_id AND c.org_id = i.org_id
         LEFT JOIN organizations o ON o.id = i.org_id
         WHERE i.id = :id LIMIT 1
     ");

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/csv-safe.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-attendance.php';
 require_login();
@@ -19,7 +20,7 @@ $out = fopen('php://output', 'w');
 fputs($out, "\xEF\xBB\xBF"); // BOM UTF-8 pour Excel
 fputcsv($out, ['Nom complet', 'Email', 'Téléphone', 'Date émargement', 'IP'], ';');
 foreach ($records as $r) {
-    fputcsv($out, [$r['full_name'], $r['email'] ?? '', $r['phone'] ?? '', date('d/m/Y H:i:s', strtotime($r['signed_at'])), $r['ip'] ?? ''], ';');
+    fputcsv($out, ak_csv_safe([$r['full_name'], $r['email'] ?? '', $r['phone'] ?? '', date('d/m/Y H:i:s', strtotime($r['signed_at'])), $r['ip'] ?? '']), ';');
 }
 fclose($out);
 exit;

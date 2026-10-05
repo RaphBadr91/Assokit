@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['target_org_id'])) {
     $target_org_id = (int)$_POST['target_org_id'];
     
     try {
-        $stmt = $pdo->prepare("SELECT id, name, slug, plan FROM organizations WHERE id = ? AND slug LIKE 'demo-%'");
+        $stmt = $pdo->prepare("SELECT id, name, slug, plan FROM organizations WHERE id = ? AND BINARY slug IN ('demo-evry', 'demo-corbeil', 'demo-paris', 'demo-tpe', 'demo-formation')");
         $stmt->execute([$target_org_id]);
         $target_org = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['target_org_id'])) {
         $_SESSION['user_email'] = $admin['email'];
         $_SESSION['user_name'] = $admin['first_name'] . ' ' . $admin['last_name'];
         $_SESSION['user_role'] = $admin['role'];
-        $_SESSION['is_super_admin'] = (int)($admin['is_super_admin'] ?? 0);
+        $_SESSION['is_super_admin'] = 0;   // une session démo n'a jamais de droits plateforme
         $_SESSION['demo_real_email'] = 'demo@assokit.fr'; // Pour le retour
         
         if (file_exists(__DIR__ . '/activity-tracker.php')) {
@@ -145,7 +145,7 @@ $demos = $pdo->query("
         (SELECT COUNT(*) FROM projects p JOIN folders f ON p.folder_id = f.id WHERE f.org_id = o.id AND p.archived_at IS NULL) AS project_count,
         (SELECT COUNT(*) FROM asso_invoices WHERE org_id = o.id) AS invoice_count
     FROM organizations o
-    WHERE o.slug LIKE 'demo-%'
+    WHERE BINARY o.slug IN ('demo-evry', 'demo-corbeil', 'demo-paris', 'demo-tpe', 'demo-formation')
     ORDER BY 
         CASE o.slug 
             WHEN 'demo-evry' THEN 1

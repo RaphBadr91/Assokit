@@ -87,6 +87,12 @@ try {
         }
 
         $client_id = (int)($client_data['id'] ?? 0);
+        if ($client_id) {
+            // Le client doit appartenir à cette association (sinon : fiche d'une autre asso exposée / facturée)
+            $ck = $pdo->prepare("SELECT id FROM asso_clients WHERE id = ? AND org_id = ? LIMIT 1");
+            $ck->execute([$client_id, $org_id]);
+            if (!$ck->fetchColumn()) $client_id = 0;
+        }
         if (!$client_id) {
             $client_id = ak_asso_find_or_create_client($pdo, $org_id, array_merge($client_data, ['created_by_user_id' => (int)$user['id']]));
         }
@@ -104,8 +110,8 @@ try {
         // Le PDF lit client_snapshot : on le rafraîchit à chaque édition (cf. facture-save).
         $client_snap = null;
         try {
-            $cs = $pdo->prepare("SELECT * FROM asso_clients WHERE id = ? LIMIT 1");
-            $cs->execute([$client_id]);
+            $cs = $pdo->prepare("SELECT * FROM asso_clients WHERE id = ? AND org_id = ? LIMIT 1");
+            $cs->execute([$client_id, $org_id]);
             $cfull = $cs->fetch(PDO::FETCH_ASSOC);
             if ($cfull) $client_snap = json_encode($cfull, JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {}

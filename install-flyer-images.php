@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('403'); }   // installation ponctuelle : SSH uniquement
 // install-flyer-images.php — install dashboard images for the flyer
 // Lance ce script UNE FOIS via https://assokit.fr/install-flyer-images.php
 $dir = __DIR__ . '/assets/';

@@ -6,6 +6,7 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/csv-safe.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-permissions.php';
@@ -47,13 +48,13 @@ if (!empty($_GET['export']) && $_GET['export'] === 'csv') {
     fputs($out, "\xEF\xBB\xBF"); // BOM UTF-8 Excel
     fputcsv($out, ['ID','Début','Fin','Admin Email','Admin Nom','Cible Email','Cible Nom','Raison','Actions','IP','Timeout Auto'], ';');
     while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        fputcsv($out, [
+        fputcsv($out, ak_csv_safe([
             $r['id'], $r['started_at'], $r['ended_at'] ?? 'en cours',
             $r['admin_email'], ($r['admin_first'].' '.$r['admin_last']),
             $r['target_email'], ($r['target_first'].' '.$r['target_last']),
             $r['reason'], $r['actions_count'], $r['ip_address'],
             $r['auto_ended'] ? 'OUI' : 'NON',
-        ], ';');
+        ]), ';');
     }
     fclose($out);
     exit;

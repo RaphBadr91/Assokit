@@ -46,6 +46,12 @@ if (!$row || empty($row['path'])) { http_response_code(404); exit('Fichier intro
 // Contrôle d'accès : l'utilisateur doit pouvoir voir cette org (gère aussi
 // fondateur/super-admin en consultation d'une autre org).
 if (!user_can_view_org((int)$row['org'])) { http_response_code(403); exit('Accès refusé.'); }
+// Factures de projet : réservées aux rôles finances (comme l'onglet Factures)
+if ($type === 'invoice') {
+    require_once __DIR__ . '/finance-permissions.php';
+    require_once __DIR__ . '/platform-flags.php';
+    if (!user_can_access_billing(ak_platform_flags(current_user()))) { http_response_code(403); exit('Accès refusé.'); }
+}
 
 // Résolution + garde anti-traversal : le fichier doit rester sous /uploads.
 $rel  = ltrim((string)$row['path'], '/');
@@ -55,24 +61,39 @@ if ($full === false || $base === false || strpos($full, $base . DIRECTORY_SEPARA
     http_response_code(404); exit('Fichier introuvable.');
 }
 
-// Type MIME
-$mime = $row['mime_type'] ?: null;
-if (!$mime) {
-    try { $fi = new finfo(FILEINFO_MIME_TYPE); $mime = $fi->file($full) ?: null; } catch (Throwable $e) {}
-}
-if (!$mime) $mime = 'application/octet-stream';
+// Type MIME : jamais celui enregistré à l'envoi (fourni par le navigateur, donc falsifiable,
+// ex. « image/png, text/html ») — on le déduit de l'extension, avec une liste fermée.
+$MIME_BY_EXT = [
+    'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'gif' => 'image/gif', 'webp' => 'image/webp',
+    'pdf' => 'application/pdf', 'txt' => 'text/plain', 'csv' => 'text/csv',
+    'doc' => 'application/msword', 'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls' => 'application/vnd.ms-excel', 'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt' => 'application/vnd.ms-powerpoint', 'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'odt' => 'application/vnd.oasis.opendocument.text', 'ods' => 'application/vnd.oasis.opendocument.spreadsheet',
+    'zip' => 'application/zip', 'mp4' => 'video/mp4', 'mp3' => 'audio/mpeg',
+];
+$ext  = strtolower(pathinfo($full, PATHINFO_EXTENSION));
+$mime = $MIME_BY_EXT[$ext] ?? 'application/octet-stream';
+// Le contenu réel doit correspondre pour un affichage dans la page ; sinon : téléchargement.
+$real = null;
+try { $fi = new finfo(FILEINFO_MIME_TYPE); $real = $fi->file($full) ?: null; } catch (Throwable $e) {}
 
 // Nom de téléchargement
 $name = $row['filename'] ?: basename($full);
 $name = preg_replace('/[^\w.\- ]+/u', '_', $name);
 
-// Affichage inline pour PDF/images (visionnage), pièce jointe sinon (anti-XSS).
-$inline = (stripos($mime, 'image/') === 0 && stripos($mime, 'image/svg') !== 0) || $mime === 'application/pdf';
+// Affichage inline seulement pour PNG/JPEG/GIF/WebP/PDF dont le contenu est bien de ce type.
+$inline = in_array($mime, ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'], true) && $real === $mime;
+if (!$inline && $mime !== 'application/octet-stream' && $real !== null && $real !== $mime && strpos($mime, 'application/vnd.') !== 0) {
+    $mime = 'application/octet-stream';
+}
 $disp = $inline ? 'inline' : 'attachment';
 
 header('Content-Type: ' . $mime);
 header('Content-Disposition: ' . $disp . '; filename="' . $name . '"');
 header('Content-Length: ' . filesize($full));
 header('X-Content-Type-Options: nosniff');
+// Le lecteur PDF de Chrome ne s'ouvre pas dans un document « sandbox » : la CSP vaut pour tout le reste.
+if ($mime !== 'application/pdf') header("Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
 header('Cache-Control: private, max-age=60');
 readfile($full);

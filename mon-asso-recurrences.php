@@ -70,7 +70,7 @@ try {
     $sql = "
         SELECT r.*, c.display_name AS client_name
         FROM asso_invoice_recurrences r
-        LEFT JOIN asso_clients c ON c.id = r.client_id
+        LEFT JOIN asso_clients c ON c.id = r.client_id AND c.org_id = r.org_id
         WHERE " . implode(' AND ', $where) . "
         ORDER BY
           CASE r.status WHEN 'active' THEN 1 WHEN 'paused' THEN 2 WHEN 'ended' THEN 3 ELSE 4 END,

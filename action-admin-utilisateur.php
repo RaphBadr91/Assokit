@@ -70,15 +70,21 @@ function log_admin_action($admin_id, $target_id, $action_name, $details = null) 
 function get_target_user($pdo, $user_id, $org_id) {
     $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND org_id = ?");
     $stmt->execute([$user_id, $org_id]);
-    return $stmt->fetch() ?: null;
+    $t = $stmt->fetch() ?: null;
+    // Un compte plateforme (fondateur / super admin) ne se gère jamais depuis l'admin d'une asso :
+    // sinon un admin d'asso réinitialise son mot de passe ou change son email et prend le compte.
+    if ($t && (!empty($t['is_super_admin']) || !empty($t['is_founder'])
+               || in_array($t['role'] ?? '', ['super_admin', 'founder'], true))) return null;
+    return $t;
 }
 
 // Helper : générer un mot de passe temporaire lisible
 function generate_temp_password() {
+    // Lisible mais imprévisible (CSPRNG) : mot + 2 groupes de 4 caractères sans ambiguïté
     $words = ['assos', 'projet', 'bureau', 'cafe', 'paper', 'livre', 'metro', 'radio'];
-    $word = $words[array_rand($words)];
-    $number = mt_rand(1000, 9999);
-    return $word . '-' . $number;
+    $abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+    $g = function () use ($abc) { $o = ''; for ($i = 0; $i < 4; $i++) $o .= $abc[random_int(0, strlen($abc) - 1)]; return $o; };
+    return $words[random_int(0, count($words) - 1)] . '-' . $g() . '-' . $g();
 }
 
 // Helper : parser les capacités depuis $_POST
@@ -195,7 +201,8 @@ if ($action === 'create') {
     ]);
 
     // Rediriger avec mot de passe affiché (seule fois où il est visible en clair)
-    header('Location: /admin?created=1&password_reset=' . urlencode($temp_password));
+    $_SESSION['admin_temp_password'] = $temp_password;
+    header('Location: /admin?created=1&password_reset=1');
     exit;
 }
 
@@ -348,7 +355,8 @@ if ($action === 'reset_password') {
 
     log_admin_action($current['id'], $target_id, 'reset_password', ['email' => $target['email']]);
 
-    header('Location: /admin?password_reset=' . urlencode($temp_password));
+    $_SESSION['admin_temp_password'] = $temp_password;
+    header('Location: /admin?password_reset=1');
     exit;
 }
 

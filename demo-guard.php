@@ -39,7 +39,19 @@ if (!function_exists('ak_demo_org_id')) {
 if (!function_exists('ak_is_demo_org')) {
     function ak_is_demo_org($org_id): bool {
         $demo = ak_demo_org_id();
-        return $demo > 0 && (int)$org_id === $demo;
+        if ($demo > 0 && (int)$org_id === $demo) return true;
+        // Associations de démo commerciales (identifiants publics) : e-mails et SMS simulés aussi
+        static $extra = null;
+        if ($extra === null) {
+            $extra = [];
+            global $pdo;
+            if ($pdo instanceof PDO) {
+                try {
+                    $extra = array_map('intval', $pdo->query("SELECT id FROM organizations WHERE BINARY slug IN ('demo-evry', 'demo-corbeil', 'demo-paris', 'demo-tpe')")->fetchAll(PDO::FETCH_COLUMN));
+                } catch (Throwable $e) {}
+            }
+        }
+        return in_array((int)$org_id, $extra, true);
     }
 }
 
@@ -103,6 +115,8 @@ if (!function_exists('ak_demo_protected_account')) {
             } catch (Throwable $e) { return false; }
         }
         $email = strtolower((string)($user['email'] ?? ''));
+        // Comptes de démo / de validation Apple-Google : mot de passe connu, donc figés
+        if (in_array($email, ['demo@assokit.fr', 'apple.review@assokit.fr', 'demo-review@assokit.fr'], true)) return true;
         return in_array($email, array_map(fn($p) => $p . '@' . AK_DEMO_DOMAIN,
             ['admin', 'salarie', 'benevole', 'membre', 'financeur']), true);
     }

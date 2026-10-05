@@ -96,7 +96,7 @@ render_sidebar('messages');
   <div class="main-head">
     <div>
       <h1 class="page-title">
-        <?= $channel['icon'] ?: '💬' ?> Paramètres du canal
+        <?= h($channel['icon'] ?: '💬') ?> Paramètres du canal
       </h1>
       <div class="page-sub"><?= h($channel['name']) ?> · <?= $msg_count ?> message<?= $msg_count > 1 ? 's' : '' ?><?= $last_msg_date ? ' · dernier : ' . h(date('d/m/Y', strtotime($last_msg_date))) : '' ?></div>
     </div>

@@ -19,7 +19,7 @@ require_once __DIR__ . '/config.php';
 
 if (!$is_cli) {
     $token = $_GET['token'] ?? '';
-    if (defined('CRON_TOKEN') && hash_equals(CRON_TOKEN, $token)) {
+    if (defined('CRON_TOKEN') && (string)CRON_TOKEN !== '' && hash_equals((string)CRON_TOKEN, (string)$token)) {
         $token_ok = true;
     } else {
         http_response_code(403);

@@ -120,7 +120,7 @@ if (!is_dir($temp_dir)) mkdir($temp_dir, 0755, true);
 foreach ((array) @glob($temp_dir . '/scan_*') as $old_scan) {
     if (is_file($old_scan) && @filemtime($old_scan) < time() - 86400) @unlink($old_scan);
 }
-$temp_filename = 'scan_' . $user['id'] . '_' . time() . '.' . $ext;
+$temp_filename = 'scan_' . bin2hex(random_bytes(16)) . '.' . $ext;   // nom imprévisible
 $temp_path = $temp_dir . '/' . $temp_filename;
 move_uploaded_file($f['tmp_name'], $temp_path);
 

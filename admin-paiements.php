@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     $stripe_sec = trim($_POST['stripe_secret_key'] ?? '') ?: null;
     $stripe_wh = trim($_POST['stripe_webhook_secret'] ?? '') ?: null;
 
-    $stmt = $pdo->prepare("INSERT INTO org_payment_settings (org_id, bank_iban, bank_bic, bank_holder, check_payable_to, stripe_enabled, stripe_mode, stripe_publishable_key, stripe_secret_key, stripe_webhook_secret) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE bank_iban=VALUES(bank_iban), bank_bic=VALUES(bank_bic), bank_holder=VALUES(bank_holder), check_payable_to=VALUES(check_payable_to), stripe_enabled=VALUES(stripe_enabled), stripe_mode=VALUES(stripe_mode), stripe_publishable_key=VALUES(stripe_publishable_key), stripe_secret_key=VALUES(stripe_secret_key), stripe_webhook_secret=VALUES(stripe_webhook_secret)");
+    $stmt = $pdo->prepare("INSERT INTO org_payment_settings (org_id, bank_iban, bank_bic, bank_holder, check_payable_to, stripe_enabled, stripe_mode, stripe_publishable_key, stripe_secret_key, stripe_webhook_secret) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE bank_iban=VALUES(bank_iban), bank_bic=VALUES(bank_bic), bank_holder=VALUES(bank_holder), check_payable_to=VALUES(check_payable_to), stripe_enabled=VALUES(stripe_enabled), stripe_mode=VALUES(stripe_mode), stripe_publishable_key=VALUES(stripe_publishable_key), stripe_secret_key=COALESCE(VALUES(stripe_secret_key), stripe_secret_key), stripe_webhook_secret=COALESCE(VALUES(stripe_webhook_secret), stripe_webhook_secret)");
     $stmt->execute([$org_id, $iban, $bic, $holder, $check_to, $stripe_enabled, $stripe_mode, $stripe_pub, $stripe_sec, $stripe_wh]);
     $msg = 'Paramètres enregistrés.';
 }
@@ -67,8 +67,8 @@ render_head('Paiements');
         </div>
       </div>
       <div class="ck-fld"><label>Clé publique (pk_…)</label><input type="text" name="stripe_publishable_key" value="<?= h($s['stripe_publishable_key'] ?? '') ?>" maxlength="200" placeholder="pk_test_..."></div>
-      <div class="ck-fld"><label>Clé secrète (sk_…)</label><input type="password" name="stripe_secret_key" value="<?= h($s['stripe_secret_key'] ?? '') ?>" maxlength="200" placeholder="sk_test_..." autocomplete="new-password"></div>
-      <div class="ck-fld"><label>Webhook signing secret (whsec_…)</label><input type="password" name="stripe_webhook_secret" value="<?= h($s['stripe_webhook_secret'] ?? '') ?>" maxlength="200" placeholder="whsec_..." autocomplete="new-password"></div>
+      <div class="ck-fld"><label>Clé secrète (sk_…)</label><input type="password" name="stripe_secret_key" value="" maxlength="200" placeholder="<?= !empty($s['stripe_secret_key']) ? '•••••••• enregistrée — laisser vide pour la garder' : 'sk_test_...' ?>" autocomplete="new-password"></div>
+      <div class="ck-fld"><label>Webhook signing secret (whsec_…)</label><input type="password" name="stripe_webhook_secret" value="" maxlength="200" placeholder="<?= !empty($s['stripe_webhook_secret']) ? '•••••••• enregistré — laisser vide pour le garder' : 'whsec_...' ?>" autocomplete="new-password"></div>
 
       <div class="ck-actions">
         <button type="submit" class="ck-btn-primary">Enregistrer</button>

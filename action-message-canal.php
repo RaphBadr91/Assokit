@@ -225,10 +225,11 @@ if ($action === 'send') {
             // Liste des destinataires (selon type canal)
             if ($channel['type'] === 'private') {
                 $stmt = $pdo->prepare("
-                    SELECT user_id FROM channel_members 
-                    WHERE channel_id = ? AND user_id != ?
+                    SELECT cm.user_id FROM channel_members cm
+                    JOIN users u ON u.id = cm.user_id AND u.org_id = ?
+                    WHERE cm.channel_id = ? AND cm.user_id != ?
                 ");
-                $stmt->execute([$channel_id, $user_id]);
+                $stmt->execute([(int)$channel['org_id'], $channel_id, $user_id]);
             } else {
                 // Public/announce : tous les actifs de l'org sauf l'auteur
                 $stmt = $pdo->prepare("

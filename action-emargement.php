@@ -23,6 +23,11 @@ if ($action === 'create' || $action === 'update') {
     $ends_dt = $ends ? date('Y-m-d H:i:s', strtotime($ends)) : null;
     $req_sig = !empty($_POST['require_signature']) ? 1 : 0;
     $project_id = (int)($_POST['project_id'] ?? 0) ?: null;
+    if ($project_id) {   // le projet doit appartenir à cette association
+        $ckp = $pdo->prepare("SELECT p.id FROM projects p JOIN folders f ON f.id = p.folder_id WHERE p.id = ? AND f.org_id = ?");
+        $ckp->execute([$project_id, $org_id]);
+        if (!$ckp->fetchColumn()) $project_id = null;
+    }
 
     if ($action === 'create') {
         $token = att_random_token();

@@ -219,6 +219,6 @@ try {
 } catch (Throwable $e) {
     http_response_code(500);
     error_log('[stripe-create-payment-intent] FATAL: ' . $e->getMessage());
-    echo json_encode(['error' => 'Erreur serveur : ' . $e->getMessage()]);
+    echo json_encode(['error' => 'Erreur serveur, réessayez dans un instant.']);
     exit;
 }

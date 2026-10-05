@@ -181,6 +181,11 @@ if ($user_message === '' || mb_strlen($user_message) > 4000) {
 }
 
 $conv_id = (int)($_POST['conversation_id'] ?? 0);
+if ($conv_id > 0) {   // la conversation doit appartenir à ce projet
+    $ck = $pdo->prepare("SELECT id FROM ai_conversations WHERE id = ? AND project_id = ? LIMIT 1");
+    $ck->execute([$conv_id, $project_id]);
+    if (!$ck->fetchColumn()) $conv_id = 0;
+}
 
 // Créer une nouvelle conversation si besoin
 if ($conv_id <= 0) {
