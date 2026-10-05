@@ -166,6 +166,12 @@ function df_purge_plan(): array
         ['asso_prospection_imports',    'org_id',          'org'],
         ['asso_qr_codes',               'org_id',          'org'],
 
+        // Boîte mail
+        ['mail_messages',               'org_id',          'org'],
+        ['mail_threads',                'org_id',          'org'],
+        ['mail_categories',             'org_id',          'org'],
+        ['mail_accounts',               'org_id',          'org'],
+
         // Support
         ['support_ticket_events',       'ticket_id',       'tickets'],
         ['support_messages',            'ticket_id',       'tickets'],

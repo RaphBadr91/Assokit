@@ -14,6 +14,15 @@ require_once __DIR__ . '/google-helper.php';
 require_login();
 $user = current_user();
 
+// Même adresse de retour pour la boîte mail : on aiguille selon le « state »
+$__mail_state = $_SESSION['mail_oauth_state'] ?? '';
+if ($__mail_state !== '' && hash_equals($__mail_state, (string)($_GET['state'] ?? ''))
+    && time() - (int)($_SESSION['mail_oauth_time'] ?? 0) < 900) {
+    define('AK_MAIL_CALLBACK', 1);
+    require __DIR__ . '/mail-oauth-callback.php';
+    exit;
+}
+
 if ($user['role'] !== 'admin') {
     header('Location: /mon-agenda?error=not_admin');
     exit;

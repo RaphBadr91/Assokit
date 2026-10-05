@@ -275,7 +275,7 @@ function ask_claude($system_prompt, $messages, $max_tokens = null) {
         'messages' => $messages,
     ];
 
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
+    $ch = curl_init(defined('ANTHROPIC_API_URL') ? ANTHROPIC_API_URL : 'https://api.anthropic.com/v1/messages');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));

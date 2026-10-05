@@ -407,6 +407,13 @@ function render_sidebar($active = 'accueil') {
           'proj_count'     => $proj_count,
           'user_count'     => $user_count,
           'support_unread' => $support_unread,
+          'mail_unread'    => (function () use ($pdo, $user) {
+              try {
+                  require_once __DIR__ . '/mail-helpers.php';
+                  return mail_unread_count($pdo, $user) ?: null;
+              } catch (Throwable $e) { return null; }
+          })(),
+          'is_founder'     => !empty($user['is_founder']),
       ]);
       ?>
     </nav>
