@@ -1,0 +1,87 @@
+# Build Android Assokit — lancé depuis GitHub, sans rien installer.
+#
+# Comme pour iOS, la machine GitHub ne compile rien : elle envoie l'ordre à
+# `eas build`, qui compile sur les serveurs d'Expo. Même secret EXPO_TOKEN que
+# pour iOS (voir l'en-tête de ios-build.yml).
+#
+# Profils :
+#   production → fichier .aab, celui qu'on dépose sur Google Play
+#   preview    → fichier .apk, à installer directement sur un téléphone Android
+#                pour tester (lien de téléchargement sur expo.dev)
+#
+# ── Google Play : le tout premier envoi se fait À LA MAIN ─────────────────────
+# Google refuse qu'un outil crée la première version d'une application.
+#   1. Lancer ce workflow (production), attendre la fin, télécharger le .aab
+#      depuis expo.dev → Builds.
+#   2. Google Play Console → Créer une application (package fr.assokit.app)
+#      → Tests → Tests internes → Créer une version → déposer le .aab.
+# Ensuite seulement, le workflow « Envoyer vers Google Play » prend le relais.
+
+name: Build Android (Google Play)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Profil EAS (production = .aab Google Play, preview = .apk de test)"
+        type: choice
+        default: production
+        options: [production, preview]
+      submit:
+        description: "Envoyer le build sur Google Play (tests internes) après compilation"
+        type: boolean
+        default: false
+
+concurrency:
+  group: android-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: eas build --platform android
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier le jeton Expo
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Le secret EXPO_TOKEN est absent. Voir l'en-tête de .github/workflows/ios-build.yml (étapes 1 et 2)."
+            exit 1
+          fi
+          echo "Jeton Expo présent."
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Compiler
+        run: eas build --platform android --profile ${{ inputs.profile }} --non-interactive
+
+      - name: Envoyer sur Google Play
+        if: ${{ inputs.submit && inputs.profile == 'production' }}
+        run: |
+          set +e
+          eas submit --platform android --latest --profile production --non-interactive 2>&1 | tee /tmp/submit.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            echo "::error::$(tail -n 20 /tmp/submit.log | tr '\n' ' ' | tr -s ' ' | cut -c1-900)"
+            exit "$code"
+          fi

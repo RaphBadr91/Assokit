@@ -1,0 +1,76 @@
+# Envoyer le dernier build Android vers Google Play (piste « tests internes »,
+# en brouillon : vous le publiez ensuite d'un clic dans la Play Console).
+#
+# Prérequis :
+#   - le secret EXPO_TOKEN (voir ios-build.yml) ;
+#   - une première version déjà déposée À LA MAIN dans la Play Console
+#     (voir android-build.yml) ;
+#   - la clé de compte de service Google Play enregistrée côté EAS, une fois :
+#       npx eas-cli@latest credentials  →  Android  →  production
+#       →  Google Service Account  →  « Upload a Google Service Account Key »
+#     Sans elle, `eas submit --non-interactive` s'arrête au lieu de demander.
+
+name: Envoyer vers Google Play
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: android-submit
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    name: eas submit --platform android --latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier le jeton Expo
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Le secret EXPO_TOKEN est absent."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build qui sera envoyé
+        run: |
+          set -o pipefail
+          eas build:list --platform android --status finished --limit 3 --non-interactive 2>&1 | tee /tmp/builds.log
+          if ! grep -qi 'ID' /tmp/builds.log; then
+            echo "::error::Aucun build Android terminé sur EAS. Lancez d'abord « Build Android (Google Play) » et attendez qu'il passe en Finished."
+            exit 1
+          fi
+
+      - name: Envoyer
+        run: |
+          set +e
+          eas submit --platform android --latest --profile production --non-interactive 2>&1 | tee /tmp/submit.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            echo "::error::$(tail -n 20 /tmp/submit.log | tr '\n' ' ' | tr -s ' ' | cut -c1-900)"
+            exit "$code"
+          fi
+
+      - name: Suite
+        run: |
+          echo "Google Play Console → Tests → Tests internes : la version est en brouillon,"
+          echo "cliquez « Vérifier la version » puis « Déployer »."
