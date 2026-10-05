@@ -11,7 +11,7 @@
  *
  * Sources (toutes scopées par org_id) :
  *   Recettes : asso_invoices (payées, cents) + cotisation_payments (euros).
- *   Dépenses : project_invoices (validées, euros) via projects.org_id.
+ *   Dépenses : project_invoices (validées, euros) via folders.org_id (projects n'a pas d'org_id).
  *   Futur    : asso_invoices pending/overdue (échéance) + asso_invoice_recurrences.
  *
  * Tous les montants renvoyés sont en EUROS (float).
@@ -80,7 +80,8 @@ function ak_prev_history(PDO $pdo, int $org_id, int $months = 24): array {
         $st = $pdo->prepare(
             "SELECT DATE_FORMAT(pi.invoice_date, '%Y-%m') ym, COALESCE(SUM(pi.amount_ttc),0) v
              FROM project_invoices pi JOIN projects p ON p.id = pi.project_id
-             WHERE p.org_id = :o AND pi.status = 'validated' AND pi.invoice_date >= :s
+             JOIN folders f ON f.id = p.folder_id
+             WHERE f.org_id = :o AND pi.status = 'validated' AND pi.invoice_date >= :s
              GROUP BY ym");
         $st->execute([':o'=>$org_id, ':s'=>$since]);
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) if (isset($series[$r['ym']])) $series[$r['ym']]['exp'] += (float)$r['v'];
@@ -121,7 +122,7 @@ if (!function_exists('ak_prev_known_inflows')) {
 /**
  * Entrées futures « connues » par mois, sur $horizon mois à venir :
  *   - créances (factures pending/overdue) rattachées à leur échéance ;
- *   - factures récurrentes programmées (next_date).
+ *   - factures récurrentes programmées (next_run_date).
  * @return array<string,array{receivables:float,recurring:float}>
  */
 function ak_prev_known_inflows(PDO $pdo, int $org_id, int $horizon = 6): array {
@@ -146,9 +147,9 @@ function ak_prev_known_inflows(PDO $pdo, int $org_id, int $horizon = 6): array {
     // Factures récurrentes programmées : le montant est dans template_data (JSON).
     try {
         $st = $pdo->prepare(
-            "SELECT DATE_FORMAT(next_date, '%Y-%m') ym, template_data
+            "SELECT DATE_FORMAT(next_run_date, '%Y-%m') ym, template_data
              FROM asso_invoice_recurrences
-             WHERE org_id = :o AND next_date IS NOT NULL AND COALESCE(status,'active') = 'active'");
+             WHERE org_id = :o AND next_run_date IS NOT NULL AND COALESCE(status,'active') = 'active'");
         $st->execute([':o'=>$org_id]);
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
             if (!isset($out[$r['ym']])) continue;

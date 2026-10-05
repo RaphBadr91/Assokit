@@ -56,7 +56,8 @@ function facturx_build_data(PDO $pdo, int $org_id, int $invoice_id): ?array {
     // Lignes
     $lines = [];
     try {
-        $ls = $pdo->prepare("SELECT designation, quantity, unit_price_ht_cents, vat_rate, amount_ht_cents, amount_ttc_cents
+        $ls = $pdo->prepare("SELECT designation, quantity, unit_price_ht_cents, vat_rate,
+                                    total_ht_cents AS amount_ht_cents, total_ttc_cents AS amount_ttc_cents
                              FROM asso_invoice_lines WHERE invoice_id = ? ORDER BY line_order ASC, id ASC");
         $ls->execute([$invoice_id]);
         $lines = $ls->fetchAll(PDO::FETCH_ASSOC) ?: [];

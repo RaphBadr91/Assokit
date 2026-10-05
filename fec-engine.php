@@ -163,7 +163,8 @@ function fec_build(PDO $pdo, int $org_id, int $year): array {
         $st = $pdo->prepare(
             "SELECT pi.id, pi.supplier_name, pi.amount_ht, pi.amount_ttc, DATE(pi.invoice_date) idate
              FROM project_invoices pi JOIN projects p ON p.id = pi.project_id
-             WHERE p.org_id = :o AND pi.status = 'validated' AND DATE(pi.invoice_date) BETWEEN :s AND :e
+             JOIN folders f ON f.id = p.folder_id
+             WHERE f.org_id = :o AND pi.status = 'validated' AND DATE(pi.invoice_date) BETWEEN :s AND :e
              ORDER BY pi.invoice_date ASC, pi.id ASC");
         $st->execute([':o'=>$org_id, ':s'=>$start, ':e'=>$end]);
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $b) {
