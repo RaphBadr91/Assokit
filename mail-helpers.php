@@ -982,32 +982,114 @@ function mail_thread_context(PDO $pdo, int $org, array $t): string {
     return implode("\n", $ctx);
 }
 
-/** @return array ['ok' => bool, 'texte' => string, 'erreur' => ?string] */
-function mail_ai_draft(PDO $pdo, array $acc, array $t, array $user, string $consigne = ''): array {
-    if (!function_exists('ask_claude') || !is_ai_enabled()) return ['ok' => false, 'texte' => '', 'erreur' => 'IA non configurée.'];
+/** Tons proposés pour le brouillon IA. */
+function mail_draft_tones(): array {
+    return [
+        'auto'       => 'Adapté au destinataire',
+        'formel'     => 'Très formel (institution, financeur)',
+        'cordial'    => 'Professionnel et chaleureux',
+        'court'      => 'Bref et direct',
+    ];
+}
+
+/**
+ * Brouillon IA de réponse, ou amélioration d'un texte déjà écrit.
+ *   $opts['ton']   : clé de mail_draft_tones()
+ *   $opts['texte'] : texte de l'utilisateur à améliorer (mode « améliorer »)
+ * @return array ['ok' => bool, 'texte' => string, 'erreur' => ?string, 'a_completer' => int]
+ */
+function mail_ai_draft(PDO $pdo, array $acc, array $t, array $user, string $consigne = '', array $opts = []): array {
+    if (!function_exists('ask_claude') || !is_ai_enabled()) return ['ok' => false, 'texte' => '', 'erreur' => 'IA non configurée.', 'a_completer' => 0];
     $org = (int)$acc['org_id'];
-    $s = $pdo->prepare("SELECT direction, from_name, from_email, body_text, sent_at FROM mail_messages WHERE thread_id = ? ORDER BY sent_at DESC, id DESC LIMIT 6");
+    $ton = array_key_exists($opts['ton'] ?? '', mail_draft_tones()) ? $opts['ton'] : 'auto';
+    $brut = trim((string)($opts['texte'] ?? ''));
+    if ($acc['signature'] ?? '') $brut = trim(str_replace(trim((string)$acc['signature']), '', $brut));
+
+    // Fil complet (10 derniers messages)
+    $s = $pdo->prepare("SELECT direction, from_name, from_email, to_list, body_text, sent_at, attachments_json, sent_by_user_id FROM mail_messages WHERE thread_id = ? ORDER BY sent_at DESC, id DESC LIMIT 10");
     $s->execute([$t['id']]);
+    $msgs = array_reverse(mail_with_authors($pdo, $org, $s->fetchAll(PDO::FETCH_ASSOC)));
     $fil = '';
-    foreach (array_reverse($s->fetchAll(PDO::FETCH_ASSOC)) as $m) {
-        $qui = $m['direction'] === 'out' ? 'NOUS (l\'association)' : trim($m['from_name'] . ' <' . $m['from_email'] . '>');
-        $fil .= '— ' . date('d/m/Y H:i', strtotime($m['sent_at'])) . " — {$qui} :\n" . mb_substr(mail_strip_quoted((string)$m['body_text']), 0, 2500) . "\n\n";
+    foreach ($msgs as $i => $m) {
+        $dernier = $i === count($msgs) - 1;
+        $qui = $m['direction'] === 'out' ? 'NOUS (l\'association' . (!empty($m['author']) ? ', ' . $m['author'] : '') . ')'
+                                         : trim(($m['from_name'] ?: '') . ' <' . $m['from_email'] . '>');
+        $pj = array_map(fn($a) => $a['name'], json_decode((string)$m['attachments_json'], true) ?: []);
+        $corps = mail_fix_mojibake(mail_strip_quoted((string)$m['body_text']) ?: (string)$m['body_text']);
+        $fil .= '— ' . date('d/m/Y H:i', strtotime($m['sent_at'])) . " — {$qui}"
+              . ($pj ? ' — pièces jointes : ' . implode(', ', $pj) : '') . " :\n"
+              . mb_substr($corps, 0, $dernier ? 6000 : 2500) . "\n\n";
     }
-    $o = $pdo->prepare("SELECT name FROM organizations WHERE id = ?");
+
+    // L'association et le rédacteur
+    $o = $pdo->prepare("SELECT * FROM organizations WHERE id = ?");
     $o->execute([$org]);
-    $asso = (string)$o->fetchColumn();
+    $og = $o->fetch(PDO::FETCH_ASSOC) ?: [];
+    $asso = trim((string)($og['name'] ?? ''));
+    $fiche = array_filter([
+        !empty($og['legal_form']) ? 'Forme : ' . $og['legal_form'] : '',
+        !empty($og['billing_address_city']) ? 'Ville : ' . $og['billing_address_city'] : '',
+        !empty($og['president_first_name']) ? 'Président(e) : ' . trim($og['president_first_name'] . ' ' . $og['president_last_name']) : '',
+    ]);
+    $roles = ['admin' => 'administrateur·rice', 'coordinator' => 'coordinateur·rice', 'founder' => 'fondateur·rice', 'super_admin' => 'administrateur·rice'];
+    $redacteur = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
+    $fonction = $roles[$user['role'] ?? ''] ?? '';
+
+    // Nature de l'échange
+    $cat = '';
+    if (!empty($t['category_id'])) {
+        $c = $pdo->prepare("SELECT slug, label FROM mail_categories WHERE id = ? AND org_id = ?");
+        $c->execute([$t['category_id'], $org]);
+        if ($cr = $c->fetch(PDO::FETCH_ASSOC)) $cat = $cr['slug'] . ' (' . $cr['label'] . ')';
+    }
     $ctx = mail_thread_context($pdo, $org, $t);
-    $prompt = "Association : {$asso}\nRédacteur de la réponse : {$user['first_name']} {$user['last_name']}\n"
-            . ($ctx ? "Informations Assokit utiles :\n{$ctx}\n" : '')
-            . "\nFil d'e-mails (du plus ancien au plus récent) :\n{$fil}"
-            . ($consigne !== '' ? "Consigne pour la réponse : {$consigne}\n\n" : '')
-            . "Rédige la réponse au dernier message reçu. Français, ton professionnel et chaleureux, phrases courtes. "
-            . "Commence par la formule d'appel, termine par une formule de politesse et le prénom + nom du rédacteur. "
-            . "N'invente aucun fait, montant ou date absent des informations ci-dessus ; s'il manque une information, écris [à compléter]. "
-            . "Pas d'objet, pas de markdown : uniquement le texte de l'e-mail.";
-    $r = ask_claude('Tu aides une association à répondre à ses e-mails.', [['role' => 'user', 'content' => $prompt]], 900);
-    if (empty($r['success'])) return ['ok' => false, 'texte' => '', 'erreur' => $r['error'] ?? 'IA indisponible'];
-    return ['ok' => true, 'texte' => trim((string)$r['content']), 'erreur' => null];
+    $registre = [
+        'auto'    => "Choisis le registre selon le destinataire : institution, préfecture, collectivité, financeur, rectorat ou partenaire officiel → vouvoiement, « Madame, Monsieur » (ou « Madame la Préfète », « Monsieur le Directeur »… si la fonction est connue) et formule de politesse administrative complète ; adhérent, bénévole, stagiaire ou partenaire habituel → professionnel et chaleureux ; si l'interlocuteur tutoie ou signe par son prénom, reste cordial mais garde le vouvoiement sauf s'il est déjà utilisé par l'association dans le fil.",
+        'formel'  => "Registre très formel et administratif : vouvoiement, appel « Madame, Monsieur » (ou titre exact si connu), phrases soignées, références précises (numéro de dossier, intitulé de l'appel à projets, date du courrier), formule finale du type « Nous vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées. »",
+        'cordial' => "Registre professionnel et chaleureux : vouvoiement, appel « Bonjour + prénom ou Madame/Monsieur + nom », ton engagé et positif, formule finale « Bien cordialement » ou « Belle journée ».",
+        'court'   => "Réponse brève : 3 à 6 phrases maximum, va droit au but, appel et formule finale courtes (« Bonjour … », « Bien cordialement »).",
+    ][$ton];
+
+    $system = "Tu es le ou la chargé·e de communication d'une association française, expert·e de la correspondance professionnelle "
+            . "avec les institutions (préfecture, collectivités, rectorat, CAF, cités éducatives), les financeurs (subventions, appels à projets, fondations, OPCO), "
+            . "les partenaires, les adhérents, les bénévoles et les stagiaires. Tu écris un français impeccable : orthographe, accords, typographie française "
+            . "(espaces avant « : ; ? ! », guillemets « », apostrophe typographique ’), sans anglicismes ni jargon. Tu n'inventes jamais un fait.";
+
+    $regles = "RÈGLES :\n"
+            . "1. Réponds précisément à CHAQUE question ou demande du dernier message reçu, dans l'ordre ; si elles sont plusieurs, une phrase ou un court paragraphe par point (pas de liste à puces sauf s'il y a plus de 3 éléments distincts).\n"
+            . "2. Reprends les références utiles du fil (intitulé du dossier, numéro de facture, date, montant, nom du projet) pour montrer que la demande a été comprise.\n"
+            . "3. Termine par la suite concrète : ce que l'association va faire et quand, ce qui est attendu de l'interlocuteur, ou une proposition de rendez-vous/appel si c'est pertinent.\n"
+            . "4. N'invente AUCUN fait, montant, date, pièce, engagement ou nom absent des informations fournies : à la place, écris [à compléter : précision attendue] (ex. [à compléter : date de dépôt du bilan]).\n"
+            . "5. Si une pièce jointe est annoncée, écris « Vous trouverez ci-joint … » seulement si la consigne l'indique ; sinon « Nous vous transmettons … [à compléter : pièce à joindre] ».\n"
+            . "6. Ne promets rien au nom de l'association qui ne figure pas dans la consigne ou le fil.\n"
+            . "7. Signature : prénom et nom du rédacteur" . ($fonction ? ", sa fonction" : '') . " et le nom de l'association, chacun sur sa ligne"
+            . (!empty($acc['signature']) ? " — PAS de téléphone ni d'adresse : la signature complète de l'association est ajoutée automatiquement après ton texte" : '') . ".\n"
+            . "8. Format : uniquement le corps de l'e-mail, sans objet, sans markdown, sans astérisques, paragraphes séparés par une ligne vide.";
+
+    $prompt = "ASSOCIATION : {$asso}\n" . ($fiche ? implode("\n", $fiche) . "\n" : '')
+            . "RÉDACTEUR : {$redacteur}" . ($fonction ? " — {$fonction}" : '') . "\n"
+            . "OBJET DU FIL : " . mail_fix_mojibake(mail_clean_subject((string)$t['subject'])) . "\n"
+            . ($cat ? "CATÉGORIE : {$cat}\n" : '')
+            . (!empty($t['priority_reason']) ? "POINT D'ATTENTION : {$t['priority_reason']}\n" : '')
+            . ($ctx ? "INFORMATIONS ASSOKIT :\n{$ctx}\n" : '')
+            . "\nFIL D'E-MAILS (du plus ancien au plus récent) :\n{$fil}"
+            . ($consigne !== '' ? "CONSIGNE DU RÉDACTEUR (prioritaire) : {$consigne}\n\n" : '')
+            . "REGISTRE : {$registre}\n\n{$regles}\n\n";
+    if ($brut !== '') {
+        $prompt .= "TEXTE ÉCRIT PAR LE RÉDACTEUR, À AMÉLIORER :\n\"\"\"\n" . mb_substr($brut, 0, 8000) . "\n\"\"\"\n\n"
+                 . "Réécris ce texte en e-mail professionnel abouti : garde TOUTES ses informations et décisions, sans en ajouter, "
+                 . "corrige l'orthographe et la grammaire, structure-le (appel, réponse point par point, suite, formule de politesse, signature) "
+                 . "et ajuste le registre. Donne uniquement le texte final.";
+    } else {
+        $prompt .= "Rédige la réponse au dernier message reçu. Donne uniquement le texte final de l'e-mail.";
+    }
+
+    $r = ask_claude($system, [['role' => 'user', 'content' => $prompt]], 1600);
+    if (empty($r['success'])) return ['ok' => false, 'texte' => '', 'erreur' => $r['error'] ?? 'IA indisponible', 'a_completer' => 0];
+    $txt = trim((string)$r['content']);
+    $txt = preg_replace(['/^\s*objet\s*:.*\R+/iu', '/\*\*(.+?)\*\*/u', '/^```\w*\R?|```$/m'], ['', '$1', ''], $txt);
+    $txt = trim(preg_replace("/\n{3,}/", "\n\n", $txt));
+    return ['ok' => true, 'texte' => $txt, 'erreur' => null, 'a_completer' => preg_match_all('/\[à compléter/iu', $txt)];
 }
 
 // ============================================================

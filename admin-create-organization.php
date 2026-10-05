@@ -20,7 +20,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 
 require_login();
-$user = current_user();
+$user = ak_platform_flags(current_user());
 
 // Restriction fondateur
 $has_access = !empty($user['is_founder']) || !empty($user['is_super_admin']);

@@ -263,9 +263,14 @@ function bm_reader_html(array $d, array $cats, array $cat_by_id, array $acc, boo
       <div class="bm-reply-row"><label>Cc</label><input name="cc" value="" autocomplete="off" placeholder="facultatif"></div>
       <textarea name="body" rows="6" placeholder="Votre réponse…"></textarea>
       <div class="bm-reply-ai">
-        <input name="consigne" maxlength="500" placeholder="Consigne pour l’IA (facultatif) : ex. « accepter le rendez-vous de jeudi »">
+        <input name="consigne" maxlength="500" placeholder="Consigne pour l’IA (facultatif) : ex. « accepter le rendez-vous de jeudi, joindre le bilan »">
+        <select name="ton" title="Ton de la réponse">
+          <?php foreach (mail_draft_tones() as $k => $lbl): ?><option value="<?= h($k) ?>"><?= h($lbl) ?></option><?php endforeach; ?>
+        </select>
         <button type="button" class="bm-btn ai" data-draft><?= ak_icon('sparkle', 15) ?> Brouillon IA</button>
+        <button type="button" class="bm-btn ai alt" data-draft="improve" title="L’IA reformule votre texte en e-mail professionnel, sans rien inventer"><?= ak_icon('sparkle', 15) ?> Améliorer mon texte</button>
       </div>
+      <div class="bm-todo" data-todo hidden></div>
       <div class="bm-reply-foot">
         <span class="bm-muted"><?= $acc['provider'] === 'gmail' && !$demo ? 'Envoyé depuis ' . h($acc['email']) . ', dans le même fil Gmail.' : 'Démonstration : la réponse est rangée dans le fil, aucun e-mail ne part.' ?></span>
         <button type="submit" class="bm-btn primary"><?= ak_icon('send', 15) ?> Envoyer</button>
@@ -386,6 +391,14 @@ render_sidebar('boite-mail');
           <span>Se connecter avec Google</span>
         </a>
         <p class="bm-muted">Gmail ou Google Workspace. Vous choisissez le compte sur l’écran Google ; Assokit ne voit jamais votre mot de passe. Déconnexion possible à tout moment.</p>
+        <?php if (!defined('MAIL_GOOGLE_VERIFIED') || !MAIL_GOOGLE_VERIFIED): ?>
+          <div class="bm-gnote">
+            <strong>Validation Google en cours</strong>
+            <p>Google examine actuellement Assokit. En attendant, il affiche « Google n’a pas validé cette application ». C’est normal et sans risque :</p>
+            <ol><li>cliquez sur <b>Paramètres avancés</b> (en bas à gauche) ;</li><li>puis sur <b>Accéder à assokit.fr</b> ;</li><li>cochez les autorisations et cliquez sur <b>Continuer</b>.</li></ol>
+            <p>Si Google bloque la connexion, l’adresse Gmail doit d’abord être ajoutée par l’équipe Assokit.</p>
+          </div>
+        <?php endif; ?>
       <?php elseif ($demo): ?>
         <p class="bm-muted">Dans l’espace de démonstration, la boîte est déjà remplie : rechargez la page.</p>
       <?php else: ?>
@@ -490,6 +503,8 @@ render_sidebar('boite-mail');
 .gsi-btn { display: inline-flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #747775; border-radius: 4px; height: 44px; padding: 0 16px; font-family: Roboto, Arial, sans-serif; font-size: 15px; font-weight: 500; color: #1F1F1F; text-decoration: none; }
 .gsi-btn:hover { background: #F8FAFF; box-shadow: 0 1px 3px rgba(60,64,67,.3); }
 .bm-hero-cta p { margin: 14px auto 0; max-width: 320px; }
+.bm-gnote { margin: 16px auto 0; max-width: 340px; text-align: left; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 12px 14px; font-size: 13px; color: #78350F; }
+.bm-gnote p { margin: 6px 0 0; max-width: none; } .bm-gnote ol { margin: 6px 0 0; padding-left: 18px; } .bm-gnote li { margin: 2px 0; }
 
 /* Trois colonnes à défilement indépendant : pas de défilement de page */
 .bm-grid { display: grid; grid-template-columns: 245px minmax(330px, 440px) 1fr; gap: 12px; height: calc(100vh - 120px); min-height: 520px; }
@@ -578,8 +593,13 @@ render_sidebar('boite-mail');
 .bm-reply-row { display: flex; align-items: center; border-bottom: 1px solid #F1F5F9; } .bm-reply-row label { width: 42px; padding-left: 14px; font-size: 12.5px; color: #64748B; }
 .bm-reply-row input { flex: 1; border: 0; outline: 0; padding: 8px 10px; font-size: 13.5px; font-family: inherit; }
 .bm-reply textarea { width: 100%; border: 0; outline: 0; padding: 10px 14px; font-size: 14px; line-height: 1.55; font-family: inherit; resize: vertical; box-sizing: border-box; min-height: 90px; }
-.bm-reply-ai { display: flex; gap: 8px; padding: 8px 12px; background: #F8FAFC; border-top: 1px solid #F1F5F9; }
+.bm-reply-ai { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; background: #F8FAFC; border-top: 1px solid #F1F5F9; }
+.bm-reply-ai input[name=consigne] { flex: 1 1 100%; }
+.bm-reply-ai select { flex: 1 1 160px; height: 34px; } .bm-reply-ai .bm-btn { flex: 1 1 auto; justify-content: center; }
 .bm-reply-ai input { flex: 1; min-width: 0; border: 1px solid #E2E8F0; border-radius: 9px; padding: 7px 10px; font-size: 13px; font-family: inherit; }
+.bm-reply-ai select { border: 1px solid #E2E8F0; border-radius: 9px; padding: 6px 8px; font-size: 12.5px; font-family: inherit; background: #fff; color: #334155; min-width: 0; }
+.bm-btn.ai.alt { background: #fff; color: #6D28D9; border: 1px solid #DDD6FE; }
+.bm-todo { margin: 0 12px 6px; padding: 7px 10px; border-radius: 9px; background: #FFFBEB; border: 1px solid #FDE68A; color: #92400E; font-size: 12.5px; }
 .bm-reply-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 12px; border-top: 1px solid #F1F5F9; }
 .bm-modal { position: fixed; inset: 0; background: rgba(15,23,42,.5); z-index: 3000; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .bm-modal[hidden] { display: none; }
@@ -598,7 +618,7 @@ render_sidebar('boite-mail');
   .bm-back { display: inline-block; }
   .bm-msg-body { padding: 0 14px 14px; }
   .bm-hero { grid-template-columns: 1fr; padding: 20px; }
-  .bm-reply-ai { flex-direction: column; }
+  .bm-reply-ai > * { flex: 1 1 100%; }
   .bm-acc-mail { max-width: 130px; }
 }
 </style>
@@ -788,15 +808,24 @@ render_sidebar('boite-mail');
       return;
     }
     if ((b = e.target.closest('[data-draft]'))) {
-      var form = reader.querySelector('[data-reply]'), body = form.body;
-      if (body.value.trim() && !confirm('Remplacer le texte en cours par un brouillon IA ?')) return;
-      b.disabled = true; var lbl = b.innerHTML; b.innerHTML = 'Rédaction…';
-      call({ action: 'draft', thread_id: current, consigne: form.consigne.value }).then(function (r) {
-        b.disabled = false; b.innerHTML = lbl;
+      var form = reader.querySelector('[data-reply]'), body = form.body, improve = b.getAttribute('data-draft') === 'improve';
+      var todo = reader.querySelector('[data-todo]');
+      if (improve && !body.value.trim()) { body.focus(); return toast('Écrivez d’abord quelques lignes : l’IA les mettra en forme.'); }
+      if (!improve && body.value.trim() && !confirm('Remplacer le texte en cours par un brouillon IA ?')) return;
+      var btns = reader.querySelectorAll('[data-draft]'), lbl = b.innerHTML;
+      btns.forEach(function (x) { x.disabled = true; }); b.innerHTML = improve ? 'Amélioration…' : 'Rédaction…';
+      var done = function () { btns.forEach(function (x) { x.disabled = false; }); b.innerHTML = lbl; };
+      call({ action: 'draft', thread_id: current, consigne: form.consigne.value, ton: form.ton.value, improve: improve ? 1 : 0, body: improve ? body.value : '' }).then(function (r) {
+        done();
         if (!r.ok) return toast(r.error || 'IA indisponible');
-        body.value = r.text; body.focus(); body.style.height = Math.min(480, body.scrollHeight + 8) + 'px';
-      }).catch(function () { b.disabled = false; b.innerHTML = lbl; toast('Connexion interrompue'); });
+        body.value = r.text; body.focus(); body.style.height = Math.min(520, body.scrollHeight + 8) + 'px';
+        if (todo) {
+          todo.hidden = !r.todo;
+          todo.textContent = r.todo ? '⚠︎ ' + r.todo + (r.todo > 1 ? ' éléments' : ' élément') + ' [à compléter] dans le texte : remplacez-les avant d’envoyer.' : '';
+        }
+      }).catch(function () { done(); toast('Connexion interrompue'); });
     }
+
   });
   reader.addEventListener('change', function (e) {
     var sel = e.target.closest('[data-cat]'), learn = e.target.closest('[data-learn]');

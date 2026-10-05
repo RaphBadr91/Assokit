@@ -28,7 +28,7 @@ if (!function_exists('ak_format_price_cents')) {
 }
 
 require_login();
-$user = current_user();
+$user = ak_platform_flags(current_user());
 
 // Restriction fondateur
 $has_access = !empty($user['is_founder']) || !empty($user['is_super_admin']);

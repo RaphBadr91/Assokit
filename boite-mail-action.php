@@ -97,8 +97,11 @@ case 'draft':
     $t = $thread();
     if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('mail_draft', 30, 600, (string)$user['id']);
     @set_time_limit(90);
-    $r = mail_ai_draft($pdo, $acc, $t, $user, mb_substr(trim((string)($in['consigne'] ?? '')), 0, 500));
-    $out(['ok' => $r['ok'], 'text' => $r['texte'], 'error' => $r['erreur']], $r['ok'] ? 200 : 400);
+    $r = mail_ai_draft($pdo, $acc, $t, $user, mb_substr(trim((string)($in['consigne'] ?? '')), 0, 500), [
+        'ton'   => (string)($in['ton'] ?? 'auto'),
+        'texte' => !empty($in['improve']) ? mb_substr((string)($in['body'] ?? ''), 0, 8000) : '',
+    ]);
+    $out(['ok' => $r['ok'], 'text' => $r['texte'], 'error' => $r['erreur'], 'todo' => $r['a_completer']], $r['ok'] ? 200 : 400);
 
 case 'settings':
     if (!$manage) $out(['ok' => false, 'error' => 'Réservé aux administrateurs.'], 403);

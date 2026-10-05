@@ -714,7 +714,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-07-mail2';
+const UI_REV = '2026-10-08-mail-ia';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -3224,10 +3224,15 @@ function NativeMailbox({ data, loading, view, onView, onSearch, onOpen, onMore, 
   );
 }
 
+const MAIL_TONES = [
+  { k: 'auto', l: 'Ton adapté' }, { k: 'formel', l: 'Très formel' }, { k: 'cordial', l: 'Chaleureux' }, { k: 'court', l: 'Bref' },
+];
+
 function NativeMailThread({ data, loading, busy, draft, onBack, onReply, onDraft, onAction, onCategory, onRefresh }) {
   const [body, setBody] = useState('');
   const [to, setTo] = useState('');
   const [consigne, setConsigne] = useState('');
+  const [ton, setTon] = useState('auto');
   const [catOpen, setCatOpen] = useState(false);
   const th = data && data.thread;
   useEffect(() => { if (data && data.reply_to) setTo(data.reply_to); }, [data && data.reply_to]); // eslint-disable-line
@@ -3282,11 +3287,26 @@ function NativeMailThread({ data, loading, busy, draft, onBack, onReply, onDraft
             <View style={mailStyles.replyRow}><Text style={mailStyles.replyLbl}>À</Text>
               <TextInput style={mailStyles.replyTo} value={to} onChangeText={setTo} autoCapitalize="none" keyboardType="email-address" /></View>
             <TextInput style={mailStyles.replyBody} value={body} onChangeText={setBody} multiline placeholder="Votre réponse…" placeholderTextColor={INK_3} textAlignVertical="top" />
+            {draft && draft.todo && body.indexOf('[à compléter') !== -1 ? (
+              <Text style={mailStyles.todo}>⚠︎ {draft.todo} élément{draft.todo > 1 ? 's' : ''} [à compléter] : remplacez-les avant d’envoyer.</Text>
+            ) : null}
             <TextInput style={mailStyles.consigne} value={consigne} onChangeText={setConsigne} placeholder="Consigne pour l’IA (facultatif)" placeholderTextColor={INK_3} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={mailStyles.tones}>
+              {MAIL_TONES.map((o) => (
+                <TouchableOpacity key={o.k} style={[mailStyles.tone, ton === o.k ? mailStyles.toneOn : null]} onPress={() => setTon(o.k)} activeOpacity={0.8}>
+                  <Text style={[mailStyles.toneTxt, ton === o.k ? mailStyles.toneTxtOn : null]}>{o.l}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
             <View style={mailStyles.replyBtns}>
-              <TouchableOpacity style={mailStyles.btnAi} onPress={() => onDraft(th.id, consigne)} activeOpacity={0.85} disabled={!!busy}>
+              <TouchableOpacity style={mailStyles.btnAi} onPress={() => onDraft(th.id, consigne, ton, '')} activeOpacity={0.85} disabled={!!busy}>
                 {busy === 'draft' ? <ActivityIndicator color="#fff" size="small" /> : <><Ionicons name="sparkles" size={15} color="#fff" /><Text style={mailStyles.btnPrimaryTxt}>Brouillon IA</Text></>}
               </TouchableOpacity>
+              {body.trim() ? (
+                <TouchableOpacity style={mailStyles.btnImprove} onPress={() => onDraft(th.id, consigne, ton, body)} activeOpacity={0.85} disabled={!!busy}>
+                  <Ionicons name="color-wand-outline" size={15} color="#6D28D9" /><Text style={mailStyles.btnImproveTxt}>Améliorer</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity style={[mailStyles.btnSend, (!body.trim() || busy) ? { opacity: 0.5 } : null]} onPress={send} activeOpacity={0.85}>
                 {busy === 'reply' ? <ActivityIndicator color="#fff" size="small" /> : <><Ionicons name="send" size={15} color="#fff" /><Text style={mailStyles.btnPrimaryTxt}>Envoyer</Text></>}
               </TouchableOpacity>
@@ -3357,6 +3377,14 @@ const mailStyles = StyleSheet.create({
   msgFrom: { fontSize: 14, fontWeight: '800', color: INK },
   msgMeta: { fontSize: 12, color: MUTE },
   msgBy: { fontSize: 11.5, color: '#047857', fontWeight: '700', marginTop: 2 },
+  tones: { paddingHorizontal: 12, paddingTop: 8, gap: 6 },
+  tone: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: LINE, backgroundColor: '#fff' },
+  toneOn: { borderColor: '#8B5CF6', backgroundColor: '#F5F3FF' },
+  toneTxt: { fontSize: 12, color: INK_2, fontWeight: '600' },
+  toneTxtOn: { color: '#6D28D9' },
+  btnImprove: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 44, borderRadius: 12, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#fff' },
+  btnImproveTxt: { color: '#6D28D9', fontWeight: '700', fontSize: 13 },
+  todo: { marginHorizontal: 12, marginTop: 8, padding: 8, borderRadius: 9, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', color: '#92400E', fontSize: 12 },
   msgTxt: { fontSize: 14.5, lineHeight: 21, color: '#1F2937' },
   att: { marginTop: 10, fontSize: 12.5, color: INK_2 },
   reply: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: R_CARD - 6, marginTop: 6, overflow: 'hidden' },
@@ -6687,7 +6715,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         if (!r.ok) {
           Alert.alert('Boîte mail', r.error || r.message || 'Action impossible.');
         } else if (kind === 'draft') {
-          setMailDraft({ text: r.text || '', n: Date.now() });
+          setMailDraft({ text: r.text || '', todo: r.todo || 0, n: Date.now() });
         } else if (kind === 'reply') {
           setMailDraft({ text: '', n: Date.now() });
           if (r.simulated) Alert.alert('Démonstration', 'Réponse rangée dans le fil : aucun e-mail n’est parti.');
@@ -7248,7 +7276,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 <NativeMailThread data={mailThread} loading={mailThreadLoading} busy={mailBusy} draft={mailDraft}
                   onBack={mailClose} onRefresh={() => fetchMailThread(mailOpenId)}
                   onReply={(id, to, body) => mailAct('reply', { action: 'reply', thread_id: id, to, body })}
-                  onDraft={(id, consigne) => mailAct('draft', { action: 'draft', thread_id: id, consigne })}
+                  onDraft={(id, consigne, ton, texte) => mailAct('draft', { action: 'draft', thread_id: id, consigne, ton: ton || 'auto', improve: texte ? 1 : 0, body: texte || '' })}
                   onAction={(act, id) => mailAct(act, { action: act, thread_id: id })}
                   onCategory={(id, cid) => mailAct('category', { action: 'category', thread_id: id, category_id: cid })} />
               ) : (
