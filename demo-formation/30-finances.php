@@ -125,7 +125,7 @@ function df_seed_finances(): void
                 $attendu = ['amount-outlier', 'amount-zero', 'cotis-double', 'invoice-duplicate', 'numbering-gap', 'status-paid-nodate'];
                 $en_trop = array_diff(array_unique($categories), $attendu);
                 $parCat = array_count_values($categories);
-                DF::$rapport['notes'][] = 'Anomalies détectées : ' . implode(', ', array_map(fn($c, $n) => "$c ×$n", array_keys($parCat), $parCat));
+                DF::$rapport['notes'][] = 'Anomalies détectées : ' . implode(', ', array_map(fn($c, $n) => "{$c} ×{$n}", array_keys($parCat), $parCat));
                 if ($en_trop) df_erreur('Anomalies non voulues : ' . implode(', ', $en_trop));
             } catch (Throwable $e) {
                 DF::$rapport['notes'][] = 'Scan des anomalies impossible : ' . $e->getMessage();

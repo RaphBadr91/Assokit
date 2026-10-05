@@ -189,6 +189,7 @@ function df_purge_plan(): array
 
         // Ce qui est rattaché aux personnes
         ['user_notifications',          'user_id',         'users'],
+        ['today_suggestions',           'user_id',         'users'],
         ['user_calendar_tokens',        'user_id',         'users'],
         ['asso_push_tokens',            'user_id',         'users'],
         ['user_password_tokens',        'user_id',         'users'],
@@ -307,8 +308,11 @@ function df_purge_restes(int $org): array
     $couvertes['organizations'] = true;
     $restes = [];
     $q = $pdo->query(
-        "SELECT TABLE_NAME FROM information_schema.COLUMNS
-          WHERE TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'org_id'"
+        "SELECT c.TABLE_NAME FROM information_schema.COLUMNS c
+           JOIN information_schema.TABLES t
+             ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME
+          WHERE c.TABLE_SCHEMA = DATABASE() AND c.COLUMN_NAME = 'org_id'
+            AND t.TABLE_TYPE = 'BASE TABLE'"   // les vues (v_pending_notifications…) ne se purgent pas
     );
     foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $t) {
         if (isset($couvertes[$t])) continue;
