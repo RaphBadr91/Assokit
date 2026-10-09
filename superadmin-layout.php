@@ -658,7 +658,13 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
     $is_founder = function_exists('is_founder_user') ? is_founder_user($user) : false;
 
     // Badges dynamiques
-    $nb_orgs = (int) $pdo->query("SELECT COUNT(*) FROM organizations")->fetchColumn();
+    // Même périmètre que la liste des associations (les supprimées n'y figurent pas)
+    $nb_orgs = 0;
+    try {
+        $nb_orgs = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE deleted_at IS NULL")->fetchColumn();
+    } catch (Throwable $e) {
+        $nb_orgs = (int) $pdo->query("SELECT COUNT(*) FROM organizations")->fetchColumn();
+    }
     $nb_unpaid = 0;
     try {
         $nb_unpaid = (int) $pdo->query("SELECT COUNT(*) FROM subscription_invoices WHERE status IN ('sent','overdue')")->fetchColumn();
@@ -666,7 +672,7 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
 
     $nb_pending = 0;
     try {
-        $nb_pending = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE validation_status = 'pending_founder'")->fetchColumn();
+        $nb_pending = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE validation_status = 'pending_founder' AND deleted_at IS NULL")->fetchColumn();
     } catch (Throwable $e) {}
 
     $nb_notifs = 0;
@@ -678,16 +684,9 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
         } catch (Throwable $e) {}
     }
 
-    // Support : tickets non assignes + messages non lus
-    $support_nb_pool = 0;
+    // Support : tickets ayant des messages non lus
     $support_nb_unread = 0;
     try {
-        $support_nb_pool = (int) $pdo->query("
-            SELECT COUNT(*) FROM support_tickets
-            WHERE assigned_to_user_id IS NULL
-              AND status IN ('open','in_progress','waiting_user')
-        ")->fetchColumn();
-
         $stmt = $pdo->prepare("
             SELECT COUNT(DISTINCT t.id)
             FROM support_tickets t
@@ -697,7 +696,9 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
         $stmt->execute();
         $support_nb_unread = (int) $stmt->fetchColumn();
     } catch (Throwable $e) {}
-    $support_badge_total = max($support_nb_pool, $support_nb_unread);
+    // Le badge annonce ce qu'il reste À LIRE : une fois tous les messages lus, il disparaît.
+    // (Les tickets non assignés restent visibles dans la page Support : « x non assignés ».)
+    $support_badge_total = $support_nb_unread;
     ?>
 <!-- Header mobile (visible <900px uniquement) -->
 <header class="sa-mobile-header">
