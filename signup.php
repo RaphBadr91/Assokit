@@ -8,7 +8,7 @@
  * En 1 étape, sans carte bancaire :
  *   1. Nom de l'asso + prénom/nom + e-mail + mot de passe
  *   2. Création de l'association et de son admin, essai gratuit de
- *      AK_TRIAL_DAYS jours (15) ACTIVÉ IMMÉDIATEMENT, sans validation
+ *      AK_TRIAL_DAYS jours (14) ACTIVÉ IMMÉDIATEMENT, sans validation
  *   3. Connexion automatique, redirection vers le tableau de bord
  *   4. Le fondateur est prévenu de CHAQUE demande (e-mail + cloche),
  *      y compris si la création échoue : le prospect est alors
@@ -31,6 +31,25 @@ if (!empty($_SESSION['user_id'])) {
 }
 
 const AK_SIGNUP_PLANS = ['essentiel', 'association', 'organisation'];
+const AK_SIGNUP_TYPES = ['asso' => 'Association', 'tpe' => 'TPE / entreprise'];
+const AK_SIGNUP_FORMS = [
+    'asso' => ['Association loi 1901', 'Association reconnue d\'utilité publique', 'Association loi 1908 (Alsace-Moselle)', 'Fondation', 'Fonds de dotation', 'Coopérative / SCIC', 'Collectif non déclaré', 'Autre'],
+    'tpe'  => ['Micro-entreprise / auto-entrepreneur', 'Entreprise individuelle (EI)', 'EURL', 'SARL', 'SASU', 'SAS', 'SCOP', 'Profession libérale', 'Autre'],
+];
+const AK_SIGNUP_SIZES = [
+    'asso' => ['Moins de 20 adhérents', '20 à 50 adhérents', '51 à 150 adhérents', '151 à 500 adhérents', 'Plus de 500 adhérents'],
+    'tpe'  => ['Seul(e)', '2 à 5 personnes', '6 à 10 personnes', '11 à 20 personnes', 'Plus de 20 personnes'],
+];
+const AK_SIGNUP_SECTORS = [
+    'asso' => ['Sport', 'Culture & loisirs', 'Éducation & jeunesse', 'Social & solidarité', 'Insertion & emploi', 'Formation', 'Santé', 'Environnement', 'Quartier & citoyenneté', 'Humanitaire', 'Autre'],
+    'tpe'  => ['Commerce', 'Artisanat & BTP', 'Services aux entreprises', 'Conseil & formation', 'Numérique', 'Restauration & hôtellerie', 'Santé & bien-être', 'Transport', 'Création & communication', 'Autre'],
+];
+const AK_SIGNUP_ROLES = [
+    'asso' => ['Président(e)', 'Trésorier(e)', 'Secrétaire', 'Coordinateur·rice / salarié(e)', 'Bénévole', 'Autre'],
+    'tpe'  => ['Gérant(e) / dirigeant(e)', 'Associé(e)', 'Salarié(e)', 'Comptable / gestion', 'Autre'],
+];
+const AK_SIGNUP_NEEDS = ['Adhérents & cotisations', 'Facturation & devis', 'Subventions & financeurs', 'Projets & bilans', 'Comptabilité', 'Communication & e-mails', 'Événements & émargement', 'Boîte mail Gmail', 'Application mobile'];
+const AK_SIGNUP_SOURCES = ['Recherche Google', 'Réseaux sociaux', 'Bouche-à-oreille', 'Mairie / collectivité', 'Salon / événement', 'Partenaire', 'Autre'];
 
 $error  = null;   // erreur de saisie : le formulaire reste affiché
 $notice = null;   // demande enregistrée mais non ouverte automatiquement : on remercie
@@ -41,6 +60,10 @@ $form = [
     'email'      => '',
     'plan'       => in_array($_GET['plan'] ?? '', AK_SIGNUP_PLANS, true) ? $_GET['plan'] : 'essentiel',
     'accept_cgu' => false,
+    'type'       => (($_GET['type'] ?? '') === 'tpe') ? 'tpe' : 'asso',
+    'legal_form' => '', 'rna' => '', 'siret' => '', 'street' => '', 'zip' => '', 'city' => '',
+    'phone' => '', 'website' => '', 'size' => '', 'sector' => '', 'role' => '', 'vat' => '',
+    'needs' => [], 'source' => '', 'message' => '',
 ];
 
 if (empty($_SESSION['csrf_token'])) {
@@ -89,6 +112,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $form['email']      = strtolower(trim((string)($_POST['email'] ?? '')));
         $form['plan']       = in_array($_POST['plan'] ?? '', AK_SIGNUP_PLANS, true) ? $_POST['plan'] : 'essentiel';
         $form['accept_cgu'] = !empty($_POST['accept_cgu']);
+        $t = (($_POST['org_type'] ?? '') === 'tpe') ? 'tpe' : 'asso';
+        $form['type']       = $t;
+        $pick = fn($k, array $allowed) => in_array((string)($_POST[$k] ?? ''), $allowed, true) ? (string)$_POST[$k] : '';
+        $form['legal_form'] = $pick('legal_form', AK_SIGNUP_FORMS[$t]);
+        $form['size']       = $pick('size', AK_SIGNUP_SIZES[$t]);
+        $form['sector']     = $pick('sector', AK_SIGNUP_SECTORS[$t]);
+        $form['role']       = $pick('role', AK_SIGNUP_ROLES[$t]);
+        $form['source']     = $pick('source', AK_SIGNUP_SOURCES);
+        $form['vat']        = in_array($_POST['vat'] ?? '', ['oui', 'non'], true) ? $_POST['vat'] : '';
+        $form['needs']      = array_values(array_intersect(AK_SIGNUP_NEEDS, array_map('strval', (array)($_POST['needs'] ?? []))));
+        $form['rna']        = strtoupper(preg_replace('/\s+/', '', (string)($_POST['rna'] ?? '')));
+        $form['siret']      = preg_replace('/\D+/', '', (string)($_POST['siret'] ?? ''));
+        $form['street']     = trim((string)($_POST['street'] ?? ''));
+        $form['zip']        = preg_replace('/\s+/', '', (string)($_POST['zip'] ?? ''));
+        $form['city']       = trim((string)($_POST['city'] ?? ''));
+        $form['phone']      = trim((string)($_POST['phone'] ?? ''));
+        $form['website']    = trim((string)($_POST['site_web'] ?? ''));
+        $form['message']    = trim((string)($_POST['message'] ?? ''));
         $password           = (string)($_POST['password'] ?? '');
         $password_confirm   = (string)($_POST['password_confirm'] ?? '');
         $no_link            = '~https?://|www\.|[<>]~i';
@@ -111,13 +152,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Le mot de passe est trop long.';
         } elseif ($password !== $password_confirm) {
             $error = 'Les mots de passe ne correspondent pas.';
+        } elseif ($form['legal_form'] === '') {
+            $error = 'Veuillez choisir la forme juridique.';
+        } elseif ($form['rna'] !== '' && !preg_match('/^W\d{9}$/', $form['rna'])) {
+            $error = 'Le numéro RNA commence par W suivi de 9 chiffres (ex. W912345678).';
+        } elseif ($form['siret'] !== '' && !in_array(strlen($form['siret']), [9, 14], true)) {
+            $error = 'Le SIREN compte 9 chiffres, le SIRET 14 chiffres.';
+        } elseif ($form['street'] === '' || $form['city'] === '' || !preg_match('/^\d{5}$/', $form['zip'])) {
+            $error = 'Veuillez renseigner l’adresse complète (rue, code postal à 5 chiffres, ville).';
+        } elseif (mb_strlen($form['street']) > 200 || mb_strlen($form['city']) > 100 || preg_match($no_link, $form['street'] . ' ' . $form['city'])) {
+            $error = 'Adresse invalide.';
+        } elseif (!preg_match('/^\+?[0-9 .()-]{10,20}$/', $form['phone'])) {
+            $error = 'Veuillez indiquer un numéro de téléphone valide.';
+        } elseif ($form['website'] !== '' && (!filter_var($form['website'], FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $form['website']) || mb_strlen($form['website']) > 200)) {
+            $error = 'Adresse du site web invalide (elle doit commencer par https://).';
+        } elseif ($form['size'] === '' || $form['sector'] === '' || $form['role'] === '') {
+            $error = $t === 'tpe' ? 'Veuillez indiquer la taille, le secteur d’activité et votre fonction.' : 'Veuillez indiquer le nombre d’adhérents, le domaine d’activité et votre fonction.';
+        } elseif (mb_strlen($form['message']) > 1500) {
+            $error = 'Votre message est trop long (1 500 caractères maximum).';
         } elseif (!$form['accept_cgu']) {
             $error = 'Veuillez accepter les CGU et la politique de confidentialité.';
         }
 
         $ip   = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+        $details = array_filter([
+            'Type'                => AK_SIGNUP_TYPES[$form['type']],
+            'Forme juridique'     => $form['legal_form'],
+            'N° RNA'              => $form['rna'],
+            strlen($form['siret']) === 9 ? 'SIREN' : 'SIRET' => $form['siret'],
+            'TVA'                 => $form['vat'] === 'oui' ? 'Assujetti(e)' : ($form['vat'] === 'non' ? 'Non assujetti(e)' : ''),
+            'Adresse'             => trim($form['street'] . ', ' . $form['zip'] . ' ' . $form['city'], ', '),
+            'Téléphone'           => $form['phone'],
+            'Site web'            => $form['website'],
+            $form['type'] === 'tpe' ? 'Taille' : 'Adhérents' => $form['size'],
+            $form['type'] === 'tpe' ? 'Secteur' : 'Domaine'  => $form['sector'],
+            'Fonction du contact' => $form['role'],
+            'Besoins'             => implode(', ', $form['needs']),
+            'Nous a connus par'   => $form['source'],
+            'Message'             => $form['message'],
+        ], fn($v) => $v !== '' && $v !== null);
         $lead = ['org_name' => $form['org_name'], 'first_name' => $form['first_name'], 'last_name' => $form['last_name'],
-                 'email' => $form['email'], 'plan' => $form['plan'], 'ip' => $ip, 'signup_id' => null, 'trial_end' => null];
+                 'email' => $form['email'], 'phone' => $form['phone'], 'plan' => $form['plan'], 'type' => $form['type'],
+                 'details' => $details, 'ip' => $ip, 'signup_id' => null, 'trial_end' => null];
         $has_status = isset(ak_db_columns($pdo, 'public_signups')['status']);
 
         // Anti-abus : 5 essais OUVERTS par heure et par adresse IP (une panne ne bloque plus le prospect)
@@ -156,6 +232,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'plan_choice' => $form['plan'], 'ip_address' => $ip,
                     'user_agent' => mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
                     'referer' => mb_substr($_SERVER['HTTP_REFERER'] ?? '', 0, 500),
+                    'org_type' => $form['type'], 'phone' => mb_substr($form['phone'], 0, 40),
+                    'details_json' => json_encode($details, JSON_UNESCAPED_UNICODE),
                     'status' => 'pending',
                 ], ['created_at' => 'NOW()']) ?: null;
             } catch (Throwable $e) {
@@ -232,6 +310,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 if ($org_id > 0 && $user_id > 0) {
+                    // 3a. Fiche de la structure (hors transaction : un format inattendu ne coûte jamais le compte)
+                    try {
+                        $is_pres = in_array($form['role'], ['Président(e)', 'Gérant(e) / dirigeant(e)'], true);
+                        $notes = "Inscription en ligne le " . date('d/m/Y H:i') . "\n";
+                        foreach ($details as $k => $v) $notes .= $k . ' : ' . $v . "\n";
+                        $fiche = [
+                            'org_type' => $form['type'],
+                            'legal_name' => mb_substr($form['org_name'], 0, 200),
+                            'legal_form' => mb_substr($form['legal_form'], 0, 50),
+                            'rna_number' => $form['rna'] ?: null,
+                            'siren' => $form['siret'] !== '' ? substr($form['siret'], 0, 9) : null,
+                            'siret' => strlen($form['siret']) === 14 ? $form['siret'] : null,
+                            'billing_address_street' => mb_substr($form['street'], 0, 200),
+                            'billing_address_zip' => $form['zip'],
+                            'billing_address_city' => mb_substr($form['city'], 0, 100),
+                            'billing_address_country' => 'France',
+                            'billing_phone' => mb_substr($form['phone'], 0, 30),
+                        ];
+                        if ($form['vat'] !== '') $fiche['vat_subject'] = $form['vat'] === 'oui' ? 1 : 0;
+                        if ($is_pres) {
+                            $fiche['president_first_name'] = mb_substr($form['first_name'], 0, 100);
+                            $fiche['president_last_name'] = mb_substr($form['last_name'], 0, 100);
+                            $fiche['president_role'] = mb_substr($form['role'], 0, 50);
+                        }
+                        ak_db_update($pdo, 'organizations', $org_id, $fiche);
+                    } catch (Throwable $e) {
+                        $warnings[] = 'Fiche de la structure incomplète (' . get_class($e) . ' ' . mb_substr($e->getMessage(), 0, 120) . ') : les informations sont dans cet e-mail.';
+                    }
+                    // Résumé complet dans les notes internes (cockpit fondateur), à part : un champ trop
+                    // court ne doit pas faire perdre la fiche ci-dessus.
+                    try {
+                        $cols_o = ak_db_columns($pdo, 'organizations');
+                        $note_col = isset($cols_o['internal_notes']) ? 'internal_notes' : (isset($cols_o['notes_superadmin']) ? 'notes_superadmin' : null);
+                        if ($note_col) ak_db_update($pdo, 'organizations', $org_id, [$note_col => $notes]);
+                    } catch (Throwable $e) {
+                        error_log('[signup] notes internes: ' . get_class($e));
+                    }
+                    try { ak_db_update($pdo, 'users', $user_id, ['phone' => mb_substr($form['phone'], 0, 30)]); } catch (Throwable $e) {}
+
                     // 3. Éléments de l'essai, hors transaction : un échec ici ne coûte jamais le compte.
                     try {
                         ak_db_insert($pdo, 'folders', ['org_id' => $org_id, 'name' => 'Projets généraux', 'color_theme' => 'blue',
@@ -326,7 +443,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || $error) $_SESSION['signup_form_at']
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
-<title>Essai gratuit <?= (int)AK_TRIAL_DAYS ?> jours — Assokit</title>
+<title>Essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours — Assokit</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%23059669'/%3E%3Ccircle cx='22' cy='22' r='4.5' fill='%23FFFFFF'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -387,7 +504,7 @@ h1 { font-size: 22px; font-weight: 500; margin-bottom: 6px; letter-spacing: -0.0
 @media (max-width: 430px) { .form-row { grid-template-columns: 1fr; } }
 .form-group { margin-bottom: 12px; }
 label { display: block; font-size: 12.5px; font-weight: 500; color: var(--ink-2); margin-bottom: 6px; }
-input[type="text"], input[type="email"], input[type="password"] {
+input[type="text"], input[type="email"], input[type="password"], input[type="tel"], input[type="url"] {
   width: 100%; padding: 11px 13px;
   background: var(--bg-2); border: 1px solid var(--border-strong);
   border-radius: 9px; font-family: inherit; font-size: 14px; color: var(--ink);
@@ -423,6 +540,27 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
   margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
   display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;
 }
+.wrap { max-width: 560px; }
+.sec-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--acc-dark); margin: 20px 0 10px; padding-top: 14px; border-top: 1px solid var(--border); }
+.sec-title .opt, label .opt { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink-3); }
+.type-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
+.type-opt { position: relative; cursor: pointer; }
+.type-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.type-opt span { display: block; text-align: center; padding: 12px 8px; border: 1.5px solid var(--border-strong); border-radius: 12px; font-size: 14px; font-weight: 500; background: #fff; transition: all .15s; }
+.type-opt input:checked + span { border-color: var(--acc); background: var(--acc-light); color: var(--acc-dark); font-weight: 600; }
+.type-opt input:focus-visible + span { outline: 2px solid var(--acc); outline-offset: 2px; }
+.form-group select, .form-group textarea { width: 100%; padding: 11px 13px; border: 1px solid var(--border-strong); border-radius: 9px; font-size: 14px; font-family: inherit; background: var(--bg-2); color: var(--ink); }
+.form-group textarea { resize: vertical; min-height: 74px; }
+.form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--acc); box-shadow: 0 0 0 3px rgba(5,150,105,.12); }
+.form-row-zip { grid-template-columns: 120px 1fr; }
+.needs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.need { cursor: pointer; }
+.need input { position: absolute; opacity: 0; pointer-events: none; }
+.need span { display: inline-block; padding: 7px 11px; border: 1px solid var(--border-strong); border-radius: 999px; font-size: 13px; background: #fff; color: var(--ink-2); }
+.need input:checked + span { border-color: var(--acc); background: var(--acc-light); color: var(--acc-dark); font-weight: 500; }
+.need input:focus-visible + span { outline: 2px solid var(--acc); }
+form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: none; }
+@media (max-width: 480px) { .form-row { grid-template-columns: 1fr; } .form-row-zip { grid-template-columns: 110px 1fr; } }
 </style>
 </head>
 <body>
@@ -439,15 +577,15 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
   <div class="card">
 
     <?php if ($form['plan'] === 'association'): ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Association · essai gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Association · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
     <?php elseif ($form['plan'] === 'organisation'): ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Organisation · essai gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Organisation · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
     <?php else: ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Essai gratuit <?= (int)AK_TRIAL_DAYS ?> jours · sans carte bancaire</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours · sans carte bancaire</span>
     <?php endif; ?>
 
-    <h1>Démarrez votre essai gratuit</h1>
-    <p class="sub"><?= (int)AK_TRIAL_DAYS ?> jours d’accès complet, activé immédiatement. Sans carte bancaire, sans engagement.</p>
+    <h1>Démarrez votre essai PRO gratuit</h1>
+    <p class="sub">Toutes les fonctionnalités PRO pendant <?= (int)AK_TRIAL_DAYS ?> jours, activées dès l’inscription. Sans carte bancaire, sans engagement.</p>
 
     <?php if ($notice): ?>
       <div class="alert-ok" style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.55;margin-bottom:6px;">✅ <?= htmlspecialchars($notice) ?></div>
@@ -456,7 +594,13 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
       <div class="alert-error">⚠️ <?= htmlspecialchars($error) ?></div>
     <?php endif; ?>
 
-    <form method="POST" autocomplete="off" id="signupForm">
+    <?php
+      $opt = function (array $list, string $sel) { $o = '<option value="">Choisir…</option>';
+          foreach ($list as $v) $o .= '<option value="' . htmlspecialchars($v) . '"' . ($v === $sel ? ' selected' : '') . '>' . htmlspecialchars($v) . '</option>';
+          return $o; };
+      $ty = $form['type'];
+    ?>
+    <form method="POST" autocomplete="off" id="signupForm" data-type="<?= $ty ?>">
       <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
       <input type="hidden" name="plan" value="<?= htmlspecialchars($form['plan']) ?>">
       <!-- Champ piège anti-robots : invisible pour les humains -->
@@ -465,31 +609,96 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
         <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" value="">
       </div>
 
-      <div class="form-group">
-        <label for="org_name">Nom de votre association *</label>
-        <input type="text" id="org_name" name="org_name" required maxlength="200" autofocus
-               placeholder="Ex : Latitude 91" value="<?= htmlspecialchars($form['org_name']) ?>">
+      <div class="type-switch" role="radiogroup" aria-label="Vous êtes">
+        <label class="type-opt"><input type="radio" name="org_type" value="asso"<?= $ty === 'asso' ? ' checked' : '' ?>><span>🤝 Une association</span></label>
+        <label class="type-opt"><input type="radio" name="org_type" value="tpe"<?= $ty === 'tpe' ? ' checked' : '' ?>><span>💼 Une TPE / entreprise</span></label>
       </div>
 
+      <div class="sec-title">Votre structure</div>
+      <div class="form-group">
+        <label for="org_name" data-asso="Nom de votre association *" data-tpe="Nom de votre entreprise *"><?= $ty === 'tpe' ? 'Nom de votre entreprise *' : 'Nom de votre association *' ?></label>
+        <input type="text" id="org_name" name="org_name" required maxlength="200" autofocus
+               placeholder="<?= $ty === 'tpe' ? 'Ex : Atelier Dupont' : 'Ex : Latitude 91' ?>" value="<?= htmlspecialchars($form['org_name']) ?>">
+      </div>
       <div class="form-row">
         <div class="form-group">
-          <label for="first_name">Votre prénom *</label>
-          <input type="text" id="first_name" name="first_name" required maxlength="100"
-                 value="<?= htmlspecialchars($form['first_name']) ?>">
+          <label for="legal_form">Forme juridique *</label>
+          <select id="legal_form" name="legal_form" required data-list="forms"><?= $opt(AK_SIGNUP_FORMS[$ty], $form['legal_form']) ?></select>
         </div>
         <div class="form-group">
-          <label for="last_name">Votre nom *</label>
-          <input type="text" id="last_name" name="last_name" required maxlength="100"
-                 value="<?= htmlspecialchars($form['last_name']) ?>">
+          <label for="sector" data-asso="Domaine d’activité *" data-tpe="Secteur d’activité *"><?= $ty === 'tpe' ? 'Secteur d’activité *' : 'Domaine d’activité *' ?></label>
+          <select id="sector" name="sector" required data-list="sectors"><?= $opt(AK_SIGNUP_SECTORS[$ty], $form['sector']) ?></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group only-asso">
+          <label for="rna">N° RNA <span class="opt">(facultatif)</span></label>
+          <input type="text" id="rna" name="rna" maxlength="12" placeholder="W912345678" value="<?= htmlspecialchars($form['rna']) ?>">
+        </div>
+        <div class="form-group">
+          <label for="siret">SIRET ou SIREN <span class="opt">(facultatif)</span></label>
+          <input type="text" id="siret" name="siret" maxlength="20" inputmode="numeric" placeholder="14 chiffres" value="<?= htmlspecialchars($form['siret']) ?>">
+        </div>
+        <div class="form-group only-tpe">
+          <label for="vat">TVA</label>
+          <select id="vat" name="vat">
+            <option value="">Je ne sais pas</option>
+            <option value="oui"<?= $form['vat'] === 'oui' ? ' selected' : '' ?>>Assujetti(e)</option>
+            <option value="non"<?= $form['vat'] === 'non' ? ' selected' : '' ?>>Non assujetti(e)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="street">Adresse *</label>
+        <input type="text" id="street" name="street" required maxlength="200" autocomplete="street-address" placeholder="12 rue des Lilas" value="<?= htmlspecialchars($form['street']) ?>">
+      </div>
+      <div class="form-row form-row-zip">
+        <div class="form-group">
+          <label for="zip">Code postal *</label>
+          <input type="text" id="zip" name="zip" required maxlength="5" inputmode="numeric" pattern="[0-9]{5}" autocomplete="postal-code" placeholder="91000" value="<?= htmlspecialchars($form['zip']) ?>">
+        </div>
+        <div class="form-group">
+          <label for="city">Ville *</label>
+          <input type="text" id="city" name="city" required maxlength="100" autocomplete="address-level2" placeholder="Évry-Courcouronnes" value="<?= htmlspecialchars($form['city']) ?>">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="size" data-asso="Nombre d’adhérents *" data-tpe="Taille de l’équipe *"><?= $ty === 'tpe' ? 'Taille de l’équipe *' : 'Nombre d’adhérents *' ?></label>
+          <select id="size" name="size" required data-list="sizes"><?= $opt(AK_SIGNUP_SIZES[$ty], $form['size']) ?></select>
+        </div>
+        <div class="form-group">
+          <label for="site_web">Site web <span class="opt">(facultatif)</span></label>
+          <input type="url" id="site_web" name="site_web" maxlength="200" placeholder="https://…" value="<?= htmlspecialchars($form['website']) ?>">
         </div>
       </div>
 
-      <div class="form-group">
-        <label for="email">Votre email *</label>
-        <input type="email" id="email" name="email" required maxlength="200" autocomplete="email"
-               placeholder="vous@association.fr" value="<?= htmlspecialchars($form['email']) ?>">
+      <div class="sec-title">Vous</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="first_name">Prénom *</label>
+          <input type="text" id="first_name" name="first_name" required maxlength="100" autocomplete="given-name" value="<?= htmlspecialchars($form['first_name']) ?>">
+        </div>
+        <div class="form-group">
+          <label for="last_name">Nom *</label>
+          <input type="text" id="last_name" name="last_name" required maxlength="100" autocomplete="family-name" value="<?= htmlspecialchars($form['last_name']) ?>">
+        </div>
       </div>
-
+      <div class="form-row">
+        <div class="form-group">
+          <label for="role">Votre fonction *</label>
+          <select id="role" name="role" required data-list="roles"><?= $opt(AK_SIGNUP_ROLES[$ty], $form['role']) ?></select>
+        </div>
+        <div class="form-group">
+          <label for="phone">Téléphone *</label>
+          <input type="tel" id="phone" name="phone" required maxlength="20" autocomplete="tel" placeholder="06 12 34 56 78" value="<?= htmlspecialchars($form['phone']) ?>">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="email">Votre e-mail *</label>
+        <input type="email" id="email" name="email" required maxlength="190" autocomplete="email"
+               placeholder="<?= $ty === 'tpe' ? 'vous@entreprise.fr' : 'vous@association.fr' ?>" value="<?= htmlspecialchars($form['email']) ?>">
+      </div>
       <div class="form-group">
         <label for="password">Mot de passe *</label>
         <div style="position:relative;">
@@ -523,13 +732,51 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
         })();
       </script>
 
+
+      <div class="sec-title">Vos besoins <span class="opt">(facultatif)</span></div>
+      <div class="needs">
+        <?php foreach (AK_SIGNUP_NEEDS as $nd): ?>
+          <label class="need"><input type="checkbox" name="needs[]" value="<?= htmlspecialchars($nd) ?>"<?= in_array($nd, $form['needs'], true) ? ' checked' : '' ?>><span><?= htmlspecialchars($nd) ?></span></label>
+        <?php endforeach; ?>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="source">Comment nous avez-vous connus ?</label>
+          <select id="source" name="source"><?= $opt(AK_SIGNUP_SOURCES, $form['source']) ?></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="message">Un mot pour nous ? <span class="opt">(facultatif)</span></label>
+        <textarea id="message" name="message" maxlength="1500" rows="3" placeholder="Vos attentes, votre calendrier, une question…"><?= htmlspecialchars($form['message']) ?></textarea>
+      </div>
+
       <label class="cgu-row">
         <input type="checkbox" name="accept_cgu" value="1" required<?= !empty($form['accept_cgu']) ? ' checked' : '' ?>>
         <span>J'accepte les <a href="/cgu" target="_blank">conditions générales d'utilisation</a> et la <a href="/confidentialite" target="_blank">politique de confidentialité</a>.</span>
       </label>
 
-      <button type="submit" class="btn-submit" id="signupBtn">Démarrer mon essai gratuit →</button>
+      <button type="submit" class="btn-submit" id="signupBtn">Activer mon essai PRO de <?= (int)AK_TRIAL_DAYS ?> jours →</button>
     </form>
+    <script>
+      // Association / TPE : libellés, listes et champs propres à chaque type
+      (function(){
+        var f=document.getElementById('signupForm'); if(!f) return;
+        var L=<?= json_encode(['forms' => AK_SIGNUP_FORMS, 'sectors' => AK_SIGNUP_SECTORS, 'sizes' => AK_SIGNUP_SIZES, 'roles' => AK_SIGNUP_ROLES], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        function apply(t){
+          f.setAttribute('data-type', t);
+          f.querySelectorAll('label[data-asso]').forEach(function(l){ l.textContent = l.getAttribute('data-' + t); });
+          f.querySelectorAll('select[data-list]').forEach(function(sel){
+            var cur = sel.value, list = L[sel.getAttribute('data-list')][t];
+            sel.innerHTML = '';
+            var o0 = document.createElement('option'); o0.value = ''; o0.textContent = 'Choisir…'; sel.appendChild(o0);
+            list.forEach(function(v){ var o=document.createElement('option'); o.value=v; o.textContent=v; if(v===cur) o.selected=true; sel.appendChild(o); });
+          });
+          var on = document.getElementById('org_name'); if (on) on.placeholder = t === 'tpe' ? 'Ex : Atelier Dupont' : 'Ex : Latitude 91';
+          var em = document.getElementById('email'); if (em) em.placeholder = t === 'tpe' ? 'vous@entreprise.fr' : 'vous@association.fr';
+        }
+        f.querySelectorAll('input[name=org_type]').forEach(function(r){ r.addEventListener('change', function(){ if(r.checked) apply(r.value); }); });
+      })();
+    </script>
     <script>
       // Un seul envoi : un double clic créait deux demandes
       (function(){ var f=document.getElementById('signupForm'), b=document.getElementById('signupBtn');

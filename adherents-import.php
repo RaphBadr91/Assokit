@@ -12,6 +12,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/password-token-helper.php';
+require_once __DIR__ . '/trial-limits-helpers.php';
 
 require_login();
 
@@ -117,8 +118,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
                         $parsed_rows[] = $row;
                     }
 
+                    // Essai gratuit : 200 adhérents par import, 300 ajoutés par 24 h
+                    // (chaque adhérent créé peut recevoir un e-mail de bienvenue).
+                    $trial_block = $parsed_rows
+                        ? ak_trial_members_block($pdo, $org_id, count(array_filter($parsed_rows, fn($r) => $r['status'] === 'ok')), true)
+                        : null;
+
                     if (empty($parsed_rows)) {
                         $error = 'Aucune ligne de données trouvée dans le fichier.';
+                    } elseif ($trial_block) {
+                        $error = $trial_block;
+                        $parsed_rows = [];
                     } else {
                         $_SESSION['import_adherents_rows'] = $parsed_rows;
                         $_SESSION['import_adherents_send_email'] = isset($_POST['send_email']) ? 1 : 0;
@@ -135,8 +145,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
     $rows = $_SESSION['import_adherents_rows'] ?? [];
     $send_email = !empty($_SESSION['import_adherents_send_email']);
 
+    // Essai gratuit : on recontrôle au moment d'importer (autre import entre-temps, autre onglet…).
+    $trial_block = $rows
+        ? ak_trial_members_block($pdo, $org_id, count(array_filter($rows, fn($r) => ($r['status'] ?? '') === 'ok')), true)
+        : null;
+
     if (empty($rows)) {
         $error = 'Session expirée, merci de recommencer.';
+    } elseif ($trial_block) {
+        $error = $trial_block;
+        unset($_SESSION['import_adherents_rows'], $_SESSION['import_adherents_send_email']);
     } else {
         $created = 0;
         $skipped = 0;
@@ -265,6 +283,11 @@ render_sidebar('adherents');
       <p style="margin:0; font-size:12.5px; color:var(--ink-3);">
         💡 Chaque adhérent importé recevra un email avec un lien pour créer son mot de passe (valide 7 jours).
       </p>
+      <?php if (ak_trial_limited($pdo, $org_id)): ?>
+      <p style="margin:8px 0 0; font-size:12.5px; color:var(--ink-3);">
+        ⏳ Pendant l’essai gratuit : <?= (int)AK_TRIAL_MAX_IMPORT_ROWS ?> adhérents au plus par import, <?= (int)AK_TRIAL_MAX_MEMBERS_PER_DAY ?> par 24 h.
+      </p>
+      <?php endif; ?>
     </div>
 
     <form method="POST" action="/adherents-import" enctype="multipart/form-data"

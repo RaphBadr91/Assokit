@@ -1,6 +1,6 @@
 <?php
 /**
- * AssoKit — CRON Verification fin d'essai gratuit (AK_TRIAL_DAYS, 15 j)
+ * AssoKit — CRON Verification fin d'essai gratuit (AK_TRIAL_DAYS, 14 j)
  * À LANCER TOUTES LES 10 MINUTES (et non plus 1x par jour). Les rappels
  * sont notés dans cron_envois : les relancer souvent n'en envoie pas
  * davantage, chaque échéance ne part qu'une fois.

@@ -4,7 +4,7 @@
  * ASSOKIT — Essai gratuit (inscription publique)
  * ============================================================
  * Un seul endroit pour :
- *   - la durée de l'essai (AK_TRIAL_DAYS, 15 jours) ;
+ *   - la durée de l'essai (AK_TRIAL_DAYS, 14 jours) ;
  *   - le plan d'essai, le slug d'une nouvelle association ;
  *   - des écritures en base qui s'adaptent au schéma réel.
  *
@@ -17,7 +17,7 @@
  * ============================================================
  */
 
-if (!defined('AK_TRIAL_DAYS')) define('AK_TRIAL_DAYS', 15);
+if (!defined('AK_TRIAL_DAYS')) define('AK_TRIAL_DAYS', 14);
 
 if (!function_exists('ak_db_columns')) {
     /**
@@ -66,6 +66,18 @@ if (!function_exists('ak_db_pick')) {
     }
 }
 
+if (!function_exists('ak_db_fit')) {
+    /** Coupe une chaîne à la longueur d'une colonne VARCHAR/CHAR (le mode strict refuse sinon toute la ligne). */
+    function ak_db_fit(array $cols, string $col, $v) {
+        if (!is_string($v) || !isset($cols[$col])) return $v;
+        if (preg_match('/^(?:var)?char\((\d+)\)/', $cols[$col]['type'], $m) && mb_strlen($v) > (int)$m[1]) {
+            return mb_substr($v, 0, (int)$m[1]);
+        }
+        if (strpos($cols[$col]['type'], 'tinytext') === 0 && strlen($v) > 255) return mb_strcut($v, 0, 255);
+        return $v;
+    }
+}
+
 if (!function_exists('ak_db_insert')) {
     /**
      * INSERT qui n'écrit que les colonnes existantes.
@@ -80,7 +92,7 @@ if (!function_exists('ak_db_insert')) {
         $names = []; $place = []; $params = [];
         foreach ($data as $k => $v) {
             if ($cols && !isset($cols[$k])) continue;
-            $names[] = "`$k`"; $place[] = '?'; $params[] = $v;
+            $names[] = "`$k`"; $place[] = '?'; $params[] = ak_db_fit($cols, $k, $v);
         }
         foreach ($raw as $k => $expr) {
             if ($cols && !isset($cols[$k])) continue;
@@ -101,7 +113,7 @@ if (!function_exists('ak_db_update')) {
         $sets = []; $params = [];
         foreach ($data as $k => $v) {
             if ($cols && !isset($cols[$k])) continue;
-            $sets[] = "`$k` = ?"; $params[] = $v;
+            $sets[] = "`$k` = ?"; $params[] = ak_db_fit($cols, $k, $v);
         }
         foreach ($raw as $k => $expr) {
             if ($cols && !isset($cols[$k])) continue;

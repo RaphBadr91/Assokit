@@ -92,6 +92,16 @@ try {
     }
 } catch (Throwable $e) {}
 
+// Essai gratuit : le quota de 500 / 24 h couvre aussi les diffusions classiques,
+// les invitations aux événements et les convocations d'AG.
+// Message dans sa propre clé : la page Diffusion n'affiche pas flash_error.
+require_once __DIR__ . '/trial-limits-helpers.php';
+if ($trial_block = ak_trial_send_block($pdo, $org_id, count($recipients))) {
+    $_SESSION['flash_ia_diffusion'] = $trial_block;
+    header('Location: /mon-asso-ia-diffusion');
+    exit;
+}
+
 // Construction HTML email avec template propre
 $body_html_inner = ak_ai_md_to_html($body_md);
 $org_ctx = ak_ai_get_org_context($pdo, $org_id);

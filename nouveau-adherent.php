@@ -16,6 +16,7 @@ require_once __DIR__ . '/includes-layout.php';
 
 // === [PACK 6.2] Helpers du système de plans ===
 @require_once __DIR__ . '/plan-helpers.php';
+require_once __DIR__ . '/trial-limits-helpers.php';
 
 require_login();
 
@@ -76,6 +77,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
         $error = 'Le prénom et le nom sont obligatoires.';
     } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
         $error = 'Email invalide.';
+    } elseif ($trial_block = ak_trial_members_block($pdo, $org_id, 1)) {
+        // Essai gratuit : 300 adhérents ajoutés par 24 h (comme l'import CSV)
+        $error = $trial_block;
     } else {
         // Verifier doublon (y compris soft-deleted pour eviter collision)
         $stmt = $pdo->prepare("SELECT id, deleted_at FROM users WHERE email = ? LIMIT 1");

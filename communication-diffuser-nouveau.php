@@ -15,6 +15,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/resend-helper.php';
+require_once __DIR__ . '/trial-limits-helpers.php';
 require_login();
 require_capability('access_marketing');
 
@@ -91,6 +92,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
 
         if (!$error && empty($recipient_ids)) {
             $error = 'Aucun destinataire trouvé pour ces critères.';
+        }
+
+        // Essai gratuit : 200 destinataires par envoi, 500 par 24 h (anti-relais de spam)
+        if (!$error) {
+            $error = ak_trial_send_block($pdo, $org_id, count($recipient_ids));
         }
 
         if (!$error) {
@@ -303,6 +309,9 @@ render_sidebar('communication');
 
     <div style="padding:14px; background:rgba(5, 150, 105, 0.06); border:1px solid rgba(5, 150, 105, 0.2); border-radius:10px; margin-bottom:20px; font-size:12.5px; color:var(--acc-dark); line-height:1.5;">
       ⚠️ <strong>Attention :</strong> l'email sera envoyé immédiatement à la validation. Vérifie bien le message et les destinataires avant de confirmer.
+      <?php if (ak_trial_limited($pdo, $org_id)): ?>
+        <br>⏳ Pendant l’essai gratuit : <?= (int)AK_TRIAL_MAX_RECIPIENTS_PER_SEND ?> destinataires au plus par envoi, <?= (int)AK_TRIAL_MAX_RECIPIENTS_PER_DAY ?> par 24 h.
+      <?php endif; ?>
     </div>
 
     <div style="display:flex; gap:10px; justify-content:flex-end;">

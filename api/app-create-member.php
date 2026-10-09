@@ -9,6 +9,7 @@ require __DIR__ . '/_app-write-boot.php';
 if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_member_create', 20, 60, (string) $uid);
 @require_once __DIR__ . '/../password-token-helper.php';
 @require_once __DIR__ . '/../plan-helpers.php';
+require_once __DIR__ . '/../trial-limits-helpers.php';
 
 // Meme controle de role que la page web
 if (!in_array($user['role'] ?? '', ['admin', 'coordinator'], true)) {
@@ -38,6 +39,9 @@ if ($role === 'admin' && ($user['role'] ?? '') !== 'admin') $role = 'coordinator
 
 if ($first === '' || $last === '') app_fail(422, 'invalid', 'Le prénom et le nom sont obligatoires.');
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) app_fail(422, 'invalid', 'Email invalide.');
+
+// Essai gratuit : 300 adhérents ajoutés par 24 h (même plafond que le site)
+if ($trial_block = ak_trial_members_block($pdo, $org_id, 1)) app_fail(429, 'trial_limit', $trial_block);
 
 $stmt = $pdo->prepare("SELECT id, deleted_at FROM users WHERE email = ? LIMIT 1");
 $stmt->execute([$email]);

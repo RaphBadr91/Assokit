@@ -9,6 +9,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/resend-helper.php';
+require_once __DIR__ . '/trial-limits-helpers.php';
 require_login();
 require_capability('access_marketing');
 
@@ -45,6 +46,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'diffu
     $stmt = $pdo->prepare("SELECT id, email, first_name, last_name FROM users WHERE org_id = ? AND is_active = 1 AND email IS NOT NULL");
     $stmt->execute([$org_id]);
     $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Essai gratuit : 200 destinataires par envoi, 500 par 24 h (anti-relais de spam)
+    if ($trial_block = ak_trial_send_block($pdo, $org_id, count($users))) {
+        $_SESSION['flash_communication'] = ['type' => 'error', 'message' => $trial_block];
+        header('Location: /communication-evenement?id=' . $event_id);
+        exit;
+    }
 
     // Charger nom de l'org
     $stmt = $pdo->prepare("SELECT name FROM organizations WHERE id = ?");

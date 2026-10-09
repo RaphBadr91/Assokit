@@ -107,6 +107,13 @@ try {
     } catch (Throwable $e) {}
 
     $profile = ($clients_count > 0 && $projects_total === 0) ? 'tpe' : 'asso';
+    // Type choisi à l'inscription (association / TPE) : il prime sur la déduction
+    try {
+        $tp = $pdo->prepare("SELECT org_type FROM organizations WHERE id = ?");
+        $tp->execute([$org_id]);
+        $declared = (string) $tp->fetchColumn();
+        if ($declared === 'tpe' || $declared === 'asso') $profile = $declared;
+    } catch (Throwable $e) {}   // colonne absente tant que la migration n'est pas passée
 
     // KPIs facturation (utiles pour TPE, calcules pour les deux)
     $ca_paid_cents = 0; $impayes_cents = 0; $factures_count = 0; $devis_encours = 0;

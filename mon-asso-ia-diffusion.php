@@ -23,6 +23,9 @@ $user_id = (int)($user['id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
 
 $page_error = null;
+// Plafond de l'essai gratuit refusé par mon-asso-ia-diffusion-send.php
+$trial_flash = $_SESSION['flash_ia_diffusion'] ?? null;
+unset($_SESSION['flash_ia_diffusion']);
 $gen_prefill = null;
 $gen_id = (int)($_GET['gen'] ?? 0);
 
@@ -157,6 +160,9 @@ render_sidebar('ia');
 
     <?php if (isset($_GET['sent'])): ?>
       <div class="dif-success">✅ Diffusion envoyée avec succès. Voir l'historique en bas de page.</div>
+    <?php endif; ?>
+    <?php if ($trial_flash): ?>
+      <div class="dif-warning">⚠️ <?= h($trial_flash) ?></div>
     <?php endif; ?>
 
     <form method="post" action="/mon-asso-ia-diffusion-send" id="difForm">

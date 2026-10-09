@@ -6,6 +6,7 @@ activity_log_request();
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-assemblies.php';
 @require_once __DIR__ . '/resend-helper.php';
+require_once __DIR__ . '/trial-limits-helpers.php';
 require_login();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !check_csrf($_POST['csrf_token'] ?? '')) { http_response_code(400); die('Bad request.'); }
@@ -102,6 +103,18 @@ if ($action === 'add_attendee') {
 // REMOVE ATTENDEE
 if ($action === 'remove_attendee') {
     $aid = (int)($_POST['attendee_id'] ?? 0);
+    // Essai gratuit : un participant convoqué il y a moins de 24 h reste compté dans le quota
+    // d'envoi (sinon « ajouter → convoquer → retirer » permettrait d'écrire sans limite).
+    if (ak_trial_limited($pdo, $org_id)) {
+        try {
+            $st = $pdo->prepare("SELECT 1 FROM assembly_attendees WHERE id = ? AND assembly_id = ? AND invitation_sent_at >= NOW() - INTERVAL 1 DAY");
+            $st->execute([$aid, $id]);
+            if ($st->fetchColumn()) {
+                $_SESSION['flash_assemblee'] = 'Pendant l’essai gratuit, un participant convoqué ne peut être retiré que 24 h après sa convocation. Passez à une formule Assokit pour lever la limite.';
+                header('Location: /assemblee/' . $id); exit;
+            }
+        } catch (Throwable $e) {}
+    }
     $pdo->prepare("DELETE FROM assembly_attendees WHERE id = ? AND assembly_id = ?")->execute([$aid, $id]);
     header('Location: /assemblee/' . $id); exit;
 }
@@ -112,6 +125,29 @@ if ($action === 'send_invitations') {
     $stmt = $pdo->prepare("SELECT * FROM assembly_attendees WHERE assembly_id = ? AND email IS NOT NULL AND email != ''");
     $stmt->execute([$id]);
     $atts = $stmt->fetchAll();
+
+    // Essai gratuit : 200 destinataires par envoi, 500 par 24 h (anti-relais de spam), et pas
+    // de renvoi à un participant déjà convoqué dans les 24 h (sinon « Renvoyer » contournerait
+    // le quota, qui compte les convocations par date d'envoi).
+    if (ak_trial_limited($pdo, $org_id)) {
+        $valid = fn($list) => count(array_filter($list, fn($a) => filter_var($a['email'], FILTER_VALIDATE_EMAIL)));
+        $n_all = $valid($atts);
+        try {
+            $st = $pdo->prepare("SELECT * FROM assembly_attendees WHERE assembly_id = ? AND email IS NOT NULL AND email != ''
+                                   AND (invitation_sent_at IS NULL OR invitation_sent_at < NOW() - INTERVAL 1 DAY)");
+            $st->execute([$id]);
+            $atts = $st->fetchAll();
+        } catch (Throwable $e) {}
+        $n = $valid($atts);
+        $trial_block = ($n_all > 0 && $n === 0)
+            ? 'Pendant l’essai gratuit, une convocation ne peut être renvoyée qu’après 24 h : tous les participants ont déjà reçu la leur. Passez à une formule Assokit pour lever la limite.'
+            : ak_trial_send_block($pdo, $org_id, $n);
+        if ($trial_block) {
+            $_SESSION['flash_assemblee'] = $trial_block;
+            header('Location: /assemblee/' . $id); exit;
+        }
+    }
+
     $sent = 0;
     foreach ($atts as $a) {
         if (!filter_var($a['email'], FILTER_VALIDATE_EMAIL)) continue;

@@ -13,6 +13,8 @@ $attendees = ag_load_attendees($pdo, $id);
 $resos = ag_load_resolutions($pdo, $id);
 $quorum = ag_quorum_status($ag, $attendees);
 $m = ag_status_meta($ag['status']);
+$flash_error = $_SESSION['flash_assemblee'] ?? null;
+unset($_SESSION['flash_assemblee']);
 
 $nb_invited = $nb_present = $nb_excused = $nb_absent = $nb_signed = 0;
 foreach ($attendees as $a) {
@@ -29,6 +31,13 @@ render_head($ag['title']);
 <main class="main">
   <div class="ag-page" style="max-width:1100px;">
     <a href="/assemblees" class="ag-back">← Assemblées</a>
+
+    <?php if ($flash_error): ?>
+      <div class="alert alert-error" style="margin:12px 0;">
+        <span>⚠️</span>
+        <div><?= h($flash_error) ?></div>
+      </div>
+    <?php endif; ?>
 
     <div class="ag-detail-hero">
       <div>
