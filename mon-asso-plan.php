@@ -115,10 +115,22 @@ render_sidebar('mon-asso-plan');
   $is_grace = !empty($subscription_status['in_grace_period']);
   $is_overdue = !empty($subscription_status['is_overdue']);
   $is_pending = !empty($subscription_status['is_pending']);
+  // Essai gratuit (inscription publique) : fin d'essai lue sur l'association
+  $is_trial = ($st === 'trial');
+  $trial_end_fr = ''; $trial_days_left = 0;
+  if ($is_trial) {
+      try {
+          $__te = $pdo->prepare("SELECT trial_ends_at FROM organizations WHERE id = ?");
+          $__te->execute([(int)$org_id]);
+          $__ts = strtotime((string)$__te->fetchColumn());
+          if ($__ts) { $trial_end_fr = date('d/m/Y', $__ts); $trial_days_left = max(0, (int)ceil(($__ts - time()) / 86400)); }
+      } catch (Throwable $e) {}
+  }
   $bg_color = $is_active ? '#D1FAE5' : ($is_grace || $is_pending ? '#FEF3C7' : ($is_overdue ? '#FEE2E2' : '#F1F5F9'));
   $border_color = $is_active ? '#A7F3D0' : ($is_grace || $is_pending ? '#FCD34D' : ($is_overdue ? '#FECACA' : '#E2E8F0'));
   $accent_color = $is_active ? '#047857' : ($is_grace || $is_pending ? '#92400E' : ($is_overdue ? '#991B1B' : '#475569'));
-  $emoji = $is_active ? '✅' : ($is_grace || $is_pending ? '⏳' : ($is_overdue ? '⚠️' : '📋'));
+  $emoji = $is_active ? '✅' : ($is_grace || $is_pending ? '⏳' : ($is_overdue ? '⚠️' : ($is_trial ? '🎁' : '📋')));
+  if ($is_trial) { $bg_color = '#ECFDF5'; $border_color = '#A7F3D0'; $accent_color = '#047857'; }
   ?>
 
   <div style="background:<?= $bg_color ?>;border:1px solid <?= $border_color ?>;border-radius:14px;padding:24px 28px;margin-bottom:24px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
@@ -140,6 +152,8 @@ render_sidebar('mon-asso-plan');
           ⏳ Période de grâce · Régularisez sous <?= (int)($subscription_status['days_remaining'] ?? 0) ?> jours
         <?php elseif ($is_overdue): ?>
           ⚠️ Paiement en retard · Régularisez pour conserver vos accès
+        <?php elseif ($is_trial): ?>
+          🎁 Essai gratuit<?= $trial_end_fr !== '' ? ' jusqu’au ' . $trial_end_fr . ' · ' . $trial_days_left . ' jour' . ($trial_days_left > 1 ? 's' : '') . ' restant' . ($trial_days_left > 1 ? 's' : '') : '' ?> · toutes les fonctionnalités
         <?php else: ?>
           📋 Plan gratuit
         <?php endif; ?>
@@ -149,7 +163,7 @@ render_sidebar('mon-asso-plan');
       <?php if ($is_grace || $is_pending || $is_overdue): ?>
         <a href="<?= htmlspecialchars($regularize_url) ?>" style="display:inline-flex;align-items:center;gap:7px;background:#EA580C;color:white;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('credit-card',14) ?>Régulariser</a>
       <?php endif; ?>
-      <?php if ($st === 'none' || $st === 'cancelled'): ?>
+      <?php if ($st === 'none' || $st === 'cancelled' || $is_trial): ?>
         <a href="/mon-asso-paiement?plan=assokit" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(180deg,#059669 0%,#047857 100%);color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('star-fill',14) ?>Passer à Assokit</a>
       <?php endif; ?>
     </div>

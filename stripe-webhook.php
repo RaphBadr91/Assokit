@@ -282,16 +282,36 @@ function ak_handle_subscription_event(PDO $pdo, array $sub, string $event_type):
             VALUES
                 (:org, :plan, :sid, :pid, 'stripe', :st, :cpe, :cape, NOW())
         ");
-        $ins->execute([
-            ':org' => $org_id,
-            ':plan' => $plan_id,
-            ':sid' => $stripe_sub_id,
-            ':pid' => $stripe_price_id,
-            ':st' => $local_status,
-            ':cpe' => $current_period_end,
-            ':cape' => $cancel_at_period_end ? 1 : 0,
-        ]);
+        try {
+            $ins->execute([
+                ':org' => $org_id,
+                ':plan' => $plan_id,
+                ':sid' => $stripe_sub_id,
+                ':pid' => $stripe_price_id,
+                ':st' => $local_status,
+                ':cpe' => $current_period_end,
+                ':cape' => $cancel_at_period_end ? 1 : 0,
+            ]);
+        } catch (PDOException $e) {
+            // Un seul abonnement par association (index unique) : la ligne d'essai existe déjà,
+            // on la transforme en abonnement payant au lieu de perdre le paiement.
+            if ((string)$e->getCode() !== '23000') throw $e;
+            $upd = $pdo->prepare("
+                UPDATE asso_subscriptions
+                SET plan_id = COALESCE(:plan, plan_id), stripe_subscription_id = :sid, stripe_price_id = :pid,
+                    payment_mode = 'stripe', status = :st, current_period_end = :cpe, cancel_at_period_end = :cape, updated_at = NOW()
+                WHERE org_id = :org
+                ORDER BY id DESC LIMIT 1
+            ");
+            $upd->execute([
+                ':plan' => $plan_id, ':sid' => $stripe_sub_id, ':pid' => $stripe_price_id, ':st' => $local_status,
+                ':cpe' => $current_period_end, ':cape' => $cancel_at_period_end ? 1 : 0, ':org' => $org_id,
+            ]);
+        }
     }
+
+    // Paiement actif : l'essai gratuit est terminé (sinon le cron d'essai suspendrait un client payant)
+    if ($local_status === 'active') ak_end_trial_after_payment($pdo, (int)$org_id, (string)$stripe_sub_id);
 
     // Gestion add-on domaine (si présent dans items)
     if (!empty($sub['items']['data'])) {
@@ -346,7 +366,35 @@ function ak_handle_invoice_paid(PDO $pdo, array $invoice): void {
             WHERE stripe_subscription_id = :sid AND status IN ('pending_payment', 'overdue')
         ");
         $upd->execute([':sid' => $sub_id]);
+        try {
+            $o = $pdo->prepare("SELECT org_id FROM asso_subscriptions WHERE stripe_subscription_id = :sid LIMIT 1");
+            $o->execute([':sid' => $sub_id]);
+            $paid_org = (int)$o->fetchColumn();
+            if ($paid_org > 0) ak_end_trial_after_payment($pdo, $paid_org, (string)$sub_id);
+        } catch (Throwable $e) {
+            error_log('[stripe-webhook] fin essai (invoice.paid): ' . get_class($e));
+        }
     }
+}
+
+/**
+ * Fin de l'essai gratuit quand l'association paie : association et abonnement
+ * « historique » repassent actifs, la ligne d'essai est close. Jamais bloquant.
+ */
+function ak_end_trial_after_payment(PDO $pdo, int $org_id, string $paid_stripe_sub_id): void {
+    if ($org_id <= 0) return;
+    try {
+        $pdo->prepare("UPDATE organizations SET status = 'active', trial_ends_at = NULL
+                       WHERE id = ? AND trial_ends_at IS NOT NULL AND status IN ('trial', 'suspended')")->execute([$org_id]);
+    } catch (Throwable $e) { error_log('[stripe-webhook] fin essai org: ' . get_class($e)); }
+    try {
+        $pdo->prepare("UPDATE subscriptions SET status = 'active' WHERE org_id = ? AND status IN ('trial', 'suspended')")->execute([$org_id]);
+    } catch (Throwable $e) { error_log('[stripe-webhook] fin essai subscriptions: ' . get_class($e)); }
+    try {
+        $pdo->prepare("UPDATE asso_subscriptions SET status = 'cancelled'
+                       WHERE org_id = ? AND status = 'trial' AND (stripe_subscription_id IS NULL OR stripe_subscription_id <> ?)")
+            ->execute([$org_id, $paid_stripe_sub_id]);
+    } catch (Throwable $e) { error_log('[stripe-webhook] fin essai ligne d\'essai: ' . get_class($e)); }
 }
 
 /**

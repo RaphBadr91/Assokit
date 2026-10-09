@@ -1,6 +1,6 @@
 <?php
 /**
- * AssoKit — CRON Verification fin d'essai 14j
+ * AssoKit — CRON Verification fin d'essai gratuit (AK_TRIAL_DAYS, 15 j)
  * À LANCER TOUTES LES 10 MINUTES (et non plus 1x par jour). Les rappels
  * sont notés dans cron_envois : les relancer souvent n'en envoie pas
  * davantage, chaque échéance ne part qu'une fois.
@@ -11,6 +11,11 @@
  */
 require_once __DIR__ . '/config.php';
 @require_once __DIR__ . '/resend-helper.php';
+// ak_asso_send_resend / ak_email_template_wrap : sans ces deux fonctions, aucun
+// rappel ni e-mail de fin d'essai ne partait (function_exists() renvoyait false).
+@require_once __DIR__ . '/projet-email-helpers.php';
+@require_once __DIR__ . '/asso-invoice-email-helpers.php';
+require_once __DIR__ . '/trial-helpers.php';
 
 $is_cli = (PHP_SAPI === 'cli');
 $has_key = is_string($_GET['key'] ?? null) && defined('CRON_SECRET') && (string)CRON_SECRET !== '' && hash_equals((string)CRON_SECRET, $_GET['key']);
@@ -40,7 +45,9 @@ foreach ($expired as $row) {
     if (!ak_lot_encore()) break;
     ak_lot_fait();
     try {
-        $pdo->prepare("UPDATE subscriptions SET status='suspended', updated_at=NOW() WHERE id=?")
+        $pdo->prepare("UPDATE subscriptions SET status='suspended'"
+                      . (isset(ak_db_columns($pdo, 'subscriptions')['updated_at']) ? ", updated_at=NOW()" : "")
+                      . " WHERE id=?")
             ->execute([$row['sub_id']]);
         $updated++;
         echo "  ✓ Org #" . $row['org_id'] . " " . $row['org_name'] . " → suspended\n";
@@ -53,9 +60,10 @@ foreach ($expired as $row) {
                 try {
                     $html = ak_email_template_wrap(
                         "Bonjour " . htmlspecialchars($a['first_name']) . ",",
-                        "Votre essai gratuit de 14 jours sur AssoKit a pris fin aujourd'hui."
+                        "Votre essai gratuit de " . (int)AK_TRIAL_DAYS . " jours sur AssoKit a pris fin aujourd'hui."
+                        . "<br><br>Vos données sont conservées."
                         . "<br><br>Pour continuer avec <strong>" . htmlspecialchars($row['org_name']) . "</strong>, choisissez une formule sur la page Abonnement.",
-                        "https://assokit.fr/abonnement", "Voir mon abonnement", "AssoKit"
+                        "https://assokit.fr/mon-asso-plan", "Choisir ma formule", "AssoKit"
                     );
                     ak_asso_send_resend($a['email'], "🎁 Votre essai AssoKit a pris fin", $html, null, null, 'AssoKit');
                 } catch (Throwable $e) { error_log('[cron-trial-check] email expire: ' . $e->getMessage()); }
@@ -132,7 +140,7 @@ foreach ([7, 3, 1, 0] as $days_left) {
                     $html = ak_email_template_wrap(
                         "Bonjour " . htmlspecialchars($a['first_name']) . ",",
                         $corps . "<strong>" . htmlspecialchars($row['org_name']) . "</strong>.",
-                        "https://assokit.fr/abonnement", "Choisir une formule", "AssoKit"
+                        "https://assokit.fr/mon-asso-plan", "Choisir une formule", "AssoKit"
                     );
                     ak_asso_send_resend($a['email'], $title, $html, null, null, 'AssoKit');
                     $parti = true;

@@ -1,18 +1,28 @@
 <?php
 /**
  * ============================================================
- * ASSOKIT — Signup public (depuis la landing)
+ * ASSOKIT — Inscription publique : essai gratuit automatique
  * ============================================================
  * URL : /signup ou /signup?plan=association
  *
- * Creation asso + admin en 1 etape, sans carte bancaire :
- *   1. Nom asso + email admin + mot de passe + nom/prenom
- *   2. Creation org + user admin
- *   3. Login auto + redirection dashboard avec guide onboarding
+ * En 1 étape, sans carte bancaire :
+ *   1. Nom de l'asso + prénom/nom + e-mail + mot de passe
+ *   2. Création de l'association et de son admin, essai gratuit de
+ *      AK_TRIAL_DAYS jours (15) ACTIVÉ IMMÉDIATEMENT, sans validation
+ *   3. Connexion automatique, redirection vers le tableau de bord
+ *   4. Le fondateur est prévenu de CHAQUE demande (e-mail + cloche),
+ *      y compris si la création échoue : le prospect est alors
+ *      enregistré et reçoit un accusé de réception, rien n'est perdu.
+ *
+ * Les écritures passent par ak_db_insert()/ak_db_update() (trial-helpers.php),
+ * qui n'écrivent que les colonnes existant réellement en base : c'est une
+ * colonne inexistante (organizations.plan_type) qui faisait échouer toutes
+ * les inscriptions avec « Erreur technique lors de la création ».
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
 @require_once __DIR__ . '/password-token-helper.php';
+require_once __DIR__ . '/trial-helpers.php';
 
 // Si deja connecte, rediriger
 if (!empty($_SESSION['user_id'])) {
@@ -20,204 +30,255 @@ if (!empty($_SESSION['user_id'])) {
     exit;
 }
 
-$error = null;
+const AK_SIGNUP_PLANS = ['essentiel', 'association', 'organisation'];
+
+$error  = null;   // erreur de saisie : le formulaire reste affiché
+$notice = null;   // demande enregistrée mais non ouverte automatiquement : on remercie
 $form = [
-    'org_name' => '',
+    'org_name'   => '',
     'first_name' => '',
-    'last_name' => '',
-    'email' => '',
-    'plan' => $_GET['plan'] ?? 'essentiel',
+    'last_name'  => '',
+    'email'      => '',
+    'plan'       => in_array($_GET['plan'] ?? '', AK_SIGNUP_PLANS, true) ? $_GET['plan'] : 'essentiel',
+    'accept_cgu' => false,
 ];
 
-if (!in_array($form['plan'], ['essentiel', 'association', 'organisation'], true)) {
-    $form['plan'] = 'essentiel';
-}
-
-// Generate CSRF token si absent
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
+/** Demande enregistrée sans ouverture automatique : alerte fondateur + accusé au prospect. */
+function ak_signup_fallback(PDO $pdo, array $lead, ?int $signup_id, string $reason): string
+{
+    if ($signup_id) {
+        try { ak_db_update($pdo, 'public_signups', $signup_id, ['status' => ak_db_pick($pdo, 'public_signups', 'status', ['blocked']) ?? 'blocked']); } catch (Throwable $e) {}
+        try { ak_db_update($pdo, 'public_signups', $signup_id, ['error_message' => mb_substr($reason, 0, 500)]); } catch (Throwable $e) {}
+    }
+    try {
+        @require_once __DIR__ . '/signup-email-helpers.php';
+        if (function_exists('ak_signup_alert_founder')) ak_signup_alert_founder($pdo, $lead, 'failed', null, $reason);
+        if (function_exists('ak_signup_ack_prospect')) ak_signup_ack_prospect($lead['email'], $lead['first_name'], $lead['org_name']);
+    } catch (Throwable $e) {
+        error_log('[signup] fallback: ' . get_class($e));
+    }
+    return 'Merci ' . $lead['first_name'] . ' ! Votre demande d’essai pour « ' . $lead['org_name'] . ' » est bien enregistrée. '
+         . 'Un incident nous empêche de l’ouvrir automatiquement : notre équipe l’active pour vous et vous écrit à '
+         . $lead['email'] . ' sous 24 h ouvrées. Inutile de recommencer.';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_once __DIR__ . '/rate-limit-helper.php';
-    // CSRF check (fail-closed : si la fonction n'est pas chargee, on rejette)
-    $csrf_ok = false;
-    if (function_exists('check_csrf')) {
-        $csrf_ok = check_csrf($_POST['csrf_token'] ?? '');
-    }
+    $csrf_ok = function_exists('check_csrf') && check_csrf($_POST['csrf_token'] ?? '');
+
+    // Anti-robots : champ invisible rempli, ou formulaire envoyé en moins de 2 secondes.
+    // On affiche un faux succès, sans rien écrire ni alerter personne.
+    $form_at  = (int)($_SESSION['signup_form_at'] ?? 0);
+    $is_robot = trim((string)($_POST['website'] ?? '')) !== '' || ($form_at > 0 && time() - $form_at < 2);
 
     if (!$csrf_ok) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         $error = 'Session expirée. Veuillez réessayer.';
+    } elseif ($is_robot) {
+        $notice = 'Merci ! Votre demande est bien enregistrée.';
     } elseif (!ak_rate_limit('signup', 5, 900)) {
         $error = 'Trop de tentatives de création de compte. Merci de patienter quelques minutes.';
     } else {
-        $form['org_name']   = trim($_POST['org_name'] ?? '');
-        $form['first_name'] = trim($_POST['first_name'] ?? '');
-        $form['last_name']  = trim($_POST['last_name'] ?? '');
-        $form['email']      = trim($_POST['email'] ?? '');
-        $form['plan']       = $_POST['plan'] ?? 'essentiel';
-        $password           = $_POST['password'] ?? '';
-        $password_confirm   = $_POST['password_confirm'] ?? '';
-        $accept_cgu         = !empty($_POST['accept_cgu']);
+        $form['org_name']   = trim((string)($_POST['org_name'] ?? ''));
+        $form['first_name'] = trim((string)($_POST['first_name'] ?? ''));
+        $form['last_name']  = trim((string)($_POST['last_name'] ?? ''));
+        $form['email']      = strtolower(trim((string)($_POST['email'] ?? '')));
+        $form['plan']       = in_array($_POST['plan'] ?? '', AK_SIGNUP_PLANS, true) ? $_POST['plan'] : 'essentiel';
+        $form['accept_cgu'] = !empty($_POST['accept_cgu']);
+        $password           = (string)($_POST['password'] ?? '');
+        $password_confirm   = (string)($_POST['password_confirm'] ?? '');
+        $no_link            = '~https?://|www\.|[<>]~i';
 
-        // Validation
         if ($form['org_name'] === '' || mb_strlen($form['org_name']) < 2) {
             $error = 'Le nom de l\'association est requis (2 caractères minimum).';
         } elseif (mb_strlen($form['org_name']) > 200) {
             $error = 'Le nom de l\'association est trop long.';
         } elseif ($form['first_name'] === '' || $form['last_name'] === '') {
             $error = 'Veuillez renseigner votre prénom et votre nom.';
-        } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
+        } elseif (mb_strlen($form['first_name']) > 100 || mb_strlen($form['last_name']) > 100) {
+            $error = 'Prénom ou nom trop long.';
+        } elseif (preg_match($no_link, $form['org_name'] . ' ' . $form['first_name'] . ' ' . $form['last_name'])) {
+            $error = 'Les liens et les caractères < > ne sont pas acceptés dans les noms.';
+        } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL) || mb_strlen($form['email']) > 190) {
             $error = 'Adresse email invalide.';
         } elseif (mb_strlen($password) < 8) {
             $error = 'Le mot de passe doit faire au moins 8 caractères.';
+        } elseif (mb_strlen($password) > 200) {
+            $error = 'Le mot de passe est trop long.';
         } elseif ($password !== $password_confirm) {
             $error = 'Les mots de passe ne correspondent pas.';
-        } elseif (!$accept_cgu) {
+        } elseif (!$form['accept_cgu']) {
             $error = 'Veuillez accepter les CGU et la politique de confidentialité.';
-        } else {
-            // Anti-spam simple : max 5 inscriptions / 1h / IP
-            $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        }
+
+        $ip   = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+        $lead = ['org_name' => $form['org_name'], 'first_name' => $form['first_name'], 'last_name' => $form['last_name'],
+                 'email' => $form['email'], 'plan' => $form['plan'], 'ip' => $ip, 'signup_id' => null, 'trial_end' => null];
+        $has_status = isset(ak_db_columns($pdo, 'public_signups')['status']);
+
+        // Anti-abus : 5 essais OUVERTS par heure et par adresse IP (une panne ne bloque plus le prospect)
+        if (!$error) {
             try {
-                $stmt = $pdo->prepare("
-                    SELECT COUNT(*) FROM public_signups
-                    WHERE ip_address = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
-                ");
-                $stmt->execute([$ip]);
-                $recent = (int) $stmt->fetchColumn();
-                if ($recent >= 5) {
-                    $error = 'Trop de tentatives depuis cette adresse. Merci de réessayer dans une heure.';
+                $st = $pdo->prepare("SELECT COUNT(*) FROM public_signups WHERE ip_address = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"
+                                    . ($has_status ? " AND status = 'completed'" : ""));
+                $st->execute([$ip]);
+                if ((int)$st->fetchColumn() >= 5) $error = 'Trop d’inscriptions depuis cette adresse. Merci de réessayer dans une heure.';
+            } catch (Throwable $e) {
+                error_log('[signup] limite IP: ' . get_class($e));
+            }
+        }
+
+        // Compte déjà existant
+        $db_trouble = null;
+        if (!$error) {
+            try {
+                $st = $pdo->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
+                $st->execute([$form['email']]);
+                if ($st->fetchColumn()) {
+                    $error = 'Un compte existe déjà avec cette adresse email. Connectez-vous, ou utilisez « Mot de passe oublié ».';
+                }
+            } catch (Throwable $e) {
+                $db_trouble = get_class($e) . ': ' . $e->getMessage();
+            }
+        }
+
+        if (!$error) {
+            // Trace de la demande, AVANT toute création : rien n'est jamais perdu
+            $signup_id = null;
+            try {
+                $signup_id = ak_db_insert($pdo, 'public_signups', [
+                    'org_name' => mb_substr($form['org_name'], 0, 200), 'admin_email' => $form['email'],
+                    'admin_first_name' => mb_substr($form['first_name'], 0, 100), 'admin_last_name' => mb_substr($form['last_name'], 0, 100),
+                    'plan_choice' => $form['plan'], 'ip_address' => $ip,
+                    'user_agent' => mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
+                    'referer' => mb_substr($_SERVER['HTTP_REFERER'] ?? '', 0, 500),
+                    'status' => 'pending',
+                ], ['created_at' => 'NOW()']) ?: null;
+            } catch (Throwable $e) {
+                error_log('[signup] public_signups: ' . get_class($e) . ' ' . $e->getCode());
+            }
+            $lead['signup_id'] = $signup_id;
+
+            // Disjoncteur anti-abus : plus de 30 essais ouverts en 1 h → les demandes sont
+            // transmises au fondateur au lieu d'être ouvertes automatiquement.
+            $breaker = false;
+            try {
+                if ($has_status) {
+                    $breaker = (int)$pdo->query("SELECT COUNT(*) FROM public_signups WHERE status = 'completed' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)")->fetchColumn() >= 30;
                 }
             } catch (Throwable $e) {}
 
-            if (!$error) {
-                // Verifier doublon email
+            if ($db_trouble !== null) {
+                $notice = ak_signup_fallback($pdo, $lead, $signup_id, 'Contrôle du doublon impossible : ' . $db_trouble);
+            } elseif ($breaker) {
+                $notice = ak_signup_fallback($pdo, $lead, $signup_id, 'Plus de 30 essais ouverts en 1 h : ouverture automatique suspendue (anti-abus). Vérifiez puis créez l’espace.');
+            } else {
+                $warnings = [];
+                $org_id = 0; $user_id = 0;
                 try {
-                    $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
-                    $stmt->execute([$form['email']]);
-                    if ($stmt->fetchColumn()) {
-                        $error = 'Un compte existe déjà avec cette adresse email. Essayez de vous connecter.';
-                    }
-                } catch (Throwable $e) {
-                    $error = 'Erreur technique. Réessayez dans un instant.';
-                }
-            }
+                    $trial_end  = (string)$pdo->query("SELECT DATE_ADD(NOW(), INTERVAL " . (int)AK_TRIAL_DAYS . " DAY)")->fetchColumn();
+                    $lead['trial_end'] = $trial_end;
+                    $trial_plan = ak_trial_plan($pdo);
+                    if (!$trial_plan) $warnings[] = 'Aucun plan d’essai trouvé (asso_plans) : l’association a le plan par défaut.';
+                    $slug = ak_signup_slug($pdo, $form['org_name']);
 
-            if (!$error) {
-                // Log le signup en pending
-                $signup_id = null;
-                try {
-                    $stmt = $pdo->prepare("
-                        INSERT INTO public_signups
-                            (org_name, admin_email, admin_first_name, admin_last_name, plan_choice,
-                             ip_address, user_agent, referer, status, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
-                    ");
-                    $stmt->execute([
-                        $form['org_name'], $form['email'], $form['first_name'], $form['last_name'],
-                        $form['plan'], $ip,
-                        mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
-                        mb_substr($_SERVER['HTTP_REFERER'] ?? '', 0, 500),
-                    ]);
-                    $signup_id = (int) $pdo->lastInsertId();
-                } catch (Throwable $e) {}
-
-                // Creer l'asso et l'admin en transaction
-                try {
                     $pdo->beginTransaction();
 
-                    // 1. Creer organization (modele DEMO : entre dans la file de validation fondateur)
-                    $stmt = $pdo->prepare("
-                        INSERT INTO organizations (name, plan_type, validation_status, trial_ends_at, created_at)
-                        VALUES (?, ?, 'pending_founder', DATE_ADD(NOW(), INTERVAL 14 DAY), NOW())
-                    ");
-                    $stmt->execute([$form['org_name'], $form['plan']]);
-                    $org_id = (int) $pdo->lastInsertId();
-
-                    // 2. Creer user admin
-                    $password_hash = password_hash($password, PASSWORD_BCRYPT);
-                    $colors = ['blue','purple','amber','pink','teal'];
-                    $avatar_color = $colors[array_rand($colors)];
-
-                    $stmt = $pdo->prepare("
-                        INSERT INTO users
-                            (org_id, role, email, password_hash, first_name, last_name,
-                             avatar_color, adhesion_date, must_change_password, is_active,
-                             can_create_projects, can_manage_members, can_manage_finances,
-                             can_access_marketing, can_manage_events, can_moderate_messages,
-                             created_at)
-                        VALUES (?, 'admin', ?, ?, ?, ?, ?, CURDATE(), 0, 1, 1, 1, 1, 1, 1, 1, NOW())
-                    ");
-                    $stmt->execute([
-                        $org_id, $form['email'], $password_hash,
-                        $form['first_name'], $form['last_name'], $avatar_color,
-                    ]);
-                    $user_id = (int) $pdo->lastInsertId();
-
-                    // 3. Creer dossier par defaut
+                    // 1. Association — la même forme d'INSERT que les créations fondateur, éprouvées en prod
                     try {
-                        $stmt = $pdo->prepare("
-                            INSERT INTO folders (org_id, name, color_theme, created_at)
-                            VALUES (?, ?, 'blue', NOW())
-                        ");
-                        $stmt->execute([$org_id, 'Projets généraux']);
-                    } catch (Throwable $e) {}
-                    // 3b. [trial-14j] Subscription en essai gratuit 14j (plan Pro par defaut)
-                    try {
-                        $stmt = $pdo->prepare("
-                            INSERT INTO subscriptions (org_id, plan, status, billing_cycle, price_ht, current_period_start, current_period_end, created_at)
-                            VALUES (?, 'pro', 'trial', 'monthly', 49.99, NOW(), DATE_ADD(NOW(), INTERVAL 14 DAY), NOW())
-                        ");
-                        $stmt->execute([$org_id]);
-                    } catch (Throwable $e) {
-                        error_log('[signup] Subscription trial: ' . $e->getMessage());
+                        $org_id = ak_db_insert($pdo, 'organizations',
+                            ['name' => mb_substr($form['org_name'], 0, 200), 'slug' => $slug, 'billing_email' => $form['email']],
+                            ['created_at' => 'NOW()']);
+                    } catch (PDOException $e) {
+                        if ((string)$e->getCode() !== '23000') throw $e;   // slug pris entre-temps : un autre
+                        $slug = substr($slug, 0, 50) . '-' . bin2hex(random_bytes(2));
+                        $org_id = ak_db_insert($pdo, 'organizations',
+                            ['name' => mb_substr($form['org_name'], 0, 200), 'slug' => $slug, 'billing_email' => $form['email']],
+                            ['created_at' => 'NOW()']);
                     }
+                    if ($org_id <= 0) throw new RuntimeException('organizations: id introuvable après INSERT');
 
-                    // 3c. [demo] Plan DEMO bride (pro-essai, is_trial=1) dans le systeme moderne.
-                    //     Active le gating moderne + la limite compta analytique 1x (ak_trial_gate).
-                    try {
-                        $demo_plan_id = (int) $pdo->query("SELECT id FROM asso_plans WHERE slug = 'pro-essai' LIMIT 1")->fetchColumn();
-                        if ($demo_plan_id > 0) {
-                            $stmt = $pdo->prepare("
-                                INSERT INTO asso_subscriptions (org_id, plan_id, status, started_at)
-                                VALUES (?, ?, 'active', NOW())
-                            ");
-                            $stmt->execute([$org_id, $demo_plan_id]);
-                        }
-                    } catch (Throwable $e) {
-                        error_log('[signup] asso_subscriptions demo: ' . $e->getMessage());
-                    }
+                    // Essai actif tout de suite, sans validation manuelle
+                    $upd = ['trial_ends_at' => $trial_end];
+                    if ($trial_plan && ak_db_accepts($pdo, 'organizations', 'plan', $trial_plan['slug'])) $upd['plan'] = $trial_plan['slug'];
+                    if ($v = ak_db_pick($pdo, 'organizations', 'status', ['trial', 'active'])) $upd['status'] = $v;
+                    if ($v = ak_db_pick($pdo, 'organizations', 'validation_status', ['validated', 'approved'])) $upd['validation_status'] = $v;
+                    ak_db_update($pdo, 'organizations', $org_id, $upd, ['validated_at' => 'NOW()']);
 
-                    // 4. Maj le signup log
-                    if ($signup_id) {
-                        $stmt = $pdo->prepare("
-                            UPDATE public_signups
-                            SET org_id = ?, user_id = ?, status = 'completed', completed_at = NOW()
-                            WHERE id = ?
-                        ");
-                        $stmt->execute([$org_id, $user_id, $signup_id]);
-                    }
+                    // 2. Admin de l'association
+                    $colors = ['#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6'];
+                    $user_id = ak_db_insert($pdo, 'users', [
+                        'org_id' => $org_id, 'role' => 'admin', 'email' => $form['email'],
+                        'password_hash' => password_hash($password, PASSWORD_BCRYPT),
+                        'first_name' => mb_substr($form['first_name'], 0, 100), 'last_name' => mb_substr($form['last_name'], 0, 100),
+                        'avatar_color' => $colors[array_rand($colors)],
+                        'must_change_password' => 0, 'is_active' => 1,
+                        'can_create_projects' => 1, 'can_create_folders' => 1, 'can_manage_members' => 1, 'can_manage_finances' => 1,
+                        'can_access_marketing' => 1, 'can_manage_events' => 1, 'can_moderate_messages' => 1,
+                    ], ['adhesion_date' => 'CURDATE()', 'created_at' => 'NOW()']);
+                    if ($user_id <= 0) throw new RuntimeException('users: id introuvable après INSERT');
+                    ak_db_update($pdo, 'organizations', $org_id, ['created_by_user_id' => $user_id]);
 
                     $pdo->commit();
+                } catch (Throwable $e) {
+                    try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (Throwable $e0) {}
+                    error_log('[signup] création: ' . get_class($e) . ': ' . $e->getMessage());
+                    $notice = ak_signup_fallback($pdo, $lead, $signup_id, get_class($e) . ': ' . $e->getMessage());
+                    $org_id = 0;
+                }
 
-                    // 4b. Emails de conversion (hors transaction : un echec n'empeche jamais l'inscription)
+                if ($org_id > 0 && $user_id > 0) {
+                    // 3. Éléments de l'essai, hors transaction : un échec ici ne coûte jamais le compte.
                     try {
-                        @require_once __DIR__ . '/signup-email-helpers.php';
-                        $verify_url = function_exists('ak_email_verify_url')
-                            ? ak_email_verify_url($user_id)
-                            : 'https://assokit.fr/connexion';
-                        if (function_exists('send_demo_welcome_email')) {
-                            send_demo_welcome_email($form['email'], $form['first_name'], $form['org_name'], $verify_url);
-                        }
-                        if (function_exists('send_demo_founder_notification')) {
-                            send_demo_founder_notification($form['org_name'], trim($form['first_name'] . ' ' . $form['last_name']), $form['email']);
+                        ak_db_insert($pdo, 'folders', ['org_id' => $org_id, 'name' => 'Projets généraux', 'color_theme' => 'blue',
+                            'icon' => 'folder', 'created_by' => $user_id], ['created_at' => 'NOW()']);
+                    } catch (Throwable $e) {
+                        $warnings[] = 'Dossier « Projets généraux » non créé (' . get_class($e) . ').';
+                    }
+                    // Abonnement « historique » : bandeau d'essai + rappels J-7 / J-3 / J-1 / J-0
+                    try {
+                        $sub_status = ak_db_pick($pdo, 'subscriptions', 'status', ['trial']);
+                        if (!ak_db_columns($pdo, 'subscriptions')) {
+                            $warnings[] = 'Table subscriptions absente : pas de bandeau d’essai ni de rappels.';
+                        } elseif (!$sub_status) {
+                            $warnings[] = 'subscriptions.status n’accepte pas « trial » : pas de bandeau d’essai ni de rappels.';
+                        } else {
+                            ak_db_insert($pdo, 'subscriptions', [
+                                'org_id' => $org_id,
+                                'plan' => ak_db_pick($pdo, 'subscriptions', 'plan', ['pro', 'association', 'essentiel']) ?? 'pro',
+                                'status' => $sub_status, 'billing_cycle' => ak_db_pick($pdo, 'subscriptions', 'billing_cycle', ['monthly']) ?? 'monthly',
+                                'price_ht' => 49.99, 'tva_rate' => 20.00, 'current_period_end' => $trial_end,
+                            ], ['started_at' => 'NOW()', 'current_period_start' => 'NOW()', 'created_at' => 'NOW()']);
                         }
                     } catch (Throwable $e) {
-                        error_log('[signup emails] ' . $e->getMessage());
+                        $warnings[] = 'Abonnement d’essai (subscriptions) non créé : ' . get_class($e) . ' ' . mb_substr($e->getMessage(), 0, 160);
+                    }
+                    // Plan des fonctionnalités pendant l'essai
+                    if ($trial_plan) {
+                        try {
+                            ak_db_insert($pdo, 'asso_subscriptions', [
+                                'org_id' => $org_id, 'plan_id' => $trial_plan['id'],
+                                'status' => ak_db_pick($pdo, 'asso_subscriptions', 'status', ['trial', 'active']) ?? 'trial',
+                                'payment_mode' => ak_db_pick($pdo, 'asso_subscriptions', 'payment_mode', ['free_grant', 'manual']),
+                                'current_period_end' => $trial_end,
+                            ], ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
+                        } catch (Throwable $e) {
+                            $warnings[] = 'Plan d’essai (asso_subscriptions) non attribué : ' . get_class($e) . ' ' . mb_substr($e->getMessage(), 0, 160);
+                        }
+                    }
+                    if ($signup_id) {
+                        try {
+                            ak_db_update($pdo, 'public_signups', $signup_id, ['org_id' => $org_id, 'user_id' => $user_id, 'status' => 'completed'], ['completed_at' => 'NOW()']);
+                        } catch (Throwable $e) {
+                            error_log('[signup] public_signups completed: ' . get_class($e));
+                        }
                     }
 
-                    // 5. Login auto
+                    // 4. Connexion automatique (avant les e-mails : si l'envoi est lent, le prospect est déjà connecté)
                     session_regenerate_id(true);
                     $_SESSION['user_id'] = $user_id;
                     $_SESSION['org_id'] = $org_id;
@@ -227,35 +288,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['is_super_admin'] = 0;
                     $_SESSION['logged_at'] = time();
                     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-                    $_SESSION['signup_welcome'] = 1; // Trigger un message de bienvenue sur dashboard
-
+                    $_SESSION['signup_welcome'] = 1;
+                    unset($_SESSION['signup_form_at']);
                     session_write_close();
 
                     header('Location: /dashboard?welcome=1');
-                    exit;
+                    // La réponse part tout de suite ; les e-mails sont envoyés ensuite.
+                    ignore_user_abort(true);
+                    if (function_exists('litespeed_finish_request')) litespeed_finish_request();
+                    elseif (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
 
-                } catch (Throwable $e) {
-                    $pdo->rollBack();
-                    error_log('signup error: ' . $e->getMessage());
-                    if ($signup_id) {
-                        try {
-                            $stmt = $pdo->prepare("UPDATE public_signups SET status = 'blocked', error_message = ? WHERE id = ?");
-                            $stmt->execute([mb_substr($e->getMessage(), 0, 500), $signup_id]);
-                        } catch (Throwable $e2) {}
+                    // 5. E-mails : bienvenue au prospect, alerte au fondateur (jamais bloquants)
+                    try {
+                        @require_once __DIR__ . '/signup-email-helpers.php';
+                        $verify_url = function_exists('ak_email_verify_url') ? ak_email_verify_url($user_id) : 'https://assokit.fr/connexion';
+                        if (function_exists('send_demo_welcome_email')) {
+                            send_demo_welcome_email($form['email'], $form['first_name'], $form['org_name'], $verify_url, ak_trial_end_label($trial_end));
+                        }
+                        if (function_exists('ak_signup_alert_founder')) {
+                            ak_signup_alert_founder($pdo, $lead, $warnings ? 'incomplete' : 'ok', $org_id, null, $warnings);
+                        }
+                    } catch (Throwable $e) {
+                        error_log('[signup] e-mails: ' . get_class($e));
                     }
-                    $error = 'Erreur technique lors de la création. Merci de réessayer ou nous contacter.';
+                    exit;
                 }
             }
         }
     }
 }
+
+// Heure d'affichage du formulaire (anti-robots : un humain met plus de 2 secondes)
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || $error) $_SESSION['signup_form_at'] = time();
 ?><!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
-<title>Démarrer ma démo — Assokit</title>
+<title>Essai gratuit <?= (int)AK_TRIAL_DAYS ?> jours — Assokit</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%23059669'/%3E%3Ccircle cx='22' cy='22' r='4.5' fill='%23FFFFFF'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -368,23 +439,31 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
   <div class="card">
 
     <?php if ($form['plan'] === 'association'): ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Plan Association sélectionné · 49 €/mois</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Association · essai gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
     <?php elseif ($form['plan'] === 'organisation'): ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Plan Organisation · Sur mesure</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Organisation · essai gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
     <?php else: ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Plan Essentiel gratuit</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Essai gratuit <?= (int)AK_TRIAL_DAYS ?> jours · sans carte bancaire</span>
     <?php endif; ?>
 
-    <h1>Démarrez votre démo Assokit</h1>
-    <p class="sub">Accès démo immédiat, en 1 minute. Sans carte bancaire, sans engagement.</p>
+    <h1>Démarrez votre essai gratuit</h1>
+    <p class="sub"><?= (int)AK_TRIAL_DAYS ?> jours d’accès complet, activé immédiatement. Sans carte bancaire, sans engagement.</p>
 
+    <?php if ($notice): ?>
+      <div class="alert-ok" style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.55;margin-bottom:6px;">✅ <?= htmlspecialchars($notice) ?></div>
+    <?php else: ?>
     <?php if ($error): ?>
       <div class="alert-error">⚠️ <?= htmlspecialchars($error) ?></div>
     <?php endif; ?>
 
-    <form method="POST" autocomplete="off">
+    <form method="POST" autocomplete="off" id="signupForm">
       <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
       <input type="hidden" name="plan" value="<?= htmlspecialchars($form['plan']) ?>">
+      <!-- Champ piège anti-robots : invisible pour les humains -->
+      <div aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
+        <label for="website">Site web</label>
+        <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" value="">
+      </div>
 
       <div class="form-group">
         <label for="org_name">Nom de votre association *</label>
@@ -445,12 +524,18 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
       </script>
 
       <label class="cgu-row">
-        <input type="checkbox" name="accept_cgu" value="1" required>
+        <input type="checkbox" name="accept_cgu" value="1" required<?= !empty($form['accept_cgu']) ? ' checked' : '' ?>>
         <span>J'accepte les <a href="/cgu" target="_blank">conditions générales d'utilisation</a> et la <a href="/confidentialite" target="_blank">politique de confidentialité</a>.</span>
       </label>
 
-      <button type="submit" class="btn-submit">Démarrer ma démo →</button>
+      <button type="submit" class="btn-submit" id="signupBtn">Démarrer mon essai gratuit →</button>
     </form>
+    <script>
+      // Un seul envoi : un double clic créait deux demandes
+      (function(){ var f=document.getElementById('signupForm'), b=document.getElementById('signupBtn');
+        if(f&&b) f.addEventListener('submit', function(){ setTimeout(function(){ b.disabled=true; b.textContent='Création de votre espace…'; }, 0); }); })();
+    </script>
+    <?php endif; ?>
 
     <div class="trust-line">
       <span>🇫🇷 Hébergé en France</span>

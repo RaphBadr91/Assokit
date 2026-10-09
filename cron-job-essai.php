@@ -46,6 +46,36 @@ $stats = [
     'details'   => ['suspended' => 0, 'errors' => []],
 ];
 
+require_once __DIR__ . '/trial-helpers.php';
+
+/**
+ * Fin d'essai : la ligne d'ESSAI (et elle seule) passe au plan gratuit « demarrage ».
+ * Les données sont conservées ; le bandeau propose de choisir une formule.
+ * Une association qui a un abonnement actif hors essai (payé) n'est jamais touchée.
+ */
+function ak_essai_vers_gratuit(PDO $pdo, int $org_id): void {
+    try {
+        $paye = $pdo->prepare("SELECT COUNT(*) FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
+                               WHERE s.org_id = ? AND s.status = 'active' AND COALESCE(p.is_trial, 0) = 0 AND COALESCE(p.price_cents, 0) > 0");
+        $paye->execute([$org_id]);
+        if ((int) $paye->fetchColumn() > 0) return;
+        $free = (int) $pdo->query("SELECT id FROM asso_plans WHERE slug = 'demarrage' LIMIT 1")->fetchColumn();
+        if ($free <= 0) return;
+        $cols = ak_db_columns($pdo, 'asso_subscriptions');
+        // MySQL évalue SET de gauche à droite : previous_plan_id doit lire l'ancien plan_id
+        $sets = [];
+        if (isset($cols['previous_plan_id'])) $sets[] = 'previous_plan_id = plan_id';
+        $sets[] = 'plan_id = ?';
+        $sets[] = "status = 'active'";
+        if (isset($cols['downgraded_at']))    $sets[] = 'downgraded_at = NOW()';
+        if (isset($cols['updated_at']))       $sets[] = 'updated_at = NOW()';
+        $args = [$free, $org_id];
+        $pdo->prepare("UPDATE asso_subscriptions SET " . implode(', ', $sets) . " WHERE org_id = ? AND status = 'trial'")->execute($args);
+    } catch (Throwable $e) {
+        error_log('[CRON essai] rétrogradation org #' . $org_id . ' : ' . get_class($e));
+    }
+}
+
 // ----- Récupération des essais actifs
 $sql = "
     SELECT
@@ -58,11 +88,11 @@ $sql = "
     WHERE o.status = 'trial'
       AND o.trial_ends_at IS NOT NULL
       AND o.deleted_at IS NULL
-      AND o.slug NOT LIKE 'demo-%'
+      AND (o.slug IS NULL OR o.slug NOT LIKE 'demo-%')
       AND EXISTS (
             SELECT 1 FROM asso_subscriptions s
             JOIN asso_plans p ON p.id = s.plan_id
-            WHERE s.org_id = o.id AND p.is_trial = 1
+            WHERE s.org_id = o.id AND (p.is_trial = 1 OR s.status = 'trial')
           )
     ORDER BY o.trial_ends_at ASC
     LIMIT 500
@@ -79,6 +109,7 @@ foreach ($orgs as $org) {
         if ($days < 0) {
             $pdo->prepare("UPDATE organizations SET status = 'suspended' WHERE id = :id AND status = 'trial'")
                 ->execute([':id' => (int) $org['org_id']]);
+            ak_essai_vers_gratuit($pdo, (int) $org['org_id']);
             $stats['details']['suspended']++;
             $stats['succeeded']++;
             continue;

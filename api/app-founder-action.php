@@ -25,8 +25,9 @@ try {
     if (!$org) app_fail(404, 'not_found');
 
     if ($action === 'validate') {
-        try { $pdo->prepare("UPDATE organizations SET validation_status='validated', status='active' WHERE id=?")->execute([$target]); }
-        catch (Throwable $e) { $pdo->prepare("UPDATE organizations SET status='active' WHERE id=?")->execute([$target]); }
+        // Une association en essai gratuit reste en essai : la passer « active » rendait l'essai illimité.
+        try { $pdo->prepare("UPDATE organizations SET validation_status='validated', status = IF(status = 'trial', 'trial', 'active') WHERE id=?")->execute([$target]); }
+        catch (Throwable $e) { $pdo->prepare("UPDATE organizations SET status = IF(status = 'trial', 'trial', 'active') WHERE id=?")->execute([$target]); }
     } elseif ($action === 'reject') {
         try { $pdo->prepare("UPDATE organizations SET validation_status='rejected' WHERE id=?")->execute([$target]); }
         catch (Throwable $e) {}

@@ -189,14 +189,17 @@ function render_trial_banner() {
         ");
         $stmt->execute([$org_id]);
         $row = $stmt->fetch();
-        if (!$row || $row['status'] !== 'trial' || empty($row['trial_ends_at'])) return;
+        if (!$row || empty($row['trial_ends_at']) || !in_array($row['status'], ['trial', 'suspended'], true)) return;
 
         $end_ts = strtotime($row['trial_ends_at']);
         if (!$end_ts) return;
         $days_left = max(0, (int)ceil(($end_ts - time()) / 86400));
         $end_fr = date('d/m/Y', $end_ts);
+        $expired = ($row['status'] === 'suspended');
 
-        if ($days_left === 0) {
+        if ($expired) {
+            $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, choisissez une formule pour retrouver toutes les fonctionnalités";
+        } elseif ($days_left === 0) {
             $msg = "se termine <strong>aujourd'hui</strong>";
         } elseif ($days_left === 1) {
             $msg = "se termine <strong>demain</strong> (" . $end_fr . ")";
@@ -221,10 +224,10 @@ function render_trial_banner() {
 </style>
 <div class="ak-trial-banner">
   <div class="ak-trial-banner-info">
-    <span class="ak-trial-banner-icon">🚀</span>
-    <div class="ak-trial-banner-text"><strong>Mode Démo</strong> &middot; <?= $msg ?></div>
+    <span class="ak-trial-banner-icon"><?= $expired ? '⏳' : '🚀' ?></span>
+    <div class="ak-trial-banner-text"><strong>Essai gratuit</strong> &middot; <?= $msg ?></div>
   </div>
-  <a href="/abonnement?tab=plans" class="ak-trial-banner-btn">⚡ S'abonner</a>
+  <a href="/mon-asso-paiement?plan=assokit" class="ak-trial-banner-btn">⚡ <?= $expired ? 'Choisir ma formule' : "S'abonner" ?></a>
 </div>
         <?php
     } catch (Throwable $e) {}
