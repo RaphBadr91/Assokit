@@ -256,3 +256,199 @@ if (!function_exists('ak_trial_end_label')) {
         return $t ? date('d/m/Y', $t) : '';
     }
 }
+
+// ============================================================
+// ÉTAT DU PLAN — une seule lecture pour tous les écrans
+// ============================================================
+// Source de vérité des fonctionnalités : asso_subscriptions + asso_plans
+// (ligne courante, même ordre que ak_get_current_plan). La date de fin
+// d'essai vit sur organizations.trial_ends_at. organizations.plan est un
+// ancien libellé, gardé synchronisé par ak_org_set_plan() mais jamais lu
+// pour décider.
+
+if (!function_exists('ak_plan_label')) {
+    /** Libellé lisible d'un plan (slug asso_plans ou ancien libellé organizations.plan). */
+    function ak_plan_label(?string $slug, ?string $name = null): string {
+        $slug = strtolower(trim((string)$slug));
+        $map = ['pro-essai' => 'Essai PRO', 'demarrage' => 'Démarrage', 'assokit' => 'Assokit', 'sur-mesure' => 'Sur-mesure',
+                'essentiel' => 'Essentiel', 'association' => 'Association', 'organisation' => 'Organisation', 'pro' => 'Pro'];
+        if (isset($map[$slug])) return $map[$slug];
+        if ($name !== null && trim($name) !== '') return trim($name);
+        return $slug === '' ? '—' : ucfirst($slug);
+    }
+}
+
+if (!function_exists('ak_org_plan_state')) {
+    /**
+     * @return array{plan_id:?int, plan_slug:string, plan_label:string, sub_status:string, org_status:string,
+     *               is_trial:bool, trial_expired:bool, trial_ends_at:?string, days_left:?int, price_cents:int,
+     *               badge:string, badge_tone:string}
+     *  badge / badge_tone : texte et ton communs ('trial', 'expired', 'active', 'suspended', 'cancelled', 'pending').
+     */
+    function ak_org_plan_state(PDO $pdo, int $org_id): array {
+        $st = ['plan_id' => null, 'plan_slug' => '', 'plan_label' => '—', 'sub_status' => '', 'org_status' => '',
+               'is_trial' => false, 'trial_expired' => false, 'trial_ends_at' => null, 'days_left' => null, 'price_cents' => 0,
+               'badge' => '—', 'badge_tone' => 'gray'];
+        try {
+            $o = $pdo->prepare("SELECT status, plan, trial_ends_at FROM organizations WHERE id = ?");
+            $o->execute([$org_id]);
+            $org = $o->fetch(PDO::FETCH_ASSOC) ?: [];
+            $st['org_status'] = (string)($org['status'] ?? '');
+            $st['trial_ends_at'] = $org['trial_ends_at'] ?? null;
+            $st['plan_slug'] = (string)($org['plan'] ?? '');
+            $has_trial_col = isset(ak_db_columns($pdo, 'asso_plans')['is_trial']);
+            $s = $pdo->prepare("SELECT s.status, p.id, p.slug, p.name, " . ($has_trial_col ? "p.is_trial" : "0 AS is_trial") . ", COALESCE(p.price_cents, 0) AS price_cents
+                                FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
+                                WHERE s.org_id = ? ORDER BY (s.status = 'active') DESC, s.id DESC LIMIT 1");
+            $s->execute([$org_id]);
+            if ($row = $s->fetch(PDO::FETCH_ASSOC)) {
+                $st['plan_id'] = (int)$row['id'];
+                $st['plan_slug'] = (string)$row['slug'];
+                $st['plan_label'] = ak_plan_label($row['slug'], $row['name']);
+                $st['sub_status'] = (string)$row['status'];
+                $st['price_cents'] = (int)$row['price_cents'];
+                $st['is_trial'] = !empty($row['is_trial']) || $row['status'] === 'trial';
+            } else {
+                $st['plan_label'] = ak_plan_label($st['plan_slug']);
+            }
+            if ($st['org_status'] === 'trial') $st['is_trial'] = true;
+            if ($st['trial_ends_at']) {
+                $end = strtotime((string)$st['trial_ends_at']);
+                if ($end) $st['days_left'] = (int)ceil(($end - time()) / 86400);
+            }
+            // Essai terminé : association suspendue par la fin d'essai, ou date dépassée sans plan payant
+            if ($st['trial_ends_at'] && ($st['org_status'] === 'suspended' || ($st['is_trial'] && $st['days_left'] !== null && $st['days_left'] < 0))) {
+                $st['trial_expired'] = true;
+            }
+        } catch (Throwable $e) {}
+
+        if ($st['trial_expired']) {
+            $st['badge'] = 'Essai terminé' . ($st['trial_ends_at'] ? ' le ' . date('d/m/Y', strtotime((string)$st['trial_ends_at'])) : '');
+            $st['badge_tone'] = 'expired';
+        } elseif ($st['is_trial']) {
+            $d = $st['days_left'];
+            $st['badge'] = 'ESSAI' . ($st['trial_ends_at'] ? ' · fin ' . date('d/m/Y', strtotime((string)$st['trial_ends_at'])) : '')
+                         . ($d !== null ? ' (' . ($d <= 0 ? 'dernier jour' : 'J-' . $d) . ')' : '');
+            $st['badge_tone'] = 'trial';
+        } elseif ($st['org_status'] === 'suspended') {
+            $st['badge'] = 'Suspendue'; $st['badge_tone'] = 'suspended';
+        } elseif ($st['org_status'] === 'cancelled') {
+            $st['badge'] = 'Résiliée'; $st['badge_tone'] = 'cancelled';
+        } elseif (in_array($st['sub_status'], ['pending_payment', 'overdue'], true)) {
+            $st['badge'] = $st['sub_status'] === 'overdue' ? 'Paiement en retard' : 'Paiement en attente'; $st['badge_tone'] = 'pending';
+        } else {
+            $st['badge'] = 'Active'; $st['badge_tone'] = 'active';
+        }
+        return $st;
+    }
+}
+
+if (!function_exists('ak_legacy_sub_trial')) {
+    /** Ancienne table subscriptions (bandeau + rappels) : remet la dernière ligne en essai jusqu'à $end. */
+    function ak_legacy_sub_trial(PDO $pdo, int $org_id, string $end, bool $any_status): void {
+        try {
+            $cols = ak_db_columns($pdo, 'subscriptions');
+            if (!$cols || !ak_db_accepts($pdo, 'subscriptions', 'status', 'trial')) return;
+            $sets = "status = 'trial'" . (isset($cols['current_period_end']) ? ", current_period_end = ?" : "") . (isset($cols['updated_at']) ? ", updated_at = NOW()" : "");
+            $args = isset($cols['current_period_end']) ? [$end, $org_id] : [$org_id];
+            $pdo->prepare("UPDATE subscriptions SET $sets WHERE org_id = ?" . ($any_status ? "" : " AND status IN ('trial', 'suspended')") . " ORDER BY id DESC LIMIT 1")->execute($args);
+        } catch (Throwable $e) {
+            error_log('[ak_legacy_sub_trial] ' . get_class($e));
+        }
+    }
+}
+
+if (!function_exists('ak_org_set_plan')) {
+    /**
+     * Change le plan d'une association PARTOUT à la fois : ligne courante d'asso_subscriptions
+     * (ou création), organizations.plan, et état d'essai (organizations.status / trial_ends_at,
+     * ancienne table subscriptions). Plan d'essai → essai (fin conservée, ou J+AK_TRIAL_DAYS) ;
+     * autre plan → essai terminé, association active.
+     */
+    function ak_org_set_plan(PDO $pdo, int $org_id, int $plan_id): void {
+        $p = $pdo->prepare("SELECT id, slug" . (isset(ak_db_columns($pdo, 'asso_plans')['is_trial']) ? ", is_trial" : ", 0 AS is_trial") . " FROM asso_plans WHERE id = ?");
+        $p->execute([$plan_id]);
+        $plan = $p->fetch(PDO::FETCH_ASSOC);
+        if (!$plan) throw new InvalidArgumentException('Plan inconnu.');
+        $is_trial = !empty($plan['is_trial']) || $plan['slug'] === 'pro-essai';
+
+        $cur = $pdo->prepare("SELECT id, plan_id FROM asso_subscriptions WHERE org_id = ? ORDER BY (status = 'active') DESC, id DESC LIMIT 1");
+        $cur->execute([$org_id]);
+        $row = $cur->fetch(PDO::FETCH_ASSOC);
+        $cols = ak_db_columns($pdo, 'asso_subscriptions');
+        $status = $is_trial ? (ak_db_pick($pdo, 'asso_subscriptions', 'status', ['trial', 'active']) ?? 'trial') : 'active';
+
+        if ($is_trial) {
+            $end = (string)$pdo->query("SELECT COALESCE((SELECT trial_ends_at FROM organizations WHERE id = " . (int)$org_id . " AND trial_ends_at > NOW()), DATE_ADD(NOW(), INTERVAL " . (int)AK_TRIAL_DAYS . " DAY))")->fetchColumn();
+        }
+        if ($row) {
+            $sets = [];
+            $args = [];
+            if (isset($cols['previous_plan_id']) && (int)$row['plan_id'] !== (int)$plan_id) $sets[] = 'previous_plan_id = plan_id';
+            $sets[] = 'plan_id = ?'; $args[] = $plan_id;
+            $sets[] = 'status = ?';  $args[] = $status;
+            if ($is_trial && isset($cols['current_period_end'])) { $sets[] = 'current_period_end = ?'; $args[] = $end; }
+            foreach (['grace_period_end', 'downgraded_at', 'cancelled_at'] as $c) if (isset($cols[$c])) $sets[] = "$c = NULL";
+            if (isset($cols['updated_at'])) $sets[] = 'updated_at = NOW()';
+            $args[] = (int)$row['id'];
+            $pdo->prepare("UPDATE asso_subscriptions SET " . implode(', ', $sets) . " WHERE id = ?")->execute($args);
+        } else {
+            ak_db_insert($pdo, 'asso_subscriptions', ['org_id' => $org_id, 'plan_id' => $plan_id, 'status' => $status,
+                'current_period_end' => $is_trial ? $end : null], ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
+        }
+
+        if ($is_trial) {
+            ak_db_update($pdo, 'organizations', $org_id, ['plan' => $plan['slug'], 'trial_ends_at' => $end]
+                + (ak_db_accepts($pdo, 'organizations', 'status', 'trial') ? ['status' => 'trial'] : []));
+            ak_legacy_sub_trial($pdo, $org_id, $end, true);
+        } else {
+            // Fin d'essai : l'association repasse active (une suspension manuelle sans essai n'est pas touchée)
+            $pdo->prepare("UPDATE organizations SET plan = ?, status = IF(status = 'trial' OR (status = 'suspended' AND trial_ends_at IS NOT NULL), 'active', status), trial_ends_at = NULL WHERE id = ?")
+                ->execute([$plan['slug'], $org_id]);
+            try { $pdo->prepare("UPDATE subscriptions SET status = 'active' WHERE org_id = ? AND status IN ('trial', 'suspended')")->execute([$org_id]); } catch (Throwable $e) {}
+        }
+    }
+}
+
+if (!function_exists('ak_trial_extend')) {
+    /**
+     * Prolonge (ou rouvre) l'essai de N jours à partir de la fin actuelle si elle est future,
+     * sinon d'aujourd'hui. Met à jour les trois endroits qui portent l'essai et remet
+     * l'association en essai si la fin d'essai l'avait suspendue.
+     * @return string nouvelle date de fin (SQL)
+     */
+    function ak_trial_extend(PDO $pdo, int $org_id, int $days): string {
+        $days = max(1, min(90, $days));
+        $end = (string)$pdo->query("SELECT DATE_ADD(GREATEST(NOW(), COALESCE((SELECT trial_ends_at FROM organizations WHERE id = " . (int)$org_id . "), NOW())), INTERVAL " . $days . " DAY)")->fetchColumn();
+        $upd = ['trial_ends_at' => $end];
+        if (ak_db_accepts($pdo, 'organizations', 'status', 'trial')) $upd['status'] = 'trial';
+        ak_db_update($pdo, 'organizations', $org_id, $upd);
+        ak_legacy_sub_trial($pdo, $org_id, $end, false);
+        // Ligne d'essai : si la fin d'essai l'avait rétrogradée en Démarrage, on remet le plan d'essai
+        $trial = ak_trial_plan($pdo);
+        $cols = ak_db_columns($pdo, 'asso_subscriptions');
+        try {
+            $r = $pdo->prepare("SELECT s.id, s.status, s.plan_id" . (isset($cols['previous_plan_id']) ? ", s.previous_plan_id" : ", NULL AS previous_plan_id") . "
+                                FROM asso_subscriptions s WHERE s.org_id = ? ORDER BY (s.status = 'active') DESC, s.id DESC LIMIT 1");
+            $r->execute([$org_id]);
+            $row = $r->fetch(PDO::FETCH_ASSOC);
+            $demarrage = (int)$pdo->query("SELECT id FROM asso_plans WHERE slug = 'demarrage' LIMIT 1")->fetchColumn();
+            $status = ak_db_pick($pdo, 'asso_subscriptions', 'status', ['trial', 'active']) ?? 'trial';
+            if ($row && ($row['status'] === 'trial' || ((int)$row['plan_id'] === $demarrage && $trial && (int)$row['previous_plan_id'] === $trial['id']))) {
+                $sets = ['status = ?']; $args = [$status];
+                if ($trial) { $sets[] = 'plan_id = ?'; $args[] = $trial['id']; }
+                if (isset($cols['current_period_end'])) { $sets[] = 'current_period_end = ?'; $args[] = $end; }
+                if (isset($cols['downgraded_at'])) $sets[] = 'downgraded_at = NULL';
+                if (isset($cols['updated_at'])) $sets[] = 'updated_at = NOW()';
+                $args[] = (int)$row['id'];
+                $pdo->prepare("UPDATE asso_subscriptions SET " . implode(', ', $sets) . " WHERE id = ?")->execute($args);
+            } elseif (!$row && $trial) {
+                ak_db_insert($pdo, 'asso_subscriptions', ['org_id' => $org_id, 'plan_id' => $trial['id'], 'status' => $status, 'current_period_end' => $end],
+                    ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
+            }
+        } catch (Throwable $e) {
+            error_log('[ak_trial_extend] ' . get_class($e));
+        }
+        return $end;
+    }
+}
