@@ -40,11 +40,16 @@ if ($action === 'update_account') {
         header('Location: /parametres?tab=compte&flash=' . urlencode('Champs obligatoires manquants ou email invalide.') . '&ft=error'); exit;
     }
 
-    // Anti-escalade : une adresse réservée au Fondateur ne peut pas être adoptée par un autre compte.
+    // Anti-escalade : une adresse réservée (Fondateur, boîte des alertes d'inscription) ne peut pas
+    // être adoptée par un autre compte. Celui qui l'a déjà la garde (simple mise à jour du nom).
     @require_once __DIR__ . '/api/_app-founder.php';
-    if (function_exists('app_founder_emails') && in_array(strtolower($email), app_founder_emails(), true)
-        && (!function_exists('app_is_founder') || !app_is_founder($pdo, function_exists('current_user') ? current_user() : null))) {
-        header('Location: /parametres?tab=compte&flash=' . urlencode('Cette adresse email est réservée.') . '&ft=error'); exit;
+    require_once __DIR__ . '/trial-helpers.php';
+    if (in_array(strtolower($email), ak_founder_emails(), true)) {
+        $cur = $pdo->prepare("SELECT email FROM users WHERE id = ?"); $cur->execute([$user_id]);
+        if (strtolower(trim((string)$cur->fetchColumn())) !== strtolower($email)
+            && (!function_exists('app_is_founder') || !app_is_founder($pdo, function_exists('current_user') ? current_user() : null))) {
+            header('Location: /parametres?tab=compte&flash=' . urlencode('Cette adresse email est réservée.') . '&ft=error'); exit;
+        }
     }
 
     // Démo : l'e-mail de connexion d'un compte partagé ne change pas

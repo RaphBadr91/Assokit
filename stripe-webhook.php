@@ -32,6 +32,8 @@ ini_set('session.use_cookies', 0);
 require_once __DIR__ . '/config.php';
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
+// Ligne courante, plan payant / d'essai, libellé organizations.plan : mêmes règles que le reste du site
+require_once __DIR__ . '/trial-helpers.php';
 
 // Récupération du payload brut
 $payload = file_get_contents('php://input');
@@ -253,6 +255,17 @@ function ak_handle_subscription_event(PDO $pdo, array $sub, string $event_type):
     $check->execute([':sid' => $stripe_sub_id]);
     $existing_id = $check->fetchColumn();
 
+    if ($existing_id && ak_stripe_row_off_stripe_plan($pdo, (int)$existing_id)) {
+        // Le Fondateur a passé ce client sur un plan que Stripe ne facture pas (gratuit, essai, Sur-mesure…,
+        // les données Stripe sont gardées) : Stripe ne décide plus de son statut. Une fois l'abonnement
+        // annulé dans Stripe, la ligne cesse d'être « payée par carte » ; elle n'est jamais marquée résiliée
+        // ni en retard pour autant (un client Sur-mesure resterait sinon « Résiliée »).
+        if ($local_status === 'cancelled' && ak_db_accepts($pdo, 'asso_subscriptions', 'payment_mode', 'manual')) {
+            $pdo->prepare("UPDATE asso_subscriptions SET payment_mode = 'manual' WHERE id = ?")->execute([(int)$existing_id]);
+        }
+        return;
+    }
+
     if ($existing_id) {
         // UPDATE
         $upd = $pdo->prepare("
@@ -293,19 +306,26 @@ function ak_handle_subscription_event(PDO $pdo, array $sub, string $event_type):
                 ':cape' => $cancel_at_period_end ? 1 : 0,
             ]);
         } catch (PDOException $e) {
-            // Un seul abonnement par association (index unique) : la ligne d'essai existe déjà,
-            // on la transforme en abonnement payant au lieu de perdre le paiement.
+            // Un seul abonnement par association (index unique) : la ligne existante (essai, Démarrage ou
+            // abonnement en cours) n'est reprise par Stripe que si l'abonnement est VRAIMENT payé.
+            // incomplete / past_due / canceled (carte refusée, 3D Secure raté, paiement abandonné) :
+            // rien n'est payé, la ligne d'essai reste intacte et l'essai se termine normalement.
+            // L'événement « active » qui suit un paiement réussi repasse ici et fait la conversion.
             if ((string)$e->getCode() !== '23000') throw $e;
+            if ($local_status !== 'active') return;
+            $cur = $pdo->prepare("SELECT s.id FROM asso_subscriptions s WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1");
+            $cur->execute([$org_id]);
+            $existing_id = (int)$cur->fetchColumn();
+            if ($existing_id <= 0) throw $e;
             $upd = $pdo->prepare("
                 UPDATE asso_subscriptions
                 SET plan_id = COALESCE(:plan, plan_id), stripe_subscription_id = :sid, stripe_price_id = :pid,
                     payment_mode = 'stripe', status = :st, current_period_end = :cpe, cancel_at_period_end = :cape, updated_at = NOW()
-                WHERE org_id = :org
-                ORDER BY id DESC LIMIT 1
+                WHERE id = :id
             ");
             $upd->execute([
                 ':plan' => $plan_id, ':sid' => $stripe_sub_id, ':pid' => $stripe_price_id, ':st' => $local_status,
-                ':cpe' => $current_period_end, ':cape' => $cancel_at_period_end ? 1 : 0, ':org' => $org_id,
+                ':cpe' => $current_period_end, ':cape' => $cancel_at_period_end ? 1 : 0, ':id' => $existing_id,
             ]);
         }
     }
@@ -358,19 +378,24 @@ function ak_handle_invoice_paid(PDO $pdo, array $invoice): void {
     ak_handle_invoice_upsert($pdo, $invoice);
 
     // Si la facture est liée à une subscription, on s'assure que le status local = active
+    // (jamais sur une ligne passée à la main sur un plan que Stripe ne facture pas : ce paiement
+    // porte sur l'ancienne formule, il ne décide pas du statut de la formule actuelle)
     $sub_id = $invoice['subscription'] ?? null;
     if ($sub_id) {
         $upd = $pdo->prepare("
             UPDATE asso_subscriptions
             SET status = 'active', updated_at = NOW()
             WHERE stripe_subscription_id = :sid AND status IN ('pending_payment', 'overdue')
+              AND (plan_id IS NULL OR plan_id NOT IN (SELECT p.id FROM asso_plans p WHERE " . ak_plan_off_stripe_sql($pdo) . "))
         ");
         $upd->execute([':sid' => $sub_id]);
         try {
-            $o = $pdo->prepare("SELECT org_id FROM asso_subscriptions WHERE stripe_subscription_id = :sid LIMIT 1");
+            $o = $pdo->prepare("SELECT id, org_id FROM asso_subscriptions WHERE stripe_subscription_id = :sid LIMIT 1");
             $o->execute([':sid' => $sub_id]);
-            $paid_org = (int)$o->fetchColumn();
-            if ($paid_org > 0) ak_end_trial_after_payment($pdo, $paid_org, (string)$sub_id);
+            $paid_row = $o->fetch(PDO::FETCH_ASSOC) ?: [];
+            $paid_org = (int)($paid_row['org_id'] ?? 0);
+            // Ligne passée à la main sur un plan que Stripe ne facture pas : ce paiement ne convertit rien
+            if ($paid_org > 0 && !ak_stripe_row_off_stripe_plan($pdo, (int)$paid_row['id'])) ak_end_trial_after_payment($pdo, $paid_org, (string)$sub_id);
         } catch (Throwable $e) {
             error_log('[stripe-webhook] fin essai (invoice.paid): ' . get_class($e));
         }
@@ -384,17 +409,43 @@ function ak_handle_invoice_paid(PDO $pdo, array $invoice): void {
 function ak_end_trial_after_payment(PDO $pdo, int $org_id, string $paid_stripe_sub_id): void {
     if ($org_id <= 0) return;
     try {
-        $pdo->prepare("UPDATE organizations SET status = 'active', trial_ends_at = NULL
-                       WHERE id = ? AND trial_ends_at IS NOT NULL AND status IN ('trial', 'suspended')")->execute([$org_id]);
+        // La fin d'essai est effacée quel que soit le statut (une association réactivée « active »
+        // gardait sa date, et le cron d'essai l'aurait rétrogradée) : c'est le signe « converti ».
+        // Une association qui repasse active ne garde pas de motif de suspension (lu avant le statut :
+        // MySQL applique les SET de gauche à droite).
+        $reason = isset(ak_db_columns($pdo, 'organizations')['suspended_reason'])
+            ? "suspended_reason = IF(status IN ('trial', 'suspended'), NULL, suspended_reason), " : "";
+        $pdo->prepare("UPDATE organizations SET {$reason}status = IF(status IN ('trial', 'suspended'), 'active', status), trial_ends_at = NULL
+                       WHERE id = ? AND trial_ends_at IS NOT NULL")->execute([$org_id]);
     } catch (Throwable $e) { error_log('[stripe-webhook] fin essai org: ' . get_class($e)); }
     try {
         $pdo->prepare("UPDATE subscriptions SET status = 'active' WHERE org_id = ? AND status IN ('trial', 'suspended')")->execute([$org_id]);
     } catch (Throwable $e) { error_log('[stripe-webhook] fin essai subscriptions: ' . get_class($e)); }
     try {
+        // Lignes d'essai restantes (statut « trial », ou plan d'essai écrit « active » quand l'ENUM n'a pas « trial »)
         $pdo->prepare("UPDATE asso_subscriptions SET status = 'cancelled'
-                       WHERE org_id = ? AND status = 'trial' AND (stripe_subscription_id IS NULL OR stripe_subscription_id <> ?)")
+                       WHERE org_id = ? AND status IN ('trial', 'active')
+                         AND (status = 'trial' OR plan_id IN (SELECT p.id FROM asso_plans p WHERE " . ak_plan_trial_sql($pdo) . "))
+                         AND (stripe_subscription_id IS NULL OR stripe_subscription_id <> ?)")
             ->execute([$org_id, $paid_stripe_sub_id]);
     } catch (Throwable $e) { error_log('[stripe-webhook] fin essai ligne d\'essai: ' . get_class($e)); }
+    ak_org_sync_plan_label($pdo, $org_id);
+}
+
+/**
+ * La ligne d'abonnement est-elle sur un plan que Stripe ne facture pas : essai, gratuit, Sur-mesure /
+ * sur devis, plan sans prix Stripe (ak_plan_off_stripe_sql, trial-helpers.php : la même règle que
+ * l'alerte « abonnement Stripe à annuler » du cockpit) ? Le Fondateur y a passé ce client à la main :
+ * Stripe facture encore l'ancienne formule et ne décide plus du statut de la ligne.
+ */
+function ak_stripe_row_off_stripe_plan(PDO $pdo, int $row_id): bool {
+    try {
+        $st = $pdo->prepare("SELECT 1 FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id WHERE s.id = ? AND " . ak_plan_off_stripe_sql($pdo));
+        $st->execute([$row_id]);
+        return (bool)$st->fetchColumn();
+    } catch (Throwable $e) {
+        return false;
+    }
 }
 
 /**
@@ -408,12 +459,16 @@ function ak_handle_invoice_failed(PDO $pdo, array $invoice): void {
         // Calcul grace period (15 jours par défaut)
         $grace_end = date('Y-m-d H:i:s', strtotime('+15 days'));
 
+        // Jamais sur une ligne que le Fondateur a passée sur un plan que Stripe ne facture pas (gratuit,
+        // essai, Sur-mesure…) : « en retard » y mettrait, 15 jours plus tard, l'écran bloquant de
+        // régularisation pour un prélèvement qui ne porte plus sur la formule du client.
         $upd = $pdo->prepare("
             UPDATE asso_subscriptions
             SET status = 'overdue',
                 grace_period_end = :ge,
                 updated_at = NOW()
             WHERE stripe_subscription_id = :sid
+              AND (plan_id IS NULL OR plan_id NOT IN (SELECT p.id FROM asso_plans p WHERE " . ak_plan_off_stripe_sql($pdo) . "))
         ");
         $upd->execute([':ge' => $grace_end, ':sid' => $sub_id]);
     }

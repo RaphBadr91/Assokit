@@ -96,6 +96,20 @@ const DF_AVATARS = ['blue', 'purple', 'amber', 'pink', 'teal'];
 const DF_NB_ADHERENTS = 132;
 
 /**
+ * Ancien libellé organizations.plan de DEMO F : « organisation ».
+ * Le sélecteur de démo commerciale (demo-selector.php) lit ce libellé pour la carte
+ * de DEMO F et ne connaît que essentiel / association / organisation : avec le slug
+ * réel de l'abonnement (« sur-mesure »), la carte afficherait « DÉMARRAGE · Gratuit »
+ * devant les prospects. Le libellé ne sert à aucune décision (les fonctionnalités
+ * viennent de l'abonnement Sur-mesure, 01-abonnement.php) : il ne suivra le slug du
+ * plan, comme ak_org_set_plan() ailleurs, qu'une fois le sélecteur à jour.
+ */
+function df_plan_libelle(): string
+{
+    return 'organisation';
+}
+
+/**
  * Crée (ou remet à zéro) la ligne organizations et renvoie son id.
  * La ligne n'est jamais supprimée : son id reste stable d'une nuit à l'autre.
  */
@@ -117,8 +131,9 @@ function df_organisation(): int
         'status'                  => 'active',
         'validation_status'       => 'validated',
         // Formule « Sur-mesure » : la carte du sélecteur affiche FULL MAX. Prix
-        // legacy à 0 pour ne pas gonfler les indicateurs du fondateur.
-        'plan'                    => 'organisation',
+        // legacy à 0 pour ne pas gonfler les indicateurs du fondateur. Libellé :
+        // voir df_plan_libelle() (celui que le sélecteur de démo comprend).
+        'plan'                    => df_plan_libelle(),
         'monthly_price_cents'     => 0,
         'validated_at'            => df_jh(-1100, '09:00'),
         'rejection_reason'        => null,

@@ -1,4 +1,7 @@
 <?php
+// asso_plans.price_cents (et price_yearly_cents) = prix HT, comme la grille publique (tarifs.php :
+// « /mois HT », « Tarifs HT »), la saisie de fondateur-plans (« Prix mensuel HT ») et le MRR du
+// cockpit (« MRR (HT) »). La TVA est ajoutée ici pour les structures non assujetties (TTC).
 if (!function_exists('pricing_compute_for_org')) {
     function pricing_compute_for_org(array $plan, ?array $org, string $cycle = 'monthly'): array {
         $vat_rate = (float)($plan['vat_rate_pct'] ?? 20.00);

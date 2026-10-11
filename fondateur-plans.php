@@ -212,7 +212,7 @@ render_sidebar('fondateur-plans');
                   <span style="color:#059669;font-weight:600;">Gratuit</span>
                 <?php else: ?>
                   <strong><?= number_format($p['price_cents'] / 100, 2, ',', ' ') ?> €</strong>
-                  <span style="color:#64748B;font-size:12px;">/mois</span>
+                  <span style="color:#64748B;font-size:12px;">HT /mois</span>
                 <?php endif; ?>
               </td>
               <td style="padding:14px 12px;text-align:center;"><?= $p['limit_adherents'] === null ? '∞' : $p['limit_adherents'] ?></td>
@@ -292,7 +292,7 @@ render_sidebar('fondateur-plans');
         <legend style="font-weight:600;padding:0 8px;">Prix</legend>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
           <div>
-            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;">Prix mensuel TTC (€)</label>
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;">Prix mensuel HT (€)</label>
             <input type="number" step="0.01" min="0" name="price_eur" value="<?= $editing ? number_format($editing['price_cents'] / 100, 2, '.', '') : '0' ?>" style="width:100%;padding:10px;border:1px solid #E2E8F0;border-radius:8px;">
           </div>
           <div>

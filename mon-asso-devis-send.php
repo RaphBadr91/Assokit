@@ -50,6 +50,14 @@ if (empty($quote['client_email'])) {
     header('Location: /mon-asso-devis-edit?id=' . $quote_id); exit;
 }
 
+// Essai gratuit : chaque envoi du devis, renvoi compris, compte dans le plafond d'envoi
+// (sans effet pour une association abonnée)
+require_once __DIR__ . '/trial-limits-helpers.php';
+if ($trial_block = ak_trial_quote_send_block($pdo, $org_id, $quote_id)) {
+    $_SESSION['flash_asso_devis'] = ['type' => 'error', 'message' => $trial_block];
+    header('Location: /mon-asso-devis-edit?id=' . $quote_id); exit;
+}
+
 try {
     $public_url = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr') . '/devis/' . $quote['public_uuid'];
 

@@ -23,11 +23,16 @@ if ($first === '' || $last === '' || !filter_var($email, FILTER_VALIDATE_EMAIL))
 }
 
 try {
-    // Anti-escalade : une adresse réservée au Fondateur ne peut pas être adoptée par un autre compte.
+    // Anti-escalade : une adresse réservée (Fondateur, boîte des alertes d'inscription) ne peut pas
+    // être adoptée par un autre compte. Celui qui l'a déjà la garde (simple mise à jour du nom).
     @require_once __DIR__ . '/_app-founder.php';
-    if (function_exists('app_founder_emails') && in_array(strtolower($email), app_founder_emails(), true)
-        && (!function_exists('app_is_founder') || !app_is_founder($pdo, $user))) {
-        app_fail(403, 'reserved', 'Cette adresse email est réservée.');
+    require_once __DIR__ . '/../trial-helpers.php';
+    if (in_array(strtolower($email), ak_founder_emails(), true)) {
+        $cur = $pdo->prepare("SELECT email FROM users WHERE id = ?"); $cur->execute([$uid]);
+        if (strtolower(trim((string)$cur->fetchColumn())) !== strtolower($email)
+            && (!function_exists('app_is_founder') || !app_is_founder($pdo, $user))) {
+            app_fail(403, 'reserved', 'Cette adresse email est réservée.');
+        }
     }
 
     $st = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1");

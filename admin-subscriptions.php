@@ -4,10 +4,18 @@
  * --------------------------------------------------------------
  * Page admin FONDATEUR : assigner / changer les plans des organisations
  * --------------------------------------------------------------
+ * Ancienne page (la page maintenue est /fondateur-subscriptions) : ses actions
+ * passent désormais par ak_org_set_plan() (trial-helpers.php), comme partout.
+ * Écrire asso_subscriptions directement laissait l'association « en essai »
+ * (organizations.status, trial_ends_at, ancien libellé, ancienne table) alors
+ * qu'elle était passée sur un plan payant, et inversement.
+ * Les actions ne portent que sur la ligne d'abonnement COURANTE (même ordre
+ * que ak_get_current_plan), jamais sur toutes les lignes de l'association.
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/plan-helpers.php';
+require_once __DIR__ . '/trial-helpers.php';
 
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 
@@ -34,59 +42,105 @@ unset($_SESSION['flash_admin_subs']);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!check_csrf($_POST['csrf_token'] ?? '')) { http_response_code(403); die('Requete invalide (jeton CSRF manquant ou expire).'); }
     $action = $_POST['action'] ?? '';
+    $sub_cols = ak_db_columns($pdo, 'asso_subscriptions');
+    // Ligne d'abonnement courante (même ordre que ak_get_current_plan / ak_org_plan_state)
+    $current_sub_id = function (int $org_id) use ($pdo): int {
+        $st = $pdo->prepare("SELECT s.id FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
+                             WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1");
+        $st->execute([$org_id]);
+        return (int)$st->fetchColumn();
+    };
+    $org_exists = function (int $org_id) use ($pdo): bool {
+        $st = $pdo->prepare("SELECT 1 FROM organizations WHERE id = ?");
+        $st->execute([$org_id]);
+        return (bool)$st->fetchColumn();
+    };
     try {
         if ($action === 'change_plan') {
-            $org_id = (int)$_POST['org_id'];
-            $plan_id = (int)$_POST['plan_id'];
+            $org_id = (int)($_POST['org_id'] ?? 0);
+            $plan_id = (int)($_POST['plan_id'] ?? 0);
+            // L'essai vient du plan (plan d'essai), jamais d'un statut posé à la main sur un autre plan
             $status = (string)($_POST['status'] ?? 'active');
+            if (!in_array($status, ['active', 'overdue', 'cancelled'], true)) $status = 'active';
             $period_end = trim((string)($_POST['current_period_end'] ?? ''));
-            $period_end = $period_end !== '' ? $period_end : null;
+            if ($period_end !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $period_end)) throw new RuntimeException('Date de fin invalide.');
+            if (!$org_exists($org_id)) throw new RuntimeException('Organisation introuvable.');
+            $pl = $pdo->prepare("SELECT slug" . (isset(ak_db_columns($pdo, 'asso_plans')['is_trial']) ? ", is_trial" : ", 0 AS is_trial") . " FROM asso_plans WHERE id = ?");
+            $pl->execute([$plan_id]);
+            $plan = $pl->fetch(PDO::FETCH_ASSOC);
+            if (!$plan) throw new RuntimeException('Plan inconnu.');
+            $to_trial = !empty($plan['is_trial']) || $plan['slug'] === 'pro-essai';
+            $before = ak_org_plan_state($pdo, $org_id);
+            // La date du formulaire est pré-remplie : elle ne compte que si elle a été modifiée
+            $old_date = '';
+            if ($cid = $current_sub_id($org_id)) {
+                $pe = $pdo->query("SELECT current_period_end FROM asso_subscriptions WHERE id = " . (int)$cid)->fetchColumn();
+                $old_date = $pe && strtotime((string)$pe) ? date('Y-m-d', strtotime((string)$pe)) : '';
+            }
+            $date_changed = $period_end !== $old_date;
+            if ($to_trial && $date_changed && $period_end !== '' && strtotime($period_end . ' 23:59:59') <= time()) {
+                throw new RuntimeException('La fin d’essai doit être dans le futur.');
+            }
 
-            // Récupère le plan actuel pour le mettre en previous_plan_id
-            $cur = $pdo->prepare("SELECT plan_id FROM asso_subscriptions WHERE org_id = :o LIMIT 1");
-            $cur->execute([':o' => $org_id]);
-            $previous = $cur->fetchColumn();
-
-            $st = $pdo->prepare("
-                INSERT INTO asso_subscriptions (org_id, plan_id, status, started_at, current_period_end, previous_plan_id)
-                VALUES (:o, :p, :s, NOW(), :e, :prev)
-                ON DUPLICATE KEY UPDATE
-                    plan_id = VALUES(plan_id),
-                    status = VALUES(status),
-                    current_period_end = VALUES(current_period_end),
-                    previous_plan_id = VALUES(previous_plan_id),
-                    grace_period_end = NULL,
-                    downgraded_at = NULL,
-                    cancelled_at = NULL,
-                    updated_at = NOW()
-            ");
-            $st->execute([
-                ':o' => $org_id,
-                ':p' => $plan_id,
-                ':s' => $status,
-                ':e' => $period_end,
-                ':prev' => $previous ?: null,
-            ]);
-            $_SESSION['flash_admin_subs'] = ['type' => 'success', 'msg' => "Plan changé pour l'organisation #{$org_id}"];
+            $pdo->beginTransaction();
+            if ($to_trial && $date_changed && $period_end !== '') {
+                // Fin d'essai choisie : ak_org_set_plan conserve une fin future déjà posée
+                $pdo->prepare("UPDATE organizations SET trial_ends_at = ? WHERE id = ?")->execute([$period_end . ' 23:59:59', $org_id]);
+            }
+            ak_org_set_plan($pdo, $org_id, $plan_id);
+            if (!$to_trial && ($cid = $current_sub_id($org_id))) {
+                $sets = []; $args = [];
+                if ($date_changed && isset($sub_cols['current_period_end'])) { $sets[] = 'current_period_end = ?'; $args[] = $period_end !== '' ? $period_end . ' 23:59:59' : null; }
+                if ($status !== 'active') {
+                    $sets[] = 'status = ?'; $args[] = $status;
+                    if ($status === 'overdue' && isset($sub_cols['grace_period_end'])) { $sets[] = 'grace_period_end = ?'; $args[] = (new DateTime('+15 days'))->format('Y-m-d H:i:s'); }
+                    if ($status === 'cancelled' && isset($sub_cols['cancelled_at'])) $sets[] = 'cancelled_at = NOW()';
+                }
+                if ($sets) {
+                    $args[] = $cid;
+                    $pdo->prepare("UPDATE asso_subscriptions SET " . implode(', ', $sets) . " WHERE id = ?")->execute($args);
+                }
+            }
+            $pdo->commit();
+            $after = ak_org_plan_state($pdo, $org_id);
+            $msg = "Organisation #{$org_id} : {$before['plan_label']} → {$after['plan_label']} ({$after['badge']}).";
+            if ($sid = ak_stripe_left_on_free($pdo, $org_id, $sfree)) {
+                $msg .= $sfree ? " Attention : l’abonnement Stripe {$sid} tourne encore, annulez-le dans Stripe."
+                               : " Attention : l’abonnement Stripe {$sid} facture encore l’ancienne formule, annulez-le dans Stripe.";
+            }
+            $_SESSION['flash_admin_subs'] = ['type' => 'success', 'msg' => $msg];
         } elseif ($action === 'mark_overdue') {
-            $org_id = (int)$_POST['org_id'];
+            $org_id = (int)($_POST['org_id'] ?? 0);
+            if (!$org_exists($org_id)) throw new RuntimeException('Organisation introuvable.');
+            $state = ak_org_plan_state($pdo, $org_id);
+            if ($state['is_trial'] || $state['trial_expired']) throw new RuntimeException("Org #{$org_id} est en essai gratuit : il n’y a pas de paiement en retard.");
+            $cid = $current_sub_id($org_id);
+            if (!$cid) throw new RuntimeException("Org #{$org_id} n’a pas d’abonnement.");
             $grace_end = (new DateTime('+15 days'))->format('Y-m-d H:i:s');
-            $pdo->prepare("UPDATE asso_subscriptions SET status='overdue', grace_period_end=:g WHERE org_id=:o")
-                ->execute([':g' => $grace_end, ':o' => $org_id]);
-            $_SESSION['flash_admin_subs'] = ['type' => 'success', 'msg' => "Org #{$org_id} marquée 'overdue' — tolérance jusqu'au {$grace_end}"];
+            $pdo->prepare("UPDATE asso_subscriptions SET status = 'overdue'" . (isset($sub_cols['grace_period_end']) ? ", grace_period_end = :g" : "") . " WHERE id = :id")
+                ->execute((isset($sub_cols['grace_period_end']) ? [':g' => $grace_end] : []) + [':id' => $cid]);
+            $_SESSION['flash_admin_subs'] = ['type' => 'success', 'msg' => "Org #{$org_id} marquée 'overdue' — tolérance jusqu'au " . date('d/m/Y', strtotime($grace_end))];
         } elseif ($action === 'downgrade_to_demarrage') {
-            $org_id = (int)$_POST['org_id'];
+            $org_id = (int)($_POST['org_id'] ?? 0);
+            if (!$org_exists($org_id)) throw new RuntimeException('Organisation introuvable.');
             $demarrage_id = (int)$pdo->query("SELECT id FROM asso_plans WHERE slug='demarrage' LIMIT 1")->fetchColumn();
-            $pdo->prepare("
-                UPDATE asso_subscriptions
-                SET plan_id = :p, status = 'active', grace_period_end = NULL,
-                    downgraded_at = NOW(), updated_at = NOW()
-                WHERE org_id = :o
-            ")->execute([':p' => $demarrage_id, ':o' => $org_id]);
-            $_SESSION['flash_admin_subs'] = ['type' => 'success', 'msg' => "Org #{$org_id} downgradée au plan Démarrage"];
+            if ($demarrage_id <= 0) throw new RuntimeException('Plan Démarrage introuvable.');
+            $pdo->beginTransaction();
+            ak_org_set_plan($pdo, $org_id, $demarrage_id);
+            if (isset($sub_cols['downgraded_at']) && ($cid = $current_sub_id($org_id))) {
+                $pdo->prepare("UPDATE asso_subscriptions SET downgraded_at = NOW() WHERE id = ?")->execute([$cid]);
+            }
+            $pdo->commit();
+            $msg = "Org #{$org_id} downgradée au plan Démarrage";
+            if ($sid = ak_stripe_left_on_free($pdo, $org_id)) $msg .= " — attention : l’abonnement Stripe {$sid} tourne encore, annulez-le dans Stripe.";
+            $_SESSION['flash_admin_subs'] = ['type' => 'success', 'msg' => $msg];
         }
     } catch (Throwable $e) {
-        $_SESSION['flash_admin_subs'] = ['type' => 'error', 'msg' => $e->getMessage()];
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        if (!($e instanceof RuntimeException) || $e instanceof PDOException) error_log('[admin-subscriptions] ' . get_class($e) . ' ' . $e->getMessage());
+        $msg = ($e instanceof RuntimeException && !($e instanceof PDOException)) ? $e->getMessage()
+             : ($e instanceof InvalidArgumentException ? 'Plan inconnu.' : 'Erreur technique : rien n’a été modifié.');
+        $_SESSION['flash_admin_subs'] = ['type' => 'error', 'msg' => $msg];
     }
     header('Location: /admin-subscriptions');
     exit;
@@ -119,7 +173,9 @@ $sql = "
       s.id AS sub_id, s.status, s.started_at, s.current_period_end, s.grace_period_end,
       p.id AS plan_id, p.name AS plan_name, p.slug AS plan_slug, p.price_cents
     FROM organizations o
-    LEFT JOIN asso_subscriptions s ON s.org_id = o.id
+    LEFT JOIN asso_subscriptions s ON s.id = (
+        SELECT s2.id FROM asso_subscriptions s2 JOIN asso_plans p2 ON p2.id = s2.plan_id
+        WHERE s2.org_id = o.id ORDER BY " . ak_sub_order('s2') . " LIMIT 1)
     LEFT JOIN asso_plans p ON p.id = s.plan_id
     WHERE " . implode(' AND ', $where) . "
     ORDER BY o.id ASC
@@ -141,7 +197,7 @@ render_sidebar('admin-subscriptions');
       <h1 style="margin:0 0 4px;">📊 Abonnements actifs</h1>
       <p style="color:#64748b;margin:0;">Gérer les plans des <?= count($rows) ?> organisation<?= count($rows) > 1 ? 's' : '' ?></p>
     </div>
-    <a href="/admin-plans" class="btn">⚙️ Gérer les plans</a>
+    <a href="/fondateur-plans" class="btn">⚙️ Gérer les plans</a>
   </div>
 
   <?php if ($flash): ?>
@@ -247,10 +303,9 @@ render_sidebar('admin-subscriptions');
                           </option>
                         <?php endforeach; ?>
                       </select>
-                      <label style="font-size:12px;font-weight:600;">Statut</label>
+                      <label style="font-size:12px;font-weight:600;">Statut <span style="font-weight:400;color:#64748B;">(l’essai vient du plan d’essai)</span></label>
                       <select name="status" style="padding:8px;border:1px solid #E2E8F0;border-radius:6px;">
-                        <option value="active" <?= $row['status'] === 'active' ? 'selected' : '' ?>>Actif</option>
-                        <option value="trial" <?= $row['status'] === 'trial' ? 'selected' : '' ?>>Essai</option>
+                        <option value="active" <?= in_array($row['status'], ['active', 'trial'], true) ? 'selected' : '' ?>>Actif</option>
                         <option value="overdue" <?= $row['status'] === 'overdue' ? 'selected' : '' ?>>En retard</option>
                         <option value="cancelled" <?= $row['status'] === 'cancelled' ? 'selected' : '' ?>>Annulé</option>
                       </select>

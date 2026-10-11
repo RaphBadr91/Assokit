@@ -45,6 +45,8 @@ if ($action === 'send') {
     $type = empty($inv['sent_at']) ? 'initial' : 'manual';
     try {
         $res = ak_asso_invoice_send_email($pdo, $invoice_id, $type, $uid);
+        // Essai gratuit : plafond d'envoi atteint (contrôlé par le helper d'envoi, ak_trial_send_block)
+        if (!empty($res['trial_limit'])) app_fail(429, 'trial_limit', $res['message']);
         if (empty($res['success'])) app_fail(502, 'send_failed', $res['message'] ?? 'Envoi impossible.');
         echo json_encode(['ok' => true, 'id' => $invoice_id, 'message' => $res['message'] ?? 'Facture envoyée.'], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {

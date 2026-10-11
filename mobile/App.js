@@ -3644,6 +3644,7 @@ function orgChip(o) {
 function orgTrialLine(o) {
   if (!o) return null;
   if ((o.badge_tone === 'trial' || o.badge_tone === 'expired') && o.badge) return { text: o.badge, tone: o.badge_tone };
+  if (o.trial_paused && o.badge) return { text: o.badge, tone: 'suspended' };   // « Essai suspendu · fin prévue le … »
   if (o.badge_tone === undefined && o.status === 'trial') return { text: 'ESSAI' + (o.trial_ends ? ' · fin ' + o.trial_ends : ''), tone: 'trial' };
   return null;
 }
@@ -3997,10 +3998,13 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
   const extend = (d) => Alert.alert('Prolonger l’essai de ' + d + ' jours ?',
     (o.trial_expired ? 'L’essai est terminé : il reprend aujourd’hui pour ' + d + ' jours.' : 'Nouvelle fin : ' + d + ' jours après le ' + (o.trial_ends || 'la fin actuelle') + '.'),
     [{ text: 'Annuler', style: 'cancel' }, { text: 'Prolonger', onPress: () => onAction(o.id, 'extend_trial', { days: d }) }]);
-  // Statut lisible : celui du badge serveur (un essai terminé est « Essai terminé », pas « Suspendue »)
-  const statusLabel = o.status === 'cancelled' ? 'Résiliée' : o.badge_tone === 'expired' ? 'Essai terminé' : o.badge_tone === 'trial' || o.status === 'trial' ? 'En essai'
-    : o.status === 'active' ? 'Active' : o.status === 'suspended' ? 'Suspendue' : o.status;
-  const showBadge = !!o.badge && ['trial', 'expired', 'pending'].includes(o.badge_tone);
+  // Statut lisible : celui du badge serveur (un essai terminé est « Essai terminé », pas « Suspendue » ;
+  // un client payant resté en statut « trial » est « Active »). Sans badge (ancien serveur) : le statut.
+  const TONE_STATUS = { cancelled: 'Résiliée', expired: 'Essai terminé', trial: 'En essai', suspended: 'Suspendue', pending: 'Active', active: 'Active' };
+  const statusLabel = o.status === 'cancelled' ? 'Résiliée' : (o.badge_tone && TONE_STATUS[o.badge_tone]) ? TONE_STATUS[o.badge_tone]
+    : o.status === 'trial' ? 'En essai' : o.status === 'active' ? 'Active' : o.status === 'suspended' ? 'Suspendue' : o.status;
+  // « Essai suspendu · fin prévue le … » : suspendue à la main pendant l'essai (trial_paused)
+  const showBadge = !!o.badge && (['trial', 'expired', 'pending'].includes(o.badge_tone) || !!o.trial_paused);
   // Prix de la formule (mêmes textes que le sélecteur : « 49,99 €/mois », « Gratuit », « Sur devis ») ; rien pendant un essai
   const curPlan = o.plan_id ? (plans.find((p) => p.id === o.plan_id) || null) : null;
   const priceTxt = o.is_trial || o.trial_expired ? ''
@@ -6985,6 +6989,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         if (r.ok) {
           fetchFdOrgs(fdOrgsFilter); fetchFounder();
           if (r.action === 'extend_trial') Alert.alert('Essai prolongé', r.trial_ends ? 'Nouvelle fin d’essai : ' + r.trial_ends + '.' : 'C’est fait.');
+          else if (r.notice) Alert.alert('Association réactivée', r.notice);
         } else { Alert.alert('Action impossible', r.message || 'Réessaie dans un instant.'); }
       }
       if (msg && msg.__akfdorgdet) { setFdOrgDetailLoading(false); if (msg.__akfdorgdet.ok === false) setMenuScreen('founder'); else setFdOrgDetail(msg.__akfdorgdet); }
@@ -6995,7 +7000,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           if (fdOrgDetailIdRef.current) fetchFdOrgDetail(fdOrgDetailIdRef.current);
           fetchFdOrgs(fdOrgsFilter); fetchFounder();
           if (r.action === 'extend_trial') Alert.alert('Essai prolongé', r.trial_ends ? 'Nouvelle fin d’essai : ' + r.trial_ends + '.' : 'C’est fait.');
-          else if (r.plan_changed) Alert.alert('Formule mise à jour', (r.from || '—') + ' → ' + (r.to || '—') + (r.state && r.state.badge && (r.state.badge_tone === 'trial' || r.state.badge_tone === 'expired') ? '\n' + r.state.badge : ''));
+          else if (r.plan_changed) Alert.alert('Formule mise à jour', (r.from || '—') + ' → ' + (r.to || '—') + (r.state && r.state.badge && (r.state.badge_tone === 'trial' || r.state.badge_tone === 'expired') ? '\n' + r.state.badge : '') + (r.warning ? '\n\n⚠️ ' + r.warning : ''));
+          else if (r.notice) Alert.alert('Association réactivée', r.notice);
         } else { Alert.alert('Action impossible', r.message || 'Réessaie dans un instant.'); }
       }
       if (msg && msg.__akfdproj) { setFdProjects(msg.__akfdproj); setFdProjectsLoading(false); }

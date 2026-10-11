@@ -167,7 +167,9 @@ function render_head($page_title) {
 
 /**
  * [trial-14j] Banniere globale essai gratuit
- * S'affiche en haut de chaque page si l'org est en status='trial'
+ * S'affiche en haut de chaque page pendant l'essai et une fois l'essai terminé sans formule
+ * (badge « ESSAI » / « Essai terminé » d'ak_org_plan_state), jamais pour un client payant.
+ * Masquée dans l'application (bouton d'achat, Apple 3.1.1).
  * Mobile responsive (flex-wrap + media query 640px)
  */
 function render_trial_banner() {
@@ -180,22 +182,19 @@ function render_trial_banner() {
     $org_id = (int)$user['org_id'];
 
     try {
-        $stmt = $pdo->prepare("
-            SELECT s.status, o.trial_ends_at
-            FROM subscriptions s
-            JOIN organizations o ON o.id = s.org_id
-            WHERE s.org_id = ?
-            ORDER BY s.id DESC LIMIT 1
-        ");
-        $stmt->execute([$org_id]);
-        $row = $stmt->fetch();
-        if (!$row || empty($row['trial_ends_at']) || !in_array($row['status'], ['trial', 'suspended'], true)) return;
+        // Même état que les badges du cockpit, l'appli et mon-asso-plan (ak_org_plan_state) :
+        // un client payant n'est jamais « en essai » (même si son ancienne ligne subscriptions
+        // est restée « trial » ou « suspended »), un essai suspendu à la main ou une association
+        // résiliée n'ont pas de bandeau, et l'essai est « terminé » dès que sa date est passée.
+        if (!function_exists('ak_org_plan_state')) require_once __DIR__ . '/trial-helpers.php';
+        $ps = ak_org_plan_state($pdo, $org_id);
+        if (!in_array($ps['badge_tone'], ['trial', 'expired'], true) || empty($ps['trial_ends_at'])) return;
 
-        $end_ts = strtotime($row['trial_ends_at']);
+        $end_ts = strtotime((string)$ps['trial_ends_at']);
         if (!$end_ts) return;
-        $days_left = max(0, (int)ceil(($end_ts - time()) / 86400));
+        $days_left = max(0, (int)$ps['days_left']);
         $end_fr = date('d/m/Y', $end_ts);
-        $expired = ($row['status'] === 'suspended');
+        $expired = ($ps['badge_tone'] === 'expired');
 
         if ($expired) {
             $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, choisissez une formule pour retrouver toutes les fonctionnalités";

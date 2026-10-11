@@ -41,6 +41,12 @@ if ($action === 'send') {
     if (empty($quote['client_email'])) {
         app_fail(422, 'no_email', 'Ce client n\'a pas d\'adresse email : ajoutez-la puis réessayez.');
     }
+    // Essai gratuit : chaque envoi du devis, renvoi compris, compte dans le plafond d'envoi
+    // (sans effet pour une association abonnée)
+    require_once __DIR__ . '/../trial-limits-helpers.php';
+    if ($trial_block = ak_trial_quote_send_block($pdo, $org_id, $quote_id)) {
+        app_fail(429, 'trial_limit', $trial_block);
+    }
     try {
         $public_url = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr') . '/devis/' . $quote['public_uuid'];
         $vars = [

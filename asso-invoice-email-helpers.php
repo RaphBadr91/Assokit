@@ -32,6 +32,14 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
     $recipient = $inv['client_email'];
     if (empty($recipient)) throw new RuntimeException('Email client vide');
 
+    // Essai gratuit : chaque facture ou relance envoyée compte dans le plafond d'envoi
+    // (sans effet pour une association abonnée). Couvre tous les appelants : envoi manuel,
+    // appli, relances manuelles et automatiques (cron).
+    require_once __DIR__ . '/trial-limits-helpers.php';
+    if ($trial_block = ak_trial_send_block($pdo, (int)$inv['org_id'], 1)) {
+        return ['success' => false, 'log_id' => 0, 'message' => $trial_block, 'trial_limit' => true];
+    }
+
     // CC = email de l'asso (récupéré depuis billing_email ou via JOIN sur organizations)
     $cc = !empty($inv['org_email']) ? $inv['org_email'] : null;
 

@@ -31,15 +31,13 @@ $can_plan = !empty($ctx['can_manage_subscriptions']);
 
 /**
  * Change le plan partout (ak_org_set_plan) dans une transaction. Renvoie null ou un message d'erreur.
- * Sortie d'essai : la date de fin d'essai ne reste pas comme « échéance » du nouvel abonnement,
- * et un plan payant ne reste pas affiché « Offert » (sa_trial_exit_cleanup).
+ * Sortie d'essai : ak_org_set_plan efface aussi la fin d'essai restée comme « échéance » et passe
+ * le mode « Offert » de l'inscription en « manuel » si le nouveau plan est payant.
  */
 function sa_assoc_set_plan(PDO $pdo, int $org_id, int $plan_id): ?string {
     try {
-        $before = ak_org_plan_state($pdo, $org_id);
         $pdo->beginTransaction();
         ak_org_set_plan($pdo, $org_id, $plan_id);
-        sa_trial_exit_cleanup($pdo, $org_id, $before, ak_org_plan_state($pdo, $org_id));
         $pdo->commit();
         return null;
     } catch (InvalidArgumentException $e) {
@@ -50,6 +48,21 @@ function sa_assoc_set_plan(PDO $pdo, int $org_id, int $plan_id): ?string {
         error_log('[super-admin-associations] set_plan: ' . get_class($e) . ' ' . $e->getMessage());
         return 'Le plan n’a pas pu être changé (erreur technique). Rien n’a été modifié.';
     }
+}
+
+/**
+ * Client Stripe passé sur un plan que Stripe ne facture pas (gratuit, essai, Sur-mesure…) : le plan
+ * change ici, pas dans Stripe. Les données de paiement sont gardées (ak_org_set_plan) ; c'est au
+ * Fondateur d'annuler dans Stripe. $free : la nouvelle formule est gratuite (ak_stripe_left_on_free).
+ */
+function sa_stripe_left_message(string $stripe_sub_id, bool $free = true): string {
+    if (!$free) {
+        return 'Abonnement Stripe ' . $stripe_sub_id . ' toujours actif : il facture encore l’ancienne formule, alors que la formule '
+             . 'actuelle n’est pas réglée par Stripe. Annulez-le dans le tableau de bord Stripe (Abonnements), sinon la carte du client '
+             . 'continuera d’être prélevée.';
+    }
+    return 'Abonnement Stripe ' . $stripe_sub_id . ' toujours actif : le plan a changé dans Assokit, mais Stripe continuera '
+         . 'de prélever la carte du client tant que cet abonnement n’est pas annulé dans le tableau de bord Stripe (Abonnements).';
 }
 
 $error = null;
@@ -90,8 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 $error = '🏗️ Seul un Fondateur peut refuser une association.';
             } else {
                 $reason = trim($_POST['rejection_reason'] ?? '');
-                $stmt = $pdo->prepare("UPDATE organizations SET validation_status = 'rejected', rejection_reason = ?, validated_by_user_id = ?, validated_at = NOW(), status = 'suspended' WHERE id = ?");
-                $stmt->execute([$reason ?: 'Refusé par le Fondateur', (int) $user['id'], $target_id]);
+                // Refusée ET suspendue (même règle que l'appli) ; en essai, plus aucun rappel d'essai
+                ak_org_reject($pdo, $target_id, $reason, (int) $user['id']);
                 sa_log_action((int) $user['id'], 'reject_org', $target_id, null, ['reason' => $reason]);
                 $success = '✕ Association refusée.';
                 $view_id = $target_id;
@@ -126,6 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                             $after = ak_org_plan_state($pdo, $target_id);
                             $log['plan'] = ['from' => $before['plan_slug'], 'to' => $after['plan_slug'], 'status' => $after['badge']];
                             $success = 'Association mise à jour. Plan : ' . $before['plan_label'] . ' → ' . $after['plan_label'] . ' (' . $after['badge'] . ').';
+                            if ($sid = ak_stripe_left_on_free($pdo, $target_id, $sfree)) $error = sa_stripe_left_message($sid, (bool) $sfree);
                         }
                     }
                     sa_log_action((int) $user['id'], 'update_org', $target_id, null, $log);
@@ -145,25 +159,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 $error = 'Cette association n’est pas en essai : rien à prolonger.';
             } else {
                 try {
+                    // ak_trial_extend remet tout en essai : fin d'essai, statut, plan d'essai sur la ligne
+                    // courante (même rétrogradée sans previous_plan_id), ancien libellé, ancienne table.
                     $pdo->beginTransaction();
                     $new_end = ak_trial_extend($pdo, $target_id, $days);
-                    // L'essai rouvert doit porter le plan d'essai partout (fonctionnalités PRO, ancien
-                    // libellé organizations.plan, ancienne table) : si la ligne courante n'est pas sur le
-                    // plan d'essai (rétrogradation sans previous_plan_id…), ak_org_set_plan l'y remet en
-                    // gardant la nouvelle fin d'essai (future).
-                    $trial_plan = ak_trial_plan($pdo);
-                    if ($trial_plan && !$trial_plan['is_trial'] && $trial_plan['slug'] !== 'pro-essai') $trial_plan = null; // pas de vrai plan d'essai
-                    $now_state = ak_org_plan_state($pdo, $target_id);
-                    if ($trial_plan && (int) $now_state['plan_id'] !== (int) $trial_plan['id']) {
-                        ak_org_set_plan($pdo, $target_id, (int) $trial_plan['id']);
-                    } elseif ($now_state['plan_id'] && ak_db_accepts($pdo, 'organizations', 'plan', $now_state['plan_slug'])) {
-                        $pdo->prepare("UPDATE organizations SET plan = ? WHERE id = ?")->execute([$now_state['plan_slug'], $target_id]);
-                    }
                     $pdo->commit();
                     sa_log_action((int) $user['id'], 'trial_extend', $target_id, null, [
                         'days' => $days, 'from' => $before['trial_ends_at'], 'to' => $new_end,
                     ]);
                     $success = 'Essai prolongé de ' . $days . ' jours : il se termine maintenant le ' . date('d/m/Y', strtotime($new_end)) . '.';
+                } catch (AkTrialBlocked $e) {
+                    // Paiement Stripe en attente : rien n'est modifié, le Fondateur sait quoi faire
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    $error = $e->getMessage();
                 } catch (Throwable $e) {
                     if ($pdo->inTransaction()) $pdo->rollBack();
                     error_log('[super-admin-associations] trial_extend: ' . get_class($e) . ' ' . $e->getMessage());
@@ -190,23 +198,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 ]);
                 $success = 'Plan ' . $after['plan_label'] . ' activé (' . sa_plan_state_price($after) . ')'
                          . (($before['is_trial'] || $before['trial_expired']) && !$after['is_trial'] ? ' : l’essai est terminé.' : '.');
+                if ($sid = ak_stripe_left_on_free($pdo, $target_id, $sfree)) $error = sa_stripe_left_message($sid, (bool) $sfree);
             }
         }
         // ---- SUSPEND ----
         elseif ($action === 'suspend') {
             $reason = trim($_POST['reason'] ?? '');
             $st_before = ak_org_plan_state($pdo, $target_id);
-            $stmt = $pdo->prepare("UPDATE organizations SET status = 'suspended', suspended_reason = ? WHERE id = ?");
-            $stmt->execute([$reason ?: 'Suspendu par super admin', $target_id]);
-            // Suspendue pendant son essai : l'ancienne table passe aussi en « suspended », sinon les
-            // rappels J-7 / J-3 / J-0 partiraient encore. « Réactiver » rouvre l'essai s'il reste des jours.
-            if ($st_before['is_trial'] && ak_db_accepts($pdo, 'subscriptions', 'status', 'suspended')) {
-                try {
-                    $pdo->prepare("UPDATE subscriptions SET status = 'suspended' WHERE org_id = ? AND status = 'trial'")->execute([$target_id]);
-                } catch (Throwable $e) {
-                    error_log('[super-admin-associations] suspend legacy: ' . get_class($e));
-                }
-            }
+            // Suspendue pendant son essai : l'ancienne table passe aussi en « suspended » (plus de rappels
+            // J-7 / J-3 / J-0). « Réactiver » rouvre l'essai s'il reste des jours. Même règle que l'appli.
+            ak_org_suspend($pdo, $target_id, $reason !== '' ? $reason : 'Suspendu par super admin');
             sa_log_action((int) $user['id'], 'suspend_org', $target_id, null, ['reason' => $reason]);
             $success = 'Association suspendue.';
             if ($st_before['badge_tone'] === 'trial' && $st_before['trial_ends_at']) {
@@ -216,21 +217,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
         }
         // ---- REACTIVATE ----
         elseif ($action === 'reactivate') {
-            // Une association suspendue PENDANT son essai (fin encore à venir) retrouve son essai,
-            // pas un statut « active » qui la ferait passer pour cliente.
-            $st_before = ak_org_plan_state($pdo, $target_id);
-            $back_to_trial = $st_before['is_trial'] && $st_before['trial_ends_at'] && strtotime((string) $st_before['trial_ends_at']) > time()
-                && ak_db_accepts($pdo, 'organizations', 'status', 'trial');
-            $stmt = $pdo->prepare("UPDATE organizations SET status = ?, suspended_reason = NULL WHERE id = ?");
-            $stmt->execute([$back_to_trial ? 'trial' : 'active', $target_id]);
-            if ($back_to_trial) ak_legacy_sub_trial($pdo, $target_id, (string) $st_before['trial_ends_at'], false);
-            sa_log_action((int) $user['id'], 'reactivate_org', $target_id, null, $back_to_trial ? ['trial' => true] : []);
-            $st_after = ak_org_plan_state($pdo, $target_id);
-            $success = 'Association réactivée (' . $st_after['badge'] . ').';
-            if ($st_after['badge_tone'] === 'expired') {
-                $success .= ' L’essai reste terminé : prolongez-le ou passez-la en abonnement pour rouvrir l’accès.';
-            }
+            // Même règle que l'appli (ak_org_reactivate) : un essai en cours repasse « trial », jamais
+            // « active » (qui lui laissait le plan d'essai sans fin) ; un essai dont la date est passée
+            // se termine tout de suite (plan Démarrage) et l'association repart active, sans que le
+            // cron ne la re-suspende quelques minutes plus tard.
             $view_id = $target_id;
+            try {
+                $trial_ended = null;
+                $new_status = ak_org_reactivate($pdo, $target_id, $trial_ended);
+                sa_log_action((int) $user['id'], 'reactivate_org', $target_id, null,
+                    $new_status === 'trial' ? ['trial' => true] : ($trial_ended ? ['trial_ended' => $trial_ended] : []));
+                $st_after = ak_org_plan_state($pdo, $target_id);
+                if ($trial_ended) {
+                    $success = 'Association réactivée sur le plan gratuit Démarrage (essai terminé le ' . date('d/m/Y', strtotime($trial_ended)) . ').'
+                             . ' Prolongez l’essai ou passez-la en abonnement pour rouvrir les fonctionnalités PRO.';
+                } else {
+                    $success = 'Association réactivée (' . $st_after['badge'] . ').';
+                }
+            } catch (Throwable $e) {
+                error_log('[super-admin-associations] reactivate: ' . get_class($e) . ' ' . $e->getMessage());
+                $error = 'L’association n’a pas pu être réactivée (erreur technique).';
+            }
         }
         // ---- CANCEL ----
         elseif ($action === 'cancel') {
@@ -330,7 +337,7 @@ if ($view_id > 0) {
     $asso_sub = null;
     try {
         $stmt = $pdo->prepare("SELECT s.* FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
-                               WHERE s.org_id = ? ORDER BY (s.status = 'active') DESC, s.id DESC LIMIT 1");
+                               WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1");
         $stmt->execute([$view_id]);
         $asso_sub = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     } catch (Throwable $e) {}
@@ -378,9 +385,13 @@ if ($view_id > 0) {
 
     $days_left = $plan_state['days_left'];
     $trial_end_fr = $plan_state['trial_ends_at'] ? date('d/m/Y', strtotime((string) $plan_state['trial_ends_at'])) : '';
-    // Suspendue à la main PENDANT l'essai (la fin d'essai est encore à venir) : l'état commun la classe
-    // « Essai terminé », mais l'essai n'est pas arrivé à son terme — le bloc d'essai le dit tel quel.
-    $trial_paused = $plan_state['trial_expired'] && $plan_state['org_status'] === 'suspended' && $days_left !== null && $days_left > 0;
+    // Suspendue à la main PENDANT l'essai (la fin d'essai est encore à venir) : « Essai suspendu »,
+    // jamais « Essai terminé le <date future> » (état commun, le même que la liste et l'appli).
+    $trial_paused = !empty($plan_state['trial_paused']);
+    // Client Stripe passé sur un plan que Stripe ne facture pas (gratuit, essai, Sur-mesure…) :
+    // l'abonnement Stripe de l'ancienne formule tourne encore
+    $stripe_left_free = null;
+    $stripe_left = ak_stripe_left_on_free($pdo, $view_id, $stripe_left_free);
     $pay_modes = ['stripe' => 'Stripe (carte)', 'manual' => 'Manuel', 'wire_transfer' => 'Virement', 'free_grant' => 'Offert'];
 
     sa_render_head($org['name']);
@@ -521,7 +532,7 @@ if ($view_id > 0) {
 
     <?php if ($in_trial): ?>
     <!-- ========== ESSAI ========== -->
-    <div class="sa-card sa-trial<?= $plan_state['trial_expired'] ? ' is-expired' : '' ?>" id="essai">
+    <div class="sa-card sa-trial<?= $plan_state['trial_expired'] || $trial_paused ? ' is-expired' : '' ?>" id="essai">
         <div class="sa-trial-top">
             <div class="sa-trial-main">
                 <span class="sa-trial-tag"><?= $trial_paused ? '⏸ ESSAI SUSPENDU' : ($plan_state['trial_expired'] ? '⌛ ESSAI TERMINÉ' : '⏱ ESSAI PRO') ?></span>
@@ -534,7 +545,7 @@ if ($view_id > 0) {
                 <?php elseif ($plan_state['trial_expired']): ?>
                     <div class="sa-trial-title"><?= h($plan_state['badge']) ?></div>
                     <div class="sa-trial-text">
-                        L’essai gratuit de <?= (int) AK_TRIAL_DAYS ?> jours est arrivé à son terme sans abonnement : l’accès est suspendu, les données sont conservées.
+                        L’essai gratuit est arrivé à son terme sans abonnement : l’association repasse sur le plan gratuit Démarrage, ses données sont conservées.
                         Prolongez l’essai ou passez l’association en abonnement pour rouvrir l’accès.
                     </div>
                 <?php else: ?>
@@ -835,6 +846,10 @@ if ($view_id > 0) {
                         </div>
                     <?php endif; ?>
                 </div>
+
+                <?php if ($stripe_left): ?>
+                    <div class="sa-alert sa-alert-error" style="margin:12px 0 0; font-size:12.5px;">⚠️ <?= h(sa_stripe_left_message($stripe_left, (bool) $stripe_left_free)) ?></div>
+                <?php endif; ?>
 
                 <a href="/super-admin/abonnements?org_id=<?= (int) $org['id'] ?>" class="sa-btn sa-btn-ghost sa-btn-sm" style="margin-top:12px; width:100%">
                     Voir les factures →

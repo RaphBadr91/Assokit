@@ -6,8 +6,12 @@
  * davantage, chaque échéance ne part qu'une fois.
  *   /usr/bin/php /home/pura7044/public_html/cron-trial-check.php
  *
- * - status='trial' + trial_ends_at depasse → 'suspended' + email
- * - J-3 et J-1 → email rappel
+ * - essai terminé (trial_ends_at < NOW()) → ancienne ligne 'suspended', association passée
+ *   au plan gratuit Démarrage (ak_trial_expire, la même bascule que cron-job-essai, au même
+ *   instant) + e-mail de fin ; jamais pour un client payant, ni d'e-mail à une association
+ *   résiliée ou suspendue à la main
+ * - J-7, J-3, J-1 et J-0 → e-mail de rappel (essais en cours seulement)
+ * Idempotent : chaque fin d'essai et chaque rappel ne part qu'une fois (cron_envois).
  */
 require_once __DIR__ . '/config.php';
 @require_once __DIR__ . '/resend-helper.php';
@@ -26,15 +30,23 @@ echo "[" . date('Y-m-d H:i:s') . "] CRON trial-check demarre\n";
 require_once __DIR__ . '/cron-lots.php';
 if (!ak_lot_demarrer($pdo, 'trial-check')) exit(0);
 
-// 1. Trials expires → suspended + email
+// 1. Essais terminés → ancienne ligne « suspended », plan Démarrage, e-mail de fin
+//
+// Un client payant n'est jamais concerné (son ancienne ligne a pu rester « trial ») : il ne
+// reçoit pas « votre essai a pris fin ». Une association résiliée, ou suspendue à la main
+// (suspended_reason renseigné par le cockpit ou l'appli), voit sa ligne basculer sans e-mail.
+$has_reason = isset(ak_db_columns($pdo, 'organizations')['suspended_reason']);
 $stmt = $pdo->query("
-    SELECT s.id AS sub_id, s.org_id, o.name AS org_name, o.trial_ends_at
+    SELECT s.id AS sub_id, s.org_id, o.name AS org_name, o.trial_ends_at, o.status AS org_status,
+           " . ($has_reason ? "o.suspended_reason" : "NULL") . " AS suspended_reason
     FROM subscriptions s
     JOIN organizations o ON o.id = s.org_id
     WHERE s.status = 'trial'
       AND o.trial_ends_at IS NOT NULL
       AND o.trial_ends_at < NOW()
       AND o.deleted_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM asso_subscriptions a JOIN asso_plans p ON p.id = a.plan_id
+                      WHERE a.org_id = o.id AND " . ak_paid_sub_sql($pdo, 'a', 'p') . ")
     ORDER BY o.trial_ends_at ASC
     LIMIT " . (int) ak_lot_place());
 $expired = $stmt->fetchAll();
@@ -50,7 +62,18 @@ foreach ($expired as $row) {
                       . " WHERE id=?")
             ->execute([$row['sub_id']]);
         $updated++;
-        echo "  ✓ Org #" . $row['org_id'] . " " . $row['org_name'] . " → suspended\n";
+        // Statut lu AVANT la bascule : « trial » (ou « suspended » posé par la fin d'essai, sans motif) = fin naturelle
+        $by_hand = $row['org_status'] === 'cancelled'
+                || ($row['org_status'] === 'suspended' && trim((string) $row['suspended_reason']) !== '');
+        ak_trial_expire($pdo, (int) $row['org_id']);
+        echo "  ✓ Org #" . $row['org_id'] . " " . $row['org_name'] . " → suspended" . ($by_hand ? " (sans e-mail : " . $row['org_status'] . " à la main)" : "") . "\n";
+        if ($by_hand) continue;
+
+        // Une seule fois par fin d'essai, même si l'association a plusieurs anciennes lignes
+        $fin = date('Y-m-d', strtotime((string) $row['trial_ends_at']));
+        if (!ak_envoi_reserver($pdo, 'trial-check', (int) $row['org_id'], 'fin:' . $fin)) continue;
+        // La durée n'est plus annoncée : un essai prolongé ou ouvert par le fondateur ne dure pas AK_TRIAL_DAYS jours
+        $quand = $fin === date('Y-m-d') ? "aujourd'hui" : "le " . date('d/m/Y', strtotime((string) $row['trial_ends_at']));
 
         $admins = $pdo->prepare("SELECT email, first_name FROM users WHERE org_id=? AND role='admin' AND is_active=1");
         $admins->execute([$row['org_id']]);
@@ -60,9 +83,9 @@ foreach ($expired as $row) {
                 try {
                     $html = ak_email_template_wrap(
                         "Bonjour " . htmlspecialchars($a['first_name']) . ",",
-                        "Votre essai gratuit de " . (int)AK_TRIAL_DAYS . " jours sur AssoKit a pris fin aujourd'hui."
-                        . "<br><br>Vos données sont conservées."
-                        . "<br><br>Pour continuer avec <strong>" . htmlspecialchars($row['org_name']) . "</strong>, choisissez une formule sur la page Abonnement.",
+                        "Votre essai gratuit sur AssoKit a pris fin " . $quand . "."
+                        . "<br><br>Vos données sont conservées : <strong>" . htmlspecialchars($row['org_name']) . "</strong> continue sur le plan gratuit Démarrage."
+                        . "<br><br>Pour retrouver toutes les fonctionnalités, choisissez une formule sur la page Abonnement.",
                         "https://assokit.fr/mon-asso-plan", "Choisir ma formule", "AssoKit"
                     );
                     ak_asso_send_resend($a['email'], "🎁 Votre essai AssoKit a pris fin", $html, null, null, 'AssoKit');
@@ -72,18 +95,33 @@ foreach ($expired as $row) {
     } catch (Throwable $e) { error_log('[cron-trial-check] bascule: ' . $e->getMessage()); }
 }
 
+// 1 bis. Essais terminés sans ancienne ligne « trial » (association créée hors inscription,
+// suspendue puis réactivée, ligne d'essai annulée à tort…) : même bascule, sans e-mail.
+// cron-job-essai fait le même rattrapage ; ici, il a lieu dans les 10 minutes.
+$rattrapes = 0;
+foreach (ak_trial_expired_org_ids($pdo, max(1, (int) ak_lot_place())) as $oid) {
+    if (!ak_lot_encore()) break;
+    ak_lot_fait();
+    try {
+        if (ak_trial_expire($pdo, $oid)) $rattrapes++;
+    } catch (Throwable $e) { error_log('[cron-trial-check] rattrapage org #' . $oid . ': ' . get_class($e)); }
+}
+if ($rattrapes) echo "→ " . $rattrapes . " fin(s) d'essai rattrapée(s) (sans ancienne ligne)\n";
+
 // 2. Rappels J-7, J-3, J-1 et J-0
 //
 // J-7 et J-0 viennent de cron-job-essai, qui envoyait les mêmes rappels
 // en parallèle depuis organizations : une association à J-3 recevait
-// donc deux e-mails. Ce cron-ci est désormais le seul à les envoyer,
-// parce que c'est subscriptions que lit includes-layout pour décider
-// d'afficher le bandeau d'essai — c'est donc elle qui fait foi sur le
-// cycle de vie de l'essai.
+// donc deux e-mails. Ce cron-ci est désormais le seul à les envoyer, à
+// partir de l'ancienne table subscriptions (une ligne « trial » par essai :
+// ak_legacy_sub_trial la crée quand le fondateur ouvre ou prolonge un essai).
+// Le bandeau, lui, lit ak_org_plan_state(), comme les badges.
 //
 // Ils sont DÉPLACÉS et non supprimés : ne garder que J-3 et J-1 aurait
 // fait disparaître sans bruit l'alerte d'une semaine avant et celle du
 // dernier jour.
+// Seuls les essais EN COURS sont relancés : ni une association suspendue ou résiliée à la main,
+// ni un client payant dont l'ancienne ligne serait restée « trial ».
 foreach ([7, 3, 1, 0] as $days_left) {
     // trial_ends_at est ramenée : elle sert de clé de dédoublonnage.
     // Sans elle, la clé serait « j3: » pour tout le monde et le premier
@@ -94,7 +132,11 @@ foreach ([7, 3, 1, 0] as $days_left) {
         JOIN organizations o ON o.id = s.org_id
         WHERE s.status = 'trial'
           AND o.deleted_at IS NULL
+          AND o.status NOT IN ('suspended', 'cancelled')
+          AND o.trial_ends_at >= NOW()
           AND DATE(o.trial_ends_at) = DATE(DATE_ADD(NOW(), INTERVAL ? DAY))
+          AND NOT EXISTS (SELECT 1 FROM asso_subscriptions a JOIN asso_plans p ON p.id = a.plan_id
+                          WHERE a.org_id = o.id AND " . ak_paid_sub_sql($pdo, 'a', 'p') . ")
         ORDER BY s.org_id
         LIMIT " . (int) ak_lot_place() . "
     ");

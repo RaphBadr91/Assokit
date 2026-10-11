@@ -57,17 +57,19 @@ function ak_plan_trial_name(PDO $pdo, string $plan_label): string {
 
 /**
  * Essai de l'association, côté association (pages, appli, IA), d'après ak_org_plan_state() :
- *   in_trial       essai EN COURS (pas terminé)
+ *   in_trial       essai EN COURS (ni terminé, ni suspendu)
  *   trial_expired  essai terminé (association suspendue par la fin d'essai ou date dépassée)
- *   trial_ends_at  'Y-m-d H:i:s' — seulement en essai ou essai terminé, sinon null
- *   days_left      jours restants (même calcul que le cockpit) — seulement en essai ou essai terminé
+ *   trial_paused   essai suspendu à la main par le Fondateur avant sa fin (badge « Essai suspendu »)
+ *   trial_ends_at  'Y-m-d H:i:s' — seulement en essai (en cours, suspendu ou terminé), sinon null
+ *   days_left      jours restants (même calcul que le cockpit) — mêmes cas
  *   end_fr / end_short  'd/m/Y' / 'd/m' ('' sans date) ; ends_today : la fin tombe aujourd'hui
  *   plan_label, plan_slug, badge, badge_tone : repris tels quels
  *   trial_name     « Essai PRO » pendant l'essai en cours, sinon ''
- *   label          texte unique : « Essai PRO — jusqu’au 23/10 (J-14) », « Essai terminé le 08/10/2026 », ou le nom du plan
+ *   label          texte unique : « Essai PRO — jusqu’au 23/10 (J-14) », « Essai terminé le 08/10/2026 »,
+ *                  « Essai suspendu · fin prévue le 23/10/2026 », ou le nom du plan
  */
 function ak_plan_trial_info(PDO $pdo, int $org_id): array {
-    $info = ['in_trial' => false, 'trial_expired' => false, 'trial_ends_at' => null, 'days_left' => null,
+    $info = ['in_trial' => false, 'trial_expired' => false, 'trial_paused' => false, 'trial_ends_at' => null, 'days_left' => null,
              'end_fr' => '', 'end_short' => '', 'ends_today' => false,
              'plan_label' => '', 'plan_slug' => '', 'badge' => '', 'badge_tone' => 'gray', 'trial_name' => '', 'label' => ''];
     if ($org_id <= 0 || !function_exists('ak_org_plan_state')) return $info;
@@ -77,13 +79,15 @@ function ak_plan_trial_info(PDO $pdo, int $org_id): array {
     ak_get_current_plan($pdo, $org_id);
     $st = ak_org_plan_state($pdo, $org_id);
     $info['trial_expired'] = !empty($st['trial_expired']);
-    $info['in_trial']      = !empty($st['is_trial']) && !$info['trial_expired'];
+    // Essai suspendu à la main : ni « en cours » (fonctionnalités, achat) ni « terminé », comme le cockpit
+    $info['trial_paused']  = !empty($st['trial_paused']) && !$info['trial_expired'];
+    $info['in_trial']      = !empty($st['is_trial']) && !$info['trial_expired'] && !$info['trial_paused'];
     $info['plan_label']    = (string)$st['plan_label'];
     $info['plan_slug']     = (string)$st['plan_slug'];
     $info['badge']         = (string)$st['badge'];
     $info['badge_tone']    = (string)$st['badge_tone'];
     $end = !empty($st['trial_ends_at']) ? strtotime((string)$st['trial_ends_at']) : false;
-    if (($info['in_trial'] || $info['trial_expired']) && $end) {
+    if (($info['in_trial'] || $info['trial_expired'] || $info['trial_paused']) && $end) {
         $info['trial_ends_at'] = date('Y-m-d H:i:s', $end);
         $info['end_fr']        = date('d/m/Y', $end);
         $info['end_short']     = date('d/m', $end);
@@ -92,6 +96,8 @@ function ak_plan_trial_info(PDO $pdo, int $org_id): array {
     }
     if ($info['trial_expired']) {
         $info['label'] = 'Essai terminé' . ($info['end_fr'] !== '' ? ' le ' . $info['end_fr'] : '');
+    } elseif ($info['trial_paused']) {
+        $info['label'] = 'Essai suspendu' . ($info['end_fr'] !== '' ? ' · fin prévue le ' . $info['end_fr'] : '');
     } elseif ($info['in_trial']) {
         $info['trial_name'] = ak_plan_trial_name($pdo, $info['plan_label']);
         $d = $info['days_left'];
@@ -126,7 +132,7 @@ function ak_trial_blocks_cancel(PDO $pdo, int $org_id, ?array $sub, ?array $ti =
         if (!empty($sub['stripe_subscription_id'])) return false;
     }
     $price = (int)($sub['price_cents_monthly'] ?? ($sub['price_cents'] ?? 0));
-    return !empty($ti['in_trial']) || (!empty($ti['trial_expired']) && $price === 0);
+    return !empty($ti['in_trial']) || !empty($ti['trial_paused']) || (!empty($ti['trial_expired']) && $price === 0);
 }
 
 // ============================================================
@@ -138,16 +144,23 @@ function ak_get_current_plan(PDO $pdo, int $org_id): ?array {
     if (isset($cache[$org_id])) return $cache[$org_id];
 
     try {
+        // Ligne courante : active, puis l'essai en cours, puis la plus récente (ak_sub_order, trial-helpers.php).
+        // Un paiement Stripe en attente ou refusé ne passe jamais devant l'essai.
+        $order = function_exists('ak_sub_order') ? ak_sub_order('s') : "(s.status = 'active') DESC, (s.status = 'trial') DESC, s.id DESC";
+        // Mode de paiement de la ligne courante (mon-asso-plan) : lu seulement si les colonnes existent
+        $scols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'asso_subscriptions') : [];
+        $pay = (isset($scols['payment_mode']) ? ", s.payment_mode" : "")
+             . (isset($scols['stripe_subscription_id']) ? ", s.stripe_subscription_id" : "");
         $st = $pdo->prepare("
             SELECT
               s.id AS subscription_id, s.status, s.started_at, s.current_period_end,
-              s.grace_period_end, s.downgraded_at, s.cancelled_at, s.previous_plan_id, s.notes,
+              s.grace_period_end, s.downgraded_at, s.cancelled_at, s.previous_plan_id, s.notes$pay,
               p.*,
               p.id AS plan_id
             FROM asso_subscriptions s
             INNER JOIN asso_plans p ON p.id = s.plan_id
             WHERE s.org_id = :o
-            ORDER BY (s.status = 'active') DESC, s.id DESC
+            ORDER BY $order
             LIMIT 1
         ");
         $st->execute([':o' => $org_id]);
@@ -525,6 +538,7 @@ function ak_get_subscription_status(PDO $pdo, int $org_id): array {
     $trial = [
         'is_trial'        => $ti['in_trial'],
         'trial_expired'   => $ti['trial_expired'],
+        'trial_paused'    => $ti['trial_paused'],
         'trial_ends_at'   => $ti['trial_ends_at'],
         'trial_days_left' => $ti['days_left'],
         'trial_label'     => $ti['label'],
@@ -539,7 +553,7 @@ function ak_get_subscription_status(PDO $pdo, int $org_id): array {
     $status = (string)$plan['status'];
     // La ligne d'essai est écrite 'active' quand l'ENUM du statut n'a pas 'trial' :
     // c'est quand même un essai (seul ce cas change, les autres statuts restent tels quels).
-    if ($status === 'active' && $ti['in_trial'] && (!empty($plan['is_trial']) || ($plan['slug'] ?? '') === 'pro-essai')) {
+    if ($status === 'active' && ($ti['in_trial'] || $ti['trial_paused']) && (!empty($plan['is_trial']) || ($plan['slug'] ?? '') === 'pro-essai')) {
         $status = 'trial';
     }
     $now = new DateTime();

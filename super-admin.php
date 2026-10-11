@@ -166,7 +166,7 @@ try {
 // =====================================================================
 // Courbe de croissance (12 derniers mois) — données réelles
 //   - assos : nombre d'organisations existantes à la fin de chaque mois
-//   - mrr   : MRR (TTC) reconstitué = abonnements actifs à la fin du mois
+//   - mrr   : MRR (HT, comme asso_plans.price_cents et la grille de tarifs.php) reconstitué = abonnements actifs à la fin du mois
 // =====================================================================
 $growth_labels = [];
 $growth_assos = [];
@@ -431,7 +431,7 @@ foreach ($trials_ended as $e) {
   <!-- ===== KPIs ===== -->
   <section class="fc-kpis">
     <div class="panel fc-kpi k-gold">
-      <div class="fc-kpi-top"><span class="fc-kpi-lab">MRR (TTC)</span><span class="fc-kpi-ic">💶</span></div>
+      <div class="fc-kpi-top"><span class="fc-kpi-lab">MRR (HT)</span><span class="fc-kpi-ic">💶</span></div>
       <div class="fc-kpi-val num"><?= number_format($mrr, 2, ',', ' ') ?> <small>€</small></div>
       <svg class="fc-spark" viewBox="0 0 120 30" preserveAspectRatio="none"><defs><linearGradient id="fcgg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F59E0B" stop-opacity=".35"/><stop offset="1" stop-color="#F59E0B" stop-opacity="0"/></linearGradient></defs><path d="M0 24 L20 22 L40 23 L60 17 L80 15 L100 9 L120 6 L120 30 L0 30 Z" fill="url(#fcgg)"/><path d="M0 24 L20 22 L40 23 L60 17 L80 15 L100 9 L120 6" fill="none" stroke="#FCD34D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="120" cy="6" r="2.6" fill="#FCD34D"/></svg>
       <div class="fc-kpi-foot"><span class="fc-kpi-sub">Revenu mensuel récurrent · essais exclus</span></div>

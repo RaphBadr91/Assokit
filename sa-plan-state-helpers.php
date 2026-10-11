@@ -24,53 +24,13 @@ require_once __DIR__ . '/trial-helpers.php';
 
 if (!function_exists('sa_plan_state_from_row')) {
     /**
-     * Même calcul que ak_org_plan_state(), à partir d'une ligne déjà lue
-     * (colonnes : org_status, org_plan, trial_ends_at, sub_status, plan_id, slug, name, is_trial, price_cents).
+     * Même calcul que ak_org_plan_state(), à partir d'une ligne déjà lue (colonnes : org_status,
+     * org_plan, trial_ends_at, sub_status, plan_id, slug, name, is_trial, price_cents,
+     * stripe_subscription_id). Le calcul lui-même est ak_plan_state_compute() (trial-helpers.php) :
+     * une seule règle pour la fiche, les listes du cockpit et l'appli.
      */
     function sa_plan_state_from_row(array $r): array {
-        $st = ['plan_id' => null, 'plan_slug' => '', 'plan_label' => '—', 'sub_status' => '', 'org_status' => '',
-               'is_trial' => false, 'trial_expired' => false, 'trial_ends_at' => null, 'days_left' => null, 'price_cents' => 0,
-               'badge' => '—', 'badge_tone' => 'gray'];
-        $st['org_status'] = (string)($r['org_status'] ?? '');
-        $st['trial_ends_at'] = $r['trial_ends_at'] ?? null;
-        $st['plan_slug'] = (string)($r['org_plan'] ?? '');
-        if (isset($r['plan_id']) && $r['plan_id'] !== null) {
-            $st['plan_id'] = (int)$r['plan_id'];
-            $st['plan_slug'] = (string)$r['slug'];
-            $st['plan_label'] = ak_plan_label($r['slug'], $r['name']);
-            $st['sub_status'] = (string)$r['sub_status'];
-            $st['price_cents'] = (int)$r['price_cents'];
-            $st['is_trial'] = !empty($r['is_trial']) || $r['sub_status'] === 'trial';
-        } else {
-            $st['plan_label'] = ak_plan_label($st['plan_slug']);
-        }
-        if ($st['org_status'] === 'trial') $st['is_trial'] = true;
-        if ($st['trial_ends_at']) {
-            $end = strtotime((string)$st['trial_ends_at']);
-            if ($end) $st['days_left'] = (int)ceil(($end - time()) / 86400);
-        }
-        if ($st['trial_ends_at'] && ($st['org_status'] === 'suspended' || ($st['is_trial'] && $st['days_left'] !== null && $st['days_left'] < 0))) {
-            $st['trial_expired'] = true;
-        }
-
-        if ($st['trial_expired']) {
-            $st['badge'] = 'Essai terminé' . ($st['trial_ends_at'] ? ' le ' . date('d/m/Y', strtotime((string)$st['trial_ends_at'])) : '');
-            $st['badge_tone'] = 'expired';
-        } elseif ($st['is_trial']) {
-            $d = $st['days_left'];
-            $st['badge'] = 'ESSAI' . ($st['trial_ends_at'] ? ' · fin ' . date('d/m/Y', strtotime((string)$st['trial_ends_at'])) : '')
-                         . ($d !== null ? ' (' . ($d <= 0 ? 'dernier jour' : 'J-' . $d) . ')' : '');
-            $st['badge_tone'] = 'trial';
-        } elseif ($st['org_status'] === 'suspended') {
-            $st['badge'] = 'Suspendue'; $st['badge_tone'] = 'suspended';
-        } elseif ($st['org_status'] === 'cancelled') {
-            $st['badge'] = 'Résiliée'; $st['badge_tone'] = 'cancelled';
-        } elseif (in_array($st['sub_status'], ['pending_payment', 'overdue'], true)) {
-            $st['badge'] = $st['sub_status'] === 'overdue' ? 'Paiement en retard' : 'Paiement en attente'; $st['badge_tone'] = 'pending';
-        } else {
-            $st['badge'] = 'Active'; $st['badge_tone'] = 'active';
-        }
-        return $st;
+        return ak_plan_state_compute($r);
     }
 }
 
@@ -84,18 +44,17 @@ if (!function_exists('sa_org_plan_states')) {
         $out = [];
         if (!$ids) return $out;
         try {
-            $has_trial_col = isset(ak_db_columns($pdo, 'asso_plans')['is_trial']);
             foreach (array_chunk($ids, 500) as $chunk) {
                 $in = implode(',', $chunk); // entiers uniquement
+                // Ligne courante : même ordre que ak_get_current_plan / ak_org_plan_state (ak_sub_order)
                 $rows = $pdo->query("
                     SELECT o.id AS org_id, o.status AS org_status, o.plan AS org_plan, o.trial_ends_at,
-                           s.status AS sub_status, p.id AS plan_id, p.slug, p.name,
-                           " . ($has_trial_col ? "p.is_trial" : "0 AS is_trial") . ", COALESCE(p.price_cents, 0) AS price_cents
+                           " . ak_sub_state_cols($pdo) . "
                     FROM organizations o
                     LEFT JOIN asso_subscriptions s ON s.id = (
                         SELECT s2.id FROM asso_subscriptions s2 JOIN asso_plans p2 ON p2.id = s2.plan_id
                         WHERE s2.org_id = o.id
-                        ORDER BY (s2.status = 'active') DESC, s2.id DESC LIMIT 1)
+                        ORDER BY " . ak_sub_order('s2') . " LIMIT 1)
                     LEFT JOIN asso_plans p ON p.id = s.plan_id
                     WHERE o.id IN ($in)
                 ")->fetchAll(PDO::FETCH_ASSOC);
@@ -118,6 +77,7 @@ if (!function_exists('sa_plan_state_short')) {
             return 'Essai' . ($d === null ? '' : ' · ' . ($d <= 0 ? 'dernier jour' : 'J-' . $d));
         }
         if ($st['badge_tone'] === 'expired') return 'Essai terminé';
+        if (!empty($st['trial_paused'])) return 'Essai suspendu';
         return (string)$st['badge'];
     }
 }
@@ -164,6 +124,8 @@ if (!function_exists('sa_trial_exit_cleanup')) {
      *   - la fin d'essai ne reste pas comme « échéance » du nouveau plan ($clear_period_end) ;
      *   - le mode « Offert » (free_grant) posé par l'inscription à l'essai passe en « manuel » si le
      *     nouveau plan est payant ou sur devis : le client paiera, il ne doit plus voir « Plan offert ».
+     * ak_org_set_plan() le fait désormais lui-même (appli, API, toutes les pages) : cette fonction
+     * n'est plus qu'un filet pour les appelants existants, sans effet de plus (idempotente).
      * $before / $after : ak_org_plan_state() avant / après le changement.
      */
     function sa_trial_exit_cleanup(PDO $pdo, int $org_id, array $before, array $after, bool $clear_period_end = true): void {
@@ -178,7 +140,7 @@ if (!function_exists('sa_trial_exit_cleanup')) {
         if (!$sets) return;
         $pdo->prepare("UPDATE asso_subscriptions SET " . implode(', ', $sets) . " WHERE id = (
                            SELECT id FROM (SELECT s.id FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
-                                           WHERE s.org_id = ? ORDER BY (s.status = 'active') DESC, s.id DESC LIMIT 1) t)")
+                                           WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1) t)")
             ->execute([$org_id]);
     }
 }

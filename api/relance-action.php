@@ -11,6 +11,7 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../relances-engine.php';
 require_once __DIR__ . '/../rate-limit-helper.php';
+require_once __DIR__ . '/../trial-limits-helpers.php';   // essai gratuit : relances comptées dans le plafond d'envoi
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -44,8 +45,8 @@ try {
             $chk = $pdo->prepare("SELECT 1 FROM asso_invoices WHERE id=? AND org_id=?");
             $chk->execute([$iid, $org_id]);
             if (!$chk->fetchColumn()) { http_response_code(404); echo json_encode(['ok'=>false,'error'=>'not_found']); break; }
-            $res = ak_asso_invoice_send_email($pdo, $iid, 'dunning'.$stage, $uid);
-            echo json_encode(['ok'=>!empty($res['success']), 'message'=>$res['message'] ?? '']);
+            $res = ak_asso_invoice_send_email($pdo, $iid, 'dunning'.$stage, $uid);   // plafond d'essai contrôlé dans le helper
+            echo json_encode(['ok'=>!empty($res['success']), 'message'=>$res['message'] ?? '', 'trial_limit'=>!empty($res['trial_limit'])]);
             break;
         }
 
@@ -56,6 +57,7 @@ try {
             $subject = trim((string)($body['subject'] ?? ''));
             $msg = trim((string)($body['body'] ?? ''));
             if ($subject === '' || mb_strlen($msg) < 10) { echo json_encode(['ok'=>false,'error'=>'empty']); break; }
+            if ($trial_block = ak_trial_send_block($pdo, $org_id, 1)) { echo json_encode(['ok'=>false,'error'=>'trial_limit','message'=>$trial_block]); break; }
             $res = ak_rel_send_invoice_custom($pdo, $org_id, $iid, $stage, mb_substr($subject,0,255), mb_substr($msg,0,4000), $uid);
             echo json_encode(['ok'=>!empty($res['success']), 'message'=>$res['message'] ?? '']);
             break;
@@ -65,6 +67,7 @@ try {
             ak_rate_limit_or_die('relance_send', 40, 60, (string)$uid);
             $mid = (int)($body['user_id'] ?? 0);
             $stage = max(1, min(3, (int)($body['stage'] ?? 1)));
+            if ($trial_block = ak_trial_send_block($pdo, $org_id, 1)) { echo json_encode(['ok'=>false,'error'=>'trial_limit','message'=>$trial_block]); break; }
             $res = ak_rel_send_membership($pdo, $org_id, $mid, $stage, $uid);
             echo json_encode(['ok'=>!empty($res['success']), 'message'=>$res['message'] ?? '']);
             break;
@@ -77,6 +80,7 @@ try {
             $subject = trim((string)($body['subject'] ?? ''));
             $msg = trim((string)($body['body'] ?? ''));
             if ($subject === '' || mb_strlen($msg) < 10) { echo json_encode(['ok'=>false,'error'=>'empty']); break; }
+            if ($trial_block = ak_trial_send_block($pdo, $org_id, 1)) { echo json_encode(['ok'=>false,'error'=>'trial_limit','message'=>$trial_block]); break; }
             $res = ak_rel_send_membership($pdo, $org_id, $mid, $stage, $uid, mb_substr($msg,0,4000), mb_substr($subject,0,255));
             echo json_encode(['ok'=>!empty($res['success']), 'message'=>$res['message'] ?? '']);
             break;
@@ -158,20 +162,24 @@ try {
         case 'batch': {
             // Envoie toutes les relances recommandées (plafond de sécurité).
             ak_rate_limit_or_die('relance_batch', 4, 300, (string)$uid);
-            $sent = 0; $failed = 0; $cap = 100;
+            // Essai gratuit : chaque relance compte dans le plafond d'envoi ; arrivé au plafond, on s'arrête
+            // (les relances restantes attendent) et le message est renvoyé.
+            $sent = 0; $failed = 0; $cap = 100; $trial_block = null;
             foreach (ak_rel_invoice_targets($pdo, $org_id) as $t) {
                 if (!$t['due_now']) continue;
                 if ($sent >= $cap) break;
                 $res = ak_asso_invoice_send_email($pdo, (int)$t['id'], 'dunning'.$t['stage'], $uid);
+                if (!empty($res['trial_limit'])) { $trial_block = $res['message']; break; }
                 if (!empty($res['success'])) $sent++; else $failed++;
             }
-            foreach (ak_rel_membership_targets($pdo, $org_id) as $t) {
+            foreach ($trial_block ? [] : ak_rel_membership_targets($pdo, $org_id) as $t) {
                 if (!$t['due_now']) continue;
                 if ($sent >= $cap) break;
+                if ($trial_block = ak_trial_send_block($pdo, $org_id, 1)) break;
                 $res = ak_rel_send_membership($pdo, $org_id, (int)$t['id'], (int)$t['stage'], $uid);
                 if (!empty($res['success'])) $sent++; else $failed++;
             }
-            echo json_encode(['ok'=>true, 'sent'=>$sent, 'failed'=>$failed]);
+            echo json_encode(['ok'=>true, 'sent'=>$sent, 'failed'=>$failed] + ($trial_block ? ['trial_limit'=>true, 'message'=>$trial_block] : []), JSON_UNESCAPED_UNICODE);
             break;
         }
 

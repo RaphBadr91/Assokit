@@ -136,6 +136,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
         $new_sub_id = (int)$pdo->lastInsertId();
 
+        // Statut, fin d'essai et ancien libellé alignés sur l'abonnement créé (comme
+        // fondateur-create-organization) : les valeurs par défaut de organizations.status /
+        // trial_ends_at pouvaient faire passer ce client pour un essai (bandeau, plafonds, cron d'essai).
+        require_once __DIR__ . '/trial-helpers.php';
+        $plan_slug = '';
+        foreach ($plans as $p) if ((int)$p['id'] === $plan_id) { $plan_slug = (string)$p['slug']; break; }
+        $org_upd = ['trial_ends_at' => null];
+        if (ak_db_accepts($pdo, 'organizations', 'status', 'active')) $org_upd['status'] = 'active';
+        if ($plan_slug !== '' && ak_db_accepts($pdo, 'organizations', 'plan', $plan_slug)) $org_upd['plan'] = $plan_slug;
+        ak_db_update($pdo, 'organizations', $new_org_id, $org_upd);
+
         // 4. Add-on domaine si demandé
         if ($with_addon_domain) {
             $ins_addon = $pdo->prepare("
@@ -270,7 +281,7 @@ render_sidebar('admin-create-organization');
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <a href="/admin-create-organization" style="background:#059669;color:white;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">+ Créer un autre compte</a>
-        <a href="/admin-subscriptions" style="background:white;color:#475569;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;border:1px solid #E2E8F0;">📊 Voir tous les abonnements</a>
+        <a href="/fondateur-subscriptions" style="background:white;color:#475569;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;border:1px solid #E2E8F0;">📊 Voir tous les abonnements</a>
       </div>
     </div>
 

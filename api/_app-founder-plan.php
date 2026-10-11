@@ -28,6 +28,7 @@ if (!function_exists('fd_plan_fields')) {
             'sub_status'    => (string) $st['sub_status'],
             'is_trial'      => (bool) $st['is_trial'],
             'trial_expired' => (bool) $st['trial_expired'],
+            'trial_paused'  => !empty($st['trial_paused']),   // suspendue à la main pendant l'essai (fin encore à venir)
             'trial_ends_at' => $end ? date('Y-m-d H:i:s', $end) : null,
             // Ancien champ (dates d/m/Y) : seulement quand l'essai est en cours ou terminé,
             // pour qu'une association passée sur un plan payant n'affiche plus « essai → … ».
@@ -67,6 +68,7 @@ if (!function_exists('fd_live_status')) {
      * Statut à donner à une association qu'on (ré)active : 'trial' si son plan courant est
      * un essai (la fin d'essai reste gérée par le cron), sinon 'active'. Passer « active »
      * une association en essai lui donnait le plan PRO sans limite de durée.
+     * (« Réactiver » passe par ak_org_reactivate(), qui applique la même règle.)
      */
     function fd_live_status(PDO $pdo, array $st): string {
         if (empty($st['is_trial'])) return 'active';
@@ -78,56 +80,51 @@ if (!function_exists('fd_live_status')) {
 if (!function_exists('fd_tone_of')) {
     /**
      * Miroir d'ak_org_plan_state() sur une ligne déjà lue (statut org, fin d'essai, ligne
-     * d'abonnement courante). Mêmes règles, même ordre : à modifier en même temps.
+     * d'abonnement courante) : le calcul est ak_plan_state_compute(), le même que la fiche
+     * et les listes du cockpit web. Ce qui suit n'ajoute que « payante » (MRR).
      */
     function fd_tone_of(array $r): array {
-        $org_status = (string) ($r['status'] ?? '');
-        $has_row    = isset($r['plan_id']) && $r['plan_id'] !== null;
-        $sub_status = $has_row ? (string) ($r['sub_status'] ?? '') : '';
-        $plan_trial = $has_row && !empty($r['plan_is_trial']);
-        $is_trial   = ($has_row && ($plan_trial || $sub_status === 'trial')) || $org_status === 'trial';
-        $days_left  = null;
-        if (!empty($r['trial_ends_at'])) {
-            $end = strtotime((string) $r['trial_ends_at']);
-            if ($end) $days_left = (int) ceil(($end - time()) / 86400);
-        }
-        $expired = !empty($r['trial_ends_at']) && ($org_status === 'suspended' || ($is_trial && $days_left !== null && $days_left < 0));
-        if ($expired)                     $tone = 'expired';
-        elseif ($is_trial)                $tone = 'trial';
-        elseif ($org_status === 'suspended') $tone = 'suspended';
-        elseif ($org_status === 'cancelled') $tone = 'cancelled';
-        elseif (in_array($sub_status, ['pending_payment', 'overdue'], true)) $tone = 'pending';
-        else                              $tone = 'active';
-        $price = $has_row ? (int) ($r['price_cents'] ?? 0) : 0;
+        $st = ak_plan_state_compute([
+            'org_status'             => $r['org_status'] ?? ($r['status'] ?? ''),
+            'org_plan'               => $r['org_plan'] ?? '',
+            'trial_ends_at'          => $r['trial_ends_at'] ?? null,
+            'plan_id'                => $r['plan_id'] ?? null,
+            'slug'                   => $r['slug'] ?? '',
+            'name'                   => $r['name'] ?? null,
+            'is_trial'               => $r['is_trial'] ?? ($r['plan_is_trial'] ?? 0),
+            'price_cents'            => $r['price_cents'] ?? 0,
+            'sub_status'             => $r['sub_status'] ?? '',
+            'stripe_subscription_id' => $r['stripe_subscription_id'] ?? null,
+        ]);
+        $plan_trial = $st['plan_id'] !== null && (!empty($r['is_trial'] ?? ($r['plan_is_trial'] ?? 0)) || $st['plan_slug'] === 'pro-essai');
         // Payante = abonnement courant actif, sur un plan payant hors essai, association ni en essai,
         // ni en fin d'essai, ni suspendue, ni résiliée.
-        $paying = $tone === 'active' && $sub_status === 'active' && !$plan_trial && $price > 0;
-        return ['tone' => $tone, 'is_trial' => $is_trial, 'trial_expired' => $expired, 'days_left' => $days_left,
-                'paying' => $paying, 'price_cents' => $price];
+        $paying = $st['badge_tone'] === 'active' && $st['sub_status'] === 'active' && !$plan_trial && $st['price_cents'] > 0;
+        return ['tone' => $st['badge_tone'], 'is_trial' => $st['is_trial'], 'trial_expired' => $st['trial_expired'],
+                'trial_paused' => $st['trial_paused'], 'days_left' => $st['days_left'],
+                'paying' => $paying, 'price_cents' => $st['plan_id'] !== null ? $st['price_cents'] : 0];
     }
 }
 
 if (!function_exists('fd_org_tones')) {
     /** [org_id => fd_tone_of(...)] pour toutes les associations non supprimées, en une requête. */
     function fd_org_tones(PDO $pdo): array {
-        $trial_col = isset(ak_db_columns($pdo, 'asso_plans')['is_trial']) ? 'p.is_trial' : '0';
         $out = [];
         try {
-            // Ligne courante = même ordre que ak_get_current_plan / ak_org_plan_state.
+            // Ligne courante = même ordre que ak_get_current_plan / ak_org_plan_state (ak_sub_order).
             $rows = $pdo->query("
-                SELECT o.id, o.status, o.trial_ends_at, s.status AS sub_status, p.id AS plan_id,
-                       $trial_col AS plan_is_trial, COALESCE(p.price_cents, 0) AS price_cents
+                SELECT o.id, o.status AS org_status, o.trial_ends_at, " . ak_sub_state_cols($pdo) . "
                 FROM organizations o
                 LEFT JOIN asso_subscriptions s ON s.id = (
                     SELECT s2.id FROM asso_subscriptions s2 INNER JOIN asso_plans p2 ON p2.id = s2.plan_id
                     WHERE s2.org_id = o.id
-                    ORDER BY (s2.status = 'active') DESC, s2.id DESC LIMIT 1)
+                    ORDER BY " . ak_sub_order('s2') . " LIMIT 1)
                 LEFT JOIN asso_plans p ON p.id = s.plan_id
                 WHERE o.deleted_at IS NULL")->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {
             // Tables d'abonnement illisibles : ak_org_plan_state retombe aussi sur organizations seule
             try {
-                $rows = $pdo->query("SELECT id, status, trial_ends_at, NULL AS sub_status, NULL AS plan_id, 0 AS plan_is_trial, 0 AS price_cents
+                $rows = $pdo->query("SELECT id, status AS org_status, trial_ends_at, NULL AS sub_status, NULL AS plan_id, 0 AS is_trial, 0 AS price_cents
                                      FROM organizations WHERE deleted_at IS NULL")->fetchAll(PDO::FETCH_ASSOC);
             } catch (Throwable $e2) { $rows = []; }
         }

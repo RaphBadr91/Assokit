@@ -70,8 +70,76 @@ if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-/** Demande enregistrée sans ouverture automatique : alerte fondateur + accusé au prospect. */
-function ak_signup_fallback(PDO $pdo, array $lead, ?int $signup_id, string $reason): string
+/** Longueur d'une colonne CHAR/VARCHAR (null si inconnue ou d'un autre type). */
+function ak_signup_col_max(PDO $pdo, string $table, string $col): ?int
+{
+    return preg_match('/char\((\d+)\)/', ak_db_columns($pdo, $table)[$col]['type'] ?? '', $m) ? (int)$m[1] : null;
+}
+
+/**
+ * Clé « adresse IP » des limites anti-abus : l'adresse IPv4 telle quelle, le préfixe /64
+ * pour IPv6 (un seul abonné en dispose de milliards : compter adresse par adresse
+ * ne limitait rien).
+ */
+function ak_signup_ip_key(string $ip): string
+{
+    $bin = $ip !== '' ? @inet_pton($ip) : false;
+    if (!is_string($bin) || strlen($bin) !== 16) return $ip;
+    if (strncmp($bin, str_repeat("\0", 10) . "\xff\xff", 12) === 0) return (string)inet_ntop(substr($bin, 12));   // ::ffff:1.2.3.4
+    return inet_ntop(substr($bin, 0, 8) . str_repeat("\0", 8)) . '/64';
+}
+
+/** Demandes enregistrées depuis cette IP (ou ce /64) sur la dernière heure, TOUS statuts confondus. null si incomptable. */
+function ak_signup_ip_count(PDO $pdo, string $ip): ?int
+{
+    $cols = ak_db_columns($pdo, 'public_signups');
+    if (!isset($cols['ip_address'], $cols['created_at'])) return null;
+    $key = ak_signup_ip_key($ip);
+    if (strpos($key, '/') === false) {   // IPv4 (éventuellement notée ::ffff:a.b.c.d)
+        $st = $pdo->prepare("SELECT COUNT(*) FROM public_signups WHERE ip_address IN (?, ?) AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)");
+        $st->execute([$key, '::ffff:' . $key]);
+        return (int)$st->fetchColumn();
+    }
+    // IPv6 : les adresses sont écrites sous forme abrégée, le préfixe se compare donc ici
+    $st = $pdo->query("SELECT ip_address FROM public_signups WHERE ip_address LIKE '%:%' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR) LIMIT 5000");
+    $n = 0;
+    foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $a) if (ak_signup_ip_key((string)$a) === $key) $n++;
+    return $n;
+}
+
+/**
+ * Accusé de réception : au plus un par adresse et par 24 h. Une autre demande de la
+ * même adresse dans les 24 h suffit à ne pas réécrire (le prospect a déjà sa réponse,
+ * ou le fondateur l'a déjà dans sa liste).
+ */
+function ak_signup_ack_due(PDO $pdo, string $email, ?int $signup_id): bool
+{
+    try {
+        $cols = ak_db_columns($pdo, 'public_signups');
+        if (isset($cols['admin_email'], $cols['created_at'])) {
+            $st = $pdo->prepare("SELECT 1 FROM public_signups WHERE admin_email = ? AND id <> ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) LIMIT 1");
+            $st->execute([$email, (int)$signup_id]);
+            return !$st->fetchColumn();
+        }
+    } catch (Throwable $e) {}
+    // Table sans colonne exploitable : mémoire fichier, au mieux
+    return ak_rate_limit('signup_ack', 1, 86400, sha1($email));
+}
+
+/**
+ * Demande enregistrée sans ouverture automatique.
+ *   $kind : 'incident' → panne de notre côté : alerte fondateur + accusé au prospect ;
+ *           'limit'    → valide mais refusée par les limites par IP / par adresse : alerte fondateur, pas d'accusé ;
+ *           'breaker'  → disjoncteur (plus de 30 essais ouverts en 1 h) : ni accusé ni alerte unitaire.
+ * Alertes unitaires : budget par heure propre à chaque sorte, par IP puis au total (incidents :
+ * 3 par IP, 10 en tout ; limites : 2 par IP, 10 en tout). Des demandes limitées ne vident donc
+ * jamais le budget des incidents, et une seule IP ne vide aucun budget commun.
+ * Rafale (disjoncteur, ou budget dépassé) : plus d'alerte par demande ni d'accusé, mais UN
+ * résumé par heure au fondateur (ak_signup_digest_maybe). Sinon, n'importe qui pouvait faire
+ * écrire Assokit à une adresse de son choix et noyer le fondateur.
+ * La demande reste toujours enregistrée dans public_signups.
+ */
+function ak_signup_fallback(PDO $pdo, array $lead, ?int $signup_id, string $reason, string $kind = 'incident'): string
 {
     if ($signup_id) {
         try { ak_db_update($pdo, 'public_signups', $signup_id, ['status' => ak_db_pick($pdo, 'public_signups', 'status', ['blocked']) ?? 'blocked']); } catch (Throwable $e) {}
@@ -79,13 +147,34 @@ function ak_signup_fallback(PDO $pdo, array $lead, ?int $signup_id, string $reas
     }
     try {
         @require_once __DIR__ . '/signup-email-helpers.php';
-        if (function_exists('ak_signup_alert_founder')) ak_signup_alert_founder($pdo, $lead, 'failed', null, $reason);
-        if (function_exists('ak_signup_ack_prospect')) ak_signup_ack_prospect($lead['email'], $lead['first_name'], $lead['org_name']);
+        $ip_key = ak_signup_ip_key((string)($lead['ip'] ?? ''));
+        if ($kind === 'breaker') {
+            $flood = true;
+        } elseif ($kind === 'limit') {
+            $flood = !ak_rate_limit('signup_limit_alert', 2, 3600, $ip_key) || !ak_rate_limit('signup_limit_alert_all', 10, 3600, 'all');
+        } else {
+            $flood = !ak_rate_limit('signup_fallback_alert_ip', 3, 3600, $ip_key) || !ak_rate_limit('signup_fallback_alert', 10, 3600, 'all');
+        }
+        if ($flood) {
+            // Demande non enregistrée (public_signups illisible) : une trace dans les messages du cockpit
+            if (!$signup_id && function_exists('ak_signup_record_contact')) ak_signup_record_contact($pdo, $lead, ' — non ouverte automatiquement (anti-abus), à vérifier.', [], $reason);
+            if (function_exists('ak_signup_digest_maybe')) ak_signup_digest_maybe($pdo);
+        } else {
+            if (function_exists('ak_signup_alert_founder')) ak_signup_alert_founder($pdo, $lead, 'failed', null, $reason);
+            if ($kind === 'incident' && function_exists('ak_signup_ack_prospect') && ak_signup_ack_due($pdo, $lead['email'], $signup_id)) {
+                ak_signup_ack_prospect($lead['email'], $lead['first_name'], $lead['org_name']);
+            }
+        }
     } catch (Throwable $e) {
         error_log('[signup] fallback: ' . get_class($e));
     }
+    if ($kind === 'incident') {
+        return 'Merci ' . $lead['first_name'] . ' ! Votre demande d’essai pour « ' . $lead['org_name'] . ' » est bien enregistrée. '
+             . 'Un incident nous empêche de l’ouvrir automatiquement : notre équipe l’active pour vous et vous écrit à '
+             . $lead['email'] . ' sous 24 h ouvrées. Inutile de recommencer.';
+    }
     return 'Merci ' . $lead['first_name'] . ' ! Votre demande d’essai pour « ' . $lead['org_name'] . ' » est bien enregistrée. '
-         . 'Un incident nous empêche de l’ouvrir automatiquement : notre équipe l’active pour vous et vous écrit à '
+         . 'Par sécurité, elle ne peut pas être ouverte automatiquement pour le moment : notre équipe la vérifie et vous écrit à '
          . $lead['email'] . ' sous 24 h ouvrées. Inutile de recommencer.';
 }
 
@@ -98,41 +187,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form_at  = (int)($_SESSION['signup_form_at'] ?? 0);
     $is_robot = trim((string)($_POST['website'] ?? '')) !== '' || ($form_at > 0 && time() - $form_at < 2);
 
+    // Saisie relue AVANT les contrôles : une session expirée ne vide plus un formulaire
+    // de 20 champs. Jamais le mot de passe, qui n'est pas renvoyé dans la page.
+    $form['org_name']   = trim((string)($_POST['org_name'] ?? ''));
+    $form['first_name'] = trim((string)($_POST['first_name'] ?? ''));
+    $form['last_name']  = trim((string)($_POST['last_name'] ?? ''));
+    $form['email']      = strtolower(trim((string)($_POST['email'] ?? '')));
+    $form['plan']       = in_array($_POST['plan'] ?? '', AK_SIGNUP_PLANS, true) ? $_POST['plan'] : 'essentiel';
+    $form['accept_cgu'] = !empty($_POST['accept_cgu']);
+    $t = (($_POST['org_type'] ?? '') === 'tpe') ? 'tpe' : 'asso';
+    $form['type']       = $t;
+    $pick = fn($k, array $allowed) => in_array((string)($_POST[$k] ?? ''), $allowed, true) ? (string)$_POST[$k] : '';
+    $form['legal_form'] = $pick('legal_form', AK_SIGNUP_FORMS[$t]);
+    $form['size']       = $pick('size', AK_SIGNUP_SIZES[$t]);
+    $form['sector']     = $pick('sector', AK_SIGNUP_SECTORS[$t]);
+    $form['role']       = $pick('role', AK_SIGNUP_ROLES[$t]);
+    $form['source']     = $pick('source', AK_SIGNUP_SOURCES);
+    // Champs propres à un type : ignorés pour l'autre (cachés à l'écran, ils étaient quand
+    // même envoyés, contrôlés et enregistrés : RNA sur une TPE, TVA sur une association).
+    $form['vat']        = ($t === 'tpe' && in_array($_POST['vat'] ?? '', ['oui', 'non'], true)) ? (string)$_POST['vat'] : '';
+    $form['needs']      = array_values(array_intersect(AK_SIGNUP_NEEDS, array_map('strval', (array)($_POST['needs'] ?? []))));
+    $form['rna']        = $t === 'asso' ? strtoupper(preg_replace('/\s+/', '', (string)($_POST['rna'] ?? ''))) : '';
+    $form['siret']      = preg_replace('/\D+/', '', (string)($_POST['siret'] ?? ''));
+    $form['street']     = trim((string)($_POST['street'] ?? ''));
+    $form['zip']        = preg_replace('/\s+/', '', (string)($_POST['zip'] ?? ''));
+    $form['city']       = trim((string)($_POST['city'] ?? ''));
+    $form['phone']      = trim((string)($_POST['phone'] ?? ''));
+    $form['website']    = trim((string)($_POST['site_web'] ?? ''));
+    $form['message']    = trim((string)($_POST['message'] ?? ''));
+
     if (!$csrf_ok) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         $error = 'Session expirée. Veuillez réessayer.';
     } elseif ($is_robot) {
         $notice = 'Merci ! Votre demande est bien enregistrée.';
-    } elseif (!ak_rate_limit('signup', 5, 900)) {
-        $error = 'Trop de tentatives de création de compte. Merci de patienter quelques minutes.';
     } else {
-        $form['org_name']   = trim((string)($_POST['org_name'] ?? ''));
-        $form['first_name'] = trim((string)($_POST['first_name'] ?? ''));
-        $form['last_name']  = trim((string)($_POST['last_name'] ?? ''));
-        $form['email']      = strtolower(trim((string)($_POST['email'] ?? '')));
-        $form['plan']       = in_array($_POST['plan'] ?? '', AK_SIGNUP_PLANS, true) ? $_POST['plan'] : 'essentiel';
-        $form['accept_cgu'] = !empty($_POST['accept_cgu']);
-        $t = (($_POST['org_type'] ?? '') === 'tpe') ? 'tpe' : 'asso';
-        $form['type']       = $t;
-        $pick = fn($k, array $allowed) => in_array((string)($_POST[$k] ?? ''), $allowed, true) ? (string)$_POST[$k] : '';
-        $form['legal_form'] = $pick('legal_form', AK_SIGNUP_FORMS[$t]);
-        $form['size']       = $pick('size', AK_SIGNUP_SIZES[$t]);
-        $form['sector']     = $pick('sector', AK_SIGNUP_SECTORS[$t]);
-        $form['role']       = $pick('role', AK_SIGNUP_ROLES[$t]);
-        $form['source']     = $pick('source', AK_SIGNUP_SOURCES);
-        $form['vat']        = in_array($_POST['vat'] ?? '', ['oui', 'non'], true) ? $_POST['vat'] : '';
-        $form['needs']      = array_values(array_intersect(AK_SIGNUP_NEEDS, array_map('strval', (array)($_POST['needs'] ?? []))));
-        $form['rna']        = strtoupper(preg_replace('/\s+/', '', (string)($_POST['rna'] ?? '')));
-        $form['siret']      = preg_replace('/\D+/', '', (string)($_POST['siret'] ?? ''));
-        $form['street']     = trim((string)($_POST['street'] ?? ''));
-        $form['zip']        = preg_replace('/\s+/', '', (string)($_POST['zip'] ?? ''));
-        $form['city']       = trim((string)($_POST['city'] ?? ''));
-        $form['phone']      = trim((string)($_POST['phone'] ?? ''));
-        $form['website']    = trim((string)($_POST['site_web'] ?? ''));
-        $form['message']    = trim((string)($_POST['message'] ?? ''));
         $password           = (string)($_POST['password'] ?? '');
         $password_confirm   = (string)($_POST['password_confirm'] ?? '');
         $no_link            = '~https?://|www\.|[<>]~i';
+        // L'e-mail est l'identifiant de connexion (et la clé des limites par adresse) : une
+        // colonne plus courte le couperait en silence (compte inutilisable). On refuse plutôt.
+        $email_max = min(190, ak_signup_col_max($pdo, 'users', 'email') ?? 190, ak_signup_col_max($pdo, 'organizations', 'billing_email') ?? 190,
+                         ak_signup_col_max($pdo, 'public_signups', 'admin_email') ?? 190);
 
         if ($form['org_name'] === '' || mb_strlen($form['org_name']) < 2) {
             $error = 'Le nom de l\'association est requis (2 caractères minimum).';
@@ -144,8 +240,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Prénom ou nom trop long.';
         } elseif (preg_match($no_link, $form['org_name'] . ' ' . $form['first_name'] . ' ' . $form['last_name'])) {
             $error = 'Les liens et les caractères < > ne sont pas acceptés dans les noms.';
-        } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL) || mb_strlen($form['email']) > 190) {
+        } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
             $error = 'Adresse email invalide.';
+        } elseif (mb_strlen($form['email']) > $email_max) {
+            $error = 'Adresse email trop longue (' . $email_max . ' caractères maximum).';
+        } elseif (in_array($form['email'], ak_founder_emails(), true)) {
+            $error = 'Cette adresse e-mail est réservée.';
         } elseif (mb_strlen($password) < 8) {
             $error = 'Le mot de passe doit faire au moins 8 caractères.';
         } elseif (mb_strlen($password) > 200) {
@@ -196,21 +296,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  'details' => $details, 'ip' => $ip, 'signup_id' => null, 'trial_end' => null];
         $has_status = isset(ak_db_columns($pdo, 'public_signups')['status']);
 
-        // Anti-abus : 5 essais OUVERTS par heure et par adresse IP (une panne ne bloque plus le prospect)
+        // Anti-abus, compté seulement pour une demande VALIDE (une faute de saisie corrigée ne
+        // coûte plus rien) et avant le contrôle « compte existant », qui reste ainsi limité :
+        //   - 5 envois en 15 min par IP (ou /64 IPv6) ;
+        //   - 5 demandes par heure par IP, tous statuts confondus (ouvertes, refusées, en panne) ;
+        //   - 3 demandes par 24 h pour une même adresse e-mail.
+        // Une demande valide refusée par ces limites n'est pas perdue : elle est enregistrée et
+        // transmise au fondateur (ak_signup_fallback), dans la limite de 3 par heure et par IP
+        // (200 en tout). Au-delà, rien n'est écrit et le formulaire le dit : rejouer l'envoi ne
+        // remplit plus public_signups.
+        $limited = null;
         if (!$error) {
+            if (!ak_rate_limit('signup', 5, 900, ak_signup_ip_key($ip))) {
+                $limited = 'Limite anti-abus : plus de 5 envois en 15 min depuis cette adresse IP.';
+            }
             try {
-                $st = $pdo->prepare("SELECT COUNT(*) FROM public_signups WHERE ip_address = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"
-                                    . ($has_status ? " AND status = 'completed'" : ""));
-                $st->execute([$ip]);
-                if ((int)$st->fetchColumn() >= 5) $error = 'Trop d’inscriptions depuis cette adresse. Merci de réessayer dans une heure.';
+                if (!$limited && ($n = ak_signup_ip_count($pdo, $ip)) !== null && $n >= 5) {
+                    $limited = 'Limite anti-abus : ' . $n . ' demandes depuis cette adresse IP dans l’heure.';
+                }
+                if (!$limited && isset(ak_db_columns($pdo, 'public_signups')['admin_email'])) {
+                    $st = $pdo->prepare("SELECT COUNT(*) FROM public_signups WHERE admin_email = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)");
+                    $st->execute([$form['email']]);
+                    if (($n = (int)$st->fetchColumn()) >= 3) $limited = 'Limite anti-abus : ' . $n . ' demandes pour cette adresse e-mail en 24 h.';
+                }
             } catch (Throwable $e) {
-                error_log('[signup] limite IP: ' . get_class($e));
+                error_log('[signup] limites: ' . get_class($e));
+            }
+            if ($limited !== null && (!ak_rate_limit('signup_limited', 3, 3600, ak_signup_ip_key($ip)) || !ak_rate_limit('signup_limited_all', 200, 3600, 'all'))) {
+                error_log('[signup] demande limitée non enregistrée (plafond horaire atteint)');
+                $error = 'Trop de demandes d’essai en peu de temps. Merci de réessayer dans une heure, ou écrivez-nous depuis la page Contact.';
             }
         }
 
-        // Compte déjà existant
+        // Compte déjà existant (pas consulté pour une demande limitée : la réponse ne dit rien)
         $db_trouble = null;
-        if (!$error) {
+        if (!$error && !$limited) {
             try {
                 $st = $pdo->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
                 $st->execute([$form['email']]);
@@ -250,10 +370,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } catch (Throwable $e) {}
 
-            if ($db_trouble !== null) {
+            if ($limited !== null) {
+                $notice = ak_signup_fallback($pdo, $lead, $signup_id, $limited . ' Vérifiez puis créez l’espace.', 'limit');
+            } elseif ($db_trouble !== null) {
                 $notice = ak_signup_fallback($pdo, $lead, $signup_id, 'Contrôle du doublon impossible : ' . $db_trouble);
             } elseif ($breaker) {
-                $notice = ak_signup_fallback($pdo, $lead, $signup_id, 'Plus de 30 essais ouverts en 1 h : ouverture automatique suspendue (anti-abus). Vérifiez puis créez l’espace.');
+                $notice = ak_signup_fallback($pdo, $lead, $signup_id, 'Plus de 30 essais ouverts en 1 h : ouverture automatique suspendue (anti-abus). Vérifiez puis créez l’espace.', 'breaker');
             } else {
                 $warnings = [];
                 $org_id = 0; $user_id = 0;
@@ -263,6 +385,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $trial_plan = ak_trial_plan($pdo);
                     if (!$trial_plan) $warnings[] = 'Aucun plan d’essai trouvé (asso_plans) : l’association a le plan par défaut.';
                     $slug = ak_signup_slug($pdo, $form['org_name']);
+                    // Slug taillé sur la colonne réelle : jamais coupé en silence à l'écriture
+                    // (un slug tronqué n'est plus celui dont on a vérifié l'unicité).
+                    $slug_max = ak_signup_col_max($pdo, 'organizations', 'slug') ?? 255;
+                    if (strlen($slug) > $slug_max) throw new RuntimeException('organizations.slug trop court (' . $slug_max . ') pour « ' . $slug . ' »');
 
                     $pdo->beginTransaction();
 
@@ -273,7 +399,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ['created_at' => 'NOW()']);
                     } catch (PDOException $e) {
                         if ((string)$e->getCode() !== '23000') throw $e;   // slug pris entre-temps : un autre
-                        $slug = substr($slug, 0, 50) . '-' . bin2hex(random_bytes(2));
+                        $slug = substr($slug, 0, max(1, min(50, $slug_max - 5))) . '-' . bin2hex(random_bytes(2));
                         $org_id = ak_db_insert($pdo, 'organizations',
                             ['name' => mb_substr($form['org_name'], 0, 200), 'slug' => $slug, 'billing_email' => $form['email']],
                             ['created_at' => 'NOW()']);
@@ -325,7 +451,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'billing_address_street' => mb_substr($form['street'], 0, 200),
                             'billing_address_zip' => $form['zip'],
                             'billing_address_city' => mb_substr($form['city'], 0, 100),
-                            'billing_address_country' => 'France',
+                            'billing_address_country' => 'FR',   // code ISO, comme le reste de l'appli
                             'billing_phone' => mb_substr($form['phone'], 0, 30),
                         ];
                         if ($form['vat'] !== '') $fiche['vat_subject'] = $form['vat'] === 'oui' ? 1 : 0;
@@ -435,8 +561,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Heure d'affichage du formulaire (anti-robots : un humain met plus de 2 secondes)
-if ($_SERVER['REQUEST_METHOD'] !== 'POST' || $error) $_SESSION['signup_form_at'] = time();
+// Heure d'affichage du formulaire (anti-robots : un humain met plus de 2 secondes). Après une
+// demande traitée, jeton neuf : un chargement de page ne sert qu'à un seul envoi.
+if ($notice !== null) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+$_SESSION['signup_form_at'] = time();
 ?><!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -561,6 +689,11 @@ input:focus { outline: none; border-color: var(--acc); background: var(--bg); bo
 .need input:focus-visible + span { outline: 2px solid var(--acc); }
 form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: none; }
 @media (max-width: 480px) { .form-row { grid-template-columns: 1fr; } .form-row-zip { grid-template-columns: 110px 1fr; } }
+/* iPhone (Safari et appli) : un champ sous 16 px fait zoomer la page au toucher, sans dézoomer ensuite */
+@media (max-width: 768px) {
+  input[type="text"], input[type="email"], input[type="password"], input[type="tel"], input[type="url"],
+  .form-group select, .form-group textarea { font-size: 16px; }
+}
 </style>
 </head>
 <body>
@@ -773,7 +906,14 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
           });
           var on = document.getElementById('org_name'); if (on) on.placeholder = t === 'tpe' ? 'Ex : Atelier Dupont' : 'Ex : Latitude 91';
           var em = document.getElementById('email'); if (em) em.placeholder = t === 'tpe' ? 'vous@entreprise.fr' : 'vous@association.fr';
+          fields(t);
         }
+        // Champs de l'autre type (RNA / TVA) : désactivés, donc ni envoyés ni contrôlés ; la saisie reste si on revient
+        function fields(t){
+          f.querySelectorAll('.only-asso input, .only-asso select').forEach(function(e){ e.disabled = t !== 'asso'; });
+          f.querySelectorAll('.only-tpe input, .only-tpe select').forEach(function(e){ e.disabled = t !== 'tpe'; });
+        }
+        fields(f.getAttribute('data-type'));
         f.querySelectorAll('input[name=org_type]').forEach(function(r){ r.addEventListener('change', function(){ if(r.checked) apply(r.value); }); });
       })();
     </script>
@@ -801,3 +941,16 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
 
 </body>
 </html>
+<?php
+// Fin d'une rafale de demandes non ouvertes : le résumé en attente part à la première visite
+// après l'heure (la page est déjà envoyée au visiteur).
+if (is_file(rtrim(sys_get_temp_dir(), '/') . '/ak_signup_digest_pending')) {
+    @require_once __DIR__ . '/signup-email-helpers.php';
+    if (function_exists('ak_signup_digest_maybe')) {
+        session_write_close();
+        ignore_user_abort(true);
+        if (function_exists('litespeed_finish_request')) litespeed_finish_request();
+        elseif (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+        try { ak_signup_digest_maybe($pdo); } catch (Throwable $e) { error_log('[signup] résumé: ' . get_class($e)); }
+    }
+}
