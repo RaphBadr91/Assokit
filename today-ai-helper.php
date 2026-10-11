@@ -19,7 +19,9 @@ if (!defined('TODAY_AI_TIMEOUT_SECONDS')) {
     define('TODAY_AI_TIMEOUT_SECONDS', 15);
 }
 if (!defined('TODAY_AI_MODEL')) {
-    define('TODAY_AI_MODEL', 'claude-3-5-haiku-latest');
+    // Même modèle que le reste de l'appli (config.php) : l'ancien identifiant
+    // « claude-3-5-haiku-latest » n'est plus servi et faisait échouer l'appel.
+    define('TODAY_AI_MODEL', defined('ANTHROPIC_MODEL') ? ANTHROPIC_MODEL : 'claude-sonnet-4-5');
 }
 
 /**
