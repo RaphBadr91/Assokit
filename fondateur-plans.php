@@ -9,6 +9,8 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/plan-helpers.php';
+require_once __DIR__ . '/trial-helpers.php';
+require_once __DIR__ . '/sa-plan-state-helpers.php';
 
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 
@@ -124,6 +126,23 @@ $plans = $pdo->query("
     ORDER BY p.display_order ASC, p.id ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
+// Adoption = associations dont le plan COURANT est ce plan (ak_org_plan_state : même vérité que la
+// fiche association et l'appli). Les essais comptent sur le plan d'essai, en cours ou terminés.
+$plan_usage = [];
+try {
+    $org_sql = "SELECT id FROM organizations" . (isset(ak_db_columns($pdo, 'organizations')['deleted_at']) ? " WHERE deleted_at IS NULL" : "");
+    foreach (sa_org_plan_states($pdo, $pdo->query($org_sql)->fetchAll(PDO::FETCH_COLUMN)) as $ps) {
+        if (empty($ps['plan_id'])) continue;
+        $u = $plan_usage[$ps['plan_id']] ?? ['total' => 0, 'trial' => 0, 'expired' => 0];
+        $u['total']++;
+        if ($ps['badge_tone'] === 'trial') $u['trial']++;
+        elseif ($ps['badge_tone'] === 'expired') $u['expired']++;
+        $plan_usage[$ps['plan_id']] = $u;
+    }
+} catch (Throwable $e) {
+    error_log('[fondateur-plans] adoption: ' . get_class($e));
+}
+
 // Plan en édition ?
 $edit_id = (int)($_GET['edit'] ?? 0);
 $editing = null;
@@ -176,11 +195,18 @@ render_sidebar('fondateur-plans');
                   <?= htmlspecialchars($p['name'], ENT_QUOTES, 'UTF-8') ?>
                   <?= $p['is_featured'] ? ' <span style="color:#059669;">⭐</span>' : '' ?>
                   <?= !$p['is_visible'] ? ' <span style="color:#64748B;font-size:12px;">(masqué)</span>' : '' ?>
+                  <?php $p_is_trial = !empty($p['is_trial']) || $p['slug'] === 'pro-essai'; ?>
+                  <?php if ($p_is_trial): ?>
+                    <span style="background:#EDE9FE;color:#5B21B6;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.03em;margin-left:4px;">ESSAI</span>
+                  <?php endif; ?>
                 </div>
-                <div style="color:#64748B;font-size:12px;">slug: <code><?= htmlspecialchars($p['slug'], ENT_QUOTES, 'UTF-8') ?></code></div>
+                <div style="color:#64748B;font-size:12px;">slug: <code><?= htmlspecialchars($p['slug'], ENT_QUOTES, 'UTF-8') ?></code><?php if (ak_plan_label($p['slug'], $p['name']) !== trim((string)$p['name'])): ?> · affiché « <?= h(ak_plan_label($p['slug'], $p['name'])) ?> »<?php endif; ?></div>
               </td>
               <td style="padding:14px 12px;">
-                <?php if ($p['is_custom_quote']): ?>
+                <?php if ($p_is_trial): ?>
+                  <span style="color:#5B21B6;font-weight:600;">0 € · essai gratuit</span>
+                  <div style="color:#64748B;font-size:12px;"><?= (int)AK_TRIAL_DAYS ?> jours, sans carte bancaire</div>
+                <?php elseif ($p['is_custom_quote']): ?>
                   <span style="color:#475569;">Sur devis</span>
                 <?php elseif ($p['price_cents'] == 0): ?>
                   <span style="color:#059669;font-weight:600;">Gratuit</span>
@@ -201,13 +227,19 @@ render_sidebar('fondateur-plans');
                 <?php if (!$p['feature_email_diffusion']): ?><span style="color:#DC2626;">🔒</span><?php else: ?><?= $p['limit_emails_per_month'] === null ? '∞' : $p['limit_emails_per_month'] ?><?php endif; ?>
               </td>
               <td style="padding:14px 12px;text-align:center;">
-                <span style="background:#E0F2FE;color:#0C4A6E;padding:3px 10px;border-radius:999px;font-weight:600;font-size:12px;">
-                  <?= (int)$p['active_subs'] ?> org.
+                <?php $usage = $plan_usage[(int)$p['id']] ?? ['total' => 0, 'trial' => 0, 'expired' => 0]; ?>
+                <span style="background:<?= $p_is_trial ? '#EDE9FE' : '#E0F2FE' ?>;color:<?= $p_is_trial ? '#5B21B6' : '#0C4A6E' ?>;padding:3px 10px;border-radius:999px;font-weight:600;font-size:12px;white-space:nowrap;">
+                  <?= (int)$usage['total'] ?> org.
                 </span>
+                <?php if ($usage['trial'] || $usage['expired']): ?>
+                  <div style="color:#64748B;font-size:11px;margin-top:4px;white-space:nowrap;">
+                    <?= $usage['trial'] ? (int)$usage['trial'] . ' en essai' : '' ?><?= $usage['trial'] && $usage['expired'] ? ' · ' : '' ?><?= $usage['expired'] ? (int)$usage['expired'] . ' essai' . ($usage['expired'] > 1 ? 's' : '') . ' terminé' . ($usage['expired'] > 1 ? 's' : '') : '' ?>
+                  </div>
+                <?php endif; ?>
               </td>
               <td style="padding:14px 12px;text-align:right;">
                 <a href="?edit=<?= $p['id'] ?>" class="btn btn-sm" style="margin-right:4px;">✏️ Éditer</a>
-                <?php if ((int)$p['active_subs'] === 0): ?>
+                <?php if ((int)$p['active_subs'] === 0 && (int)$usage['total'] === 0): ?>
                   <form method="post" style="display:inline;" onsubmit="return confirm('Supprimer définitivement ce plan ?');">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">

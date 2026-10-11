@@ -48,6 +48,23 @@ if ($action === 'cancel_subscription') {
     $reason = trim($_POST['reason'] ?? '');
     if (strlen($reason) > 500) $reason = substr($reason, 0, 500);
 
+    // Essai gratuit : rien à annuler (comme /mon-asso-annuler-abonnement). Annuler la ligne
+    // d'essai la sortait de la bascule de fin d'essai : elle gardait le plan d'essai.
+    // Même règle que la page d'annulation, sur la ligne qui serait annulée ci-dessous.
+    @require_once __DIR__ . '/plan-helpers.php';
+    if (function_exists('ak_trial_blocks_cancel')) {
+        $ti = ak_plan_trial_info($pdo, $org_id);
+        $cur = function_exists('ak_get_org_active_subscription') ? ak_get_org_active_subscription($pdo, $org_id) : null;
+        if (!$cur) $cur = ak_get_current_plan($pdo, $org_id);
+        if (ak_trial_blocks_cancel($pdo, $org_id, $cur, $ti)) {
+            $_SESSION['flash_error'] = $ti['trial_expired']
+                ? 'Votre essai est terminé : il n’y a pas d’abonnement payant à annuler.'
+                : 'Votre association est en essai : il n’y a pas d’abonnement à annuler.';
+            header('Location: /mon-asso-plan');
+            exit;
+        }
+    }
+
     try {
         // === IMPORTANT : resilier reellement l'abonnement Stripe (sinon le client continue d'etre debite) ===
         // Source de verite Stripe = asso_subscriptions ; on annule a la fin de la periode payee.

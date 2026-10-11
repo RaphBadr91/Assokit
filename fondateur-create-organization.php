@@ -18,6 +18,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+require_once __DIR__ . '/trial-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
 
 // Fallback si stripe-helpers.php n'est pas encore déployé
@@ -44,8 +45,19 @@ $created_credentials = null;
 // Récupération plans pour le formulaire
 $plans = [];
 try {
-    $plans = $pdo->query("SELECT id, name, slug, price_cents, tagline, is_trial, trial_converts_to FROM asso_plans WHERE is_visible = 1 OR is_trial = 1 ORDER BY is_trial ASC, price_cents ASC")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {}
+    // Colonnes lues selon le schéma réel (trial_converts_to / tagline n'existent pas partout) :
+    // une colonne absente vidait toute la liste des plans.
+    $pc = ak_db_columns($pdo, 'asso_plans');
+    $opt = fn(string $c, string $def) => isset($pc[$c]) || !$pc ? $c : "$def AS $c";
+    $trial_where = isset($pc['is_trial']) || !$pc ? "is_trial = 1 OR slug = 'pro-essai'" : "slug = 'pro-essai'";
+    $plans = $pdo->query("SELECT id, name, slug, price_cents, " . $opt('tagline', 'NULL') . ", " . $opt('is_trial', '0') . ", " . $opt('trial_converts_to', 'NULL') . ", " . $opt('is_custom_quote', '0') . "
+                          FROM asso_plans WHERE " . (isset($pc['is_visible']) || !$pc ? "is_visible = 1 OR $trial_where" : "1 = 1") . "
+                          ORDER BY is_trial ASC, price_cents ASC")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($plans as &$__pp) $__pp['is_trial'] = !empty($__pp['is_trial']) || $__pp['slug'] === 'pro-essai';
+    unset($__pp);
+} catch (Throwable $e) {
+    error_log('[fondateur-create-organization] plans: ' . get_class($e));
+}
 
 // Traitement du POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -138,20 +150,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sub_status = 'trial';
         }
 
-        $ins_sub = $pdo->prepare("
-            INSERT INTO asso_subscriptions
-                (org_id, plan_id, payment_mode, status, current_period_end, created_at, updated_at)
-            VALUES
-                (:o, :p, :pm, :s, :pe, NOW(), NOW())
-        ");
-        $ins_sub->execute([
-            ':o' => $new_org_id,
-            ':p' => $plan_id,
-            ':pm' => $payment_mode,
-            ':s' => $sub_status,
-            ':pe' => $period_end,
-        ]);
-        $new_sub_id = (int)$pdo->lastInsertId();
+        // Colonnes écrites selon le schéma réel (ak_db_insert) ; le plan doit exister
+        if (!$chosen_plan) throw new Exception('Plan inconnu : choisissez un plan de la liste');
+        $new_sub_id = ak_db_insert($pdo, 'asso_subscriptions', [
+            'org_id' => $new_org_id,
+            'plan_id' => $plan_id,
+            'payment_mode' => $payment_mode,
+            'status' => $sub_status,
+            'current_period_end' => $period_end,
+        ], ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
 
         // 4. Add-on domaine si demandé
         if ($with_addon_domain) {
@@ -167,32 +174,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
         }
 
-        // Sync organizations : plan + statut essai
+        // Sync organizations : plan + statut essai (statut toujours explicite : la valeur par défaut
+        // de la colonne ne doit pas faire passer un client pour un essai, ni l'inverse)
         if ($is_trial_plan) {
             $pdo->prepare("UPDATE organizations SET plan = :pl, status = 'trial', trial_ends_at = :te WHERE id = :id")
                 ->execute([':pl' => $chosen_slug, ':te' => $period_end, ':id' => $new_org_id]);
         } else {
-            $pdo->prepare("UPDATE organizations SET plan = :pl WHERE id = :id")
+            $pdo->prepare("UPDATE organizations SET plan = :pl, status = 'active', trial_ends_at = NULL WHERE id = :id")
                 ->execute([':pl' => $chosen_slug, ':id' => $new_org_id]);
         }
 
         $pdo->commit();
+
+        // Essai : même trace « historique » que l'inscription en ligne (bandeau d'essai dans
+        // l'espace de l'association + rappels J-7 / J-3 / J-0), hors transaction.
+        if ($is_trial_plan) {
+            try {
+                if (ak_db_columns($pdo, 'subscriptions') && ($legacy_status = ak_db_pick($pdo, 'subscriptions', 'status', ['trial']))) {
+                    ak_db_insert($pdo, 'subscriptions', [
+                        'org_id' => $new_org_id,
+                        'plan' => ak_db_pick($pdo, 'subscriptions', 'plan', ['pro', 'association', 'essentiel']) ?? 'pro',
+                        'status' => $legacy_status,
+                        'billing_cycle' => ak_db_pick($pdo, 'subscriptions', 'billing_cycle', ['monthly']) ?? 'monthly',
+                        'price_ht' => 0.00, 'tva_rate' => 20.00, 'current_period_end' => $period_end,
+                    ], ['started_at' => 'NOW()', 'current_period_start' => 'NOW()', 'created_at' => 'NOW()']);
+                }
+            } catch (Throwable $e) {
+                error_log('[fondateur-create-organization] subscriptions essai: ' . get_class($e));
+            }
+        }
 
         // 5. Email de bienvenue (best-effort)
         $email_sent = false;
         if ($send_welcome_email) {
             try {
                 @require_once __DIR__ . '/resend-helper.php';
-                $plan_name = '';
-                foreach ($plans as $p) {
-                    if ((int)$p['id'] === $plan_id) { $plan_name = $p['name']; break; }
-                }
+                // Même libellé que partout ailleurs (« Essai PRO », « Assokit »…)
+                $plan_name = $chosen_plan ? ak_plan_label($chosen_plan['slug'], $chosen_plan['name']) : '';
                 $base_url = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr');
                 $subject = 'Bienvenue chez Assokit !';
-                $body = "<h2>🌿 Bienvenue chez Assokit, {$first_name} !</h2>"
+                $body = "<h2>🌿 Bienvenue chez Assokit, " . htmlspecialchars($first_name) . " !</h2>"
                      . "<p>Votre compte <strong>" . htmlspecialchars($org_name) . "</strong> est prêt.</p>"
-                     . "<p><strong>Plan actif :</strong> {$plan_name}<br>"
-                     . "<strong>Validité :</strong> jusqu'au " . date('d/m/Y', strtotime($period_end)) . "</p>"
+                     . "<p><strong>Plan actif :</strong> " . htmlspecialchars($plan_name) . ($is_trial_plan ? " (essai gratuit, 0 €)" : "") . "<br>"
+                     . "<strong>" . ($is_trial_plan ? "Fin de l'essai" : "Validité") . " :</strong> " . ($is_trial_plan ? "le " : "jusqu'au ") . date('d/m/Y', strtotime($period_end)) . "</p>"
                      . "<hr><h3>Vos identifiants</h3>"
                      . "<p><strong>Email :</strong> " . htmlspecialchars($billing_email) . "<br>"
                      . "<strong>Mot de passe :</strong> <code style='background:#F1F5F9;padding:4px 8px;border-radius:4px;'>" . htmlspecialchars($password_plain) . "</code></p>"
@@ -218,6 +242,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'plan_id' => $plan_id,
             'period_end' => $period_end,
             'email_sent' => $email_sent,
+            'is_trial' => $is_trial_plan,
+            'plan_label' => $chosen_plan ? ak_plan_label($chosen_plan['slug'], $chosen_plan['name']) : '',
         ];
 
         $flash_msg = '✅ Compte créé avec succès !';
@@ -278,9 +304,15 @@ render_sidebar('fondateur-create-organization');
             <span style="color:#92400E;">🔑 Mot de passe :</span>
             <strong style="color:#92400E;font-size:15px;letter-spacing:0.04em;"><?= htmlspecialchars($created_credentials['password']) ?></strong>
           </div>
+          <?php if ($created_credentials['plan_label'] !== ''): ?>
+          <div style="display:flex;justify-content:space-between;padding:10px 14px;background:<?= $created_credentials['is_trial'] ? '#EDE9FE' : '#F8FAFC' ?>;border-radius:8px;">
+            <span style="color:#64748B;">Plan :</span>
+            <strong<?= $created_credentials['is_trial'] ? ' style="color:#5B21B6;"' : '' ?>><?= htmlspecialchars($created_credentials['plan_label']) ?><?= $created_credentials['is_trial'] ? ' · ESSAI · 0 €' : '' ?></strong>
+          </div>
+          <?php endif; ?>
           <div style="display:flex;justify-content:space-between;padding:10px 14px;background:#F8FAFC;border-radius:8px;">
-            <span style="color:#64748B;">Validité :</span>
-            <strong>jusqu'au <?= htmlspecialchars(date('d/m/Y', strtotime($created_credentials['period_end']))) ?></strong>
+            <span style="color:#64748B;"><?= $created_credentials['is_trial'] ? 'Fin de l’essai :' : 'Validité :' ?></span>
+            <strong><?= $created_credentials['is_trial'] ? 'le ' : 'jusqu’au ' ?><?= htmlspecialchars(date('d/m/Y', strtotime($created_credentials['period_end']))) ?></strong>
           </div>
         </div>
       </div>
@@ -347,14 +379,15 @@ render_sidebar('fondateur-create-organization');
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:10px;margin-bottom:18px;">
         <?php foreach ($plans as $i => $p):
           if (!empty($p['is_trial'])) {
-              $price_str = 'Essai bridé · 14 / 30 / 40 j';
+              $price_str = 'Essai gratuit · 0 € · durée choisie ci-dessous';
           } else {
-              $price_str = (int)$p['price_cents'] === 0 ? 'Gratuit' : ak_format_price_cents((int)$p['price_cents']) . '/mois';
+              $price_str = (int)$p['price_cents'] > 0 ? ak_format_price_cents((int)$p['price_cents']) . '/mois'
+                         : (!empty($p['is_custom_quote']) || $p['slug'] === 'sur-mesure' ? 'Sur devis' : 'Gratuit');
           }
         ?>
         <label data-plan style="display:block;padding:14px;background:#FAF8F5;border:2px solid #E2E8F0;border-radius:10px;cursor:pointer;transition:all 0.15s;" onclick="this.querySelector('input').checked=true;document.querySelectorAll('label[data-plan]').forEach(l=>{l.style.borderColor='#E2E8F0';l.style.background='#FAF8F5';});this.style.borderColor='#059669';this.style.background='#ECFDF5';">
           <input type="radio" name="plan_id" value="<?= (int)$p['id'] ?>" required <?= $i === 0 ? '' : '' ?> style="display:none;">
-          <div style="font-weight:700;color:#0F172A;font-size:14px;"><?= htmlspecialchars($p['name']) ?></div>
+          <div style="font-weight:700;color:<?= !empty($p['is_trial']) ? '#5B21B6' : '#0F172A' ?>;font-size:14px;"><?= htmlspecialchars(ak_plan_label($p['slug'], $p['name'])) ?><?php if (!empty($p['is_trial'])): ?> <span style="background:#EDE9FE;color:#5B21B6;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.03em;">ESSAI</span><?php endif; ?></div>
           <div style="font-size:13px;color:#64748B;margin-top:4px;"><?= htmlspecialchars($price_str) ?></div>
           <?php if (!empty($p['tagline'])): ?>
             <div style="font-size:11.5px;color:#64748B;margin-top:6px;line-height:1.4;"><?= htmlspecialchars($p['tagline']) ?></div>

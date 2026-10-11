@@ -242,6 +242,36 @@ function fmtEuro2(n) {
   return (Number(n) || 0).toFixed(2).replace('.', ',') + ' €';
 }
 
+// « 2026-10-23 17:27:12 » ou « 23/10/2026 » → « 23/10/2026 »
+function fmtDayFr(v) {
+  if (!v) return '';
+  const str = String(v);
+  let m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[3] + '/' + m[2] + '/' + m[1];
+  m = str.match(/^\d{2}\/\d{2}\/\d{4}/);
+  return m ? m[0] : '';
+}
+
+/* Essai de l'association connectée, d'après api/app-dashboard.php :
+   trial (bool), trial_ends_at, trial_days_left, plan_label (+ trial_expired si présent).
+   Champs absents (ancien serveur) → null : rien n'est affiché.
+   Information seulement : aucun lien d'achat ni prix dans l'app (règles des stores). */
+function orgTrialInfo(k) {
+  if (!k || typeof k !== 'object') return null;
+  const end = fmtDayFr(k.trial_ends_at);
+  const raw = k.trial_days_left;
+  const left = raw === null || raw === undefined || raw === '' || !Number.isFinite(Number(raw)) ? null : Number(raw);
+  const inTrial = k.trial === true || k.trial === 1 || k.trial === '1';
+  if (k.trial_expired === true || (inTrial && left !== null && left < 0)) {
+    return { expired: true, text: 'Essai terminé' + (end ? ' le ' + end : '') };
+  }
+  if (!inTrial) return null;
+  const pl = String(k.plan_label || '').trim();
+  const name = !pl ? 'Essai PRO' : (/essai/i.test(pl) ? pl : 'Essai ' + pl);
+  const jx = left === null ? '' : (left <= 0 ? ' · dernier jour' : ' · J-' + left);
+  return { expired: false, text: name + (end ? ' jusqu’au ' + end : '') + jx };
+}
+
 /* Formateurs pour le compteur animé. L'unité est figée sur la valeur CIBLE :
    sans ça, un compteur montant vers 18 400 basculerait de « 900 € » à « 1,0 k€ »
    en pleine animation. */
@@ -714,7 +744,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-08-mail-accueil';
+const UI_REV = '2026-10-09-essai-pro';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -748,6 +778,7 @@ function BuildStamp() {
 /* ================================================================== */
 function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick, onNotifs, notifCount, quickActions, showMail, onMail }) {
   const k = (data && data.kpis) || {};
+  const trial = orgTrialInfo(data);
   const isTpe = profile === 'tpe';
   const still = useReducedMotion();
 
@@ -807,6 +838,12 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
           <FadeUp still={still} delay={140}>
             <Text style={styles.fgHeadLine} numberOfLines={2}>{(data && data.head_line) || ' '}</Text>
           </FadeUp>
+          {trial ? (
+            <View style={styles.fgTrialPill} accessible accessibilityLabel={trial.text}>
+              <Ionicons name={trial.expired ? 'alert-circle-outline' : 'hourglass-outline'} size={13} color="#FDE68A" />
+              <Text style={styles.fgTrialTxt} numberOfLines={1}>{trial.text}</Text>
+            </View>
+          ) : null}
         </LinearGradient>
 
         {!data ? (
@@ -3012,7 +3049,7 @@ function NativeDashboard({ data, loading, onRefresh, onBack, onOpenProject, onOp
 /* ================================================================== */
 /*  MES FACTURES (abonnement Stripe) — natif                           */
 /* ================================================================== */
-function NativeSubInvoices({ data, loading, onRefresh, onBack, onWeb }) {
+function NativeSubInvoices({ data, loading, onRefresh, onBack, onWeb, trial }) {
   if (data && data.allowed === false) return <GatedScreen title="Mes factures" message={data.message} onBack={onBack} />;
   const list = data ? (data.invoices || []) : null;
   const s = (data && data.stats) || {};
@@ -3024,6 +3061,17 @@ function NativeSubInvoices({ data, loading, onRefresh, onBack, onWeb }) {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          {trial ? (
+            <View style={[styles.setPlanCard, { marginBottom: 14 }]} accessible accessibilityLabel={trial.text}>
+              <View style={[styles.setPlanIc, { backgroundColor: trial.expired ? '#FEE2E2' : '#FEF3C7' }]}>
+                <Ionicons name={trial.expired ? 'alert-circle-outline' : 'hourglass-outline'} size={18} color={trial.expired ? '#B91C1C' : '#B45309'} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.setPlanLbl}>FORMULE</Text>
+                <Text style={styles.setPlanVal}>{trial.text}</Text>
+              </View>
+            </View>
+          ) : null}
           <View style={styles.miniKpiRow}>
             <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.total_paid)}</Text><Text style={styles.miniKpiLbl}>Total payé</Text></View>
             <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.nb_paid || 0}</Text><Text style={styles.miniKpiLbl}>Payées</Text></View>
@@ -3485,7 +3533,7 @@ const FOUNDER_SHORTCUTS = [
   { label: 'Pilotage', icon: 'grid', fk: 'cockpit' },
 ];
 
-function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, canMail, isTpe, counts, onNav, onLogout }) {
+function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, canMail, isTpe, counts, onNav, onLogout, trial }) {
   const cnt = counts || {};
   return (
     <View style={styles.detailWrap}>
@@ -3495,7 +3543,9 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, ca
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.moreOrg} numberOfLines={1}>{orgName || 'Mon organisation'}</Text>
-          <Text style={styles.moreSub}>Tous vos outils</Text>
+          {trial ? (
+            <Text style={[styles.moreSub, { color: trial.expired ? '#B91C1C' : '#B45309', fontWeight: '700' }]} numberOfLines={1}>{trial.text}</Text>
+          ) : <Text style={styles.moreSub}>Tous vos outils</Text>}
         </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
@@ -3560,8 +3610,63 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, ca
 /* ================================================================== */
 /*  ESPACE FONDATEUR (cockpit natif)                                   */
 /* ================================================================== */
+/* Plan & essai d'une association : l'app affiche les textes du serveur
+   (ak_org_plan_state : plan_label, badge, badge_tone), les mêmes que le
+   cockpit web et l'espace de l'association. badge_tone : trial | expired |
+   active | suspended | cancelled | pending | gray. Sans ces champs (ancien
+   serveur), on retombe sur organizations.status. */
+const PLAN_TONE = {
+  trial:     { bg: '#FEF3C7', color: '#B45309', icon: 'hourglass-outline', chip: 'ESSAI' },
+  expired:   { bg: '#FEE2E2', color: '#B91C1C', icon: 'alert-circle-outline', chip: 'Essai terminé' },
+  active:    { bg: '#D1FAE5', color: '#047857', icon: 'checkmark-circle-outline', chip: 'Active' },
+  suspended: { bg: '#FEE2E2', color: '#B91C1C', icon: 'pause-circle-outline', chip: 'Suspendue' },
+  cancelled: { bg: '#F1F5F4', color: '#5F6D66', icon: 'close-circle-outline', chip: 'Résiliée' },
+  pending:   { bg: '#FFEDD5', color: '#C2410C', icon: 'time-outline', chip: 'Paiement' },
+  gray:      { bg: '#F1F5F4', color: '#5F6D66', icon: 'ellipse-outline', chip: '—' },
+};
+function orgTone(o) {
+  if (o && o.badge_tone && PLAN_TONE[o.badge_tone]) return o.badge_tone;
+  const st = o && o.status;
+  return st === 'trial' ? 'trial' : st === 'suspended' ? 'suspended' : st === 'cancelled' ? 'cancelled' : st === 'active' ? 'active' : 'gray';
+}
+// Pastille de statut d'une association (liste, cockpit, fiche)
+function orgChip(o) {
+  if (o && o.pending) return { label: 'À valider', bg: '#EDE9FE', color: '#6D28D9' };
+  if (o && o.status === 'cancelled') return { label: PLAN_TONE.cancelled.chip, bg: PLAN_TONE.cancelled.bg, color: PLAN_TONE.cancelled.color };
+  const tone = orgTone(o);
+  const t = PLAN_TONE[tone];
+  let label = t.chip;
+  if (tone === 'pending' && o.badge) label = o.badge;            // « Paiement en retard » / « en attente »
+  if (tone === 'gray') label = (o && o.status) || '—';
+  return { label, bg: t.bg, color: t.color };
+}
+// « ESSAI · fin 23/10/2026 (J-14) » / « Essai terminé le 08/10/2026 », sinon null
+function orgTrialLine(o) {
+  if (!o) return null;
+  if ((o.badge_tone === 'trial' || o.badge_tone === 'expired') && o.badge) return { text: o.badge, tone: o.badge_tone };
+  if (o.badge_tone === undefined && o.status === 'trial') return { text: 'ESSAI' + (o.trial_ends ? ' · fin ' + o.trial_ends : ''), tone: 'trial' };
+  return null;
+}
+function orgPlanLabel(o) { return (o && (o.plan_label || o.plan)) || '—'; }
+function TrialLine({ o, style }) {
+  const tl = orgTrialLine(o);
+  if (!tl) return null;
+  const t = PLAN_TONE[tl.tone] || PLAN_TONE.trial;
+  return (
+    <View style={[styles.trialLine, { backgroundColor: t.bg }, style]} accessible accessibilityLabel={tl.text}>
+      <Ionicons name={t.icon} size={13} color={t.color} />
+      <Text style={[styles.trialLineTxt, { color: t.color }]} numberOfLines={1}>{tl.text}</Text>
+    </View>
+  );
+}
+function OrgChip({ o }) {
+  const c = orgChip(o);
+  return <View style={[styles.fcChip, { backgroundColor: c.bg }]}><Text style={[styles.fcChipTxt, { color: c.color }]}>{c.label}</Text></View>;
+}
+const plural = (n, one, many) => (n > 1 ? many : one);
+
 const FC_MINI = [
-  { key: 'orgs', color: '#059669', bg: '#ECFDF5', icon: 'business', label: 'Associations', fmt: (k) => String(k.orgs_total ?? 0), sub: (k) => (k.orgs_active ?? 0) + ' actives · ' + (k.orgs_trial ?? 0) + ' essai' },
+  { key: 'orgs', color: '#059669', bg: '#ECFDF5', icon: 'business', label: 'Associations', fmt: (k) => String(k.orgs_total ?? 0), sub: (k) => (k.orgs_active ?? 0) + ' ' + plural(k.orgs_active ?? 0, 'active', 'actives') + ' · ' + (k.orgs_trial ?? 0) + ' ' + plural(k.orgs_trial ?? 0, 'essai', 'essais') },
   { key: 'users', color: '#7C3AED', bg: '#F5F3FF', icon: 'people', label: 'Utilisateurs', fmt: (k) => String(k.users ?? 0), sub: () => 'tous rôles' },
   { key: 'ia', color: '#2563EB', bg: '#EFF6FF', icon: 'sparkles', label: 'Générations IA', fmt: (k) => String(k.ia_nb ?? 0), sub: (k) => fmtEuro(k.ia_cost) + ' dépensés' },
 ];
@@ -3581,7 +3686,7 @@ const FC_TILES = [
   { key: 'settings', icon: 'business', color: '#45544D', bg: '#F1F5F4', title: 'Société', desc: 'Infos légales · TVA · IBAN' },
 ];
 
-function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, onLogout, onTile, onNotifs, notifCount }) {
+function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, onLogout, onTile, onNotifs, notifCount, onOpenOrg }) {
   const k = (data && data.kpis) || {};
   const sig = (data && data.signals) || {};
   const orgs = (data && data.orgs) || [];
@@ -3589,12 +3694,15 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
   const signals = [];
   if (sig.pending > 0) signals.push({ tone: '#B45309', bg: '#FEF3C7', icon: 'construct', t: sig.pending + ' validation' + (sig.pending > 1 ? 's' : '') + ' en attente', filter: 'pending' });
   if (sig.unpaid_nb > 0) signals.push({ tone: '#B91C1C', bg: '#FEE2E2', icon: 'cash', t: sig.unpaid_nb + ' impayé' + (sig.unpaid_nb > 1 ? 's' : '') + ' · ' + fmtEuro(sig.unpaid_total), filter: 'unpaid' });
-  if (sig.expiring > 0) signals.push({ tone: '#6D28D9', bg: '#EDE9FE', icon: 'time', t: sig.expiring + ' essai' + (sig.expiring > 1 ? 's' : '') + ' expire' + (sig.expiring > 1 ? 'nt' : '') + ' sous 7j', filter: 'trial' });
+  if (sig.expiring > 0) signals.push({ tone: '#B45309', bg: '#FEF3C7', icon: 'hourglass', t: sig.expiring + ' ' + plural(sig.expiring, 'essai se termine', 'essais se terminent') + ' sous 7 jours', filter: 'trial' });
+  if (sig.trial_expired > 0) signals.push({ tone: '#B91C1C', bg: '#FEE2E2', icon: 'alert-circle', t: sig.trial_expired + ' ' + plural(sig.trial_expired, 'essai terminé', 'essais terminés') + ' sans formule payante', filter: 'trial' });
   const ctcUnread = sig.contacts_unread || 0;
   if (ctcUnread > 0) signals.push({ tone: '#BE185D', bg: '#FCE7F3', icon: 'mail-unread', t: ctcUnread + ' nouveau' + (ctcUnread > 1 ? 'x' : '') + ' message' + (ctcUnread > 1 ? 's' : '') + ' de contact', screen: 'contacts', filter: 'all' });
 
-  const active = k.orgs_active ?? 0, trial = k.orgs_trial ?? 0;
-  const tot = Math.max(1, active + trial);
+  // Essais exclus du MRR : « payantes » = abonnement payant actif (ancien serveur : actives)
+  const active = k.orgs_active ?? 0, trial = k.orgs_trial ?? 0, trialEnded = k.orgs_trial_expired ?? 0;
+  const paying = k.orgs_paying ?? active;
+  const tot = Math.max(1, active + trial + trialEnded);
 
   return (
     <View style={[styles.fcWrap, Platform.OS === 'ios' && { top: -Constants.statusBarHeight }]}>
@@ -3645,18 +3753,21 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
                 <View style={styles.fcSpotTop}>
                   <View style={styles.fcSpotIc}><Ionicons name="cash" size={16} color="#B45309" /></View>
                   <Text style={styles.fcSpotLb}>Revenu mensuel récurrent</Text>
-                  <View style={styles.fcSpotChip}><Text style={styles.fcSpotChipTxt}>{active} payantes</Text></View>
+                  <View style={styles.fcSpotChip}><Text style={styles.fcSpotChipTxt}>{paying} {plural(paying, 'payante', 'payantes')}</Text></View>
                 </View>
                 <Text style={styles.fcSpotVal}>{fmtEuro(k.mrr)}<Text style={styles.fcSpotUnit}> / mois</Text></Text>
                 <View style={styles.fcDistTrack}>
                   <View style={[styles.fcDistFill, { flex: active, backgroundColor: '#059669' }]} />
                   <View style={[styles.fcDistFill, { flex: trial, backgroundColor: '#FBBF24' }]} />
-                  <View style={{ flex: Math.max(0, tot - active - trial) }} />
+                  <View style={[styles.fcDistFill, { flex: trialEnded, backgroundColor: '#F87171' }]} />
+                  <View style={{ flex: Math.max(0, tot - active - trial - trialEnded) }} />
                 </View>
-                <View style={styles.fcDistMeta}>
-                  <Text style={styles.fcDistTxt}><Text style={{ color: '#059669', fontWeight: '800' }}>■</Text> {active} actives</Text>
-                  <Text style={styles.fcDistTxt}><Text style={{ color: '#FBBF24', fontWeight: '800' }}>■</Text> {trial} essai{trial > 1 ? 's' : ''}</Text>
+                <View style={[styles.fcDistMeta, { flexWrap: 'wrap', rowGap: 4 }]}>
+                  <Text style={styles.fcDistTxt}><Text style={{ color: '#059669', fontWeight: '800' }}>■</Text> {active} {plural(active, 'active', 'actives')}</Text>
+                  <Text style={styles.fcDistTxt}><Text style={{ color: '#FBBF24', fontWeight: '800' }}>■</Text> {trial} {plural(trial, 'essai', 'essais')}</Text>
+                  {trialEnded > 0 ? <Text style={styles.fcDistTxt}><Text style={{ color: '#F87171', fontWeight: '800' }}>■</Text> {trialEnded} {plural(trialEnded, 'essai terminé', 'essais terminés')}</Text> : null}
                 </View>
+                <Text style={styles.fcSpotNote}>Hors essais gratuits</Text>
               </BlurView>
             </TouchableOpacity>
 
@@ -3734,14 +3845,14 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
             <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12 }]}>DERNIÈRES ASSOCIATIONS</Text>
             <View style={styles.fcPanel}>
               {orgs.map((o, i) => (
-                <TouchableOpacity accessibilityRole="button" key={o.id} style={[styles.fcOrgRow, i > 0 ? styles.fcOrgBorder : null]} activeOpacity={0.8} onPress={() => onTile('associations', 'all')}>
+                <TouchableOpacity accessibilityRole="button" key={o.id} style={[styles.fcOrgRow, i > 0 ? styles.fcOrgBorder : null]} activeOpacity={0.8} onPress={() => (onOpenOrg ? onOpenOrg(o.id) : onTile('associations', 'all'))}>
                   <View style={styles.fcOrgAv}><Text style={styles.fcOrgAvTxt}>{(o.name || '?').slice(0, 2).toUpperCase()}</Text></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.fcOrgName} numberOfLines={1}>{o.name}</Text>
-                    <Text style={styles.fcOrgSub}>{o.plan} · {o.nb_users} util. · {o.created}</Text>
+                    <Text style={styles.fcOrgSub} numberOfLines={1}>{orgPlanLabel(o)} · {o.nb_users} util. · {o.created}</Text>
+                    <TrialLine o={o} style={{ marginTop: 5 }} />
                   </View>
-                  {o.pending ? <View style={[styles.fcChip, { backgroundColor: '#EDE9FE' }]}><Text style={[styles.fcChipTxt, { color: '#6D28D9' }]}>À valider</Text></View>
-                    : <View style={[styles.fcChip, { backgroundColor: o.status === 'active' ? '#D1FAE5' : '#F1F5F4' }]}><Text style={[styles.fcChipTxt, { color: o.status === 'active' ? '#047857' : '#5F6D66' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
+                  <OrgChip o={o} />
                 </TouchableOpacity>
               ))}
               <TouchableOpacity accessibilityRole="button" style={styles.fcSeeAll} activeOpacity={0.8} onPress={() => onTile('associations', 'all')}>
@@ -3797,14 +3908,12 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
                   <View style={styles.fcOrgAv}><Text style={styles.fcOrgAvTxt}>{o.initials}</Text></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.fcOrgName} numberOfLines={1}>{o.name}</Text>
-                    <Text style={styles.fcOrgSub}>{o.plan} · {o.nb_users} util. · {o.created}</Text>
+                    <Text style={styles.fcOrgSub} numberOfLines={1}>{orgPlanLabel(o)} · {o.nb_users} util. · {o.created}</Text>
                   </View>
-                  {o.pending ? <View style={[styles.fcChip, { backgroundColor: '#EDE9FE' }]}><Text style={[styles.fcChipTxt, { color: '#6D28D9' }]}>À valider</Text></View>
-                    : o.status === 'suspended' ? <View style={[styles.fcChip, { backgroundColor: '#FEE2E2' }]}><Text style={[styles.fcChipTxt, { color: '#B91C1C' }]}>Suspendue</Text></View>
-                    : o.status === 'cancelled' ? <View style={[styles.fcChip, { backgroundColor: '#F1F5F4' }]}><Text style={[styles.fcChipTxt, { color: '#5F6D66' }]}>Résiliée</Text></View>
-                    : <View style={[styles.fcChip, { backgroundColor: o.status === 'active' ? '#D1FAE5' : '#F1F5F4' }]}><Text style={[styles.fcChipTxt, { color: o.status === 'active' ? '#047857' : '#5F6D66' }]}>{o.status === 'active' ? 'Active' : (o.status === 'trial' ? 'Essai' : o.status)}</Text></View>}
+                  <OrgChip o={o} />
                   <Ionicons name="chevron-forward" size={16} color="#CBD5D1" style={{ marginLeft: 4 }} />
                 </TouchableOpacity>
+                <TrialLine o={o} />
                 {o.unpaid_nb > 0 && <Text style={styles.fcOrgUnpaid}>⚠︎ {o.unpaid_nb} impayé{o.unpaid_nb > 1 ? 's' : ''} · {fmtEuro(o.unpaid_total)}</Text>}
                 <View style={styles.fcOrgActions}>
                   {busy ? <ActivityIndicator size="small" color={BRAND} style={{ paddingVertical: 6 }} /> : o.pending ? (
@@ -3812,10 +3921,24 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
                       <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'validate')}><Ionicons name="checkmark" size={15} color="#fff" /><Text style={styles.fcActGoTxt}>Valider</Text></TouchableOpacity>
                       <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'reject')}><Text style={styles.fcActNoTxt}>Refuser</Text></TouchableOpacity>
                     </>
-                  ) : o.status === 'suspended' ? (
-                    <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'activate')}><Ionicons name="play" size={14} color="#fff" /><Text style={styles.fcActGoTxt}>Réactiver</Text></TouchableOpacity>
                   ) : (
-                    <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'suspend')}><Ionicons name="pause" size={14} color="#B91C1C" /><Text style={styles.fcActNoTxt}>Suspendre</Text></TouchableOpacity>
+                    <>
+                      {o.status === 'suspended' ? (
+                        <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'activate')}><Ionicons name="play" size={14} color="#fff" /><Text style={styles.fcActGoTxt}>Réactiver</Text></TouchableOpacity>
+                      ) : o.status !== 'cancelled' ? (
+                        <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'suspend')}><Ionicons name="pause" size={14} color="#B91C1C" /><Text style={styles.fcActNoTxt}>Suspendre</Text></TouchableOpacity>
+                      ) : null}
+                      {(o.is_trial || o.trial_expired) && o.status !== 'cancelled' ? (
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel={'Prolonger l’essai de ' + o.name} style={[styles.fcAct, styles.fcActTrial]} activeOpacity={0.85}
+                          onPress={() => Alert.alert('Prolonger l’essai', o.name + (o.badge ? '\n' + o.badge : ''), [
+                            { text: 'Annuler', style: 'cancel' },
+                            { text: '+7 jours', onPress: () => onAction(o.id, 'extend_trial', { days: 7 }) },
+                            { text: '+14 jours', onPress: () => onAction(o.id, 'extend_trial', { days: 14 }) },
+                          ])}>
+                          <Ionicons name="hourglass-outline" size={14} color="#B45309" /><Text style={styles.fcActTrialTxt}>Prolonger</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </>
                   )}
                 </View>
               </View>
@@ -3827,7 +3950,7 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
   );
 }
 
-/* Fondateur — Fiche détaillée d'une association : éditer, changer de plan, résilier, note */
+/* Fondateur — Fiche détaillée d'une association : éditer, changer de plan, prolonger l'essai, résilier, note */
 function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit, onAction }) {
   const o = data ? data.org : null;
   const plans = (data && data.plans) || [];
@@ -3838,15 +3961,51 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
   const [plan, setPlan] = useState('');
   const [note, setNote] = useState('');
   const loadedId = useRef(null);
+  const loadedPlan = useRef(null);
   useEffect(() => {
     if (o && loadedId.current !== o.id) {
-      loadedId.current = o.id;
+      loadedId.current = o.id; loadedPlan.current = o.plan || '';
       setName(o.name || ''); setEmail(o.billing_email || ''); setPlan(o.plan || ''); setNote(o.note || '');
+    } else if (o && loadedPlan.current !== (o.plan || '')) {
+      // Le plan a changé côté serveur (enregistrement, prolongation d'essai) : on suit
+      loadedPlan.current = o.plan || ''; setPlan(o.plan || '');
     }
   }, [o]);
   if (!o) return <DetailLoading title="Association" onBack={onBack} />;
-  const dirty = o && (name.trim() !== (o.name || '') || email.trim() !== (o.billing_email || '') || plan !== (o.plan || '') || note !== (o.note || ''));
+  const planChanged = plan !== (o.plan || '');
+  const dirty = o && (name.trim() !== (o.name || '') || email.trim() !== (o.billing_email || '') || planChanged || note !== (o.note || ''));
   const canSave = name.trim().length > 1 && !busy && dirty;
+  const tone = PLAN_TONE[orgTone(o)] || PLAN_TONE.gray;
+  const chip = orgChip(o);
+  const target = plans.find((p) => p.slug === plan) || null;
+  const targetLabel = target ? (target.label || target.name) : plan;
+  const trialDays = o.trial_days || 14;
+  const inTrial = !!(o.is_trial || o.trial_expired || (o.badge_tone === undefined && o.status === 'trial'));
+  // Conséquence d'un changement de formule (ak_org_set_plan côté serveur)
+  const planHint = !planChanged || !target ? '' : target.is_trial
+    ? (o.is_trial && !o.trial_expired && o.trial_ends
+      ? 'Passage en ' + targetLabel + ' : l’essai garde sa fin actuelle (' + o.trial_ends + ').'
+      : 'Passage en ' + targetLabel + ' : essai de ' + trialDays + ' jours à partir d’aujourd’hui.')
+    : (inTrial
+      ? 'L’essai prendra fin : l’association passera en formule ' + targetLabel + ' (active).'
+      : 'La formule passera de ' + orgPlanLabel(o) + ' à ' + targetLabel + '.');
+  const save = () => {
+    const payload = { org_id: o.id, action: 'edit', name: name.trim(), billing_email: email.trim(), plan, plan_id: target ? target.id : undefined, note };
+    if (!planChanged) { onEdit(payload); return; }
+    Alert.alert('Changer de formule ?', planHint, [{ text: 'Annuler', style: 'cancel' }, { text: 'Confirmer', onPress: () => onEdit(payload) }]);
+  };
+  const extend = (d) => Alert.alert('Prolonger l’essai de ' + d + ' jours ?',
+    (o.trial_expired ? 'L’essai est terminé : il reprend aujourd’hui pour ' + d + ' jours.' : 'Nouvelle fin : ' + d + ' jours après le ' + (o.trial_ends || 'la fin actuelle') + '.'),
+    [{ text: 'Annuler', style: 'cancel' }, { text: 'Prolonger', onPress: () => onAction(o.id, 'extend_trial', { days: d }) }]);
+  // Statut lisible : celui du badge serveur (un essai terminé est « Essai terminé », pas « Suspendue »)
+  const statusLabel = o.status === 'cancelled' ? 'Résiliée' : o.badge_tone === 'expired' ? 'Essai terminé' : o.badge_tone === 'trial' || o.status === 'trial' ? 'En essai'
+    : o.status === 'active' ? 'Active' : o.status === 'suspended' ? 'Suspendue' : o.status;
+  const showBadge = !!o.badge && ['trial', 'expired', 'pending'].includes(o.badge_tone);
+  // Prix de la formule (mêmes textes que le sélecteur : « 49,99 €/mois », « Gratuit », « Sur devis ») ; rien pendant un essai
+  const curPlan = o.plan_id ? (plans.find((p) => p.id === o.plan_id) || null) : null;
+  const priceTxt = o.is_trial || o.trial_expired ? ''
+    : curPlan && curPlan.price_text ? curPlan.price_text
+    : (o.price_cents > 0 ? fmtEuro2(o.price_cents / 100) + '/mois' : '');
   return (
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       <DetailHeader title="Association" onBack={onBack} />
@@ -3857,8 +4016,32 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
           <View style={styles.fcOrgAv}><Text style={styles.fcOrgAvTxt}>{(o.name || '?').slice(0, 2).toUpperCase()}</Text></View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.odTitle} numberOfLines={1}>{o.name}</Text>
-            <Text style={styles.odMeta}>{o.status === 'active' ? 'Active' : o.status === 'trial' ? 'Essai' : o.status === 'suspended' ? 'Suspendue' : o.status === 'cancelled' ? 'Résiliée' : o.status} · {o.nb_users} membre{o.nb_users > 1 ? 's' : ''}{o.created ? ' · créée le ' + o.created : ''}{o.trial_ends ? ' · essai → ' + o.trial_ends : ''}</Text>
+            <Text style={styles.odMeta}>{statusLabel} · {o.nb_users} membre{o.nb_users > 1 ? 's' : ''}{o.created ? ' · créée le ' + o.created : ''}</Text>
           </View>
+        </View>
+
+        {/* Formule actuelle + essai : mêmes textes que le cockpit web (serveur) */}
+        <View style={[styles.odPlanCard, { borderColor: tone.bg }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={[styles.odPlanIc, { backgroundColor: tone.bg }]}><Ionicons name={tone.icon} size={18} color={tone.color} /></View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.odPlanLbl}>FORMULE ACTUELLE</Text>
+              <Text style={styles.odPlanName} numberOfLines={1}>{orgPlanLabel(o)}{priceTxt ? <Text style={styles.odPlanPrice}>{'  ·  ' + priceTxt}</Text> : null}</Text>
+            </View>
+            <View style={[styles.fcChip, { backgroundColor: chip.bg }]}><Text style={[styles.fcChipTxt, { color: chip.color }]}>{chip.label}</Text></View>
+          </View>
+          {showBadge ? <Text style={[styles.odPlanBadge, { color: tone.color }]}>{o.badge}</Text>
+            : (o.badge_tone === undefined && o.trial_ends ? <Text style={[styles.odPlanBadge, { color: PLAN_TONE.trial.color }]}>ESSAI · fin {o.trial_ends}</Text> : null)}
+          {o.can_extend_trial ? (
+            <View style={styles.odExtendRow}>
+              {[7, 14].map((d) => (
+                <TouchableOpacity accessibilityRole="button" key={d} style={[styles.odExtendBtn, busy && { opacity: 0.5 }]} activeOpacity={0.85} disabled={!!busy} onPress={() => extend(d)}>
+                  <Ionicons name="add-circle-outline" size={16} color="#B45309" />
+                  <Text style={styles.odExtendTxt}>Prolonger de {d} j</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         <Text style={styles.blogLabel}>Nom de l'organisation</Text>
@@ -3869,13 +4052,22 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
         {plans.length > 0 && (
           <>
             <Text style={styles.blogLabel}>Formule</Text>
+            {o.plan_known === false && o.plan ? (
+              <Text style={styles.odHint}>« {orgPlanLabel(o)} » est un ancien libellé : choisissez une formule ci-dessous pour l’aligner.</Text>
+            ) : null}
             <View style={styles.blogCats}>
-              {plans.map((p) => (
-                <TouchableOpacity accessibilityRole="button" key={p.slug} style={[styles.planChip, plan === p.slug && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPlan(p.slug)}>
-                  <Text style={[styles.planChipName, plan === p.slug && { color: '#fff' }]}>{p.name}</Text>
-                </TouchableOpacity>
-              ))}
+              {plans.map((p) => {
+                const on = plan === p.slug;
+                const price = p.price_text || (p.is_trial ? 'Essai' : '');
+                return (
+                  <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: on }} key={p.slug} style={[styles.planChip, on && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPlan(p.slug)}>
+                    <Text style={[styles.planChipName, on && { color: '#fff' }]}>{p.label || p.name}</Text>
+                    {price ? <Text style={[styles.planChipPrice, on && { color: 'rgba(255,255,255,0.85)' }]}>{price}</Text> : null}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
+            {planHint ? <Text style={[styles.odHint, { marginTop: 8 }]}>{planHint}</Text> : null}
           </>
         )}
 
@@ -3886,8 +4078,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
           </>
         )}
 
-        <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave}
-          onPress={() => onEdit({ org_id: o.id, action: 'edit', name: name.trim(), billing_email: email.trim(), plan, note })}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave} onPress={save}>
           {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>Enregistrer</Text></>}
         </TouchableOpacity>
 
@@ -3904,7 +4095,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
           ) : null}
           {o.status !== 'cancelled' && (
             <TouchableOpacity accessibilityRole="button" style={[styles.odBtn, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]} activeOpacity={0.85}
-              onPress={() => Alert.alert('Résilier ?', 'L\'association passera en statut « résiliée ». Confirmer ?', [{ text: 'Annuler', style: 'cancel' }, { text: 'Résilier', style: 'destructive', onPress: () => onAction(o.id, 'resiliate') }])}>
+              onPress={() => Alert.alert('Résilier ?', 'L’association passera en statut « résiliée »' + (inTrial ? ' et son essai prendra fin (formule Démarrage)' : '') + '. Confirmer ?', [{ text: 'Annuler', style: 'cancel' }, { text: 'Résilier', style: 'destructive', onPress: () => onAction(o.id, 'resiliate') }])}>
               <Ionicons name="close-circle" size={16} color="#B91C1C" /><Text style={[styles.odBtnTxt, { color: '#B91C1C' }]}>Résilier</Text>
             </TouchableOpacity>
           )}
@@ -3972,8 +4163,11 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1.3 }}><Text style={styles.blogLabel}>Nom</Text><TextInput style={styles.blogInput} value={form.name} onChangeText={(v) => setF('name', v)} placeholder="Ex : Association" placeholderTextColor="#9AA7A1" /></View>
-            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Slug</Text><TextInput style={styles.blogInput} value={form.slug} onChangeText={(v) => setF('slug', v.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="association" placeholderTextColor="#9AA7A1" autoCapitalize="none" /></View>
+            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Slug</Text><TextInput style={[styles.blogInput, form.is_system && { color: '#8A968F' }]} value={form.slug} editable={!form.is_system} onChangeText={(v) => setF('slug', v.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="association" placeholderTextColor="#9AA7A1" autoCapitalize="none" /></View>
           </View>
+          {form.is_system ? (
+            <Text style={styles.odHint}>{form.is_trial ? 'Plan d’essai attribué à l’inscription (' + (form.label || form.name) + ').' : 'Plan gratuit attribué à la fin d’un essai.'} Son slug ne peut pas changer et il ne peut pas être supprimé.</Text>
+          ) : null}
           <Text style={styles.blogLabel}>Accroche</Text>
           <TextInput style={styles.blogInput} value={form.tagline} onChangeText={(v) => setF('tagline', v)} placeholder="Ex : Pour les assos qui grandissent" placeholderTextColor="#9AA7A1" />
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -4016,7 +4210,7 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
             }}>
             {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>{isNew ? 'Créer le plan' : 'Enregistrer'}</Text></>}
           </TouchableOpacity>
-          {!isNew && (
+          {!isNew && !form.is_system && (
             <TouchableOpacity accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 14 }} activeOpacity={0.7}
               onPress={() => Alert.alert('Supprimer ce plan ?', 'Action définitive (impossible si des orgs l\'utilisent).', [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: () => onDelete(form.id, () => setForm(null)) }])}>
               <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 14 }}>Supprimer le plan</Text>
@@ -4045,13 +4239,14 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={styles.plnName} numberOfLines={1}>{p.name}</Text>
+                  {p.is_trial && <View style={[styles.fcChip, { backgroundColor: PLAN_TONE.trial.bg }]}><Text style={[styles.fcChipTxt, { color: PLAN_TONE.trial.color }]}>ESSAI</Text></View>}
                   {p.is_featured && <View style={[styles.fcChip, { backgroundColor: '#FEF3C7' }]}><Text style={[styles.fcChipTxt, { color: '#B45309' }]}>Mis en avant</Text></View>}
                   {!p.is_visible && <View style={[styles.fcChip, { backgroundColor: '#F1F5F4' }]}><Text style={[styles.fcChipTxt, { color: '#5F6D66' }]}>Masqué</Text></View>}
                 </View>
                 <Text style={styles.plnSub} numberOfLines={1}>{p.slug} · {p.adoption} org{p.adoption > 1 ? 's' : ''}{p.tagline ? ' · ' + p.tagline : ''}</Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.plnPrice}>{p.is_custom_quote ? 'Sur devis' : (p.price_eur > 0 ? fmtEuro(p.price_eur) : 'Gratuit')}</Text>
+                <Text style={styles.plnPrice}>{p.is_trial ? 'Essai' : (p.is_custom_quote || (p.slug === 'sur-mesure' && !(p.price_eur > 0))) ? 'Sur devis' : (p.price_eur > 0 ? fmtEuro2(p.price_eur) : 'Gratuit')}</Text>
                 <Ionicons name="chevron-forward" size={16} color="#CBD5D1" style={{ marginTop: 3 }} />
               </View>
             </TouchableOpacity>
@@ -4423,7 +4618,7 @@ function NativeFounderBilling({ data, loading, filter, onFilter, onRefresh, onBa
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 26 }} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
         <View style={styles.miniKpiRow}>
-          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.mrr)}</Text><Text style={styles.miniKpiLbl}>MRR</Text></View>
+          <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.mrr)}</Text><Text style={styles.miniKpiLbl}>MRR hors essais</Text></View>
           <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(s.ca_paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé</Text></View>
           <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: (s.unpaid_nb > 0) ? '#B91C1C' : INK }]}>{fmtEuro(s.unpaid_total)}</Text><Text style={styles.miniKpiLbl}>Impayés</Text></View>
         </View>
@@ -4471,10 +4666,13 @@ function NativeFounderStats({ data, loading, onBack, onRefresh }) {
   const o = (data && data.orgs) || {}, u = (data && data.users) || {}, r = (data && data.revenue) || {}, ia = (data && data.ia) || {};
   const curve = (data && data.curve) || [];
   const maxN = Math.max(1, ...curve.map((c) => c.n));
+  const paying = r.paying ?? o.paying;
   const cards = [
-    { icon: 'cash', color: '#059669', bg: '#ECFDF5', v: fmtEuro(r.mrr), l: 'MRR', s: 'récurrent' },
+    { icon: 'cash', color: '#059669', bg: '#ECFDF5', v: fmtEuro(r.mrr), l: 'MRR', s: paying !== undefined ? paying + ' ' + plural(paying, 'payante', 'payantes') + ' · hors essais' : 'hors essais' },
     { icon: 'trending-up', color: '#0891B2', bg: '#ECFEFF', v: fmtEuro(r.ca_paid), l: 'CA encaissé', s: fmtEuro(r.ca_paid_30) + ' /30j' },
-    { icon: 'business', color: '#7C3AED', bg: '#F5F3FF', v: String(o.total ?? 0), l: 'Associations', s: (o.active ?? 0) + ' act. · ' + (o.trial ?? 0) + ' essai' },
+    { icon: 'business', color: '#7C3AED', bg: '#F5F3FF', v: String(o.total ?? 0), l: 'Associations', s: (o.active ?? 0) + ' act. · ' + (o.trial ?? 0) + ' ' + plural(o.trial ?? 0, 'essai', 'essais') },
+    { icon: 'hourglass', color: PLAN_TONE.trial.color, bg: PLAN_TONE.trial.bg, v: String(o.trial ?? 0), l: 'Essais en cours', s: (o.expiring ?? 0) + ' ' + plural(o.expiring ?? 0, 'finit', 'finissent') + ' sous 7 j' },
+    { icon: 'alert-circle', color: PLAN_TONE.expired.color, bg: PLAN_TONE.expired.bg, v: String(o.trial_expired ?? 0), l: 'Essais terminés', s: 'sans formule payante' },
     { icon: 'people', color: '#2563EB', bg: '#EFF6FF', v: String(u.total ?? 0), l: 'Utilisateurs', s: '+' + (u.new30 ?? 0) + ' /30j' },
     { icon: 'alert-circle', color: '#DC2626', bg: '#FEF2F2', v: fmtEuro(r.unpaid_total), l: 'Impayés', s: (r.unpaid_nb ?? 0) + ' facture' + ((r.unpaid_nb ?? 0) > 1 ? 's' : '') },
     { icon: 'sparkles', color: '#D97706', bg: '#FFFBEB', v: String(ia.nb ?? 0), l: 'Générations IA', s: fmtEuro(ia.cost) + ' dépensés' },
@@ -4834,6 +5032,7 @@ const PERIODS = [
   { d: 14, label: '14 j' }, { d: 30, label: '30 j' }, { d: 40, label: '40 j' },
   { d: 90, label: '3 mois' }, { d: 180, label: '6 mois' }, { d: 365, label: '1 an' }, { d: 3650, label: 'Illimité' },
 ];
+const TRIAL_DAYS = 14;   // AK_TRIAL_DAYS côté serveur (repli si le serveur ne l'envoie pas)
 function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, onCopy, onDone }) {
   const [name, setName] = useState('');
   const [first, setFirst] = useState('');
@@ -4846,6 +5045,14 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
   const [addonDomain, setAddonDomain] = useState(false);
   const [sendMail, setSendMail] = useState(true);
   const list = plans || [];
+  const chosen = list.find((p) => p.id === planId) || null;
+  const isTrialPlan = !!(chosen && chosen.is_trial);
+  const pickPlan = (p) => {
+    setPlanId(p.id);
+    // Essai : durée par défaut = essai standard (14 j) ; autre plan : 30 j
+    if (p.is_trial && periodDays === 30) setPeriodDays(TRIAL_DAYS);
+    if (!p.is_trial && periodDays === TRIAL_DAYS) setPeriodDays(30);
+  };
   const canSubmit = name.trim().length > 1 && first.trim().length > 0 && /\S+@\S+\.\S+/.test(email) && planId > 0 && !busy;
 
   if (result && result.ok) {
@@ -4891,9 +5098,9 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
         <Text style={styles.blogLabel}>Formule</Text>
         <View style={styles.blogCats}>
           {list.map((p) => (
-            <TouchableOpacity accessibilityRole="button" key={p.id} style={[styles.planChip, planId === p.id && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPlanId(p.id)}>
-              <Text style={[styles.planChipName, planId === p.id && { color: '#fff' }]}>{p.name}</Text>
-              <Text style={[styles.planChipPrice, planId === p.id && { color: 'rgba(255,255,255,0.85)' }]}>{p.is_trial ? 'Essai' : (p.price > 0 ? fmtEuro(p.price) + '/mois' : 'Gratuit')}</Text>
+            <TouchableOpacity accessibilityRole="button" key={p.id} style={[styles.planChip, planId === p.id && styles.planChipOn]} activeOpacity={0.85} onPress={() => pickPlan(p)}>
+              <Text style={[styles.planChipName, planId === p.id && { color: '#fff' }]}>{p.label || p.name}</Text>
+              <Text style={[styles.planChipPrice, planId === p.id && { color: 'rgba(255,255,255,0.85)' }]}>{p.price_text || (p.is_trial ? 'Essai' : (p.price > 0 ? fmtEuro2(p.price) + '/mois' : 'Gratuit'))}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -4911,7 +5118,7 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
           ))}
         </View>
 
-        <Text style={styles.blogLabel}>Durée d'activation</Text>
+        <Text style={styles.blogLabel}>{isTrialPlan ? 'Durée de l’essai' : 'Durée d\'activation'}</Text>
         <View style={styles.blogCats}>
           {PERIODS.map((pr) => (
             <TouchableOpacity accessibilityRole="button" key={pr.d} style={[styles.planChip, periodDays === pr.d && styles.planChipOn]} activeOpacity={0.85} onPress={() => setPeriodDays(pr.d)}>
@@ -5755,7 +5962,7 @@ function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack 
   );
 }
 
-function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav }) {
+function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav, plan }) {
   const a = (data && data.account) || null;
   const [f, setF] = useState(null);
   useEffect(() => { if (a && !f) setF({ first_name: a.first_name, last_name: a.last_name, email: a.email, phone: a.phone, city: a.city }); }, [a]);
@@ -5766,6 +5973,17 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <DetailHeader title="Paramètres" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {plan && (plan.trial || plan.label) ? (
+          <View style={styles.setPlanCard} accessible accessibilityLabel={'Formule : ' + (plan.trial ? plan.trial.text : plan.label)}>
+            <View style={[styles.setPlanIc, { backgroundColor: plan.trial ? (plan.trial.expired ? '#FEE2E2' : '#FEF3C7') : '#ECFDF5' }]}>
+              <Ionicons name={plan.trial ? (plan.trial.expired ? 'alert-circle-outline' : 'hourglass-outline') : 'ribbon-outline'} size={18} color={plan.trial ? (plan.trial.expired ? '#B91C1C' : '#B45309') : BRAND} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.setPlanLbl}>FORMULE</Text>
+              <Text style={styles.setPlanVal}>{plan.trial ? plan.trial.text : plan.label}</Text>
+            </View>
+          </View>
+        ) : null}
         {org.is_admin && (
           <>
             <Text style={styles.formCardTitle}>Logo de l'organisation</Text>
@@ -6217,10 +6435,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null);
     setFdOrgs(null); setFdOrgsFilter(f); setMenuScreen('fdorgs'); fetchFdOrgs(f);
   }, [clearDetail, closeForm, fetchFdOrgs]);
-  const doFounderAction = useCallback((orgId, action) => {
+  const doFounderAction = useCallback((orgId, action, extra) => {
     if (!csrf) { inject(FETCH_CSRF_JS); return; }
     setFdBusyId(orgId);
-    inject(postJS('/api/app-founder-action.php', { org_id: orgId, action, csrf }, '__akfdaction'));
+    inject(postJS('/api/app-founder-action.php', { ...(extra || {}), org_id: orgId, action, csrf }, '__akfdaction'));
   }, [csrf, inject]);
   const fetchFdOrgDetail = useCallback((id) => { setFdOrgDetailLoading(true); inject(fetchJS('/api/app-founder-org-detail.php?id=' + id, '__akfdorgdet')); }, [inject]);
   const openFdOrgDetail = useCallback((id) => {
@@ -6763,16 +6981,22 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akfdorgs) { setFdOrgs(msg.__akfdorgs); setFdOrgsLoading(false); }
       if (msg && msg.__akfdaction) {
         setFdBusyId(0);
-        if (msg.__akfdaction.ok) { fetchFdOrgs(fdOrgsFilter); fetchFounder(); }
-        else { Alert.alert('Action impossible', 'Réessaie dans un instant.'); }
+        const r = msg.__akfdaction;
+        if (r.ok) {
+          fetchFdOrgs(fdOrgsFilter); fetchFounder();
+          if (r.action === 'extend_trial') Alert.alert('Essai prolongé', r.trial_ends ? 'Nouvelle fin d’essai : ' + r.trial_ends + '.' : 'C’est fait.');
+        } else { Alert.alert('Action impossible', r.message || 'Réessaie dans un instant.'); }
       }
       if (msg && msg.__akfdorgdet) { setFdOrgDetailLoading(false); if (msg.__akfdorgdet.ok === false) setMenuScreen('founder'); else setFdOrgDetail(msg.__akfdorgdet); }
       if (msg && msg.__akfdorgedit) {
         setFdOrgEditBusy(false);
-        if (msg.__akfdorgedit.ok) {
+        const r = msg.__akfdorgedit;
+        if (r.ok) {
           if (fdOrgDetailIdRef.current) fetchFdOrgDetail(fdOrgDetailIdRef.current);
           fetchFdOrgs(fdOrgsFilter); fetchFounder();
-        } else { Alert.alert('Action impossible', msg.__akfdorgedit.message || 'Réessaie dans un instant.'); }
+          if (r.action === 'extend_trial') Alert.alert('Essai prolongé', r.trial_ends ? 'Nouvelle fin d’essai : ' + r.trial_ends + '.' : 'C’est fait.');
+          else if (r.plan_changed) Alert.alert('Formule mise à jour', (r.from || '—') + ' → ' + (r.to || '—') + (r.state && r.state.badge && (r.state.badge_tone === 'trial' || r.state.badge_tone === 'expired') ? '\n' + r.state.badge : ''));
+        } else { Alert.alert('Action impossible', r.message || 'Réessaie dans un instant.'); }
       }
       if (msg && msg.__akfdproj) { setFdProjects(msg.__akfdproj); setFdProjectsLoading(false); }
       if (msg && msg.__akfdactiv) { setFdActivity(msg.__akfdactiv); setFdActivityLoading(false); }
@@ -7243,7 +7467,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             {menuScreen === 'agenda' ? (
               <NativeAgenda data={events} loading={eventsLoading} onRefresh={fetchEvents} onOpen={(id) => pushDetail('event', id)} onNew={() => openForm('event')} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'subinvoices' ? (
-              <NativeSubInvoices data={subInv} loading={subInvLoading} onRefresh={fetchSubInv} onBack={() => setMenuScreen(null)} onWeb={openWeb} />
+              <NativeSubInvoices data={subInv} loading={subInvLoading} onRefresh={fetchSubInv} onBack={() => setMenuScreen(null)} onWeb={openWeb} trial={orgTrialInfo(kpi)} />
             ) : menuScreen === 'devis' ? (
               <NativeQuotes data={quotes} loading={quotesLoading} onRefresh={fetchQuotes} onOpen={(id) => pushDetail('quote', id)} onNew={canManageOrg ? () => openForm('quote') : undefined} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'stats' ? (
@@ -7297,7 +7521,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'settings' ? (
               <NativeSettings data={account} onBack={() => setMenuScreen(null)} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
                 onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb} onNav={openMenuScreen}
-                onLogout={doLogout} />
+                onLogout={doLogout} plan={kpi ? { label: kpi.plan_label || '', trial: orgTrialInfo(kpi) } : null} />
             ) : menuScreen === 'mail' ? (
               mailOpenId ? (
                 <NativeMailThread data={mailThread} loading={mailThreadLoading} busy={mailBusy} draft={mailDraft}
@@ -7326,7 +7550,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 onBack={() => { setMenuScreen(null); setActive('accueil'); }}
                 hasAsso={!!(kpi && kpi.org_name)} onGotoAsso={() => { setMenuScreen(null); setActive('accueil'); }}
                 onLogout={doLogout} onTile={onFounderTile} onNotifs={() => openMenuScreen('notifications')}
-                notifCount={(kpi && kpi.notif_unread) || 0} />
+                notifCount={(kpi && kpi.notif_unread) || 0} onOpenOrg={openFdOrgDetail} />
             ) : menuScreen === 'fdorgs' ? (
               <NativeFounderOrgs data={fdOrgs} loading={fdOrgsLoading} filter={fdOrgsFilter}
                 onFilter={(f) => { setFdOrgs(null); setFdOrgsFilter(f); fetchFdOrgs(f); }}
@@ -7335,7 +7559,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'fdorgdetail' ? (
               <NativeFounderOrgDetail data={fdOrgDetail} loading={fdOrgDetailLoading} busy={fdOrgEditBusy}
                 onBack={() => openFdOrgs(fdOrgsFilter)} onRefresh={() => fdOrgDetailIdRef.current && fetchFdOrgDetail(fdOrgDetailIdRef.current)}
-                onEdit={doOrgEdit} onAction={(id, action) => doOrgEdit({ org_id: id, action })} />
+                onEdit={doOrgEdit} onAction={(id, action, extra) => doOrgEdit({ ...(extra || {}), org_id: id, action })} />
             ) : menuScreen === 'fdbilling' ? (
               <NativeFounderBilling data={fdBilling} loading={fdBillingLoading} filter={fdBillingFilter}
                 onFilter={(f) => { setFdBilling(null); setFdBillingFilter(f); fetchFdBilling(f); }}
@@ -7406,6 +7630,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 counts={{ msg: kpi && kpi.msg_unread, support: kpi && kpi.support_unread, notif: kpi && kpi.notif_unread, mail: kpi && kpi.mail_unread }}
                 onNav={onMoreNav}
                 onLogout={doLogout}
+                trial={orgTrialInfo(kpi)}
               />
             )}
           </View>
@@ -7652,6 +7877,8 @@ const styles = StyleSheet.create({
   fgOrgLogoTxt: { color: '#fff', fontSize: 19, fontWeight: '800' },
   fgOrgName: { color: '#fff', fontSize: 15, fontWeight: '700' },
   fgOrgSub: { color: '#D7F5E8', fontSize: 11.5, marginTop: 1 },
+  fgTrialPill: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', maxWidth: '100%', marginTop: 10, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: 'rgba(253,230,138,0.45)' },
+  fgTrialTxt: { color: '#FEF3C7', fontSize: 12, fontWeight: '700', flexShrink: 1 },
   fgBell: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   fgBellDot: { position: 'absolute', top: 7, right: 7, width: 9, height: 9, borderRadius: 5, backgroundColor: '#FCA5A5', borderWidth: 1.5, borderColor: '#0E7A5A' },
   fgHello: { color: '#fff', fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginTop: 22 },
@@ -8076,6 +8303,10 @@ const styles = StyleSheet.create({
   logoBox: { width: 64, height: 64, borderRadius: 16, backgroundColor: '#F1F5F4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   logoImg: { width: 64, height: 64, borderRadius: 16 },
   settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 12, padding: 15, marginTop: 10, shadowColor: '#0B1A13', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
+  setPlanCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 18, borderWidth: 1, borderColor: '#E7EDEA' },
+  setPlanIc: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  setPlanLbl: { fontSize: 10.5, fontWeight: '800', color: '#8A9A92', letterSpacing: 0.6 },
+  setPlanVal: { fontSize: 14.5, fontWeight: '700', color: INK, marginTop: 2 },
   settingsRowTxt: { flex: 1, fontSize: 14.5, fontWeight: '600', color: INK },
   deleteTxt: { fontSize: 13.5, color: '#DC2626', fontWeight: '600', textDecorationLine: 'underline' },
 
@@ -8301,6 +8532,21 @@ const styles = StyleSheet.create({
   fcOrgSub: { fontSize: 11, color: '#8A9A92', marginTop: 1 },
   fcChip: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
   fcChipTxt: { fontSize: 10.5, fontWeight: '800' },
+  trialLine: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', maxWidth: '100%', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginTop: 10 },
+  trialLineTxt: { fontSize: 11.5, fontWeight: '800', flexShrink: 1 },
+  fcActTrial: { flex: 1, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A' },
+  fcActTrialTxt: { fontSize: 13, fontWeight: '800', color: '#B45309' },
+  fcSpotNote: { fontSize: 10.5, color: '#8A9A92', marginTop: 6 },
+  odPlanCard: { backgroundColor: '#fff', borderRadius: 16, borderWidth: 1.5, padding: 14, marginTop: 6, marginBottom: 4 },
+  odPlanIc: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  odPlanLbl: { fontSize: 10.5, fontWeight: '800', color: '#8A9A92', letterSpacing: 0.6 },
+  odPlanName: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 1 },
+  odPlanPrice: { fontSize: 13, fontWeight: '600', color: '#5F6D66' },
+  odPlanBadge: { fontSize: 13, fontWeight: '800', marginTop: 10 },
+  odExtendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  odExtendBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFBEB', borderWidth: 1.5, borderColor: '#FDE68A', borderRadius: 11, paddingVertical: 9, paddingHorizontal: 12 },
+  odExtendTxt: { fontSize: 13, fontWeight: '800', color: '#B45309' },
+  odHint: { fontSize: 12.5, color: '#5F6D66', lineHeight: 18, marginBottom: 8 },
   fcSeeAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 2 },
   fcSeeAllTxt: { fontSize: 13, fontWeight: '800', color: '#059669' },
   fcLogout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 22, paddingVertical: 15, borderRadius: 14, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },

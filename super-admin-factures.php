@@ -10,6 +10,7 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/company-helpers.php';
 require_once __DIR__ . '/org-billing-helpers.php';
 require_once __DIR__ . '/invoice-helpers.php';
+require_once __DIR__ . '/sa-plan-state-helpers.php';
 
 require_login();
 $user = current_user();
@@ -70,6 +71,14 @@ try {
     $stmt = $pdo->query("SELECT id, name, plan FROM organizations WHERE status = 'active' ORDER BY name");
     $orgs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {}
+// Libellé du plan réel (même vérité que la fiche association) au lieu de l'ancien slug
+$org_states = sa_org_plan_states($pdo, array_column($orgs, 'id'));
+foreach ($orgs as &$o) {
+    $ps = $org_states[(int)$o['id']] ?? null;
+    $o['plan_display'] = !$ps ? (string)$o['plan']
+        : (($ps['is_trial'] || $ps['trial_expired']) ? $ps['plan_label'] . ' · ' . sa_plan_state_short($ps) . ' · 0 €' : $ps['plan_label']);
+}
+unset($o);
 
 $is_test_mode = ak_invoice_is_test_mode();
 
@@ -143,7 +152,7 @@ render_sidebar('abonnements');
                     <label style="display:block; font-size:12px; color:#065F46; margin-bottom:6px; font-weight:600;">Association</label>
                     <select name="org_id" required style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #A7F3D0; font-size:14px; background:white;">
                         <?php foreach ($orgs as $o): ?>
-                            <option value="<?= (int)$o['id'] ?>"><?= h($o['name']) ?> (<?= h($o['plan']) ?>)</option>
+                            <option value="<?= (int)$o['id'] ?>"><?= h($o['name']) ?> (<?= h($o['plan_display']) ?>)</option>
                         <?php endforeach; ?>
                     </select>
                 </div>

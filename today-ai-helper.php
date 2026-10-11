@@ -393,17 +393,50 @@ function today_collect_context(PDO $pdo, array $user, string $profile): array
             $ctx['invoices'] = ['overdue_count' => 0, 'overdue_amount' => 0];
         }
 
-        // Abonnement Assokit
+        // Abonnement Assokit : formule et essai lus comme partout ailleurs (ak_org_plan_state,
+        // via ak_plan_trial_info) — l'IA voit « Essai PRO jusqu'au … », jamais un slug brut.
+        //   status     : 'trial' (essai en cours), 'trial_expired' (essai terminé), sinon statut de l'abonnement
+        //   plan_type  : nom affiché de la formule (clé gardée pour les anciens appelants)
+        //   days_until : jours avant la fin de l'essai, ou avant l'échéance d'une formule payante
         try {
-            $stmt = $pdo->prepare("
-                SELECT next_billing_date, plan_type, status,
-                       DATEDIFF(next_billing_date, NOW()) AS days_until
-                FROM organization_subscriptions
-                WHERE org_id = ? AND status IN ('active','trial')
-                ORDER BY id DESC LIMIT 1
-            ");
-            @$stmt->execute([$org_id]);
-            $ctx['subscription'] = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            @require_once __DIR__ . '/plan-helpers.php';
+            if (function_exists('ak_plan_trial_info') && function_exists('ak_org_plan_state')) {
+                $ti = ak_plan_trial_info($pdo, $org_id);
+                $ps = ak_org_plan_state($pdo, $org_id);
+                $sub = [
+                    'plan_type'     => $ti['plan_label'],
+                    'plan_label'    => $ti['plan_label'],
+                    'trial_name'    => (string)($ti['trial_name'] ?? ''),
+                    'label'         => $ti['label'],
+                    'status'        => $ti['trial_expired'] ? 'trial_expired' : ($ti['in_trial'] ? 'trial' : (string)$ps['sub_status']),
+                    'trial_ends_fr' => $ti['end_fr'],
+                    'ends_today'    => !empty($ti['ends_today']),
+                    'days_until'    => null,
+                    'price_cents'   => (int)$ps['price_cents'],
+                ];
+                if ($ti['in_trial'] || $ti['trial_expired']) {
+                    $sub['days_until'] = $ti['days_left'];
+                } elseif ((int)$ps['price_cents'] > 0) {
+                    // Formule payante : prochaine échéance = fin de période de la ligne courante
+                    // (même ligne qu'ak_org_plan_state / ak_get_current_plan)
+                    $st = $pdo->prepare("SELECT DATEDIFF(current_period_end, NOW()) FROM asso_subscriptions
+                                         WHERE org_id = ? ORDER BY (status = 'active') DESC, id DESC LIMIT 1");
+                    $st->execute([$org_id]);
+                    $d = $st->fetchColumn();
+                    if ($d !== false && $d !== null) $sub['days_until'] = (int)$d;
+                }
+                $ctx['subscription'] = $sub;
+            } else {
+                $stmt = $pdo->prepare("
+                    SELECT next_billing_date, plan_type, status,
+                           DATEDIFF(next_billing_date, NOW()) AS days_until
+                    FROM organization_subscriptions
+                    WHERE org_id = ? AND status IN ('active','trial')
+                    ORDER BY id DESC LIMIT 1
+                ");
+                @$stmt->execute([$org_id]);
+                $ctx['subscription'] = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            }
         } catch (Throwable $e) {}
     }
 
@@ -509,12 +542,35 @@ function today_build_prompt(array $ctx): string
     }
 
     // === ABONNEMENT ASSOKIT (admin) ===
-    if ($profile === 'admin' && !empty($ctx['subscription']) && isset($ctx['subscription']['days_until'])) {
-        $days = (int)$ctx['subscription']['days_until'];
+    $sub = $ctx['subscription'] ?? null;
+    $sub_status = is_array($sub) ? (string)($sub['status'] ?? '') : '';
+    if ($profile === 'admin' && $sub_status === 'trial') {
+        // Essai gratuit en cours : toujours dit à l'IA (sinon elle parle d'un « plan gratuit »)
+        $days = isset($sub['days_until']) ? (int)$sub['days_until'] : null;
+        $prompt .= "🔔 ABONNEMENT ASSOKIT :\n";
+        $pl = trim((string)($sub['plan_label'] ?? ''));
+        $trial_name = trim((string)($sub['trial_name'] ?? ''));
+        if ($trial_name === '') $trial_name = ($pl === '' || $pl === '—') ? 'Essai PRO' : (stripos($pl, 'essai') !== false ? $pl : 'Essai ' . $pl);
+        $prompt .= "- Plan actuel : {$trial_name} (essai gratuit de " . (defined('AK_TRIAL_DAYS') ? (int)AK_TRIAL_DAYS : 14) . " jours, toutes les fonctionnalités — ce n'est PAS un plan gratuit)\n";
+        if ($days !== null) {
+            $prompt .= "- " . ($days <= 0 || !empty($sub['ends_today']) ? "L'essai se termine aujourd'hui" : "Fin de l'essai dans {$days} jour" . ($days > 1 ? 's' : ''))
+                     . (!empty($sub['trial_ends_fr']) ? " (le {$sub['trial_ends_fr']})" : '') . "\n";
+            if ($days <= 7) $prompt .= "- Rappeler de choisir une formule avant la fin de l'essai (page Mon abonnement)\n";
+        }
+        $prompt .= "\n";
+    } elseif ($profile === 'admin' && $sub_status === 'trial_expired') {
+        $prompt .= "🔔 ABONNEMENT ASSOKIT :\n";
+        $prompt .= "- " . ($sub['label'] ?? 'Essai terminé') . " : l'association n'a pas encore choisi de formule"
+                 // Plan rétrogradé par la fin d'essai (Démarrage) ; tant que le cron n'est pas passé, la ligne est encore l'essai
+                 . (!empty($sub['plan_label']) && stripos((string)$sub['plan_label'], 'essai') === false && $sub['plan_label'] !== '—'
+                    ? " (plan actuel : {$sub['plan_label']}, fonctionnalités limitées)" : '') . "\n";
+        $prompt .= "- Inviter à choisir une formule (page Mon abonnement) ; les données sont conservées\n\n";
+    } elseif ($profile === 'admin' && !empty($sub) && isset($sub['days_until'])) {
+        $days = (int)$sub['days_until'];
         if ($days >= 0 && $days <= 14) {
             $prompt .= "🔔 ABONNEMENT ASSOKIT :\n";
             $prompt .= "- Prochaine échéance dans {$days} jours\n";
-            $prompt .= "- Plan actuel : " . ($ctx['subscription']['plan_type'] ?? 'standard') . "\n\n";
+            $prompt .= "- Plan actuel : " . ($sub['plan_type'] ?? 'standard') . "\n\n";
         }
     }
 
@@ -1130,13 +1186,25 @@ function today_fallback_suggestions(array $ctx): array
     if ($profile === 'admin' && !empty($ctx['subscription'])) {
         $sub = $ctx['subscription'];
         $days_until = (int)($sub['days_until'] ?? 0);
-        if ($sub['status'] === 'trial' && $days_until >= 0 && $days_until <= 7) {
+        $sub_status = (string)($sub['status'] ?? '');
+        if ($sub_status === 'trial' && isset($sub['days_until']) && $days_until <= 7) {
             $out[] = [
                 'icon' => '⚡',
-                'title' => 'Ton essai se termine dans ' . $days_until . ' jour' . ($days_until > 1 ? 's' : ''),
-                'description' => 'Choisis ton plan pour continuer à profiter d\'Assokit',
+                'title' => ($days_until <= 0 || !empty($sub['ends_today'])) ? 'Ton essai PRO se termine aujourd’hui'
+                         : 'Ton essai PRO se termine dans ' . $days_until . ' jour' . ($days_until > 1 ? 's' : ''),
+                'description' => (!empty($sub['trial_ends_fr']) ? 'Fin le ' . $sub['trial_ends_fr'] . ' · ' : '')
+                               . 'choisis ta formule pour continuer à profiter d’Assokit',
                 'link' => '/mon-asso-plan',
-                'link_label' => 'Voir les plans',
+                'link_label' => 'Voir les formules',
+                'priority' => 'urgent',
+            ];
+        } elseif ($sub_status === 'trial_expired') {
+            $out[] = [
+                'icon' => '⏳',
+                'title' => (string)($sub['label'] ?? 'Essai terminé'),
+                'description' => 'Tes données sont conservées · choisis une formule pour retrouver toutes les fonctionnalités',
+                'link' => '/mon-asso-plan',
+                'link_label' => 'Choisir une formule',
                 'priority' => 'urgent',
             ];
         }

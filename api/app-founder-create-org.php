@@ -19,30 +19,27 @@ function oorg_fail($c, $e, $m = null) { http_response_code($c); echo json_encode
 if (empty($_SESSION['user_id'])) oorg_fail(401, 'auth');
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+require_once __DIR__ . '/_app-founder-plan.php';
 $is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
 if (!$is_sa) oorg_fail(403, 'forbidden');
 
-// --- Liste des plans (GET) ---
-$plans = [];
-try {
-    $plans = $pdo->query("SELECT id, name, slug, price_cents, tagline, is_trial, trial_converts_to
-                          FROM asso_plans WHERE is_visible = 1 OR is_trial = 1
-                          ORDER BY is_trial ASC, price_cents ASC")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {}
+// --- Liste des plans (GET) : les mêmes que le sélecteur de formule de la fiche association ---
+$plans = fd_plan_choices($pdo);
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     $out = [];
     foreach ($plans as $p) {
         $out[] = [
-            'id' => (int) $p['id'],
-            'name' => (string) $p['name'],
-            'slug' => (string) $p['slug'],
-            'price' => round(((int) ($p['price_cents'] ?? 0)) / 100, 2),
-            'tagline' => (string) ($p['tagline'] ?? ''),
-            'is_trial' => !empty($p['is_trial']),
+            'id' => $p['id'],
+            'name' => $p['name'],
+            'label' => $p['label'],
+            'slug' => $p['slug'],
+            'price' => $p['price'],
+            'price_text' => $p['price_text'],
+            'is_trial' => $p['is_trial'],
         ];
     }
-    echo json_encode(['ok' => true, 'plans' => $out], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'plans' => $out, 'trial_days' => (int) AK_TRIAL_DAYS], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -75,12 +72,9 @@ try {
     $check->execute([$email]);
     if ($check->fetchColumn()) oorg_fail(409, 'email_used', 'Cet email est déjà utilisé.');
 
-    $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '-', $org_name));
-    $slug = trim($slug, '-');
-    if (strlen($slug) < 3) $slug = 'asso-' . substr(md5(microtime()), 0, 6);
-    $cs = $pdo->prepare("SELECT COUNT(*) FROM organizations WHERE slug = ?");
-    $cs->execute([$slug]);
-    if ((int) $cs->fetchColumn() > 0) $slug .= '-' . substr(md5(microtime()), 0, 4);
+    // Même règle que l'inscription : unique, jamais « demo-… » (ces espaces sont traités
+    // comme des démos : e-mails simulés, fin d'essai jamais appliquée par le cron)
+    $slug = ak_signup_slug($pdo, $org_name);
 
     $password_plain = $custom_password !== '' ? $custom_password : bin2hex(random_bytes(6));
     $password_hash  = password_hash($password_plain, PASSWORD_BCRYPT);
@@ -88,11 +82,15 @@ try {
     $chosen = null;
     foreach ($plans as $p) { if ((int) $p['id'] === $plan_id) { $chosen = $p; break; } }
     if (!$chosen) oorg_fail(400, 'plan', 'Plan introuvable.');
-    $is_trial = !empty($chosen['is_trial']);
+    $is_trial = !empty($chosen['is_trial']) || $chosen['slug'] === 'pro-essai';
     $chosen_slug = $chosen['slug'] ?? null;
-    // Statut : essai brdié -> trial ; stripe -> en attente de paiement ; sinon actif
-    $sub_status = $is_trial ? 'trial' : ($payment_mode === 'stripe' ? 'pending_payment' : 'active');
-    $period_end = date('Y-m-d H:i:s', strtotime('+' . max(1, $period_days) . ' days'));
+    // Statut : essai -> trial ; stripe -> en attente de paiement ; sinon actif
+    $sub_status = $is_trial ? (ak_db_pick($pdo, 'asso_subscriptions', 'status', ['trial', 'active']) ?? 'trial')
+                            : ($payment_mode === 'stripe' ? 'pending_payment' : 'active');
+    // Fin d'essai calculée par la base, comme l'inscription et ak_trial_extend()
+    $period_end = $is_trial
+        ? (string) $pdo->query("SELECT DATE_ADD(NOW(), INTERVAL " . min(3650, $period_days) . " DAY)")->fetchColumn()
+        : date('Y-m-d H:i:s', strtotime('+' . max(1, $period_days) . ' days'));
 
     $pdo->beginTransaction();
     $pdo->prepare("INSERT INTO organizations (name, slug, billing_email, created_at) VALUES (?, ?, ?, NOW())")
@@ -105,11 +103,24 @@ try {
 
     $new_sub_id = 0;
     try {
-        $pdo->prepare("INSERT INTO asso_subscriptions (org_id, plan_id, payment_mode, status, current_period_end, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, NOW(), NOW())")
-            ->execute([$new_org_id, $plan_id, $payment_mode, $sub_status, $period_end]);
-        $new_sub_id = (int) $pdo->lastInsertId();
-    } catch (Throwable $e) {}
+        $new_sub_id = ak_db_insert($pdo, 'asso_subscriptions', ['org_id' => $new_org_id, 'plan_id' => $plan_id, 'payment_mode' => $payment_mode,
+            'status' => $sub_status, 'current_period_end' => $period_end], ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
+    } catch (Throwable $e) { error_log('[app-founder-create-org] abonnement : ' . get_class($e)); }
+
+    // Essai : ligne « historique » (bandeau d'essai + rappels J-7 / J-3 / J-1 / J-0), comme l'inscription
+    if ($is_trial) {
+        try {
+            $legacy_status = ak_db_pick($pdo, 'subscriptions', 'status', ['trial']);
+            if (ak_db_columns($pdo, 'subscriptions') && $legacy_status) {
+                ak_db_insert($pdo, 'subscriptions', [
+                    'org_id' => $new_org_id,
+                    'plan' => ak_db_pick($pdo, 'subscriptions', 'plan', ['pro', 'association', 'essentiel']) ?? 'pro',
+                    'status' => $legacy_status, 'billing_cycle' => ak_db_pick($pdo, 'subscriptions', 'billing_cycle', ['monthly']) ?? 'monthly',
+                    'price_ht' => 49.99, 'tva_rate' => 20.00, 'current_period_end' => $period_end,
+                ], ['started_at' => 'NOW()', 'current_period_start' => 'NOW()', 'created_at' => 'NOW()']);
+            }
+        } catch (Throwable $e) { error_log('[app-founder-create-org] essai historique : ' . get_class($e)); }
+    }
 
     // Add-on domaine personnalisé si demandé (10 €/mois), comme sur le web
     if ($with_addon_domain && $new_sub_id > 0) {
@@ -120,12 +131,15 @@ try {
         } catch (Throwable $e) {}
     }
 
+    // organizations.plan (ancien libellé) = slug du plan, seulement si la colonne l'accepte
+    // (un ENUM d'anciens libellés refuserait « pro-essai » et ferait échouer toute la création)
+    $org_plan = $chosen_slug !== null && (!ak_db_columns($pdo, 'organizations') || ak_db_accepts($pdo, 'organizations', 'plan', (string) $chosen_slug))
+        ? ['plan' => $chosen_slug] : [];
     if ($is_trial) {
-        $pdo->prepare("UPDATE organizations SET plan = ?, status = 'trial', trial_ends_at = ? WHERE id = ?")
-            ->execute([$chosen_slug, $period_end, $new_org_id]);
+        ak_db_update($pdo, 'organizations', $new_org_id, $org_plan + ['trial_ends_at' => $period_end]
+            + (ak_db_accepts($pdo, 'organizations', 'status', 'trial') || !ak_db_columns($pdo, 'organizations') ? ['status' => 'trial'] : ['status' => 'active']));
     } else {
-        $pdo->prepare("UPDATE organizations SET plan = ?, status = 'active' WHERE id = ?")
-            ->execute([$chosen_slug, $new_org_id]);
+        ak_db_update($pdo, 'organizations', $new_org_id, $org_plan + ['status' => 'active']);
     }
     $pdo->commit();
 
@@ -138,6 +152,7 @@ try {
                     . "<p>Votre compte <strong>" . htmlspecialchars($org_name) . "</strong> est prêt.</p>"
                     . "<p><strong>Email :</strong> " . htmlspecialchars($email) . "<br>"
                     . "<strong>Mot de passe :</strong> <code>" . htmlspecialchars($password_plain) . "</code></p>"
+                    . ($is_trial ? "<p>Votre période d’essai gratuit (" . htmlspecialchars(ak_plan_label($chosen_slug, $chosen['name'] ?? null)) . ") est active jusqu’au <strong>" . htmlspecialchars(ak_trial_end_label($period_end)) . "</strong>.</p>" : "")
                     . "<p>👉 <a href='https://assokit.fr/login'>Se connecter</a></p>";
                 send_transactional_email($email, 'Bienvenue chez Assokit !', $body, ['tag' => 'founder_new_org']);
                 $email_sent = true;
@@ -152,6 +167,7 @@ try {
         'email' => $email,
         'password' => $password_plain,
         'email_sent' => $email_sent,
+        'state' => fd_org_plan($pdo, $new_org_id),
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();

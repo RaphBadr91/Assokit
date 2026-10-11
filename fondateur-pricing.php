@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-permissions.php';
 require_once __DIR__ . '/includes-pricing.php';
+require_once __DIR__ . '/sa-plan-state-helpers.php';
 require_login();
 $user = sa_require_super_admin();
 
@@ -13,6 +14,8 @@ $sim_org_id = (int)($_GET['org'] ?? 0);
 $sim_cycle  = ($_GET['cycle'] ?? 'monthly') === 'yearly' ? 'yearly' : 'monthly';
 $sim_org    = null;
 foreach ($orgs as $o) { if ((int)$o['id'] === $sim_org_id) { $sim_org = $o; break; } }
+// Plan réel de l'organisation simulée (même vérité que la fiche association : un essai est à 0 €)
+$sim_state = $sim_org ? ak_org_plan_state($pdo, (int)$sim_org['id']) : null;
 
 sa_render_head('Tarifs & TVA');
 sa_render_sidebar('fondateur-pricing');
@@ -55,6 +58,7 @@ sa_render_sidebar('fondateur-pricing');
       <?php if ($sim_org): ?>
       <div class="ap-sim-info">
         <strong><?= htmlspecialchars($sim_org['name']) ?></strong> ·
+        Plan actuel : <strong><?= h($sim_state['plan_label']) ?></strong> (<?= h($sim_state['badge']) ?><?= ($sim_state['is_trial'] || $sim_state['trial_expired']) ? ' · 0 €' : '' ?>) ·
         <?php if (pricing_org_is_vat_subject($sim_org)): ?>
           <span class="ap-tag ap-tag-co">Entreprise assujettie TVA · facturation HT</span>
           <?php if ($sim_org['siret']): ?> · SIRET <?= htmlspecialchars($sim_org['siret']) ?><?php endif; ?>

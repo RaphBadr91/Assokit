@@ -16,6 +16,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-permissions.php';
+require_once __DIR__ . '/sa-plan-state-helpers.php';
 require_login();
 sa_require_super_admin();
 sa_require_capability('can_view_platform_stats');
@@ -128,12 +129,20 @@ try {
     $orgs_monthly = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 } catch (Throwable $e) {}
 
-// Repartition plans
-$plans_split = [];
+// Repartition plans — plan RÉEL de chaque association (abonnement courant, ak_org_plan_state),
+// pas l'ancien libellé organizations.plan. Les essais sont regroupés à part (en cours / terminés).
+$plans_split = [];      // libellé => nombre
+$plans_split_key = [];  // libellé => clé de couleur
 try {
-    $plans_split = $pdo->query("
-        SELECT plan, COUNT(*) AS nb FROM organizations WHERE deleted_at IS NULL GROUP BY plan
-    ")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $ids = $pdo->query("SELECT id FROM organizations WHERE deleted_at IS NULL")->fetchAll(PDO::FETCH_COLUMN);
+    foreach (sa_org_plan_states($pdo, $ids) as $ps) {
+        if ($ps['badge_tone'] === 'trial') { $lbl = $ps['plan_label'] . ' (essai en cours)'; $key = 'trial'; }
+        elseif ($ps['badge_tone'] === 'expired') { $lbl = 'Essai terminé'; $key = 'expired'; }
+        else { $lbl = $ps['plan_label'] . ($ps['plan_id'] ? '' : ' (ancien plan)'); $key = $ps['plan_id'] ? $ps['plan_slug'] : 'legacy'; }
+        $plans_split[$lbl] = ($plans_split[$lbl] ?? 0) + 1;
+        $plans_split_key[$lbl] = $key;
+    }
+    arsort($plans_split);
 } catch (Throwable $e) {}
 
 // =====================================================================
@@ -319,14 +328,15 @@ sa_render_sidebar('dashboard');
         <div style="margin-top:14px;">
             <?php
             $total_plans = array_sum($plans_split) ?: 1;
-            $colors = ['essentiel' => '#A1A1AA', 'association' => '#7F77DD', 'organisation' => '#FCD34D'];
+            $colors = ['demarrage' => '#A1A1AA', 'assokit' => '#7F77DD', 'sur-mesure' => '#FCD34D',
+                       'trial' => '#C4B5FD', 'expired' => '#F59E0B', 'legacy' => '#52525B'];
             foreach ($plans_split as $plan => $nb):
                 $pct = round(($nb / $total_plans) * 100, 1);
-                $color = $colors[$plan] ?? '#A1A1AA';
+                $color = $colors[$plans_split_key[$plan] ?? ''] ?? '#A1A1AA';
             ?>
                 <div style="margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">
-                        <span><?= h(ucfirst($plan)) ?></span>
+                        <span><?= h($plan) ?></span>
                         <span style="color:var(--sa-ink-3);"><?= $nb ?> · <?= $pct ?>%</span>
                     </div>
                     <div style="height:6px;background:var(--sa-bg-3);border-radius:999px;overflow:hidden;">

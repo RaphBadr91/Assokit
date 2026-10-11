@@ -20,6 +20,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
+require_once __DIR__ . '/sa-plan-state-helpers.php';
 @require_once __DIR__ . '/resend-helper.php';
 require_login();
 $user = sa_require_super_admin();
@@ -256,16 +257,42 @@ try {
 } catch (Throwable $e) {}
 
 // Assos avec subscription active (pour creer une facture)
+// Plan et statut = ak_org_plan_state (même vérité que la fiche et l'appli) : une association
+// en essai est affichée « Essai PRO · fin … · 0 € » et aucun montant n'est pré-rempli.
 $orgs_with_sub = [];
 try {
+    $sc = ak_db_columns($pdo, 'subscriptions');
+    $legacy_sel = [];
+    foreach (['price_ht', 'tva_rate', 'billing_cycle'] as $c) $legacy_sel[] = isset($sc[$c]) ? "s.$c" : "NULL AS $c";
     $orgs_with_sub = $pdo->query("
-        SELECT o.id, o.name, s.price_ht, s.tva_rate, s.billing_cycle
+        SELECT o.id, o.name, " . implode(', ', $legacy_sel) . "
         FROM organizations o
-        LEFT JOIN subscriptions s ON s.org_id = o.id
-        WHERE o.status IN ('active','trial')
+        LEFT JOIN subscriptions s ON s.id = (SELECT MAX(s2.id) FROM subscriptions s2 WHERE s2.org_id = o.id)
+        WHERE o.status IN ('active','trial') AND o.deleted_at IS NULL
         ORDER BY o.name
     ")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {}
+} catch (Throwable $e) {
+    error_log('[super-admin-abonnements] orgs: ' . get_class($e) . ' ' . $e->getMessage());
+}
+$org_states = sa_org_plan_states($pdo, array_merge(array_column($orgs_with_sub, 'id'), array_column($invoices, 'org_id')));
+foreach ($orgs_with_sub as &$o) {
+    $ps = $org_states[(int) $o['id']] ?? null;
+    $o['_trial'] = $ps && ($ps['is_trial'] || $ps['trial_expired']);
+    // Facturable : plan payant ou sur devis ; un ancien compte sans abonnement garde son ancien tarif
+    $billable = $ps && !$o['_trial'] && (!$ps['plan_id'] || (int) $ps['price_cents'] > 0 || $ps['plan_slug'] === 'sur-mesure');
+    if ($o['_trial']) {
+        $o['_label'] = $o['name'] . ' — ' . $ps['plan_label'] . ' · '
+                     . ($ps['trial_expired'] ? $ps['badge'] : ($ps['trial_ends_at'] ? 'fin ' . date('d/m/Y', strtotime((string) $ps['trial_ends_at'])) : 'essai')) . ' · 0 €';
+        $o['price_ht'] = null;
+    } else {
+        if (!$billable) $o['price_ht'] = null;   // plan gratuit : jamais l'ancien tarif
+        $price = (float) ($o['price_ht'] ?? 0) > 0
+            ? number_format((float) $o['price_ht'], 2, ',', ' ') . ' € HT'
+            : ($ps && $ps['plan_id'] ? sa_plan_price_label((int) $ps['price_cents'], (string) $ps['plan_slug']) : '');
+        $o['_label'] = $o['name'] . ($ps ? ' — ' . ($ps['plan_id'] ? '' : 'ancien plan ') . $ps['plan_label'] : '') . ($price !== '' ? ' (' . $price . ')' : '');
+    }
+}
+unset($o);
 
 // Toutes les assos pour filtre
 $all_orgs = $pdo->query("SELECT id, name FROM organizations ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
@@ -366,6 +393,9 @@ sa_render_sidebar('abonnements');
                             <a href="/super-admin/associations?id=<?= (int) $i['org_id'] ?>" style="color:#C4B5FD">
                                 <?= h($i['org_name']) ?>
                             </a>
+                            <?php $ips = $org_states[(int) $i['org_id']] ?? null; if ($ips && ($ips['is_trial'] || $ips['trial_expired'])): ?>
+                                <div><span class="sa-badge <?= sa_plan_tone_class($ips['badge_tone']) ?>" title="<?= h($ips['badge']) ?>"><?= sa_plan_tone_icon($ips['badge_tone']) ?> <?= h($ips['plan_label'] . ' · ' . sa_plan_state_short($ips)) ?></span></div>
+                            <?php endif; ?>
                         </td>
                         <td style="font-size:12.5px">
                             <?= date('d/m/Y', strtotime($i['period_start'])) ?>
@@ -427,13 +457,16 @@ sa_render_sidebar('abonnements');
                     <option value="">— Choisir —</option>
                     <?php foreach ($orgs_with_sub as $o): ?>
                         <option value="<?= (int) $o['id'] ?>"
-                                data-price="<?= $o['price_ht'] ?? '' ?>"
-                                data-tva="<?= $o['tva_rate'] ?? 20 ?>">
-                            <?= h($o['name']) ?>
-                            <?php if ($o['price_ht']): ?> (<?= number_format((float) $o['price_ht'], 2, ',', ' ') ?> € HT)<?php endif; ?>
+                                data-price="<?= $o['price_ht'] !== null ? h((string) (float) $o['price_ht']) : '' ?>"
+                                data-tva="<?= h((string) (float) ($o['tva_rate'] ?? 20)) ?>"
+                                data-trial="<?= $o['_trial'] ? '1' : '0' ?>">
+                            <?= h($o['_label']) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
+                <div id="trial-warning" style="display:none; margin-top:6px; font-size:12px; color:#C4B5FD;">
+                    ⏱ Cette association est en essai gratuit (0 €) : passez-la d’abord en abonnement depuis sa fiche.
+                </div>
             </div>
 
             <div class="sa-row-2">
@@ -522,8 +555,10 @@ function autoFillPrice(select) {
     const opt = select.options[select.selectedIndex];
     const price = opt.getAttribute('data-price');
     const tva = opt.getAttribute('data-tva');
-    if (price) document.getElementById('amount_ht').value = price;
+    // Essai gratuit : rien à facturer, on ne pré-remplit jamais un tarif
+    document.getElementById('amount_ht').value = price ? price : '';
     if (tva) document.getElementById('tva_rate').value = tva;
+    document.getElementById('trial-warning').style.display = opt.getAttribute('data-trial') === '1' ? 'block' : 'none';
 }
 
 function openPayModal(id, number, amount) {

@@ -2,6 +2,8 @@
 /**
  * api/app-founder-org-detail.php — Fiche détaillée d'une association (Fondateur, natif).
  * GET ?id=INT → infos éditables + membres + plan + note interne + plans disponibles.
+ * Le plan et l'essai viennent d'ak_org_plan_state() (même vérité que le web) ; « plans »
+ * liste les VRAIS plans (asso_plans) pour le sélecteur de formule.
  * Réservé Fondateur/Super Admin. NE MODIFIE PAS le site : dédié à l'application.
  */
 ob_start();
@@ -15,6 +17,7 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+require_once __DIR__ . '/_app-founder-plan.php';
 $is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
 if (!$is_sa) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
@@ -57,13 +60,10 @@ try {
         }
     } catch (Throwable $e) {}
 
-    // Plans disponibles (pour changer de formule)
-    $plans = [];
-    try {
-        foreach ($pdo->query("SELECT slug, name FROM asso_plans WHERE is_visible = 1 OR is_trial = 1 ORDER BY is_trial ASC, price_cents ASC")->fetchAll(PDO::FETCH_ASSOC) as $p) {
-            $plans[] = ['slug' => (string) $p['slug'], 'name' => (string) $p['name']];
-        }
-    } catch (Throwable $e) {}
+    // État du plan (vérité unique) + plans réels pour changer de formule
+    $ps = fd_org_plan($pdo, $id);
+    $plans = fd_plan_choices($pdo, $ps['plan_id']);
+    $known = in_array($ps['plan_slug'], array_column($plans, 'slug'), true);
 
     echo json_encode([
         'ok' => true,
@@ -71,14 +71,18 @@ try {
             'id'            => (int) $o['id'],
             'name'          => (string) $o['name'],
             'billing_email' => $hasBill ? (string) ($o['billing_email'] ?? '') : '',
-            'plan'          => (string) ($o['plan'] ?? ''),
+            // « plan » = slug du plan COURANT (abonnement), comparé aux slugs de « plans »
+            'plan'          => $ps['plan_slug'],
+            'plan_known'    => $known,   // false : ancien libellé (ex. « essentiel ») hors asso_plans
             'status'        => (string) $o['status'],
             'validation_status' => (string) $o['validation_status'],
             'note'          => $hasNote ? (string) ($o['notes_superadmin'] ?? '') : '',
             'created'       => !empty($o['created_at']) ? date('d/m/Y', strtotime($o['created_at'])) : '',
-            'trial_ends'    => !empty($o['trial_ends_at']) && $o['trial_ends_at'] !== '0000-00-00' ? date('d/m/Y', strtotime($o['trial_ends_at'])) : '',
             'nb_users'      => count($members),
-        ],
+            // Prolonger l'essai : seulement un essai en cours ou terminé (jamais un abonnement payant)
+            'can_extend_trial' => ($ps['is_trial'] || $ps['trial_expired']) && (string) $o['status'] !== 'cancelled',
+            'trial_days'    => (int) AK_TRIAL_DAYS,
+        ] + $ps,
         'members' => $members,
         'plans'   => $plans,
         'can_note' => $hasNote,

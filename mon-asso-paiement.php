@@ -62,7 +62,11 @@ $addon_cents = $with_addon_domain ? 1000 : 0; // +10€/mois
 $total_cents = $plan_cents + $addon_cents;
 $total_str = ak_format_price_cents($total_cents);
 
-render_head('Paiement — ' . $plan['name']);
+// Essai en cours / terminé : rappelé au-dessus du paiement (même texte que « Mon abonnement »)
+$trial_info = function_exists('ak_plan_trial_info') ? ak_plan_trial_info($pdo, $org_id) : ['in_trial' => false, 'trial_expired' => false];
+$plan_label = function_exists('ak_plan_display_name') ? ak_plan_display_name($plan) : (string)$plan['name'];
+
+render_head('Paiement — ' . $plan_label);
 render_sidebar('mon-asso-paiement');
 ?>
 
@@ -79,9 +83,24 @@ render_sidebar('mon-asso-paiement');
   <div class="main-head" style="margin-bottom:24px;">
     <div>
       <h1 style="margin:0 0 4px;">💳 Finaliser votre abonnement</h1>
-      <p style="color:#64748B;margin:0;">Plan <strong><?= htmlspecialchars($plan['name']) ?></strong> — paiement sécurisé par Stripe</p>
+      <p style="color:#64748B;margin:0;">Plan <strong><?= htmlspecialchars($plan_label) ?></strong> — paiement sécurisé par Stripe</p>
     </div>
   </div>
+
+  <?php if (!empty($trial_info['in_trial']) || !empty($trial_info['trial_expired'])): ?>
+    <?php $trial_over = !empty($trial_info['trial_expired']); ?>
+    <div style="background:<?= $trial_over ? '#FEF2F2' : '#FFFBEB' ?>;border:1px solid <?= $trial_over ? '#FECACA' : '#FCD34D' ?>;border-radius:12px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:<?= $trial_over ? '#991B1B' : '#92400E' ?>;font-size:14px;line-height:1.5;">
+      <span style="font-size:22px;line-height:1;"><?= $trial_over ? '⏳' : '🎁' ?></span>
+      <div style="flex:1;min-width:220px;">
+        <strong><?= htmlspecialchars($trial_info['label']) ?></strong><br>
+        <?php if ($trial_over): ?>
+          Vos données sont conservées : une fois le paiement confirmé, votre association passe au plan <?= htmlspecialchars($plan_label) ?>.
+        <?php else: ?>
+          Une fois le paiement confirmé, le plan <?= htmlspecialchars($plan_label) ?> prend le relais de votre essai : vos données et réglages sont conservés.
+        <?php endif; ?>
+      </div>
+    </div>
+  <?php endif; ?>
 
   <?php if (!$stripe_ready): ?>
 
@@ -140,7 +159,7 @@ render_sidebar('mon-asso-paiement');
         <!-- Plan -->
         <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:10px 0; border-bottom:1px solid #F1F5F9;">
           <div style="flex:1;">
-            <div style="font-weight:600; font-size:14px;">Plan <?= htmlspecialchars($plan['name']) ?></div>
+            <div style="font-weight:600; font-size:14px;">Plan <?= htmlspecialchars($plan_label) ?></div>
             <div style="color:#64748B; font-size:12px; margin-top:2px;"><?= htmlspecialchars($plan['tagline'] ?? 'Abonnement mensuel') ?></div>
           </div>
           <div style="font-weight:700; font-size:14px; white-space:nowrap;"><?= ak_format_price_cents($plan_cents) ?>/mois</div>
@@ -218,8 +237,8 @@ render_sidebar('mon-asso-paiement');
         layout: 'tabs',
         defaultValues: {
           billingDetails: {
-            email: <?= json_encode($user['email'] ?? '') ?>,
-            name: <?= json_encode($user['first_name'] ?? '' . ' ' . ($user['last_name'] ?? '')) ?>
+            email: <?= json_encode($user['email'] ?? '', JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+            name: <?= json_encode(trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')), JSON_HEX_TAG | JSON_HEX_AMP) ?>
           }
         }
       });

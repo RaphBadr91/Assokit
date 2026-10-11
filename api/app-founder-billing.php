@@ -14,6 +14,7 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+require_once __DIR__ . '/_app-founder-plan.php';
 if (!app_is_founder($pdo, $user) && !( !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin')) {
     http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit;
 }
@@ -31,16 +32,9 @@ $INV_META = [
 
 try {
     // Synthèse
-    $mrr = 0.0;
-    try {
-        // Même source de vérité que super-admin.php (asso_subscriptions + asso_plans, essais exclus).
-        $mrr = (float) $pdo->query("
-            SELECT COALESCE(SUM(p.price_cents), 0) / 100
-            FROM asso_subscriptions s
-            INNER JOIN asso_plans p ON p.id = s.plan_id
-            WHERE s.status = 'active' AND p.is_trial = 0
-              AND s.id = (SELECT MAX(s2.id) FROM asso_subscriptions s2 WHERE s2.org_id = s.org_id)")->fetchColumn();
-    } catch (Throwable $e) {}
+    // MRR : mêmes règles que le cockpit (app-founder.php) — essais exclus
+    $pc = fd_plan_counts($pdo);
+    $mrr = (float) $pc['mrr'];
     $ca_paid      = (float) $scalar("SELECT COALESCE(SUM(amount_ttc),0) FROM subscription_invoices WHERE status='paid'");
     $unpaid_total = (float) $scalar("SELECT COALESCE(SUM(amount_ttc),0) FROM subscription_invoices WHERE status IN ('sent','overdue')");
     $unpaid_nb    = (int) $scalar("SELECT COUNT(*) FROM subscription_invoices WHERE status IN ('sent','overdue')");
@@ -82,7 +76,8 @@ try {
     echo json_encode([
         'ok' => true,
         'filter' => $filter,
-        'summary' => ['mrr' => round($mrr, 2), 'ca_paid' => round($ca_paid, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb],
+        'summary' => ['mrr' => round($mrr, 2), 'ca_paid' => round($ca_paid, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb,
+                      'paying' => $pc['paying'], 'trial' => $pc['trial'], 'trial_expired' => $pc['trial_expired']],
         'invoices' => $invoices,
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {

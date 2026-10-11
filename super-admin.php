@@ -16,6 +16,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-permissions.php';
+require_once __DIR__ . '/sa-plan-state-helpers.php';
 require_login();
 $user = sa_require_super_admin();
 $ctx = sa_get_permissions_context();
@@ -23,10 +24,18 @@ $ctx = sa_get_permissions_context();
 // =====================================================================
 // KPIs communs
 // =====================================================================
-$nb_orgs_total = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE deleted_at IS NULL")->fetchColumn();
-$nb_orgs_active = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE status = 'active' AND deleted_at IS NULL")->fetchColumn();
-$nb_orgs_trial = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE status = 'trial' AND deleted_at IS NULL")->fetchColumn();
-$nb_orgs_suspended = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE status = 'suspended' AND deleted_at IS NULL")->fetchColumn();
+// Statut de chaque association : même règle que la fiche, l'appli et l'espace asso
+// (ak_org_plan_state) — un essai en cours ou terminé n'est jamais compté comme client.
+$all_orgs = $pdo->query("SELECT id, name FROM organizations WHERE deleted_at IS NULL")->fetchAll(PDO::FETCH_KEY_PAIR);
+$org_states = sa_org_plan_states($pdo, array_keys($all_orgs));
+$nb_orgs_total = count($all_orgs);
+$nb_orgs_active = $nb_orgs_trial = $nb_orgs_trial_ended = $nb_orgs_suspended = 0;
+foreach ($org_states as $ps) {
+    if (in_array($ps['badge_tone'], ['active', 'pending'], true)) $nb_orgs_active++;
+    elseif ($ps['badge_tone'] === 'trial') $nb_orgs_trial++;
+    elseif ($ps['badge_tone'] === 'expired') $nb_orgs_trial_ended++;
+    elseif ($ps['badge_tone'] === 'suspended') $nb_orgs_suspended++;
+}
 
 $nb_orgs_pending = 0;
 try {
@@ -38,21 +47,14 @@ $nb_super_admins = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE (role = '
 $nb_founders = 0;
 try { $nb_founders = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE is_founder = 1 AND is_active = 1 AND deleted_at IS NULL")->fetchColumn(); } catch (Throwable $e) {}
 
-// MRR — calcule sur la source de verite Stripe (asso_subscriptions + asso_plans),
-// et non sur la table legacy `subscriptions` (jamais repassee en 'active' lors d'un paiement Stripe).
-// On ne compte que le DERNIER abonnement actif non-essai de chaque org (anti double-comptage).
+// MRR — source de vérité : l'abonnement COURANT de chaque association (asso_subscriptions
+// + asso_plans, lu par ak_org_plan_state), et non la table legacy `subscriptions`.
+// Ne compte que les associations clientes : abonnement actif, ni essai (en cours ou terminé),
+// ni suspendue, ni résiliée. Un essai PRO vaut 0 € de revenu.
 $mrr = 0.00;
-try {
-    $stmt = $pdo->query("
-        SELECT COALESCE(SUM(p.price_cents), 0) / 100 AS mrr
-        FROM asso_subscriptions s
-        INNER JOIN asso_plans p ON p.id = s.plan_id
-        WHERE s.status = 'active'
-          AND p.is_trial = 0
-          AND s.id = (SELECT MAX(s2.id) FROM asso_subscriptions s2 WHERE s2.org_id = s.org_id)
-    ");
-    $mrr = (float) $stmt->fetchColumn();
-} catch (Throwable $e) {}
+foreach ($org_states as $ps) {
+    if ($ps['badge_tone'] === 'active' && $ps['sub_status'] === 'active') $mrr += $ps['price_cents'] / 100;
+}
 
 // Impayes
 $nb_unpaid = 0;
@@ -82,19 +84,20 @@ $stmt = $pdo->query("
 ");
 $latest_orgs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Essais expirants (7 jours)
+// Essais qui se terminent dans les 7 jours, et essais terminés depuis moins de 7 jours (à convertir)
+// — même décompte de jours que les badges (ak_org_plan_state).
 $expiring = [];
-try {
-    $stmt = $pdo->query("
-        SELECT id, name, trial_ends_at,
-               DATEDIFF(trial_ends_at, CURDATE()) AS days_left
-        FROM organizations
-        WHERE status = 'trial' AND trial_ends_at IS NOT NULL
-          AND trial_ends_at BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-        ORDER BY trial_ends_at ASC
-    ");
-    $expiring = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {}
+$trials_ended = [];
+foreach ($org_states as $oid => $ps) {
+    if ($ps['badge_tone'] === 'trial' && $ps['days_left'] !== null && $ps['days_left'] <= 7) {
+        $expiring[] = ['id' => $oid, 'name' => $all_orgs[$oid] ?? '', 'trial_ends_at' => $ps['trial_ends_at'], 'days_left' => $ps['days_left']];
+    } elseif ($ps['badge_tone'] === 'expired' && $ps['days_left'] !== null && $ps['days_left'] >= -7 && $ps['days_left'] <= 0) {
+        // (days_left > 0 : suspendue à la main pendant l'essai, pas un essai arrivé à son terme)
+        $trials_ended[] = ['id' => $oid, 'name' => $all_orgs[$oid] ?? '', 'trial_ends_at' => $ps['trial_ends_at'], 'badge' => $ps['badge']];
+    }
+}
+usort($expiring, fn($a, $b) => strcmp((string) $a['trial_ends_at'], (string) $b['trial_ends_at']));
+usort($trials_ended, fn($a, $b) => strcmp((string) $b['trial_ends_at'], (string) $a['trial_ends_at']));
 
 // Notifs non lues (Fondateur)
 $nb_unread_notifs = 0;
@@ -174,16 +177,18 @@ try {
         SELECT COUNT(*) FROM organizations
         WHERE created_at <= :end AND (deleted_at IS NULL OR deleted_at > :end)
     ");
-    // Reconstitution MRR historique sur asso_subscriptions (source Stripe), essais exclus,
-    // pour rester coherent avec la carte MRR ci-dessus.
+    // Reconstitution MRR historique sur asso_subscriptions (source Stripe), essais exclus
+    // (plan d'essai, ligne en essai, association en essai), pour rester coherent avec la carte MRR.
     $q_mrr = $pdo->prepare("
         SELECT COALESCE(SUM(p.price_cents), 0) / 100
         FROM asso_subscriptions s
         INNER JOIN asso_plans p ON p.id = s.plan_id
+        INNER JOIN organizations o ON o.id = s.org_id AND (o.deleted_at IS NULL OR o.deleted_at > :end)
         WHERE (s.started_at IS NULL OR s.started_at <= :end)
           AND (s.cancelled_at IS NULL OR s.cancelled_at > :end)
-          AND s.status <> 'cancelled'
-          AND p.is_trial = 0
+          AND COALESCE(s.status, '') NOT IN ('cancelled', 'trial')
+          AND COALESCE(p.is_trial, 0) = 0
+          AND COALESCE(o.status, '') <> 'trial'
     ");
     for ($i = 11; $i >= 0; $i--) {
         $end = date('Y-m-t 23:59:59', strtotime("first day of -$i month"));
@@ -194,6 +199,8 @@ try {
         $q_mrr->execute([':end' => $end]);
         $growth_mrr[] = round((float) $q_mrr->fetchColumn(), 2);
     }
+    // Mois en cours : exactement la carte MRR (même règle, même chiffre)
+    if ($growth_mrr) $growth_mrr[count($growth_mrr) - 1] = round($mrr, 2);
 } catch (Throwable $e) {
     $growth_labels = []; $growth_assos = []; $growth_mrr = [];
 }
@@ -224,11 +231,20 @@ if ($nb_unpaid > 0) {
 }
 foreach ($expiring as $e) {
     $dl = (int) $e['days_left'];
+    $fin = $e['trial_ends_at'] ? date('d/m/Y', strtotime((string) $e['trial_ends_at'])) : '';
     $fc_signals[] = [
         'tone' => 'violet', 'ic' => '⏱',
-        't' => 'Essai — ' . $e['name'],
-        'd' => 'Expire dans ' . $dl . ' jour' . ($dl > 1 ? 's' : ''),
-        'go' => 'Convertir →', 'url' => '/super-admin/associations?id=' . (int) $e['id'],
+        't' => 'Essai PRO — ' . $e['name'],
+        'd' => ($dl <= 0 ? 'Dernier jour d’essai' : 'Fin le ' . $fin . ' (J-' . $dl . ')') . ' · 0 € tant qu’il n’est pas converti',
+        'go' => 'Convertir →', 'url' => '/super-admin/associations?id=' . (int) $e['id'] . '#essai',
+    ];
+}
+foreach ($trials_ended as $e) {
+    $fc_signals[] = [
+        'tone' => 'amber', 'ic' => '⌛',
+        't' => 'Essai terminé — ' . $e['name'],
+        'd' => $e['badge'] . ' · accès suspendu, à relancer',
+        'go' => 'Convertir →', 'url' => '/super-admin/associations?id=' . (int) $e['id'] . '#essai',
     ];
 }
 ?>
@@ -343,6 +359,7 @@ foreach ($expiring as $e) {
 .fc-chip-green{background:var(--fc-green-soft);color:var(--fc-green)}
 .fc-chip-violet{background:var(--fc-violet-soft);color:var(--fc-violet)}
 .fc-chip-red{background:var(--fc-red-soft);color:var(--fc-red)}
+.fc-chip-amber{background:var(--fc-amber-soft);color:var(--fc-amber)}
 .fc-chip-gray{background:var(--fc-panel-3);color:var(--fc-ink-2)}
 .fc-chip.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block}
 .fc-tbtn{font-size:12px;font-weight:650;color:var(--fc-ink-2);padding:6px 12px;border-radius:9px;border:1px solid var(--fc-line);background:var(--fc-panel-2);display:inline-block}
@@ -417,14 +434,14 @@ foreach ($expiring as $e) {
       <div class="fc-kpi-top"><span class="fc-kpi-lab">MRR (TTC)</span><span class="fc-kpi-ic">💶</span></div>
       <div class="fc-kpi-val num"><?= number_format($mrr, 2, ',', ' ') ?> <small>€</small></div>
       <svg class="fc-spark" viewBox="0 0 120 30" preserveAspectRatio="none"><defs><linearGradient id="fcgg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F59E0B" stop-opacity=".35"/><stop offset="1" stop-color="#F59E0B" stop-opacity="0"/></linearGradient></defs><path d="M0 24 L20 22 L40 23 L60 17 L80 15 L100 9 L120 6 L120 30 L0 30 Z" fill="url(#fcgg)"/><path d="M0 24 L20 22 L40 23 L60 17 L80 15 L100 9 L120 6" fill="none" stroke="#FCD34D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="120" cy="6" r="2.6" fill="#FCD34D"/></svg>
-      <div class="fc-kpi-foot"><span class="fc-kpi-sub">Revenu mensuel récurrent</span></div>
+      <div class="fc-kpi-foot"><span class="fc-kpi-sub">Revenu mensuel récurrent · essais exclus</span></div>
     </div>
 
     <div class="panel fc-kpi k-green">
       <div class="fc-kpi-top"><span class="fc-kpi-lab">Associations</span><span class="fc-kpi-ic">🏛️</span></div>
       <div class="fc-kpi-val num"><?= (int) $nb_orgs_total ?></div>
       <svg class="fc-spark" viewBox="0 0 120 30" preserveAspectRatio="none"><path d="M0 26 L20 25 L40 24 L60 22 L80 19 L100 15 L120 9" fill="none" stroke="#34D399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="120" cy="9" r="2.6" fill="#34D399"/></svg>
-      <div class="fc-kpi-foot"><span class="fc-kpi-sub"><?= (int) $nb_orgs_active ?> actives · <?= (int) $nb_orgs_trial ?> essai</span><?php if ($nb_orgs_suspended > 0): ?><span class="fc-kpi-trend red"><?= (int) $nb_orgs_suspended ?> susp.</span><?php endif; ?></div>
+      <div class="fc-kpi-foot"><span class="fc-kpi-sub"><?= (int) $nb_orgs_active ?> actives · <?= (int) $nb_orgs_trial ?> en essai<?= $nb_orgs_trial_ended > 0 ? ' · ' . (int) $nb_orgs_trial_ended . ' essai' . ($nb_orgs_trial_ended > 1 ? 's' : '') . ' terminé' . ($nb_orgs_trial_ended > 1 ? 's' : '') : '' ?></span><?php if ($nb_orgs_suspended > 0): ?><span class="fc-kpi-trend red"><?= (int) $nb_orgs_suspended ?> susp.</span><?php endif; ?></div>
     </div>
 
     <div class="panel fc-kpi k-violet">
@@ -522,12 +539,13 @@ foreach ($expiring as $e) {
                 <span class="fc-chip fc-chip-green">✓ Validée</span>
               <?php endif; ?>
             </td>
+            <?php $ps = $org_states[(int) $o['id']] ?? ak_org_plan_state($pdo, (int) $o['id']); ?>
             <td>
-              <span class="fc-chip dot <?= match($o['status']) { 'active'=>'fc-chip-green','trial'=>'fc-chip-violet','suspended'=>'fc-chip-red','cancelled'=>'fc-chip-gray',default=>'fc-chip-gray' } ?>">
-                <?= match($o['status']) { 'active'=>'Active','trial'=>'Essai','suspended'=>'Suspendue','cancelled'=>'Résiliée',default=>h($o['status']) } ?>
+              <span class="fc-chip dot <?= ['active' => 'fc-chip-green', 'trial' => 'fc-chip-violet', 'expired' => 'fc-chip-amber', 'suspended' => 'fc-chip-red', 'pending' => 'fc-chip-amber'][$ps['badge_tone']] ?? 'fc-chip-gray' ?>" title="<?= h($ps['badge']) ?>">
+                <?= h(sa_plan_state_short($ps)) ?>
               </span>
             </td>
-            <td><span class="fc-chip fc-chip-gray"><?= h(ucfirst($o['plan'])) ?></span></td>
+            <td><span class="fc-chip <?= $ps['badge_tone'] === 'trial' ? 'fc-chip-violet' : 'fc-chip-gray' ?>"><?= h($ps['plan_label']) ?></span></td>
             <td class="num"><?= (int) $o['nb_users'] ?></td>
             <td class="num"><?= date('d/m/Y', strtotime($o['created_at'])) ?></td>
             <td><a href="/super-admin/associations?id=<?= (int) $o['id'] ?>" class="fc-tbtn">Gérer →</a></td>

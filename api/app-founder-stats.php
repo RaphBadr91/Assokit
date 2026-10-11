@@ -14,6 +14,7 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+require_once __DIR__ . '/_app-founder-plan.php';
 if (!app_is_founder($pdo, $user) && !( !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin')) {
     http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit;
 }
@@ -21,24 +22,18 @@ if (!app_is_founder($pdo, $user) && !( !empty($user['is_super_admin']) || ($user
 $scalar = function (string $sql) use ($pdo) { try { return $pdo->query($sql)->fetchColumn(); } catch (Throwable $e) { return 0; } };
 
 try {
-    $orgs_total  = (int) $scalar("SELECT COUNT(*) FROM organizations WHERE deleted_at IS NULL");
-    $orgs_active = (int) $scalar("SELECT COUNT(*) FROM organizations WHERE status='active' AND deleted_at IS NULL");
-    $orgs_trial  = (int) $scalar("SELECT COUNT(*) FROM organizations WHERE status='trial' AND deleted_at IS NULL");
-    $orgs_susp   = (int) $scalar("SELECT COUNT(*) FROM organizations WHERE status='suspended' AND deleted_at IS NULL");
+    // Compteurs et MRR : mêmes règles qu'ak_org_plan_state() (un essai n'est jamais un revenu ;
+    // un essai terminé n'est pas compté comme « suspendue » mais comme « essai terminé »)
+    $pc = fd_plan_counts($pdo);
+    $orgs_total  = $pc['total'];
+    $orgs_active = $pc['active'];
+    $orgs_trial  = $pc['trial'];
+    $orgs_susp   = $pc['suspended'];
     $orgs_new30  = (int) $scalar("SELECT COUNT(*) FROM organizations WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND deleted_at IS NULL");
     $users_total = (int) $scalar("SELECT COUNT(*) FROM users WHERE role NOT IN ('super_admin') AND is_active=1 AND deleted_at IS NULL");
     $users_new30 = (int) $scalar("SELECT COUNT(*) FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND is_active=1 AND deleted_at IS NULL");
 
-    $mrr = 0.0;
-    try {
-        // Même source de vérité que super-admin.php (asso_subscriptions + asso_plans, essais exclus).
-        $mrr = (float) $pdo->query("
-            SELECT COALESCE(SUM(p.price_cents), 0) / 100
-            FROM asso_subscriptions s
-            INNER JOIN asso_plans p ON p.id = s.plan_id
-            WHERE s.status = 'active' AND p.is_trial = 0
-              AND s.id = (SELECT MAX(s2.id) FROM asso_subscriptions s2 WHERE s2.org_id = s.org_id)")->fetchColumn();
-    } catch (Throwable $e) {}
+    $mrr = (float) $pc['mrr'];   // abonnements courants actifs sur un plan payant, essais exclus
 
     $ca_paid = (float) $scalar("SELECT COALESCE(SUM(amount_ttc),0) FROM subscription_invoices WHERE status='paid'");
     $ca_paid_30 = (float) $scalar("SELECT COALESCE(SUM(amount_ttc),0) FROM subscription_invoices WHERE status='paid' AND paid_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
@@ -74,9 +69,11 @@ try {
 
     echo json_encode([
         'ok' => true,
-        'orgs' => ['total' => $orgs_total, 'active' => $orgs_active, 'trial' => $orgs_trial, 'suspended' => $orgs_susp, 'new30' => $orgs_new30],
+        'orgs' => ['total' => $orgs_total, 'active' => $orgs_active, 'trial' => $orgs_trial, 'suspended' => $orgs_susp, 'new30' => $orgs_new30,
+                   'paying' => $pc['paying'], 'free' => $pc['free'], 'pending_payment' => $pc['pending_payment'],
+                   'trial_expired' => $pc['trial_expired'], 'expiring' => $pc['expiring'], 'cancelled' => $pc['cancelled']],
         'users' => ['total' => $users_total, 'new30' => $users_new30],
-        'revenue' => ['mrr' => round($mrr, 2), 'ca_paid' => round($ca_paid, 2), 'ca_paid_30' => round($ca_paid_30, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb],
+        'revenue' => ['mrr' => round($mrr, 2), 'paying' => $pc['paying'], 'ca_paid' => round($ca_paid, 2), 'ca_paid_30' => round($ca_paid_30, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb],
         'ia' => ['nb' => (int) $ia['nb'], 'cost' => round((float) $ia['cost'], 2)],
         'emails' => $emails,
         'sms' => $sms,

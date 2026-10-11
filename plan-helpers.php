@@ -27,6 +27,107 @@ if (!defined('AK_PLAN_HELPERS_LOADED')) {
 // Auto-load Stripe helpers (silent si absent — Stripe optionnel)
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
+// État du plan et de l'essai (ak_org_plan_state, ak_plan_label) : même vérité que le cockpit fondateur
+if (is_file(__DIR__ . '/trial-helpers.php')) require_once __DIR__ . '/trial-helpers.php';
+
+/**
+ * Nom affiché d'un plan (ligne asso_plans ou ak_get_current_plan) :
+ * « Essai PRO » pour le plan d'essai, jamais le slug brut.
+ */
+function ak_plan_display_name(?array $plan): string {
+    if (!$plan) return '—';
+    if (function_exists('ak_plan_label')) return ak_plan_label($plan['slug'] ?? '', $plan['name'] ?? null);
+    return (string)($plan['name'] ?? ($plan['slug'] ?? '—'));
+}
+
+/**
+ * Nom de l'essai en cours : « Essai PRO » (plan d'essai), même quand la ligne courante est
+ * un paiement Stripe en attente pris pendant l'essai (sinon on lirait « Essai Assokit »).
+ * Sans plan d'essai dédié (ak_trial_plan retombe sur la formule payante) : « Essai <formule> ».
+ */
+function ak_plan_trial_name(PDO $pdo, string $plan_label): string {
+    if (stripos($plan_label, 'essai') !== false) return $plan_label;
+    $tp = function_exists('ak_trial_plan') ? ak_trial_plan($pdo) : null;
+    if ($tp && $tp['is_trial']) {
+        $l = ak_plan_label($tp['slug']);
+        return stripos($l, 'essai') !== false ? $l : 'Essai ' . $l;
+    }
+    return ($plan_label === '' || $plan_label === '—') ? 'Essai PRO' : 'Essai ' . $plan_label;
+}
+
+/**
+ * Essai de l'association, côté association (pages, appli, IA), d'après ak_org_plan_state() :
+ *   in_trial       essai EN COURS (pas terminé)
+ *   trial_expired  essai terminé (association suspendue par la fin d'essai ou date dépassée)
+ *   trial_ends_at  'Y-m-d H:i:s' — seulement en essai ou essai terminé, sinon null
+ *   days_left      jours restants (même calcul que le cockpit) — seulement en essai ou essai terminé
+ *   end_fr / end_short  'd/m/Y' / 'd/m' ('' sans date) ; ends_today : la fin tombe aujourd'hui
+ *   plan_label, plan_slug, badge, badge_tone : repris tels quels
+ *   trial_name     « Essai PRO » pendant l'essai en cours, sinon ''
+ *   label          texte unique : « Essai PRO — jusqu’au 23/10 (J-14) », « Essai terminé le 08/10/2026 », ou le nom du plan
+ */
+function ak_plan_trial_info(PDO $pdo, int $org_id): array {
+    $info = ['in_trial' => false, 'trial_expired' => false, 'trial_ends_at' => null, 'days_left' => null,
+             'end_fr' => '', 'end_short' => '', 'ends_today' => false,
+             'plan_label' => '', 'plan_slug' => '', 'badge' => '', 'badge_tone' => 'gray', 'trial_name' => '', 'label' => ''];
+    if ($org_id <= 0 || !function_exists('ak_org_plan_state')) return $info;
+    // Ligne d'abonnement courante garantie (essai ou Démarrage, comme pour les quotas) : sans elle,
+    // ak_org_plan_state() retomberait sur l'ancien libellé organizations.plan (« Association »…)
+    // alors que les fonctionnalités appliquées sont celles d'ak_get_current_plan().
+    ak_get_current_plan($pdo, $org_id);
+    $st = ak_org_plan_state($pdo, $org_id);
+    $info['trial_expired'] = !empty($st['trial_expired']);
+    $info['in_trial']      = !empty($st['is_trial']) && !$info['trial_expired'];
+    $info['plan_label']    = (string)$st['plan_label'];
+    $info['plan_slug']     = (string)$st['plan_slug'];
+    $info['badge']         = (string)$st['badge'];
+    $info['badge_tone']    = (string)$st['badge_tone'];
+    $end = !empty($st['trial_ends_at']) ? strtotime((string)$st['trial_ends_at']) : false;
+    if (($info['in_trial'] || $info['trial_expired']) && $end) {
+        $info['trial_ends_at'] = date('Y-m-d H:i:s', $end);
+        $info['end_fr']        = date('d/m/Y', $end);
+        $info['end_short']     = date('d/m', $end);
+        $info['days_left']     = $st['days_left'] !== null ? (int)$st['days_left'] : null;
+        $info['ends_today']    = date('Y-m-d', $end) === date('Y-m-d');
+    }
+    if ($info['trial_expired']) {
+        $info['label'] = 'Essai terminé' . ($info['end_fr'] !== '' ? ' le ' . $info['end_fr'] : '');
+    } elseif ($info['in_trial']) {
+        $info['trial_name'] = ak_plan_trial_name($pdo, $info['plan_label']);
+        $d = $info['days_left'];
+        $info['label'] = $info['trial_name']
+            . ($info['end_short'] !== '' ? ' — jusqu’au ' . $info['end_short'] : '')
+            . ($d !== null ? ' (' . ($d <= 0 ? 'dernier jour' : 'J-' . $d) . ')' : '');
+    } else {
+        $info['label'] = $info['plan_label'];
+    }
+    return $info;
+}
+
+/**
+ * Annulation d'abonnement refusée pour cause d'essai ? $sub = la ligne qu'on annulerait
+ * (ak_get_org_active_subscription ou ak_get_current_plan), null si aucune.
+ *   - ligne d'essai (statut 'trial' ou plan d'essai) : oui, rien à annuler (l'annuler la sortait
+ *     de la bascule de fin d'essai et l'association gardait le plan d'essai) ;
+ *   - abonnement Stripe réel (même souscrit pendant l'essai, paiement en cours) : non, il doit
+ *     rester annulable, sinon le client continuerait d'être débité ;
+ *   - sinon : oui pendant l'essai, ou après un essai terminé sur un plan gratuit.
+ */
+function ak_trial_blocks_cancel(PDO $pdo, int $org_id, ?array $sub, ?array $ti = null): bool {
+    $ti = $ti ?? ak_plan_trial_info($pdo, $org_id);
+    if ($sub) {
+        $slug = (string)($sub['plan_slug'] ?? ($sub['slug'] ?? ''));
+        $trial_plan = function_exists('ak_trial_plan') ? ak_trial_plan($pdo) : null;
+        $plan_id = (int)($sub['plan_id'] ?? 0);
+        if (($sub['status'] ?? '') === 'trial' || $slug === 'pro-essai' || !empty($sub['is_trial'])
+            || ($trial_plan && $trial_plan['is_trial'] && $plan_id > 0 && $trial_plan['id'] === $plan_id)) {
+            return true;
+        }
+        if (!empty($sub['stripe_subscription_id'])) return false;
+    }
+    $price = (int)($sub['price_cents_monthly'] ?? ($sub['price_cents'] ?? 0));
+    return !empty($ti['in_trial']) || (!empty($ti['trial_expired']) && $price === 0);
+}
 
 // ============================================================
 // 1. Plan + abonnement actuel
@@ -53,6 +154,21 @@ function ak_get_current_plan(PDO $pdo, int $org_id): ?array {
         $row = $st->fetch(PDO::FETCH_ASSOC);
 
         if (!$row) {
+            // Association en essai sans ligne d'abonnement : on crée la ligne d'ESSAI (jamais
+            // un Démarrage, qui la priverait des fonctionnalités de l'essai et contredirait le cockpit)
+            if (function_exists('ak_trial_plan') && function_exists('ak_db_insert')) {
+                $o = $pdo->prepare("SELECT status, trial_ends_at FROM organizations WHERE id = :o");
+                $o->execute([':o' => $org_id]);
+                $org = $o->fetch(PDO::FETCH_ASSOC) ?: [];
+                $trial = ($org['status'] ?? '') === 'trial' ? ak_trial_plan($pdo) : null;
+                if ($trial) {
+                    $data = ['org_id' => $org_id, 'plan_id' => $trial['id'],
+                             'status' => ak_db_pick($pdo, 'asso_subscriptions', 'status', ['trial', 'active']) ?? 'active'];
+                    if (!empty($org['trial_ends_at'])) $data['current_period_end'] = $org['trial_ends_at'];
+                    ak_db_insert($pdo, 'asso_subscriptions', $data, ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
+                    return ak_get_current_plan($pdo, $org_id);
+                }
+            }
             // Pas d'abonnement → on auto-crée un Démarrage
             $defaultPlanId = (int)$pdo->query("SELECT id FROM asso_plans WHERE slug='demarrage' LIMIT 1")->fetchColumn();
             if ($defaultPlanId > 0) {
@@ -191,7 +307,7 @@ function ak_can_create_invoice(PDO $pdo, int $org_id): array {
     $limit = (int)$plan['limit_invoices_total'];
 
     if ($current >= $limit) {
-        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} factures sur le plan {$plan['name']}", 'limit' => $limit, 'current' => $current];
+        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} factures sur le plan " . ak_plan_display_name($plan), 'limit' => $limit, 'current' => $current];
     }
     return ['ok' => true, 'reason' => '', 'limit' => $limit, 'current' => $current];
 }
@@ -207,7 +323,7 @@ function ak_can_create_quote(PDO $pdo, int $org_id): array {
     $limit = (int)$plan['limit_quotes_total'];
 
     if ($current >= $limit) {
-        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} devis sur le plan {$plan['name']}", 'limit' => $limit, 'current' => $current];
+        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} devis sur le plan " . ak_plan_display_name($plan), 'limit' => $limit, 'current' => $current];
     }
     return ['ok' => true, 'reason' => '', 'limit' => $limit, 'current' => $current];
 }
@@ -223,7 +339,7 @@ function ak_can_add_adherent(PDO $pdo, int $org_id): array {
     $limit = (int)$plan['limit_adherents'];
 
     if ($current >= $limit) {
-        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} adhérents sur le plan {$plan['name']}", 'limit' => $limit, 'current' => $current];
+        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} adhérents sur le plan " . ak_plan_display_name($plan), 'limit' => $limit, 'current' => $current];
     }
     return ['ok' => true, 'reason' => '', 'limit' => $limit, 'current' => $current];
 }
@@ -239,10 +355,10 @@ function ak_can_add_contact(PDO $pdo, int $org_id): array {
     $limit = (int)$plan['limit_contacts'];
 
     if ($limit === 0) {
-        return ['ok' => false, 'reason' => "Les contacts ne sont pas inclus dans le plan {$plan['name']}", 'limit' => 0, 'current' => $current];
+        return ['ok' => false, 'reason' => "Les contacts ne sont pas inclus dans le plan " . ak_plan_display_name($plan), 'limit' => 0, 'current' => $current];
     }
     if ($current >= $limit) {
-        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} contacts sur le plan {$plan['name']}", 'limit' => $limit, 'current' => $current];
+        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} contacts sur le plan " . ak_plan_display_name($plan), 'limit' => $limit, 'current' => $current];
     }
     return ['ok' => true, 'reason' => '', 'limit' => $limit, 'current' => $current];
 }
@@ -258,7 +374,7 @@ function ak_can_add_user(PDO $pdo, int $org_id): array {
     $limit = (int)$plan['limit_users'];
 
     if ($current >= $limit) {
-        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} utilisateurs sur le plan {$plan['name']}", 'limit' => $limit, 'current' => $current];
+        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} utilisateurs sur le plan " . ak_plan_display_name($plan), 'limit' => $limit, 'current' => $current];
     }
     return ['ok' => true, 'reason' => '', 'limit' => $limit, 'current' => $current];
 }
@@ -288,7 +404,7 @@ function ak_can_use_ai_text(PDO $pdo, int $org_id): array {
     $effective_limit = $limit + $bonus;
 
     if ($limit === 0 && $bonus === 0) {
-        return ['ok' => false, 'reason' => "L'IA texte n'est pas incluse dans le plan {$plan['name']}", 'limit' => 0, 'current' => $current];
+        return ['ok' => false, 'reason' => "L'IA texte n'est pas incluse dans le plan " . ak_plan_display_name($plan), 'limit' => 0, 'current' => $current];
     }
     if ($current >= $effective_limit) {
         $msg = "Limite atteinte : {$current}/{$effective_limit} générations IA texte ce mois";
@@ -309,7 +425,7 @@ function ak_can_use_ai_image(PDO $pdo, int $org_id): array {
     $limit = (int)$plan['limit_ai_image_per_month'];
 
     if ($limit === 0) {
-        return ['ok' => false, 'reason' => "L'IA image n'est pas incluse dans le plan {$plan['name']}", 'limit' => 0, 'current' => $current];
+        return ['ok' => false, 'reason' => "L'IA image n'est pas incluse dans le plan " . ak_plan_display_name($plan), 'limit' => 0, 'current' => $current];
     }
     if ($current >= $limit) {
         return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} générations IA image ce mois", 'limit' => $limit, 'current' => $current];
@@ -326,7 +442,7 @@ function ak_can_send_email(PDO $pdo, int $org_id, int $count = 1): array {
 
     // Si la feature email_diffusion est désactivée → bloqué
     if (!$plan['feature_email_diffusion']) {
-        return ['ok' => false, 'reason' => "La diffusion email n'est pas incluse dans le plan {$plan['name']}", 'limit' => 0, 'current' => 0, 'feature_disabled' => true];
+        return ['ok' => false, 'reason' => "La diffusion email n'est pas incluse dans le plan " . ak_plan_display_name($plan), 'limit' => 0, 'current' => 0, 'feature_disabled' => true];
     }
 
     if ($plan['limit_emails_per_month'] === null) return ['ok' => true, 'reason' => '', 'limit' => null, 'current' => 0];
@@ -336,7 +452,7 @@ function ak_can_send_email(PDO $pdo, int $org_id, int $count = 1): array {
     $limit = (int)$plan['limit_emails_per_month'];
 
     if ($limit === 0) {
-        return ['ok' => false, 'reason' => "La diffusion email n'est pas incluse dans le plan {$plan['name']}", 'limit' => 0, 'current' => $current, 'feature_disabled' => true];
+        return ['ok' => false, 'reason' => "La diffusion email n'est pas incluse dans le plan " . ak_plan_display_name($plan), 'limit' => 0, 'current' => $current, 'feature_disabled' => true];
     }
     if ($current + $count > $limit) {
         return ['ok' => false, 'reason' => "Quota dépassé : {$current}+{$count} dépasse la limite de {$limit} emails/mois", 'limit' => $limit, 'current' => $current];
@@ -404,11 +520,28 @@ function ak_bilan_analytique_gate(PDO $pdo, int $org_id): array {
  */
 function ak_get_subscription_status(PDO $pdo, int $org_id): array {
     $plan = ak_get_current_plan($pdo, $org_id);
+    // Essai (en cours / terminé) : même lecture que le cockpit fondateur (ak_org_plan_state)
+    $ti = ak_plan_trial_info($pdo, $org_id);
+    $trial = [
+        'is_trial'        => $ti['in_trial'],
+        'trial_expired'   => $ti['trial_expired'],
+        'trial_ends_at'   => $ti['trial_ends_at'],
+        'trial_days_left' => $ti['days_left'],
+        'trial_label'     => $ti['label'],
+        'badge'           => $ti['badge'],
+        'badge_tone'      => $ti['badge_tone'],
+    ];
     if (!$plan) {
-        return ['status' => 'none', 'is_overdue' => false, 'in_grace_period' => false, 'days_remaining' => 0, 'show_overlay' => false];
+        return ['status' => 'none', 'is_overdue' => false, 'in_grace_period' => false, 'days_remaining' => 0, 'show_overlay' => false,
+                'plan_label' => $ti['plan_label']] + $trial;
     }
 
     $status = (string)$plan['status'];
+    // La ligne d'essai est écrite 'active' quand l'ENUM du statut n'a pas 'trial' :
+    // c'est quand même un essai (seul ce cas change, les autres statuts restent tels quels).
+    if ($status === 'active' && $ti['in_trial'] && (!empty($plan['is_trial']) || ($plan['slug'] ?? '') === 'pro-essai')) {
+        $status = 'trial';
+    }
     $now = new DateTime();
     $in_grace = false;
     $days_remaining = 0;
@@ -455,9 +588,10 @@ function ak_get_subscription_status(PDO $pdo, int $org_id): array {
         'in_grace_period' => $in_grace,
         'days_remaining' => $days_remaining,
         'show_overlay' => $show_overlay,
-        'plan_name' => $plan['name'],
+        'plan_name' => ak_plan_display_name($plan),   // « Essai PRO » pour le plan d'essai (asso_plans.name vaut « Essai »)
         'plan_slug' => $plan['slug'],
-    ];
+        'plan_label' => ak_plan_display_name($plan),
+    ] + $trial;
 }
 
 // ============================================================
@@ -518,6 +652,8 @@ function ak_render_quota_banner(PDO $pdo, int $org_id): string {
 
     if ($plan['slug'] === 'demarrage') {
         $html .= '<a href="/mon-asso-plan" style="background:' . $c['border'] . ';color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">↗ Passer à Assokit</a>';
+    } elseif (!empty($plan['is_trial']) || $plan['slug'] === 'pro-essai') {
+        $html .= '<a href="/mon-asso-plan" style="background:' . $c['border'] . ';color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">⚡ Choisir une formule</a>';
     } else {
         $html .= '<a href="/mon-asso-plan" style="background:' . $c['border'] . ';color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">Voir mon plan</a>';
     }

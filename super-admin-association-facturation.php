@@ -7,6 +7,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/org-billing-helpers.php';
+require_once __DIR__ . '/trial-helpers.php';
 
 require_login();
 $user = current_user();
@@ -43,6 +44,10 @@ if (!$org) {
     http_response_code(404);
     die('Association introuvable.');
 }
+
+// Plan et statut : même vérité que la fiche association (essai clairement signalé)
+$plan_state = ak_org_plan_state($pdo, $org_id);
+$in_trial = $plan_state['is_trial'] || $plan_state['trial_expired'];
 
 // Récupérer les infos
 $info = get_org_billing_info($pdo, $org_id);
@@ -88,6 +93,13 @@ render_sidebar('factures');
                     <span style="display:inline-block; background:linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%); color:#78350F; padding:3px 10px; border-radius:5px; font-size:11px; font-weight:700; margin-right:8px;">🏗️ FONDATEUR</span>
                 <?php endif; ?>
                 Ces infos servent aux factures PDF, emails automatiques et mentions légales.
+            </div>
+            <div style="margin-top:8px; font-size:13px; color:#475569;">
+                Plan <strong><?= h($plan_state['plan_label']) ?></strong> ·
+                <span style="display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:<?= $in_trial ? '800' : '600' ?>;
+                      background:<?= $plan_state['trial_expired'] ? '#FEF3C7' : ($in_trial ? '#EDE9FE' : '#F1F5F9') ?>;
+                      color:<?= $plan_state['trial_expired'] ? '#92400E' : ($in_trial ? '#5B21B6' : '#334155') ?>;"><?= h($plan_state['badge']) ?></span>
+                <?php if ($in_trial): ?> · 0 € pendant l’essai : rien à facturer tant qu’elle n’est pas passée en abonnement.<?php endif; ?>
             </div>
         </div>
         <div>

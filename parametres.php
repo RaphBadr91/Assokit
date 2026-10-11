@@ -141,6 +141,31 @@ render_sidebar('parametres');
           <p>Seul un administrateur de l'organisation peut modifier ces paramètres.</p>
         </div>
       <?php else: ?>
+        <?php
+          // Formule de l'association : même texte que « Mon abonnement », l'appli et le cockpit fondateur
+          @require_once __DIR__ . '/plan-helpers.php';
+          $plan_ti = function_exists('ak_plan_trial_info') ? ak_plan_trial_info($pdo, $org_id) : null;
+        ?>
+        <?php if ($plan_ti && $plan_ti['label'] !== '' && $plan_ti['label'] !== '—'):
+          $plan_tone = $plan_ti['trial_expired'] ? ['#FEF2F2', '#FECACA', '#991B1B'] : ($plan_ti['in_trial'] ? ['#FFFBEB', '#FCD34D', '#92400E'] : null);
+        ?>
+          <div class="pa-form-card" style="margin-bottom:18px;<?= $plan_tone ? 'background:' . $plan_tone[0] . ';border-color:' . $plan_tone[1] . ';' : '' ?>">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+              <div>
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:<?= $plan_tone ? $plan_tone[2] : '#64748B' ?>;">Formule</div>
+                <div style="font-size:16px;font-weight:700;margin-top:2px;color:<?= $plan_tone ? $plan_tone[2] : 'inherit' ?>;"><?= h($plan_ti['label']) ?></div>
+                <?php if ($plan_ti['trial_expired'] && !ak_billing_hidden()): ?>
+                  <div style="font-size:13px;margin-top:2px;color:<?= $plan_tone[2] ?>;">Vos données sont conservées : choisissez une formule pour retrouver toutes les fonctionnalités.</div>
+                <?php elseif (!$plan_tone && in_array($plan_ti['badge_tone'], ['pending', 'suspended', 'cancelled'], true)): ?>
+                  <div style="font-size:13px;margin-top:2px;color:#B45309;font-weight:600;"><?= h($plan_ti['badge']) ?></div>
+                <?php endif; ?>
+              </div>
+              <?php if (!ak_billing_hidden()): ?>
+                <a href="/mon-asso-plan" class="pa-btn-primary" style="text-decoration:none;"><?= ($plan_ti['in_trial'] || $plan_ti['trial_expired']) ? 'Choisir une formule' : 'Mon abonnement' ?></a>
+              <?php endif; ?>
+            </div>
+          </div>
+        <?php endif; ?>
         <form method="POST" action="/action-parametres" enctype="multipart/form-data" class="pa-form-card">
           <input type="hidden" name="action" value="update_organization">
           <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">

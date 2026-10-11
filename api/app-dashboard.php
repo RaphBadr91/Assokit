@@ -139,6 +139,18 @@ try {
 
     $initials = strtoupper(function_exists('mb_substr') ? mb_substr($org_name, 0, 2) : substr($org_name, 0, 2));
 
+    // Formule et essai : ak_org_plan_state() (trial-helpers.php), la même vérité que le cockpit
+    // fondateur et la page « Mon abonnement ». trial = essai EN COURS ; trial_expired = essai terminé.
+    $plan_info = ['in_trial' => false, 'trial_expired' => false, 'trial_ends_at' => null, 'days_left' => null, 'plan_label' => ''];
+    try {
+        ob_start();
+        require_once __DIR__ . '/../plan-helpers.php';
+        ob_end_clean(); // le JSON reste propre même si un helper inclus écrit quelque chose
+        if ($org_id > 0) $plan_info = ak_plan_trial_info($pdo, $org_id);
+    } catch (Throwable $e) {
+        error_log('[api/app-dashboard] plan: ' . get_class($e));
+    }
+
     /* ── Fil « Aujourd'hui » de l'accueil natif (maquette V2) ───────────────
        Trois sources, une couleur d'accent par type, comme sur l'écran de
        référence : événement (vert), facture échue (bleu), subvention (ambre).
@@ -295,6 +307,13 @@ try {
         'org_initials' => $initials,
         'org_logo'     => $org_logo,
         'head_line'    => $head_line,
+        'trial'           => (bool) $plan_info['in_trial'],
+        'trial_expired'   => (bool) $plan_info['trial_expired'],
+        'trial_ends_at'   => $plan_info['trial_ends_at'],
+        'trial_days_left' => $plan_info['days_left'] !== null ? (int) $plan_info['days_left'] : null,
+        // Pendant l'essai : « Essai PRO » (même si un paiement Stripe pris pendant l'essai est en attente)
+        'plan_label'      => (string) (!empty($plan_info['in_trial']) && !empty($plan_info['trial_name']) ? $plan_info['trial_name']
+                                       : ($plan_info['plan_label'] === '—' ? '' : $plan_info['plan_label'])),
         'today'        => $today,
         'kpis'         => [
             'projets_actifs'   => $active_projects,

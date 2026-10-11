@@ -36,10 +36,28 @@ if (!$active_sub) {
     exit;
 }
 
+// Formule et essai : même vérité que « Mon abonnement » et le cockpit fondateur (ak_org_plan_state)
+require_once __DIR__ . '/plan-helpers.php';
+$trial_info = ak_plan_trial_info($pdo, $org_id);
+$plan_label = function_exists('ak_plan_label')
+    ? ak_plan_label($active_sub['plan_slug'] ?? '', $active_sub['plan_name'] ?? null)
+    : (string)($active_sub['plan_name'] ?? '');
+// Essai (en cours, ou terminé sans formule payante) : rien à annuler. Annuler la ligne d'essai
+// la sortait de la bascule de fin d'essai (elle gardait le plan d'essai après la date de fin).
+// Un abonnement Stripe pris pendant l'essai (paiement en cours) reste, lui, annulable.
+$is_trial_sub = ak_trial_blocks_cancel($pdo, $org_id, $active_sub, $trial_info);
+
 $flash_msg = null;
 $flash_type = 'success';
 
 // Traitement annulation
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_trial_sub) {
+    $_SESSION['flash_error'] = !empty($trial_info['trial_expired'])
+        ? 'Votre essai est terminé : il n’y a pas d’abonnement payant à annuler.'
+        : 'Votre association est en essai : il n’y a pas d’abonnement à annuler.';
+    header('Location: /mon-asso-plan');
+    exit;
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!check_csrf($_POST['csrf_token'] ?? '')) {
         $_SESSION['flash_error'] = 'Session expirée, veuillez réessayer.';
@@ -117,14 +135,36 @@ render_sidebar('mon-asso-plan');
       </div>
     <?php endif; ?>
 
-    <?php if ($is_already_cancelled): ?>
+    <?php if ($is_trial_sub): ?>
+
+      <!-- Essai : rien à annuler -->
+      <?php $trial_over = !empty($trial_info['trial_expired']); ?>
+      <div style="background:<?= $trial_over ? '#FEF2F2' : '#FFFBEB' ?>;border:2px solid <?= $trial_over ? '#FECACA' : '#FCD34D' ?>;border-radius:18px;padding:36px 32px;text-align:center;">
+        <div style="font-size:54px;margin-bottom:14px;"><?= $trial_over ? '⏳' : '🎁' ?></div>
+        <h1 style="margin:0 0 8px;font-size:22px;color:<?= $trial_over ? '#991B1B' : '#92400E' ?>;"><?= h($trial_info['label'] !== '' ? $trial_info['label'] : 'Essai PRO') ?></h1>
+        <p style="color:<?= $trial_over ? '#7F1D1D' : '#78350F' ?>;line-height:1.65;font-size:14.5px;margin:0 0 22px;">
+          <?php if ($trial_over): ?>
+            Votre essai est terminé<?= $trial_info['end_fr'] !== '' ? ' depuis le <strong>' . h($trial_info['end_fr']) . '</strong>' : '' ?> et aucune formule n’a encore été choisie : il n’y a pas d’abonnement payant à annuler.<br>
+            Vos données sont conservées. Choisissez une formule pour retrouver toutes les fonctionnalités.
+          <?php else: ?>
+            Votre association est en <strong>essai gratuit</strong><?= $trial_info['end_fr'] !== '' ? ' jusqu’au <strong>' . h($trial_info['end_fr']) . '</strong>' : '' ?> : il n’y a pas d’abonnement à annuler et rien ne vous sera facturé.<br>
+            Sans formule choisie d’ici là, l’essai s’arrête de lui-même. Vos données sont conservées.
+          <?php endif; ?>
+        </p>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <a href="/mon-asso-plan" style="background:#059669;color:white;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">Choisir une formule</a>
+          <a href="/contact?subject=billing" style="background:white;color:#475569;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;border:1px solid #E2E8F0;">Nous contacter</a>
+        </div>
+      </div>
+
+    <?php elseif ($is_already_cancelled): ?>
 
       <!-- Déjà annulé -->
       <div style="background:#FEF3C7;border:2px solid #FCD34D;border-radius:18px;padding:36px 32px;text-align:center;">
         <div style="font-size:54px;margin-bottom:14px;">✓</div>
         <h1 style="margin:0 0 12px;font-size:22px;color:#92400E;">Annulation déjà en cours</h1>
         <p style="color:#78350F;line-height:1.65;font-size:14.5px;margin:0 0 22px;">
-          Votre abonnement <strong><?= htmlspecialchars($active_sub['plan_name']) ?></strong> a déjà été annulé.<br>
+          Votre abonnement <strong><?= h($plan_label) ?></strong> a déjà été annulé.<br>
           <?php if ($period_end): ?>
             Vous gardez l'accès jusqu'au <strong><?= htmlspecialchars(date('d/m/Y', strtotime($period_end))) ?></strong>.
           <?php endif; ?>
@@ -139,14 +179,14 @@ render_sidebar('mon-asso-plan');
         <div style="text-align:center;margin-bottom:22px;">
           <div style="font-size:54px;margin-bottom:10px;">😢</div>
           <h1 style="margin:0 0 8px;font-size:22px;color:#0F172A;">Annuler mon abonnement</h1>
-          <p style="color:#64748B;font-size:14px;margin:0;">Plan actuel : <strong><?= htmlspecialchars($active_sub['plan_name']) ?></strong></p>
+          <p style="color:#64748B;font-size:14px;margin:0;">Plan actuel : <strong><?= h($plan_label) ?></strong></p>
         </div>
 
         <!-- Conséquences -->
         <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:12px;padding:18px 20px;margin-bottom:22px;">
           <div style="font-weight:700;color:#92400E;margin-bottom:10px;font-size:14px;">⚠️ Avant de partir, voici ce que vous perdrez :</div>
           <ul style="margin:0;padding-left:20px;color:#78350F;line-height:1.85;font-size:13.5px;">
-            <li>L'accès au plan <strong><?= htmlspecialchars($active_sub['plan_name']) ?></strong></li>
+            <li>L'accès au plan <strong><?= h($plan_label) ?></strong></li>
             <li>La diffusion email aux adhérents</li>
             <li>Les factures récurrentes automatiques</li>
             <li>Les statistiques avancées</li>

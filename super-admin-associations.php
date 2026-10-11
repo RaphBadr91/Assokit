@@ -7,19 +7,50 @@
  *   2. Vue fiche (?id=X)       : detail complet d'une asso + actions
  *
  * Actions disponibles sur une asso :
- *   - Modifier (nom, email, plan)
+ *   - Modifier (nom, plan, notes internes)
+ *   - Essai : prolonger de 7 / 14 jours, passer en abonnement
  *   - Suspendre / Reactiver / Resilier
- *   - Voir ses users, ses projets, son abonnement
+ *   - Voir ses users, ses projets, son abonnement, sa demande d'inscription
  *   - Notes internes super admin
+ *
+ * Plan et statut : une seule vérité, ak_org_plan_state() (trial-helpers.php),
+ * la même que l'appli et l'espace de l'association. Un changement de plan passe
+ * TOUJOURS par ak_org_set_plan() (abonnement, organizations.plan et essai à la fois).
  */
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-permissions.php';
+require_once __DIR__ . '/trial-helpers.php';
+require_once __DIR__ . '/sa-plan-state-helpers.php';
 require_login();
 $user = sa_require_super_admin();
 $ctx = sa_get_permissions_context();
+$can_plan = !empty($ctx['can_manage_subscriptions']);
+
+/**
+ * Change le plan partout (ak_org_set_plan) dans une transaction. Renvoie null ou un message d'erreur.
+ * Sortie d'essai : la date de fin d'essai ne reste pas comme « échéance » du nouvel abonnement,
+ * et un plan payant ne reste pas affiché « Offert » (sa_trial_exit_cleanup).
+ */
+function sa_assoc_set_plan(PDO $pdo, int $org_id, int $plan_id): ?string {
+    try {
+        $before = ak_org_plan_state($pdo, $org_id);
+        $pdo->beginTransaction();
+        ak_org_set_plan($pdo, $org_id, $plan_id);
+        sa_trial_exit_cleanup($pdo, $org_id, $before, ak_org_plan_state($pdo, $org_id));
+        $pdo->commit();
+        return null;
+    } catch (InvalidArgumentException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        return 'Plan inconnu : choisissez un plan de la liste.';
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log('[super-admin-associations] set_plan: ' . get_class($e) . ' ' . $e->getMessage());
+        return 'Le plan n’a pas pu être changé (erreur technique). Rien n’a été modifié.';
+    }
+}
 
 $error = null;
 $success = null;
@@ -69,42 +100,152 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
         // ---- UPDATE ----
         elseif ($action === 'update') {
             $name = trim($_POST['name'] ?? '');
-            $plan = $_POST['plan'] ?? 'essentiel';
             $notes = trim($_POST['notes_superadmin'] ?? '');
+            $new_plan_id = (int) ($_POST['plan_id'] ?? 0);
+            $view_id = $target_id;
 
             if ($name === '') {
                 $error = 'Nom requis.';
             } else {
-                $stmt = $pdo->prepare("UPDATE organizations SET name = ?, plan = ?, notes_superadmin = ? WHERE id = ?");
-                $stmt->execute([$name, $plan, $notes, $target_id]);
-                sa_log_action((int) $user['id'], 'update_org', $target_id, null, ['name' => $name, 'plan' => $plan]);
-                $success = 'Association mise à jour.';
-                $view_id = $target_id;
+                // Le plan ne change QUE s'il diffère du plan courant (jamais d'écriture « par défaut »)
+                $before = ak_org_plan_state($pdo, $target_id);
+                $plan_change = $new_plan_id > 0 && $new_plan_id !== (int) $before['plan_id'];
+                if ($plan_change && !$can_plan) {
+                    $error = 'Vous n’avez pas le droit de changer le plan d’une association.';
+                } else {
+                    $stmt = $pdo->prepare("UPDATE organizations SET name = ?, notes_superadmin = ? WHERE id = ?");
+                    $stmt->execute([$name, $notes, $target_id]);
+                    $log = ['name' => $name];
+                    $success = 'Association mise à jour.';
+                    if ($plan_change) {
+                        $err = sa_assoc_set_plan($pdo, $target_id, $new_plan_id);
+                        if ($err) {
+                            $error = $err;
+                            $success = 'Nom et notes enregistrés. Le plan n’a pas changé.';
+                        } else {
+                            $after = ak_org_plan_state($pdo, $target_id);
+                            $log['plan'] = ['from' => $before['plan_slug'], 'to' => $after['plan_slug'], 'status' => $after['badge']];
+                            $success = 'Association mise à jour. Plan : ' . $before['plan_label'] . ' → ' . $after['plan_label'] . ' (' . $after['badge'] . ').';
+                        }
+                    }
+                    sa_log_action((int) $user['id'], 'update_org', $target_id, null, $log);
+                }
+            }
+        }
+        // ---- ESSAI : PROLONGER ----
+        elseif ($action === 'trial_extend') {
+            $days = (int) ($_POST['days'] ?? 0);
+            $before = ak_org_plan_state($pdo, $target_id);
+            $view_id = $target_id;
+            if (!$can_plan) {
+                $error = 'Vous n’avez pas le droit de modifier l’essai d’une association.';
+            } elseif (!in_array($days, [7, 14], true)) {
+                $error = 'Durée de prolongation invalide.';
+            } elseif (!$before['is_trial'] && !$before['trial_expired']) {
+                $error = 'Cette association n’est pas en essai : rien à prolonger.';
+            } else {
+                try {
+                    $pdo->beginTransaction();
+                    $new_end = ak_trial_extend($pdo, $target_id, $days);
+                    // L'essai rouvert doit porter le plan d'essai partout (fonctionnalités PRO, ancien
+                    // libellé organizations.plan, ancienne table) : si la ligne courante n'est pas sur le
+                    // plan d'essai (rétrogradation sans previous_plan_id…), ak_org_set_plan l'y remet en
+                    // gardant la nouvelle fin d'essai (future).
+                    $trial_plan = ak_trial_plan($pdo);
+                    if ($trial_plan && !$trial_plan['is_trial'] && $trial_plan['slug'] !== 'pro-essai') $trial_plan = null; // pas de vrai plan d'essai
+                    $now_state = ak_org_plan_state($pdo, $target_id);
+                    if ($trial_plan && (int) $now_state['plan_id'] !== (int) $trial_plan['id']) {
+                        ak_org_set_plan($pdo, $target_id, (int) $trial_plan['id']);
+                    } elseif ($now_state['plan_id'] && ak_db_accepts($pdo, 'organizations', 'plan', $now_state['plan_slug'])) {
+                        $pdo->prepare("UPDATE organizations SET plan = ? WHERE id = ?")->execute([$now_state['plan_slug'], $target_id]);
+                    }
+                    $pdo->commit();
+                    sa_log_action((int) $user['id'], 'trial_extend', $target_id, null, [
+                        'days' => $days, 'from' => $before['trial_ends_at'], 'to' => $new_end,
+                    ]);
+                    $success = 'Essai prolongé de ' . $days . ' jours : il se termine maintenant le ' . date('d/m/Y', strtotime($new_end)) . '.';
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    error_log('[super-admin-associations] trial_extend: ' . get_class($e) . ' ' . $e->getMessage());
+                    $error = 'L’essai n’a pas pu être prolongé (erreur technique). Rien n’a été modifié.';
+                }
+            }
+        }
+        // ---- ESSAI : PASSER EN ABONNEMENT (ou changer de plan) ----
+        elseif ($action === 'set_plan') {
+            $plan_id = (int) ($_POST['plan_id'] ?? 0);
+            $before = ak_org_plan_state($pdo, $target_id);
+            $view_id = $target_id;
+            if (!$can_plan) {
+                $error = 'Vous n’avez pas le droit de changer le plan d’une association.';
+            } elseif ($plan_id <= 0) {
+                $error = 'Choisissez un plan.';
+            } elseif ($err = sa_assoc_set_plan($pdo, $target_id, $plan_id)) {
+                $error = $err;
+            } else {
+                $after = ak_org_plan_state($pdo, $target_id);
+                sa_log_action((int) $user['id'], 'set_plan', $target_id, null, [
+                    'from' => $before['plan_slug'], 'to' => $after['plan_slug'],
+                    'was_trial' => $before['is_trial'] || $before['trial_expired'], 'status' => $after['badge'],
+                ]);
+                $success = 'Plan ' . $after['plan_label'] . ' activé (' . sa_plan_state_price($after) . ')'
+                         . (($before['is_trial'] || $before['trial_expired']) && !$after['is_trial'] ? ' : l’essai est terminé.' : '.');
             }
         }
         // ---- SUSPEND ----
         elseif ($action === 'suspend') {
             $reason = trim($_POST['reason'] ?? '');
+            $st_before = ak_org_plan_state($pdo, $target_id);
             $stmt = $pdo->prepare("UPDATE organizations SET status = 'suspended', suspended_reason = ? WHERE id = ?");
             $stmt->execute([$reason ?: 'Suspendu par super admin', $target_id]);
+            // Suspendue pendant son essai : l'ancienne table passe aussi en « suspended », sinon les
+            // rappels J-7 / J-3 / J-0 partiraient encore. « Réactiver » rouvre l'essai s'il reste des jours.
+            if ($st_before['is_trial'] && ak_db_accepts($pdo, 'subscriptions', 'status', 'suspended')) {
+                try {
+                    $pdo->prepare("UPDATE subscriptions SET status = 'suspended' WHERE org_id = ? AND status = 'trial'")->execute([$target_id]);
+                } catch (Throwable $e) {
+                    error_log('[super-admin-associations] suspend legacy: ' . get_class($e));
+                }
+            }
             sa_log_action((int) $user['id'], 'suspend_org', $target_id, null, ['reason' => $reason]);
             $success = 'Association suspendue.';
+            if ($st_before['badge_tone'] === 'trial' && $st_before['trial_ends_at']) {
+                $success .= ' Son essai est mis en pause : « Réactiver » le rouvre jusqu’au ' . date('d/m/Y', strtotime((string) $st_before['trial_ends_at'])) . '.';
+            }
             $view_id = $target_id;
         }
         // ---- REACTIVATE ----
         elseif ($action === 'reactivate') {
-            $stmt = $pdo->prepare("UPDATE organizations SET status = 'active', suspended_reason = NULL WHERE id = ?");
-            $stmt->execute([$target_id]);
-            sa_log_action((int) $user['id'], 'reactivate_org', $target_id);
-            $success = 'Association réactivée.';
+            // Une association suspendue PENDANT son essai (fin encore à venir) retrouve son essai,
+            // pas un statut « active » qui la ferait passer pour cliente.
+            $st_before = ak_org_plan_state($pdo, $target_id);
+            $back_to_trial = $st_before['is_trial'] && $st_before['trial_ends_at'] && strtotime((string) $st_before['trial_ends_at']) > time()
+                && ak_db_accepts($pdo, 'organizations', 'status', 'trial');
+            $stmt = $pdo->prepare("UPDATE organizations SET status = ?, suspended_reason = NULL WHERE id = ?");
+            $stmt->execute([$back_to_trial ? 'trial' : 'active', $target_id]);
+            if ($back_to_trial) ak_legacy_sub_trial($pdo, $target_id, (string) $st_before['trial_ends_at'], false);
+            sa_log_action((int) $user['id'], 'reactivate_org', $target_id, null, $back_to_trial ? ['trial' => true] : []);
+            $st_after = ak_org_plan_state($pdo, $target_id);
+            $success = 'Association réactivée (' . $st_after['badge'] . ').';
+            if ($st_after['badge_tone'] === 'expired') {
+                $success .= ' L’essai reste terminé : prolongez-le ou passez-la en abonnement pour rouvrir l’accès.';
+            }
             $view_id = $target_id;
         }
         // ---- CANCEL ----
         elseif ($action === 'cancel') {
+            // Résilier une association en essai met aussi fin à l'essai (plan Démarrage), sinon
+            // son abonnement d'essai continuerait d'afficher « ESSAI » sur une association résiliée.
+            $st_before = ak_org_plan_state($pdo, $target_id);
+            $ended_trial = false;
+            if ($st_before['is_trial'] || $st_before['trial_expired']) {
+                $free_id = (int) $pdo->query("SELECT id FROM asso_plans WHERE slug = 'demarrage' LIMIT 1")->fetchColumn();
+                if ($free_id > 0 && !sa_assoc_set_plan($pdo, $target_id, $free_id)) $ended_trial = true;
+            }
             $stmt = $pdo->prepare("UPDATE organizations SET status = 'cancelled' WHERE id = ?");
             $stmt->execute([$target_id]);
-            sa_log_action((int) $user['id'], 'cancel_org', $target_id);
-            $success = 'Association résiliée.';
+            sa_log_action((int) $user['id'], 'cancel_org', $target_id, null, $ended_trial ? ['trial_ended' => true] : []);
+            $success = 'Association résiliée.' . ($ended_trial ? ' Son essai est terminé (plan Démarrage).' : '');
             $view_id = $target_id;
         }
         // ---- DELETE (soft-delete) ----
@@ -179,17 +320,103 @@ if ($view_id > 0) {
     $stmt->execute([$view_id]);
     $org_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Subscription
+    // Plan et statut : la même vérité que l'appli et l'espace de l'association
+    $plan_state = ak_org_plan_state($pdo, $view_id);
+    $in_trial = $plan_state['is_trial'] || $plan_state['trial_expired'];
+    $plans = sa_plans_list($pdo);
+    $paid_plans = array_values(array_filter($plans, fn($p) => !$p['is_trial']));
+
+    // Ligne d'abonnement courante (asso_subscriptions, même ordre que ak_get_current_plan)
+    $asso_sub = null;
+    try {
+        $stmt = $pdo->prepare("SELECT s.* FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
+                               WHERE s.org_id = ? ORDER BY (s.status = 'active') DESC, s.id DESC LIMIT 1");
+        $stmt->execute([$view_id]);
+        $asso_sub = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Throwable $e) {}
+
+    // Ancienne table subscriptions : conditions de facturation manuelle (jamais le prix d'un essai)
     $subscription = null;
     try {
-        $stmt = $pdo->prepare("SELECT * FROM subscriptions WHERE org_id = ?");
+        $stmt = $pdo->prepare("SELECT * FROM subscriptions WHERE org_id = ? ORDER BY id DESC LIMIT 1");
         $stmt->execute([$view_id]);
-        $subscription = $stmt->fetch(PDO::FETCH_ASSOC);
+        $subscription = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     } catch (Throwable $e) {}
+    $show_manual_billing = $subscription && !$in_trial && isset($subscription['price_ht'])
+        && (!$plan_state['plan_id'] || (int) $plan_state['price_cents'] > 0 || $plan_state['plan_slug'] === 'sur-mesure');
+
+    // Demande d'inscription en ligne (lecture seule)
+    $signup = null;
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM public_signups WHERE org_id = ? ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$view_id]);
+        $signup = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Throwable $e) {}
+    $signup_notes = trim((string) ($org['internal_notes'] ?? ''));
+    $from_signup = $signup || strpos($signup_notes, 'Inscription en ligne') === 0;
+    $signup_details = [];
+    if ($signup && !empty($signup['details_json'])) {
+        $dec = json_decode((string) $signup['details_json'], true);
+        if (is_array($dec)) {
+            foreach ($dec as $k => $v) {
+                $v = is_scalar($v) ? trim((string) $v) : json_encode($v, JSON_UNESCAPED_UNICODE);
+                if ($v !== '') $signup_details[(string) $k] = $v;
+            }
+        }
+    }
+    // Notes coupées par une colonne trop courte : la fiche complète vient alors de public_signups
+    $notes_cut = false;
+    $oc = ak_db_columns($pdo, 'organizations');
+    if ($signup_notes !== '' && preg_match('/^varchar\((\d+)\)/', $oc['internal_notes']['type'] ?? '', $m)) {
+        $notes_cut = mb_strlen($signup_notes) >= (int) $m[1];
+    }
+    $show_notes = $signup_notes !== '' && !($notes_cut && $signup_details);
+    $signup_when = $signup ? ($signup['completed_at'] ?? null) ?: ($signup['created_at'] ?? null) : null;
+    $signup_contact = $signup ? trim(($signup['admin_first_name'] ?? '') . ' ' . ($signup['admin_last_name'] ?? '')) : '';
+    $signup_email = $signup ? trim((string) ($signup['admin_email'] ?? '')) : '';
+    $signup_phone = $signup ? trim((string) ($signup['phone'] ?? '')) : '';
+
+    $days_left = $plan_state['days_left'];
+    $trial_end_fr = $plan_state['trial_ends_at'] ? date('d/m/Y', strtotime((string) $plan_state['trial_ends_at'])) : '';
+    // Suspendue à la main PENDANT l'essai (la fin d'essai est encore à venir) : l'état commun la classe
+    // « Essai terminé », mais l'essai n'est pas arrivé à son terme — le bloc d'essai le dit tel quel.
+    $trial_paused = $plan_state['trial_expired'] && $plan_state['org_status'] === 'suspended' && $days_left !== null && $days_left > 0;
+    $pay_modes = ['stripe' => 'Stripe (carte)', 'manual' => 'Manuel', 'wire_transfer' => 'Virement', 'free_grant' => 'Offert'];
 
     sa_render_head($org['name']);
     sa_render_sidebar('associations');
     ?>
+
+    <style>
+    .sa-trial { position: relative; overflow: hidden; margin-bottom: 18px; padding: 22px 24px;
+        border: 1px solid rgba(167, 139, 250, .45) !important;
+        background: linear-gradient(135deg, rgba(139, 92, 246, .16), rgba(127, 119, 221, .06) 60%), var(--sa-bg-2) !important; }
+    .sa-trial.is-expired { border-color: rgba(245, 158, 11, .5) !important;
+        background: linear-gradient(135deg, rgba(245, 158, 11, .14), rgba(245, 158, 11, .04) 60%), var(--sa-bg-2) !important; }
+    .sa-trial-top { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+    .sa-trial-main { flex: 1; min-width: 240px; }
+    .sa-trial-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; letter-spacing: .08em;
+        padding: 4px 12px; border-radius: 999px; background: linear-gradient(135deg, #A78BFA, #7F77DD); color: #fff; }
+    .sa-trial.is-expired .sa-trial-tag { background: linear-gradient(135deg, #FCD34D, #F59E0B); color: #78350F; }
+    .sa-trial-title { font-size: 19px; font-weight: 750; letter-spacing: -.02em; margin: 12px 0 6px; color: var(--sa-ink); }
+    .sa-trial-text { font-size: 13px; color: var(--sa-ink-2); line-height: 1.55; max-width: 640px; }
+    .sa-trial-days { text-align: center; min-width: 120px; padding: 12px 16px; border-radius: 14px;
+        background: rgba(0, 0, 0, .25); border: 1px solid rgba(255, 255, 255, .08); }
+    .sa-trial-days .n { font-size: 34px; font-weight: 800; letter-spacing: -.04em; line-height: 1; color: #C4B5FD; font-variant-numeric: tabular-nums; }
+    .sa-trial.is-expired .sa-trial-days .n { color: #FCD34D; }
+    .sa-trial-days .l { font-size: 11.5px; color: var(--sa-ink-3); margin-top: 6px; }
+    .sa-trial-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 18px; padding-top: 16px;
+        border-top: 1px solid rgba(255, 255, 255, .08); }
+    .sa-trial-actions form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0; }
+    .sa-trial-actions select { padding: 7px 10px; background: var(--sa-bg-2); border: 1px solid var(--sa-border-strong);
+        border-radius: 8px; color: var(--sa-ink); font-family: inherit; font-size: 13px; max-width: 100%; }
+    .sa-trial-sep { width: 1px; align-self: stretch; background: rgba(255, 255, 255, .1); }
+    .sa-dl { font-size: 12.5px; color: var(--sa-ink-3); display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
+    .sa-dl > div:nth-child(even) { color: var(--sa-ink); overflow-wrap: anywhere; }
+    .sa-signup-notes { font-size: 13px; line-height: 1.6; color: var(--sa-ink-2); background: rgba(0, 0, 0, .2);
+        border: 1px solid var(--sa-border); border-radius: 10px; padding: 12px 14px; overflow-wrap: anywhere; }
+    @media (max-width: 640px) { .sa-trial-sep { display: none; } .sa-trial-days { width: 100%; } }
+    </style>
 
     <div class="sa-breadcrumb">
         <a href="/super-admin">Dashboard</a>
@@ -203,24 +430,13 @@ if ($view_id > 0) {
         <div>
             <h1 class="sa-page-title"><?= h($org['name']) ?></h1>
             <div class="sa-page-sub">
-                <span class="sa-badge <?=
-                    match($org['status']) {
-                        'active' => 'sa-badge-green', 'trial' => 'sa-badge-violet',
-                        'suspended' => 'sa-badge-red', 'cancelled' => 'sa-badge-gray',
-                        default => 'sa-badge-gray',
-                    } ?>">
-                    <?= match($org['status']) {
-                        'active' => '● Active', 'trial' => '⏱ Essai',
-                        'suspended' => '⏸ Suspendue', 'cancelled' => '✕ Résiliée',
-                        default => h($org['status']),
-                    } ?>
+                <span class="sa-badge <?= sa_plan_tone_class($plan_state['badge_tone']) ?>"<?= in_array($plan_state['badge_tone'], ['trial', 'expired'], true) ? ' style="font-weight:800; letter-spacing:.03em;"' : '' ?>>
+                    <?= sa_plan_tone_icon($plan_state['badge_tone']) ?> <?= h($plan_state['badge']) ?>
                 </span>
                 <span style="margin:0 8px">·</span>
-                Créée le <?= date('d/m/Y', strtotime($org['created_at'])) ?>
-                <?php if ($org['trial_ends_at']): ?>
-                    <span style="margin:0 8px">·</span>
-                    Fin d'essai : <?= date('d/m/Y', strtotime($org['trial_ends_at'])) ?>
-                <?php endif; ?>
+                Plan <?= h($plan_state['plan_label']) ?>
+                <span style="margin:0 8px">·</span>
+                Créée le <?= !empty($org['created_at']) ? date('d/m/Y', strtotime($org['created_at'])) : '—' ?>
             </div>
         </div>
         <div class="sa-page-actions">
@@ -303,6 +519,86 @@ if ($view_id > 0) {
     </div>
     <?php endif; ?>
 
+    <?php if ($in_trial): ?>
+    <!-- ========== ESSAI ========== -->
+    <div class="sa-card sa-trial<?= $plan_state['trial_expired'] ? ' is-expired' : '' ?>" id="essai">
+        <div class="sa-trial-top">
+            <div class="sa-trial-main">
+                <span class="sa-trial-tag"><?= $trial_paused ? '⏸ ESSAI SUSPENDU' : ($plan_state['trial_expired'] ? '⌛ ESSAI TERMINÉ' : '⏱ ESSAI PRO') ?></span>
+                <?php if ($trial_paused): ?>
+                    <div class="sa-trial-title">Association suspendue pendant son essai — fin d’essai prévue le <?= h($trial_end_fr) ?></div>
+                    <div class="sa-trial-text">
+                        L’accès est suspendu, les données sont conservées. «&nbsp;Réactiver&nbsp;» rouvre l’essai jusqu’au <?= h($trial_end_fr) ?>
+                        (plan <?= h($plan_state['plan_label']) ?>, 0 €) ; vous pouvez aussi prolonger l’essai ou passer l’association en abonnement.
+                    </div>
+                <?php elseif ($plan_state['trial_expired']): ?>
+                    <div class="sa-trial-title"><?= h($plan_state['badge']) ?></div>
+                    <div class="sa-trial-text">
+                        L’essai gratuit de <?= (int) AK_TRIAL_DAYS ?> jours est arrivé à son terme sans abonnement : l’accès est suspendu, les données sont conservées.
+                        Prolongez l’essai ou passez l’association en abonnement pour rouvrir l’accès.
+                    </div>
+                <?php else: ?>
+                    <div class="sa-trial-title">
+                        Essai gratuit en cours<?= $trial_end_fr !== '' ? ' — fin le ' . h($trial_end_fr) : ' — date de fin non définie' ?>
+                    </div>
+                    <div class="sa-trial-text">
+                        Plan <strong><?= h($plan_state['plan_label']) ?></strong> · 0 € pendant l’essai, sans carte bancaire.
+                        Toutes les fonctionnalités PRO sont ouvertes. Sans abonnement à la fin de l’essai, l’accès est suspendu.
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="sa-trial-days">
+                <?php if ($trial_paused): ?>
+                    <div class="n">J-<?= (int) $days_left ?></div>
+                    <div class="l">en pause</div>
+                <?php elseif ($plan_state['trial_expired']): ?>
+                    <div class="n"><?= $days_left !== null ? 'J+' . max(0, -$days_left) : '—' ?></div>
+                    <div class="l">depuis la fin</div>
+                <?php elseif ($days_left === null): ?>
+                    <div class="n">—</div>
+                    <div class="l">fin non définie</div>
+                <?php elseif ($days_left <= 0): ?>
+                    <div class="n">J-0</div>
+                    <div class="l">dernier jour</div>
+                <?php else: ?>
+                    <div class="n">J-<?= (int) $days_left ?></div>
+                    <div class="l"><?= (int) $days_left ?> jour<?= $days_left > 1 ? 's' : '' ?> restant<?= $days_left > 1 ? 's' : '' ?></div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <?php if ($can_plan): ?>
+        <div class="sa-trial-actions">
+            <?php foreach ([7, 14] as $d): ?>
+            <form method="POST" action="/super-admin/associations">
+                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
+                <input type="hidden" name="action" value="trial_extend">
+                <input type="hidden" name="org_id" value="<?= (int) $org['id'] ?>">
+                <input type="hidden" name="days" value="<?= $d ?>">
+                <button type="submit" class="sa-btn sa-btn-ghost sa-btn-sm">⏩ Prolonger de <?= $d ?> jours</button>
+            </form>
+            <?php endforeach; ?>
+            <?php if ($paid_plans): ?>
+            <span class="sa-trial-sep" aria-hidden="true"></span>
+            <form method="POST" action="/super-admin/associations"
+                  onsubmit="return confirm('Passer cette association sur le plan choisi ? L’essai prendra fin immédiatement.');">
+                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
+                <input type="hidden" name="action" value="set_plan">
+                <input type="hidden" name="org_id" value="<?= (int) $org['id'] ?>">
+                <label for="trial-to-plan" style="font-size:12.5px; color:var(--sa-ink-2);">Passer en abonnement :</label>
+                <select name="plan_id" id="trial-to-plan" required>
+                    <?php foreach ($paid_plans as $p): ?>
+                        <option value="<?= (int) $p['id'] ?>" <?= $p['slug'] === 'assokit' ? 'selected' : '' ?>><?= h($p['option']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="submit" class="sa-btn sa-btn-violet sa-btn-sm">✓ Passer en abonnement</button>
+            </form>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
     <!-- Stats rapides -->
     <div class="sa-kpi-grid">
         <div class="sa-kpi">
@@ -315,15 +611,24 @@ if ($view_id > 0) {
         </div>
         <div class="sa-kpi">
             <div class="sa-kpi-label">Plan</div>
-            <div class="sa-kpi-value" style="font-size:22px;"><?= h(ucfirst($org['plan'])) ?></div>
+            <div class="sa-kpi-value" style="font-size:22px;"><?= h($plan_state['plan_label']) ?></div>
+            <div class="sa-kpi-trend"><?= h(sa_plan_state_short($plan_state)) ?></div>
         </div>
-        <?php if ($subscription): ?>
         <div class="sa-kpi">
             <div class="sa-kpi-label">Abonnement</div>
-            <div class="sa-kpi-value" style="font-size:22px;"><?= number_format($subscription['price_ht'] * (1 + $subscription['tva_rate']/100), 2, ',', ' ') ?> €</div>
-            <div class="sa-kpi-trend"><?= $subscription['billing_cycle'] === 'yearly' ? '/an' : '/mois' ?> TTC</div>
+            <?php if ($in_trial): ?>
+                <div class="sa-kpi-value" style="font-size:22px;">0 €</div>
+                <div class="sa-kpi-trend">essai gratuit</div>
+            <?php elseif (!$plan_state['plan_id']): ?>
+                <div class="sa-kpi-value" style="font-size:22px;">—</div>
+                <div class="sa-kpi-trend">aucun abonnement (ancien plan)</div>
+            <?php elseif ((int) $plan_state['price_cents'] > 0): ?>
+                <div class="sa-kpi-value" style="font-size:22px;"><?= number_format($plan_state['price_cents'] / 100, 2, ',', ' ') ?> €</div>
+                <div class="sa-kpi-trend">/mois</div>
+            <?php else: ?>
+                <div class="sa-kpi-value" style="font-size:22px;"><?= h(sa_plan_price_label(0, (string) $plan_state['plan_slug'])) ?></div>
+            <?php endif; ?>
         </div>
-        <?php endif; ?>
     </div>
 
     <div style="display:grid; grid-template-columns: 2fr 1fr; gap: 20px;">
@@ -346,12 +651,25 @@ if ($view_id > 0) {
                     </div>
 
                     <div class="sa-group">
-                        <label>Plan tarifaire</label>
-                        <select name="plan">
-                            <option value="essentiel" <?= $org['plan'] === 'essentiel' ? 'selected' : '' ?>>Essentiel (gratuit)</option>
-                            <option value="association" <?= $org['plan'] === 'association' ? 'selected' : '' ?>>Association (49 € TTC/mois)</option>
-                            <option value="organisation" <?= $org['plan'] === 'organisation' ? 'selected' : '' ?>>Organisation (sur mesure)</option>
+                        <label for="org-plan">Plan tarifaire</label>
+                        <?php if ($can_plan && $plans): ?>
+                        <select name="plan_id" id="org-plan">
+                            <?php if (!$plan_state['plan_id']): ?>
+                                <option value="0" selected>— Aucun abonnement (ancien plan : <?= h($plan_state['plan_label']) ?>) —</option>
+                            <?php endif; ?>
+                            <?php foreach ($plans as $p): ?>
+                                <option value="<?= (int) $p['id'] ?>" <?= (int) $plan_state['plan_id'] === $p['id'] ? 'selected' : '' ?>>
+                                    <?= h($p['option']) ?><?= (int) $plan_state['plan_id'] === $p['id'] ? ' · actuel' : '' ?>
+                                </option>
+                            <?php endforeach; ?>
                         </select>
+                        <div style="font-size:11.5px; color:var(--sa-ink-4); margin-top:5px;">
+                            Actuellement : <?= h($plan_state['plan_label']) ?> · <?= h($plan_state['badge']) ?>.
+                            Le plan n’est modifié que si vous en choisissez un autre<?= $in_trial ? ' ; choisir un plan payant ou gratuit met fin à l’essai' : '' ?>.
+                        </div>
+                        <?php else: ?>
+                        <div style="font-size:13px; color:var(--sa-ink-2);"><?= h($plan_state['plan_label']) ?> · <?= h($plan_state['badge']) ?></div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="sa-group">
@@ -362,6 +680,35 @@ if ($view_id > 0) {
                     <button type="submit" class="sa-btn sa-btn-violet">💾 Enregistrer les modifications</button>
                 </form>
             </div>
+
+            <?php if ($from_signup && ($show_notes || $signup_details || $signup)): ?>
+            <!-- Demande d'inscription (lecture seule) -->
+            <div class="sa-card" style="margin-bottom: 16px;">
+                <div class="sa-card-title">📝 Demande d’inscription</div>
+                <div class="sa-card-sub">
+                    Formulaire rempli par le prospect lors de l’inscription en ligne (lecture seule).
+                    <?php if ($signup_when): ?>Reçue le <?= h(date('d/m/Y', strtotime((string) $signup_when))) ?><?= strlen((string) $signup_when) > 10 ? ' à ' . h(date('H:i', strtotime((string) $signup_when))) : '' ?>.<?php endif; ?>
+                </div>
+                <?php if ($signup_contact !== '' || $signup_email !== '' || $signup_phone !== ''): ?>
+                <div class="sa-dl" style="margin-bottom:12px;">
+                    <?php if ($signup_contact !== ''): ?><div>Contact :</div><div><?= h($signup_contact) ?></div><?php endif; ?>
+                    <?php if ($signup_email !== ''): ?><div>E-mail :</div><div><?= h($signup_email) ?></div><?php endif; ?>
+                    <?php if ($signup_phone !== '' && !isset($signup_details['Téléphone'])): ?><div>Téléphone :</div><div><?= h($signup_phone) ?></div><?php endif; ?>
+                </div>
+                <?php endif; ?>
+                <?php if ($show_notes): ?>
+                    <div class="sa-signup-notes"><?= nl2br(h($signup_notes)) ?></div>
+                <?php elseif ($signup_details): ?>
+                    <div class="sa-signup-notes sa-dl">
+                        <?php foreach ($signup_details as $k => $v): ?>
+                            <div><?= h($k) ?> :</div><div><?= nl2br(h($v)) ?></div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <div style="font-size:12.5px; color:var(--sa-ink-4);">Le détail du formulaire n’a pas été conservé.</div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
 
             <!-- Liste des users -->
             <div class="sa-card">
@@ -443,38 +790,56 @@ if ($view_id > 0) {
                 <?php endif; ?>
             </div>
 
-            <!-- Abonnement -->
-            <?php if ($subscription): ?>
-                <div class="sa-card">
-                    <div class="sa-card-title">💳 Abonnement</div>
+            <!-- Abonnement : plan réel (asso_subscriptions), 0 € pendant un essai -->
+            <div class="sa-card">
+                <div class="sa-card-title">💳 Abonnement</div>
 
-                    <div style="font-size:12.5px; color:var(--sa-ink-3); display:grid; grid-template-columns: auto 1fr; gap:6px 12px;">
-                        <div>Statut :</div>
-                        <div style="color:var(--sa-ink)"><strong><?= h(ucfirst($subscription['status'])) ?></strong></div>
+                <div class="sa-dl" style="margin-top:10px;">
+                    <div>Plan :</div>
+                    <div><strong><?= h($plan_state['plan_label']) ?></strong></div>
 
-                        <div>Cycle :</div>
-                        <div style="color:var(--sa-ink)"><?= $subscription['billing_cycle'] === 'yearly' ? 'Annuel' : 'Mensuel' ?></div>
-
-                        <div>Prix HT :</div>
-                        <div style="color:var(--sa-ink)"><?= number_format($subscription['price_ht'], 2, ',', ' ') ?> €</div>
-
-                        <div>TVA :</div>
-                        <div style="color:var(--sa-ink)"><?= $subscription['tva_rate'] ?>%</div>
-
-                        <div>Prix TTC :</div>
-                        <div style="color:var(--sa-ink)"><strong><?= number_format($subscription['price_ht'] * (1 + $subscription['tva_rate']/100), 2, ',', ' ') ?> €</strong></div>
-
-                        <?php if ($subscription['current_period_end']): ?>
-                            <div>Échéance :</div>
-                            <div style="color:var(--sa-ink)"><?= date('d/m/Y', strtotime($subscription['current_period_end'])) ?></div>
+                    <div>Statut :</div>
+                    <div>
+                        <span class="sa-badge <?= sa_plan_tone_class($plan_state['badge_tone']) ?>"><?= h($plan_state['badge']) ?></span>
+                        <?php if ($plan_state['sub_status'] === 'cancelled' && $plan_state['badge_tone'] !== 'cancelled'): ?>
+                            <div style="font-size:11.5px; color:#FCA5A5; margin-top:4px;">Abonnement annulé<?= !empty($asso_sub['cancelled_at']) && strtotime((string) $asso_sub['cancelled_at']) ? ' le ' . date('d/m/Y', strtotime((string) $asso_sub['cancelled_at'])) : '' ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <a href="/super-admin/abonnements?org_id=<?= (int) $org['id'] ?>" class="sa-btn sa-btn-ghost sa-btn-sm" style="margin-top:12px; width:100%">
-                        Voir les factures →
-                    </a>
+                    <div>Prix :</div>
+                    <div><?= h(sa_plan_state_price($plan_state)) ?></div>
+
+                    <?php if ($in_trial && $trial_end_fr !== ''): ?>
+                        <div><?= $trial_paused ? 'Fin d’essai prévue :' : 'Fin d’essai :' ?></div>
+                        <div><?= h($trial_end_fr) ?></div>
+                    <?php elseif ($asso_sub && !empty($asso_sub['current_period_end']) && strtotime((string) $asso_sub['current_period_end'])): ?>
+                        <div>Échéance :</div>
+                        <div><?= date('d/m/Y', strtotime((string) $asso_sub['current_period_end'])) ?></div>
+                    <?php endif; ?>
+
+                    <?php if ($in_trial): ?>
+                        <div>Paiement :</div>
+                        <div>aucun (essai gratuit, sans carte bancaire)</div>
+                    <?php elseif ($asso_sub && !empty($asso_sub['payment_mode'])): ?>
+                        <div>Paiement :</div>
+                        <div><?= h($pay_modes[$asso_sub['payment_mode']] ?? $asso_sub['payment_mode']) ?></div>
+                    <?php endif; ?>
+
+                    <?php if ($show_manual_billing): ?>
+                        <div>Facturation :</div>
+                        <div>
+                            <?= number_format((float) $subscription['price_ht'], 2, ',', ' ') ?> € HT
+                            + TVA <?= h(rtrim(rtrim(number_format((float) ($subscription['tva_rate'] ?? 0), 2, ',', ''), '0'), ',')) ?> %
+                            = <strong><?= number_format((float) $subscription['price_ht'] * (1 + (float) ($subscription['tva_rate'] ?? 0) / 100), 2, ',', ' ') ?> € TTC</strong>
+                            <?= ($subscription['billing_cycle'] ?? '') === 'yearly' ? '/an' : '/mois' ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
-            <?php endif; ?>
+
+                <a href="/super-admin/abonnements?org_id=<?= (int) $org['id'] ?>" class="sa-btn sa-btn-ghost sa-btn-sm" style="margin-top:12px; width:100%">
+                    Voir les factures →
+                </a>
+            </div>
 
         </div>
     </div>
@@ -487,16 +852,15 @@ if ($view_id > 0) {
 // =====================================================================
 // VUE LISTE (par defaut)
 // =====================================================================
-$filter_status = $_GET['status'] ?? '';
+$filter_status = (string) ($_GET['status'] ?? '');
+if (!in_array($filter_status, ['', 'active', 'trial', 'trial_expired', 'suspended', 'cancelled'], true)) $filter_status = '';
 $filter_validation = $_GET['filter'] ?? '';  // pending, validated, rejected
 $search = trim($_GET['q'] ?? '');
 
 $where = [];
 $params = [];
-if ($filter_status !== '') {
-    $where[] = 'o.status = ?';
-    $params[] = $filter_status;
-}
+// Le statut (essai en cours / terminé compris) se filtre après lecture de l'état du plan,
+// avec la même règle que l'affichage (ak_org_plan_state).
 if ($filter_validation === 'pending') {
     $where[] = "o.validation_status = 'pending_founder'";
 } elseif ($filter_validation === 'validated') {
@@ -525,6 +889,26 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute($params);
 $orgs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// État du plan de toutes les associations listées, en une requête
+$plan_states = sa_org_plan_states($pdo, array_column($orgs, 'id'));
+foreach ($orgs as &$o) {
+    $o['_ps'] = $plan_states[(int) $o['id']] ?? ak_org_plan_state($pdo, (int) $o['id']);
+}
+unset($o);
+if ($filter_status !== '') {
+    $orgs = array_values(array_filter($orgs, function ($o) use ($filter_status) {
+        $ps = $o['_ps'];
+        return match ($filter_status) {
+            'active'        => in_array($ps['badge_tone'], ['active', 'pending'], true),
+            'trial'         => $ps['badge_tone'] === 'trial',
+            'trial_expired' => $ps['badge_tone'] === 'expired',
+            'suspended'     => $ps['org_status'] === 'suspended',
+            'cancelled'     => $ps['org_status'] === 'cancelled',
+            default         => true,
+        };
+    }));
+}
 
 sa_render_head('Associations');
 sa_render_sidebar('associations');
@@ -571,6 +955,7 @@ sa_render_sidebar('associations');
         <option value="">Tous les statuts</option>
         <option value="active" <?= $filter_status === 'active' ? 'selected' : '' ?>>Actives</option>
         <option value="trial" <?= $filter_status === 'trial' ? 'selected' : '' ?>>En essai</option>
+        <option value="trial_expired" <?= $filter_status === 'trial_expired' ? 'selected' : '' ?>>Essai terminé</option>
         <option value="suspended" <?= $filter_status === 'suspended' ? 'selected' : '' ?>>Suspendues</option>
         <option value="cancelled" <?= $filter_status === 'cancelled' ? 'selected' : '' ?>>Résiliées</option>
     </select>
@@ -606,12 +991,12 @@ sa_render_sidebar('associations');
             </thead>
             <tbody>
                 <?php foreach ($orgs as $o): ?>
-                    <?php $val_status = $o['validation_status_safe'] ?? 'validated'; ?>
+                    <?php $val_status = $o['validation_status_safe'] ?? 'validated'; $ps = $o['_ps']; ?>
                     <tr style="cursor:pointer; <?= $val_status === 'pending_founder' ? 'background:rgba(251, 191, 36, 0.04);' : '' ?>" onclick="window.location='/super-admin/associations?id=<?= (int) $o['id'] ?>'">
                         <td>
                             <div class="sa-main-col"><?= h($o['name']) ?></div>
                             <div class="sa-sub-col">
-                                Créée <?= date('d/m/Y', strtotime($o['created_at'])) ?>
+                                Créée <?= !empty($o['created_at']) ? date('d/m/Y', strtotime($o['created_at'])) : '—' ?>
                                 <?php if ($o['suspended_reason']): ?>
                                     · <span style="color:#FCA5A5"><?= h($o['suspended_reason']) ?></span>
                                 <?php endif; ?>
@@ -627,20 +1012,14 @@ sa_render_sidebar('associations');
                             <?php endif; ?>
                         </td>
                         <td>
-                            <span class="sa-badge <?=
-                                match($o['status']) {
-                                    'active' => 'sa-badge-green', 'trial' => 'sa-badge-violet',
-                                    'suspended' => 'sa-badge-red', 'cancelled' => 'sa-badge-gray',
-                                    default => 'sa-badge-gray',
-                                } ?>">
-                                <?= match($o['status']) {
-                                    'active' => '● Active', 'trial' => '⏱ Essai',
-                                    'suspended' => '⏸ Suspendue', 'cancelled' => '✕ Résiliée',
-                                    default => h($o['status']),
-                                } ?>
+                            <span class="sa-badge <?= sa_plan_tone_class($ps['badge_tone']) ?>" title="<?= h($ps['badge']) ?>">
+                                <?= sa_plan_tone_icon($ps['badge_tone']) ?> <?= h(sa_plan_state_short($ps)) ?>
                             </span>
+                            <?php if (in_array($ps['badge_tone'], ['trial', 'expired'], true) && $ps['trial_ends_at']): ?>
+                                <div class="sa-sub-col"><?= $ps['badge_tone'] === 'expired' ? 'le' : 'fin' ?> <?= date('d/m/Y', strtotime((string) $ps['trial_ends_at'])) ?></div>
+                            <?php endif; ?>
                         </td>
-                        <td><span class="sa-badge sa-badge-gray"><?= h(ucfirst($o['plan'])) ?></span></td>
+                        <td><span class="sa-badge <?= $ps['is_trial'] && !$ps['trial_expired'] ? 'sa-badge-violet' : 'sa-badge-gray' ?>"><?= h($ps['plan_label']) ?></span></td>
                         <td><?= (int) $o['nb_users'] ?></td>
                         <td><?= (int) $o['nb_projects'] ?></td>
                         <td style="color:var(--sa-ink-3); font-size:12.5px;">
