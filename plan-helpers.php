@@ -790,13 +790,13 @@ function ak_render_overdue_overlay(PDO $pdo, int $org_id): string {
     $html .= '<a href="' . htmlspecialchars($regularize_url, ENT_QUOTES, 'UTF-8') . '" style="background:linear-gradient(180deg,#059669 0%,#047857 100%);color:white;padding:14px 24px;border-radius:12px;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 4px 14px rgba(5,150,105,0.30);">💳 Régulariser le paiement</a>';
     // 2. CTA secondaire — Contact (NOUVEAU)
     $html .= '<a href="/contact?subject=billing" style="background:#F0F9FF;color:#0C4A6E;padding:13px 24px;border-radius:12px;text-decoration:none;font-weight:600;font-size:14px;border:1px solid #BAE6FD;display:inline-flex;align-items:center;justify-content:center;gap:8px;">📞 Nous contacter — On va trouver une solution</a>';
-    // 3. CTA tertiaire — Downgrade (en mode discret) : page de confirmation (POST + CSRF), qui arrête
-    // l'abonnement impayé et passe l'association en Démarrage tout de suite
-    $html .= '<a href="/mon-asso-annuler-abonnement" style="background:transparent;color:#64748B;padding:10px 24px;border-radius:12px;text-decoration:none;font-size:13px;border:1px solid #E2E8F0;">↓ Passer au plan Démarrage (gratuit)</a>';
+    // 3. CTA tertiaire — Arrêt (en mode discret) : page de confirmation (POST + CSRF), qui arrête
+    // l'abonnement impayé ; l'association passe en accès limité (Démarrage, formule qui n'est plus proposée)
+    $html .= '<a href="/mon-asso-annuler-abonnement" style="background:transparent;color:#64748B;padding:10px 24px;border-radius:12px;text-decoration:none;font-size:13px;border:1px solid #E2E8F0;">↓ Arrêter mon abonnement</a>';
     $html .= '</div>';
 
     $html .= '<p style="color:#DC2626;font-size:12px;margin:18px 0 0;line-height:1.5;">';
-    $html .= '⚠️ <strong>Attention</strong> : en passant au plan Démarrage, vous perdrez la diffusion email, les factures récurrentes, les statistiques avancées et certaines fonctionnalités. Vos données existantes restent intactes.';
+    $html .= '⚠️ <strong>Attention</strong> : en arrêtant votre abonnement, votre association passe en accès limité : vous perdrez la diffusion email, les factures récurrentes, les statistiques avancées et certaines fonctionnalités. Vos données existantes restent intactes.';
     $html .= '</p>';
     $html .= '</div></div>';
 

@@ -12,6 +12,14 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-permissions.php';
 require_once __DIR__ . '/support-helper.php';
+
+// Anciens liens (e-mails, notifications) : /super-admin/support?id=N mène au ticket, pas à la liste.
+// Le .htaccess le fait déjà en production ; ceci couvre aussi l'accès direct au fichier.
+if ((int) ($_GET['id'] ?? 0) > 0) {
+    header('Location: /super-admin/support/' . (int) $_GET['id'], true, 302);
+    exit;
+}
+
 require_login();
 $user = sa_require_super_admin();
 $ctx = sa_get_permissions_context();

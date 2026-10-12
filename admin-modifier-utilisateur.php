@@ -22,12 +22,14 @@ if ($user_id <= 0) {
     exit;
 }
 
+// Un compte supprimé (corbeille de /adherents) est introuvable ici, comme pour les actions
+// d'action-admin-utilisateur : plus de page d'édition dont tous les boutons échouent.
 $stmt = $pdo->prepare("
     SELECT u.*,
            creator.first_name AS creator_first, creator.last_name AS creator_last
     FROM users u
     LEFT JOIN users creator ON u.created_by_user_id = creator.id
-    WHERE u.id = ? AND u.org_id = ?
+    WHERE u.id = ? AND u.org_id = ? AND u.deleted_at IS NULL
 ");
 $stmt->execute([$user_id, $org_id]);
 $user = $stmt->fetch();
@@ -41,6 +43,7 @@ $is_self = ($user_id === (int)$current['id']);
 
 $errors = $_SESSION['form_errors'] ?? [];
 unset($_SESSION['form_errors']);
+$has_2fa = !empty($user['totp_enabled']);
 
 render_head('Modifier ' . $user['first_name'] . ' ' . $user['last_name']);
 render_sidebar('admin');
@@ -76,6 +79,9 @@ $colors = [
           <?php endif; ?>
           <?php if ($user['must_change_password']): ?>
             · <span style="color: #92400E; font-weight: 500;">🔑 Mot de passe temporaire</span>
+          <?php endif; ?>
+          <?php if ($has_2fa): ?>
+            · <span style="color: #065F46; font-weight: 500;">🔐 Double authentification active</span>
           <?php endif; ?>
         </div>
       </div>
@@ -124,7 +130,12 @@ $colors = [
       <div class="form-cols">
         <div class="form-row">
           <label class="form-label">Email <span class="required">*</span></label>
-          <input type="email" name="email" class="form-input-lg" required maxlength="150" value="<?= h($user['email']) ?>">
+          <?php if ($is_self): ?>
+            <input type="email" name="email" class="form-input-lg" required maxlength="150" value="<?= h($user['email']) ?>" readonly style="background: var(--bg-2); color: var(--ink-2);">
+            <div class="form-hint">Pour changer votre adresse de connexion : <a href="/parametres?tab=compte">Paramètres › Compte</a> (mot de passe demandé).</div>
+          <?php else: ?>
+            <input type="email" name="email" class="form-input-lg" required maxlength="150" value="<?= h($user['email']) ?>">
+          <?php endif; ?>
         </div>
         <div class="form-row">
           <label class="form-label">Téléphone</label>
@@ -264,7 +275,7 @@ $colors = [
           <input type="checkbox" name="can_manage_events" value="1" <?= $user['can_manage_events'] ? 'checked' : '' ?>>
           <div>
             <div class="cap-name">📅 Gérer les événements</div>
-            <div class="cap-desc">Créer, modifier, supprimer</div>
+            <div class="cap-desc">Modifier et supprimer tous les événements</div>
           </div>
         </label>
         <label class="cap-option">
@@ -280,6 +291,7 @@ $colors = [
     <!-- Notes admin -->
     <div class="form-section">
       <h2 class="form-section-title">📝 Notes internes (admin uniquement)</h2>
+      <p class="form-section-desc">Visibles uniquement par les admins dans l’outil. Comme toute donnée personnelle, elles figurent dans l’export RGPD de la personne si elle le demande.</p>
       <div class="form-row">
         <textarea name="notes_admin" class="form-textarea-lg" rows="3" maxlength="2000"><?= h($user['notes_admin']) ?></textarea>
       </div>
@@ -315,16 +327,36 @@ $colors = [
 
     <div style="display: flex; gap: 12px; flex-wrap: wrap;">
 
-      <!-- Reset mot de passe -->
-      <form method="POST" action="/action-admin-utilisateur" style="margin: 0;"
-            onsubmit="return confirm('Générer un nouveau mot de passe pour <?= h(addslashes($user['first_name'])) ?> ?\n\nL\'ancien mot de passe sera immédiatement invalidé.');">
-        <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
-        <input type="hidden" name="action" value="reset_password">
-        <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
-        <button type="submit" class="btn btn-ghost" style="color: #92400E;">
-          🔑 Réinitialiser le mot de passe
-        </button>
-      </form>
+      <?php if ($is_self): ?>
+        <!-- Son propre compte : mot de passe et double authentification se gèrent dans Paramètres (mot de passe actuel demandé) -->
+        <a href="/parametres?tab=securite" class="btn btn-ghost" style="color: #92400E;">
+          🔑 Changer mon mot de passe (Paramètres › Sécurité)
+        </a>
+      <?php else: ?>
+        <!-- Reset mot de passe -->
+        <form method="POST" action="/action-admin-utilisateur" style="margin: 0;"
+              onsubmit="return confirm('Générer un nouveau mot de passe pour <?= h(addslashes($user['first_name'])) ?> ?\n\nL\'ancien mot de passe sera immédiatement invalidé.');">
+          <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+          <input type="hidden" name="action" value="reset_password">
+          <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
+          <button type="submit" class="btn btn-ghost" style="color: #92400E;">
+            🔑 Réinitialiser le mot de passe
+          </button>
+        </form>
+
+        <?php if ($has_2fa): ?>
+          <!-- Téléphone perdu sans code de secours : l'admin retire la double authentification -->
+          <form method="POST" action="/action-admin-utilisateur" style="margin: 0;"
+                onsubmit="return confirm('Réinitialiser la double authentification de <?= h(addslashes($user['first_name'] . ' ' . $user['last_name'])) ?> ?\n\nCette personne se connectera avec son seul mot de passe, puis pourra réactiver la double authentification dans Paramètres › Sécurité.');">
+            <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+            <input type="hidden" name="action" value="reset_2fa">
+            <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
+            <button type="submit" class="btn btn-ghost" style="color: #92400E;">
+              🔐 Réinitialiser la double authentification
+            </button>
+          </form>
+        <?php endif; ?>
+      <?php endif; ?>
 
       <?php if (!$is_self): ?>
         <?php if ($user['is_active']): ?>

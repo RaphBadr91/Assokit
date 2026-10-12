@@ -21,8 +21,10 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+require_once __DIR__ . '/sa-auth-helpers.php';
 
 require_login();
+sa_leave_impersonation_first();   // incarnation en cours : page « Revenir à mon compte », pas un 403
 $user = ak_platform_flags(current_user());
 
 $has_access = !empty($user['is_founder']) || !empty($user['is_super_admin']);
@@ -32,7 +34,6 @@ if (!$has_access) {
 }
 
 // Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
-require_once __DIR__ . '/sa-auth-helpers.php';
 sa_auth_gate();
 
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));

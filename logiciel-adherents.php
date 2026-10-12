@@ -4,6 +4,9 @@
  * Route : /logiciel-adherents. Premium + FAQPage + Breadcrumb + SoftwareApplication.
  */
 require_once __DIR__ . '/includes-public.php';
+// Offre schema.org de la formule Assokit (prix HT, TVA non comprise : includes-pricing.php)
+require_once __DIR__ . '/includes-pricing.php';
+$offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],
@@ -13,16 +16,16 @@ $breadcrumb = build_breadcrumb_jsonld([
 $faqs = [
     ['Quel logiciel pour gérer les adhérents d\'une association ?', "Un logiciel de gestion des adhérents doit centraliser l'annuaire, les rôles, les cotisations et la communication. Assokit réunit tout ça : fiche complète par adhérent, rôles personnalisés, espaces membres, relances de cotisation et emailing ciblé — pensé pour les associations loi 1901."],
     ['Peut-on gérer différents rôles et niveaux d\'adhérents ?', "Oui : bureau, coordinateurs, membres, sympathisants… avec des droits et des espaces adaptés à chacun. Vous gardez la maîtrise de qui voit et fait quoi."],
-    ['Le logiciel relance-t-il les adhérents pour les cotisations ?', "Oui, automatiquement : les adhérents non à jour reçoivent des relances, et chaque paiement met la fiche à jour en temps réel. Fini les fichiers éparpillés et les doublons."],
-    ['Les adhérents ont-ils un espace dédié ?', "Oui : chaque adhérent peut accéder à son espace (informations, documents, paiement de cotisation), ce qui allège le travail du bureau."],
+    ['Le logiciel relance-t-il les adhérents pour les cotisations ?', "Oui : les adhésions à renouveler se relancent en un clic, ou automatiquement si vous activez la relance automatique, et chaque règlement enregistré met la fiche à jour en temps réel. Fini les fichiers éparpillés et les doublons."],
+    ['Les adhérents ont-ils un espace dédié ?', "Oui : chaque adhérent peut accéder à son espace (informations, documents, suivi de sa cotisation), ce qui allège le travail du bureau."],
     ['Peut-on importer sa liste d\'adhérents existante ?', "Oui : import de votre fichier (CSV/Excel) en quelques minutes, sans perdre vos données. Et export à tout moment — vos données restent les vôtres."],
     ['Comment gérer le fichier des adhérents d\'une association ?', "Le fichier des adhérents se gère dans une base centralisée plutôt que dans un tableur fragile et vite dépassé. Chaque adhérent a une fiche unique (coordonnées, rôle, historique, cotisations, documents) tenue à jour en temps réel. Assokit centralise ce fichier adhérents, évite la double-saisie, trace chaque modification et permet l'export à tout moment — pour un suivi fiable des adhésions, des renouvellements et de la communication."],
     ['Un logiciel de gestion des adhérents est-il conforme au RGPD ?', "Oui, à condition qu'il encadre les données personnelles. Assokit est hébergé en France, chiffre les données, journalise les accès et vous permet de répondre aux droits des adhérents (accès, rectification, effacement, export). Vous restez responsable de traitement, mais l'outil facilite la conformité RGPD : durées de conservation, radiation d'un membre et purge des anciens adhérents sont maîtrisées."],
     ['Peut-on importer sa liste d\'adhérents depuis Excel ?', "Oui : l'import depuis un fichier Excel ou CSV se fait en quelques minutes. Vous téléversez votre tableur, faites correspondre les colonnes (nom, email, rôle, statut de cotisation) et vos adhérents sont créés sans ressaisie. Aucune donnée n'est perdue, et vous pouvez ré-exporter votre base quand vous le souhaitez."],
-    ['Comment relancer les adhésions à renouveler ?', "Assokit repère automatiquement les adhésions arrivant à échéance et envoie des relances de renouvellement par email aux adhérents concernés. Chaque paiement met la fiche à jour en temps réel, et vous pilotez la communication ciblée (par rôle, par équipe ou par statut) sans lister manuellement les retardataires — un gain de temps direct pour les bénévoles du bureau."],
+    ['Comment relancer les adhésions à renouveler ?', "Assokit repère automatiquement les adhésions arrivant à échéance : vous relancez les adhérents concernés par e-mail en un clic, ou la relance automatique s'en charge si vous l'activez. Chaque règlement enregistré met la fiche à jour en temps réel, et vous pilotez la communication ciblée (par rôle, par équipe ou par statut) sans lister manuellement les retardataires — un gain de temps direct pour les bénévoles du bureau."],
 ];
 $faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
-$soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplication', 'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android', 'description' => "Logiciel de gestion des adhérents pour association loi 1901 : annuaire, rôles, cotisations, espaces membres et communication ciblée.", 'offers' => ['@type' => 'AggregateOffer', 'lowPrice' => '29.99', 'highPrice' => '49.99', 'priceCurrency' => 'EUR', 'offerCount' => '3'], 'inLanguage' => 'fr-FR'];
+$soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplication', 'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android', 'description' => "Logiciel de gestion des adhérents pour association loi 1901 : annuaire, rôles, cotisations, espaces membres et communication ciblée.", 'offers' => ak_offer_jsonld(), 'inLanguage' => 'fr-FR'];
 
 render_public_head([
     'title'       => 'Logiciel de gestion des adhérents pour association · Assokit',
@@ -43,7 +46,7 @@ require __DIR__ . '/_landing-premium.php';
         <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:620px;">Le <span class="lp-grad">logiciel de gestion des adhérents</span> de votre association</h1>
         <p class="pub-tagline reveal" style="max-width:560px;">Annuaire intelligent, <strong>rôles personnalisés</strong>, cotisations, espaces membres et communication ciblée. Un fichier adhérents vivant, toujours à jour — sans fichiers éparpillés.</p>
         <div class="lp-hero-cta reveal">
-          <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement
+          <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
           <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
         </div>
@@ -71,7 +74,7 @@ require __DIR__ . '/_landing-premium.php';
       <?php foreach ([
         ['👤','Fiche complète','Coordonnées, historique, cotisations, documents — tout au même endroit.'],
         ['🎭','Rôles personnalisés','Bureau, coordinateurs, membres, sympathisants, avec droits adaptés.'],
-        ['🔑','Espaces membres','Chaque adhérent accède à son espace : infos, docs, paiement.'],
+        ['🔑','Espaces membres','Chaque adhérent accède à son espace : infos, docs, suivi de sa cotisation.'],
         ['💸','Cotisations liées','Statut à jour automatiquement, relances des retardataires.'],
         ['📣','Communication ciblée','Emails à un rôle, une équipe ou une liste — suivi des ouvertures.'],
         ['📥','Import / export','Reprenez votre fichier existant, exportez quand vous voulez.'],
@@ -122,7 +125,7 @@ require __DIR__ . '/_landing-premium.php';
             ['Historique par adhérent', 'Non', 'Oui', 'Complet &amp; daté'],
             ['Application mobile', 'Non', 'Selon l\'éditeur', 'iOS &amp; Android'],
             ['Hébergement en France', 'Selon votre stockage', 'Selon l\'éditeur', '🇫🇷 Oui'],
-            ['Prix', 'Gratuit mais chronophage', '€€ par utilisateur', 'Essai gratuit pour démarrer'],
+            ['Prix', 'Gratuit mais chronophage', '€€ par utilisateur', $offer['per_month'] . ' · essai gratuit 14 j'],
           ] as $j => $r): ?>
             <tr style="border-top:1px solid var(--c-border-soft);<?= $j % 2 ? 'background:var(--c-creme);' : '' ?>">
               <td style="padding:13px 18px;font-weight:600;color:var(--c-encre);"><?= $r[0] ?></td>
@@ -135,7 +138,7 @@ require __DIR__ . '/_landing-premium.php';
       </table>
     </div>
     <div class="pub-text-center reveal" style="margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
-      <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+      <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
       <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
     </div>
     <p class="pub-text-center" style="margin-top:10px;font-size:13px;color:var(--c-text-3);">Sans carte bancaire · sans engagement</p>
@@ -148,7 +151,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="reveal" style="max-width:760px;margin:0 auto;color:var(--c-text-2);line-height:1.8;font-size:16px;">
       <p style="margin:0 0 20px;"><strong style="color:var(--c-encre);">Une base à jour et conforme au RGPD.</strong> Le premier bénéfice d'un logiciel de gestion des adhérents, c'est d'avoir un fichier adhérents unique, vivant et fiable. Fini les versions d'un tableur qui circulent par email : la base est centralisée, chaque adhésion et chaque radiation de membre sont tracées, et les données personnelles sont encadrées. Hébergement en France, journalisation des accès, gestion des durées de conservation et de l'effacement : vous répondez sereinement aux obligations RGPD et aux droits de vos adhérents, tout en gardant la maîtrise de l'export de vos données.</p>
       <p style="margin:0 0 20px;"><strong style="color:var(--c-encre);">Une communication qui fidélise vraiment.</strong> Un adhérent bien informé est un adhérent qui reste. En reliant le suivi des cotisations à la communication ciblée, vous adressez le bon message à la bonne personne : relance de renouvellement à ceux dont l'adhésion arrive à échéance, convocation aux membres du bureau, newsletter aux bénévoles actifs. L'assistant IA rédige ces messages en quelques secondes, et le suivi des ouvertures vous montre ce qui fonctionne. Résultat : moins d'adhérents perdus faute de relance, et un lien entretenu tout au long de l'année.</p>
-      <p style="margin:0;"><strong style="color:var(--c-encre);">Zéro double-saisie, plus de temps pour l'essentiel.</strong> Chaque paiement de cotisation met la fiche à jour automatiquement ; chaque nouvel adhérent s'ajoute à la base sans ressaisie ; chaque export part propre et daté. Les bénévoles ne recopient plus les mêmes informations d'un tableur à un logiciel de comptabilité : l'information saisie une fois circule partout. C'est autant d'heures rendues aux projets de l'association plutôt qu'à l'administratif.</p>
+      <p style="margin:0;"><strong style="color:var(--c-encre);">Zéro double-saisie, plus de temps pour l'essentiel.</strong> Chaque règlement de cotisation enregistré met la fiche à jour automatiquement ; chaque nouvel adhérent s'ajoute à la base sans ressaisie ; chaque export part propre et daté. Les bénévoles ne recopient plus les mêmes informations d'un tableur à un logiciel de comptabilité : l'information saisie une fois circule partout. C'est autant d'heures rendues aux projets de l'association plutôt qu'à l'administratif.</p>
     </div>
   </div>
 </section>
@@ -191,7 +194,7 @@ require __DIR__ . '/_landing-premium.php';
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Vos adhérents, enfin bien gérés</h2>
       <p>Importez votre fichier et démarrez gratuitement. Sans engagement.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-        <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+        <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>
       </div>
     </div>

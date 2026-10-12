@@ -10,9 +10,10 @@
  *      Stripe : ligne « cancelled » avec sa date de fin (ak_sub_cancel_manual)
  *   3. Webhook customer.subscription.updated met à jour BDD
  *   4. Le client garde l'accès jusqu'à fin de période payée, puis passe
- *      au plan gratuit Démarrage (ak_sub_expire_cancelled)
- *   Paiement en retard (« Passer au plan Démarrage » de l'écran bloquant
+ *      en accès limité, formule Démarrage (ak_sub_expire_cancelled)
+ *   Paiement en retard (« Arrêter mon abonnement » de l'écran bloquant
  *   et des relances) : arrêt immédiat de l'abonnement impayé et Démarrage.
+ *   Démarrage n'est plus une offre : les textes parlent d'accès limité.
  * --------------------------------------------------------------
  */
 require_once __DIR__ . '/config.php';
@@ -59,7 +60,7 @@ $payment_mode = (string)($active_sub['payment_mode'] ?? 'manual');
 $is_stripe_sub = $payment_mode === 'stripe' && $stripe_sub_id !== '';
 // Déjà résilié : hors Stripe (« cancelled ») ou résiliation programmée chez Stripe
 $is_already_cancelled = $sub_status === 'cancelled' || !empty($active_sub['cancel_at_period_end']);
-// Paiement en retard : « Passer au plan Démarrage » (lien de l'écran bloquant et des e-mails de relance)
+// Paiement en retard : « Arrêter mon abonnement » (lien de l'écran bloquant et des e-mails de relance)
 // arrête l'abonnement impayé et rétrograde TOUT DE SUITE, sans attendre une fin de période non payée
 $is_overdue = $sub_status === 'overdue';
 // Formule gratuite sans prélèvement par carte en cours : rien à annuler
@@ -108,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Votre abonnement par carte ne peut pas être arrêté d’ici pour le moment. Contactez-nous : nous l’arrêtons pour vous.');
             }
             if ($is_overdue) {
-                // Paiement en retard : arrêt immédiat de l'abonnement impayé, puis plan gratuit Démarrage
+                // Paiement en retard : arrêt immédiat de l'abonnement impayé, puis accès limité (Démarrage)
                 $stripe_ended = false;
                 if ($is_stripe_sub) {
                     $resp = ak_stripe_api_call($pdo, 'DELETE', '/subscriptions/' . rawurlencode($stripe_sub_id));
@@ -120,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 ak_db_update($pdo, 'asso_subscriptions', (int)$active_sub['id'], ['status' => 'cancelled'], ['cancelled_at' => 'NOW()', 'updated_at' => 'NOW()']);
                 ak_sub_downgrade_free($pdo, (int)$active_sub['id'], $stripe_ended);
-                $flash_msg = 'Votre association est passée au plan gratuit Démarrage. L’abonnement impayé est arrêté : plus aucun prélèvement. Vos données sont conservées.';
+                $flash_msg = 'L’abonnement impayé est arrêté : plus aucun prélèvement. Votre association passe en accès limité (Démarrage) et vos données sont conservées. Vous pouvez reprendre Assokit à tout moment.';
             } elseif ($is_stripe_sub) {
                 // Annulation via API Stripe (à fin de période)
                 $resp = ak_stripe_api_call($pdo, 'POST', '/subscriptions/' . rawurlencode($stripe_sub_id), [
@@ -138,13 +139,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ['cancelled_at' => 'NOW()', 'updated_at' => 'NOW()']);
                 $end = $stripe_end ? date('d/m/Y', strtotime($stripe_end)) : $access_until_fr;
                 $flash_msg = 'Résiliation enregistrée. Vous gardez votre formule ' . $plan_label . ($end !== '' ? ' jusqu’au ' . $end : ' jusqu’à la fin de la période payée')
-                           . ', puis votre association passe au plan gratuit Démarrage. Aucun nouveau prélèvement.';
+                           . ', puis votre association passe en accès limité (Démarrage). Aucun nouveau prélèvement.';
             } else {
                 // Annulation manuelle (mode manual / wire_transfer / free_grant) : la formule reste jusqu'à
                 // la fin de la période, puis Démarrage (ak_sub_expire_cancelled)
                 $end = ak_sub_cancel_manual($pdo, $active_sub, $org_id);
                 $flash_msg = 'Résiliation enregistrée. Vous gardez votre formule ' . $plan_label . ' jusqu’au ' . date('d/m/Y', strtotime($end))
-                           . ', puis votre association passe au plan gratuit Démarrage.';
+                           . ', puis votre association passe en accès limité (Démarrage).';
             }
 
             $_SESSION['flash_success'] = $flash_msg;
@@ -216,9 +217,9 @@ render_sidebar('mon-asso-plan');
         <p style="color:#78350F;line-height:1.65;font-size:14.5px;margin:0 0 22px;">
           Votre abonnement <strong><?= h($plan_label) ?></strong> a déjà été annulé.<br>
           <?php if ($access_until_fr !== ''): ?>
-            Vous gardez l'accès jusqu'au <strong><?= h($access_until_fr) ?></strong>, puis votre association passe au plan gratuit Démarrage.
+            Vous gardez l'accès jusqu'au <strong><?= h($access_until_fr) ?></strong>, puis votre association passe en accès limité (Démarrage).
           <?php else: ?>
-            Votre association passera ensuite au plan gratuit Démarrage.
+            Votre association passera ensuite en accès limité (Démarrage).
           <?php endif; ?>
         </p>
         <a href="/mon-asso-plan" style="background:#92400E;color:white;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour</a>
@@ -238,11 +239,11 @@ render_sidebar('mon-asso-plan');
 
     <?php elseif ($is_overdue): ?>
 
-      <!-- Paiement en retard : passage immédiat au plan gratuit -->
+      <!-- Paiement en retard : arrêt immédiat de l'abonnement impayé -->
       <div style="background:white;border:2px solid #FECACA;border-radius:18px;padding:36px 32px;">
         <div style="text-align:center;margin-bottom:22px;">
           <div style="font-size:54px;margin-bottom:10px;">↓</div>
-          <h1 style="margin:0 0 8px;font-size:22px;color:#0F172A;">Passer au plan gratuit Démarrage</h1>
+          <h1 style="margin:0 0 8px;font-size:22px;color:#0F172A;">Arrêter mon abonnement</h1>
           <p style="color:#64748B;font-size:14px;margin:0;">Plan actuel : <strong><?= h($plan_label) ?></strong> · paiement en retard</p>
         </div>
 
@@ -250,7 +251,7 @@ render_sidebar('mon-asso-plan');
           Le dernier paiement de votre abonnement <strong><?= h($plan_label) ?></strong> n’a pas abouti. En confirmant :
           <ul style="margin:8px 0 0;padding-left:20px;">
             <li>l’abonnement est <strong>arrêté tout de suite</strong> : plus aucun prélèvement ;</li>
-            <li>votre association passe au <strong>plan gratuit Démarrage</strong> (sans diffusion email, factures récurrentes ni statistiques avancées) ;</li>
+            <li>votre association passe en <strong>accès limité</strong> (formule Démarrage : sans diffusion email, factures récurrentes ni statistiques avancées) ;</li>
             <li><strong>vos données sont conservées</strong> et vous pouvez reprendre une formule à tout moment.</li>
           </ul>
         </div>
@@ -270,7 +271,7 @@ render_sidebar('mon-asso-plan');
 
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <a href="/mon-asso-plan" style="background:#0F172A;color:white;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;flex:1;text-align:center;">← Garder mon abonnement</a>
-            <button type="submit" style="background:#DC2626;color:white;padding:12px 24px;border:none;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;">↓ Passer au plan Démarrage</button>
+            <button type="submit" style="background:#DC2626;color:white;padding:12px 24px;border:none;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;">↓ Arrêter mon abonnement</button>
           </div>
         </form>
       </div>
@@ -295,7 +296,7 @@ render_sidebar('mon-asso-plan');
             <li>Les statistiques avancées</li>
             <li>Le support prioritaire</li>
             <?php if (function_exists('ak_has_addon_custom_domain') && ak_has_addon_custom_domain($pdo, $org_id)): ?>
-            <li>Votre domaine personnalisé (add-on +10€/mois)</li>
+            <li>Votre domaine personnalisé (add-on)</li>
             <?php endif; ?>
           </ul>
         </div>
@@ -304,7 +305,7 @@ render_sidebar('mon-asso-plan');
         <div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:12px;padding:18px 20px;margin-bottom:22px;">
           <div style="font-weight:700;color:#047857;margin-bottom:10px;font-size:14px;">✅ Vos garanties :</div>
           <ul style="margin:0;padding-left:20px;color:#065F46;line-height:1.85;font-size:13.5px;">
-            <li><strong>Vous gardez l'accès</strong> jusqu'à la fin de la période payée<?php if ($access_until_fr !== ''): ?> (<?= h($access_until_fr) ?>)<?php endif; ?>, puis votre association passe au plan gratuit Démarrage</li>
+            <li><strong>Vous gardez l'accès</strong> jusqu'à la fin de la période payée<?php if ($access_until_fr !== ''): ?> (<?= h($access_until_fr) ?>)<?php endif; ?>, puis votre association passe en accès limité (Démarrage)</li>
             <li><strong>Vos données sont conservées</strong> (vous pouvez les exporter à tout moment)</li>
             <li><strong>Aucun frais d'annulation</strong></li>
             <li><strong>Vous pouvez vous réabonner</strong> à tout moment, vos données seront restaurées</li>
@@ -316,7 +317,6 @@ render_sidebar('mon-asso-plan');
           <div style="font-weight:700;color:#1E40AF;margin-bottom:10px;font-size:14px;">💡 Avant d'annuler, avez-vous pensé à :</div>
           <div style="display:flex;gap:8px;flex-direction:column;font-size:13px;color:#1E3A8A;">
             <a href="/contact?subject=billing" style="color:#1E40AF;text-decoration:none;padding:6px 0;">→ Nous parler de votre situation (peut-être qu'on peut vous aider)</a>
-            <a href="/mon-asso-plan" style="color:#1E40AF;text-decoration:none;padding:6px 0;">→ Passer à un plan moins cher (downgrade)</a>
             <a href="/contact?subject=support" style="color:#1E40AF;text-decoration:none;padding:6px 0;">→ Une difficulté technique ? On vous aide gratuitement</a>
           </div>
         </div>

@@ -9,6 +9,9 @@
  *   - Positionnement honnête : complémentarité possible ; beaucoup d'associations utilisent les deux.
  */
 require_once __DIR__ . '/includes-public.php';
+// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+require_once __DIR__ . '/includes-pricing.php';
+$offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],
@@ -20,7 +23,7 @@ $faqs = [
     ['Assokit est-il une alternative à HelloAsso ?', "Cela dépend de votre besoin. HelloAsso est spécialisé dans la collecte et le paiement en ligne. Assokit, lui, est un logiciel de gestion complet de l'association : adhérents, cotisations, comptabilité, projets, assemblées générales et communication. Si vous cherchez surtout à gérer toute la vie de votre association dans un seul outil, Assokit est une alternative pertinente. Si votre seul besoin est d'encaisser des dons ponctuels, une plateforme de collecte peut suffire."],
     ['Peut-on utiliser Assokit et HelloAsso ensemble ?', "Oui, et beaucoup d'associations le font. Les deux outils sont complémentaires : HelloAsso pour organiser une campagne de dons ou une billetterie d'événement, Assokit pour gérer au quotidien les adhérents, les cotisations, la comptabilité et les projets. Vous pouvez tout à fait encaisser via une plateforme de collecte et centraliser la gestion et le suivi dans Assokit."],
     ['Quelle est la différence entre Assokit et HelloAsso ?', "La différence tient au périmètre. HelloAsso couvre le paiement et la collecte (dons, adhésions en ligne, billetterie), gratuitement pour l'association. Assokit couvre la gestion complète : annuaire des adhérents, suivi et relances de cotisations, comptabilité analytique par projet, préparation des AG et communication assistée par IA. L'un se concentre sur l'encaissement, l'autre sur le pilotage global de l'association."],
-    ['Assokit est-il gratuit comme HelloAsso ?', "Non, le modèle est différent. HelloAsso est gratuit pour l'association et financé par les contributions volontaires des payeurs. Assokit est un logiciel de gestion sur abonnement, à partir de 29,99 €/mois, avec un essai gratuit de 14 jours sans carte bancaire pour le tester. Les deux modèles répondent à des besoins distincts : la collecte d'un côté, la gestion complète de l'autre."],
+    ['Assokit est-il gratuit comme HelloAsso ?', "Non, le modèle est différent. HelloAsso est gratuit pour l'association et financé par les contributions volontaires des payeurs. Assokit est un logiciel de gestion sur abonnement, à " . $offer['label'] . " tout inclus, avec un essai gratuit de 14 jours sans carte bancaire pour le tester. Les deux modèles répondent à des besoins distincts : la collecte d'un côté, la gestion complète de l'autre."],
 ];
 $faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
 $soft_schema = [
@@ -81,8 +84,8 @@ require __DIR__ . '/_landing-premium.php';
     </div>
     <div class="pub-section-lead reveal" style="max-width:820px;margin:0 auto;text-align:left;">
       <p style="margin:0 0 18px;"><strong>HelloAsso : le paiement et la collecte.</strong> HelloAsso est une plateforme française bien connue des associations. Son cœur de métier est le paiement en ligne : campagnes de dons, adhésions payantes, billetterie d'événements, crowdfunding. Elle est <strong>gratuite pour l'association</strong> et se finance grâce aux contributions volontaires (pourboires) que les donateurs et les payeurs choisissent de laisser au moment de régler. C'est un modèle transparent et adapté quand le besoin est avant tout d'encaisser.</p>
-      <p style="margin:0 0 18px;"><strong>Assokit : la gestion complète de l'association.</strong> Assokit ne se limite pas à l'encaissement. C'est un logiciel qui réunit l'annuaire des adhérents, le suivi et les relances de cotisations, la comptabilité analytique par projet, la préparation des assemblées générales et la communication assistée par IA. Là où une plateforme de collecte encaisse un paiement, Assokit tient à jour l'adhérent concerné, alimente la comptabilité et conserve l'historique — tout au même endroit.</p>
-      <p style="margin:0;"><strong>Les deux sont complémentaires.</strong> Chercher une « alternative à HelloAsso » ne veut pas toujours dire remplacer : selon votre besoin, Assokit peut <strong>compléter</strong> une plateforme de collecte (vous encaissez d'un côté, vous pilotez de l'autre) ou la <strong>remplacer</strong> si vous préférez centraliser paiements et gestion dans un seul outil. Beaucoup d'associations utilisent les deux, sans que l'un exclue l'autre.</p>
+      <p style="margin:0 0 18px;"><strong>Assokit : la gestion complète de l'association.</strong> Assokit n'encaisse pas de paiements en ligne : c'est un logiciel qui réunit l'annuaire des adhérents, le suivi et les relances de cotisations, la comptabilité analytique par projet, la préparation des assemblées générales et la communication assistée par IA. Là où une plateforme de collecte encaisse un paiement, Assokit tient à jour l'adhérent concerné, alimente la comptabilité et conserve l'historique — tout au même endroit.</p>
+      <p style="margin:0;"><strong>Les deux sont complémentaires.</strong> Chercher une « alternative à HelloAsso » ne veut pas toujours dire remplacer : selon votre besoin, Assokit peut <strong>compléter</strong> une plateforme de collecte (vous encaissez d'un côté, vous pilotez de l'autre) ou <strong>suffire seul</strong> si vos règlements arrivent par chèque, virement ou espèces. Beaucoup d'associations utilisent les deux, sans que l'un exclue l'autre.</p>
     </div>
   </div>
 </section>
@@ -106,7 +109,7 @@ require __DIR__ . '/_landing-premium.php';
         </thead>
         <tbody>
           <?php foreach ([
-            ['Paiement &amp; collecte de dons en ligne','Cœur de l\'offre','Cotisations en ligne intégrées'],
+            ['Paiement &amp; collecte de dons en ligne','Cœur de l\'offre','Non · règlements enregistrés (chèque, virement, espèces)'],
             ['Billetterie d\'événements','Oui','Suivi des événements &amp; participants'],
             ['Annuaire &amp; gestion des adhérents','—','Annuaire complet, rôles &amp; espaces'],
             ['Cotisations : suivi &amp; relances','—','Relances automatiques &amp; suivi en temps réel'],
@@ -114,7 +117,7 @@ require __DIR__ . '/_landing-premium.php';
             ['Projets, subventions &amp; budget','—','Suivi étape par étape, budget alloué / dépensé'],
             ['Assemblées générales &amp; PV','—','Convocations, émargement, votes, procès-verbaux'],
             ['Communication assistée par IA','—','Newsletters &amp; comptes-rendus rédigés par l\'IA'],
-            ['Modèle','Gratuit pour l\'association (contributions volontaires des payeurs)','Abonnement dès 29,99 €/mois · essai 14 j sans CB'],
+            ['Modèle','Gratuit pour l\'association (contributions volontaires des payeurs)','Abonnement ' . $offer['per_month'] . ' · essai 14 j sans CB'],
           ] as $r): ?>
           <tr>
             <th scope="row" style="text-align:left;padding:14px 18px;font-weight:700;color:var(--c-encre);border-bottom:1px solid var(--c-border);"><?= $r[0] ?></th>
@@ -145,7 +148,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="lp-grid">
       <?php foreach ([
         ['👥','Vous gérez beaucoup d\'adhérents','Annuaire, rôles, espaces dédiés et historique : de quoi suivre chaque membre au-delà d\'un simple paiement.'],
-        ['🔁','Vous suivez des cotisations récurrentes','Relances automatiques, statut de paiement en temps réel et reçus, sans ressaisie dans un tableur.'],
+        ['🔁','Vous suivez des cotisations récurrentes','Relances des adhésions, statut de paiement en temps réel et historique par adhérent, sans ressaisie dans un tableur.'],
         ['📊','Vous avez besoin d\'une vraie comptabilité','Comptabilité analytique par projet et exports prêts pour l\'expert-comptable, utiles pour justifier les subventions.'],
         ['🎯','Vous pilotez des projets &amp; des AG','Budgets par projet, convocations, émargement et procès-verbaux dans le même espace que le reste de la gestion.'],
       ] as $c): ?>

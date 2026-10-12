@@ -21,6 +21,30 @@ function app_fail(int $code, string $err, ?string $msg = null): void {
     exit;
 }
 
+if (!function_exists('app_parse_date')) {
+    /**
+     * Date saisie dans l'appli : AAAA-MM-JJ (heure éventuelle ignorée) ou JJ/MM/AAAA, comme
+     * api/app-create-cotisation-payment.php. Vide = null ; date illisible ou inexistante (31/02)
+     * = 422 avec « <$label> invalide », au lieu d'être ignorée en silence.
+     * Ex. : $deadline = app_parse_date($input['deadline_apply'] ?? '', 'Date limite de dépôt');
+     */
+    function app_parse_date($v, string $label): ?string {
+        if ($v === null) return null;
+        if (!is_scalar($v)) app_fail(422, 'invalid', $label . ' invalide : utilisez JJ/MM/AAAA ou AAAA-MM-JJ.');
+        $v = trim((string) $v);
+        if ($v === '') return null;
+        $y = $mo = $d = 0;
+        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$/', $v, $m)) {
+            [$y, $mo, $d] = [(int) $m[1], (int) $m[2], (int) $m[3]];
+        } elseif (preg_match('#^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$#', $v, $m)) {
+            [$d, $mo, $y] = [(int) $m[1], (int) $m[2], (int) $m[3]];
+        }
+        // Année hors 1900-2100 : faute de frappe (« 12/10/0026 »), refusée comme une date illisible
+        if ($y < 1900 || $y > 2100 || !checkdate($mo, $d, $y)) app_fail(422, 'invalid', $label . ' invalide : utilisez JJ/MM/AAAA ou AAAA-MM-JJ.');
+        return sprintf('%04d-%02d-%02d', $y, $mo, $d);
+    }
+}
+
 if (empty($_SESSION['user_id'])) app_fail(401, 'auth');
 
 // Compte désactivé (par un admin) ou supprimé (« Supprimer mon compte » sur un autre appareil)

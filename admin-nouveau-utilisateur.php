@@ -271,7 +271,7 @@ render_sidebar('admin');
           <input type="checkbox" name="can_manage_events" value="1" <?= old_val('can_manage_events') ? 'checked' : '' ?>>
           <div>
             <div class="cap-name">📅 Gérer les événements</div>
-            <div class="cap-desc">Créer, modifier, supprimer des événements</div>
+            <div class="cap-desc">Modifier et supprimer tous les événements</div>
           </div>
         </label>
 
@@ -313,7 +313,7 @@ render_sidebar('admin');
     <!-- Notes admin -->
     <div class="form-section">
       <h2 class="form-section-title">📝 Notes internes (optionnel)</h2>
-      <p class="form-section-desc">Visibles uniquement par les admins. L'utilisateur ne les voit jamais.</p>
+      <p class="form-section-desc">Visibles uniquement par les admins dans l’outil. Comme toute donnée personnelle, elles figurent dans l’export RGPD de la personne si elle le demande.</p>
 
       <div class="form-row">
         <textarea name="notes_admin" class="form-textarea-lg" rows="3" maxlength="2000"

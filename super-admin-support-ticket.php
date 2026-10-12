@@ -122,6 +122,14 @@ try {
     $stmt->execute([$ticket_id]);
 } catch (Throwable $e) {}
 
+// Notifications « Nouveau message » de ce ticket lues pour tout le support (pool commun, comme les
+// messages ci-dessus) : elles ne restent pas en attente chez les autres super admins et fondateurs
+try {
+    $stmt = $pdo->prepare("UPDATE platform_notifications SET is_read = 1, read_at = NOW()
+                           WHERE type = 'new_ticket_message' AND is_read = 0 AND target_url IN (?, ?)");
+    $stmt->execute(['/super-admin/support/' . $ticket_id, '/super-admin/support?id=' . $ticket_id]);
+} catch (Throwable $e) {}
+
 // Recharger ticket apres updates
 $ticket = support_get_ticket($ticket_id);
 

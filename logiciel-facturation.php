@@ -4,6 +4,8 @@
  * (+ facturation électronique). Route : /logiciel-facturation. Premium + FAQPage + Breadcrumb + SoftwareApplication.
  */
 require_once __DIR__ . '/includes-public.php';
+// Offre schema.org de la formule Assokit (prix HT, TVA non comprise : includes-pricing.php)
+require_once __DIR__ . '/includes-pricing.php';
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],
@@ -22,7 +24,7 @@ $faqs = [
     ['Assokit gère-t-il les relances de factures impayées ?', "Oui. Vous définissez un calendrier de relance (par exemple J+7, J+15, J+30 après l'échéance) et Assokit envoie les rappels automatiquement par e-mail tant que la facture n'est pas soldée. Vous suivez en temps réel les factures payées, en attente et en retard, et vous pouvez émettre un avoir si nécessaire — sans jamais courir après vos clients ou adhérents."],
 ];
 $faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
-$soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplication', 'name' => 'Assokit', 'applicationCategory' => 'FinanceApplication', 'operatingSystem' => 'Web, iOS, Android', 'description' => "Logiciel de facturation pour association et TPE : devis, factures, relances automatiques, export comptable, prêt pour la facturation électronique.", 'offers' => ['@type' => 'AggregateOffer', 'lowPrice' => '29.99', 'highPrice' => '49.99', 'priceCurrency' => 'EUR', 'offerCount' => '3'], 'inLanguage' => 'fr-FR'];
+$soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplication', 'name' => 'Assokit', 'applicationCategory' => 'FinanceApplication', 'operatingSystem' => 'Web, iOS, Android', 'description' => "Logiciel de facturation pour association et TPE : devis, factures, relances automatiques, export comptable, prêt pour la facturation électronique.", 'offers' => ak_offer_jsonld(), 'inLanguage' => 'fr-FR'];
 
 render_public_head([
     'title'       => 'Logiciel de facturation pour association & TPE · Assokit',
@@ -43,7 +45,7 @@ require __DIR__ . '/_landing-premium.php';
         <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:620px;">Le <span class="lp-grad">logiciel de facturation</span> simple pour assos &amp; TPE</h1>
         <p class="pub-tagline reveal" style="max-width:560px;">Créez devis et factures pro avec votre logo, envoyez les <strong>relances automatiquement</strong>, suivez vos encaissements en temps réel. Export comptable inclus et prêt pour la facturation électronique.</p>
         <div class="lp-hero-cta reveal">
-          <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement
+          <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
           <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
         </div>
@@ -128,7 +130,7 @@ require __DIR__ . '/_landing-premium.php';
       </table>
     </div>
     <div class="pub-text-center reveal" style="margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
-      <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+      <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
       <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
     </div>
     <p class="pub-text-center" style="margin-top:10px;font-size:13px;color:var(--c-text-3);">Sans carte bancaire · sans engagement</p>
@@ -181,9 +183,9 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="lp-stat reveal" style="background:linear-gradient(135deg,#0f172a,#065f46);">
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Facturez proprement, dès aujourd'hui</h2>
-      <p>Essai gratuit pour démarrer. Devis, factures et relances en quelques clics.</p>
+      <p>14 jours d’essai gratuit, sans carte bancaire. Devis, factures et relances en quelques clics.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-        <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+        <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>
       </div>
     </div>

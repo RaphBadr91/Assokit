@@ -24,10 +24,12 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/activity-tracker.php';
+require_once __DIR__ . '/sa-auth-helpers.php';
 
 // ------------------------------------------------------------------
 // Accès : Fondateur uniquement (même contrôle que /fondateur-activity)
 // ------------------------------------------------------------------
+sa_leave_impersonation_first();   // incarnation en cours : page « Revenir à mon compte », pas un 403
 $est_fondateur = false;
 $vrai_fondateur = false;   // le hub Pilotage Fondateur n'ouvre qu'au Fondateur, pas au super-admin
 if (!empty($_SESSION['user_id'])) {
@@ -53,7 +55,6 @@ if (!$est_fondateur) {
 }
 
 // Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
-require_once __DIR__ . '/sa-auth-helpers.php';
 sa_auth_gate();
 
 activity_ensure_table($pdo);

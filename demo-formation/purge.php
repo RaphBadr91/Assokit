@@ -280,6 +280,21 @@ function df_purger(int $org): array
         } catch (Throwable $e) {}
     }
 
+    // Justificatifs des notes de frais de démo (dossier privé de l'org, notes-frais-engine.php) : seuls
+    // ceux que référencent ses lignes, sinon la remise à zéro nocturne laisserait des fichiers orphelins.
+    if ($ens['expense_reports'] && df_a_colonne('expense_report_lines', 'receipt_file')
+        && is_file(dirname(__DIR__) . '/notes-frais-engine.php')) {
+        require_once dirname(__DIR__) . '/notes-frais-engine.php';
+        try {
+            $in = implode(',', array_map('intval', $ens['expense_reports']));
+            foreach ($pdo->query("SELECT receipt_file FROM expense_report_lines WHERE report_id IN ($in) AND receipt_file IS NOT NULL")->fetchAll(PDO::FETCH_COLUMN) as $f) {
+                if (function_exists('nf_receipt_delete')) nf_receipt_delete($org, (string)$f);
+            }
+        } catch (Throwable $e) {
+            DF::$rapport['purge_notes'][] = 'justificatifs : ' . substr($e->getMessage(), 0, 160);
+        }
+    }
+
     // 2. Supprimer, enfants d'abord, par paquets de 500 ids.
     $bilan = [];
     foreach (df_purge_plan() as [$table, $col, $nom]) {

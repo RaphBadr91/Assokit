@@ -223,6 +223,7 @@ try {
         'password' => $password_plain,
         'email_sent' => $email_sent,
         'validation_status' => $validation_status,   // 'pending_founder' : création d'un Super Admin, à valider par le Fondateur
+        'pending_validation' => !$is_founder,          // l'appli affiche « En attente de validation Fondateur », comme le web
         'state' => fd_org_plan($pdo, $new_org_id),
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {

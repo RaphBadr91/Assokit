@@ -139,7 +139,7 @@ require __DIR__ . '/_landing-premium.php';
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Générez et envoyez ces documents automatiquement avec Assokit</h2>
       <p>Convoquez tous vos adhérents à jour en un clic, joignez l'ordre du jour et le pouvoir, et suivez les réponses en temps réel. Essai gratuit, sans carte bancaire.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-        <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+        <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
         <a href="/logiciel-adherents" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Gérer mes adhérents</a>
       </div>
     </div>

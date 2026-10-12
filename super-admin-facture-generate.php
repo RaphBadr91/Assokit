@@ -29,6 +29,9 @@ if (!$is_sa && !$is_founder) {
     http_response_code(403);
     die('Accès refusé.');
 }
+// Confirmation d'identité du cockpit (/super-admin-login, 30 minutes sans activité), comme les autres pages
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: /super-admin-factures.php');

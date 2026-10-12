@@ -81,9 +81,9 @@ function df_seed_assemblees(): void
                                          'location_url' => null, 'notes_internal' => null]);
         return df_retenir('assemblees', $cle, $id);
     };
-    $convoquer = function (int $agId, string $cle, int $uid, string $statut, ?string $signe, ?string $envoi, ?string $ouvert) use ($infos) {
+    $convoquer = function (int $agId, string $cle, int $uid, string $statut, ?string $signe, ?string $envoi, ?string $ouvert, array $extra = []) use ($infos) {
         $i = $infos($uid);
-        return df_ins('assembly_attendees', [
+        return df_ins('assembly_attendees', $extra + [
             'assembly_id' => $agId, 'adherent_id' => $uid, 'user_id' => $uid,
             'full_name' => trim($i['first_name'] . ' ' . $i['last_name']), 'email' => $i['email'],
             'access_token' => sha1("demo-formation|ag|$cle|$uid"), 'status' => $statut,
@@ -136,10 +136,13 @@ function df_seed_assemblees(): void
         $libres = [$u['membre'], $u['benevole'], $u['salarie']];
         $autres = df_echantillon(array_values(array_diff($membres, $libres)), count($membres));
         $votants = [];
+        // Séance pas encore ouverte : personne n'a émargé. Les 43 qui ont répondu « je viendrai » sont des
+        // réponses (rsvp « yes ») ; la présence ne s'enregistre que pendant la séance (« Ouvrir la séance »).
         foreach ($autres as $n => $uid) {
-            $statut = $n < 43 ? 'present' : ($n < 46 ? 'proxy' : ($n < 60 ? 'excused' : 'invited'));
-            $signe = $statut === 'present' ? df_jh(-df_entre(0, 3), sprintf('%02d:%02d', df_entre(8, 21), df_entre(0, 59))) : null;
-            $convoquer($id, 'ago', $uid, $statut, $signe, $conv, df_proba(0.62) ? df_jh(-df_entre(0, 3), '12:00') : null);
+            $statut = $n < 43 ? 'invited' : ($n < 46 ? 'proxy' : ($n < 60 ? 'excused' : 'invited'));
+            $reponse = $n < 43 ? ['rsvp' => 'yes', 'rsvp_at' => date('Y-m-d H:i:s', min(time() - 60,
+                strtotime(df_jh(-df_entre(0, 3), sprintf('%02d:%02d', df_entre(8, 21), df_entre(0, 59))))))] : [];
+            $convoquer($id, 'ago', $uid, $statut, null, $conv, df_proba(0.62) ? df_jh(-df_entre(0, 3), '12:00') : null, $reponse);
         }
         foreach ($libres as $uid) $convoquer($id, 'ago', $uid, 'invited', null, $conv, df_jh(-2, '19:40'));
         $resolutions($id, [

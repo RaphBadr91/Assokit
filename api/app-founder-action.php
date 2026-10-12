@@ -6,11 +6,15 @@
  *          | 'reject' | 'suspend'  { reason? }   (refuser = refusée ET suspendue, comme le web)
  *          | 'edit'          { name, billing_email, note, plan (slug) | plan_id }
  *          | 'extend_trial'  { days: 7 | 14 }
+ *          | 'reset_2fa'     { user_id }   (Fondateur : double authentification d'un compte de l'association
+ *                                          retirée, téléphone perdu ; réponse user_id + totp_reset: true)
  * Le plan se change PARTOUT à la fois (abonnement, organizations.plan, état d'essai)
  * via ak_org_set_plan() ; l'essai se prolonge via ak_trial_extend() ; suspendre, réactiver et
  * refuser passent par ak_org_suspend / ak_org_reactivate / ak_org_reject (trial-helpers.php),
  * les mêmes que le cockpit web. Réponse 'warning' : abonnement Stripe à annuler dans Stripe ;
- * 'notice' : association réactivée sur Démarrage parce que son essai était terminé.
+ * 'notice' : association réactivée sur Démarrage parce que son essai était terminé ;
+ * résilier annule aussi l'abonnement Stripe : 'stripe_cancelled' (identifiants annulés) et
+ * 'stripe_warning' (null, ou message : abonnement encore actif, à annuler dans Stripe).
  * Réservé Fondateur/Super Admin. NE MODIFIE PAS le site : dédié à l'application.
  */
 require __DIR__ . '/_app-write-boot.php';
@@ -24,8 +28,9 @@ if (!$is_sa) app_fail(403, 'forbidden');
 $target = (int) ($input['org_id'] ?? 0);
 $action = (string) ($input['action'] ?? '');
 if ($target <= 0) app_fail(400, 'org_id');
-if (!in_array($action, ['validate', 'reject', 'suspend', 'activate', 'resiliate', 'edit', 'extend_trial'], true)) app_fail(400, 'action');
-if (in_array($action, ['validate', 'reject'], true) && !$is_founder) app_fail(403, 'founder_only');   // valider / refuser une asso : fondateur uniquement
+if (!in_array($action, ['validate', 'reject', 'suspend', 'activate', 'resiliate', 'edit', 'extend_trial', 'reset_2fa'], true)) app_fail(400, 'action');
+// valider / refuser une asso, réinitialiser une double authentification : fondateur uniquement (comme le web)
+if (in_array($action, ['validate', 'reject', 'reset_2fa'], true) && !$is_founder) app_fail(403, 'founder_only');
 
 // Journal plateforme : même table, mêmes codes et mêmes détails que le cockpit web (validate_org,
 // suspend_org…), pour que /super-admin/logs et ses filtres affichent les actions de l'appli comme
@@ -91,7 +96,22 @@ try {
         }
         $pdo->prepare("UPDATE organizations SET status='cancelled' WHERE id=?")->execute([$target]);
         $pdo->commit();
-        $log('cancel_org', $ended_trial ? ['trial_ended' => true] : []);
+        // Client payant par carte : l'abonnement Stripe s'arrête aussi, comme sur le cockpit web,
+        // sinon l'association est résiliée mais Stripe continue de prélever la carte du client.
+        $stripe = ['cancelled' => [], 'failed' => []];
+        if (function_exists('sa_stripe_cancel_for_org')) {
+            try { $stripe = sa_stripe_cancel_for_org($pdo, $target); }
+            catch (Throwable $e) {
+                error_log('[api/app-founder-action] Stripe org #' . $target . ' : ' . get_class($e) . ' ' . $e->getMessage());
+                foreach (sa_stripe_live_subs($pdo, $target) as $sid) $stripe['failed'][$sid] = 'erreur technique';
+            }
+        }
+        $details = $ended_trial ? ['trial_ended' => true] : [];
+        if ($stripe['cancelled']) $details['stripe_cancelled'] = $stripe['cancelled'];
+        if ($stripe['failed'])    $details['stripe_failed'] = array_keys($stripe['failed']);
+        $log('cancel_org', $details);
+        $extra['stripe_cancelled'] = $stripe['cancelled'];
+        $extra['stripe_warning'] = $stripe['failed'] ? sa_stripe_still_billing_message($stripe['failed']) : null;
     } elseif ($action === 'extend_trial') {
         $days = (int) ($input['days'] ?? 0);
         if (!in_array($days, [7, 14], true)) app_fail(400, 'days', 'Durée invalide : 7 ou 14 jours.');
@@ -106,6 +126,23 @@ try {
         $pdo->commit();
         $extra = ['days' => $days, 'trial_ends_at' => $end, 'trial_ends' => ak_trial_end_label($end)];
         $log('trial_extend', ['days' => $days, 'from' => $before['trial_ends_at'], 'to' => $end]);
+    } elseif ($action === 'reset_2fa') {
+        // Comme le cockpit web : téléphone perdu sans code de secours, le mot de passe suffit à la
+        // prochaine connexion ; la double authentification se réactive dans Paramètres › Sécurité.
+        $target_user = (int) ($input['user_id'] ?? 0);
+        $ust = $pdo->prepare("SELECT email FROM users WHERE id = ? AND org_id = ? AND deleted_at IS NULL LIMIT 1");
+        $ust->execute([$target_user, $target]);
+        $target_email = $ust->fetchColumn();
+        if ($target_email === false) app_fail(404, 'user_not_found', 'Utilisateur introuvable dans cette association.');
+        if ($target_user === (int) $uid) app_fail(409, 'self', 'Votre propre double authentification se gère dans Paramètres › Sécurité.');
+        require_once __DIR__ . '/../totp-helper.php';
+        if (!ak_totp_reset($pdo, $target_user, $target)) {
+            app_fail(409, 'totp_off', 'La double authentification n’est pas activée sur ce compte : rien à réinitialiser.');
+        }
+        if (function_exists('sa_log_action')) {
+            try { sa_log_action((int) $uid, 'reset_2fa', $target, $target_user, ['email' => $target_email, 'source' => 'appli']); } catch (Throwable $e) {}
+        }
+        $extra = ['user_id' => $target_user, 'totp_reset' => true];
     } elseif ($action === 'edit') {
         // Édition : nom, email de facturation, plan, note interne — comme le web
         $name    = trim((string) ($input['name'] ?? ''));

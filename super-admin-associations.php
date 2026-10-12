@@ -282,6 +282,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 elseif (!$stripe['cancelled']) $success = 'Aucun abonnement Stripe actif sur cette association.';
             }
         }
+        // ---- 2FA : RÉINITIALISER (Fondateur uniquement) ----
+        elseif ($action === 'reset_2fa') {
+            // Téléphone perdu sans code de secours : à la prochaine connexion, le mot de passe suffit,
+            // et l'utilisateur peut réactiver la double authentification dans Paramètres › Sécurité.
+            $view_id = $target_id;
+            $target_user_id = (int) ($_POST['user_id'] ?? 0);
+            $stmt = $pdo->prepare("SELECT email FROM users WHERE id = ? AND org_id = ? AND deleted_at IS NULL LIMIT 1");
+            $stmt->execute([$target_user_id, $target_id]);
+            $target_email = $stmt->fetchColumn();
+            if (!$ctx['is_founder']) {
+                $error = '🏗️ Seul un Fondateur peut réinitialiser la double authentification d’un compte.';
+            } elseif ($target_email === false) {
+                $error = 'Utilisateur introuvable dans cette association.';
+            } elseif ($target_user_id === (int) $user['id']) {
+                $error = 'Votre propre double authentification se gère dans Paramètres › Sécurité.';
+            } else {
+                require_once __DIR__ . '/totp-helper.php';
+                if (!ak_totp_reset($pdo, $target_user_id, $target_id)) {
+                    $error = 'La double authentification n’est pas activée sur ce compte : rien à réinitialiser.';
+                } else {
+                    sa_log_action((int) $user['id'], 'reset_2fa', $target_id, $target_user_id, ['email' => $target_email]);
+                    $success = 'Double authentification réinitialisée pour ' . $target_email . ' : à la prochaine connexion, '
+                             . 'le mot de passe suffira, et elle pourra être réactivée dans Paramètres › Sécurité.';
+                }
+            }
+        }
         // ---- DELETE (soft-delete) ----
         elseif ($action === 'delete_org') {
             if (empty($ctx['can_delete_anything'])) {
@@ -299,10 +325,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                     $stmt = $pdo->prepare("UPDATE users SET deleted_at = NOW(), is_active = 0, deleted_by_user_id = ?, email = CONCAT('deleted_', id, '_', UNIX_TIMESTAMP(), '__', email) WHERE org_id = ? AND deleted_at IS NULL");
                     $stmt->execute([(int) $user['id'], $target_id]);
                     $freed = $stmt->rowCount();
+                    // 3. Rattachement à une collectivité levé, comme « Délier » : canal de suivi archivé
+                    //    (messages conservés), agents de la collectivité retirés, place libérée dans son quota
+                    $old_parent_id = (int) ($org['parent_org_id'] ?? 0);
+                    if ($old_parent_id > 0) {
+                        $pdo->prepare("UPDATE organizations SET parent_org_id = NULL, parent_org_linked_at = NULL WHERE id = ?")->execute([$target_id]);
+                        require_once __DIR__ . '/includes-mairie-channels.php';
+                        try { archive_mairie_channel_for_org($pdo, $target_id, $old_parent_id); }
+                        catch (Throwable $e) { error_log('[delete_org] archive_mairie_channel_for_org: ' . $e->getMessage()); }
+                    }
                     $pdo->commit();
+                    // Boîte mail et agenda Google : accès Google retiré et copie locale des e-mails effacée (RGPD).
+                    // Ce n'est qu'une copie de Gmail : rien n'y est perdu, une reconnexion réimporte tout.
+                    require_once __DIR__ . '/mail-helpers.php';
+                    require_once __DIR__ . '/google-helper.php';
+                    try { mail_disconnect($pdo, (int) $target_id, true); }
+                    catch (Throwable $e) { error_log('[delete_org] mail_disconnect: ' . $e->getMessage()); }
+                    try { disconnect_google((int) $target_id); }
+                    catch (Throwable $e) { error_log('[delete_org] disconnect_google: ' . $e->getMessage()); }
                     // Client payant par carte : l'abonnement Stripe s'arrête aussi, sinon la carte reste prélevée
                     $stripe = sa_stripe_cancel_for_org($pdo, $target_id);
                     $log = ['reason' => $reason, 'users_freed' => $freed];
+                    if ($old_parent_id > 0) $log['parent_org_unlinked'] = $old_parent_id;
                     if ($stripe['cancelled']) $log['stripe_cancelled'] = $stripe['cancelled'];
                     if ($stripe['failed'])    $log['stripe_failed'] = array_keys($stripe['failed']);
                     sa_log_action((int) $user['id'], 'delete_org', $target_id, null, $log);
@@ -353,9 +397,10 @@ if ($view_id > 0) {
         $nb_projects = (int) $stmt->fetchColumn();
     } catch (Throwable $e) {}
 
-    // Liste des users
+    // Liste des users (avec l'état de leur double authentification)
+    $totp_col = isset(ak_db_columns($pdo, 'users')['totp_enabled']) ? 'totp_enabled' : '0 AS totp_enabled';
     $stmt = $pdo->prepare("
-        SELECT id, email, first_name, last_name, role, is_active, last_login_at, created_at
+        SELECT id, email, first_name, last_name, role, is_active, last_login_at, created_at, $totp_col
         FROM users
         WHERE org_id = ? AND deleted_at IS NULL AND is_active = 1
         ORDER BY FIELD(role, 'admin','coordinator','referent','member','follower'), last_name
@@ -377,6 +422,13 @@ if ($view_id > 0) {
         $stmt->execute([$view_id]);
         $asso_sub = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     } catch (Throwable $e) {}
+    // Résiliation Stripe programmée (ligne « active », cancel_at_period_end) : la formule reste jusqu'à
+    // l'échéance, puis Démarrage. Même date que l'espace de l'association (ak_sub_row_access_end).
+    $cancel_scheduled = null;
+    if ($asso_sub && !$in_trial && ($asso_sub['status'] ?? '') === 'active' && !empty($asso_sub['cancel_at_period_end'])) {
+        $cancel_end = function_exists('ak_sub_row_access_end') ? ak_sub_row_access_end($pdo, $view_id, $asso_sub) : ($asso_sub['current_period_end'] ?? null);
+        $cancel_scheduled = $cancel_end && strtotime((string) $cancel_end) ? date('d/m/Y', strtotime((string) $cancel_end)) : '';
+    }
 
     // Ancienne table subscriptions : conditions de facturation manuelle (jamais le prix d'un essai)
     $subscription = null;
@@ -483,6 +535,9 @@ if ($view_id > 0) {
                 <span class="sa-badge <?= sa_plan_tone_class($plan_state['badge_tone']) ?>"<?= in_array($plan_state['badge_tone'], ['trial', 'expired'], true) ? ' style="font-weight:800; letter-spacing:.03em;"' : '' ?>>
                     <?= sa_plan_tone_icon($plan_state['badge_tone']) ?> <?= h($plan_state['badge']) ?>
                 </span>
+                <?php if ($cancel_scheduled !== null): ?>
+                    <span class="sa-badge sa-badge-amber" style="margin-left:6px;">🛑 Résiliation programmée<?= $cancel_scheduled !== '' ? ' le ' . h($cancel_scheduled) : '' ?></span>
+                <?php endif; ?>
                 <span style="margin:0 8px">·</span>
                 Plan <?= h($plan_state['plan_label']) ?>
                 <span style="margin:0 8px">·</span>
@@ -788,6 +843,19 @@ if ($view_id > 0) {
                                         <?php else: ?>
                                             <span class="sa-badge sa-badge-gray">Inactif</span>
                                         <?php endif; ?>
+                                        <?php if (!empty($u['totp_enabled'])): ?>
+                                            <div class="sa-sub-col" style="margin-top:4px;">🔐 Double authentification</div>
+                                            <?php if ($ctx['is_founder'] && (int) $u['id'] !== (int) $user['id']): ?>
+                                            <form method="POST" action="/super-admin/associations" style="margin-top:4px;"
+                                                  onsubmit="return confirm('Réinitialiser la double authentification de <?= h(addslashes($u['email'])) ?> ? À la prochaine connexion, le mot de passe suffira.');">
+                                                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
+                                                <input type="hidden" name="action" value="reset_2fa">
+                                                <input type="hidden" name="org_id" value="<?= (int) $org['id'] ?>">
+                                                <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
+                                                <button type="submit" class="sa-btn sa-btn-ghost sa-btn-sm">Réinitialiser la 2FA</button>
+                                            </form>
+                                            <?php endif; ?>
+                                        <?php endif; ?>
                                     </td>
                                     <td style="font-size:12px; color:var(--sa-ink-3)">
                                         <?= $u['last_login_at'] ? date('d/m/Y H:i', strtotime($u['last_login_at'])) : '—' ?>
@@ -810,7 +878,7 @@ if ($view_id > 0) {
 
                 <?php if ($org['status'] === 'active' || $org['status'] === 'trial'): ?>
                     <form method="POST" action="/super-admin/associations"
-                          onsubmit="return confirm('Suspendre cette asso ? Ses users ne pourront plus se connecter.');" style="margin-bottom:8px">
+                          onsubmit="return confirm('Suspendre cette asso ? Ses utilisateurs ne verront plus que l’avis de suspension, l’abonnement et l’export de leurs données.');" style="margin-bottom:8px">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
                         <input type="hidden" name="action" value="suspend">
                         <input type="hidden" name="org_id" value="<?= (int) $org['id'] ?>">
@@ -853,6 +921,10 @@ if ($view_id > 0) {
                         <span class="sa-badge <?= sa_plan_tone_class($plan_state['badge_tone']) ?>"><?= h($plan_state['badge']) ?></span>
                         <?php if ($plan_state['sub_status'] === 'cancelled' && $plan_state['badge_tone'] !== 'cancelled'): ?>
                             <div style="font-size:11.5px; color:#FCA5A5; margin-top:4px;">Abonnement annulé<?= !empty($asso_sub['cancelled_at']) && strtotime((string) $asso_sub['cancelled_at']) ? ' le ' . date('d/m/Y', strtotime((string) $asso_sub['cancelled_at'])) : '' ?></div>
+                        <?php elseif ($cancel_scheduled !== null): ?>
+                            <div style="font-size:11.5px; color:#FCD34D; margin-top:4px;">
+                                Résiliation programmée<?= $cancel_scheduled !== '' ? ' le ' . h($cancel_scheduled) : '' ?> : plus de prélèvement Stripe, puis plan gratuit Démarrage.
+                            </div>
                         <?php endif; ?>
                     </div>
 
@@ -1093,6 +1165,8 @@ sa_render_sidebar('associations');
                             </span>
                             <?php if (in_array($ps['badge_tone'], ['trial', 'expired'], true) && $ps['trial_ends_at']): ?>
                                 <div class="sa-sub-col"><?= $ps['badge_tone'] === 'expired' ? 'le' : 'fin' ?> <?= date('d/m/Y', strtotime((string) $ps['trial_ends_at'])) ?></div>
+                            <?php elseif (($ps['cancel_scheduled'] ?? null) !== null && $ps['badge_tone'] === 'active'): ?>
+                                <div class="sa-sub-col" style="color:#FCD34D">résiliation programmée<?= $ps['cancel_scheduled'] !== '' ? ' le ' . h($ps['cancel_scheduled']) : '' ?></div>
                             <?php endif; ?>
                         </td>
                         <td><span class="sa-badge <?= $ps['is_trial'] && !$ps['trial_expired'] ? 'sa-badge-violet' : 'sa-badge-gray' ?>"><?= h($ps['plan_label']) ?></span></td>

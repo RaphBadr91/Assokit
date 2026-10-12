@@ -93,6 +93,21 @@ function sa_auth_clear_cookie(): void
 // ============================================================
 
 /**
+ * Incarnation en cours : la session est celle de la personne incarnée (sans droits plateforme).
+ * Plutôt qu'un 403, la page de sortie propose « Revenir à mon compte ». Même test que
+ * is_impersonating() (impersonation-helpers.php), pour ne jamais boucler avec cette page.
+ * À appeler juste avant le contrôle des droits de chaque page du cockpit (sa_require_super_admin()
+ * le fait) ; jamais au chargement de ce fichier (aussi inclus par l'API de l'appli).
+ */
+function sa_leave_impersonation_first(): void
+{
+    if (PHP_SAPI !== 'cli' && !empty($_SESSION['impersonation_session_id']) && !empty($_SESSION['impersonation_target_user_id'])) {
+        header('Location: /super-admin/incarner-stop');
+        exit;
+    }
+}
+
+/**
  * Vérifie que le user est :
  *   1. Connecté au site Assokit (via current_user())
  *   2. A un cookie SA valide (double auth)

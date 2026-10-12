@@ -117,7 +117,7 @@ p {
     <div class="links">
         <div class="links-title">Liens populaires</div>
         <a href="/tarifs">Tarifs</a>
-        <a href="/signup">Inscription gratuite</a>
+        <a href="/signup">Essai gratuit 14 jours</a>
         <a href="/fonctionnalites">Fonctionnalités</a>
         <a href="/connexion">Se connecter</a>
     </div>

@@ -39,7 +39,7 @@ associations/TPE françaises là où les contenus concurrents restent génériqu
 
 CLUSTERS PRIORITAIRES (pilier -> money page à mailler) :
 1. Gestion d'association loi 1901 -> /logiciel-association
-2. Adhérents & cotisations (relances, reçus, paiement en ligne) -> /logiciel-adherents, /logiciel-cotisation-association
+2. Adhérents & cotisations (campagnes, suivi des règlements, relances) -> /logiciel-adherents, /logiciel-cotisation-association
 3. Comptabilité associative & analytique par projet -> /logiciel-comptabilite-association, /comptabilite-analytique
 4. Facturation & FACTURE ÉLECTRONIQUE (Factur-X, PDP, calendrier 2026-2027) -> /logiciel-facturation
 5. Subventions (recherche, dossier, suivi, CERFA) -> /pour-associations

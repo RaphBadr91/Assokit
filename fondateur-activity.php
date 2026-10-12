@@ -7,10 +7,12 @@
 
 require_once __DIR__ . '/config.php'; // expose $pdo + démarre session
 require_once __DIR__ . '/activity-tracker.php';
+require_once __DIR__ . '/sa-auth-helpers.php';
 
 // =============================================================
 // VÉRIFICATION ACCÈS FONDATEUR
 // =============================================================
+sa_leave_impersonation_first();   // incarnation en cours : page « Revenir à mon compte », pas un 403
 $is_founder = false;
 if (!empty($_SESSION['user_id'])) {
     try {
@@ -42,7 +44,6 @@ if (!$is_founder) {
 }
 
 // Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
-require_once __DIR__ . '/sa-auth-helpers.php';
 sa_auth_gate();
 
 // =============================================================
@@ -77,7 +78,7 @@ $interval = $periods[$filter_period] ?? '24 HOUR';
 $where = ["created_at >= DATE_SUB(NOW(), INTERVAL {$interval})"];
 $params = [];
 
-if ($filter_event_type !== '' && in_array($filter_event_type, ['pageview','action','login','logout','login_failed'], true)) {
+if ($filter_event_type !== '' && in_array($filter_event_type, ['pageview','action','login','logout','login_failed','mairie_support'], true)) {
     $where[] = 'event_type = ?';
     $params[] = $filter_event_type;
 }
@@ -193,6 +194,7 @@ function event_color_act(string $type): string {
         'logout' => '#94a3b8',
         'action' => '#667eea',
         'pageview' => '#cbd5e0',
+        'mairie_support' => '#d97706',
         default => '#94a3b8',
     };
 }
@@ -360,6 +362,7 @@ table.activity-table { width: 100%; border-collapse: collapse; font-size: 12px; 
             <option value="logout" <?= $filter_event_type === 'logout' ? 'selected' : '' ?>>🚪 Logout</option>
             <option value="action" <?= $filter_event_type === 'action' ? 'selected' : '' ?>>⚡ Action</option>
             <option value="pageview" <?= $filter_event_type === 'pageview' ? 'selected' : '' ?>>👁 Pageview</option>
+            <option value="mairie_support" <?= $filter_event_type === 'mairie_support' ? 'selected' : '' ?>>🏛️ Support collectivité</option>
         </select>
     </div>
     <div class="filter-group">

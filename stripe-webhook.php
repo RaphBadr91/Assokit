@@ -296,7 +296,7 @@ function ak_handle_subscription_event(PDO $pdo, array $sub, string $event_type):
     if ($existing_id) {
         // Abonnement en retard de paiement arrêté par Stripe (fin des relances) : la période en cours n'a
         // jamais été payée, l'accès s'arrête tout de suite (Démarrage via ak_sub_expire_cancelled plus bas),
-        // comme « Passer au gratuit » sur un retard (mon-asso-annuler-abonnement.php)
+        // comme « Arrêter mon abonnement » sur un retard (mon-asso-annuler-abonnement.php)
         if ($local_status === 'cancelled' && ($existing_row['status'] ?? '') === 'overdue') {
             $current_period_end = date('Y-m-d H:i:s');
         }
@@ -367,8 +367,10 @@ function ak_handle_subscription_event(PDO $pdo, array $sub, string $event_type):
         }
     }
 
-    // Paiement actif : l'essai gratuit est terminé (sinon le cron d'essai suspendrait un client payant)
-    if ($local_status === 'active') ak_end_trial_after_payment($pdo, (int)$org_id, (string)$stripe_sub_id);
+    // Paiement actif : l'essai gratuit est terminé (sinon le cron d'essai suspendrait un client payant).
+    // Abonnement qui devient actif (premier paiement, ou retard réglé) : c'est un paiement
+    $just_paid = $stripe_status === 'active' && in_array((string)($existing_row['status'] ?? 'pending_payment'), ['pending_payment', 'overdue'], true);
+    if ($local_status === 'active') ak_end_trial_after_payment($pdo, (int)$org_id, (string)$stripe_sub_id, $just_paid);
 
     // Abonnement arrêté par Stripe : à la fin de la période payée, l'association passe au plan gratuit
     // Démarrage (jamais la formule payante gardée indéfiniment) ; avant, cron et pages s'en chargent à la date
@@ -437,7 +439,9 @@ function ak_handle_invoice_paid(PDO $pdo, array $invoice): void {
             $paid_row = $o->fetch(PDO::FETCH_ASSOC) ?: [];
             $paid_org = (int)($paid_row['org_id'] ?? 0);
             // Ligne passée à la main sur un plan que Stripe ne facture pas : ce paiement ne convertit rien
-            if ($paid_org > 0 && !ak_stripe_row_off_stripe_plan($pdo, (int)$paid_row['id'])) ak_end_trial_after_payment($pdo, $paid_org, (string)$sub_id);
+            if ($paid_org > 0 && !ak_stripe_row_off_stripe_plan($pdo, (int)$paid_row['id'])) {
+                ak_end_trial_after_payment($pdo, $paid_org, (string)$sub_id, (int)($invoice['amount_paid'] ?? 0) > 0);
+            }
         } catch (Throwable $e) {
             error_log('[stripe-webhook] fin essai (invoice.paid): ' . get_class($e));
         }
@@ -446,9 +450,11 @@ function ak_handle_invoice_paid(PDO $pdo, array $invoice): void {
 
 /**
  * Fin de l'essai gratuit quand l'association paie : association et abonnement
- * « historique » repassent actifs, la ligne d'essai est close. Jamais bloquant.
+ * « historique » repassent actifs, la ligne d'essai est close ; sur un vrai paiement ($paid :
+ * facture réglée, ou abonnement qui devient actif), une suspension à la main pour impayé est
+ * levée. Jamais bloquant.
  */
-function ak_end_trial_after_payment(PDO $pdo, int $org_id, string $paid_stripe_sub_id): void {
+function ak_end_trial_after_payment(PDO $pdo, int $org_id, string $paid_stripe_sub_id, bool $paid = false): void {
     if ($org_id <= 0) return;
     try {
         // La fin d'essai est effacée quel que soit le statut (une association réactivée « active »
@@ -460,6 +466,20 @@ function ak_end_trial_after_payment(PDO $pdo, int $org_id, string $paid_stripe_s
         $pdo->prepare("UPDATE organizations SET {$reason}status = IF(status IN ('trial', 'suspended'), 'active', status), trial_ends_at = NULL
                        WHERE id = ? AND trial_ends_at IS NOT NULL")->execute([$org_id]);
     } catch (Throwable $e) { error_log('[stripe-webhook] fin essai org: ' . get_class($e)); }
+    try {
+        // Suspension à la main pour impayé (motif « Impayé », « Paiement en retard », « Défaut de paiement »…) :
+        // levée par le paiement, comme l'annonce la page de connexion (« Régulariser mon abonnement »).
+        // Les suspensions pour un autre motif (décision du support) restent en place, et un événement
+        // Stripe sans paiement (abonnement modifié, période d'essai Stripe) ne lève rien.
+        $ocols = ak_db_columns($pdo, 'organizations');
+        if ($paid && isset($ocols['suspended_reason'])) {
+            $pdo->prepare("UPDATE organizations SET status = 'active', suspended_reason = NULL
+                           WHERE id = ? AND status = 'suspended' AND trial_ends_at IS NULL"
+                           . (isset($ocols['deleted_at']) ? " AND deleted_at IS NULL" : "") . "
+                             AND LOWER(COALESCE(suspended_reason, '')) REGEXP 'impay|retard de paiement|paiement en retard|d[eé]faut de paiement|non[- ]paiement'")
+                ->execute([$org_id]);
+        }
+    } catch (Throwable $e) { error_log('[stripe-webhook] levée suspension impayé: ' . get_class($e)); }
     try {
         $pdo->prepare("UPDATE subscriptions SET status = 'active' WHERE org_id = ? AND status IN ('trial', 'suspended')")->execute([$org_id]);
     } catch (Throwable $e) { error_log('[stripe-webhook] fin essai subscriptions: ' . get_class($e)); }

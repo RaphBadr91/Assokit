@@ -8,7 +8,8 @@
  *
  * Flow :
  *   1. Récupère/crée le Customer Stripe (lié à l'org)
- *   2. Crée la Subscription Stripe (avec add-on optionnel)
+ *   2. Crée la Subscription Stripe (avec add-on optionnel), prix HT + TVA de la plateforme
+ *      (default_tax_rates, ak_stripe_vat_tax_rate) ; les abonnements déjà en place ne changent pas
  *   3. Récupère le client_secret du PaymentIntent associé
  *   4. Retourne { clientSecret } au JavaScript
  *   (la ligne asso_subscriptions naît au paiement réussi, via le webhook)
@@ -123,6 +124,15 @@ if (!$plan) {
     exit;
 }
 
+// Seules les formules payantes se souscrivent par carte : ni Démarrage (plus proposée), ni l'essai,
+// ni Sur-mesure (sur devis)
+if ((int)($plan['price_cents'] ?? 0) <= 0 || ($plan['slug'] ?? '') === 'sur-mesure' || !empty($plan['is_custom_quote'])
+    || !empty($plan['is_trial']) || ($plan['slug'] ?? '') === 'pro-essai') {
+    http_response_code(400);
+    echo json_encode(['error' => 'Cette formule ne se souscrit pas en ligne. Choisissez Assokit, ou contactez-nous pour le Sur-mesure.']);
+    exit;
+}
+
 $plan_price_id = $plan['stripe_price_id_monthly'] ?? null;
 if (empty($plan_price_id)) {
     echo json_encode(['error' => 'Le price_id Stripe de ce plan n\'est pas configuré. Contactez l\'administrateur.']);
@@ -135,6 +145,22 @@ if ($with_addon_domain) {
     $addon_price_id = ak_stripe_config_get($pdo, 'addon_domain_price_id', null);
     if (empty($addon_price_id)) {
         echo json_encode(['error' => 'Le price_id de l\'add-on domaine n\'est pas configuré.']);
+        exit;
+    }
+}
+
+// TVA : les prix sont HT, Stripe ajoute la TVA de la plateforme (ak_vat_applicable_rate, le taux affiché
+// sur la page de paiement) à chaque échéance. Sans taux Stripe, aucun abonnement : jamais de prélèvement
+// sans la TVA annoncée. TVA non applicable (art. 293 B) : pas de taux.
+$vat_rate = function_exists('ak_vat_applicable_rate') ? ak_vat_applicable_rate($pdo) : 0.0;
+$tax_rate_id = null;
+if ($vat_rate > 0) {
+    $tax_err = null;
+    $tax_rate_id = ak_stripe_vat_tax_rate($pdo, $vat_rate, $tax_err);
+    if (!$tax_rate_id) {
+        error_log('[stripe-create-payment-intent] org #' . $org_id . ' TVA Stripe indisponible : ' . $tax_err);
+        http_response_code(502);
+        echo json_encode(['error' => 'Le paiement est momentanément indisponible : la TVA n’a pas pu être préparée chez notre prestataire de paiement. Aucun montant n’a été prélevé. Réessayez dans quelques minutes ou contactez-nous.']);
         exit;
     }
 }
@@ -185,6 +211,12 @@ try {
     // Ajout add-on si demandé
     if ($addon_price_id) {
         $sub_data['items[1][price]'] = $addon_price_id;
+    }
+
+    // TVA ajoutée au prix HT de chaque ligne (formule et add-on), sur chaque facture de l'abonnement
+    if ($tax_rate_id) {
+        $sub_data['default_tax_rates[0]'] = $tax_rate_id;
+        $sub_data['metadata[vat_rate]'] = (string)$vat_rate;
     }
 
     $resp = ak_stripe_api_call($pdo, 'POST', '/subscriptions', $sub_data);

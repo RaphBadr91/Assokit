@@ -21,7 +21,8 @@ require_once __DIR__ . '/_app-founder.php';
 // Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
 if (!app_session_account_alive($pdo)) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 require_once __DIR__ . '/_app-founder-plan.php';
-$is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
+$is_founder = app_is_founder($pdo, $user);
+$is_sa = $is_founder || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
 if (!$is_sa) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
 $id = (int) ($_GET['id'] ?? 0);
@@ -60,13 +61,17 @@ try {
     } catch (Throwable $e) {}
     $members = [];
     try {
-        $mst = $pdo->prepare("SELECT first_name, last_name, email, role FROM users WHERE org_id = ? AND deleted_at IS NULL AND is_active = 1 ORDER BY (role='admin') DESC, created_at ASC LIMIT 50");
+        // id + totp_enabled : « Réinitialiser la 2FA » (action reset_2fa d'app-founder-action.php)
+        $totp = ak_col_exists($pdo, 'users', 'totp_enabled') ? 'totp_enabled' : '0 AS totp_enabled';
+        $mst = $pdo->prepare("SELECT id, first_name, last_name, email, role, $totp FROM users WHERE org_id = ? AND deleted_at IS NULL AND is_active = 1 ORDER BY (role='admin') DESC, created_at ASC LIMIT 50");
         $mst->execute([$id]);
         foreach ($mst->fetchAll(PDO::FETCH_ASSOC) as $m) {
             $members[] = [
+                'id'    => (int) $m['id'],
                 'name'  => trim(($m['first_name'] ?? '') . ' ' . ($m['last_name'] ?? '')) ?: ($m['email'] ?? '—'),
                 'email' => (string) ($m['email'] ?? ''),
                 'role'  => (string) ($m['role'] ?? 'member'),
+                'totp_enabled' => !empty($m['totp_enabled']),
             ];
         }
     } catch (Throwable $e) {}
@@ -98,6 +103,7 @@ try {
         'members' => $members,
         'plans'   => $plans,
         'can_note' => $hasNote,
+        'can_reset_2fa' => $is_founder,   // bouton « Réinitialiser la 2FA » d'un membre (Fondateur)
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-founder-org-detail] ' . $e->getMessage());

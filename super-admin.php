@@ -54,11 +54,15 @@ try { $nb_founders = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE is_foun
 $mrr = 0.00;
 foreach ($org_states as $ps) $mrr += sa_plan_state_mrr_cents($ps) / 100;
 
-// Impayes
+// Impayes — même périmètre que l'appli (fd_unpaid_summary, api/_app-founder-plan.php) :
+// les factures des associations supprimées ne comptent plus
 $nb_unpaid = 0;
 $total_unpaid = 0.00;
 try {
-    $row = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(amount_ttc), 0) AS total FROM subscription_invoices WHERE status IN ('sent','overdue')")->fetch(PDO::FETCH_ASSOC);
+    $row = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(i.amount_ttc), 0) AS total
+                        FROM subscription_invoices i
+                        JOIN organizations o ON o.id = i.org_id AND o.deleted_at IS NULL
+                        WHERE i.status IN ('sent','overdue')")->fetch(PDO::FETCH_ASSOC);
     $nb_unpaid = (int) $row['nb'];
     $total_unpaid = (float) $row['total'];
 } catch (Throwable $e) {}

@@ -45,6 +45,9 @@ function sa_require_super_admin(): array {
         }
     }
 
+    // Incarnation en cours : page de sortie « Revenir à mon compte » plutôt qu'un 403
+    sa_leave_impersonation_first();
+
     // Double casquette : role='super_admin' OU is_super_admin=1
     $is_sa = $user && (
         ($user['role'] ?? '') === 'super_admin'

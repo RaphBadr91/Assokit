@@ -9,6 +9,10 @@
  *   - Aperçu des 3 dernières factures (lien vers liste complète)
  *   - Bouton "Gérer le paiement" / "Annuler l'abonnement"
  *   - Section "Changer de plan" (upgrade/downgrade)
+ *
+ * Offre : Assokit (prix HT + TVA = TTC, includes-pricing.php) ou Sur-mesure (sur devis). Démarrage
+ * n'est plus proposée : elle reste la formule technique d'un essai terminé (« Essai terminé —
+ * choisissez votre formule ») et celle des anciens comptes gratuits, qui continuent comme avant.
  * --------------------------------------------------------------
  */
 require_once __DIR__ . '/config.php';
@@ -16,6 +20,7 @@ require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/plan-helpers.php';
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
+require_once __DIR__ . '/includes-pricing.php';
 
 require_login();
 // Apple 3.1.1 : aucun tunnel d'achat ne doit s'ouvrir dans l'app.
@@ -87,6 +92,37 @@ try {
 
 $current_plan_id = $cur_plan['plan_id'] ?? ($active_sub['plan_id'] ?? null);
 
+// Prix des formules proposées : HT + TVA = TTC au taux de la plateforme (celui que Stripe ajoute aux
+// nouveaux abonnements par carte). Formule en cours : le montant tel qu'il est facturé. Abonnement par
+// carte souscrit avec la TVA (dernière facture Stripe avec TVA) : HT + TVA = TTC ; sinon (abonnement par
+// carte plus ancien, paiement sur facture ou virement, renouvelé au prix de la formule) : montant seul.
+$vat_rate = function_exists('ak_vat_applicable_rate') ? ak_vat_applicable_rate($pdo) : 0.0;
+$sub_vat_rate = function_exists('ak_live_sub_vat_rate') ? ak_live_sub_vat_rate($pdo, $org_id, $live_stripe) : null;
+// « 49,99 € HT/mois (59,99 € TTC) », ou le montant tel qu'il est prélevé (« 49,99 €/mois »)
+$fmt_month = function (int $cents) use ($sub_vat_rate): string {
+    if ($sub_vat_rate === null) return ak_price_eur($cents) . '/mois';
+    return ak_price_split($cents, $sub_vat_rate)['label'];
+};
+
+// Lignée d'essai (essai jamais converti, ak_org_is_trial) : une association rétrogradée en Démarrage à la
+// fin de son essai voit « Essai terminé — choisissez votre formule », jamais « Plan gratuit ». Les anciens
+// comptes gratuits (Démarrage sans essai) continuent comme avant, avec une invitation à passer à Assokit.
+$trial_lineage = function_exists('ak_org_is_trial') && ak_org_is_trial($pdo, $org_id);
+$cur_slug = (string)($cur_plan['slug'] ?? '');
+// Abonnement payé puis arrêté (résiliation arrivée à échéance, impayé) : ak_sub_downgrade_free a passé la
+// ligne courante en Démarrage en gardant l'ancienne formule (previous_plan_id). Il n'y a plus de formule
+// gratuite : « Accès limité », jamais « Plan gratuit actif ». La fin d'essai (même marquage, formule d'essai)
+// reste « Essai terminé ».
+$after_paid = false;
+if ($cur_slug === 'demarrage' && !$trial_lineage && $active_sub && !empty($active_sub['previous_plan_id'])
+    && (int)$active_sub['id'] === (int)($cur_plan['subscription_id'] ?? $active_sub['id'])) {
+    try {
+        $pq = $pdo->prepare("SELECT 1 FROM asso_plans p WHERE p.id = ? AND p.slug <> 'demarrage' AND NOT (" . ak_plan_trial_sql($pdo) . ")");
+        $pq->execute([(int)$active_sub['previous_plan_id']]);
+        $after_paid = (bool)$pq->fetchColumn();
+    } catch (Throwable $e) {}
+}
+
 // URL "Régulariser" dynamique
 $regularize_url = function_exists('ak_get_regularize_url') ? ak_get_regularize_url($pdo, $org_id) : '/contact?subject=billing';
 
@@ -129,7 +165,8 @@ render_sidebar('mon-asso-plan');
   // Essai gratuit : même état que le bandeau et le cockpit (ak_get_subscription_status ← ak_org_plan_state).
   // Essai terminé dès que la date est passée, que le cron l'ait déjà basculé en Démarrage ou non :
   // jamais « Abonnement actif · Renouvellement automatique », jamais « 0 jour restant » à une date passée.
-  $trial_over = !empty($subscription_status['trial_expired']);
+  $trial_over = !empty($subscription_status['trial_expired'])
+      || ($trial_lineage && $cur_slug === 'demarrage' && empty($subscription_status['is_trial']) && empty($subscription_status['trial_paused']));
   // Essai suspendu par le Fondateur avant sa fin : ni « essai en cours, toutes les fonctionnalités », ni
   // « abonnement actif » (même état que le badge « Essai suspendu » du cockpit et de l'appli)
   $trial_paused = !empty($subscription_status['trial_paused']) && !$trial_over;
@@ -147,12 +184,13 @@ render_sidebar('mon-asso-plan');
   if ($is_trial) { $bg_color = '#ECFDF5'; $border_color = '#A7F3D0'; $accent_color = '#047857'; }
   if ($trial_over) { $bg_color = '#FEF3C7'; $border_color = '#FCD34D'; $accent_color = '#92400E'; $emoji = '⏳'; }
   if ($trial_paused) { $bg_color = '#FEF3C7'; $border_color = '#FCD34D'; $accent_color = '#92400E'; $emoji = '⏸'; }
-  // Essai terminé, cron pas encore passé : la formule qui s'applique est déjà Démarrage
-  $plan_title = $trial_over ? 'Démarrage' : ($subscription_status['plan_name'] ?? 'Démarrage');
+  if ($after_paid && !$trial_over) { $bg_color = '#FEF3C7'; $border_color = '#FCD34D'; $accent_color = '#92400E'; $emoji = '🔒'; }
+  // Essai terminé (cron passé ou non) : aucune formule choisie, Démarrage n'est pas une offre
+  $plan_title = $trial_over ? 'Essai terminé' : ($after_paid ? 'Accès limité' : ($subscription_status['plan_name'] ?? 'Démarrage'));
   // Formule gratuite (Démarrage) : rien ne se renouvelle ni ne se prélève (Sur-mesure, facturé à part, n'en est pas une)
   $is_free_plan = $cur_plan && (int)($cur_plan['price_cents'] ?? 0) <= 0 && ($cur_plan['slug'] ?? '') !== 'sur-mesure' && empty($cur_plan['is_custom_quote']);
   // Résiliation en cours (ak_plan_trial_info, même texte que Paramètres) : la formule reste jusqu'à
-  // access_until, puis plan gratuit Démarrage. Ni « Renouvellement automatique », ni « Annuler », ni « Plan gratuit ».
+  // access_until, puis accès limité (Démarrage). Ni « Renouvellement automatique », ni « Annuler », ni « Plan gratuit ».
   $is_cancel_scheduled = !empty($subscription_status['cancel_scheduled']) && !$is_trial && !$trial_over && !$trial_paused;
   $access_until_fr = (string)($subscription_status['access_until_fr'] ?? '');
   $sub_cancelled = $is_cancel_scheduled && $st === 'cancelled';
@@ -166,14 +204,16 @@ render_sidebar('mon-asso-plan');
       <div style="font-size:22px;font-weight:700;color:<?= $accent_color ?>;line-height:1.2;">
         <?= htmlspecialchars($plan_title) ?>
         <?php if ($pricing['total_cents'] > 0 && !$trial_over): ?>
-          · <span style="font-size:18px;"><?= ak_format_price_cents($pricing['total_cents']) ?>/mois</span>
+          · <span style="font-size:18px;"><?= htmlspecialchars($fmt_month((int)$pricing['total_cents'])) ?></span>
         <?php endif; ?>
       </div>
       <div style="font-size:13px;color:<?= $accent_color ?>;margin-top:4px;opacity:0.9;">
         <?php if ($is_cancel_scheduled && $sub_cancelled): ?>
-          🛑 Résiliée<?= $access_until_fr !== '' ? ' · accès jusqu’au ' . htmlspecialchars($access_until_fr) : '' ?> · puis plan gratuit Démarrage
+          🛑 Résiliée<?= $access_until_fr !== '' ? ' · accès jusqu’au ' . htmlspecialchars($access_until_fr) : '' ?> · puis accès limité (Démarrage), vos données sont conservées
         <?php elseif ($is_cancel_scheduled): ?>
-          🛑 Résiliation programmée<?= $access_until_fr !== '' ? ' le ' . htmlspecialchars($access_until_fr) : '' ?> · aucun nouveau prélèvement · puis plan gratuit Démarrage
+          🛑 Résiliation programmée<?= $access_until_fr !== '' ? ' le ' . htmlspecialchars($access_until_fr) : '' ?> · aucun nouveau prélèvement · puis accès limité (Démarrage)
+        <?php elseif ($after_paid && !$trial_over): ?>
+          🔒 Abonnement arrêté — vos données sont conservées · choisissez une formule pour retrouver toutes les fonctionnalités
         <?php elseif ($is_active && ($is_free_plan || ($stripe_on_free && $stripe_on_free_plan))): ?>
           ✅ Plan gratuit actif
         <?php elseif ($is_active && $stripe_on_free): ?>
@@ -187,7 +227,7 @@ render_sidebar('mon-asso-plan');
         <?php elseif ($is_active): ?>
           ✅ Abonnement actif · paiement sur facture
         <?php elseif ($trial_over): ?>
-          ⏳ Essai terminé<?= $trial_end_fr !== '' ? ' le ' . $trial_end_fr : '' ?> · plan gratuit Démarrage · vos données sont conservées
+          ⏳ Essai terminé<?= $trial_end_fr !== '' ? ' le ' . $trial_end_fr : '' ?> — choisissez votre formule · vos données sont conservées
         <?php elseif ($trial_paused): ?>
           ⏸ Essai suspendu<?= $trial_end_fr !== '' ? ' · fin prévue le ' . $trial_end_fr : '' ?> · contactez-nous pour le réactiver
         <?php elseif ($is_pending): ?>
@@ -207,8 +247,11 @@ render_sidebar('mon-asso-plan');
       <?php if ($is_grace || $is_pending || $is_overdue): ?>
         <a href="<?= htmlspecialchars($regularize_url) ?>" style="display:inline-flex;align-items:center;gap:7px;background:#EA580C;color:white;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('credit-card',14) ?>Régulariser</a>
       <?php endif; ?>
-      <?php if ($st === 'none' || $is_trial || $trial_over || ($is_cancel_scheduled && ($cur_plan['slug'] ?? '') !== 'assokit')): ?>
-        <a href="/mon-asso-paiement?plan=assokit" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(180deg,#059669 0%,#047857 100%);color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('star-fill',14) ?>Passer à Assokit</a>
+      <?php if ($st === 'none' || $is_trial || $trial_over || ($is_free_plan && !$stripe_on_free && !$is_cancel_scheduled) || ($is_cancel_scheduled && ($cur_plan['slug'] ?? '') !== 'assokit')): ?>
+        <a href="/mon-asso-paiement?plan=assokit" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(180deg,#059669 0%,#047857 100%);color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('star-fill',14) ?><?= $trial_over ? 'Choisir Assokit' : ($after_paid ? 'Reprendre Assokit' : 'Passer à Assokit') ?></a>
+      <?php endif; ?>
+      <?php if ($trial_over): ?>
+        <a href="/contact?plan=sur-mesure" style="display:inline-flex;align-items:center;gap:7px;background:white;color:#0F172A;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;border:1px solid #E2E8F0;"><?= ak_icon('phone',14) ?>Sur-mesure : être rappelé</a>
       <?php endif; ?>
     </div>
   </div>
@@ -223,19 +266,29 @@ render_sidebar('mon-asso-plan');
       <?php if ($pricing['total_cents'] > 0 && !$trial_over): ?>
       <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px 24px;">
         <h3 style="margin:0 0 14px;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('euro',18) ?>Détail du tarif</h3>
+        <?php
+        $ht_suffix = ($sub_vat_rate !== null && $sub_vat_rate > 0) ? ' HT' : '';
+        $total_split = ak_price_split((int)$pricing['total_cents'], $sub_vat_rate ?? 0.0);
+        ?>
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9;font-size:14px;">
           <div>Plan <?= htmlspecialchars($subscription_status['plan_name'] ?? '') ?></div>
-          <div style="font-weight:600;"><?= ak_format_price_cents($pricing['plan_cents']) ?>/mois</div>
+          <div style="font-weight:600;"><?= htmlspecialchars(ak_price_eur((int)$pricing['plan_cents']) . $ht_suffix) ?>/mois</div>
         </div>
         <?php foreach ($pricing['addons'] as $addon): ?>
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9;font-size:14px;">
           <div style="color:#1E40AF;">🏆 <?= htmlspecialchars($addon['addon_name']) ?></div>
-          <div style="font-weight:600;color:#1E40AF;">+<?= ak_format_price_cents((int)$addon['price_cents_monthly']) ?>/mois</div>
+          <div style="font-weight:600;color:#1E40AF;">+<?= htmlspecialchars(ak_price_eur((int)$addon['price_cents_monthly']) . $ht_suffix) ?>/mois</div>
         </div>
         <?php endforeach; ?>
+        <?php if ($ht_suffix !== ''): ?>
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9;font-size:13px;color:#475569;">
+          <div>TVA <?= htmlspecialchars($total_split['rate_label']) ?></div>
+          <div><?= htmlspecialchars($total_split['vat']) ?></div>
+        </div>
+        <?php endif; ?>
         <div style="display:flex;justify-content:space-between;padding:12px 0 0;border-top:2px solid #0F172A;margin-top:6px;font-size:15px;font-weight:700;">
-          <div>Total mensuel</div>
-          <div style="color:#059669;font-size:18px;"><?= ak_format_price_cents($pricing['total_cents']) ?></div>
+          <div>Total mensuel<?= $ht_suffix !== '' ? ' TTC' : '' ?></div>
+          <div style="color:#059669;font-size:18px;"><?= htmlspecialchars($total_split['ttc']) ?></div>
         </div>
       </div>
       <?php endif; ?>
@@ -278,40 +331,48 @@ render_sidebar('mon-asso-plan');
       <?php endif; ?>
 
       <!-- Changer de plan -->
-      <?php if (!empty($plans) && count($plans) > 1): ?>
+      <?php
+      // Formules proposées : Assokit et Sur-mesure. Démarrage n'apparaît que comme formule ACTUELLE d'un
+      // ancien compte gratuit (jamais pour un essai terminé) ; aucune autre formule à 0 € n'est proposée.
+      $plans = array_values(array_filter($plans, function ($p) use ($current_plan_id, $trial_over, $after_paid) {
+          $is_current = $current_plan_id !== null && (int)$p['id'] === (int)$current_plan_id;
+          $is_quote = ($p['slug'] === 'sur-mesure' || !empty($p['is_custom_quote']));
+          if (!empty($p['is_trial']) || $p['slug'] === 'pro-essai') return false;
+          if ((int)$p['price_cents'] <= 0 && !$is_quote) return $is_current && !$trial_over && !$after_paid;
+          return true;
+      }));
+      // Formules payantes d'abord, Sur-mesure (sur devis) en dernier
+      usort($plans, fn($a, $b) => (($a['slug'] === 'sur-mesure' || !empty($a['is_custom_quote'])) <=> ($b['slug'] === 'sur-mesure' || !empty($b['is_custom_quote'])))
+          ?: ((int)$a['price_cents'] <=> (int)$b['price_cents']));
+      ?>
+      <?php if (!empty($plans)): ?>
       <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px 24px;">
-        <h3 style="margin:0 0 6px;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('chart',18) ?>Changer de plan</h3>
-        <p style="color:#64748B;font-size:13px;margin:0 0 16px;">Upgrade ou downgrade selon vos besoins.</p>
+        <h3 style="margin:0 0 6px;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('chart',18) ?><?= ($trial_over || $is_trial || $trial_paused || $after_paid) ? 'Choisissez votre formule' : 'Changer de plan' ?></h3>
+        <p style="color:#64748B;font-size:13px;margin:0 0 16px;"><?= $trial_over ? 'Votre essai est terminé : vos données sont conservées, choisissez la formule qui vous convient pour continuer.' : ($after_paid ? 'Votre abonnement est arrêté : vos données sont conservées, choisissez une formule pour retrouver toutes les fonctionnalités.' : 'Sans engagement, résiliable à tout moment.') ?></p>
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
           <?php
           // Sur-mesure / sur devis : jamais « Gratuit » (prix 0 en base = sur devis, comme le cockpit et /tarifs)
           $cur_is_quote = $cur_plan && (($cur_plan['slug'] ?? '') === 'sur-mesure' || !empty($cur_plan['is_custom_quote']));
           foreach ($plans as $p):
-            $is_current = ((int)$p['id'] === (int)$current_plan_id);
+            $is_current = ((int)$p['id'] === (int)$current_plan_id) && !$trial_over;
             $is_quote = ($p['slug'] === 'sur-mesure' || !empty($p['is_custom_quote']));
-            $price_str = $is_quote ? 'Sur devis' : ((int)$p['price_cents'] === 0 ? 'Gratuit' : ak_format_price_cents((int)$p['price_cents']) . '/mois');
+            // Formule en cours : le montant facturé (comme le bandeau) ; autre formule : prix HT + TTC
+            $price_str = $is_quote ? 'Sur devis' : ((int)$p['price_cents'] === 0 ? 'Gratuit'
+                : ($is_current ? $fmt_month((int)$p['price_cents']) : ak_price_split((int)$p['price_cents'], $vat_rate)['label']));
           ?>
           <div style="background:<?= $is_current ? '#F0FDF4' : '#FAF8F5' ?>;border:<?= $is_current ? '2px solid #059669' : '1px solid #E2E8F0' ?>;border-radius:10px;padding:14px;text-align:center;">
-            <div style="font-weight:700;color:<?= $is_current ? '#047857' : '#0F172A' ?>;font-size:14px;"><?= htmlspecialchars($p['name']) ?></div>
+            <div style="font-weight:700;color:<?= $is_current ? '#047857' : '#0F172A' ?>;font-size:14px;"><?= htmlspecialchars(function_exists('ak_plan_label') ? ak_plan_label($p['slug'], $p['name']) : $p['name']) ?></div>
             <div style="font-size:12px;color:#64748B;margin:4px 0 10px;"><?= htmlspecialchars($price_str) ?></div>
             <?php if ($is_current): ?>
               <div style="background:#059669;color:white;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:600;">✓ PLAN ACTUEL</div>
             <?php elseif ($is_quote): ?>
-              <a href="/contact?subject=quote" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('phone',14) ?>Être recontacté</a>
-            <?php elseif ((int)$p['price_cents'] === 0 && $p['slug'] !== 'demarrage'): ?>
-              <?php // Autre formule à 0 € (hors Démarrage) : ni achat ni résiliation depuis cette carte ?>
-            <?php elseif ((int)$p['price_cents'] > (int)($current_plan_id ? $pricing['plan_cents'] : 0) && !$cur_is_quote): ?>
-              <a href="/mon-asso-paiement?plan=<?= htmlspecialchars($p['slug']) ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#059669;color:white;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('upload',14) ?>Upgrade</a>
+              <a href="/contact?plan=sur-mesure" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('phone',14) ?>Être recontacté</a>
+            <?php elseif ((int)$p['price_cents'] <= 0): ?>
+              <?php // Formule à 0 € (filtrée plus haut sauf formule actuelle) : ni achat ni résiliation depuis cette carte ?>
+            <?php elseif ($trial_over || ((int)$p['price_cents'] > (int)($current_plan_id ? $pricing['plan_cents'] : 0) && !$cur_is_quote)): ?>
+              <a href="/mon-asso-paiement?plan=<?= htmlspecialchars($p['slug']) ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#059669;color:white;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('upload',14) ?><?= ($trial_over || $is_trial || $trial_paused || $after_paid) ? 'Choisir' : 'Upgrade' ?></a>
             <?php elseif ((int)$p['price_cents'] > 0): ?>
               <a href="/mon-asso-paiement?plan=<?= htmlspecialchars($p['slug']) ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('download',14) ?>Passer à ce plan</a>
-            <?php elseif ($is_cancel_scheduled): ?>
-              <div style="background:#FEF3C7;color:#92400E;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:600;"><?= $access_until_fr !== '' ? 'Après le ' . htmlspecialchars($access_until_fr) : 'Résiliation en cours' ?></div>
-            <?php elseif (!empty($cur_plan['legacy_plan'])): ?>
-              <?php // Compte historique sans ligne d'abonnement (ak_legacy_plan_row) : rien à résilier en ligne, le Fondateur régularise la formule ?>
-              <a href="/contact?subject=billing" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('phone',14) ?>Nous contacter</a>
-            <?php else: ?>
-              <?php // Démarrage : résilier la formule payante (fin de période, puis Démarrage) ?>
-              <a href="/mon-asso-annuler-abonnement" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('download',14) ?>Passer au gratuit</a>
             <?php endif; ?>
           </div>
           <?php endforeach; ?>
@@ -340,7 +401,7 @@ render_sidebar('mon-asso-plan');
             <div style="font-size:24px;">🎁</div>
             <div style="flex:1;font-size:13px;line-height:1.4;">
               <div style="font-weight:700;color:#0F172A;"><?= $trial_over ? 'Aucun prélèvement' : 'Essai gratuit' ?></div>
-              <div style="color:#64748B;"><?= $trial_over ? 'Plan gratuit Démarrage, sans carte bancaire' : 'Sans carte bancaire, sans engagement' ?></div>
+              <div style="color:#64748B;"><?= $trial_over ? 'Aucune formule choisie : vos données sont conservées' : 'Sans carte bancaire, sans engagement' ?></div>
             </div>
           </div>
         <?php elseif ($payment_mode === 'stripe' && $is_cancel_scheduled): ?>
@@ -377,7 +438,7 @@ render_sidebar('mon-asso-plan');
           </div>
         <?php elseif ($is_free_plan): ?>
           <div style="font-size:13px;color:#64748B;line-height:1.5;margin-bottom:14px;">
-            Plan gratuit : aucun paiement.
+            <?= $after_paid ? 'Aucun abonnement en cours : aucun prélèvement.' : 'Plan gratuit : aucun paiement.' ?>
           </div>
         <?php elseif ($cur_plan): ?>
           <?php // Paiement hors Stripe (« manual » ou non renseigné) : sur facture, sans prélèvement automatique ?>
@@ -429,7 +490,7 @@ render_sidebar('mon-asso-plan');
       <div style="background:linear-gradient(135deg, #EFF6FF 0%, white 100%);border:1px solid #BFDBFE;border-radius:14px;padding:22px;">
         <div style="font-size:32px;margin-bottom:8px;">🏆</div>
         <h3 style="margin:0 0 6px;font-size:15px;color:#1E40AF;">Domaine personnalisé</h3>
-        <p style="font-size:12.5px;color:#475569;margin:0 0 14px;line-height:1.5;">Ajoutez votre propre domaine (adherents.tonasso.fr) pour seulement <strong>+10€/mois</strong>.</p>
+        <p style="font-size:12.5px;color:#475569;margin:0 0 14px;line-height:1.5;">Ajoutez votre propre domaine (adherents.tonasso.fr) pour seulement <strong>+<?= htmlspecialchars($fmt_month(AK_ADDON_DOMAIN_HT_CENTS)) ?></strong>.</p>
         <a href="/mon-asso-paiement?plan=<?= htmlspecialchars($subscription_status['plan_slug'] ?? 'assokit') ?>&addon_domain=1" style="display:block;background:#1E40AF;color:white;padding:9px;border-radius:8px;text-align:center;font-size:13px;text-decoration:none;font-weight:600;">+ Ajouter</a>
       </div>
       <?php endif; ?>

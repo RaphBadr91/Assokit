@@ -169,9 +169,12 @@ $org_configs = [
     'demo-tpe' => ['icon' => '🏢', 'color' => '#f59e0b', 'tagline' => 'Petite entreprise (TPE/SARL)', 'pitch' => 'Pour démontrer Assokit à un dirigeant de TPE — gestion équipe & facturation client', 'cible_membres' => 4, 'cible_projets' => 20, 'cible_factures' => 170],
 ];
 
+// Offre présentée aux prospects : Essai PRO (14 jours gratuits), Assokit (prix HT + TTC), Sur-mesure
+require_once __DIR__ . '/includes-pricing.php';
+$demo_offer = ak_offer_price($pdo);
 $plan_display = [
-    'essentiel' => ['label' => 'DÉMARRAGE', 'price' => 'Gratuit', 'subtitle' => 'Pour découvrir', 'color' => '#94a3b8'],
-    'association' => ['label' => 'ASSOKIT', 'price' => '49,99 €/mois', 'subtitle' => 'Le plus populaire', 'color' => '#10b981'],
+    'essentiel' => ['label' => 'ESSAI PRO', 'price' => 'Gratuit 14 j', 'subtitle' => 'Sans carte bancaire', 'color' => '#94a3b8'],
+    'association' => ['label' => 'ASSOKIT', 'price' => $demo_offer['per_month'], 'subtitle' => $demo_offer['ttc_note'] !== '' ? $demo_offer['ttc_note'] . ' · le plus choisi' : 'Le plus choisi', 'color' => '#10b981'],
     'organisation' => ['label' => 'SUR-MESURE', 'price' => 'Sur devis', 'subtitle' => 'Full max', 'color' => '#3b82f6'],
 ];
 ?><!DOCTYPE html>

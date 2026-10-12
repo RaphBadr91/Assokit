@@ -42,7 +42,7 @@ render_head('Paiements');
       <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
 
       <h2 class="ck-section">🏦 Coordonnées bancaires (virement)</h2>
-      <p class="ck-help">Affichées sur la page de paiement publique pour les virements.</p>
+      <p class="ck-help">Conservées ici pour les communiquer à vos adhérents qui paient par virement.</p>
       <div class="ck-fld"><label>Titulaire du compte</label><input type="text" name="bank_holder" value="<?= h($s['bank_holder'] ?? '') ?>" maxlength="150"></div>
       <div class="ck-row">
         <div class="ck-fld"><label>IBAN</label><input type="text" name="bank_iban" value="<?= h($s['bank_iban'] ?? '') ?>" maxlength="40" placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"></div>
@@ -54,8 +54,8 @@ render_head('Paiements');
 
       <h2 class="ck-section">💳 Stripe (paiement en ligne par carte)</h2>
       <div class="ck-stripe-info">
-        <strong>📌 Stripe sera activé dès que ta société sera créée.</strong><br>
-        Les clés ci-dessous peuvent être laissées vides pour l'instant. Une fois ton compte Stripe créé : (1) coche "Activer", (2) colle les clés depuis dashboard.stripe.com → Développeurs → Clés API, (3) configure le webhook sur <code><?= h($_SERVER['HTTP_HOST'] ?? 'assokit.fr') ?>/stripe-webhook</code>.
+        <strong>Paiement en ligne des cotisations : bientôt disponible.</strong><br>
+        Enregistrez les paiements reçus (chèque, virement, espèces) depuis chaque campagne. Les clés ci-dessous peuvent rester vides.
       </div>
 
       <div class="ck-fld">

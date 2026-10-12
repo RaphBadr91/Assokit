@@ -13,7 +13,7 @@ render_public_nav('');
     <div class="pub-breadcrumb"><a href="/">Accueil</a><span class="pub-breadcrumb-sep">›</span><strong style="color:var(--c-encre);">CGU / CGV</strong></div>
     <h1 class="pub-h1" style="font-size:36px;">Conditions générales</h1>
     <?php /* Date de version du texte (dernière modification) : à changer seulement quand le texte change */ ?>
-    <p class="pub-tagline">Version du 16/09/2026</p>
+    <p class="pub-tagline">Version du 12/10/2026</p>
   </div>
 </section>
 <section class="pub-section" style="padding-top:0;">
@@ -33,8 +33,16 @@ render_public_nav('');
       <h2>3. Inscription et compte</h2>
       <p>L'inscription est ouverte aux associations loi 1901, TPE, indépendants et autres structures professionnelles. L'Utilisateur s'engage à fournir des informations exactes et à les maintenir à jour.</p>
 
-      <h2>4. Tarifs et paiement</h2>
-      <p>Les tarifs sont indiqués sur la page <a href="/tarifs">tarifs</a> et peuvent être TTC ou HT selon le plan. Le paiement est mensuel ou annuel, par carte bancaire via notre partenaire de paiement sécurisé.</p>
+      <h2>4. Formules, essai, tarifs et paiement</h2>
+      <p>Le Service est proposé selon trois formules, décrites sur la page <a href="/tarifs">Tarifs</a> :</p>
+      <ul>
+        <li><strong>Essai PRO</strong> : essai gratuit de 14 jours, sans carte bancaire, donnant accès aux fonctionnalités de la formule Assokit (les envois d’e-mails et les imports sont plafonnés pendant l’essai). L’essai ne se transforme jamais en abonnement payant sans action de l’Utilisateur : à son terme, aucun montant n’est prélevé, les données sont conservées et l’espace passe en accès limité (fonctionnalités restreintes) jusqu’à la souscription d’une formule.</li>
+        <li><strong>Assokit</strong> : abonnement mensuel au prix indiqué sur la page Tarifs.</li>
+        <li><strong>Sur-mesure</strong> : offre sur devis pour les réseaux, fédérations, grandes structures et collectivités, régie par les conditions particulières du devis accepté.</li>
+      </ul>
+      <p>Les prix sont exprimés <strong>hors taxes (HT)</strong> ; la TVA au taux en vigueur s’y ajoute, sauf mention « TVA non applicable, art. 293 B du CGI ». Le montant toutes taxes comprises (TTC) est indiqué avant tout paiement.</p>
+      <p>L’abonnement Assokit est <strong>mensuel</strong> (il n’existe pas de formule annuelle). Il est payable d’avance chaque mois, par carte bancaire via notre partenaire de paiement sécurisé (Stripe) ou, sur accord, sur facture par virement, et se renouvelle automatiquement chaque mois jusqu’à sa résiliation. Les factures sont mises à disposition dans l’espace de l’Utilisateur.</p>
+      <p>Toute modification des prix est annoncée par e-mail au moins 30 jours avant son application à un abonnement en cours ; l’Utilisateur qui la refuse peut résilier avant son entrée en vigueur.</p>
       <p>En cas de défaut de paiement, l'accès peut être suspendu après un préavis de 15 jours.</p>
 
       <h2>5. Propriété des données</h2>
@@ -60,8 +68,8 @@ render_public_nav('');
       </ul>
 
       <h2>8. Résiliation</h2>
-      <p>L'Utilisateur peut résilier son abonnement à tout moment depuis son espace ou par email. La résiliation prend effet à la fin de la période en cours. Aucun remboursement prorata pour le mois en cours.</p>
-      <p>RBPS conserve les données 30 jours après résiliation pour permettre à l'Utilisateur de les exporter, puis les supprime définitivement.</p>
+      <p>L’abonnement est <strong>sans engagement de durée</strong>. L'Utilisateur peut le résilier à tout moment, sans frais, depuis son espace (rubrique « Mon abonnement ») ou par e-mail. La résiliation prend effet à la <strong>fin de la période mensuelle en cours</strong>, déjà payée : l’accès à la formule est maintenu jusqu’à cette date et aucun nouveau prélèvement n’a lieu. Aucun remboursement au prorata n’est effectué pour la période entamée.</p>
+      <p>Après la résiliation de l’abonnement, le compte passe en accès limité : les données restent conservées et exportables, et l’Utilisateur peut reprendre un abonnement à tout moment. En cas de suppression du compte (depuis son espace ou sur demande à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>), RBPS conserve les données 30 jours pour permettre à l'Utilisateur de les exporter, puis les supprime définitivement.</p>
 
       <h2>9. Propriété intellectuelle</h2>
       <p>Le Service — son code source, sa conception, son architecture, ses interfaces, ses textes, ses bases de données, sa marque et son identité visuelle — est la propriété exclusive de <strong>Raphaël Badr Pujol-Siwane</strong>, auteur et titulaire de l'ensemble des droits de propriété intellectuelle qui s'y attachent, y compris ceux portant sur l'innovation qu'il met en œuvre. RBPS exploite le Service sur autorisation du titulaire des droits.</p>

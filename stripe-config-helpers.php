@@ -161,6 +161,19 @@ if (!function_exists('ak_vat_get_rate')) {
     }
 }
 
+if (!function_exists('ak_vat_applicable_rate')) {
+    /**
+     * Taux de TVA réellement appliqué aux abonnements Assokit, en % : celui qui est affiché (prix HT +
+     * TVA = TTC) ET celui que Stripe facture (stripe-create-payment-intent.php). 0 quand la TVA est
+     * désactivée (franchise en base, « TVA non applicable, art. 293 B du CGI ») ou que le taux vaut 0.
+     */
+    function ak_vat_applicable_rate(PDO $pdo): float {
+        if (!ak_vat_is_enabled($pdo)) return 0.0;
+        $rate = round(ak_vat_get_rate($pdo), 2);
+        return ($rate > 0 && $rate < 100) ? $rate : 0.0;
+    }
+}
+
 if (!function_exists('ak_stripe_test_connection')) {
     /**
      * Teste la connexion à l'API Stripe avec les clés actuelles.

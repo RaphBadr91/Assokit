@@ -74,7 +74,8 @@ function df_seed_pilotage(): void
             $s('🤝', 'Forum emploi : un créneau d\'accueil vous attend', 'Samedi matin, avec Camille.', '/messages?c=benevoles', 'Confirmer', 'info'),
         ]],
         'membre' => ['member', [
-            $s('✍️', 'Signez votre présence à l\'atelier', 'L\'émargement de l\'atelier numérique est ouvert.', '/emargement', 'Signer', 'important'),
+            // L'émargement se signe sur la tablette de l'accueil : la page /emargement est réservée à l'équipe
+            $s('✍️', 'Atelier numérique ce matin', 'Pensez à signer la feuille d\'émargement sur la tablette de l\'accueil en arrivant.', '/agenda', 'Voir l\'atelier', 'important'),
             $s('🎤', 'Élodie vous propose de témoigner', 'Pour la fiche de communication du Pass Numérique.', '/messages?c=parcours-numerique', 'Répondre', 'important'),
             $s('📅', 'Forum de l\'emploi dans 5 jours', 'Vous êtes inscrit : pensez à imprimer votre CV.', '/agenda', 'Voir', 'info'),
             $s('🗳️', 'Assemblée générale dans 3 semaines', 'Votre convocation est arrivée, vous pouvez voter en ligne le jour J.', '/agenda', 'En savoir plus', 'info'),

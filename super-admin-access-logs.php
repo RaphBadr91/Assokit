@@ -15,6 +15,10 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-auth-helpers.php';
 
+// Incarnation en cours : page « Revenir à mon compte », pas la confirmation d'identité (pré-remplie
+// avec l'adresse de la personne incarnée)
+sa_leave_impersonation_first();
+
 // Double auth SA + vérif Fondateur
 $me = sa_auth_require();
 

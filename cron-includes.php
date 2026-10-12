@@ -315,13 +315,16 @@ function cron_clear_cockpit_cookie(): void
 // ============================================================
 
 /**
- * Vérifie si l'utilisateur a un cookie cockpit valide
- * ET si son compte a toujours les flags is_super_admin OU is_founder.
+ * Vérifie si l'utilisateur a un cookie cockpit valide, lié au compte de la session Assokit en cours
+ * (2FA passée), ET si ce compte a toujours les flags is_super_admin OU is_founder. Toute page
+ * admin-cron-* hérite ainsi de la règle « session Assokit + cookie cockpit du même compte ».
  */
 function cron_is_super_admin(): bool
 {
     $userId = cron_verify_cockpit_cookie();
     if (!$userId) return false;
+    $sessionUser = function_exists('current_user') ? current_user() : null;
+    if (!$sessionUser || (int)($sessionUser['id'] ?? 0) !== $userId) return false;
 
     global $pdo;
     try {

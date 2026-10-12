@@ -14,8 +14,10 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/company-helpers.php';
+require_once __DIR__ . '/sa-auth-helpers.php';
 
 require_login();
+sa_leave_impersonation_first();   // incarnation en cours : page « Revenir à mon compte », pas un 403
 $user = current_user();
 
 // Fondateur UNIQUEMENT — vérif BDD
@@ -34,7 +36,6 @@ if (!$is_founder) {
 }
 
 // Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
-require_once __DIR__ . '/sa-auth-helpers.php';
 sa_auth_gate();
 
 // Charger les settings actuels

@@ -8,6 +8,11 @@
  * --------------------------------------------------------------
  */
 require_once __DIR__ . '/includes-public.php';
+// Offre : essai PRO gratuit, puis formule Assokit (prix HT + TTC, includes-pricing.php)
+require_once __DIR__ . '/includes-pricing.php';
+$offer = ak_offer_price();
+// Option domaine personnalisé : même TVA que la formule (« 10,00 € HT/mois » ou « 10,00 €/mois »)
+$addon_domain = ak_price_split(AK_ADDON_DOMAIN_HT_CENTS, $offer['vat_known'] ? $offer['vat_rate'] : null);
 
 // === FAQ (source unique : alimente le schema FAQPage ET la section visible) ===
 $home_faqs = [
@@ -25,11 +30,11 @@ $home_faqs = [
     ],
     [
         'q' => "Combien coûte Assokit ?",
-        'a' => "Assokit propose un essai gratuit de 14 jours, sans carte bancaire et sans engagement, puis des formules Essentiel (29,99€) et Pro (49,99€ HT) adaptées à votre activité. Vous testez toutes les fonctionnalités avant de choisir.",
+        'a' => "Assokit se teste gratuitement pendant 14 jours, sans carte bancaire et sans engagement, avec toutes les fonctionnalités. Ensuite, un seul abonnement tout inclus : " . $offer['label'] . ", résiliable à tout moment. Les réseaux, fédérations et grandes structures peuvent demander une offre Sur-mesure.",
     ],
     [
         'q' => "La comptabilité analytique est-elle incluse ?",
-        'a' => "Oui, la comptabilité analytique est incluse dès l'offre Pro, soit environ 900 € d'économie par an par rapport à un expert-comptable. Votre comptable n'intervient plus que pour valider les comptes.",
+        'a' => "Oui, la comptabilité analytique est incluse dans l'abonnement Assokit, soit environ 900 € d'économie par an par rapport à un expert-comptable. Votre comptable n'intervient plus que pour valider les comptes.",
     ],
     [
         'q' => "Mes données sont-elles sécurisées et hébergées en France ?",
@@ -1122,9 +1127,9 @@ render_public_nav('');
           <li>Fédérations &amp; réseaux</li>
         </ul>
         <div class="ak-split-stats">
-          <div class="ak-split-stat"><strong>200+</strong><span>assos en France</span></div>
           <div class="ak-split-stat"><strong>14j</strong><span>essai gratuit</span></div>
-          <div class="ak-split-stat"><strong>4,9/5</strong><span>satisfaction</span></div>
+          <div class="ak-split-stat"><strong>France</strong><span>hébergement</span></div>
+          <div class="ak-split-stat"><strong>RGPD</strong><span>conforme</span></div>
         </div>
         <span class="ak-split-cta">Découvrir Assokit pour associations →</span>
       </a>
@@ -1140,8 +1145,8 @@ render_public_nav('');
           <li>Petites structures de service</li>
         </ul>
         <div class="ak-split-stats">
-          <div class="ak-split-stat"><strong>+35%</strong><span>recouvrement</span></div>
-          <div class="ak-split-stat"><strong>1h+</strong><span>économisée/jour</span></div>
+          <div class="ak-split-stat"><strong>14j</strong><span>essai gratuit</span></div>
+          <div class="ak-split-stat"><strong>Sans</strong><span>engagement</span></div>
           <div class="ak-split-stat"><strong>0€</strong><span>setup</span></div>
         </div>
         <span class="ak-split-cta">Découvrir Assokit pour TPE →</span>
@@ -1248,8 +1253,8 @@ render_public_nav('');
         <span class="pub-promise-num">07</span>
         <div class="pub-promise-ico">🌐</div>
         <h3>Votre marque, partout</h3>
-        <p class="pub-promise-tagline">Sous-domaine inclus · domaine perso à partir de +10€/mois · plateforme à votre image.</p>
-        <p>Vos adhérents accèdent à <strong>tonasso.assokit.fr</strong> avec votre logo et vos couleurs. Ajoutez votre propre domaine (<strong>adherents.tonasso.fr</strong>) et vos emails à votre nom pour <strong>+10€/mois HT seulement</strong>.</p>
+        <p class="pub-promise-tagline">Sous-domaine inclus · domaine perso en option à +<?= pub_h($addon_domain['per_month']) ?> · plateforme à votre image.</p>
+        <p>Vos adhérents accèdent à <strong>tonasso.assokit.fr</strong> avec votre logo et vos couleurs. Ajoutez votre propre domaine (<strong>adherents.tonasso.fr</strong>) et vos emails à votre nom pour <strong>+<?= pub_h($addon_domain['per_month']) ?> seulement</strong>.</p>
       </div>
 
     </div>
@@ -1265,7 +1270,7 @@ render_public_nav('');
     <div class="pub-section-head">
       <span class="pub-section-eyebrow">Comptabilité analytique incluse</span>
       <h2 class="pub-h2">Votre compta analytique, <em>incluse — sans comptable</em></h2>
-      <p class="pub-section-lead">La comptabilité analytique coûte ~900 €/an chez un comptable. Dès l'offre Pro, elle est <strong>incluse</strong> — votre expert-comptable n'intervient plus que pour valider les comptes.</p>
+      <p class="pub-section-lead">La comptabilité analytique coûte ~900 €/an chez un comptable. Avec Assokit, elle est <strong>incluse dans l'abonnement</strong> — votre expert-comptable n'intervient plus que pour valider les comptes.</p>
     </div>
     <div class="ake-compare">
       <article class="ake-card ake-card--sans">
@@ -1282,10 +1287,10 @@ render_public_nav('');
       </article>
       <div class="ake-vs">VS</div>
       <article class="ake-card ake-card--avec">
-        <span class="ake-tag">OFFRE PRO</span>
+        <span class="ake-tag">INCLUSE</span>
         <div class="ake-card__top">
           <span class="ake-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 4 12 14.01l-3-3"/></svg></span>
-          <div><h3>Avec AssoKit</h3><span>Incluse dès l'offre Pro</span></div>
+          <div><h3>Avec AssoKit</h3><span>Incluse dans l'abonnement</span></div>
         </div>
         <div class="ake-price"><b>Incluse</b><em><span class="ake-strike">~900&nbsp;€</span> dans votre abonnement</em></div>
         <ul class="ake-list">
@@ -1431,42 +1436,23 @@ render_public_nav('');
       <p class="pub-promise-strong">Des associations et petites entreprises qui ont <strong>remplacé le désordre par une organisation claire</strong>.</p>
     </div>
 
+    <?php // Avis réels publiés sur /avis (pub_customer_reviews, includes-public.php) : rien d'inventé ici ?>
     <div class="pub-testimonials">
+      <?php foreach (array_values(array_filter(pub_customer_reviews(), fn($r) => in_array($r['name'], ['Nabil', 'Mario', 'Bassim'], true))) as $r): ?>
       <div class="pub-testimonial">
-        <div class="pub-testimonial-stars">★★★★★</div>
-        <p>« On gérait tout sur trois tableurs et un Drive. En une semaine, Assokit a remplacé tout ça. L'IA pour les newsletters, c'est bluffant. »</p>
+        <p>« <?= pub_h($r['quote']) ?> »</p>
         <div class="pub-testimonial-author">
-          <div class="pub-testimonial-avatar" style="background:#059669;">CM</div>
+          <div class="pub-testimonial-avatar" style="background:<?= pub_h($r['color']) ?>;"><?= pub_h($r['initial']) ?></div>
           <div>
-            <div class="pub-testimonial-name">Claire M.</div>
-            <div class="pub-testimonial-role">Présidente · Asso culturelle</div>
+            <div class="pub-testimonial-name"><?= pub_h($r['name']) ?></div>
+            <div class="pub-testimonial-role"><?= pub_h($r['org']) ?></div>
           </div>
         </div>
       </div>
-
-      <div class="pub-testimonial">
-        <div class="pub-testimonial-stars">★★★★★</div>
-        <p>« Je suis artisan, je n'avais pas le temps pour la facturation. Assokit envoie les relances, génère mes courriers. Je gagne 8h par semaine. »</p>
-        <div class="pub-testimonial-author">
-          <div class="pub-testimonial-avatar" style="background:#7E22CE;">TR</div>
-          <div>
-            <div class="pub-testimonial-name">Thomas R.</div>
-            <div class="pub-testimonial-role">Artisan ébéniste · TPE</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="pub-testimonial">
-        <div class="pub-testimonial-stars">★★★★★</div>
-        <p>« Le suivi de projets remplace nos 3 groupes WhatsApp. Tout le monde voit l'avancement, plus personne ne dit "j'ai pas vu". »</p>
-        <div class="pub-testimonial-author">
-          <div class="pub-testimonial-avatar" style="background:#F59E0B;">SB</div>
-          <div>
-            <div class="pub-testimonial-name">Sophie B.</div>
-            <div class="pub-testimonial-role">Trésorière · Asso sportive</div>
-          </div>
-        </div>
-      </div>
+      <?php endforeach; ?>
+    </div>
+    <div class="pub-text-center pub-mt-lg">
+      <a href="/avis" class="pub-btn pub-btn-ghost">Lire les avis de nos clients →</a>
     </div>
   </div>
 </section>
@@ -1520,7 +1506,7 @@ render_public_nav('');
     <div class="ak-cta-card">
       <span class="ak-cta-eyebrow">✨ Essai gratuit · sans carte bancaire</span>
       <h2 class="ak-cta-title">Reprenez le contrôle de votre gestion. <em>Sans complexité.</em></h2>
-      <p class="ak-cta-lead">Essayez Assokit gratuitement pendant <strong>14 jours</strong> et découvrez comment votre association ou votre TPE peut gagner du temps dès la première semaine.</p>
+      <p class="ak-cta-lead">Essayez Assokit gratuitement pendant <strong>14 jours</strong> et découvrez comment votre association ou votre TPE peut gagner du temps dès la première semaine. Ensuite, si l’outil vous convient : <strong><?= pub_h($offer['label']) ?></strong>, tout inclus, sans engagement.</p>
       <div class="ak-cta-actions">
         <a href="/signup" class="pub-btn pub-btn-primary pub-btn-lg">Démarrer l'essai gratuit →</a>
         <a href="/contact?demo=1" class="pub-btn pub-btn-ghost pub-btn-lg">Réserver une démo</a>

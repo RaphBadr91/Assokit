@@ -19,7 +19,7 @@ const AK_SEO_PAGES = [
     // ============================================================
     'accueil' => [
         'title' => 'Logiciel association loi 1901 & TPE — Gestion simple',
-        'description' => 'Assokit, le logiciel français pour gérer votre association loi 1901 ou TPE : adhérents, projets, factures, communication par email et SMS, IA intégrée. Gratuit pour démarrer.',
+        'description' => 'Assokit, le logiciel français pour gérer votre association loi 1901 ou TPE : adhérents, projets, factures, communication par email, IA intégrée. Essai gratuit 14 jours, sans carte bancaire.',
         'keywords' => 'logiciel association loi 1901, gestion association, logiciel adhérents, gestion TPE, facturation association, communication adhérents, association française',
         'canonical' => '/',
         'og_image' => 'https://assokit.fr/assets/og-home.jpg',
@@ -30,9 +30,9 @@ const AK_SEO_PAGES = [
     // PAGE PLANS / TARIFS
     // ============================================================
     'plans' => [
-        'title' => 'Tarifs Assokit — Démarrage gratuit, Assokit 49,99€, Sur-mesure',
-        'description' => 'Découvrez nos plans : Démarrage 100% gratuit, plan Assokit à 49,99€/mois tout inclus, ou Sur-mesure avec domaine perso. Pas d\'engagement, sans frais cachés.',
-        'keywords' => 'tarif logiciel association, prix gestion asso, abonnement Assokit, plan gratuit association, sans engagement',
+        'title' => 'Tarifs Assokit — Essai PRO gratuit 14 jours, Assokit, Sur-mesure',
+        'description' => 'Essai PRO gratuit 14 jours sans carte bancaire, puis un abonnement unique Assokit tout inclus, sans engagement, ou Sur-mesure sur devis. Prix HT, sans frais cachés.',
+        'keywords' => 'tarif logiciel association, prix gestion asso, abonnement Assokit, essai gratuit logiciel association, sans engagement',
         'canonical' => '/plans',
         'og_image' => 'https://assokit.fr/assets/og-plans.jpg',
         'page_type' => 'product',
@@ -42,9 +42,9 @@ const AK_SEO_PAGES = [
     // PAGE INSCRIPTION
     // ============================================================
     'inscription' => [
-        'title' => 'Inscription gratuite — Créez votre compte Assokit',
-        'description' => 'Créez votre compte Assokit gratuitement en 30 secondes. Démarrez avec le plan gratuit, sans CB, sans engagement. Idéal pour les associations loi 1901 et TPE.',
-        'keywords' => 'inscription Assokit, créer compte association, logiciel gratuit asso, démarrer gratuitement',
+        'title' => 'Essai gratuit 14 jours — Créez votre espace Assokit',
+        'description' => 'Créez votre espace Assokit et testez toutes les fonctionnalités PRO pendant 14 jours, sans carte bancaire, sans engagement. Idéal pour les associations loi 1901 et TPE.',
+        'keywords' => 'inscription Assokit, créer compte association, essai gratuit logiciel association, démarrer gratuitement',
         'canonical' => '/inscription',
         'og_image' => 'https://assokit.fr/assets/og-inscription.jpg',
         'page_type' => 'website',
@@ -158,8 +158,8 @@ const AK_SEO_FAQS = [
 
     'accueil' => [
         [
-            'q' => 'Assokit est-il vraiment gratuit ?',
-            'a' => 'Oui, le plan Démarrage est gratuit à vie, sans carte bancaire requise. Vous pouvez gérer votre association ou TPE avec les fonctionnalités essentielles. Si vos besoins grandissent, vous pouvez passer au plan Assokit à 49,99€/mois.',
+            'q' => 'Peut-on essayer Assokit gratuitement ?',
+            'a' => 'Oui : 14 jours d’essai PRO gratuits, sans carte bancaire, avec toutes les fonctionnalités. Ensuite, un abonnement unique tout inclus et sans engagement, dont le prix est indiqué sur la page Tarifs. Sans abonnement, rien n’est prélevé.',
         ],
         [
             'q' => 'Pour qui est conçu Assokit ?',
@@ -171,18 +171,18 @@ const AK_SEO_FAQS = [
         ],
         [
             'q' => 'Puis-je avoir mon propre nom de domaine ?',
-            'a' => 'Oui, avec le plan Assokit (sous-domaine adherents.tonasso.fr inclus, ou domaine personnalisé +10€/mois) ou le plan Sur-mesure (domaine inclus + emails à votre nom).',
+            'a' => 'Oui, avec l’abonnement Assokit (sous-domaine tonasso.assokit.fr inclus, domaine personnalisé en option, au prix indiqué sur la page Tarifs) ou l’offre Sur-mesure (domaine inclus + emails à votre nom).',
         ],
         [
             'q' => 'Comment fonctionne l\'IA d\'Assokit ?',
-            'a' => 'Assokit IA vous aide à rédiger vos communications aux adhérents, à analyser vos données et à automatiser vos tâches récurrentes. Disponible dans tous les plans.',
+            'a' => 'Assokit IA vous aide à rédiger vos communications aux adhérents, à analyser vos données et à automatiser vos tâches récurrentes. Incluse dans l’abonnement Assokit et pendant l’essai.',
         ],
     ],
 
     'plans' => [
         [
-            'q' => 'Quelle est la différence entre les plans Démarrage, Assokit et Sur-mesure ?',
-            'a' => 'Démarrage est gratuit avec les fonctions essentielles. Assokit (49,99€/mois) inclut tout : sous-domaine, IA illimitée, factures avancées, support prioritaire. Sur-mesure ajoute votre domaine personnalisé + emails à votre nom + white-label total.',
+            'q' => 'Quelle est la différence entre l’Essai PRO, Assokit et Sur-mesure ?',
+            'a' => 'L’Essai PRO est gratuit pendant 14 jours, sans carte bancaire. Assokit est l’abonnement mensuel tout inclus : adhérents, cotisations, facturation, comptabilité, assemblées générales, subventions, communication, IA et application mobile. Sur-mesure ajoute un accompagnement, votre domaine personnalisé et des volumes adaptés, sur devis.',
         ],
         [
             'q' => 'Y a-t-il un engagement ?',
@@ -190,15 +190,15 @@ const AK_SEO_FAQS = [
         ],
         [
             'q' => 'Comment se passe le paiement ?',
-            'a' => 'Paiement sécurisé par Stripe : carte bancaire, Apple Pay, Google Pay, SEPA, Klarna. Renouvellement automatique mensuel. Annulation possible à tout moment.',
+            'a' => 'Paiement sécurisé par Stripe, renouvellement automatique mensuel, annulation possible à tout moment. Les prix sont affichés HT, la TVA s’y ajoute.',
         ],
         [
-            'q' => 'Puis-je passer du plan gratuit à Assokit plus tard ?',
-            'a' => 'Oui, vous pouvez upgrader à tout moment depuis votre tableau de bord. Vos données sont conservées et le passage est instantané.',
+            'q' => 'Puis-je m’abonner pendant l’essai ?',
+            'a' => 'Oui, à tout moment depuis votre espace (Mon abonnement). Vos données sont conservées et le passage est instantané.',
         ],
         [
             'q' => 'Y a-t-il des frais cachés ?',
-            'a' => 'Aucun frais caché. Le prix affiché est le prix final. Pas de frais d\'installation, pas de frais de résiliation, pas de surprise.',
+            'a' => 'Aucun frais caché : les prix sont affichés HT, la TVA s’y ajoute et le montant TTC est indiqué avant tout paiement. Pas de frais d\'installation, pas de frais de résiliation, pas de surprise.',
         ],
     ],
 

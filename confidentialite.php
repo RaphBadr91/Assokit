@@ -59,8 +59,8 @@ render_public_nav('');
 
       <h2>4. Combien de temps les conservons-nous ?</h2>
       <ul>
-        <li><strong>Compte actif</strong> : pendant toute la durée de l'abonnement</li>
-        <li><strong>Après résiliation</strong> : 30 jours pour permettre l'export, puis suppression définitive</li>
+        <li><strong>Compte actif</strong> : tant que le compte existe (essai, abonnement, ou accès limité après résiliation de l'abonnement)</li>
+        <li><strong>Après suppression du compte</strong> : 30 jours pour permettre l'export, puis suppression définitive</li>
         <li><strong>Factures et obligations légales</strong> : 10 ans (obligation comptable française)</li>
         <li><strong>Logs techniques</strong> : 12 mois maximum</li>
         <li><strong>Cookies de mesure d'audience</strong> : 13 mois maximum ; votre choix sur ces cookies est conservé 6 mois</li>

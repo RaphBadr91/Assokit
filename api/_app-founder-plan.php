@@ -98,8 +98,10 @@ if (!function_exists('fd_tone_of')) {
         ]);
         $plan_trial = $st['plan_id'] !== null && (!empty($r['is_trial'] ?? ($r['plan_is_trial'] ?? 0)) || $st['plan_slug'] === 'pro-essai');
         // Payante = abonnement courant actif, sur un plan payant hors essai, association ni en essai,
-        // ni en fin d'essai, ni suspendue, ni résiliée.
-        $paying = $st['badge_tone'] === 'active' && $st['sub_status'] === 'active' && !$plan_trial && $st['price_cents'] > 0;
+        // ni en fin d'essai, ni suspendue, ni résiliée, et pas « Offert » (payment_mode = free_grant) :
+        // même règle que le MRR du cockpit web (sa_plan_state_mrr_cents).
+        $paying = $st['badge_tone'] === 'active' && $st['sub_status'] === 'active' && !$plan_trial && $st['price_cents'] > 0
+               && ($r['payment_mode'] ?? null) !== 'free_grant';
         return ['tone' => $st['badge_tone'], 'is_trial' => $st['is_trial'], 'trial_expired' => $st['trial_expired'],
                 'trial_paused' => $st['trial_paused'], 'days_left' => $st['days_left'],
                 'paying' => $paying, 'price_cents' => $st['plan_id'] !== null ? $st['price_cents'] : 0];
@@ -112,8 +114,10 @@ if (!function_exists('fd_org_tones')) {
         $out = [];
         try {
             // Ligne courante = même ordre que ak_get_current_plan / ak_org_plan_state (ak_sub_order).
+            // payment_mode : un plan « Offert » ne compte pas dans le MRR (fd_tone_of).
+            $pay = isset(ak_db_columns($pdo, 'asso_subscriptions')['payment_mode']) ? 's.payment_mode' : 'NULL';
             $rows = $pdo->query("
-                SELECT o.id, o.status AS org_status, o.trial_ends_at, " . ak_sub_state_cols($pdo) . "
+                SELECT o.id, o.status AS org_status, o.trial_ends_at, " . ak_sub_state_cols($pdo) . ", $pay AS payment_mode
                 FROM organizations o
                 LEFT JOIN asso_subscriptions s ON s.id = (
                     SELECT s2.id FROM asso_subscriptions s2 INNER JOIN asso_plans p2 ON p2.id = s2.plan_id
@@ -137,7 +141,7 @@ if (!function_exists('fd_plan_counts')) {
     /**
      * Compteurs du cockpit + MRR. Les essais (en cours ou terminés) ne sont JAMAIS des revenus.
      *   active  = ni essai, ni fin d'essai, ni suspendue, ni résiliée (= paying + free + paiement en attente)
-     *   paying  = compte dans le MRR ; free = plan gratuit ; trial = essai en cours ; trial_expired = essai terminé
+     *   paying  = compte dans le MRR ; free = plan gratuit ou « Offert » ; trial = essai en cours ; trial_expired = essai terminé
      */
     function fd_plan_counts(PDO $pdo): array {
         $c = ['total' => 0, 'active' => 0, 'paying' => 0, 'free' => 0, 'pending_payment' => 0, 'trial' => 0,

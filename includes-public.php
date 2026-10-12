@@ -68,6 +68,53 @@ if (!function_exists('pub_legal_identity')) {
     }
 }
 
+if (!function_exists('pub_customer_reviews')) {
+    /**
+     * Avis clients réels, tels que fournis par les clients (page /avis et accueil).
+     * Ne jamais y ajouter de témoignage inventé ou reformulé.
+     */
+    function pub_customer_reviews(): array {
+        return [
+            [
+                'name'   => 'Ismael',
+                'org'    => 'Association Ethnic City',
+                'initial'=> 'I',
+                'color'  => '#7C3AED',
+                'rating' => 5,
+                'quote'  => "Très content de pouvoir compter sur Assokit pour toute la communication en interne à l'association, pour tous nos événements de danse et surtout pour mieux programmer notre spectacle annuel.",
+                'tag'    => 'Communication & événements',
+            ],
+            [
+                'name'   => 'Nabil',
+                'org'    => 'Association BS Outing',
+                'initial'=> 'N',
+                'color'  => '#059669',
+                'rating' => 5,
+                'quote'  => "Très pratique pour la comptabilité sur nos projets et le bilan annuel avec la compta analytique. Je n'ai plus besoin de payer 3 000 € de comptable, juste de l'expert pour valider. Ça change tout !",
+                'tag'    => 'Comptabilité analytique',
+            ],
+            [
+                'name'   => 'Mario',
+                'org'    => 'Association Latitude91',
+                'initial'=> 'M',
+                'color'  => '#1D4ED8',
+                'rating' => 5,
+                'quote'  => "On utilise l'outil surtout pour nos projets, avec la possibilité de tout voir sur l'avancée et l'évolution de chaque projet. En plus, on peut communiquer spécifiquement avec l'équipe concernée par un projet, et pas tout le monde : c'est un réel plus.",
+                'tag'    => 'Suivi de projets',
+            ],
+            [
+                'name'   => 'Bassim',
+                'org'    => 'RB Group (TPE)',
+                'initial'=> 'B',
+                'color'  => '#EA580C',
+                'rating' => 5,
+                'quote'  => "En tant qu'entrepreneur, je note tous mes rendez-vous directement dans l'outil : c'est plus simple et plus visible. Je peux aussi créer un projet par chantier client, y ajouter des collègues et suivre l'avancement. On insère nos factures sur le projet et, avec la comptabilité à la fin, c'est vraiment top.",
+                'tag'    => 'Projets & facturation',
+            ],
+        ];
+    }
+}
+
 if (!function_exists('render_public_head')) {
     function render_public_head(array $seo): void {
         $title       = trim((string)($seo['title'] ?? 'Assokit'));
@@ -293,7 +340,7 @@ if (!function_exists('render_public_nav')) {
                 <span class="pub-nav-sol-menu" role="menu">
                   <a href="/logiciel-association" role="menuitem">Logiciel de gestion d'association</a>
                   <a href="/logiciel-adherents" role="menuitem">Gestion des adhérents</a>
-                  <a href="/logiciel-cotisation-association" role="menuitem">Cotisations en ligne</a>
+                  <a href="/logiciel-cotisation-association" role="menuitem">Gestion des cotisations</a>
                   <a href="/logiciel-comptabilite-association" role="menuitem">Comptabilité d'association</a>
                   <a href="/logiciel-facturation" role="menuitem">Facturation &amp; devis</a>
                   <a href="/logiciel-gestion-tpe" role="menuitem">Gestion TPE &amp; indépendants</a>
@@ -322,7 +369,7 @@ if (!function_exists('render_public_nav')) {
             <a href="/fonctionnalites">Fonctionnalités</a>
             <a href="/logiciel-association">· Logiciel de gestion d'association</a>
             <a href="/logiciel-adherents">· Gestion des adhérents</a>
-            <a href="/logiciel-cotisation-association">· Cotisations en ligne</a>
+            <a href="/logiciel-cotisation-association">· Gestion des cotisations</a>
             <a href="/logiciel-comptabilite-association">· Comptabilité d'association</a>
             <a href="/logiciel-facturation">· Facturation &amp; devis</a>
             <a href="/logiciel-gestion-tpe">· Gestion TPE &amp; indépendants</a>
@@ -385,9 +432,9 @@ if (!function_exists('render_public_footer')) {
                 <a href="/logiciel-gestion-tpe">Logiciel gestion TPE</a>
                 <a href="/logiciel-facturation">Logiciel de facturation</a>
                 <a href="/logiciel-adherents">Gestion des adhérents</a>
-                <a href="/logiciel-cotisation-association">Cotisations en ligne</a>
+                <a href="/logiciel-cotisation-association">Gestion des cotisations</a>
                 <a href="/logiciel-comptabilite-association">Comptabilité association</a>
-                <a href="/logiciel-association-gratuit">Logiciel association gratuit</a>
+                <a href="/logiciel-association-gratuit">Logiciel association : essai gratuit</a>
                 <a href="/alternative-helloasso">Alternative à HelloAsso</a>
               </div>
 

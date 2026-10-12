@@ -168,7 +168,7 @@ render_public_nav('blog');
 
       $AK_CTA = [
         'compta' => [
-          ['ic'=>'📊','t'=>'La compta de votre association, sans y passer vos soirées','p'=>'Assokit construit votre comptabilité analytique <strong>automatiquement</strong> au fil de votre activité : factures, cotisations, dépenses catégorisées, justificatifs centralisés. Bilan par projet inclus dès l\'offre Pro.','a'=>['/logiciel-comptabilite-association','Logiciel de comptabilité association'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'📊','t'=>'La compta de votre association, sans y passer vos soirées','p'=>'Assokit construit votre comptabilité analytique <strong>automatiquement</strong> au fil de votre activité : factures, cotisations, dépenses catégorisées, justificatifs centralisés. Bilan par projet inclus dans l\'abonnement.','a'=>['/logiciel-comptabilite-association','Logiciel de comptabilité association'],'b'=>['/tarifs','Voir les tarifs']],
           ['ic'=>'✅','t'=>'Un dossier propre et daté pour votre expert-comptable','p'=>'Fini la ressaisie de fin d\'année. Vos comptes se préparent tout seuls, exportables en PDF et Excel — votre comptable n\'a plus qu\'à valider.','a'=>['/pour-associations','Découvrir pour les assos'],'b'=>['/contact','Réserver une démo']],
         ],
         'tpe' => [
@@ -180,12 +180,12 @@ render_public_nav('blog');
           ['ic'=>'📁','t'=>'Toutes vos pièces au même endroit, retrouvables en 2 clics','p'=>'Statuts, PV, contrats, justificatifs : centralisés et sécurisés, hébergés en France. En cas de contrôle ou de passation, tout est prêt.','a'=>['/pour-associations','Pour les associations'],'b'=>['/contact','Réserver une démo']],
         ],
         'communication' => [
-          ['ic'=>'✍️','t'=>'Vos contenus rédigés en 30 secondes','p'=>'Newsletter, compte-rendu, lettre aux adhérents, post réseaux : les <strong>outils IA d\'Assokit</strong> pré-rédigent, vous gardez la main. Le temps de com divisé par 10.','a'=>['/fonctionnalites','Voir l\'IA intégrée'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'✍️','t'=>'Vos contenus rédigés en 30 secondes','p'=>'Newsletter, compte-rendu, lettre aux adhérents, post réseaux : les <strong>outils IA d\'Assokit</strong> pré-rédigent, vous gardez la main.','a'=>['/fonctionnalites','Voir l\'IA intégrée'],'b'=>['/tarifs','Voir les tarifs']],
           ['ic'=>'📣','t'=>'Touchez le bon public, au bon moment','p'=>'Diffusion email ciblée par rôle ou par équipe, suivi des ouvertures, listes toujours à jour. Votre communication devient simple et mesurable.','a'=>['/pour-associations','Découvrir Assokit'],'b'=>['/contact','Réserver une démo']],
         ],
         'asso' => [
           ['ic'=>'🤝','t'=>'La gestion de votre association, sans la paperasse','p'=>'Adhérents, cotisations, projets, événements et communication réunis dans <strong>un seul outil pensé pour les assos loi 1901</strong>. Le temps bénévole retourne à votre vraie mission.','a'=>['/pour-associations','Assokit pour les associations'],'b'=>['/tarifs','Voir les tarifs']],
-          ['ic'=>'💸','t'=>'Ne courez plus après les cotisations','p'=>'Relances automatiques, reçus générés, paiement en ligne, suivi en temps réel. Vos cotisations rentrent, sans effort et sans tableur cassé.','a'=>['/fonctionnalites','Voir les fonctionnalités'],'b'=>['/contact','Réserver une démo']],
+          ['ic'=>'💸','t'=>'Ne courez plus après les cotisations','p'=>'Campagnes et tarifs, règlements enregistrés (chèque, virement, espèces), relances des adhésions, suivi en temps réel. Le trésorier sait qui est à jour, sans tableur cassé.','a'=>['/fonctionnalites','Voir les fonctionnalités'],'b'=>['/contact','Réserver une démo']],
         ],
       ];
       $ak_cards = $AK_CTA[$ak_theme] ?? $AK_CTA['asso'];
@@ -253,7 +253,7 @@ render_public_nav('blog');
         'compta'        => [['/logiciel-comptabilite-association', 'Logiciel de comptabilité pour association'],
                             ['/comptabilite-analytique', 'La comptabilité analytique par projet']],
         'asso'          => [['/logiciel-association', 'Logiciel de gestion d\'association loi 1901'],
-                            ['/logiciel-cotisation-association', 'Gérer les cotisations en ligne'],
+                            ['/logiciel-cotisation-association', 'Gérer les cotisations de l\'association'],
                             ['/logiciel-adherents', 'Gérer et fidéliser vos adhérents']],
         'juridique'     => [['/logiciel-association', 'Registres, statuts et AG sans paperasse'],
                             ['/logiciel-adherents', 'Logiciel de gestion des adhérents']],

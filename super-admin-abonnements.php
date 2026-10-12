@@ -265,7 +265,8 @@ $filter_org = (int) ($_GET['org_id'] ?? 0);
 $where = [];
 $params = [];
 if ($filter === 'unpaid') {
-    $where[] = "i.status IN ('sent','overdue')";
+    // Mêmes impayées que le compteur ci-dessous, le signal du cockpit et l'appli : hors associations supprimées
+    $where[] = "i.status IN ('sent','overdue') AND o.deleted_at IS NULL";
 } elseif ($filter === 'paid') {
     $where[] = "i.status = 'paid'";
 } elseif ($filter === 'draft') {
@@ -296,7 +297,10 @@ try {
 // Stats
 $stats = ['unpaid' => 0, 'unpaid_total' => 0, 'paid_month' => 0, 'paid_total_month' => 0];
 try {
-    $stmt = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(amount_ttc), 0) AS total FROM subscription_invoices WHERE status IN ('sent','overdue')");
+    $stmt = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(i.amount_ttc), 0) AS total
+                         FROM subscription_invoices i
+                         JOIN organizations o ON o.id = i.org_id AND o.deleted_at IS NULL
+                         WHERE i.status IN ('sent','overdue')");
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $stats['unpaid'] = (int) $row['nb'];
     $stats['unpaid_total'] = (float) $row['total'];
@@ -440,7 +444,9 @@ sa_render_sidebar('abonnements');
             <tbody>
                 <?php foreach ($invoices as $i): ?>
                     <?php
-                    $is_overdue = ($i['status'] === 'sent' && $i['due_date'] && strtotime($i['due_date']) < time());
+                    // En retard : statut « overdue », ou envoyée et échéance passée (le jour même n'est pas un retard)
+                    $is_overdue = $i['status'] === 'overdue'
+                        || ($i['status'] === 'sent' && $i['due_date'] && date('Y-m-d', strtotime($i['due_date'])) < date('Y-m-d'));
                     ?>
                     <tr>
                         <td>

@@ -17,12 +17,29 @@ $per_page = 50;
 $offset = ($page - 1) * $per_page;
 
 // Filtres
-$filter_action = $_GET['action'] ?? '';
+$filter_action = is_string($_GET['action'] ?? null) ? trim($_GET['action']) : '';
 $filter_org = (int) ($_GET['org_id'] ?? 0);
+
+// Anciens codes de l'appli (founder_*), tant que migrations/2026-10-11-L13-api-fondateur.sql
+// ne les a pas renommés : le filtre les inclut avec le code du cockpit
+$legacy_codes = [
+    'validate_org' => 'founder_validate', 'reject_org' => 'founder_reject', 'suspend_org' => 'founder_suspend',
+    'reactivate_org' => 'founder_activate', 'cancel_org' => 'founder_resiliate', 'update_org' => 'founder_edit',
+    'trial_extend' => 'founder_extend_trial',
+];
 
 $where = [];
 $params = [];
-if ($filter_action !== '') { $where[] = 'l.action = ?'; $params[] = $filter_action; }
+if ($filter_action !== '') {
+    if (isset($legacy_codes[$filter_action])) {
+        $where[] = 'l.action IN (?, ?)';
+        $params[] = $filter_action;
+        $params[] = $legacy_codes[$filter_action];
+    } else {
+        $where[] = 'l.action = ?';
+        $params[] = $filter_action;
+    }
+}
 if ($filter_org > 0) { $where[] = 'l.target_org_id = ?'; $params[] = $filter_org; }
 $where_sql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
@@ -52,14 +69,25 @@ $orgs = $pdo->query("SELECT id, name FROM organizations ORDER BY name")->fetchAl
 function action_info(string $action): array {
     return match($action) {
         'create_org'                  => ['icon' => '➕', 'label' => 'Création asso', 'color' => '#6EE7B7'],
-        'update_org'                  => ['icon' => '✏️', 'label' => 'Modif asso', 'color' => '#C4B5FD'],
-        'suspend_org'                 => ['icon' => '⏸', 'label' => 'Suspension', 'color' => '#FCA5A5'],
-        'reactivate_org'              => ['icon' => '▶',  'label' => 'Réactivation', 'color' => '#6EE7B7'],
-        'cancel_org'                  => ['icon' => '✕',  'label' => 'Résiliation', 'color' => '#A1A1AA'],
+        'update_org', 'founder_edit'  => ['icon' => '✏️', 'label' => 'Modif asso', 'color' => '#C4B5FD'],
+        'validate_org', 'founder_validate' => ['icon' => '✅', 'label' => 'Association validée', 'color' => '#6EE7B7'],
+        'reject_org', 'founder_reject' => ['icon' => '✕',  'label' => 'Refus', 'color' => '#FCA5A5'],
+        'suspend_org', 'founder_suspend' => ['icon' => '⏸', 'label' => 'Suspension', 'color' => '#FCA5A5'],
+        'reactivate_org', 'founder_activate' => ['icon' => '▶', 'label' => 'Réactivation', 'color' => '#6EE7B7'],
+        'cancel_org', 'founder_resiliate' => ['icon' => '✕', 'label' => 'Résiliation', 'color' => '#A1A1AA'],
+        'trial_extend', 'founder_extend_trial' => ['icon' => '⏳', 'label' => 'Essai prolongé', 'color' => '#C4B5FD'],
+        'set_plan'                    => ['icon' => '✏️', 'label' => 'Formule changée', 'color' => '#C4B5FD'],
+        'delete_org'                  => ['icon' => '🗑', 'label' => 'Suppression', 'color' => '#FCA5A5'],
+        'stripe_cancel'               => ['icon' => '💳', 'label' => 'Abonnement Stripe annulé', 'color' => '#A1A1AA'],
+        'stripe_marked_cancelled'     => ['icon' => '💳', 'label' => 'Abonnement Stripe noté annulé', 'color' => '#A1A1AA'],
+        'reset_2fa'                   => ['icon' => '🔐', 'label' => 'Double authentification réinitialisée', 'color' => '#FCD34D'],
         'create_super_admin'          => ['icon' => '👑', 'label' => 'Création super admin', 'color' => '#C4B5FD'],
+        'promote_to_super_admin'      => ['icon' => '👑', 'label' => 'Promotion super admin', 'color' => '#C4B5FD'],
         'update_super_admin'          => ['icon' => '✏️', 'label' => 'Modif super admin', 'color' => '#C4B5FD'],
         'deactivate_super_admin'      => ['icon' => '⏸', 'label' => 'Désactivation SA', 'color' => '#FCA5A5'],
         'reactivate_super_admin'      => ['icon' => '▶',  'label' => 'Réactivation SA', 'color' => '#6EE7B7'],
+        'revoke_super_admin'          => ['icon' => '↩',  'label' => 'Droits super admin retirés', 'color' => '#FCA5A5'],
+        'delete_super_admin'          => ['icon' => '🗑', 'label' => 'Suppression SA', 'color' => '#FCA5A5'],
         'reset_super_admin_password'  => ['icon' => '🔑', 'label' => 'Reset mdp SA', 'color' => '#FCD34D'],
         'create_invoice'              => ['icon' => '💳', 'label' => 'Création facture', 'color' => '#C4B5FD'],
         'mark_invoice_paid'           => ['icon' => '✅', 'label' => 'Facture payée', 'color' => '#6EE7B7'],
@@ -84,7 +112,13 @@ sa_render_sidebar('logs');
     <select name="action" style="padding:8px 12px; background:var(--sa-bg-2); border:1px solid var(--sa-border-strong); border-radius:8px; color:var(--sa-ink); font-family:inherit;">
         <option value="">Toutes les actions</option>
         <option value="create_org" <?= $filter_action === 'create_org' ? 'selected' : '' ?>>Création asso</option>
+        <option value="validate_org" <?= $filter_action === 'validate_org' ? 'selected' : '' ?>>Validations</option>
         <option value="suspend_org" <?= $filter_action === 'suspend_org' ? 'selected' : '' ?>>Suspensions</option>
+        <option value="cancel_org" <?= $filter_action === 'cancel_org' ? 'selected' : '' ?>>Résiliations</option>
+        <option value="delete_org" <?= $filter_action === 'delete_org' ? 'selected' : '' ?>>Suppressions</option>
+        <option value="set_plan" <?= $filter_action === 'set_plan' ? 'selected' : '' ?>>Formules changées</option>
+        <option value="trial_extend" <?= $filter_action === 'trial_extend' ? 'selected' : '' ?>>Essais prolongés</option>
+        <option value="reset_2fa" <?= $filter_action === 'reset_2fa' ? 'selected' : '' ?>>Double authentification</option>
         <option value="create_super_admin" <?= $filter_action === 'create_super_admin' ? 'selected' : '' ?>>Créations SA</option>
         <option value="create_invoice" <?= $filter_action === 'create_invoice' ? 'selected' : '' ?>>Créations facture</option>
         <option value="mark_invoice_paid" <?= $filter_action === 'mark_invoice_paid' ? 'selected' : '' ?>>Paiements</option>

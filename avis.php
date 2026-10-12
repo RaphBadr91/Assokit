@@ -7,45 +7,8 @@
  */
 require_once __DIR__ . '/includes-public.php';
 
-// --- Témoignages réels (affichés à l'écran ET utilisés pour le schéma) ---
-$reviews = [
-    [
-        'name'   => 'Ismael',
-        'org'    => 'Association Ethnic City',
-        'initial'=> 'I',
-        'color'  => '#7C3AED',
-        'rating' => 5,
-        'quote'  => "Très content de pouvoir compter sur Assokit pour toute la communication en interne à l'association, pour tous nos événements de danse et surtout pour mieux programmer notre spectacle annuel.",
-        'tag'    => 'Communication & événements',
-    ],
-    [
-        'name'   => 'Nabil',
-        'org'    => 'Association BS Outing',
-        'initial'=> 'N',
-        'color'  => '#059669',
-        'rating' => 5,
-        'quote'  => "Très pratique pour la comptabilité sur nos projets et le bilan annuel avec la compta analytique. Je n'ai plus besoin de payer 3 000 € de comptable, juste de l'expert pour valider. Ça change tout !",
-        'tag'    => 'Comptabilité analytique',
-    ],
-    [
-        'name'   => 'Mario',
-        'org'    => 'Association Latitude91',
-        'initial'=> 'M',
-        'color'  => '#1D4ED8',
-        'rating' => 5,
-        'quote'  => "On utilise l'outil surtout pour nos projets, avec la possibilité de tout voir sur l'avancée et l'évolution de chaque projet. En plus, on peut communiquer spécifiquement avec l'équipe concernée par un projet, et pas tout le monde : c'est un réel plus.",
-        'tag'    => 'Suivi de projets',
-    ],
-    [
-        'name'   => 'Bassim',
-        'org'    => 'RB Group (TPE)',
-        'initial'=> 'B',
-        'color'  => '#EA580C',
-        'rating' => 5,
-        'quote'  => "En tant qu'entrepreneur, je note tous mes rendez-vous directement dans l'outil : c'est plus simple et plus visible. Je peux aussi créer un projet par chantier client, y ajouter des collègues et suivre l'avancement. On insère nos factures sur le projet et, avec la comptabilité à la fin, c'est vraiment top.",
-        'tag'    => 'Projets & facturation',
-    ],
-];
+// --- Témoignages réels (source unique, includes-public.php : aussi repris sur l'accueil) ---
+$reviews = pub_customer_reviews();
 
 $rating_count = count($reviews);
 $rating_avg   = $rating_count ? round(array_sum(array_column($reviews, 'rating')) / $rating_count, 1) : 5;

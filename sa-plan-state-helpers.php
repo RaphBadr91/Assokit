@@ -37,22 +37,30 @@ if (!function_exists('sa_plan_state_from_row')) {
 if (!function_exists('sa_org_plan_states')) {
     /**
      * État du plan de plusieurs associations : [org_id => tableau de ak_org_plan_state()], plus
-     * « payment_mode » (mode de paiement de la ligne courante, null si inconnu).
+     * « payment_mode » (mode de paiement de la ligne courante, null si inconnu) et « cancel_scheduled »
+     * (résiliation Stripe programmée : fin d'accès 'd/m/Y' ou '', voir sa_sub_cancel_scheduled ; null sinon).
      * Une association introuvable est absente du résultat.
      */
     function sa_org_plan_states(PDO $pdo, array $org_ids): array {
         $ids = array_values(array_unique(array_filter(array_map('intval', $org_ids), fn($i) => $i > 0)));
         $out = [];
         if (!$ids) return $out;
-        // Mode de paiement de la ligne courante (« Offert » ne rapporte rien : sa_plan_state_mrr_cents)
-        $pay = isset(ak_db_columns($pdo, 'asso_subscriptions')['payment_mode']) ? 's.payment_mode' : 'NULL';
+        // Mode de paiement de la ligne courante (« Offert » ne rapporte rien : sa_plan_state_mrr_cents),
+        // et de quoi repérer une résiliation Stripe programmée (sa_sub_cancel_scheduled)
+        $sc = ak_db_columns($pdo, 'asso_subscriptions');
+        $pay = isset($sc['payment_mode']) ? 's.payment_mode' : 'NULL';
+        $extra = [];
+        foreach (['cancel_at_period_end', 'current_period_end', 'cancelled_at'] as $c) {
+            $extra[] = (isset($sc[$c]) ? 's.' . $c : 'NULL') . ' AS sub_' . $c;
+        }
+        $extra[] = (isset(ak_db_columns($pdo, 'organizations')['current_period_end']) ? 'o.current_period_end' : 'NULL') . ' AS org_period_end';
         try {
             foreach (array_chunk($ids, 500) as $chunk) {
                 $in = implode(',', $chunk); // entiers uniquement
                 // Ligne courante : même ordre que ak_get_current_plan / ak_org_plan_state (ak_sub_order)
                 $rows = $pdo->query("
                     SELECT o.id AS org_id, o.status AS org_status, o.plan AS org_plan, o.trial_ends_at,
-                           " . ak_sub_state_cols($pdo) . ", $pay AS payment_mode
+                           " . ak_sub_state_cols($pdo) . ", $pay AS payment_mode, " . implode(', ', $extra) . "
                     FROM organizations o
                     LEFT JOIN asso_subscriptions s ON s.id = (
                         SELECT s2.id FROM asso_subscriptions s2 JOIN asso_plans p2 ON p2.id = s2.plan_id
@@ -62,7 +70,14 @@ if (!function_exists('sa_org_plan_states')) {
                     WHERE o.id IN ($in)
                 ")->fetchAll(PDO::FETCH_ASSOC);
                 foreach ($rows as $r) {
-                    $out[(int)$r['org_id']] = sa_plan_state_from_row($r) + ['payment_mode' => $r['payment_mode'] ?? null];
+                    $st = sa_plan_state_from_row($r);
+                    $out[(int)$r['org_id']] = $st + [
+                        'payment_mode'     => $r['payment_mode'] ?? null,
+                        'cancel_scheduled' => $st['is_trial'] || $st['trial_expired'] ? null : sa_sub_cancel_scheduled([
+                            'status' => $r['sub_status'] ?? null, 'cancel_at_period_end' => $r['sub_cancel_at_period_end'] ?? null,
+                            'current_period_end' => $r['sub_current_period_end'] ?? null, 'cancelled_at' => $r['sub_cancelled_at'] ?? null,
+                        ], $r['org_period_end'] ?? null),
+                    ];
                 }
             }
         } catch (Throwable $e) {
@@ -71,6 +86,24 @@ if (!function_exists('sa_org_plan_states')) {
             foreach ($ids as $id) $out[$id] = ak_org_plan_state($pdo, $id);
         }
         return $out;
+    }
+}
+
+if (!function_exists('sa_sub_cancel_scheduled')) {
+    /**
+     * Résiliation Stripe programmée sur une ligne d'abonnement (« active » avec cancel_at_period_end = 1,
+     * jusqu'à ce que Stripe arrête l'abonnement à l'échéance) : fin d'accès 'd/m/Y' ('' si elle n'est pas
+     * datée), null s'il n'y en a pas. Même règle que l'espace de l'association (ak_plan_trial_info) ; une
+     * résiliation hors Stripe passe la ligne en « cancelled » et s'affiche déjà « Résiliée ».
+     * $row : status, cancel_at_period_end, current_period_end, cancelled_at (les colonnes absentes valent null) ;
+     * $org_period_end : organizations.current_period_end, repli quand la ligne n'a pas d'échéance (ak_sub_access_end).
+     */
+    function sa_sub_cancel_scheduled(array $row, ?string $org_period_end = null): ?string {
+        if (($row['status'] ?? '') !== 'active' || empty($row['cancel_at_period_end'])) return null;
+        $end = function_exists('ak_sub_access_end')
+            ? ak_sub_access_end($row['current_period_end'] ?? null, $row['cancelled_at'] ?? null, $org_period_end)
+            : ($row['current_period_end'] ?? null);
+        return $end && strtotime((string)$end) ? date('d/m/Y', strtotime((string)$end)) : '';
     }
 }
 

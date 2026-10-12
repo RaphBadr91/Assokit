@@ -24,7 +24,6 @@ function df_pre_finances(): void
 function df_seed_finances(): void
 {
     $u = DF::$u;
-    $treso = $u['tresoriere'] ?? $u['admin'];
 
     // ---------- Notes de frais ----------
     if (df_a_table('expense_reports')) {
@@ -105,7 +104,8 @@ function df_seed_finances(): void
     df_ins('org_forecast_prefs', ['org_id' => DF::$org, 'start_balance_cents' => 4850000,
                                   'balance_set_at' => df_jh(-2, '09:15'), 'updated_at' => df_jh(-2, '09:15')]);
 
-    // ---------- Anomalies : l'avoir est « ignoré » par la trésorière ----------
+    // ---------- Anomalies : seules les anomalies voulues par la démo ----------
+    // (l'avoir n'est plus signalé par le moteur : plus rien à « ignorer » pour la trésorière)
     $moteur = dirname(__DIR__) . '/anomalies-engine.php';
     if (is_file($moteur) && df_a_table('anomaly_dismissed')) {
         require_once $moteur;
@@ -113,14 +113,7 @@ function df_seed_finances(): void
             try {
                 $trouvees = ak_anom_scan(DF::$pdo, DF::$org, true);
                 $categories = [];
-                foreach ($trouvees as $f) {
-                    $categories[] = $f['category'] ?? '?';
-                    if (($f['category'] ?? '') === 'amount-zero' && !empty(DF::$ids['avoir'])
-                        && strpos((string)($f['title'] ?? ''), DF::$ids['avoir']) !== false) {
-                        df_ins('anomaly_dismissed', ['org_id' => DF::$org, 'finding_hash' => ak_anom_hash($f), 'category' => 'amount-zero',
-                                                     'dismissed_by' => $treso, 'dismissed_at' => df_jh(-55, '11:20')]);
-                    }
-                }
+                foreach ($trouvees as $f) $categories[] = $f['category'] ?? '?';
                 sort($categories);
                 $attendu = ['amount-outlier', 'amount-zero', 'cotis-double', 'invoice-duplicate', 'numbering-gap', 'status-paid-nodate'];
                 $en_trop = array_diff(array_unique($categories), $attendu);

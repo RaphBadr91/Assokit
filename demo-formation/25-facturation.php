@@ -283,10 +283,13 @@ function df_seed_facturation(): void
         }
     }
     // Sept factures en retard, émises il y a 40 à 115 jours, chez des payeurs lents ou des PME.
-    foreach ([-112, -96, -84, -71, -63, -52, -41] as $i => $j) {
-        $client = ['transports', 'boulangeries', 'cabinet', 'cooperative', 'ei-renov', 'fjt-phare', 'clinique'][$i];
+    // « relances » : rappels déjà partis (au plus). Le suivant, s'il est dû, attend la validation de
+    // l'association dans le widget « Relances à valider » (11 j de retard : 1er rappel ; 22 et 33 j : 2e ;
+    // 54 j : 3e), comme le contrôle quotidien (cron_asso_invoice_dunning_check.php) le proposerait.
+    foreach ([[-112, 'transports', 3], [-96, 'boulangeries', 3], [-84, 'cabinet', 2], [-71, 'cooperative', 2],
+              [-63, 'ei-renov', 1], [-52, 'fjt-phare', 1], [-41, 'clinique', 0]] as [$j, $client, $relances]) {
         [$lignes, $tag] = $composer($client);
-        $specs[] = [$j, $client, $lignes, $tag, 'overdue', []];
+        $specs[] = [$j, $client, $lignes, $tag, 'overdue', ['relances' => $relances]];
     }
     // Une facture annulée (erreur de destinataire), puis sa remplaçante.
     [$lignesA, $tagA] = $composer('hotel');
@@ -361,7 +364,18 @@ function df_seed_facturation(): void
         $paye = $statut === 'paid' && !$sansDate ? df_jh($jPaie, sprintf('%02d:%02d', df_entre(8, 18), df_entre(0, 59))) : null;
         $envoye = $statut === 'draft' ? null : date('Y-m-d H:i:s', strtotime($emis) + 7200);
         $declare = ($statut === 'pending' && $nbPending++ < 2);
-        $niveau = $statut === 'overdue' ? min(3, 1 + intdiv((int)((DF::$t0 - strtotime($echu)) / 86400), 15)) : 0;
+        // Rappels déjà partis d'une facture en retard, au rythme du contrôle quotidien : 1er dès J+1, 2e dès
+        // J+15, 3e dès J+45 après l'échéance, jamais datés dans le futur, au plus $extra['relances']
+        $etapes = [];
+        if ($statut === 'overdue') {
+            foreach ([1 => [1, 5], 2 => [16, 22], 3 => [46, 50]] as $k => [$dmin, $dmax]) {
+                if ($k > (int)($extra['relances'] ?? 3)) break;
+                $t = strtotime($echu) + 86400 * df_entre($dmin, $dmax);
+                if ($t > time() - 3600) break;
+                $etapes[$k] = $t;
+            }
+        }
+        $niveau = count($etapes);
         $desc = $extra['quote'] ?? null
             ? 'Facture suite au devis ' . $extra['quote'][1] . ' (signé le ' . date('d/m/Y', strtotime($extra['quote'][2])) . ')'
             : $calc[0]['designation'];
@@ -422,19 +436,25 @@ function df_seed_facturation(): void
                 'sent_by_user_id' => $par, 'sent_at' => $quand, 'created_at' => $quand]);
             $mail('initial', $envoye, $u['admin'], "Facture $num — Association DEMO F");
             if ($statut === 'overdue') {
-                $e = strtotime($echu);
-                $mail('dunning1', date('Y-m-d H:i:s', $e + 86400 * df_entre(1, 5)), null, "Rappel : facture $num arrivée à échéance");
-                if ($niveau >= 2) $mail('dunning2', date('Y-m-d H:i:s', $e + 86400 * df_entre(16, 22)), null, "Relance : facture $num impayée");
-                if ($niveau >= 3) $mail('dunning3', date('Y-m-d H:i:s', $e + 86400 * df_entre(46, 50)), null, "Dernier rappel avant mise en demeure — facture $num");
-                $retards[] = [$iid, $emis];
+                $sujets = [1 => "Rappel : facture $num arrivée à échéance", 2 => "Relance : facture $num impayée",
+                           3 => "Dernier rappel avant mise en demeure — facture $num"];
+                foreach ($etapes as $k => $t) $mail('dunning' . $k, date('Y-m-d H:i:s', $t), null, $sujets[$k]);
+                $retards[] = [$iid, strtotime($echu), $etapes];
             }
         }
     }
 
-    // Widget « relances à valider » du tableau de bord : 4 factures en retard.
-    foreach (array_slice($retards, 0, 4) as $i => [$iid, $emis]) {
-        $niv = [1, 2, 2, 3][$i];
-        $quand = date('Y-m-d H:i:s', strtotime($emis) + 86400 * (15 * $niv));
+    // Widget « relances à valider » du tableau de bord : pour chaque facture en retard, le rappel suivant
+    // s'il est dû (niveau = dernier rappel parti + 1, dès J+1 / J+15 / J+45, 7 jours au moins après le
+    // précédent), proposé ce jour-là. Jamais un rappel déjà parti : le contrôle quotidien l'écarterait.
+    $seuils = [1 => 1, 2 => 15, 3 => 45];
+    foreach ($retards as [$iid, $echeance, $etapes]) {
+        $niv = count($etapes) + 1;
+        if ($niv > 3) continue;
+        $due = $echeance + 86400 * $seuils[$niv];
+        if ($etapes) $due = max($due, end($etapes) + 7 * 86400);
+        if ($due > time()) continue;
+        $quand = date('Y-m-d H:i:s', $due);
         df_ins('asso_invoice_notifications', ['invoice_id' => $iid, 'org_id' => DF::$org, 'level' => $niv, 'scheduled_at' => $quand,
                                               'shown_at' => $quand, 'responded_at' => null, 'response' => null, 'response_by_user_id' => null,
                                               'dismissed_at' => null, 'dunning_email_sent_at' => null, 'dunning_email_log_id' => null]);

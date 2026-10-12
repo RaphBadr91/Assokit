@@ -23,6 +23,8 @@
 require_once __DIR__ . '/config.php';
 @require_once __DIR__ . '/password-token-helper.php';
 require_once __DIR__ . '/trial-helpers.php';
+// Prix annoncé après l'essai (formule Assokit, HT + TTC)
+require_once __DIR__ . '/includes-pricing.php';
 
 // Si deja connecte, rediriger
 if (!empty($_SESSION['user_id'])) {
@@ -711,16 +713,18 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
 
   <div class="card">
 
+    <?php // Anciens liens ?plan= : « association » = formule Assokit, « organisation » = Sur-mesure ?>
     <?php if ($form['plan'] === 'association'): ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Association · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Assokit · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
     <?php elseif ($form['plan'] === 'organisation'): ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Organisation · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Sur-mesure · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
     <?php else: ?>
       <span class="plan-pill"><span class="plan-pill-dot"></span>Essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours · sans carte bancaire</span>
     <?php endif; ?>
 
     <h1>Démarrez votre essai PRO gratuit</h1>
-    <p class="sub">Toutes les fonctionnalités PRO pendant <?= (int)AK_TRIAL_DAYS ?> jours, activées dès l’inscription. Sans carte bancaire, sans engagement.</p>
+    <p class="sub">Toutes les fonctionnalités PRO pendant <?= (int)AK_TRIAL_DAYS ?> jours, activées dès l’inscription. Sans carte bancaire, sans engagement.
+      Ensuite, si Assokit vous convient : <?= htmlspecialchars(ak_offer_price($pdo)['label']) ?>, résiliable à tout moment. Sinon, rien n’est prélevé.</p>
 
     <?php if ($notice): ?>
       <div class="alert-ok" style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.55;margin-bottom:6px;">✅ <?= htmlspecialchars($notice) ?></div>

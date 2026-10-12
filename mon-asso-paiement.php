@@ -5,8 +5,8 @@
  * Page de paiement intégrée avec Stripe Payment Element.
  *
  * Fonctionnement :
- *   1. Affiche le récap du plan choisi (Assokit 49,99€/mois)
- *   2. Affiche option "+ Domaine personnalisé +10€/mois"
+ *   1. Affiche le récap du plan choisi (Assokit : prix HT + TVA de la plateforme = TTC, includes-pricing.php)
+ *   2. Affiche option "+ Domaine personnalisé +10 € HT/mois"
  *   3. Affiche Stripe Payment Element (CB / Apple Pay / Google Pay / SEPA / Klarna)
  *   4. Au clic "Payer", appel AJAX /stripe-create-payment-intent.php
  *   5. Confirmation côté Stripe via Stripe.js
@@ -28,6 +28,7 @@ require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/plan-helpers.php';
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
+require_once __DIR__ . '/includes-pricing.php';
 
 require_login();
 // Apple 3.1.1 : aucun tunnel d'achat ne doit s'ouvrir dans l'app.
@@ -50,6 +51,12 @@ $page_action = (string)($_POST['action'] ?? ($_GET['action'] ?? ''));
 $live_stripe = function_exists('ak_org_live_stripe_subscription') ? ak_org_live_stripe_subscription($pdo, $org_id) : null;
 $has_addon = function_exists('ak_has_addon_custom_domain') && ak_has_addon_custom_domain($pdo, $org_id);
 $addon_price_id = ak_stripe_config_get($pdo, 'addon_domain_price_id', null);
+// Add-on ajouté à l'abonnement par carte en place : le montant tel qu'il sera prélevé (même règle que
+// « Mon abonnement ») : « 10,00 € HT/mois, soit 12,00 € TTC » si l'abonnement porte la TVA, sinon « 10,00 €/mois »
+$live_vat_rate = function_exists('ak_live_sub_vat_rate') ? ak_live_sub_vat_rate($pdo, $org_id, $live_stripe) : null;
+$addon_live = ak_price_split(AK_ADDON_DOMAIN_HT_CENTS, $live_vat_rate ?? 0.0);
+$addon_live_label = $live_vat_rate === null ? ak_price_eur(AK_ADDON_DOMAIN_HT_CENTS) . '/mois'
+    : $addon_live['per_month'] . ', soit ' . $addon_live['ttc'] . ' TTC';
 
 // « Changer ma CB » : portail client Stripe (carte, factures en attente), jamais un nouvel abonnement
 if ($page_action === 'update_card') {
@@ -106,7 +113,7 @@ if ($live_stripe && $_SERVER['REQUEST_METHOD'] === 'POST' && $page_action === 'a
             } catch (Throwable $e) {
                 error_log('[mon-asso-paiement] add-on local org #' . $org_id . ' : ' . get_class($e));
             }
-            $_SESSION['flash_success'] = 'Domaine personnalisé ajouté à votre abonnement (+10,00€/mois, au prorata sur la prochaine facture).';
+            $_SESSION['flash_success'] = 'Domaine personnalisé ajouté à votre abonnement : +' . $addon_live_label . '. La période en cours est facturée au prorata sur la prochaine facture.';
         } else {
             error_log('[mon-asso-paiement] add-on Stripe org #' . $org_id . ' : ' . ($resp['error'] ?? '?'));
             $_SESSION['flash_error'] = 'L’ajout du domaine personnalisé a échoué. Aucun montant n’a été prélevé. Réessayez ou contactez-nous.';
@@ -130,15 +137,30 @@ if (!$plan) {
     exit;
 }
 
+// Seules les formules payantes se règlent ici : Démarrage n'est plus proposée, l'essai ne s'achète pas,
+// Sur-mesure est sur devis (stripe-create-payment-intent.php refuse aussi ces formules)
+if (!$live_stripe && ((int)($plan['price_cents'] ?? 0) <= 0 || ($plan['slug'] ?? '') === 'sur-mesure'
+    || !empty($plan['is_custom_quote']) || !empty($plan['is_trial']) || ($plan['slug'] ?? '') === 'pro-essai')) {
+    if (($plan['slug'] ?? '') === 'sur-mesure' || !empty($plan['is_custom_quote'])) {
+        header('Location: /contact?plan=sur-mesure');
+        exit;
+    }
+    $_SESSION['flash_error'] = 'Cette formule ne se souscrit pas en ligne : choisissez Assokit pour continuer.';
+    header('Location: /mon-asso-plan');
+    exit;
+}
+
 // Détection si Stripe est configuré
 $stripe_ready = ak_stripe_is_configured($pdo);
 $stripe_pk = $stripe_ready ? ak_stripe_get_publishable_key($pdo) : null;
 
-// Calculs prix
+// Calculs prix : formule et add-on HT, TVA de la plateforme (celle que Stripe ajoute), total TTC prélevé
 $plan_cents = (int)($plan['price_cents'] ?? 0);
-$addon_cents = $with_addon_domain ? 1000 : 0; // +10€/mois
-$total_cents = $plan_cents + $addon_cents;
-$total_str = ak_format_price_cents($total_cents);
+$addon_cents = $with_addon_domain ? AK_ADDON_DOMAIN_HT_CENTS : 0; // +10 € HT/mois
+$vat_rate = function_exists('ak_vat_applicable_rate') ? ak_vat_applicable_rate($pdo) : 0.0;
+$price = ak_price_split($plan_cents + $addon_cents, $vat_rate);
+$total_cents = $price['ttc_cents'];
+$total_str = $price['ttc'];
 
 // Essai en cours / terminé : rappelé au-dessus du paiement (même texte que « Mon abonnement »)
 $trial_info = function_exists('ak_plan_trial_info') ? ak_plan_trial_info($pdo, $org_id) : ['in_trial' => false, 'trial_expired' => false];
@@ -179,13 +201,13 @@ render_sidebar('mon-asso-paiement');
       <div style="font-size:32px;margin-bottom:8px;">🏆</div>
       <h2 style="margin:0 0 8px;font-size:18px;color:#1E40AF;">Ajouter un domaine personnalisé</h2>
       <p style="font-size:14px;color:#475569;margin:0 0 18px;line-height:1.6;">
-        <strong>+10,00€/mois</strong> ajoutés à votre abonnement <?= htmlspecialchars($live_label) ?> en cours, avec la même carte.
+        <strong>+<?= htmlspecialchars($addon_live_label) ?></strong> ajoutés à votre abonnement <?= htmlspecialchars($live_label) ?> en cours, avec la même carte.
         La période déjà entamée est facturée au prorata sur votre prochaine facture. Aucun nouvel abonnement, votre plan n’est pas refacturé.
       </p>
       <form method="post" action="/mon-asso-paiement" style="display:flex;gap:10px;flex-wrap:wrap;">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_token'] ?? '')) ?>">
         <input type="hidden" name="action" value="add_domain">
-        <button type="submit" style="<?= $btn ?>background:#1E40AF;color:white;border:none;cursor:pointer;">Confirmer l’ajout (+10,00€/mois)</button>
+        <button type="submit" style="<?= $btn ?>background:#1E40AF;color:white;border:none;cursor:pointer;">Confirmer l’ajout (+<?= htmlspecialchars($addon_live_label) ?>)</button>
         <a href="/mon-asso-plan" style="<?= $btn ?>background:white;color:#475569;border:1px solid #E2E8F0;">← Retour</a>
       </form>
     </div>
@@ -274,7 +296,7 @@ render_sidebar('mon-asso-paiement');
 
           <button id="submit-button" type="submit" style="width:100%; background:linear-gradient(180deg,#059669 0%,#047857 100%); color:white; padding:14px 24px; border:none; border-radius:12px; font-weight:600; font-size:15px; cursor:pointer; box-shadow:0 4px 14px rgba(5,150,105,0.30); display:flex; align-items:center; justify-content:center; gap:10px;">
             <span id="button-spinner" style="display:none; width:18px; height:18px; border:2px solid white; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite;"></span>
-            <span id="button-text">💳 Payer <?= htmlspecialchars($total_str) ?>/mois</span>
+            <span id="button-text">💳 Payer <?= htmlspecialchars($total_str) ?><?= $price['has_vat'] ? ' TTC' : '' ?>/mois</span>
           </button>
         </form>
 
@@ -296,7 +318,7 @@ render_sidebar('mon-asso-paiement');
             <div style="font-weight:600; font-size:14px;">Plan <?= htmlspecialchars($plan_label) ?></div>
             <div style="color:#64748B; font-size:12px; margin-top:2px;"><?= htmlspecialchars($plan['tagline'] ?? 'Abonnement mensuel') ?></div>
           </div>
-          <div style="font-weight:700; font-size:14px; white-space:nowrap;"><?= ak_format_price_cents($plan_cents) ?>/mois</div>
+          <div style="font-weight:700; font-size:14px; white-space:nowrap;"><?= htmlspecialchars(ak_price_eur($plan_cents)) ?><?= $price['has_vat'] ? ' HT' : '' ?>/mois</div>
         </div>
 
         <!-- Add-on domaine (option) -->
@@ -306,37 +328,44 @@ render_sidebar('mon-asso-paiement');
             <div style="font-weight:600; font-size:14px; color:#1E40AF;">🏆 Add-on Domaine perso</div>
             <div style="color:#64748B; font-size:12px; margin-top:2px;">adherents.tonasso.fr + emails</div>
           </div>
-          <div style="font-weight:700; font-size:14px; color:#1E40AF; white-space:nowrap;">+10,00€/mois</div>
+          <div style="font-weight:700; font-size:14px; color:#1E40AF; white-space:nowrap;">+<?= htmlspecialchars(ak_price_eur($addon_cents)) ?><?= $price['has_vat'] ? ' HT' : '' ?>/mois</div>
         </div>
         <?php else: ?>
         <!-- Bouton ajouter add-on -->
         <a href="?plan=<?= htmlspecialchars($target_plan_slug) ?>&addon_domain=1" style="display:block; padding:14px; background:#EFF6FF; border:1px dashed #BFDBFE; border-radius:10px; margin:10px 0; text-decoration:none; color:#1E40AF; text-align:center;">
           <div style="font-weight:700; font-size:13.5px; margin-bottom:3px;">🏆 + Ajouter un domaine personnalisé</div>
-          <div style="font-size:12px; opacity:0.85;">+10€/mois · adherents.tonasso.fr + emails à votre nom</div>
+          <div style="font-size:12px; opacity:0.85;">+<?= htmlspecialchars(ak_price_eur(AK_ADDON_DOMAIN_HT_CENTS)) ?><?= $price['has_vat'] ? ' HT' : '' ?>/mois · adherents.tonasso.fr + emails à votre nom</div>
         </a>
         <?php endif; ?>
 
-        <!-- Total -->
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 0 6px; margin-top:6px; border-top:2px solid #0F172A;">
-          <div style="font-weight:700; font-size:16px;">Total mensuel</div>
-          <div style="font-weight:800; font-size:22px; color:#059669;"><?= htmlspecialchars($total_str) ?></div>
+        <!-- Total : HT + TVA = TTC prélevé chaque mois -->
+        <?php if ($price['has_vat']): ?>
+        <div style="padding:12px 0 0; margin-top:6px; border-top:2px solid #0F172A; font-size:13px; color:#475569; line-height:1.7;">
+          <div style="display:flex; justify-content:space-between;"><span>Total HT</span><span style="white-space:nowrap;"><?= htmlspecialchars($price['ht']) ?></span></div>
+          <div style="display:flex; justify-content:space-between;"><span>TVA <?= htmlspecialchars($price['rate_label']) ?></span><span style="white-space:nowrap;"><?= htmlspecialchars($price['vat']) ?></span></div>
         </div>
-
-        <?php if (!ak_vat_is_enabled($pdo)): ?>
-        <div style="font-size:11px; color:#64748B; margin-top:6px;">
-          TVA non applicable · art. 293 B du CGI
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0 6px;">
+          <div style="font-weight:700; font-size:16px;">Total TTC / mois</div>
+          <div style="font-weight:800; font-size:22px; color:#059669; white-space:nowrap;"><?= htmlspecialchars($price['ttc']) ?></div>
+        </div>
+        <div style="font-size:11.5px; color:#64748B; margin-top:4px;">
+          <?= htmlspecialchars($price['ht']) ?> HT + TVA <?= htmlspecialchars($price['rate_label']) ?> (<?= htmlspecialchars($price['vat']) ?>) = <?= htmlspecialchars($price['ttc']) ?> TTC / mois
         </div>
         <?php else: ?>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 0 6px; margin-top:6px; border-top:2px solid #0F172A;">
+          <div style="font-weight:700; font-size:16px;">Total mensuel</div>
+          <div style="font-weight:800; font-size:22px; color:#059669; white-space:nowrap;"><?= htmlspecialchars($total_str) ?></div>
+        </div>
         <div style="font-size:11px; color:#64748B; margin-top:6px;">
-          Dont TVA (<?= ak_vat_get_rate($pdo) ?>%) : <?= ak_format_price_cents((int)round($total_cents * (ak_vat_get_rate($pdo) / (100 + ak_vat_get_rate($pdo))))) ?>
+          TVA non applicable · art. 293 B du CGI
         </div>
         <?php endif; ?>
 
         <!-- Garanties -->
         <div style="background:#F0FDF4; border:1px solid #A7F3D0; border-radius:8px; padding:12px 14px; margin-top:18px; font-size:12px; color:#047857; line-height:1.55;">
-          ✅ <strong>Sans engagement</strong> — Annulez quand vous voulez<br>
+          ✅ <strong>Sans engagement</strong> — résiliable à tout moment, effet en fin de période en cours<br>
           ✅ <strong>Renouvellement automatique</strong> chaque mois<br>
-          ✅ <strong>Garantie 30 jours satisfait ou remboursé</strong>
+          ✅ <strong>Vos données et réglages</strong> sont conservés
         </div>
 
         <!-- Lien retour -->
@@ -391,7 +420,7 @@ render_sidebar('mon-asso-paiement');
           buttonSpinner.style.display = 'inline-block';
         } else {
           submitBtn.disabled = false;
-          buttonText.textContent = '💳 Payer <?= addslashes($total_str) ?>/mois';
+          buttonText.textContent = <?= json_encode('💳 Payer ' . $total_str . ($price['has_vat'] ? ' TTC' : '') . '/mois', JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>;
           buttonSpinner.style.display = 'none';
         }
       }

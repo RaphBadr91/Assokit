@@ -30,6 +30,9 @@ if (!$is_sa && !$is_founder) {
     http_response_code(403);
     die('Accès réservé aux Super Admins et Fondateurs.');
 }
+// Confirmation d'identité du cockpit (/super-admin-login, 30 minutes sans activité), comme les autres pages
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
 
 $flash = $_SESSION['flash_factures'] ?? null;
 unset($_SESSION['flash_factures']);
@@ -84,6 +87,9 @@ $is_test_mode = ak_invoice_is_test_mode();
 // Taux proposés selon la société : non assujettie → « Pas de TVA » (art. 293 B) seulement ;
 // assujettie → les taux de TVA, 20 % coché (même règle que super-admin-facture-generate.php)
 $vat_subject = (int) ak_company('vat_subject') === 1;
+// Montant proposé : un mois d'abonnement Assokit (prix HT de la formule) TTC au taux coché par défaut
+require_once __DIR__ . '/includes-pricing.php';
+$gen_default = ak_price_split(ak_offer_price($pdo)['ht_cents'], $vat_subject ? 20.0 : 0.0);
 
 render_head('Factures — Super Admin');
 render_sidebar('abonnements');
@@ -161,7 +167,7 @@ render_sidebar('abonnements');
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; color:#065F46; margin-bottom:6px; font-weight:600;">💶 Montant TTC (€)</label>
-                    <input type="number" name="amount_ttc" id="inp-ttc" step="0.01" min="0" value="49.99" required style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #A7F3D0; font-size:14px; font-variant-numeric:tabular-nums;" oninput="recalcGen()">
+                    <input type="number" name="amount_ttc" id="inp-ttc" step="0.01" min="0" value="<?= number_format($gen_default['ttc_cents'] / 100, 2, '.', '') ?>" required style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #A7F3D0; font-size:14px; font-variant-numeric:tabular-nums;" oninput="recalcGen()">
                 </div>
             </div>
 
@@ -195,7 +201,7 @@ render_sidebar('abonnements');
                 <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:14px;">
                     <div>
                         <div style="font-size:11px; color:#6B7280;">Total HT</div>
-                        <div id="calc-ht" style="font-size:18px; font-weight:700; color:#111827; font-variant-numeric:tabular-nums;">49,99 €</div>
+                        <div id="calc-ht" style="font-size:18px; font-weight:700; color:#111827; font-variant-numeric:tabular-nums;"><?= h($gen_default['ht']) ?></div>
                     </div>
                     <div>
                         <div style="font-size:11px; color:#6B7280;">TVA <span id="calc-vat-rate-label"></span></div>
@@ -203,7 +209,7 @@ render_sidebar('abonnements');
                     </div>
                     <div style="background:#10B981; margin:-14px -16px -14px 0; padding:14px 16px; border-radius:0 10px 10px 0;">
                         <div style="font-size:11px; color:#D1FAE5;">⭐ Total TTC</div>
-                        <div id="calc-ttc" style="font-size:18px; font-weight:700; color:#fff; font-variant-numeric:tabular-nums;">49,99 €</div>
+                        <div id="calc-ttc" style="font-size:18px; font-weight:700; color:#fff; font-variant-numeric:tabular-nums;"><?= h($gen_default['ttc']) ?></div>
                     </div>
                 </div>
             </div>

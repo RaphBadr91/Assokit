@@ -10,12 +10,14 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/plan-helpers.php';
 require_once __DIR__ . '/trial-helpers.php';
+require_once __DIR__ . '/sa-auth-helpers.php';
 
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 
 // === Vérification accès fondateur uniquement ===
 $user_id = (int)($_SESSION['user_id'] ?? 0);
 if (!$user_id) { header('Location: /connexion'); exit; }
+sa_leave_impersonation_first();   // incarnation en cours : page « Revenir à mon compte », pas un 403
 
 $user = $pdo->prepare("SELECT id, email, role, org_id, is_founder FROM users WHERE id = :id LIMIT 1");
 $user->execute([':id' => $user_id]);
@@ -32,7 +34,6 @@ if (!$user || !(($user['role'] ?? '') === 'founder' || !empty($user['is_founder'
 }
 
 // Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
-require_once __DIR__ . '/sa-auth-helpers.php';
 sa_auth_gate();
 
 $flash = $_SESSION['flash_admin_plans'] ?? null;

@@ -5,6 +5,9 @@
  * Ton honnête : Assokit = essai gratuit 14 jours sans CB (PAS un plan gratuit à vie).
  */
 require_once __DIR__ . '/includes-public.php';
+// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+require_once __DIR__ . '/includes-pricing.php';
+$offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],
@@ -13,10 +16,10 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 $faqs = [
     ['Existe-t-il un logiciel de gestion d\'association gratuit ?', "Il existe des outils gratuits qui couvrent une partie du besoin : un tableur (adhérents, budget), une messagerie pour les relances, ou une plateforme de collecte comme HelloAsso, gratuite pour l'association, pour encaisser cotisations et dons en ligne. En revanche, un logiciel de gestion complet et gratuit à vie (adhérents, cotisations, comptabilité, projets et communication réunis) est rare. Assokit propose un essai gratuit de 14 jours, sans carte bancaire, pour tester l'ensemble des fonctionnalités avant de choisir une formule."],
-    ['Assokit propose-t-il une offre gratuite ?', "Soyons transparents : Assokit n'est pas un logiciel gratuit à vie. Vous bénéficiez d'un essai gratuit de 14 jours, sans carte bancaire et sans engagement, qui donne accès à toutes les fonctionnalités. Au terme de l'essai, vous choisissez une formule payante, à partir de 29,99 €/mois. Aucun prélèvement automatique : tant que vous n'avez pas saisi de moyen de paiement, rien n'est débité."],
+    ['Assokit propose-t-il une offre gratuite ?', "Soyons transparents : Assokit n'est pas un logiciel gratuit à vie. Vous bénéficiez d'un essai gratuit de 14 jours, sans carte bancaire et sans engagement, qui donne accès à toutes les fonctionnalités. Au terme de l'essai, vous choisissez de continuer avec l'abonnement Assokit, à " . $offer['label'] . ", tout inclus. Aucun prélèvement automatique : tant que vous n'avez pas saisi de moyen de paiement, rien n'est débité."],
     ['Peut-on gérer une association gratuitement avec un tableur ?', "Oui, un tableur est gratuit et suffit pour une association qui démarre avec quelques adhérents. Ses limites apparaissent avec la croissance : ressaisie entre le fichier des membres, la facturation et la comptabilité, versions perdues, relances manuelles, absence d'historique fiable. Un logiciel dédié fait gagner du temps dès que le nombre d'adhérents, de cotisations ou de projets augmente."],
     ['Quelle est la différence entre un outil gratuit et un logiciel payant pour association ?', "Un outil gratuit couvre en général une brique isolée (un tableur pour les adhérents, une plateforme pour encaisser les paiements). Un logiciel payant comme Assokit réunit ces briques dans un seul espace : une cotisation encaissée met à jour l'adhérent et alimente automatiquement la comptabilité. Le coût de l'abonnement se compare surtout au temps bénévole économisé sur la ressaisie et les relances."],
-    ['Combien coûte Assokit après l\'essai gratuit ?', "Après les 14 jours d'essai gratuit, les formules Assokit démarrent à 29,99 €/mois et vont jusqu'à 49,99 €/mois selon les fonctionnalités (comptabilité analytique par projet, options avancées). Le détail est disponible sur la page Tarifs. Vous restez libre d'arrêter à tout moment, sans engagement de durée."],
+    ['Combien coûte Assokit après l\'essai gratuit ?', "Après les 14 jours d'essai gratuit, un seul abonnement tout inclus : " . $offer['label'] . " (adhérents, cotisations, facturation, comptabilité analytique par projet, assemblées générales, communication, IA). Le détail est disponible sur la page Tarifs. Vous restez libre d'arrêter à tout moment, sans engagement de durée."],
 ];
 $faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
 $soft_schema = [
@@ -43,7 +46,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="lp-hero-grid" style="display:grid;grid-template-columns:1.05fr .95fr;gap:52px;align-items:center;">
       <div>
         <span class="lp-badge reveal"><span class="dot"></span> Essai gratuit · sans carte bancaire</span>
-        <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:640px;">Un <span class="lp-grad">logiciel d'association gratuit</span> à tester, en toute transparence</h1>
+        <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:640px;"><span class="lp-grad">Logiciel d'association</span> : essai gratuit 14 jours, en toute transparence</h1>
         <p class="pub-tagline reveal" style="max-width:560px;">On vous dit la vérité : Assokit n'est pas gratuit à vie. Mais vous testez <strong>toutes les fonctionnalités gratuitement pendant 14 jours</strong>, sans carte bancaire ni engagement — adhérents, cotisations, comptabilité, projets. Décidez ensuite en connaissance de cause.</p>
         <div class="lp-hero-cta reveal">
           <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours
@@ -58,7 +61,7 @@ require __DIR__ . '/_landing-premium.php';
           <div class="lp-mock-body">
             <div class="lp-mrow"><span class="ic" style="background:#D1FAE5">🎁</span><div style="flex:1"><div class="t">Essai gratuit</div><div class="s">14 jours · sans carte bancaire</div></div><span class="lp-chip" style="background:#D1FAE5;color:#047857">Actif</span></div>
             <div class="lp-mrow"><span class="ic" style="background:#E0F2FE">👥</span><div style="flex:1"><div class="t">Adhérents</div><div class="s">Annuaire &amp; import de fichier</div></div><span class="v">✓</span></div>
-            <div class="lp-mrow"><span class="ic" style="background:#FCE7F3">💸</span><div style="flex:1"><div class="t">Cotisations</div><div class="s">Relances &amp; paiement en ligne</div></div><span class="v">✓</span></div>
+            <div class="lp-mrow"><span class="ic" style="background:#FCE7F3">💸</span><div style="flex:1"><div class="t">Cotisations</div><div class="s">Campagnes, règlements &amp; relances</div></div><span class="v">✓</span></div>
             <div class="lp-mrow"><span class="ic" style="background:#FEF3C7">📊</span><div style="flex:1"><div class="t">Comptabilité</div><div class="s">Suivi par projet · exports</div></div><span class="v">✓</span></div>
           </div>
         </div>
@@ -78,7 +81,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="pub-section-lead reveal" style="max-width:820px;margin:0 auto;text-align:left;">
       <p style="margin:0 0 18px;"><strong>Des outils gratuits existent, mais couvrent chacun une brique.</strong> Un tableur (Google Sheets, LibreOffice Calc) est gratuit et parfait pour tenir la liste des adhérents d'une petite association qui démarre. Une messagerie gratuite permet d'envoyer les convocations. Et une plateforme de collecte comme <strong>HelloAsso</strong>, gratuite pour l'association, permet d'encaisser cotisations et dons en ligne — elle se finance grâce aux contributions volontaires laissées par les donateurs et les payeurs. Chacun de ces outils rend service, gratuitement.</p>
       <p style="margin:0 0 18px;"><strong>Ce qui est rare, c'est un logiciel de gestion complet et gratuit à vie.</strong> Réunir dans un seul espace les adhérents, les cotisations, la comptabilité, les projets, les assemblées générales et la communication a un coût de développement et d'hébergement. Les solutions qui proposent tout cela « gratuitement » se financent généralement d'une autre manière (publicité, frais sur les transactions, fonctionnalités bridées). L'honnêteté commande de le dire clairement.</p>
-      <p style="margin:0;"><strong>Assokit joue cartes sur table.</strong> Notre logiciel n'est pas gratuit à vie. Il propose un <strong>essai gratuit de 14 jours, sans carte bancaire</strong>, qui donne accès à toutes les fonctionnalités. Vous testez avec vos vraies données, puis vous choisissez une formule à partir de 29,99 €/mois — ou vous arrêtez, sans aucun prélèvement. Pas de piège, pas de carte demandée à l'inscription.</p>
+      <p style="margin:0;"><strong>Assokit joue cartes sur table.</strong> Notre logiciel n'est pas gratuit à vie. Il propose un <strong>essai gratuit de 14 jours, sans carte bancaire</strong>, qui donne accès à toutes les fonctionnalités. Vous testez avec vos vraies données, puis vous choisissez de continuer avec Assokit, à <?= pub_h($offer['label']) ?> — ou vous arrêtez, sans aucun prélèvement. Pas de piège, pas de carte demandée à l'inscription.</p>
     </div>
   </div>
 </section>
@@ -146,7 +149,7 @@ require __DIR__ . '/_landing-premium.php';
         ['1','Créez votre espace gratuit','Inscription en quelques minutes, sans carte bancaire. Vous accédez immédiatement à toutes les fonctionnalités pendant 14 jours.'],
         ['2','Importez vos données','Ajoutez ou importez vos adhérents, paramétrez vos cotisations et vos projets. Testez avec la réalité de votre association, pas des exemples.'],
         ['3','Mesurez le temps gagné','Encaissez une cotisation, envoyez une relance, générez un compte-rendu par l\'IA. Comparez honnêtement avec vos outils gratuits actuels.'],
-        ['4','Choisissez librement','À la fin de l\'essai, prenez une formule dès 29,99 €/mois si l\'outil vous convient — ou arrêtez, sans aucun prélèvement ni engagement.'],
+        ['4','Choisissez librement','À la fin de l\'essai, abonnez-vous à ' . $offer['label'] . ' si l\'outil vous convient — ou arrêtez, sans aucun prélèvement ni engagement.'],
       ] as $s): ?>
         <div class="lp-card reveal"><div class="lp-ic" style="font-weight:800;font-size:20px;color:var(--c-emeraude-dark)"><?= $s[0] ?></div><h3><?= $s[1] ?></h3><p><?= $s[2] ?></p></div>
       <?php endforeach; ?>

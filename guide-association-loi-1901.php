@@ -6,6 +6,9 @@
  * FAQPage + Breadcrumb. Liens statiques uniquement (aucune dépendance $pdo / blog_list).
  */
 require_once __DIR__ . '/includes-public.php';
+// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+require_once __DIR__ . '/includes-pricing.php';
+$offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],
@@ -96,7 +99,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Étape 4 · Membres</span><h2 class="pub-h2">Gérer les <em>adhérents</em> et les cotisations</h2></div>
     <div class="reveal" style="max-width:780px;margin:0 auto;font-size:16px;line-height:1.72;color:var(--c-text-2);">
       <p style="margin:0 0 18px;">Les <strong>adhérents</strong> sont le cœur battant d'une association. Bien gérer les membres, c'est tenir un fichier à jour (coordonnées, date d'adhésion, statut), respecter les conditions d'admission prévues par les statuts et savoir, à tout moment, qui est à jour de sa cotisation. Une base d'adhérents fiable conditionne la validité des assemblées générales, la qualité de la communication et la santé financière de l'association. Nos bonnes pratiques sont détaillées dans <a href="/blog/adhesion-association-regles-bonnes-pratiques" style="color:var(--c-emeraude-dark);font-weight:600;">adhésion à une association : règles et bonnes pratiques</a>.</p>
-      <p style="margin:0 0 18px;">La <strong>cotisation</strong>, lorsqu'elle est prévue par les statuts, est la principale ressource de nombreuses associations. Sa collecte peut vite devenir chronophage : appels à cotisation, relances des retardataires, reçus, suivi des paiements. Automatiser cette gestion — paiement en ligne, relances programmées, reçus générés automatiquement — libère un temps précieux au trésorier et sécurise les recettes. C'est précisément le rôle d'un <a href="/logiciel-cotisation-association" style="color:var(--c-emeraude-dark);font-weight:600;">logiciel de gestion des cotisations</a> couplé à un <a href="/logiciel-adherents" style="color:var(--c-emeraude-dark);font-weight:600;">outil de gestion des adhérents</a>.</p>
+      <p style="margin:0 0 18px;">La <strong>cotisation</strong>, lorsqu'elle est prévue par les statuts, est la principale ressource de nombreuses associations. Sa collecte peut vite devenir chronophage : appels à cotisation, relances des retardataires, reçus, suivi des paiements. Outiller cette gestion — campagnes et tarifs, règlements enregistrés au fil de l'eau, relances programmées — libère un temps précieux au trésorier et sécurise les recettes. C'est précisément le rôle d'un <a href="/logiciel-cotisation-association" style="color:var(--c-emeraude-dark);font-weight:600;">logiciel de gestion des cotisations</a> couplé à un <a href="/logiciel-adherents" style="color:var(--c-emeraude-dark);font-weight:600;">outil de gestion des adhérents</a>.</p>
       <p style="margin:0;">La vie associative implique parfois de <strong>radier un membre</strong> : non-paiement de la cotisation, comportement contraire à l'objet de l'association, départ volontaire. Cette procédure doit impérativement respecter ce que prévoient les statuts et le principe du contradictoire, sous peine d'être annulée. Notre guide <a href="/blog/radier-membre-association-procedure" style="color:var(--c-emeraude-dark);font-weight:600;">radier un membre d'une association : la procédure</a> détaille chaque étape à sécuriser.</p>
     </div>
   </div>
@@ -156,7 +159,7 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="lp-stat reveal" style="background:linear-gradient(135deg,#0f172a,#065f46);">
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Gérez votre association sans y passer vos soirées</h2>
-      <p>Adhérents, cotisations, comptabilité et assemblées réunis dans un seul outil, hébergé en France. Essai gratuit 14 jours, sans carte bancaire, puis à partir de 29,99 €/mois.</p>
+      <p>Adhérents, cotisations, comptabilité et assemblées réunis dans un seul outil, hébergé en France. Essai gratuit 14 jours, sans carte bancaire, puis <?= pub_h($offer['label']) ?>, sans engagement.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
         <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>

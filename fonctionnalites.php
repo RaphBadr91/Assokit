@@ -11,6 +11,12 @@
  * --------------------------------------------------------------
  */
 require_once __DIR__ . '/includes-public.php';
+// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+require_once __DIR__ . '/includes-pricing.php';
+$offer = ak_offer_price();
+// Option domaine personnalisé, avec la même TVA que la formule : seule (« 10,00 € HT/mois ») et cumulée
+$addon_domain = ak_price_split(AK_ADDON_DOMAIN_HT_CENTS, $offer['vat_known'] ? $offer['vat_rate'] : null);
+$offer_with_domain = ak_price_split($offer['ht_cents'] + AK_ADDON_DOMAIN_HT_CENTS, $offer['vat_known'] ? $offer['vat_rate'] : null);
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil',         'url' => '/'],
@@ -21,7 +27,7 @@ $breadcrumb = build_breadcrumb_jsonld([
 $feat_faqs = [
     ['Assokit convient-il aux associations comme aux TPE ?', "Oui. Assokit réunit dans un seul outil les besoins des associations loi 1901 (adhérents, cotisations, bénévoles, projets) et ceux des TPE, PME et indépendants (devis, factures, suivi des paiements, comptabilité analytique). Mêmes fonctionnalités, mêmes prix justes."],
     ['Puis-je gérer adhérents, cotisations et facturation au même endroit ?', "Oui. Annuaire des adhérents avec rôles personnalisés, relances de cotisations automatiques, devis et factures directement dans la plateforme, suivi des dépenses par projet et export comptable : tout est réuni, sans tableur à maintenir."],
-    ['La comptabilité analytique est-elle vraiment incluse ?', "Oui, la comptabilité analytique est incluse dès l'offre Pro : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Cela représente environ 900 € d'économie par an par rapport à une prestation externalisée. Votre expert-comptable n'intervient plus que pour valider les comptes."],
+    ['La comptabilité analytique est-elle vraiment incluse ?', "Oui, la comptabilité analytique est incluse dans l'abonnement Assokit : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Cela représente environ 900 € d'économie par an par rapport à une prestation externalisée. Votre expert-comptable n'intervient plus que pour valider les comptes."],
     ['Puis-je utiliser mon propre nom de domaine (marque blanche) ?', "Oui. Avec l'option white-label, vos adhérents accèdent à votre plateforme via votre propre adresse, avec vos couleurs et votre logo, pour un rendu 100 % professionnel."],
     ['Mes données sont-elles hébergées en France ?', "Oui, 100 %. L'hébergement est français (O2Switch, Clermont-Ferrand), avec double authentification, journal des actions et conformité RGPD. Vos données restent les vôtres et ne sortent pas du territoire européen."],
     ['Existe-t-il une application mobile ?', "Oui. Assokit s'installe sur iPhone et Android en quelques secondes depuis assokit.fr : icône sur l'écran d'accueil, plein écran, accès rapide à vos projets, adhérents et factures — même hors-ligne."],
@@ -195,7 +201,7 @@ render_public_nav('fonctionnalites');
       <div>
         <span class="pub-section-eyebrow" style="color:#92400E;">Module 2 · Relances</span>
         <h2 class="pub-h2" style="text-align:left;">Relances clients <em>automatiques</em>, fini les impayés.</h2>
-        <p class="pub-section-lead" style="text-align:left;">Programmez vos relances : J+7, J+15, J+30. Emails personnalisés générés par IA, avec ton ferme ou amical selon votre choix. Taux de recouvrement +35% en moyenne.</p>
+        <p class="pub-section-lead" style="text-align:left;">Programmez vos relances : J+7, J+15, J+30. Emails personnalisés générés par IA, avec ton ferme ou amical selon votre choix.</p>
         <ul class="pub-features-checklist">
           <li>✓ Scénarios J+7 / J+15 / J+30 / J+45</li>
           <li>✓ Emails IA personnalisés par client</li>
@@ -286,7 +292,7 @@ render_public_nav('fonctionnalites');
       <div>
         <span class="pub-section-eyebrow" style="color:#5B21B6;">Module 4 · Communication IA</span>
         <h2 class="pub-h2" style="text-align:left;">Tous vos emails clients, <em>écrits par IA</em>.</h2>
-        <p class="pub-section-lead" style="text-align:left;">Devis, relances, propositions commerciales, suivis projet, newsletters : Assokit génère vos emails en 2 secondes, dans votre ton. Vous validez, vous envoyez. Gain de temps quotidien : 1h+.</p>
+        <p class="pub-section-lead" style="text-align:left;">Devis, relances, propositions commerciales, suivis projet, newsletters : Assokit génère vos emails en 2 secondes, dans votre ton. Vous validez, vous envoyez.</p>
         <ul class="pub-features-checklist">
           <li>✓ 15+ modèles IA prêts à l'emploi</li>
           <li>✓ Personnalisation par client (historique)</li>
@@ -634,7 +640,7 @@ render_public_nav('fonctionnalites');
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#FCE7F3;color:#9D174D;">💰</div>
         <h3>Trésorerie & comptabilité</h3>
-        <p>Devis et factures dans la plateforme, relances auto, suivi des dépenses par projet, export comptable. La <a href="/comptabilite-analytique">comptabilité analytique</a> est incluse dès l'offre Pro. Plus jamais de tableur cassé.</p>
+        <p>Devis et factures dans la plateforme, relances auto, suivi des dépenses par projet, export comptable. La <a href="/comptabilite-analytique">comptabilité analytique</a> est incluse dans l'abonnement. Plus jamais de tableur cassé.</p>
       </div>
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#FEF3C7;color:#92400E;">📨</div>
@@ -680,7 +686,7 @@ render_public_nav('fonctionnalites');
           <li>✅ Activation immédiate</li>
           <li>✅ HTTPS sécurisé automatique</li>
           <li>✅ Logo &amp; couleurs personnalisables</li>
-          <li>✅ Inclus dans le plan <strong>Assokit (49,99€/mois)</strong></li>
+          <li>✅ Inclus dans l'abonnement <strong>Assokit</strong> : <?= pub_h($offer['label']) ?></li>
         </ul>
       </div>
 
@@ -691,7 +697,7 @@ render_public_nav('fonctionnalites');
         <h3 style="margin:0 0 8px; font-size:20px; color:var(--c-encre);">Votre propre domaine</h3>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
           <div style="background:#FEF3C7; color:#92400E; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:0.04em;">INCLUS SUR-MESURE</div>
-          <div style="background:#DBEAFE; color:#1E40AF; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:0.04em;">+10€/MOIS SUR PLAN ASSOKIT</div>
+          <div style="background:#DBEAFE; color:#1E40AF; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:0.04em;">+<?= pub_h(mb_strtoupper($addon_domain['per_month'], 'UTF-8')) ?> AVEC ASSOKIT</div>
         </div>
         <p style="color:var(--c-text-2); line-height:1.65; margin:0 0 18px; font-size:14.5px;">
           Plateforme 100% à votre image, sans aucune mention Assokit visible :
@@ -708,7 +714,7 @@ render_public_nav('fonctionnalites');
 
         <!-- Add-on Assokit -->
         <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; padding:12px 14px; font-size:13px; line-height:1.55; color:#1E40AF;">
-          💡 <strong>Disponible aussi en option sur le plan Assokit pour <strong>+10€/mois</strong></strong> · soit 59,99€/mois total avec votre propre domaine.
+          💡 <strong>Disponible aussi en option sur le plan Assokit pour <strong>+<?= pub_h($addon_domain['per_month']) ?></strong></strong> · soit <?= pub_h($offer_with_domain['label']) ?> avec votre propre domaine.
         </div>
       </div>
     </div>
@@ -773,7 +779,7 @@ render_public_nav('fonctionnalites');
           <div style="padding:12px 0;border-top:1px solid var(--c-border-soft);font-weight:700;">Coût total</div>
           <div style="text-align:center;border-top:1px solid var(--c-border-soft);padding:12px 0;">Gratuit mais chaotique</div>
           <div style="text-align:center;border-top:1px solid var(--c-border-soft);padding:12px 0;">100€+/mois cumulé</div>
-          <div style="text-align:center;border-top:1px solid var(--c-border-soft);padding:12px 0;color:#059669;font-weight:700;">À partir de 49,99€/mois</div>
+          <div style="text-align:center;border-top:1px solid var(--c-border-soft);padding:12px 0;color:#059669;font-weight:700;"><?= pub_h($offer['per_month']) ?><?php if ($offer['has_vat']): ?><br><small style="font-weight:600;"><?= pub_h($offer['ttc_note']) ?> · essai gratuit 14 j</small><?php endif; ?></div>
         </div>
       </div>
 
@@ -875,7 +881,7 @@ render_public_nav('fonctionnalites');
           </div>
           <div class="pub-comparison-mobile-row" style="border-top:1px solid var(--c-emeraude-light);padding-top:14px;margin-top:6px;">
             <div class="label" style="font-weight:700;">Coût total</div>
-            <div class="value" style="color:#059669;font-weight:700;font-size:13px;">À partir de<br>49,99€/mois</div>
+            <div class="value" style="color:#059669;font-weight:700;font-size:13px;"><?= pub_h($offer['per_month']) ?><?php if ($offer['has_vat']): ?><br><?= pub_h($offer['ttc_note']) ?><?php endif; ?></div>
           </div>
         </div>
 

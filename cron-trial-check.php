@@ -7,7 +7,7 @@
  *   /usr/bin/php /home/pura7044/public_html/cron-trial-check.php
  *
  * - essai terminé (trial_ends_at < NOW()) → ancienne ligne 'suspended', association passée
- *   au plan gratuit Démarrage (ak_trial_expire, la même bascule que cron-job-essai, au même
+ *   en Démarrage, formule technique d'un essai terminé (ak_trial_expire, la même bascule que cron-job-essai, au même
  *   instant) + e-mail de fin ; jamais pour un client payant, ni d'e-mail à une association
  *   résiliée ou suspendue à la main
  * - J-7, J-3, J-1 et J-0 → e-mail de rappel (essais en cours seulement)
@@ -21,6 +21,8 @@ require_once __DIR__ . '/config.php';
 @require_once __DIR__ . '/projet-email-helpers.php';
 @require_once __DIR__ . '/asso-invoice-email-helpers.php';
 require_once __DIR__ . '/trial-helpers.php';
+// Prix de la formule Assokit dans les e-mails (HT + TTC au taux de TVA de la plateforme)
+require_once __DIR__ . '/includes-pricing.php';
 
 $is_cli = (PHP_SAPI === 'cli');
 $has_key = is_string($_GET['key'] ?? null) && defined('CRON_SECRET') && (string)CRON_SECRET !== '' && hash_equals((string)CRON_SECRET, $_GET['key']);
@@ -85,8 +87,9 @@ foreach ($expired as $row) {
                     $html = ak_email_template_wrap(
                         "Bonjour " . htmlspecialchars($a['first_name']) . ",",
                         "Votre essai gratuit sur AssoKit a pris fin " . $quand . "."
-                        . "<br><br>Vos données sont conservées : <strong>" . htmlspecialchars($row['org_name']) . "</strong> continue sur le plan gratuit Démarrage."
-                        . "<br><br>Pour retrouver toutes les fonctionnalités, choisissez une formule sur la page Abonnement.",
+                        . "<br><br>Les données de <strong>" . htmlspecialchars($row['org_name']) . "</strong> sont conservées."
+                        . "<br><br>Pour continuer avec toutes les fonctionnalités, choisissez votre formule : <strong>Assokit</strong> à "
+                        . htmlspecialchars(ak_offer_price($pdo)['label']) . ", sans engagement, ou <strong>Sur-mesure</strong> sur devis.",
                         "https://assokit.fr/mon-asso-plan", "Choisir ma formule", "AssoKit"
                     );
                     ak_asso_send_resend($a['email'], "🎁 Votre essai AssoKit a pris fin", $html, null, null, 'AssoKit');
@@ -192,7 +195,9 @@ foreach ([7, 3, 1, 0] as $days_left) {
                     }
                     $html = ak_email_template_wrap(
                         "Bonjour " . htmlspecialchars($a['first_name']) . ",",
-                        $corps . "<strong>" . htmlspecialchars($row['org_name']) . "</strong>.",
+                        $corps . "<strong>" . htmlspecialchars($row['org_name']) . "</strong>."
+                        . "<br><br>Pour continuer sans interruption, choisissez votre formule : <strong>Assokit</strong> à "
+                        . htmlspecialchars(ak_offer_price($pdo)['label']) . ", sans engagement. Vos données et réglages sont conservés.",
                         "https://assokit.fr/mon-asso-plan", "Choisir une formule", "AssoKit"
                     );
                     ak_asso_send_resend($a['email'], $title, $html, null, null, 'AssoKit');

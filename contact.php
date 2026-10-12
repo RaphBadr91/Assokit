@@ -49,7 +49,8 @@ $ct_str = static fn($v): string => is_string($v) ? trim($v) : '';
 $prefill_subject_key = $ct_str($_GET['subject'] ?? '');
 // Le plan est recopié dans l'objet des e-mails, y compris l'accusé de réception
 // envoyé à l'adresse saisie : seuls les plans connus sont acceptés, sous leur nom.
-$ct_plans = ['demarrage' => 'Démarrage', 'assokit' => 'Assokit', 'sur-mesure' => 'Sur-mesure'];
+// Offre publique : Essai PRO, Assokit, Sur-mesure (Démarrage n'est plus proposée)
+$ct_plans = ['pro-essai' => 'Essai PRO', 'assokit' => 'Assokit', 'sur-mesure' => 'Sur-mesure'];
 $prefill_plan = $ct_str($_GET['plan'] ?? '');
 if (!isset($ct_plans[$prefill_plan])) $prefill_plan = '';
 
@@ -291,6 +292,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <h2 class="contact-form-title">Écrivez-nous</h2>
             <p class="contact-form-subtitle">Décrivez votre besoin, nous reviendrons rapidement vers vous.</p>
+            <?php if ($prefill_plan === 'sur-mesure'): ?>
+              <p class="contact-form-subtitle" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 14px;color:#065F46;">
+                <strong>Offre Sur-mesure</strong> : réseaux, fédérations, grandes structures, collectivités. Indiquez votre téléphone et quelques mots sur votre structure : nous vous rappelons pour construire votre devis.
+              </p>
+            <?php endif; ?>
 
             <?php if ($form_status === 'error'): ?>
               <div class="contact-error"><?= $form_message ?></div>

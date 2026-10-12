@@ -21,6 +21,7 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/trial-helpers.php';
 require_once __DIR__ . '/superadmin-layout.php'; // sa_log_action()
 require_once __DIR__ . '/sa-permissions.php';    // sa_notify_all_founders()
+require_once __DIR__ . '/sa-auth-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
 
 // Fallback si stripe-helpers.php n'est pas encore déployé
@@ -31,6 +32,7 @@ if (!function_exists('ak_format_price_cents')) {
 }
 
 require_login();
+sa_leave_impersonation_first();   // incarnation en cours : page « Revenir à mon compte », pas un 403
 $user = ak_platform_flags(current_user());
 
 // Restriction fondateur
@@ -41,7 +43,6 @@ if (!$has_access) {
 }
 
 // Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
-require_once __DIR__ . '/sa-auth-helpers.php';
 sa_auth_gate();
 // Super Admin non fondateur : le compte est créé et utilisable, mais reste « en attente
 // de validation Fondateur » (onglet et badge du cockpit, notification aux fondateurs).

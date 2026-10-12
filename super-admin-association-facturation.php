@@ -8,8 +8,10 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/org-billing-helpers.php';
 require_once __DIR__ . '/trial-helpers.php';
+require_once __DIR__ . '/sa-auth-helpers.php';
 
 require_login();
+sa_leave_impersonation_first();   // incarnation en cours : page « Revenir à mon compte », pas un 403
 $user = current_user();
 
 // Vérifier que l'utilisateur est Super Admin ou Fondateur via BDD directement
@@ -31,7 +33,6 @@ if (!$is_sa && !$is_founder) {
 }
 
 // Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
-require_once __DIR__ . '/sa-auth-helpers.php';
 sa_auth_gate();
 
 $org_id = (int)($_GET['id'] ?? 0);

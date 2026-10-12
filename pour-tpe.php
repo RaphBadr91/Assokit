@@ -14,7 +14,7 @@ $faqs = [
     ['Assokit est-il adapté à une TPE ou un indépendant ?', "Oui, totalement. Artisans, commerçants, indépendants, petites entreprises : vous pilotez devis, factures, paiements, projets/chantiers et comptabilité depuis un seul outil, sans logiciel comptable en plus."],
     ['Puis-je faire mes devis et factures avec ?', "Oui : devis et factures professionnels, relances de paiement automatiques, suivi des encaissements en temps réel, et scan de facture par IA pour la saisie. Conforme à la facturation française."],
     ['Comment ça marche pour suivre mes chantiers / projets ?', "Chaque client ou chantier devient un projet : étapes, budget alloué vs dépensé, factures rattachées, collègues assignés. Vous savez en un coup d'œil où en est chaque affaire."],
-    ['La comptabilité analytique, c\'est utile pour moi ?', "Énormément : vous voyez la rentabilité réelle de chaque chantier/projet, poste par poste, et vous savez quelles affaires vous rapportent. Incluse dès l'offre Pro. Elle ne remplace pas votre comptable — au contraire, elle lui prépare un dossier propre et daté, prêt à valider."],
+    ['La comptabilité analytique, c\'est utile pour moi ?', "Énormément : vous voyez la rentabilité réelle de chaque chantier/projet, poste par poste, et vous savez quelles affaires vous rapportent. Incluse dans l'abonnement Assokit. Elle ne remplace pas votre comptable — au contraire, elle lui prépare un dossier propre et daté, prêt à valider."],
     ['Mes rendez-vous et mon agenda sont-ils gérés ?', "Oui : notez vos rendez-vous directement dans l'outil, avec rappels. Plus besoin de jongler entre dix applis — tout est centralisé et visible."],
 ];
 $faq_schema = [

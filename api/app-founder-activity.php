@@ -37,6 +37,17 @@ function act_info(string $a): array {
         'set_plan'         => ['✏️', 'Formule changée', '#2563EB'],
         'trial_extend'     => ['⏳', 'Essai prolongé', '#6D28D9'],
         'delete_org'       => ['🗑', 'Suppression', '#DC2626'],
+        'stripe_cancel'    => ['💳', 'Abonnement Stripe annulé', '#64748B'],
+        'stripe_marked_cancelled' => ['💳', 'Abonnement Stripe noté annulé', '#64748B'],
+        'reset_2fa'        => ['🔐', 'Double authentification réinitialisée', '#B45309'],
+        'create_super_admin'     => ['👑', 'Création super admin', '#6D28D9'],
+        'promote_to_super_admin' => ['👑', 'Promotion super admin', '#6D28D9'],
+        'update_super_admin'     => ['✏️', 'Modif super admin', '#2563EB'],
+        'deactivate_super_admin' => ['⏸', 'Désactivation SA', '#B45309'],
+        'reactivate_super_admin' => ['▶', 'Réactivation SA', '#059669'],
+        'revoke_super_admin'     => ['↩', 'Droits super admin retirés', '#DC2626'],
+        'delete_super_admin'     => ['🗑', 'Suppression SA', '#DC2626'],
+        'reset_super_admin_password' => ['🔑', 'Reset mdp SA', '#B45309'],
         'create_invoice'   => ['🧾', 'Facture créée', '#2563EB'],
         'cancel_invoice'   => ['✕', 'Facture annulée', '#DC2626'],
         'mark_invoice_paid'=> ['💰', 'Facture payée', '#059669'],
@@ -80,6 +91,7 @@ try {
                 elseif ($until !== '') $detail = '+' . (int) ($dj['days'] ?? 0) . ' j · essai jusqu’au ' . ak_trial_end_label($until);
                 elseif (!empty($dj['trial_ended'])) $detail = 'Essai terminé (formule Démarrage)';
                 elseif (!empty($dj['reason']) && is_string($dj['reason'])) $detail = $dj['reason'];
+                elseif (!empty($dj['email']) && is_string($dj['email'])) $detail = $dj['email'];   // reset_2fa : compte concerné
             }
             $rows[] = [
                 'icon'  => $icon,

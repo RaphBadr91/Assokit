@@ -201,6 +201,29 @@ if (!function_exists('ak_org_live_stripe_subscription')) {
     }
 }
 
+if (!function_exists('ak_live_sub_vat_rate')) {
+    /**
+     * TVA réellement appliquée à l'abonnement par carte en place ($live = ak_org_live_stripe_subscription) :
+     * taux de la plateforme si la dernière facture Stripe payante de cet abonnement porte de la TVA
+     * (souscrit avec la TVA), sinon null : abonnement plus ancien sans TVA, TVA non applicable, pas
+     * d'abonnement par carte. null = montant prélevé tel quel (« 10,00 €/mois »), sans « HT ».
+     * Même règle pour « Mon abonnement » et l'ajout du domaine personnalisé.
+     */
+    function ak_live_sub_vat_rate(PDO $pdo, int $org_id, ?array $live): ?float {
+        if (!$live || empty($live['stripe_subscription_id'])) return null;
+        $rate = function_exists('ak_vat_applicable_rate') ? ak_vat_applicable_rate($pdo) : 0.0;
+        if ($rate <= 0) return null;
+        try {
+            $tq = $pdo->prepare("SELECT tax_cents FROM asso_invoices_stripe WHERE org_id = ? AND stripe_subscription_id = ? AND amount_cents > 0 ORDER BY id DESC LIMIT 1");
+            $tq->execute([$org_id, $live['stripe_subscription_id']]);
+            $tax = $tq->fetchColumn();
+            return ($tax !== false && (int)$tax > 0) ? $rate : null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+}
+
 if (!function_exists('ak_get_subscription_addons')) {
     /**
      * Récupère les add-ons actifs d'un abonnement (ex: domaine perso).
@@ -403,6 +426,59 @@ if (!function_exists('ak_stripe_api_call')) {
 
         $err = $data['error']['message'] ?? 'Erreur HTTP ' . $http_code;
         return ['ok' => false, 'data' => $data, 'error' => $err, 'http_code' => $http_code];
+    }
+}
+
+if (!function_exists('ak_stripe_vat_tax_rate')) {
+    /**
+     * Taux de TVA Stripe (TaxRate « TVA », non inclus : ajouté au prix HT) pour $rate %, créé une seule
+     * fois (POST /v1/tax_rates) puis gardé dans asso_stripe_config, un par mode (clés test / live) et par
+     * taux : stripe_tax_rate_id_<mode>_<taux>. L'identifiant gardé est relu chez Stripe avant usage :
+     * archivé ou différent (taux, inclus), un nouveau est créé.
+     *
+     * @return string|null identifiant txr_…, null si Stripe ne l'a pas fourni ($error : raison, pour le journal)
+     */
+    function ak_stripe_vat_tax_rate(PDO $pdo, float $rate, ?string &$error = null): ?string {
+        $error = null;
+        if ($rate <= 0 || $rate >= 100) { $error = 'taux invalide'; return null; }
+        $pct = rtrim(rtrim(number_format($rate, 4, '.', ''), '0'), '.');
+        $sk = (string)ak_stripe_get_secret_key($pdo);
+        $mode = preg_match('/^(sk|rk)_live_/', $sk) ? 'live' : 'test';
+        $key = 'stripe_tax_rate_id_' . $mode . '_' . str_replace('.', '_', $pct);
+
+        $cached = (string)ak_stripe_config_get($pdo, $key, '');
+        if ($cached !== '') {
+            $r = ak_stripe_api_call($pdo, 'GET', '/tax_rates/' . rawurlencode($cached));
+            $d = is_array($r['data'] ?? null) ? $r['data'] : [];
+            if (!empty($r['ok'])) {
+                if (!empty($d['active']) && empty($d['inclusive']) && abs((float)($d['percentage'] ?? -1) - (float)$pct) < 0.0001) {
+                    return $cached;
+                }
+            } elseif ((int)($r['http_code'] ?? 0) !== 404) {
+                // Stripe injoignable : pas de doublon créé à l'aveugle
+                $error = 'lecture du taux ' . $cached . ' : ' . ($r['error'] ?? '?');
+                return null;
+            }
+        }
+
+        $r = ak_stripe_api_call($pdo, 'POST', '/tax_rates', [
+            'display_name' => 'TVA',
+            'description'  => 'TVA ' . $pct . ' % (Assokit)',
+            'percentage'   => $pct,
+            'inclusive'    => 'false',
+            'jurisdiction' => 'FR',
+            'country'      => 'FR',
+            'tax_type'     => 'vat',
+        ]);
+        $id = (string)($r['data']['id'] ?? '');
+        if (empty($r['ok']) || $id === '') {
+            $error = 'création du taux ' . $pct . ' % : ' . ($r['error'] ?? 'réponse sans identifiant');
+            return null;
+        }
+        if (!ak_stripe_config_set($pdo, $key, $id)) {
+            error_log('[ak_stripe_vat_tax_rate] ' . $id . ' créé mais non enregistré (' . $key . ')');
+        }
+        return $id;
     }
 }
 

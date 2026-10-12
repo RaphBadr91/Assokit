@@ -35,19 +35,46 @@ function ak_email_verify_secret(): string
     return 'akv1:assokit-email-verify';
 }
 
-/** URL de confirmation d'email pour un utilisateur donne. */
+/**
+ * Adresse ACTUELLE du compte (minuscules), '' si introuvable. Le lien de confirmation la signe : un
+ * ancien lien (inscription, adresse précédente) ne confirme jamais une adresse changée depuis.
+ */
+function ak_email_verify_address(int $user_id): string
+{
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$pdo instanceof PDO || $user_id <= 0) return '';
+    try {
+        $st = $pdo->prepare("SELECT email FROM users WHERE id = ?");
+        $st->execute([$user_id]);
+        return mb_strtolower(trim((string)$st->fetchColumn()), 'UTF-8');
+    } catch (Throwable $e) {
+        return '';
+    }
+}
+
+/** URL de confirmation d'email pour un utilisateur donne (adresse en cours, voir ak_email_verify_address). */
 function ak_email_verify_url(int $user_id): string
 {
-    $sig = hash_hmac('sha256', 'verify_email:' . $user_id, ak_email_verify_secret());
+    $email = ak_email_verify_address($user_id);
+    $data = $email !== '' ? 'verify_email:' . $user_id . ':' . $email : 'verify_email:' . $user_id;
+    $sig = hash_hmac('sha256', $data, ak_email_verify_secret());
     return 'https://assokit.fr/verifier-email?u=' . $user_id . '&s=' . $sig;
 }
 
-/** Verifie la signature d'un lien de confirmation d'email. */
+/**
+ * Verifie la signature d'un lien de confirmation d'email : elle doit porter l'adresse actuelle du
+ * compte. Les liens envoyés avant le 12/10/2026 (identifiant seul) restent valables jusqu'au
+ * 26/10/2026, le temps qu'ils servent ; ensuite seuls les liens liés à l'adresse confirment.
+ */
 function ak_email_verify_check(int $user_id, string $sig): bool
 {
     if ($user_id <= 0 || $sig === '') return false;
-    $expected = hash_hmac('sha256', 'verify_email:' . $user_id, ak_email_verify_secret());
-    return hash_equals($expected, $sig);
+    $email = ak_email_verify_address($user_id);
+    if ($email !== '' && hash_equals(hash_hmac('sha256', 'verify_email:' . $user_id . ':' . $email, ak_email_verify_secret()), $sig)) {
+        return true;
+    }
+    if (time() >= strtotime('2026-10-27 00:00:00')) return false;
+    return hash_equals(hash_hmac('sha256', 'verify_email:' . $user_id, ak_email_verify_secret()), $sig);
 }
 
 /** Texte sûr pour un e-mail : UTF-8 valide, échappé. */

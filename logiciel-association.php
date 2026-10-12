@@ -4,6 +4,9 @@
  * Route : /logiciel-association. Design premium (_landing-premium.php) + FAQPage + Breadcrumb + SoftwareApplication.
  */
 require_once __DIR__ . '/includes-public.php';
+// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+require_once __DIR__ . '/includes-pricing.php';
+$offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],
@@ -14,7 +17,7 @@ $faqs = [
     ['Quel logiciel choisir pour gérer une association loi 1901 ?', "Un bon logiciel d'association doit réunir adhérents, cotisations, comptabilité, projets et communication dans un seul outil, sans compétence technique. Assokit est conçu exactement pour ça : pensé pour les associations françaises, hébergé en France et conforme RGPD."],
     ['Existe-t-il un logiciel de gestion d\'association gratuit ?', "Assokit n'est pas un logiciel gratuit à vie, mais vous pouvez le tester gratuitement : pendant 14 jours, sans carte bancaire et sans engagement, vous gérez votre association (adhérents, cotisations, factures) avec toutes les fonctionnalités, puis vous choisissez votre formule."],
     ['Un logiciel association remplace-t-il Excel et les autres outils ?', "Complètement. Assokit remplace le tableur des adhérents, l'outil de facturation, l'agenda, la messagerie et le logiciel de compta — un seul outil, plus de ressaisie ni de fichiers perdus."],
-    ['Le logiciel gère-t-il la comptabilité de l\'association ?', "Oui. Assokit inclut la facturation, le suivi des cotisations et la comptabilité analytique par projet (incluse dès l'offre Pro), exportable pour votre expert-comptable — soit jusqu'à ~900 € d'économie par an estimée."],
+    ['Le logiciel gère-t-il la comptabilité de l\'association ?', "Oui. Assokit inclut la facturation, le suivi des cotisations et la comptabilité analytique par projet (incluse dans l'abonnement), exportable pour votre expert-comptable — soit jusqu'à ~900 € d'économie par an estimée."],
     ['Mes données sont-elles hébergées en France ?', "Oui, 100 %. Serveurs en France (Clermont-Ferrand), conformité RGPD, double authentification et export de vos données à tout moment. Vos données restent les vôtres."],
     ['Comment gérer une association loi 1901 ?', "Gérer une association loi 1901 repose sur quelques piliers : des statuts à jour, un bureau (président, trésorier, secrétaire) qui prend les décisions, une assemblée générale annuelle, la déclaration des changements en préfecture, le suivi des adhérents et de leurs cotisations, et une comptabilité claire pour les subventions. Un logiciel comme Assokit centralise tout cela : vous tenez l'annuaire, encaissez les cotisations, préparez vos AG et suivez le budget depuis un seul espace, sans ressaisie ni fichiers éparpillés."],
     ['Quel logiciel pour gérer une petite association ?', "Pour une petite association, mieux vaut un outil simple et abordable qui couvre l'essentiel sans usine à gaz. Assokit réunit adhérents, cotisations et factures : vous testez tout gratuitement pendant 14 jours, sans carte bancaire, puis vous choisissez votre formule. C'est un choix adapté à un club, une amicale ou une association de quartier gérée par des bénévoles."],
@@ -49,7 +52,7 @@ require __DIR__ . '/_landing-premium.php';
         <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:620px;">Le <span class="lp-grad">logiciel de gestion</span> pensé pour votre association</h1>
         <p class="pub-tagline reveal" style="max-width:560px;">Adhérents, cotisations, comptabilité, projets, événements et communication — <strong>un seul logiciel</strong> pour toute la vie de votre association loi 1901. Français, hébergé en France, conforme RGPD, avec l'IA intégrée.</p>
         <div class="lp-hero-cta reveal">
-          <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement
+          <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
           <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
         </div>
@@ -60,7 +63,7 @@ require __DIR__ . '/_landing-premium.php';
           <div class="lp-mock-bar"><span class="lp-mock-dot" style="background:#F87171"></span><span class="lp-mock-dot" style="background:#FBBF24"></span><span class="lp-mock-dot" style="background:#34D399"></span><span class="lp-mock-title">Assokit — Logiciel association</span></div>
           <div class="lp-mock-body">
             <div class="lp-mrow"><span class="ic" style="background:#E0F2FE">👥</span><div style="flex:1"><div class="t">248 adhérents</div><div class="s">Annuaire à jour · rôles &amp; espaces</div></div><span class="lp-chip" style="background:#D1FAE5;color:#047857">+12</span></div>
-            <div class="lp-mrow"><span class="ic" style="background:#FCE7F3">💸</span><div style="flex:1"><div class="t">Cotisations</div><div class="s">Relances &amp; paiement en ligne</div></div><span class="v">94%</span></div>
+            <div class="lp-mrow"><span class="ic" style="background:#FCE7F3">💸</span><div style="flex:1"><div class="t">Cotisations</div><div class="s">Campagnes, règlements &amp; relances</div></div><span class="v">94%</span></div>
             <div class="lp-mrow"><span class="ic" style="background:#FEF3C7">📊</span><div style="flex:1"><div class="t">Comptabilité</div><div class="s">Bilan par projet · export compta</div></div><span class="lp-chip" style="background:#FEF3C7;color:#B45309">À jour</span></div>
             <div class="lp-mrow"><span class="ic" style="background:#EDE9FE">📣</span><div style="flex:1"><div class="t">Communication IA</div><div class="s">Newsletter rédigée en 30s</div></div><span class="lp-chip" style="background:#EDE9FE;color:#6D28D9">IA</span></div>
           </div>
@@ -81,7 +84,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="lp-grid">
       <?php foreach ([
         ['👥','Adhérents &amp; bénévoles','Annuaire intelligent, rôles (bureau, membres), espaces dédiés, historique.'],
-        ['💸','Cotisations','Relances automatiques, paiement en ligne, reçus, suivi en temps réel.'],
+        ['💸','Cotisations','Campagnes et tarifs, règlements enregistrés (chèque, virement, espèces), relances des adhésions, suivi en temps réel.'],
         ['📊','Comptabilité','Facturation, dépenses, comptabilité analytique par projet, exports.'],
         ['🎯','Projets &amp; subventions','Suivi étape par étape, budget alloué vs dépensé, factures rattachées.'],
         ['🗳️','Assemblées générales','Convocations, émargement, procès-verbaux, votes.'],
@@ -105,7 +108,7 @@ require __DIR__ . '/_landing-premium.php';
       <?php foreach ([
         ['1','Créez votre association','Ouvrez votre espace en quelques minutes : nom, objet, statuts et composition du bureau (président, trésorier, secrétaire). Vos informations légales et vos statuts sont centralisés et prêts pour les démarches.'],
         ['2','Importez vos adhérents','Ajoutez vos adhérents un par un ou importez votre fichier existant. Chacun retrouve son espace, son rôle et son historique. L\'annuaire remplace définitivement le tableur partagé.'],
-        ['3','Gérez cotisations, projets &amp; AG','Encaissez les cotisations en ligne avec relances automatiques, suivez le budget de vos projets et de vos subventions, préparez vos assemblées générales : convocations, émargement et procès-verbaux.'],
+        ['3','Gérez cotisations, projets &amp; AG','Suivez les cotisations et relancez les adhésions à renouveler, pilotez le budget de vos projets et de vos subventions, préparez vos assemblées générales : convocations, émargement et procès-verbaux.'],
         ['4','Pilotez au quotidien','Suivez adhésions, trésorerie et communication depuis un tableau de bord unique. La comptabilité se met à jour à chaque cotisation et vos comptes-rendus se rédigent grâce à l\'IA intégrée.'],
       ] as $s): ?>
         <div class="lp-card reveal"><div class="lp-ic" style="font-weight:800;font-size:20px;color:var(--c-emeraude-dark)"><?= $s[0] ?></div><h3><?= $s[1] ?></h3><p><?= $s[2] ?></p></div>
@@ -134,14 +137,14 @@ require __DIR__ . '/_landing-premium.php';
         </thead>
         <tbody>
           <?php foreach ([
-            ['Adhérents &amp; cotisations','Manuel, ressaisie','Oui','Oui, avec paiement en ligne'],
+            ['Adhérents &amp; cotisations','Manuel, ressaisie','Oui','Oui : campagnes, règlements et relances'],
             ['Projets &amp; budget','Non','Partiel','Suivi étape par étape'],
             ['AG &amp; registres','Fichiers séparés','Rarement','Convocations, votes, PV'],
             ['Communication / IA','Non','Non','Emails &amp; comptes-rendus par IA'],
-            ['Comptabilité analytique','Non','Option payante','Incluse par projet (offre Pro)'],
+            ['Comptabilité analytique','Non','Option payante','Incluse par projet'],
             ['Hébergement en France','Variable','Selon l\'éditeur','100 % France · RGPD'],
             ['Application mobile','Non','Rare','iOS &amp; Android'],
-            ['Prix','« Gratuit » mais chronophage','Abonnement annuel','Dès 29,99 €/mois · essai 14 j'],
+            ['Prix','« Gratuit » mais chronophage','Abonnement annuel',$offer['per_month'] . ' · essai gratuit 14 j'],
           ] as $r): ?>
           <tr>
             <th scope="row" style="text-align:left;padding:14px 18px;font-weight:700;color:var(--c-encre);border-bottom:1px solid var(--c-border);"><?= $r[0] ?></th>
@@ -154,7 +157,7 @@ require __DIR__ . '/_landing-premium.php';
       </table>
     </div>
     <div class="pub-text-center reveal" style="margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
-      <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+      <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
       <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
     </div>
     <p class="pub-text-center" style="margin-top:10px;font-size:13px;color:var(--c-text-3);">Sans carte bancaire · sans engagement</p>
@@ -166,7 +169,7 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Pourquoi Assokit</span><h2 class="pub-h2">Le logiciel association <em>français</em>, simple et complet</h2></div>
     <ul class="lp-checks reveal">
-      <?php foreach (['Pensé pour les associations loi 1901','Essai gratuit, sans carte bancaire','Hébergé en France · conforme RGPD','Comptabilité analytique (offre Pro)','IA intégrée pour la communication','Application mobile iOS &amp; Android','Support humain français','Export de vos données à tout moment'] as $f): ?>
+      <?php foreach (['Pensé pour les associations loi 1901','Essai gratuit, sans carte bancaire','Hébergé en France · conforme RGPD','Comptabilité analytique incluse','IA intégrée pour la communication','Application mobile iOS &amp; Android','Support humain français','Export de vos données à tout moment'] as $f): ?>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><?= $f ?></li>
       <?php endforeach; ?>
     </ul>
@@ -236,7 +239,7 @@ require __DIR__ . '/_landing-premium.php';
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Testez le logiciel gratuitement</h2>
       <p>Créez votre espace association en quelques minutes. Essai gratuit, sans carte bancaire, sans engagement.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-        <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
+        <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>
       </div>
     </div>

@@ -33,6 +33,12 @@ try {
 
     // Marque les messages de l'org comme lus (côté support)
     try { $pdo->prepare("UPDATE support_messages SET read_by_support = 1 WHERE ticket_id = ? AND author_side = 'org' AND read_by_support = 0")->execute([$id]); } catch (Throwable $e) {}
+    // … et ses notifications « Nouveau message », pour tout le support (comme la fiche du cockpit web)
+    try {
+        $pdo->prepare("UPDATE platform_notifications SET is_read = 1, read_at = NOW()
+                       WHERE type = 'new_ticket_message' AND is_read = 0 AND target_url IN (?, ?)")
+            ->execute(['/super-admin/support/' . $id, '/super-admin/support?id=' . $id]);
+    } catch (Throwable $e) {}
 
     $msgs = [];
     try {

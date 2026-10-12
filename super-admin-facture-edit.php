@@ -25,6 +25,9 @@ if (!$is_founder) {
     http_response_code(403);
     die('Accès réservé au Fondateur.');
 }
+// Confirmation d'identité du cockpit (/super-admin-login, 30 minutes sans activité), comme les autres pages
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
 
 $invoice_id = (int)($_GET['id'] ?? 0);
 if ($invoice_id <= 0) {

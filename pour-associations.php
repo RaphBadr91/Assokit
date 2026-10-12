@@ -11,10 +11,10 @@ $breadcrumb = build_breadcrumb_jsonld([
 ]);
 
 $faqs = [
-    ['Assokit convient-il aux petites associations ?', "Oui. Que vous ayez 5 ou 500 adhérents, Assokit s'adapte. L'offre Démarrage est gratuite pour découvrir, puis vous montez en gamme quand votre association grandit. Aucune compétence technique requise."],
-    ['Peut-on gérer les adhérents et les cotisations ?', "Absolument : annuaire des adhérents avec rôles (bureau, bénévoles, membres), relances de cotisations automatiques, reçus, et espace membre dédié. Fini les tableurs qui se cassent."],
+    ['Assokit convient-il aux petites associations ?', "Oui. Que vous ayez 5 ou 500 adhérents, Assokit s'adapte. Vous testez tout gratuitement pendant 14 jours, sans carte bancaire, puis un seul abonnement tout inclus, sans engagement. Aucune compétence technique requise."],
+    ['Peut-on gérer les adhérents et les cotisations ?', "Absolument : annuaire des adhérents avec rôles (bureau, bénévoles, membres), suivi des cotisations et relances automatiques des adhésions, et espace membre dédié. Fini les tableurs qui se cassent."],
     ['Assokit aide-t-il pour l\'assemblée générale ?', "Oui. Convocations, émargement, procès-verbal, suivi des présents et des votes : votre AG se prépare et s'archive en quelques clics."],
-    ['La comptabilité analytique est-elle incluse ?', "Oui, dès l'offre Pro : bilan par projet et par poste, exportable en PDF et Excel pour votre expert-comptable. Environ 900 € d'économie par an par rapport à une prestation externalisée."],
+    ['La comptabilité analytique est-elle incluse ?', "Oui, elle est incluse dans l'abonnement Assokit : bilan par projet et par poste, exportable en PDF et Excel pour votre expert-comptable. Environ 900 € d'économie par an par rapport à une prestation externalisée."],
     ['Mes données sont-elles en sécurité ?', "100 %. Hébergement en France (Clermont-Ferrand), conformité RGPD, double authentification, export de vos données à tout moment. Vos données restent les vôtres."],
 ];
 $faq_schema = [
@@ -85,9 +85,9 @@ require __DIR__ . '/_landing-premium.php';
       <?php
       $pains = [
         ['📋', 'Le fichier des adhérents dans tous les sens', 'Un annuaire vivant, à jour, avec rôles et relances de cotisation automatiques.'],
-        ['💸', 'Les cotisations qu\'on court après', 'Relances automatiques, reçus générés, suivi des paiements en temps réel.'],
+        ['💸', 'Les cotisations qu\'on court après', 'Campagnes et tarifs, règlements enregistrés, relances des adhésions, suivi en temps réel.'],
         ['🗳️', 'L\'AG qui vire au casse-tête', 'Convocations, émargement, PV, votes : préparés et archivés en quelques clics.'],
-        ['📊', 'Le comptable qui coûte cher', 'Comptabilité analytique incluse dès l\'offre Pro. ~900 € économisés par an.'],
+        ['📊', 'Le comptable qui coûte cher', 'Comptabilité analytique incluse dans l\'abonnement. ~900 € économisés par an.'],
         ['📣', 'La com qui prend un temps fou', 'Diffusion email ciblée + rédaction assistée par l\'IA. Vos messages partent en 2 minutes.'],
         ['🎯', 'Les projets et subventions éparpillés', 'Chaque projet suivi étape par étape, budget alloué vs dépensé, factures rattachées.'],
       ];
@@ -176,7 +176,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="lp-stat reveal">
       <span class="pub-section-eyebrow" style="position:relative;color:#A7F3D0;">De l'argent rendu à vos actions</span>
       <div class="big">−900 € / an</div>
-      <p>C'est ce que coûte une comptabilité analytique chez un prestataire. Chez vous, elle est <strong>incluse dès l'offre Pro</strong> — soit près de <strong>2&nbsp;700&nbsp;€ sur 3&nbsp;ans</strong> qui repartent dans vos projets, vos bénévoles et vos adhérents. <span style="opacity:.85;">Pas dans la paperasse.</span></p>
+      <p>C'est ce que coûte une comptabilité analytique chez un prestataire. Chez vous, elle est <strong>incluse dans l'abonnement Assokit</strong> — soit près de <strong>2&nbsp;700&nbsp;€ sur 3&nbsp;ans</strong> qui repartent dans vos projets, vos bénévoles et vos adhérents. <span style="opacity:.85;">Pas dans la paperasse.</span></p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:4px 0 22px;">
         <span class="lp-badge" style="background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22);color:#fff;"><span style="text-decoration:line-through;opacity:.75;">Externalisée&nbsp;: ~900&nbsp;€/an</span></span>
         <span class="lp-badge" style="background:rgba(255,255,255,.16);border-color:rgba(167,243,208,.5);color:#fff;">✓ Avec Assokit&nbsp;: 0&nbsp;€, incluse</span>
