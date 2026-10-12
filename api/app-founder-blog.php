@@ -29,7 +29,7 @@ try {
     $last30    = (int) $scalar("SELECT COUNT(*) FROM asso_blog_articles WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
     $topics    = (int) $scalar("SELECT COUNT(*) FROM asso_blog_topics");
 
-    $filter = (string) ($_GET['filter'] ?? 'all');
+    $filter = (is_string($_GET['filter'] ?? null) ? $_GET['filter'] : 'all');   // ?filter[]=… : valeur par défaut, sans avertissement
     $wArt = '1=1';
     if ($filter === 'published') $wArt = 'is_published = 1';
     elseif ($filter === 'draft') $wArt = '(is_published = 0 OR is_published IS NULL)';

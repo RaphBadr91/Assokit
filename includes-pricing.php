@@ -105,6 +105,22 @@ if (!function_exists('ak_vat_rate_for_display')) {
     }
 }
 
+if (!function_exists('ak_manual_invoice_vat_rate')) {
+    /**
+     * Taux de TVA des factures d'abonnement émises hors Stripe (paiement sur facture ou virement :
+     * cron-job-renouvellements.php, « Mon abonnement »). Le prix de la formule est HT (asso_plans).
+     * Société assujettie (company_settings.vat_subject) : taux de la plateforme (ak_vat_applicable_rate,
+     * le même que la page de paiement et Stripe), 20 % s'il y est désactivé ; société non assujettie :
+     * null, la facture porte « TVA non applicable, art. 293 B du CGI ».
+     */
+    function ak_manual_invoice_vat_rate(PDO $pdo): ?float {
+        if (!function_exists('ak_company') && is_file(__DIR__ . '/company-helpers.php')) require_once __DIR__ . '/company-helpers.php';
+        if (!function_exists('ak_company') || (int)ak_company('vat_subject') !== 1) return null;
+        $rate = ak_vat_rate_for_display($pdo);
+        return ($rate !== null && $rate > 0) ? (float)$rate : 20.0;
+    }
+}
+
 if (!defined('AK_OFFER_CACHE_FILE')) define('AK_OFFER_CACHE_FILE', __DIR__ . '/uploads/offer-price.json');
 
 if (!function_exists('ak_offer_price')) {

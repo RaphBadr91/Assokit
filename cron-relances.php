@@ -4,7 +4,7 @@
  * À LANCER TOUTES LES 10 MINUTES (et non plus 1x par jour) : chaque
  * passage examine un lot d'associations, en commençant par celles vues
  * il y a le plus longtemps.
- *   /usr/bin/php /home/pura7044/public_html/cron-relances.php
+ *   /usr/local/bin/php /home/pura7044/public_html/cron-relances.php
  *
  * Pour chaque org ayant activé l'auto-relance (org_relance_prefs) :
  *   - envoie les relances de factures dues (dunning1/2/3) ;

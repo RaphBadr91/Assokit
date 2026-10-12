@@ -198,6 +198,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 ]);
                 $success = 'Plan ' . $after['plan_label'] . ' activé (' . sa_plan_state_price($after) . ')'
                          . (($before['is_trial'] || $before['trial_expired']) && !$after['is_trial'] ? ' : l’essai est terminé.' : '.');
+                // Paiement sur facture : premier mois à facturer depuis Factures, les suivants partent seuls
+                // (cron-job-renouvellements, à partir de l'échéance posée par ak_org_set_plan)
+                try {
+                    $scols = ak_db_columns($pdo, 'asso_subscriptions');
+                    if (!empty($after['is_paid']) && (int) $after['price_cents'] > 0 && isset($scols['current_period_end'], $scols['payment_mode'])) {
+                        $cr = $pdo->prepare("SELECT s.payment_mode, s.current_period_end FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
+                                             WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1");
+                        $cr->execute([$target_id]);
+                        $crow = $cr->fetch(PDO::FETCH_ASSOC) ?: [];
+                        if (($crow['payment_mode'] ?? '') !== 'stripe' && ($crow['payment_mode'] ?? '') !== 'free_grant' && !empty($crow['current_period_end'])) {
+                            $success .= ' Paiement sur facture : émettez la facture du premier mois depuis Factures ; les mois suivants sont facturés automatiquement à partir du '
+                                      . date('d/m/Y', strtotime((string) $crow['current_period_end'] . ' +1 day')) . '.';
+                        }
+                    }
+                } catch (Throwable $e) {}
                 if ($sid = ak_stripe_left_on_free($pdo, $target_id, $sfree)) $error = sa_stripe_left_message($sid, (bool) $sfree);
             }
         }
@@ -729,7 +744,7 @@ if ($view_id > 0) {
                 <div class="sa-kpi-trend">aucun abonnement (ancien plan)</div>
             <?php elseif ((int) $plan_state['price_cents'] > 0): ?>
                 <div class="sa-kpi-value" style="font-size:22px;"><?= number_format($plan_state['price_cents'] / 100, 2, ',', ' ') ?> €</div>
-                <div class="sa-kpi-trend">/mois</div>
+                <div class="sa-kpi-trend">HT/mois</div>
             <?php else: ?>
                 <div class="sa-kpi-value" style="font-size:22px;"><?= h(sa_plan_price_label(0, (string) $plan_state['plan_slug'])) ?></div>
             <?php endif; ?>

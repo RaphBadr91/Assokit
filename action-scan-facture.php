@@ -57,6 +57,19 @@ if (!$stmt->fetch()) {
     exit;
 }
 
+// Avant l'analyse IA (facturée) : la dépense serait refusée à l'enregistrement (action-facture.php,
+// api/app-create-expense.php) pour un suiveur, un projet archivé ou hors de l'équipe du projet.
+require_once __DIR__ . '/finance-permissions.php';
+if (!ak_user_can_add_expense($pdo, $user, $project_id)) {
+    $arch = $pdo->prepare("SELECT (p.archived_at IS NOT NULL OR f.archived_at IS NOT NULL) FROM projects p JOIN folders f ON f.id = p.folder_id WHERE p.id = ?");
+    $arch->execute([$project_id]);
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => (($user['role'] ?? '') === 'follower') ? 'Action non autorisée.'
+        : ((int) $arch->fetchColumn() === 1 ? 'Ce projet est archivé : il est en lecture seule.'
+        : 'Seule l’équipe du projet peut y ajouter une facture.')], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // Vérifier le fichier uploadé
 if (!isset($_FILES['invoice_file']) || $_FILES['invoice_file']['error'] !== UPLOAD_ERR_OK) {
     http_response_code(400);

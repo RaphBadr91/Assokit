@@ -4,7 +4,7 @@
  * ASSOKIT — CRON : Purge des archives + alertes
  * ============================================================
  * À configurer dans cPanel → Cron Jobs :
- *   0 2 * * * /usr/bin/php /home/pura7044/public_html/cron-purge-archives.php
+ *   0 2 * * * /usr/local/bin/php /home/pura7044/public_html/cron-purge-archives.php
  * (Tous les jours à 2h du matin)
  *
  * Actions :
@@ -18,13 +18,15 @@
  */
 
 // Securite : refuser acces HTTP (uniquement CLI ou token)
-if (PHP_SAPI !== 'cli' && !isset($_GET['cron_token'])) {
+// php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
+$ak_purge_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
+if (!$ak_purge_cli && !isset($_GET['cron_token'])) {
     http_response_code(403);
     die('CRON endpoint - CLI only');
 }
 
 // Si appel HTTP, verifier le token (a definir dans config.php : CRON_TOKEN)
-if (PHP_SAPI !== 'cli') {
+if (!$ak_purge_cli) {
     require_once __DIR__ . '/config.php';
     if (!defined('CRON_TOKEN') || (string)CRON_TOKEN === '' || !hash_equals((string)CRON_TOKEN, (string)($_GET['cron_token'] ?? ''))) {
         http_response_code(403);
@@ -46,7 +48,7 @@ function cron_log(string $msg): void
     global $log_file;
     $line = '[' . date('Y-m-d H:i:s') . '] ' . $msg . "\n";
     @file_put_contents($log_file, $line, FILE_APPEND);
-    if (PHP_SAPI === 'cli') echo $line;
+    if ($GLOBALS['ak_purge_cli'] ?? (PHP_SAPI === 'cli')) echo $line;
 }
 
 /** Administrateurs actifs d'une association (destinataires des alertes de purge). */
@@ -362,6 +364,6 @@ try {
 
 cron_log('========== FIN CRON ARCHIVES ==========');
 
-if (PHP_SAPI !== 'cli') {
+if (!$ak_purge_cli) {
     echo "OK\n";
 }

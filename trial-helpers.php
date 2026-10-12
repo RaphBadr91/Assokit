@@ -562,6 +562,12 @@ if (!function_exists('ak_org_set_plan')) {
         $paid_plan = !$is_trial && ((int)$plan['price_cents'] > 0 || $plan['slug'] === 'sur-mesure' || !empty($plan['is_custom_quote']));
         $before = ak_org_plan_state($pdo, $org_id);
         $leaving_trial = !$is_trial && ($before['is_trial'] || $before['trial_expired']);
+        // Passage à une formule à prix mensuel (ni essai, ni gratuite, ni Sur-mesure) depuis un état non
+        // payant (essai, fin d'essai, formule gratuite) : hors Stripe (paiement sur facture), la première
+        // échéance est la fin du premier mois payé, et cron-job-renouvellements facture les mois suivants.
+        // Sans elle, l'abonnement n'était jamais renouvelé. Une ligne Stripe garde les échéances de Stripe.
+        $monthly_paid = !$is_trial && (int)$plan['price_cents'] > 0 && $plan['slug'] !== 'sur-mesure' && empty($plan['is_custom_quote']);
+        $first_end = ($monthly_paid && empty($before['is_paid'])) ? date('Y-m-d 23:59:59', strtotime('+1 month -1 day')) : null;
 
         $cur = $pdo->prepare("SELECT s.id, s.plan_id FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
                               WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1");
@@ -581,6 +587,14 @@ if (!function_exists('ak_org_set_plan')) {
             $sets[] = 'status = ?';  $args[] = $status;
             if (isset($cols['current_period_end'])) {
                 if ($is_trial) { $sets[] = 'current_period_end = ?'; $args[] = $end; }
+                elseif ($first_end !== null) {
+                    // MySQL lit les SET de gauche à droite : payment_mode est encore l'ancien ici (le passage
+                    // « Offert » → « manuel » vient après), une ligne Stripe le reste.
+                    $stripe_row = (isset($cols['payment_mode']) ? "COALESCE(payment_mode, '') = 'stripe'" : "0")
+                                . (isset($cols['stripe_subscription_id']) ? " OR COALESCE(stripe_subscription_id, '') <> ''" : "");
+                    $sets[] = "current_period_end = IF($stripe_row, " . ($leaving_trial ? "NULL" : "current_period_end") . ", ?)";
+                    $args[] = $first_end;
+                }
                 elseif ($leaving_trial) $sets[] = 'current_period_end = NULL';   // la fin d'essai n'est pas une échéance
             }
             if ($leaving_trial && $paid_plan && isset($cols['payment_mode']) && ak_db_accepts($pdo, 'asso_subscriptions', 'payment_mode', 'manual')) {
@@ -592,7 +606,7 @@ if (!function_exists('ak_org_set_plan')) {
             $pdo->prepare("UPDATE asso_subscriptions SET " . implode(', ', $sets) . " WHERE id = ?")->execute($args);
         } else {
             ak_db_insert($pdo, 'asso_subscriptions', ['org_id' => $org_id, 'plan_id' => $plan_id, 'status' => $status,
-                'current_period_end' => $is_trial ? $end : null], ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
+                'current_period_end' => $is_trial ? $end : $first_end], ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
         }
 
         $set_label = ak_db_accepts($pdo, 'organizations', 'plan', (string)$plan['slug']);

@@ -5,14 +5,15 @@
  * CRON quotidien : génère les factures des récurrences dues.
  *
  * Configuration cPanel :
- *   0 7 * * * /usr/bin/php /home/pura7044/public_html/cron_asso_invoice_recurrences.php >> /home/pura7044/cron-recurrences.log 2>&1
+ *   0 7 * * * /usr/local/bin/php /home/pura7044/public_html/cron_asso_invoice_recurrences.php >> /home/pura7044/cron-recurrences.log 2>&1
  *
  * Sécurité : peut aussi être appelé via URL avec ?token=CRON_TOKEN
  * --------------------------------------------------------------
  */
 
 // === En CLI ou avec token valide ===
-$is_cli   = (php_sapi_name() === 'cli');
+// php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
+$is_cli   = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
 $token_ok = false;
 
 require_once __DIR__ . '/config.php';

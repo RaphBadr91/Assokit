@@ -15,7 +15,19 @@ $is_coord = ($user['role'] === 'coordinator');
 $can_manage = $is_admin || $is_coord;
 // Liste des payeurs (noms, e-mails, montants) : réservée à la gestion,
 // comme l'entrée du menu.
-if (!$can_manage) { http_response_code(403); die('Accès réservé aux administrateurs et coordinateurs.'); }
+if (!$can_manage) {
+    http_response_code(403);
+    render_head('Accès refusé');
+    echo render_sidebar('cotisations');
+    echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">'
+       . '<div style="font-size:54px;margin-bottom:14px;">🔒</div>'
+       . '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>'
+       . '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">Le suivi des cotisations est réservé aux <strong>administrateurs</strong> et <strong>coordinateurs</strong> de l’association.</p>'
+       . '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au tableau de bord</a>'
+       . '</div></main>';
+    echo render_foot();
+    exit;
+}
 
 // Charger campagnes (actives + archivées)
 $stmt = $pdo->prepare("SELECT c.*,

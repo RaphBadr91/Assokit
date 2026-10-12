@@ -115,8 +115,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$to_trial && ($cid = $current_sub_id($org_id))) {
                 $sets = []; $args = [];
                 if (isset($sub_cols['current_period_end'])) {
+                    // Sans date choisie, l'échéance est celle posée par ak_org_set_plan : jamais la fin d'essai,
+                    // fin du premier mois pour une formule mensuelle payée sur facture (renouvellements)
                     if ($date_changed) { $sets[] = 'current_period_end = ?'; $args[] = $period_end !== '' ? $period_end . ' 23:59:59' : null; }
-                    elseif ($before['is_trial'] || $before['trial_expired']) { $sets[] = 'current_period_end = NULL'; } // la fin d'essai n'est pas une échéance
                 }
                 if ($status !== 'active') {
                     $sets[] = 'status = ?'; $args[] = $status;

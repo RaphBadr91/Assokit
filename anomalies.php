@@ -20,6 +20,9 @@ if ($org_id <= 0 || !can('manage_finances')) {
 }
 $csrf = h($_SESSION['csrf_token'] ?? '');
 $show_ignored = isset($_GET['ignored']);
+// /cotisations (liste des payeurs) est réservé aux administrateurs et coordinateurs : un
+// trésorier (« Gérer les finances ») voit l'anomalie, sans lien vers un écran qui le refuserait.
+$can_cotis = in_array($user['role'] ?? '', ['admin', 'coordinator'], true);
 
 $ready = true; $findings = []; $ignored_count = 0;
 try {
@@ -88,7 +91,7 @@ echo render_sidebar('anomalies');
             <div class="an-card-detail"><?= h($f['detail']) ?></div>
           </div>
           <div class="an-card-actions">
-            <?php if (!empty($f['route'])): ?><a href="<?= h($f['route']) ?>" class="an-btn ghost sm">Ouvrir</a><?php endif; ?>
+            <?php if (!empty($f['route']) && (strpos((string)$f['route'], '/cotisations') !== 0 || $can_cotis)): ?><a href="<?= h($f['route']) ?>" class="an-btn ghost sm">Ouvrir</a><?php endif; ?>
             <?php if (!empty($f['dismissed'])): ?>
               <button type="button" class="an-btn ghost sm js-restore">Rétablir</button>
             <?php else: ?>

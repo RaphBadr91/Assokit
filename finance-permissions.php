@@ -169,3 +169,48 @@ if (!function_exists('require_finance_access_json')) {
         exit;
     }
 }
+
+if (!function_exists('ak_expense_any_project')) {
+    /**
+     * Ajout d'une dépense (facture de projet) sur n'importe quel projet de l'association, sans être
+     * dans son équipe : administrateur, coordinateur, droit « Gérer les finances ». Jamais un suiveur.
+     * Même règle qu'action-facture.php et api/app-create-expense.php ; les autres comptes ne
+     * l'ajoutent qu'aux projets dont ils sont référent ou membre (ak_user_can_add_expense).
+     */
+    function ak_expense_any_project(?array $user): bool {
+        if (!$user || ($user['role'] ?? '') === 'follower') return false;
+        return in_array($user['role'] ?? '', ['admin', 'coordinator'], true)
+            || !empty($user['can_manage_finances'])
+            || (function_exists('can') && can('manage_finances'));
+    }
+}
+
+if (!function_exists('ak_user_can_add_expense')) {
+    /**
+     * Ce compte peut-il ajouter une dépense à ce projet de SON association ? Faux pour un suiveur,
+     * un compte sans association, un projet ou un dossier archivé ; vrai pour ak_expense_any_project(),
+     * le référent du projet ou un membre de son équipe (project_members). Règle d'action-facture.php
+     * et d'api/app-create-expense.php, reprise par le scan IA (action-scan-facture.php) et l'appli
+     * (can_add_expense d'api/app-project.php).
+     */
+    function ak_user_can_add_expense(PDO $pdo, array $user, int $project_id): bool {
+        $org_id = (int)($user['org_id'] ?? 0);
+        $uid = (int)($user['id'] ?? 0);
+        if ($org_id <= 0 || $uid <= 0 || $project_id <= 0 || ($user['role'] ?? '') === 'follower') return false;
+        try {
+            $st = $pdo->prepare("SELECT p.referent_id, p.archived_at, f.archived_at AS folder_archived_at
+                                 FROM projects p JOIN folders f ON f.id = p.folder_id
+                                 WHERE p.id = ? AND f.org_id = ? LIMIT 1");
+            $st->execute([$project_id, $org_id]);
+            $p = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$p || !empty($p['archived_at']) || !empty($p['folder_archived_at'])) return false;
+            if (ak_expense_any_project($user) || (int)($p['referent_id'] ?? 0) === $uid) return true;
+            $pm = $pdo->prepare("SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? LIMIT 1");
+            $pm->execute([$project_id, $uid]);
+            return (bool)$pm->fetchColumn();
+        } catch (Throwable $e) {
+            error_log('[ak_user_can_add_expense] ' . $e->getMessage());
+            return false;
+        }
+    }
+}

@@ -77,9 +77,20 @@ if (!$user) app_fail(401, 'auth');
 $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
 $uid    = (int) ($user['id'] ?? 0);
 if ($uid <= 0) app_fail(401, 'auth');
-// Compte sans association (agent de collectivité : org_id vide, parent_org_id renseigné) : seuls
-// les endpoints du compte personnel passent ; ils ne lisent pas $org_id et ne touchent que la
-// ligne users de $uid (app-context.php les ouvre déjà aux agents).
-if ($org_id <= 0 && !in_array(basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')), ['app-change-password.php', 'app-update-account.php', 'app-delete-account.php'], true)) {
+// Compte sans association (agent de collectivité : org_id vide, parent_org_id renseigné ; Fondateur
+// ou super-admin non rattaché) : seuls passent
+//   - le compte personnel (mot de passe, profil, suppression) : ne touche que la ligne users de $uid ;
+//   - les notifications (lues, jeton push) : celles de $uid ; app-notif-read.php remplace alors
+//     $org_id par -1 (aucun canal, projet ni ticket « org 0 ») et le cron push lit par user_id ;
+//   - l'espace Fondateur (app-founder-*) : chaque script vérifie app_is_founder / is_super_admin
+//     et ne lit jamais $org_id.
+// Un agent de collectivité est arrêté plus tôt (403 'mairie_space') sur ce qu'app-context.php ne
+// lui ouvre pas (AK_GUARD_OPEN, AK_GUARD_MAIRIE_OPEN).
+$ak_boot_script = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+$ak_boot_no_org = in_array($ak_boot_script, ['app-change-password.php', 'app-update-account.php', 'app-delete-account.php',
+                                             'app-notif-read.php', 'app-register-push.php'], true)
+                  || strpos($ak_boot_script, 'app-founder-') === 0;
+if ($org_id <= 0 && !$ak_boot_no_org) {
     app_fail(400, 'org', 'Aucune association n’est rattachée à ce compte.');
 }
+unset($ak_boot_script, $ak_boot_no_org);

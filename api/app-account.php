@@ -30,6 +30,13 @@ try {
     }
     $can_delete = ($delete_blocked === '');
 
+    // Association suspendue (motif renseigné : ak_org_access, app-context.php) : ses réglages (logo,
+    // infos de l'organisation) répondent 403 'org_suspended'. Les entrées « Logo » et « Infos de
+    // l'organisation » de l'appli dépendent de is_admin : elles disparaissent au lieu de renvoyer à
+    // l'écran de suspension. Fondateur / super-admin : jamais coupés par l'état d'une association.
+    $org_suspended = $org_id > 0 && function_exists('ak_org_access') && ak_org_access($pdo, $org_id) === 'suspended'
+        && !(function_exists('ak_user_is_platform') && ak_user_is_platform($user));
+
     echo json_encode([
         'ok' => true,
         'account' => [
@@ -45,7 +52,9 @@ try {
         ],
         // Agent de collectivité (aucune association) : jamais administrateur d'une association,
         // même si son users.role vaut « admin ».
-        'org' => ['name' => $org_name, 'logo' => $org_logo, 'is_admin' => $org_id > 0 && (($u['role'] ?? '') === 'admin')],
+        'org' => ['name' => $org_name, 'logo' => $org_logo,
+                  'is_admin' => $org_id > 0 && (($u['role'] ?? '') === 'admin') && !$org_suspended,
+                  'suspended' => $org_suspended],
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-account] ' . $e->getMessage());

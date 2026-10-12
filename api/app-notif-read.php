@@ -16,6 +16,9 @@
  * Renvoie les compteurs recalculés. NE MODIFIE PAS le site.
  */
 require __DIR__ . '/_app-write-boot.php';
+// Compte sans association (Fondateur, super-admin, agent de collectivité) : ses notifications
+// seulement, aucun canal, projet ni ticket support d'une association « org 0 »
+if ($org_id <= 0) $org_id = -1;
 @require_once __DIR__ . '/../notification-helpers.php';
 require_once __DIR__ . '/../platform-flags.php';
 

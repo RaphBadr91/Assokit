@@ -258,8 +258,9 @@ if (empty($_SESSION['csrf_token'])) {
 <?php if ($suspended_notice !== null):
     $is_org_admin = ($suspended_notice['role'] ?? '') === 'admin';
     // Le paiement lève tout seul la suspension d'une association en fin d'essai (trial_ends_at
-    // renseignée) et celle pour impayé (motif « Impayé », « Paiement en retard »…) : stripe-webhook.php,
-    // ak_end_trial_after_payment. Les autres (décision du support) se lèvent à la main.
+    // renseignée, sans motif ou motif de fin d'essai) et celle pour impayé (motif « Impayé »,
+    // « Paiement en retard »…) : stripe-webhook.php, ak_end_trial_after_payment. Les autres
+    // (décision du support) se lèvent à la main.
     $susp_org = [];
     try {
         $st = $pdo->prepare('SELECT * FROM organizations WHERE id = ? LIMIT 1');
@@ -268,14 +269,20 @@ if (empty($_SESSION['csrf_token'])) {
     } catch (Throwable $e) {
         $susp_org = [];
     }
-    $auto_unsuspend = !empty($susp_org['trial_ends_at'])
-        || preg_match('/impay|retard de paiement|paiement en retard|d[eé]faut de paiement|non[- ]paiement/u',
-                      mb_strtolower((string)($susp_org['suspended_reason'] ?? ''))) === 1;
     // Fin de l'essai gratuit (date passée, aucun abonnement payant) : dite telle quelle, avec le
-    // choix de la formule, plutôt qu'une « suspension » à régulariser
+    // choix de la formule, plutôt qu'une « suspension » à régulariser. Seulement sans motif ou pour
+    // un motif de fin d'essai (« Fin de l'essai », « Essai terminé ») : une suspension décidée par
+    // le support (abus, fraude, impayé…) garde « Accès suspendu » et son message, même essai échu.
     $trial_ended = false;
     $trial_ts = !empty($susp_org['trial_ends_at']) ? strtotime((string)$susp_org['trial_ends_at']) : false;
-    if ($trial_ts && $trial_ts > 0 && $trial_ts <= time()) {
+    $susp_reason = mb_strtolower(trim((string)($susp_org['suspended_reason'] ?? '')));
+    $reason_is_trial = $susp_reason === ''
+        || preg_match('/fin\s+(?:de\s+l|d)[\'’]\s*essai|essai[^.;:]{0,30}(?:termin|expir|fini|[ée]chu|achev|clos)/u', $susp_reason) === 1;
+    // Levée automatique au paiement : fin d'essai (sans motif ou motif de fin d'essai) ou impayé.
+    // Une suspension du support pendant l'essai (« Abus », « Fraude ») reste en place.
+    $auto_unsuspend = (!empty($susp_org['trial_ends_at']) && $reason_is_trial)
+        || preg_match('/impay|retard de paiement|paiement en retard|d[eé]faut de paiement|non[- ]paiement/u', $susp_reason) === 1;
+    if ($trial_ts && $trial_ts > 0 && $trial_ts <= time() && $reason_is_trial) {
         require_once __DIR__ . '/trial-helpers.php';
         $trial_ended = function_exists('ak_org_is_trial') && ak_org_is_trial($pdo, (int)($susp_org['id'] ?? 0));
     }

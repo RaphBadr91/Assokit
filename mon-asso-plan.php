@@ -94,14 +94,20 @@ $current_plan_id = $cur_plan['plan_id'] ?? ($active_sub['plan_id'] ?? null);
 
 // Prix des formules proposées : HT + TVA = TTC au taux de la plateforme (celui que Stripe ajoute aux
 // nouveaux abonnements par carte). Formule en cours : le montant tel qu'il est facturé. Abonnement par
-// carte souscrit avec la TVA (dernière facture Stripe avec TVA) : HT + TVA = TTC ; sinon (abonnement par
-// carte plus ancien, paiement sur facture ou virement, renouvelé au prix de la formule) : montant seul.
+// carte souscrit avec la TVA (dernière facture Stripe avec TVA) : HT + TVA = TTC ; paiement sur facture
+// ou virement : HT + TVA de la facture ; abonnement par carte plus ancien, sans TVA : montant seul.
 $vat_rate = function_exists('ak_vat_applicable_rate') ? ak_vat_applicable_rate($pdo) : 0.0;
 $sub_vat_rate = function_exists('ak_live_sub_vat_rate') ? ak_live_sub_vat_rate($pdo, $org_id, $live_stripe) : null;
+// Paiement sur facture ou virement (aucun abonnement par carte) : la facture de renouvellement
+// (cron-job-renouvellements.php) porte prix HT + TVA d'ak_manual_invoice_vat_rate = TTC, ou « TVA non
+// applicable » (société non assujettie) : le montant affiché est celui de la facture.
+$invoice_vat_rate = (!$live_stripe && !in_array((string)$payment_mode, ['stripe', 'free_grant'], true) && function_exists('ak_manual_invoice_vat_rate'))
+    ? (ak_manual_invoice_vat_rate($pdo) ?? 0.0) : null;
 // « 49,99 € HT/mois (59,99 € TTC) », ou le montant tel qu'il est prélevé (« 49,99 €/mois »)
-$fmt_month = function (int $cents) use ($sub_vat_rate): string {
-    if ($sub_vat_rate === null) return ak_price_eur($cents) . '/mois';
-    return ak_price_split($cents, $sub_vat_rate)['label'];
+$fmt_month = function (int $cents) use ($sub_vat_rate, $invoice_vat_rate): string {
+    if ($sub_vat_rate !== null) return ak_price_split($cents, $sub_vat_rate)['label'];
+    if ($invoice_vat_rate !== null) return ak_price_split($cents, $invoice_vat_rate)['label'];
+    return ak_price_eur($cents) . '/mois';
 };
 
 // Lignée d'essai (essai jamais converti, ak_org_is_trial) : une association rétrogradée en Démarrage à la
@@ -267,8 +273,10 @@ render_sidebar('mon-asso-plan');
       <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px 24px;">
         <h3 style="margin:0 0 14px;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('euro',18) ?>Détail du tarif</h3>
         <?php
-        $ht_suffix = ($sub_vat_rate !== null && $sub_vat_rate > 0) ? ' HT' : '';
-        $total_split = ak_price_split((int)$pricing['total_cents'], $sub_vat_rate ?? 0.0);
+        // TVA de l'abonnement par carte, sinon celle des factures (paiement sur facture ou virement)
+        $detail_vat_rate = $sub_vat_rate ?? $invoice_vat_rate;
+        $ht_suffix = ($detail_vat_rate !== null && $detail_vat_rate > 0) ? ' HT' : '';
+        $total_split = ak_price_split((int)$pricing['total_cents'], $detail_vat_rate ?? 0.0);
         ?>
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9;font-size:14px;">
           <div>Plan <?= htmlspecialchars($subscription_status['plan_name'] ?? '') ?></div>

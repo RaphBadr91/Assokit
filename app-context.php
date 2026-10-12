@@ -143,11 +143,20 @@ define('AK_GUARD_SUSPENDED_OPEN', [
  * et d'AK_GUARD_OPEN : fiche projet (lecture), notifications, son compte personnel (mot de
  * passe, double authentification, export et suppression RGPD) et l'accueil de l'appli
  * (api/app-dashboard.php y renvoie le profil « mairie » et le lien de l'espace sur le site).
+ * Dans l'appli, ses notifications se marquent lues (api/app-notif-read.php, comme
+ * action-mark-read.php sur le site) et son téléphone s'inscrit aux notifications push
+ * (api/app-register-push.php) : sinon le 403 'mairie_space' ramenait l'appli à l'accueil.
  */
 define('AK_GUARD_MAIRIE_OPEN', [
     'projet.php', 'notifications.php',
     'parametres.php', 'securite-2fa.php', 'rgpd-export.php', 'rgpd-supprimer-compte.php',
     'api/app-dashboard.php', 'api/app-notifications.php', 'api/app-update-account.php', 'api/app-delete-account.php',
+    'api/app-notif-read.php', 'api/app-register-push.php',
+    // Lectures de l'appli déjà installée (avant le profil « mairie ») : liste vide ou allowed:false
+    // pour un compte sans association (org_id -1), comme avant ce garde. Un 403 la laissait sur
+    // « Chargement… » (Projets, Membres, Adhérents) ou « Chargement impossible » (Tableau de bord complet).
+    'api/app-projects.php', 'api/app-members.php', 'api/app-events.php', 'api/app-channels.php',
+    'api/app-tickets.php', 'api/app-dashboard-full.php', 'api/app-folders.php',
 ]);
 
 /**

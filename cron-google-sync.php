@@ -4,7 +4,7 @@
  * AssoKit — CRON Synchronisation Google Calendar
  * ============================================================
  * À exécuter toutes les 5 min via O2switch CRON :
- *   /usr/bin/php /home/pura7044/public_html/cron-google-sync.php
+ *   /usr/local/bin/php /home/pura7044/public_html/cron-google-sync.php
  *
  * Pour chaque organisation connectée à Google Calendar :
  *   1. PULL : récupère les events Google (delta via syncToken)

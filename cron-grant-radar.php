@@ -4,7 +4,7 @@
  * À LANCER TOUTES LES 10 MINUTES (et non plus 1x par jour) : chaque
  * passage scanne un lot d'associations, en commençant par celles vues
  * il y a le plus longtemps.
- *   /usr/bin/php /home/pura7044/public_html/cron-grant-radar.php
+ *   /usr/local/bin/php /home/pura7044/public_html/cron-grant-radar.php
  *
  * Pour chaque org qui utilise le radar :
  *   1. recalcule les correspondances (nouveaux dispositifs, deadlines à jour) ;

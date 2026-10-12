@@ -10,7 +10,8 @@
  * comptables (factures : conservation légale 10 ans).
  */
 
-if (PHP_SAPI !== 'cli') { http_response_code(403); exit("CLI only\n"); }
+// php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
+if (PHP_SAPI !== 'cli' && isset($_SERVER['REQUEST_METHOD'])) { http_response_code(403); exit("CLI only\n"); }
 require_once __DIR__ . '/config.php';
 
 $LIVE = defined('AK_RGPD_PURGE_LIVE') && AK_RGPD_PURGE_LIVE;

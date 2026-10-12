@@ -4,7 +4,7 @@
  * À LANCER TOUTES LES 10 MINUTES (et non plus 1x par jour). Les rappels
  * sont notés dans cron_envois : les relancer souvent n'en envoie pas
  * davantage, chaque échéance ne part qu'une fois.
- *   /usr/bin/php /home/pura7044/public_html/cron-trial-check.php
+ *   /usr/local/bin/php /home/pura7044/public_html/cron-trial-check.php
  *
  * - essai terminé (trial_ends_at < NOW()) → ancienne ligne 'suspended', association passée
  *   en Démarrage, formule technique d'un essai terminé (ak_trial_expire, la même bascule que cron-job-essai, au même
@@ -24,7 +24,8 @@ require_once __DIR__ . '/trial-helpers.php';
 // Prix de la formule Assokit dans les e-mails (HT + TTC au taux de TVA de la plateforme)
 require_once __DIR__ . '/includes-pricing.php';
 
-$is_cli = (PHP_SAPI === 'cli');
+// php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
+$is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
 $has_key = is_string($_GET['key'] ?? null) && defined('CRON_SECRET') && (string)CRON_SECRET !== '' && hash_equals((string)CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) { http_response_code(403); die('Forbidden'); }
 

@@ -40,7 +40,8 @@ $base = [
     'account' => $acc ? ['email' => $acc['email'], 'status' => $acc['status'], 'error' => $acc['status'] !== 'active' ? $acc['last_error'] : null,
                          'alert' => mail_account_alert($acc),
                          'demo' => $acc['provider'] !== 'gmail' || ak_demo_session(), 'last_sync' => $acc['last_sync_at'] ? $fr_when($acc['last_sync_at']) : null] : null,
-    'can_connect' => mail_can_connect($user),
+    // Compte sans association (Fondateur non rattaché) : aucune boîte d'association à relier
+    'can_connect' => $org > 0 && mail_can_connect($user),
     'connect_url' => 'https://assokit.fr/boite-mail',
 ];
 if (!$acc) $out($base + ['threads' => [], 'categories' => [], 'counts' => ['main' => 0, 'prio' => 0]]);
@@ -89,15 +90,15 @@ if (isset($_GET['thread'])) {
 }
 
 // ---------- Liste ----------
-$view = (string)($_GET['view'] ?? 'main');
+$view = (is_string($_GET['view'] ?? null) ? $_GET['view'] : 'main');   // paramètres en tableau (?view[]=…) : valeur par défaut, sans avertissement
 $w = ['t.org_id = ?', $scope, $view === 'archived' ? 't.is_archived = 1' : 't.is_archived = 0'];
 $args = [$org];
 $order = 't.last_message_at DESC';
-if ($view === 'cat' && isset($by_slug[(string)($_GET['cat'] ?? '')])) { $w[] = 't.category_id = ?'; $args[] = (int)$by_slug[$_GET['cat']]['id']; }
+if ($view === 'cat' && is_string($_GET['cat'] ?? null) && isset($by_slug[$_GET['cat']])) { $w[] = 't.category_id = ?'; $args[] = (int)$by_slug[$_GET['cat']]['id']; }
 elseif (in_array($view, ['main', 'unread'], true) && $promos) { $w[] = '(t.category_id IS NULL OR t.category_id <> ?)'; $args[] = $promos; }
 if ($view === 'unread') $w[] = 't.unread = 1';
 if ($view === 'prio') { $w[] = "t.priority IN ('urgent','important') AND t.last_direction = 'in'"; $order = "FIELD(t.priority, 'urgent', 'important'), t.last_message_at DESC"; }
-$q = mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100);
+$q = mb_substr(trim(is_string($_GET['q'] ?? null) ? $_GET['q'] : ''), 0, 100);
 if ($q !== '') {
     $w[] = '(t.subject LIKE ? OR t.counterpart_email LIKE ? OR t.counterpart_name LIKE ? OR t.snippet LIKE ?)';
     $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';

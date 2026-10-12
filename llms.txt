@@ -8,7 +8,7 @@ Assokit s'adresse aux associations, aux petites structures (TPE) et aux collecti
 
 - [Accueil](https://assokit.fr/): présentation du logiciel de gestion d'association Assokit.
 - [Fonctionnalités](https://assokit.fr/fonctionnalites): toutes les fonctionnalités (adhérents, cotisations, facturation, compta, communication IA, projets, AG).
-- [Tarifs](https://assokit.fr/tarifs): offres Essentiel, Pro et Sur-mesure, avec essai gratuit.
+- [Tarifs](https://assokit.fr/tarifs): essai PRO gratuit de 14 jours sans carte bancaire, puis une formule unique Assokit à 49,99 € HT/mois, sans engagement ; Sur-mesure sur devis.
 - [À propos](https://assokit.fr/a-propos): l'équipe et la mission d'Assokit.
 - [Avis clients](https://assokit.fr/avis): témoignages d'associations utilisatrices.
 - [Contact](https://assokit.fr/contact): demande de démonstration et contact commercial.
@@ -33,4 +33,4 @@ Assokit s'adresse aux associations, aux petites structures (TPE) et aux collecti
 
 - [Plan du site (sitemap XML)](https://assokit.fr/sitemap.xml)
 - [Mentions légales](https://assokit.fr/mentions-legales)
-- [Politique de confidentialité](https://assokit.fr/politique-confidentialite)
+- [Politique de confidentialité](https://assokit.fr/confidentialite)

@@ -423,7 +423,8 @@ function cron_invoice_sequence_sync(PDO $pdo): void
 /**
  * Abonnement Assokit RÉEL d'une association : la ligne courante d'asso_subscriptions
  * (même choix que le reste de l'appli, ak_sub_order) et son plan. null sans ligne.
- * Clés : status, slug, name, price_cents, payment_mode, cancelled_at, cancel_at_period_end,
+ * Clés : sub_id, period_end (échéance de la ligne, current_period_end), status, slug, name,
+ * price_cents (prix HT de la formule), payment_mode, cancelled_at, cancel_at_period_end,
  * is_trial, is_paid (ak_paid_sub_sql), is_stripe, is_custom (Sur-mesure / sur devis), plan_changed
  * (previous_plan_id ou downgraded_at renseigné : la formule a été changée, ligne non créée d'office),
  * billing_cycle (ancienne table subscriptions, '' si inconnue).
@@ -433,7 +434,8 @@ function cron_org_billing_state(PDO $pdo, int $orgId): ?array
     require_once __DIR__ . '/trial-helpers.php';
     $sc = ak_db_columns($pdo, 'asso_subscriptions');
     $pc = ak_db_columns($pdo, 'asso_plans');
-    $sel = "s.status, p.slug, p.name, COALESCE(p.price_cents, 0) AS price_cents, "
+    $sel = "s.id AS sub_id, s.status, p.slug, p.name, COALESCE(p.price_cents, 0) AS price_cents, "
+         . (isset($sc['current_period_end']) ? "s.current_period_end" : "NULL") . " AS period_end, "
          . "(" . ak_plan_trial_sql($pdo, 'p') . ") AS is_trial_plan, "
          . "(" . ak_paid_sub_sql($pdo, 's', 'p') . ") AS is_paid, "
          . (isset($sc['payment_mode']) ? "s.payment_mode" : "NULL") . " AS payment_mode, "
@@ -466,6 +468,8 @@ function cron_org_billing_state(PDO $pdo, int $orgId): ?array
     }
 
     return [
+        'sub_id'               => (int) $row['sub_id'],
+        'period_end'           => $row['period_end'] ?: null,
         'status'               => (string) $row['status'],
         'slug'                 => (string) $row['slug'],
         'name'                 => (string) ($row['name'] ?: $row['slug']),

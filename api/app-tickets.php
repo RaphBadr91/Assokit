@@ -17,6 +17,7 @@ function tfd($v) {
 }
 
 try {
+    if ($org_id <= 0) $org_id = -1;   // compte sans association (agent de collectivité) : aucun ticket « org 0 »
     $rows = [];
     try {
         $stmt = $pdo->prepare("

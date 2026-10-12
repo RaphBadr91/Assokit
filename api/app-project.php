@@ -126,6 +126,9 @@ try {
             'budget_planned' => $budget_planned,
             'budget_pct'     => $budget_pct,
             'can_view_finances' => $can_view_finances,
+            // « Scanner une facture » : la règle d'api/app-create-expense.php (équipe du projet, admin,
+            // coordinateur, droit finances ; jamais un suiveur ni un projet archivé)
+            'can_add_expense' => ak_user_can_add_expense($pdo, $user, (int) $p['id']),
             'referent'       => $referent,
             'steps_done'     => $done,
             'steps_total'    => $total_steps,

@@ -78,6 +78,9 @@ try {
                 'plan' => $ps['plan_label'],
                 'validated' => ($o['validation_status'] !== 'pending_founder' && $o['validation_status'] !== 'rejected'),
                 'pending' => ($o['validation_status'] === 'pending_founder'),
+                // Pastille « Refusée » de l'appli, comme la liste (app-founder-orgs.php) et la fiche
+                'rejected' => ($o['validation_status'] === 'rejected'),
+                'validation_status' => (string) $o['validation_status'],
                 'nb_users' => (int) $o['nb_users'],
                 'created' => date('d/m/Y', strtotime($o['created_at'])),
             ] + $ps;

@@ -20,7 +20,7 @@ if (!app_is_founder($pdo, $user) && !( !empty($user['is_super_admin']) || ($user
     http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit;
 }
 
-$filter = (string) ($_GET['filter'] ?? 'open');
+$filter = (is_string($_GET['filter'] ?? null) ? $_GET['filter'] : 'open');   // ?filter[]=… : valeur par défaut, sans avertissement
 $scalar = function (string $sql) use ($pdo) { try { return $pdo->query($sql)->fetchColumn(); } catch (Throwable $e) { return 0; } };
 
 $ST_META = [

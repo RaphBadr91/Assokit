@@ -118,7 +118,7 @@ Calendrier conseillé (ajuste `AK_PROSPECT_DAILY_CAP` chaque semaine) :
    ```
 2. Programme le CRON sur O2switch (cPanel → **Tâches planifiées / Cron Jobs**) :
    ```
-   */30 * * * *   /usr/bin/php /home/TON_USER/public_html/cron-prospect-send.php >/dev/null 2>&1
+   */30 * * * *   /usr/local/bin/php /home/TON_USER/public_html/cron-prospect-send.php >/dev/null 2>&1
    ```
    (Toutes les 30 min. Remplace `TON_USER` et le chemin par le vrai chemin O2switch.)
 

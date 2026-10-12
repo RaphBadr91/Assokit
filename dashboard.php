@@ -41,6 +41,13 @@ if ((int)($user['org_id'] ?? 0) <= 0 && !empty($user['parent_org_id'])) {
         ak_parent_org_closed_stop(ak_parent_org_row_for_user($user));
     }
 }
+// Fondateur ou super-admin sans association (créé par /super-admin/super-admins) : pas de
+// tableau de bord d'association « org 0 », retour au cockpit de la plateforme.
+if ((int)($user['org_id'] ?? 0) <= 0 && empty($user['parent_org_id'])
+    && (!empty($user['is_founder']) || !empty($user['is_super_admin']) || in_array($user['role'] ?? '', ['super_admin', 'founder'], true))) {
+    header('Location: /super-admin');
+    exit;
+}
 
 // Permissions finances
 $role = $user['role'] ?? '';

@@ -20,8 +20,8 @@ if (!app_session_account_alive($pdo)) { http_response_code(401); echo json_encod
 // accès sur le site (sa-permissions.php : can_view_all_projects)
 if (!app_is_founder($pdo, $user)) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
-$q = trim((string) ($_GET['q'] ?? ''));
-$status = (string) ($_GET['status'] ?? '');
+$q = trim(is_string($_GET['q'] ?? null) ? $_GET['q'] : '');   // paramètre en tableau (?q[]=…) : ignoré, sans avertissement
+$status = (is_string($_GET['status'] ?? null) ? $_GET['status'] : '');
 
 try {
     $where = ['o.deleted_at IS NULL'];

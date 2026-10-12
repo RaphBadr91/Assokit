@@ -89,7 +89,8 @@ try {
         'has_more' => $has_more,
         'next_from' => $has_more && $rows ? date('Y-m-d', strtotime((string) end($rows)['starts_at'])) : null,
         // Bouton « Nouvel événement » : masqué pour un suiveur (même règle que le site, agenda.php).
-        'can_create' => ak_event_can_create($user ?: []),
+        // Compte sans association : aucun agenda où créer (la création répond 400 'org').
+        'can_create' => $org_id > 0 && ak_event_can_create($user ?: []),
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-events] ' . $e->getMessage());

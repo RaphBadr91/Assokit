@@ -808,11 +808,13 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
         <span class="sa-link-icon">📜</span> Historique
       </a>
 
+      <?php if ((int)($user['org_id'] ?? 0) > 0): // compte sans association : aucun espace d'association où revenir ?>
       <div class="sa-nav-section">Retour</div>
 
       <a href="/dashboard" class="sa-link" style="color:var(--sa-ink-4);">
         <span class="sa-link-icon">↩</span> Mode asso
       </a>
+      <?php endif; ?>
     </nav>
 
     <div class="sa-user">

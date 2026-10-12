@@ -22,6 +22,9 @@ try {
     $role   = (string) ($user['role'] ?? 'member');
     $is_admin = ($role === 'admin') || !empty($user['is_super_admin']);
     $is_coord = $is_admin || ($role === 'coordinator');
+    // Compte sans association (agent de collectivité, Fondateur non rattaché) : aucune ligne « org 0 »,
+    // tableau vide, sans bloc de gestion (un agent peut être « admin » de sa collectivité)
+    if ($org_id <= 0) { $org_id = -1; $is_admin = $is_coord = false; }
 
     // Suiveur (financeur externe) : uniquement ses projets suivis, comme /projets et /agenda
     // (le site le renvoie d'ailleurs vers /projets au lieu du tableau de bord).

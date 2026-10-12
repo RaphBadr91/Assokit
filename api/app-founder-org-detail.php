@@ -92,6 +92,9 @@ try {
             'plan_known'    => $known,   // false : ancien libellé (ex. « essentiel ») hors asso_plans
             'status'        => (string) $o['status'],
             'validation_status' => (string) $o['validation_status'],
+            // Mêmes clés que la liste (app-founder-orgs.php) : pastilles « À valider » / « Refusée »
+            'pending'       => ((string) $o['validation_status'] === 'pending_founder'),
+            'rejected'      => ((string) $o['validation_status'] === 'rejected'),
             'note'          => $hasNote ? (string) ($o['notes_superadmin'] ?? '') : '',
             'created'       => !empty($o['created_at']) ? date('d/m/Y', strtotime($o['created_at'])) : '',
             'nb_users'      => max($nb_users, count($members)),

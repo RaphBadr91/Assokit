@@ -8,7 +8,7 @@
  * suivant reprend la suite. La semaine visée ne bouge pas du lundi au
  * dimanche, donc l'heure du passage n'a aucune importance, et quand
  * tout le monde a reçu son rapport le cron ne fait plus rien.
- *   /usr/bin/php /home/pura7044/public_html/cron-coach-ia.php
+ *   /usr/local/bin/php /home/pura7044/public_html/cron-coach-ia.php
  */
 
 require_once __DIR__ . '/config.php';
@@ -19,7 +19,8 @@ require_once __DIR__ . '/includes-coach-ia.php';
 require_once __DIR__ . '/cron-lots.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';   // ak_asso_org_active_sql()
 
-$is_cli = (PHP_SAPI === 'cli');
+// php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
+$is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
 $has_key = is_string($_GET['key'] ?? null) && defined('CRON_SECRET') && (string)CRON_SECRET !== '' && hash_equals((string)CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) { http_response_code(403); die('Forbidden'); }
 

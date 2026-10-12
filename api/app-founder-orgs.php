@@ -26,7 +26,7 @@ $is_founder = app_is_founder($pdo, $user);
 $is_sa = $is_founder || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
 if (!$is_sa) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
-$filter = (string) ($_GET['filter'] ?? 'all');
+$filter = (is_string($_GET['filter'] ?? null) ? $_GET['filter'] : 'all');   // ?filter[]=… : valeur par défaut, sans avertissement
 
 try {
     // Impayés par org (défensif : la table peut varier)

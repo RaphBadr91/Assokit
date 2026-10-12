@@ -32,7 +32,8 @@ require_once __DIR__ . '/fondateur-emailing-helpers.php';
 // compte rendu au lieu de le dire.
 @include_once __DIR__ . '/resend-helper.php';
 
-$is_cli  = (PHP_SAPI === 'cli');
+// php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
+$is_cli  = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
 $has_key = is_string($_GET['key'] ?? null) && defined('CRON_SECRET') && (string)CRON_SECRET !== '' && hash_equals((string)CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) { http_response_code(403); die('Forbidden'); }
 

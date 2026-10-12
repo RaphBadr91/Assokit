@@ -134,6 +134,22 @@ function fetchJS(endpoint, key) {
     + " } catch(e){} })(); true;";
 }
 
+// Plusieurs lectures d'une même liste (un filtre par statut), fusionnées en une réponse
+// { ok, <listKey>: [...] sans doublon (id), count } sous la clé `key`. Le premier échec est
+// renvoyé tel quel.
+function fetchMergedJS(endpoints, key, listKey) {
+  return "(function(){ try { Promise.all(" + JSON.stringify(endpoints) + ".map(function(u){"
+    + " return fetch(u, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'include' }).then(function(r){ return r.json(); }); }))"
+    + ".then(function(all){ var bad=null, seen={}, list=[];"
+    + " all.forEach(function(d){ if (!d || d.ok === false) { if (!bad) bad=d || { ok:false }; return; }"
+    + "  (d[" + JSON.stringify(listKey) + "] || []).forEach(function(x){ if (x && !seen[x.id]) { seen[x.id]=1; list.push(x); } }); });"
+    + " list.sort(function(a,b){ return (b.id||0)-(a.id||0); });"
+    + " var o={}; o[" + JSON.stringify(listKey) + "]=list; o.ok=true; o.count=list.length;"
+    + " window.ReactNativeWebView.postMessage(JSON.stringify({ " + key + ": bad || o })); })"
+    + ".catch(function(){ window.ReactNativeWebView.postMessage(JSON.stringify({ " + key + ": { ok: false } })); });"
+    + " } catch(e){} })(); true;";
+}
+
 const FETCH_MEMBERS_JS = fetchJS('/api/app-members.php', '__akmembers');
 const FETCH_CLIENTS_JS = fetchJS('/api/app-clients.php', '__akclients');
 const FETCH_INVOICES_JS = fetchJS('/api/app-invoices.php', '__akinvoices');
@@ -203,6 +219,30 @@ const CAPTURE_CREDS_JS = "(function(){ try {"
   + " } catch(x){} }, true); }"
   + " } catch(x){} })(); true;";
 
+/* Lit la page /connexion après une tentative de connexion : le serveur y affiche le
+   motif réel du refus (.error-box : identifiants, compte désactivé, association fermée,
+   trop de tentatives) ou, pour une association suspendue, l'avis #ak-acces-suspendu
+   (la session est alors ouverte). L'app reprend ce texte au lieu d'un message figé. */
+const LOGIN_PAGE_JS = "(function(){ try {"
+  + " var t=function(el){ return el ? String(el.innerText||el.textContent||'').replace(/^[\\s\\u26A0\\uFE0F]+/,'').replace(/\\s+/g,' ').trim() : ''; };"
+  + " var s=document.getElementById('ak-acces-suspendu');"
+  + " var nb=s ? s.querySelector('.notice-box') : null;"
+  + " var eb=document.querySelector('.error-box');"
+  + " window.ReactNativeWebView.postMessage(JSON.stringify({__akloginpage:{ suspended: !!s, notice: t(nb), error: s ? '' : t(eb) }}));"
+  + " } catch(x){} })(); true;";
+
+/* Page « mot de passe provisoire » (/changer-mot-de-passe) : retient le nouveau mot de
+   passe au moment de l'envoi, pour que « rester connecté » (Face ID) mémorise celui-là
+   et non le mot de passe provisoire qui vient de servir à la connexion. */
+const CAPTURE_NEWPW_JS = "(function(){ try {"
+  + " var f=document.querySelector('form');"
+  + " if(f && !f.__akpwhook){ f.__akpwhook=1; f.addEventListener('submit', function(){ try {"
+  + "   var n=document.querySelector('input[name=new_password]');"
+  + "   var c=document.querySelector('input[name=confirm_password]');"
+  + "   if(n&&n.value&&(!c||c.value===n.value)){ window.ReactNativeWebView.postMessage(JSON.stringify({__aknewpw:{password:n.value}})); }"
+  + " } catch(x){} }, true); }"
+  + " } catch(x){} })(); true;";
+
 // Re-remplit et soumet le formulaire de connexion (auto-login Face ID)
 function autoLoginJS(email, password) {
   return "(function(){ try {"
@@ -214,12 +254,22 @@ function autoLoginJS(email, password) {
     + " } catch(x){} })(); true;";
 }
 
-// Récupère un PDF authentifié en base64 (pour partage/téléchargement natif)
+// Récupère un PDF authentifié en base64 (pour partage/téléchargement natif).
+// Une réponse qui n'est pas un PDF (403 « réservé aux administrateurs », 402 « export
+// inclus déjà utilisé », page d'erreur…) n'est jamais partagée comme un fichier .pdf :
+// son texte (sans balises ni liens) est renvoyé pour être affiché.
 function fetchPdfJS(url) {
   return "(function(){ try {"
     + " fetch(" + JSON.stringify(url) + ", {credentials:'include'})"
-    + ".then(function(r){ return r.blob(); })"
-    + ".then(function(b){ var fr=new FileReader(); fr.onloadend=function(){ var s=String(fr.result||''); var i=s.indexOf('base64,'); window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:true, data: i>=0 ? s.slice(i+7) : ''}})); }; fr.onerror=function(){ window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false}})); }; fr.readAsDataURL(b); })"
+    + ".then(function(r){ var ct=String((r.headers && r.headers.get('content-type'))||'');"
+    + " if (r.ok && /pdf/i.test(ct)) return r.blob();"
+    + " return r.text().then(function(t){ var m='';"
+    + "  try { var d=new DOMParser().parseFromString(String(t||''),'text/html'); var ls=d.querySelectorAll('a,script,style,title'); for (var i=0;i<ls.length;i++){ ls[i].parentNode.removeChild(ls[i]); }"
+    + "   var bl=d.querySelectorAll('h1,h2,h3,p'), parts=[]; for (var j=0;j<bl.length;j++){ var s=String(bl[j].textContent||'').replace(/\\s+/g,' ').trim(); if (s) parts.push(/[.!?:\\u2026]$/.test(s) ? s : s+'.'); }"
+    + "   m=parts.length ? parts.join(' ') : String((d.body&&d.body.textContent)||''); } catch(x){ m=String(t||'').replace(/<[^>]*>/g,' '); }"
+    + "  m=m.replace(/[\\uD800-\\uDFFF\\u2600-\\u27BF\\uFE0F]/g,'').replace(/\\s+/g,' ').trim(); if (m.length>300) m=m.slice(0,297)+'…';"
+    + "  window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false, status:r.status, message:m}})); return null; }); })"
+    + ".then(function(b){ if (!b) return; var fr=new FileReader(); fr.onloadend=function(){ var s=String(fr.result||''); var i=s.indexOf('base64,'); window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:true, data: i>=0 ? s.slice(i+7) : ''}})); }; fr.onerror=function(){ window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false}})); }; fr.readAsDataURL(b); })"
     + ".catch(function(){ window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false}})); });"
     + " } catch(x){ window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false}})); } })(); true;";
 }
@@ -228,6 +278,9 @@ const STATUS_META = {
   warning: { label: 'À suivre', color: '#D97706', bg: '#FFFBEB' },
   active: { label: 'En cours', color: '#059669', bg: '#ECFDF5' },
   done: { label: 'Terminé', color: '#2563EB', bg: '#EFF6FF' },
+  // Renvoyés par /api/app-projects.php comme sur le site (sans eux : repli « En cours »)
+  draft: { label: 'Brouillon', color: '#64748B', bg: '#F1F5F9' },
+  archived: { label: 'Archivé', color: '#64748B', bg: '#F1F5F9' },
 };
 
 function fmtEuro(n) {
@@ -240,6 +293,17 @@ function fmtEuro(n) {
 // fmtEuro arrondit et abrège en k€, ce qui afficherait « 13 € » pour un tarif à 12,50 €.
 function fmtEuro2(n) {
   return (Number(n) || 0).toFixed(2).replace('.', ',') + ' €';
+}
+
+// « 2026-10-11T05:44:00+02:00 » → « 11 oct. 2026 à 05h44 », à l'heure du serveur (celle
+// qu'affiche le site), sans dépendre du fuseau ni de l'Intl du téléphone. '' si illisible.
+const MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+function fmtDateTimeFr(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(String(iso || ''));
+  if (!m) return '';
+  const mo = parseInt(m[2], 10);
+  if (mo < 1 || mo > 12) return '';
+  return parseInt(m[3], 10) + ' ' + MOIS_COURTS[mo - 1] + ' ' + m[1] + (m[4] ? ' à ' + m[4] + 'h' + m[5] : '');
 }
 
 // « 2026-10-23 17:27:12 » ou « 23/10/2026 » → « 23/10/2026 »
@@ -744,7 +808,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-09-essai-pro';
+const UI_REV = '2026-10-12-controle-complet';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -784,22 +848,51 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
 
   // Quatre indicateurs, grille 2×2 (maquette : libellé capitales, valeur XXL, sous-titre).
   // `raw` + `fmt` alimentent le compteur animé ; `fmt` est figé sur la valeur cible.
-  const cards = isTpe
-    ? [
-        { label: 'Encaissé ' + new Date().getFullYear(), raw: k.ca_paid, fmt: euroFormatter(k.ca_paid), sub: (k.factures ?? 0) + ' facture' + ((k.factures ?? 0) > 1 ? 's' : ''), tone: BRAND, path: '/mon-asso-factures' },
-        { label: 'Impayés', raw: k.impayes, fmt: euroFormatter(k.impayes), sub: 'à recouvrer', tone: '#B45309', path: '/mon-asso-factures' },
-        { label: 'Clients', raw: k.clients, fmt: intFormatter(), sub: 'au total', tone: INK, path: '/mon-asso-clients' },
-        { label: 'Devis en cours', raw: k.devis_encours, fmt: intFormatter(), sub: 'à relancer', tone: INK, path: '/mon-asso-devis' },
-      ]
-    : [
-        { label: 'Budget engagé', raw: k.budget_used, fmt: euroFormatter(k.budget_used), sub: 'sur ' + fmtEuro(k.budget_planned) + ' prévus', tone: BRAND, path: '/projets' },
-        { label: 'Impayés', raw: k.impayes, fmt: euroFormatter(k.impayes), sub: 'à recouvrer', tone: '#B45309', path: '/mon-asso-factures' },
-        { label: 'Adhérents', raw: k.membres, fmt: intFormatter(), sub: (k.membres_nouveaux > 0 ? '+' + k.membres_nouveaux + ' en 30 j' : 'actifs'), tone: INK, path: '/adherents' },
-        { label: 'Projets actifs', raw: k.projets_actifs, fmt: intFormatter(), sub: (k.evenements ?? 0) + ' événement' + ((k.evenements ?? 0) > 1 ? 's' : '') + ' à venir', tone: INK, path: '/projets' },
-      ];
-  const shortcuts = isTpe ? SHORTCUTS_TPE : SHORTCUTS_ASSO;
-  const actions = (quickActions || []).slice(0, 4);
+  // Droits du rôle (api/app-dashboard.php) : sans droit finances (can_view_finances) ou facturation
+  // (can_access_billing), les montants arrivent à null, et les adhérents aussi pour un suiveur.
+  // Une carte à null n'est pas affichée (elle montrait « 0 € ») : la suivante de la liste prend sa
+  // place, pour garder la grille pleine. Clé absente (ancien serveur) : la carte reste, comme avant.
   const today = (data && data.today) || [];
+  const isFollowerHome = !!data && data.role === 'follower' && !data.is_founder;
+  // Fondateur ou super-admin sans association (has_org false) : ni chiffres ni raccourcis d'une
+  // association « org 0 », seulement ses notifications ; l'Espace Fondateur est dans « Plus ».
+  const noOrgHome = !!data && data.has_org === false && data.profile !== 'mairie';
+  const finOk = !!data && data.can_view_finances !== false && k.budget_used !== null;
+  const billOk = !!data && data.can_access_billing !== false && k.impayes !== null;
+  const has = (v) => v !== null;
+  const nEv = k.evenements ?? 0;
+  const evSub = nEv + ' événement' + (nEv > 1 ? 's' : '') + ' à venir';
+  const card = {
+    budget: { label: 'Budget engagé', raw: k.budget_used, fmt: euroFormatter(k.budget_used), sub: 'sur ' + fmtEuro(k.budget_planned) + ' prévus', tone: BRAND, path: '/projets' },
+    // k.impayes = factures ÉCHUES non payées (api/app-dashboard.php) : « En retard », le même
+    // chiffre que « dont … en retard » de l'écran Factures, dont « À encaisser » compte aussi les non échues.
+    retard: { label: 'En retard', raw: k.impayes, fmt: euroFormatter(k.impayes), sub: 'échues, à recouvrer', tone: '#B45309', path: '/mon-asso-factures' },
+    encaisse: { label: 'Encaissé ' + new Date().getFullYear(), raw: k.ca_paid, fmt: euroFormatter(k.ca_paid), sub: (k.factures ?? 0) + ' facture' + ((k.factures ?? 0) > 1 ? 's' : ''), tone: BRAND, path: '/mon-asso-factures' },
+    clients: { label: 'Clients', raw: k.clients, fmt: intFormatter(), sub: 'au total', tone: INK, path: '/mon-asso-clients' },
+    devis: { label: 'Devis en cours', raw: k.devis_encours, fmt: intFormatter(), sub: 'à relancer', tone: INK, path: '/mon-asso-devis' },
+    adherents: { label: isTpe ? 'Équipe' : 'Adhérents', raw: k.membres, fmt: intFormatter(), sub: isTpe ? 'comptes actifs' : (k.membres_nouveaux > 0 ? '+' + k.membres_nouveaux + ' en 30 j' : 'actifs'), tone: INK, path: isTpe ? null : '/adherents' },
+    projets: { label: isFollowerHome ? 'Projets suivis' : 'Projets actifs', raw: k.projets_actifs, fmt: intFormatter(), sub: evSub, tone: INK, path: '/projets' },
+    evenements: { label: 'Événements', raw: k.evenements, fmt: intFormatter(), sub: 'à venir', tone: INK, path: '/agenda' },
+    notifs: { label: 'Notifications', raw: notifCount || 0, fmt: intFormatter(), sub: (notifCount || 0) > 1 ? 'non lues' : 'non lue', tone: INK, notifs: true },
+    today: { label: 'Aujourd’hui', raw: today.length, fmt: intFormatter(), sub: today.length > 0 ? 'au programme' : 'rien de prévu', tone: INK, path: '/agenda' },
+  };
+  const order = isTpe
+    ? [billOk && has(k.ca_paid) && card.encaisse, billOk && card.retard, billOk && has(k.clients) && card.clients, billOk && has(k.devis_encours) && card.devis,
+       has(k.membres) && card.adherents, card.evenements, card.projets, card.notifs]
+    : [finOk && card.budget, billOk && card.retard, has(k.membres) && !isFollowerHome && card.adherents, card.projets,
+       card.evenements, card.notifs, card.today];
+  const cards = noOrgHome ? [card.notifs] : order.filter(Boolean).slice(0, 4);
+  // La carte Événements affichée à part : « Projets actifs » n'a plus à répéter leur nombre
+  if (cards.indexOf(card.evenements) !== -1) card.projets.sub = 'en cours';
+  // Suiveur : pas de messagerie interne (raccourci « Messages » masqué, comme le menu du site).
+  // Sans droit Facturation (can_access_billing false) : pas de raccourci vers un écran verrouillé.
+  const BILL_PATHS = ['/mon-asso-factures', '/mon-asso-devis', '/mon-asso-clients', '/mon-asso-stats'];
+  const keepShortcut = (s) => !(s.path === '/messages' && isFollowerHome)
+    && !(BILL_PATHS.indexOf(s.path) !== -1 && data && data.can_access_billing === false);
+  let shortcuts = (isTpe ? SHORTCUTS_TPE : SHORTCUTS_ASSO).filter(keepShortcut);
+  if (!shortcuts.length) shortcuts = SHORTCUTS_ASSO.filter((s) => s.path !== '/projets' && keepShortcut(s));
+  if (noOrgHome) shortcuts = [];
+  const actions = (quickActions || []).slice(0, 4);
 
   return (
     <View style={styles.homeWrap}>
@@ -821,8 +914,8 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
               )}
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.fgOrgName} numberOfLines={1}>{(data && data.org_name) || ' '}</Text>
-              <Text style={styles.fgOrgSub} numberOfLines={1}>{isTpe ? 'Entreprise' : 'Association'}</Text>
+              <Text style={styles.fgOrgName} numberOfLines={1}>{(data && data.org_name) || (noOrgHome ? 'Assokit' : ' ')}</Text>
+              <Text style={styles.fgOrgSub} numberOfLines={1}>{noOrgHome ? 'Aucune association rattachée' : isTpe ? 'Entreprise' : 'Association'}</Text>
             </View>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel={'Notifications' + (notifCount > 0 ? ', ' + notifCount + ' non lues' : '')}
               style={styles.fgBell} activeOpacity={0.8} onPress={onNotifs}>
@@ -906,14 +999,15 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
             {/* ── KPI 2×2, chevauchant l'en-tête de 28 px. Chaque carte arrive
                    en décalé et son chiffre monte depuis zéro. ── */}
             <View style={styles.fgKpiGrid}>
-              {[0, 2].map((start) => (
+              {[0, 2].filter((start) => cards.length > start).map((start) => (
                 <View key={start} style={styles.fgKpiRow}>
                   {cards.slice(start, start + 2).map((c, j) => (
                     <FadeUp key={c.label} still={still} delay={180 + (start + j) * 70} style={{ flex: 1 }}>
                       {/* wrapStyle flex:1 : la chaîne FadeUp → Tap → carte reste étirable,
                           sinon deux cartes voisines n'auraient plus la même hauteur. */}
-                      <Tap accessibilityRole="button" accessibilityLabel={c.label + ' : ' + c.fmt(c.raw)}
-                        wrapStyle={{ flex: 1 }} style={styles.fgKpi} onPress={() => onGoto(c.path)}>
+                      <Tap accessibilityRole={c.path || c.notifs ? 'button' : 'text'} accessibilityLabel={c.label + ' : ' + c.fmt(c.raw)}
+                        wrapStyle={{ flex: 1 }} style={styles.fgKpi} disabled={!c.path && !c.notifs}
+                        onPress={c.notifs ? onNotifs : c.path ? () => onGoto(c.path) : undefined}>
                         <Text style={styles.fgKpiLbl} numberOfLines={1}>{c.label.toUpperCase()}</Text>
                         <CountUp still={still} value={c.raw} format={c.fmt} style={[styles.fgKpiVal, { color: c.tone }]}
                           numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} />
@@ -990,29 +1084,119 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
               </>
             )}
 
-            <Text style={styles.fgSection}>Accès rapide</Text>
-            <FadeUp still={still} delay={700}>
-              <View style={styles.fgCard}>
-                {shortcuts.map((s, i) => (
-                  <Tap accessibilityRole="button" accessibilityLabel={s.label} key={s.label} scale={0.985}
-                    style={[styles.fgLinkRow, i > 0 ? styles.fgSep : null]} onPress={() => onGoto(s.path)}>
-                    <View style={styles.fgLinkIc}><Ionicons name={s.icon} size={18} color={BRAND} /></View>
-                    <Text style={styles.fgLinkTxt}>{s.label}</Text>
-                    <Ionicons name="chevron-forward" size={16} color={INK_3} />
-                  </Tap>
-                ))}
-              </View>
-            </FadeUp>
+            {noOrgHome ? (
+              <Text style={[styles.dMuted, { paddingHorizontal: 20, marginTop: 18, lineHeight: 20 }]}>
+                Aucune association n’est rattachée à ce compte. L’Espace Fondateur, vos paramètres et le support sont dans l’onglet « Plus ».
+              </Text>
+            ) : null}
 
-            <FadeUp still={still} delay={760}>
-              <Tap accessibilityRole="button" accessibilityLabel="Ouvrir le tableau de bord complet"
-                style={styles.fgPrimary} onPress={() => onGoto('/dashboard')}>
-                <Ionicons name="grid-outline" size={18} color="#fff" />
-                <Text style={styles.fgPrimaryTxt}>Tableau de bord complet</Text>
-              </Tap>
-            </FadeUp>
+            {shortcuts.length > 0 && (
+              <>
+                <Text style={styles.fgSection}>Accès rapide</Text>
+                <FadeUp still={still} delay={700}>
+                  <View style={styles.fgCard}>
+                    {shortcuts.map((s, i) => (
+                      <Tap accessibilityRole="button" accessibilityLabel={s.label} key={s.label} scale={0.985}
+                        style={[styles.fgLinkRow, i > 0 ? styles.fgSep : null]} onPress={() => onGoto(s.path)}>
+                        <View style={styles.fgLinkIc}><Ionicons name={s.icon} size={18} color={BRAND} /></View>
+                        <Text style={styles.fgLinkTxt}>{s.label}</Text>
+                        <Ionicons name="chevron-forward" size={16} color={INK_3} />
+                      </Tap>
+                    ))}
+                  </View>
+                </FadeUp>
+              </>
+            )}
+
+            {!noOrgHome && (
+              <FadeUp still={still} delay={760}>
+                <Tap accessibilityRole="button" accessibilityLabel="Ouvrir le tableau de bord complet"
+                  style={styles.fgPrimary} onPress={() => onGoto('/dashboard')}>
+                  <Ionicons name="grid-outline" size={18} color="#fff" />
+                  <Text style={styles.fgPrimaryTxt}>Tableau de bord complet</Text>
+                </Tap>
+              </FadeUp>
+            )}
           </>
         )}
+      </ScrollView>
+    </View>
+  );
+}
+
+/* ================================================================== */
+/*  ESPACE COLLECTIVITÉ (agent d'une mairie, d'un département…)        */
+/* ================================================================== */
+/* api/app-dashboard.php renvoie profile « mairie » et mairie { name, type, web_path, message, open }
+   pour un agent sans association : l'appli n'a pas d'espace collectivité natif et les écrans
+   d'association lui sont fermés (403 'mairie_space'). Écran dédié : la collectivité, le message
+   du serveur et, si l'espace est ouvert, le lien vers le site (WebView). Le compte personnel
+   (modification, mot de passe, suppression) et la déconnexion restent natifs. */
+const MAIRIE_TYPES = { mairie: 'Mairie', departement: 'Département', region: 'Région', drac: 'DRAC', caf: 'CAF', federation: 'Fédération', autre: 'Collectivité' };
+
+function NativeMairieHome({ data, loading, onRefresh, onOpenSpace, onAccount, onNotifs, notifCount, onLogout }) {
+  const m = (data && data.mairie) || {};
+  const open = m.open !== false;   // clé absente : espace ouvert (le serveur n'envoyait alors que les ouverts)
+  const still = useReducedMotion();
+  return (
+    <View style={styles.homeWrap}>
+      <ScrollView style={styles.homeScroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+        <LinearGradient colors={HEAD_GRAD} locations={HEAD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 0.85, y: 1 }} style={styles.fgHead}>
+          <View style={styles.fgHeadOrb} pointerEvents="none" />
+          <View style={styles.fgOrgRow}>
+            <View style={styles.fgOrgLogo}><Ionicons name="business" size={19} color="#fff" /></View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.fgOrgName} numberOfLines={1}>{m.name || 'Votre collectivité'}</Text>
+              <Text style={styles.fgOrgSub} numberOfLines={1}>{(MAIRIE_TYPES[m.type] || 'Collectivité') + ' · espace collectivité'}</Text>
+            </View>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={'Notifications' + (notifCount > 0 ? ', ' + notifCount + ' non lues' : '')}
+              style={styles.fgBell} activeOpacity={0.8} onPress={onNotifs}>
+              <Ionicons name="notifications-outline" size={21} color="#fff" />
+              {notifCount > 0 ? <View style={styles.fgBellDot} /> : null}
+            </TouchableOpacity>
+          </View>
+          <FadeUp still={still} delay={60}>
+            <Text style={styles.fgHello} numberOfLines={1}>{greeting()}{data && data.first_name ? ' ' + data.first_name : ''} 👋</Text>
+          </FadeUp>
+          <FadeUp still={still} delay={140}>
+            <Text style={styles.fgHeadLine} numberOfLines={2}>{(data && data.head_line) || ' '}</Text>
+          </FadeUp>
+        </LinearGradient>
+
+        <FadeUp still={still} delay={200}>
+          <View style={[styles.fgCard, styles.mairieCard]} accessible={!open} accessibilityRole={!open ? 'alert' : undefined}>
+            <View style={[styles.mairieIc, { backgroundColor: open ? '#ECFDF5' : '#FEF3C7' }]}>
+              <Ionicons name={open ? 'globe-outline' : 'pause-circle-outline'} size={22} color={open ? BRAND : '#B45309'} />
+            </View>
+            <Text style={styles.mairieTitle}>{open ? 'Espace collectivité' : 'Espace indisponible'}</Text>
+            <Text style={styles.mairieMsg}>{m.message || (open
+              ? 'L’espace collectivité (associations suivies, messagerie, quota) est disponible sur le site.'
+              : 'L’espace de votre collectivité n’est pas accessible pour le moment.')}</Text>
+            {open ? (
+              <Tap accessibilityRole="button" accessibilityLabel="Ouvrir l’espace collectivité" style={[styles.fgPrimary, { marginHorizontal: 0, marginTop: 16 }]}
+                onPress={() => onOpenSpace(m.web_path || '/mairie-dashboard')}>
+                <Ionicons name="open-outline" size={18} color="#fff" />
+                <Text style={styles.fgPrimaryTxt}>Ouvrir l’espace collectivité</Text>
+              </Tap>
+            ) : null}
+          </View>
+        </FadeUp>
+
+        <Text style={styles.fgSection}>Mon compte</Text>
+        <View style={styles.fgCard}>
+          <Tap accessibilityRole="button" accessibilityLabel="Mon compte et sécurité" scale={0.985} style={styles.fgLinkRow} onPress={onAccount}>
+            <View style={styles.fgLinkIc}><Ionicons name="person-circle-outline" size={18} color={BRAND} /></View>
+            <Text style={styles.fgLinkTxt}>Mon compte et sécurité</Text>
+            <Ionicons name="chevron-forward" size={16} color={INK_3} />
+          </Tap>
+        </View>
+        <View style={{ marginHorizontal: 20, marginTop: 16 }}>
+          <TouchableOpacity accessibilityRole="button" style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
+            <Ionicons name="log-out-outline" size={19} color="#DC2626" />
+            <Text style={styles.logoutTxt}>Se déconnecter</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </View>
   );
@@ -1059,7 +1243,7 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
       ) : projects.length === 0 ? (
         <View style={styles.emptyBox}>
           <Ionicons name="folder-open-outline" size={44} color="#CBD5D1" />
-          <Text style={styles.emptyTxt}>Aucun projet en cours</Text>
+          <Text style={styles.emptyTxt}>Aucun projet</Text>
           <TouchableOpacity accessibilityRole="button" style={[styles.emptyBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
             <Text style={styles.emptyBtnTxt}>Créer un projet</Text>
           </TouchableOpacity>
@@ -1105,10 +1289,18 @@ function NativeProjects({ data, loading, onRefresh, onOpen, onNew, onBack }) {
 /* ================================================================== */
 function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack }) {
   const isClients = mode === 'clients';
+  const [q, setQ] = useState('');
   if (data && data.allowed === false) return <GatedScreen title={isClients ? 'Clients' : 'Membres'} message={data.message} onBack={onBack} />;
-  const list = data ? (isClients ? (data.clients || []) : (data.members || [])) : null;
+  const all = data ? (isClients ? (data.clients || []) : (data.members || [])) : null;
   const title = isClients ? 'Clients' : 'Membres';
   const newLabel = isClients ? 'Nouveau' : 'Inviter';
+  // Recherche locale (nom, e-mail, ville) : la liste des adhérents arrive désormais complète,
+  // sans la limite de 500 qui cachait la fin de l'alphabet des grandes associations.
+  const needle = q.trim().toLowerCase();
+  const list = all && needle
+    ? all.filter((p) => [p.name, p.email, p.city].some((v) => String(v || '').toLowerCase().indexOf(needle) !== -1))
+    : all;
+  const count = all ? (!isClients && Number.isFinite(Number(data.total)) && data.total !== null ? Number(data.total) : all.length) : 0;
 
   return (
     <View style={styles.projWrap}>
@@ -1116,15 +1308,32 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
         {onBack && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
         <View style={{ flex: 1 }}>
           <Text style={styles.projTitle}>{title}</Text>
-          <Text style={styles.projSub}>{(list ? list.length : 0)} {title.toLowerCase()}</Text>
+          <Text style={styles.projSub}>{count} {count > 1 ? title.toLowerCase() : title.toLowerCase().replace(/s$/, '')}</Text>
         </View>
         <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
           <Ionicons name={isClients ? 'add' : 'person-add'} size={18} color="#fff" />
           <Text style={styles.projNewTxt}>{newLabel}</Text>
         </TouchableOpacity>
       </View>
+      {all && all.length > 8 ? (
+        <View style={[mailStyles.searchBox, { marginHorizontal: 16, marginTop: 0 }]}>
+          <Ionicons name="search" size={16} color={INK_3} />
+          <TextInput style={mailStyles.searchInput} value={q} onChangeText={setQ} placeholder={isClients ? 'Rechercher un client' : 'Rechercher un membre'}
+            placeholderTextColor={INK_3} returnKeyType="search" autoCorrect={false} accessibilityLabel={isClients ? 'Rechercher un client' : 'Rechercher un membre'} />
+          {q ? (
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Effacer la recherche" onPress={() => setQ('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close-circle" size={18} color="#CBD5D1" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
       {!list ? (
         <ListLoader onRefresh={onRefresh} />
+      ) : list.length === 0 && needle ? (
+        <View style={styles.emptyBox}>
+          <Ionicons name="search-outline" size={40} color="#CBD5D1" />
+          <Text style={styles.emptyTxt}>Aucun résultat pour « {q.trim()} »</Text>
+        </View>
       ) : list.length === 0 ? (
         <View style={styles.emptyBox}>
           <Ionicons name={isClients ? 'briefcase-outline' : 'people-outline'} size={44} color="#CBD5D1" />
@@ -1137,6 +1346,7 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}
         >
           {list.map((p) => (
@@ -1171,23 +1381,32 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
 /* ================================================================== */
 /*  FACTURES (liste native)                                            */
 /* ================================================================== */
-function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiText, aiLoading, onAnalyze }) {
+function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiText, aiLoading, onAnalyze, onMore, moreLoading }) {
   if (data && data.allowed === false) return <GatedScreen title="Factures" message={data.message} onBack={onBack} />;
   const list = data ? (data.invoices || []) : null;
-  const t = (list || []).reduce((a, i) => {
-    const v = i.amount || 0; a.total += v;
-    if (i.status === 'paid') a.paid += v;
-    else if (i.status === 'overdue') a.overdue += v;
-    else if (i.status === 'pending') a.pending += v;
-    return a;
-  }, { total: 0, paid: 0, pending: 0, overdue: 0 });
+  // Totaux calculés par le serveur sur TOUTES les factures (data.totals) ; la somme de la
+  // liste reste le repli d'un ancien serveur (liste alors limitée aux 200 plus récentes).
+  const st = data && data.totals && typeof data.totals === 'object' ? data.totals : null;
+  const t = st
+    ? { total: Number(st.total) || 0, paid: Number(st.paid) || 0, pending: Number(st.pending) || 0, overdue: Number(st.overdue) || 0 }
+    : (list || []).reduce((a, i) => {
+      const v = i.amount || 0; a.total += v;
+      if (i.status === 'paid') a.paid += v;
+      else if (i.status === 'overdue') a.overdue += v;
+      else if (i.status === 'pending') a.pending += v;
+      return a;
+    }, { total: 0, paid: 0, pending: 0, overdue: 0 });
+  // « À encaisser » = en attente + en retard (comme « En attente » du hub web) ;
+  // « En retard » = échues seules, le chiffre de la carte « En retard » de l'accueil.
+  const unpaid = st && st.unpaid != null ? (Number(st.unpaid) || 0) : t.pending + t.overdue;
+  const nb = data && Number.isFinite(Number(data.total_count)) && data.total_count !== null ? Number(data.total_count) : (list ? list.length : 0);
   return (
     <View style={styles.projWrap}>
       <View style={styles.projHeader}>
         {onBack && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.projBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="chevron-back" size={26} color={INK} /></TouchableOpacity>}
         <View style={{ flex: 1 }}>
           <Text style={styles.projTitle}>Factures</Text>
-          <Text style={styles.projSub}>{(list ? list.length : 0)} facture{(list && list.length > 1) ? 's' : ''}</Text>
+          <Text style={styles.projSub}>{nb} facture{nb > 1 ? 's' : ''}</Text>
         </View>
         <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, !onNew && { display: 'none' }]} onPress={onNew} activeOpacity={0.85}>
           <Ionicons name="add" size={19} color="#fff" />
@@ -1205,8 +1424,11 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
           <View style={styles.miniKpiRow}>
             <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(t.total)}</Text><Text style={styles.miniKpiLbl}>Total</Text></View>
             <View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{fmtEuro(t.paid)}</Text><Text style={styles.miniKpiLbl}>Encaissé</Text></View>
-            <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: (t.overdue + t.pending) > 0 ? '#B45309' : '#047857' }]}>{fmtEuro(t.overdue + t.pending)}</Text><Text style={styles.miniKpiLbl}>Impayés</Text></View>
+            <View style={styles.miniKpi}><Text style={[styles.miniKpiVal, { color: unpaid > 0 ? '#B45309' : '#047857' }]}>{fmtEuro(unpaid)}</Text><Text style={styles.miniKpiLbl}>À encaisser</Text></View>
           </View>
+          {t.overdue > 0 ? (
+            <Text style={[styles.dMuted, { marginTop: -4, marginBottom: 12 }]}>dont {fmtEuro(t.overdue)} en retard (factures échues)</Text>
+          ) : null}
 
           <View style={styles.aiCard}>
             <View style={styles.aiHead}><Ionicons name="sparkles" size={15} color="#7C3AED" /><Text style={styles.aiTitle}>Analyse IA</Text></View>
@@ -1240,6 +1462,13 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
               </TouchableOpacity>
             );
           })}
+          {data.has_more === true && onMore ? (
+            <TouchableOpacity accessibilityRole="button" style={[styles.dWebBtn, moreLoading ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+              disabled={!!moreLoading} onPress={onMore}>
+              {moreLoading ? <ActivityIndicator size="small" color={BRAND} /> : <Ionicons name="chevron-down" size={18} color={BRAND} />}
+              <Text style={styles.dWebBtnTxt}>{moreLoading ? 'Chargement…' : 'Charger plus (' + list.length + ' sur ' + nb + ')'}</Text>
+            </TouchableOpacity>
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -1249,7 +1478,7 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
 /* ================================================================== */
 /*  FICHES DÉTAIL (natives)                                            */
 /* ================================================================== */
-function DetailHeader({ title, onBack, onAction, actionIcon }) {
+function DetailHeader({ title, onBack, onAction, actionIcon, actionLabel }) {
   return (
     <View style={styles.dHeader}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" onPress={onBack} style={styles.dBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.7}>
@@ -1257,7 +1486,7 @@ function DetailHeader({ title, onBack, onAction, actionIcon }) {
       </TouchableOpacity>
       <Text style={styles.dTitle} numberOfLines={1}>{title}</Text>
       {onAction ? (
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ajouter" onPress={onAction} style={styles.dHeadAction} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.8}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel={actionLabel || 'Ajouter'} onPress={onAction} style={styles.dHeadAction} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.8}>
           <Ionicons name={actionIcon || 'add'} size={22} color="#fff" />
         </TouchableOpacity>
       ) : (
@@ -1289,14 +1518,20 @@ function DetailLoading({ title, onBack }) {
   );
 }
 
-function DetailError({ title, onBack, onRetry }) {
+// `data` : réponse { ok:false } de l'API. Un refus lié au rôle (error 'role' / 'forbidden',
+// allowed:false) affiche le message du serveur, sans « Réessayer » : ce n'est pas le réseau.
+function DetailError({ title, onBack, onRetry, data }) {
+  const d = data && typeof data === 'object' ? data : {};
+  const denied = d.allowed === false || d.error === 'role' || d.error === 'forbidden';
+  const gone = d.error === 'not_found';
+  const msg = typeof d.message === 'string' && d.message.trim() ? d.message.trim() : '';
   return (
     <View style={styles.detailWrap}>
       <DetailHeader title={title} onBack={onBack} />
       <View style={styles.emptyBox}>
-        <Ionicons name="cloud-offline-outline" size={44} color="#CBD5D1" />
-        <Text style={styles.emptyTxt}>Chargement impossible. Vérifiez votre connexion.</Text>
-        <TouchableOpacity accessibilityRole="button" style={styles.emptyBtn} onPress={onRetry} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Réessayer</Text></TouchableOpacity>
+        <Ionicons name={denied ? 'lock-closed' : (gone ? 'search-outline' : 'cloud-offline-outline')} size={denied ? 40 : 44} color="#CBD5D1" />
+        <Text style={styles.emptyTxt}>{denied ? (msg || 'Accès réservé.') : (gone ? (msg || 'Introuvable : cet élément a peut-être été supprimé.') : (msg || 'Chargement impossible. Vérifiez votre connexion.'))}</Text>
+        {!denied && !gone ? <TouchableOpacity accessibilityRole="button" style={styles.emptyBtn} onPress={onRetry} activeOpacity={0.85}><Text style={styles.emptyBtnTxt}>Réessayer</Text></TouchableOpacity> : null}
       </View>
     </View>
   );
@@ -1351,10 +1586,12 @@ function DescBlock({ label, text, tint }) {
 
 function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, onSharePdf, pdfBusy }) {
   const d = entry.data;
-  if (d && d.ok === false) return <DetailError title="Projet" onBack={onBack} onRetry={onRefresh} />;
+  if (d && d.ok === false) return <DetailError title="Projet" onBack={onBack} onRetry={onRefresh} data={d} />;
   if (!d || !d.project) return <DetailLoading title="Projet" onBack={onBack} />;
   const p = d.project;
   const bilan = entry.bilan;
+  // Bilan refusé à ce rôle (403 'forbidden' : bénévole, membre, suiveur…), comme sur le site
+  const bilanLocked = !!bilan && bilan.ok === false && (bilan.error === 'forbidden' || bilan.error === 'role');
   const sm = STATUS_META[p.status] || STATUS_META.active;
   const pct = Math.max(0, Math.min(100, p.progress || 0));
   return (
@@ -1377,7 +1614,9 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
           <Text style={styles.dSteps}>{p.steps_done}/{p.steps_total} étape{p.steps_total > 1 ? 's' : ''} terminée{p.steps_done > 1 ? 's' : ''}</Text>
         </View>
 
-        {p.budget_planned > 0 && (
+        {/* Sans droit finances, le serveur renvoie les montants à null (can_view_finances:false) :
+            la carte Budget reste masquée, comme sur la fiche projet du site. */}
+        {p.can_view_finances !== false && Number(p.budget_planned) > 0 && (
           <View style={styles.dCard}>
             <View style={styles.dCardRow}>
               <Text style={styles.dCardLabel}>Budget engagé</Text>
@@ -1387,7 +1626,7 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
                 ambre à l'approche, rouge au dépassement. Le violet d'avant ne disait rien. */}
             <View style={styles.progTrack}>
               <View style={[styles.progFill, {
-                width: Math.min(100, p.budget_pct) + '%',
+                width: Math.min(100, Number(p.budget_pct) || 0) + '%',
                 backgroundColor: p.budget_pct >= 100 ? '#B91C1C' : (p.budget_pct >= 90 ? '#B45309' : BRAND),
               }]} />
             </View>
@@ -1410,15 +1649,31 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
         {d.steps && d.steps.length > 0 && (
           <>
             <Text style={styles.dSection}>Étapes</Text>
-            {d.steps.map((s) => (
-              <View key={s.id} style={styles.stepRow}>
-                <Ionicons name={s.done ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={s.done ? '#10B981' : '#CBD5D1'} />
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={[styles.stepTitle, s.done ? styles.stepDone : null]}>{s.title}</Text>
-                  {!!s.desc && <Text style={styles.stepDesc}>{s.desc}</Text>}
+            {d.steps.map((s) => {
+              // Validation (comme la fiche du site) : « Validée par X · 11 oct. 2026 à 05h44 »,
+              // puis le compte-rendu « Ce qui a été fait ». Ancien serveur : clés absentes, rien.
+              const when = s.done ? fmtDateTimeFr(s.done_at) : '';
+              const by = s.done && typeof s.done_by === 'string' ? s.done_by.trim() : '';
+              const note = s.done && typeof s.note === 'string' ? s.note.trim() : '';
+              return (
+                <View key={s.id} style={styles.stepRow}>
+                  <Ionicons name={s.done ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={s.done ? '#10B981' : '#CBD5D1'} />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={[styles.stepTitle, s.done ? styles.stepDone : null]}>{s.title}</Text>
+                    {!!s.desc && <Text style={styles.stepDesc}>{s.desc}</Text>}
+                    {(!!by || !!when) && (
+                      <Text style={styles.stepMeta}>{by ? 'Validée par ' + by + (when ? ' · ' + when : '') : 'Validée le ' + when}</Text>
+                    )}
+                    {!!note && (
+                      <View style={styles.stepNote}>
+                        <Text style={styles.stepNoteLbl}>Ce qui a été fait</Text>
+                        <Text style={styles.stepNoteTxt}>{note}</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </>
         )}
 
@@ -1428,6 +1683,13 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
         </View>
         {!bilan ? (
           <View style={styles.dCard}><ActivityIndicator color={BRAND} /></View>
+        ) : bilanLocked ? (
+          <View style={styles.dLockCard}>
+            <Ionicons name="lock-closed" size={18} color="#8A968F" />
+            <Text style={styles.dLockTxt}>{bilan.message || 'Le bilan analytique est réservé aux administrateurs et coordinateurs de l’association.'}</Text>
+          </View>
+        ) : bilan.ok === false ? (
+          <View style={styles.dCard}><Text style={styles.dMuted}>{bilan.message || 'Bilan indisponible pour le moment. Tirez vers le bas pour réessayer.'}</Text></View>
         ) : bilan.allowed === false ? (
           <View style={styles.upsellCard}>
             <Ionicons name="lock-closed" size={22} color="#B45309" />
@@ -1453,22 +1715,28 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
           </View>
         )}
 
-        <Text style={styles.bilanNote}><Ionicons name="information-circle-outline" size={13} color="#8A968F" /> Sans factures ni informations saisies, le bilan analytique sera incomplet.</Text>
-        <View style={styles.pdfRow}>
-          <TouchableOpacity accessibilityRole="button" style={[styles.pdfBtn, pdfBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={() => !pdfBusy && onSharePdf('/download-bilan-analytique.php?project=' + p.id)}>
-            {pdfBusy ? <ActivityIndicator size="small" color="#4F46E5" /> : <Ionicons name="share-outline" size={17} color="#4F46E5" />}
-            <Text style={styles.pdfBtnTxt}>{pdfBusy ? 'Préparation…' : 'Bilan analytique (PDF)'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity accessibilityRole="button" style={[styles.pdfBtn, pdfBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={pdfBusy ? undefined : () => onSharePdf('/download-bilan-analytique.php?project=' + p.id)}>
-            <Ionicons name="document-text" size={17} color="#4F46E5" />
-            <Text style={styles.pdfBtnTxt}>Bilan du projet</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Rôle sans accès au bilan (403 du serveur) : ni note ni export PDF, qui serait refusé.
+            Un seul bouton : « Bilan du projet » téléchargeait le même document. */}
+        {!bilanLocked && (
+          <>
+            <Text style={styles.bilanNote}><Ionicons name="information-circle-outline" size={13} color="#8A968F" /> Sans factures ni informations saisies, le bilan analytique sera incomplet.</Text>
+            <View style={styles.pdfRow}>
+              <TouchableOpacity accessibilityRole="button" style={[styles.pdfBtn, pdfBusy ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={() => !pdfBusy && onSharePdf('/download-bilan-analytique.php?project=' + p.id)}>
+                {pdfBusy ? <ActivityIndicator size="small" color="#4F46E5" /> : <Ionicons name="share-outline" size={17} color="#4F46E5" />}
+                <Text style={styles.pdfBtnTxt}>{pdfBusy ? 'Préparation…' : 'Bilan analytique (PDF)'}</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
 
-        <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onAddExpense(p.id)}>
-          <Ionicons name="camera" size={19} color="#fff" />
-          <Text style={styles.dPrimaryBtnTxt}>Scanner une facture</Text>
-        </TouchableOpacity>
+        {/* Suiveur (onAddExpense absent), projet archivé ou hors de l'équipe du projet (can_add_expense
+            false, la règle d'api/app-create-expense.php) : le serveur refuse l'ajout (403) */}
+        {onAddExpense && p.status !== 'archived' && p.can_add_expense !== false ? (
+          <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onAddExpense(p.id)}>
+            <Ionicons name="camera" size={19} color="#fff" />
+            <Text style={styles.dPrimaryBtnTxt}>Scanner une facture</Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/projet/' + p.id)}>
           <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
           <Ionicons name="open-outline" size={18} color={BRAND} />
@@ -1480,7 +1748,7 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
 
 function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) {
   const d = entry.data;
-  if (d && d.ok === false) return <DetailError title="Membre" onBack={onBack} onRetry={onRefresh} />;
+  if (d && d.ok === false) return <DetailError title="Membre" onBack={onBack} onRetry={onRefresh} data={d} />;
   if (!d || !d.member) return <DetailLoading title="Membre" onBack={onBack} />;
   const m = d.member;
   return (
@@ -1502,7 +1770,7 @@ function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) 
         {d.admin === false ? (
           <View style={styles.dLockCard}>
             <Ionicons name="lock-closed" size={18} color="#8A968F" />
-            <Text style={styles.dLockTxt}>Les coordonnées des membres sont réservées aux administrateurs de l'association.</Text>
+            <Text style={styles.dLockTxt}>Les coordonnées des membres sont réservées aux administrateurs et coordinateurs de l’association.</Text>
           </View>
         ) : (
           <>
@@ -1553,15 +1821,18 @@ function NativeMemberDetail({ entry, onBack, onRefresh, onOpenProject, onWeb }) 
   );
 }
 
-function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) {
+function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb, onEdit }) {
   const d = entry.data;
-  if (d && d.ok === false) return <DetailError title="Client" onBack={onBack} onRetry={onRefresh} />;
+  if (d && d.ok === false) return <DetailError title="Client" onBack={onBack} onRetry={onRefresh} data={d} />;
   if (!d || !d.client) return <DetailLoading title="Client" onBack={onBack} />;
   const c = d.client;
   const s = d.stats || {};
+  // Modifier : droit Facturation (fiche complète renvoyée par le serveur). allowed n'est envoyé
+  // que par un serveur qui sait modifier un client (client_id) : un ancien en créerait un nouveau.
+  const canEdit = !!onEdit && d.admin !== false && d.allowed === true;
   return (
     <View style={styles.detailWrap}>
-      <DetailHeader title="Client" onBack={onBack} />
+      <DetailHeader title="Client" onBack={onBack} onAction={canEdit ? () => onEdit(c) : null} actionIcon="create-outline" actionLabel="Modifier le client" />
       <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
         <View style={styles.dHero}>
@@ -1615,6 +1886,12 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
           </>
         )}
 
+        {canEdit && (
+          <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onEdit(c)}>
+            <Ionicons name="create-outline" size={17} color={INK_2} />
+            <Text style={styles.dWebBtnTxt}>Modifier le client</Text>
+          </TouchableOpacity>
+        )}
         {d.admin === false ? null : (
           <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={() => onWeb('/mon-asso-client-detail?id=' + c.id)}>
             <Text style={styles.dWebBtnTxt}>Ouvrir la fiche complète</Text>
@@ -1626,16 +1903,48 @@ function NativeClientDetail({ entry, onBack, onRefresh, onOpenInvoice, onWeb }) 
   );
 }
 
-function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction, busy }) {
+// Moyens de règlement de « Marquer comme payée » (ak_asso_payment_methods du site)
+const INV_PAY_METHODS = [
+  { value: 'virement', label: 'Virement' }, { value: 'cheque', label: 'Chèque' },
+  { value: 'especes', label: 'Espèces' }, { value: 'cb', label: 'Carte bancaire' },
+  { value: 'prelevement', label: 'Prélèvement' }, { value: 'autre', label: 'Autre' },
+];
+
+function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction, onOpenInvoice, busy }) {
+  // Feuilles « Marquer comme payée » (date, moyen, référence) et « Créer un avoir » (motif)
+  const [payOpen, setPayOpen] = useState(false);
+  const [pay, setPay] = useState({ date: '', method: '', reference: '' });
+  const [creditOpen, setCreditOpen] = useState(false);
+  const [reason, setReason] = useState('');
   const d = entry.data;
   const isQuote = d && d.invoice && d.invoice.is_quote;
-  if (d && d.ok === false) return <DetailError title="Document" onBack={onBack} onRetry={onRefresh} />;
+  if (d && d.ok === false) return <DetailError title="Document" onBack={onBack} onRetry={onRefresh} data={d} />;
   if (!d || !d.invoice) return <DetailLoading title={isQuote ? 'Devis' : 'Facture'} onBack={onBack} />;
   const inv = d.invoice;
   const km = INV_KIND[inv.status_kind] || INV_KIND.wait;
+  // Avoir (invoice_type, absent d'un ancien serveur : facture classique)
+  const isCredit = !isQuote && inv.invoice_type === 'credit_note';
+  // Facture annulée (ou remboursée) : le serveur refuse de l'envoyer (409) ; un avoir s'envoie toujours
+  const closed = !isCredit && (inv.status === 'cancelled' || inv.status === 'refunded');
+  const sendLabel = isCredit ? 'Envoyer l’avoir par email'
+    : inv.status === 'paid' ? 'Renvoyer une copie par email'
+    : inv.status === 'overdue' ? 'Relancer le client par email' : 'Envoyer la facture par email';
+  const openPay = () => { setPay({ date: todayFr(), method: '', reference: '' }); setPayOpen(true); };
+  const submitPay = () => {
+    const iso = dateToIso(pay.date);
+    if (iso === null) { Alert.alert('Date du règlement', 'Date invalide : utilisez JJ/MM/AAAA (ex : ' + todayFr() + ').'); return; }
+    if (iso && iso > todayISO()) { Alert.alert('Date du règlement', 'La date du règlement ne peut pas être dans le futur.'); return; }
+    if (!pay.method) { Alert.alert('Moyen de paiement', 'Choisissez le moyen de paiement reçu.'); return; }
+    setPayOpen(false);
+    onAction('mark_paid', { paid_at: iso, payment_method: pay.method, reference: pay.reference.trim() });
+  };
+  const submitCredit = () => {
+    setCreditOpen(false);
+    onAction('credit_note', { reason: reason.trim() });
+  };
   return (
     <View style={styles.detailWrap}>
-      <DetailHeader title={isQuote ? 'Devis' : 'Facture'} onBack={onBack} />
+      <DetailHeader title={isQuote ? 'Devis' : isCredit ? 'Avoir' : 'Facture'} onBack={onBack} />
       <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!entry.loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
         {/* Carte « montant » (nœud 9:8) : numéro, montant 34 px, pastille de statut. */}
@@ -1647,6 +1956,24 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction
           </View>
         </View>
 
+        {/* Lien avoir ⇄ facture d'origine (clés du serveur ; absentes d'un ancien serveur) */}
+        {isCredit && !!inv.parent_invoice_number && (
+          <TouchableOpacity accessibilityRole="button" style={[styles.dLockCard, { marginTop: 0, marginBottom: 12 }]} activeOpacity={0.85}
+            disabled={!(onOpenInvoice && inv.parent_invoice_id)} onPress={() => onOpenInvoice(inv.parent_invoice_id)}>
+            <Ionicons name="return-down-back-outline" size={18} color="#8A968F" />
+            <Text style={styles.dLockTxt}>Annule la facture {inv.parent_invoice_number}</Text>
+            {onOpenInvoice && inv.parent_invoice_id ? <Ionicons name="chevron-forward" size={16} color="#CBD5D1" /> : null}
+          </TouchableOpacity>
+        )}
+        {!isCredit && !isQuote && !!inv.credit_note_number && (
+          <TouchableOpacity accessibilityRole="button" style={[styles.dLockCard, { marginTop: 0, marginBottom: 12 }]} activeOpacity={0.85}
+            disabled={!(onOpenInvoice && inv.credit_note_id)} onPress={() => onOpenInvoice(inv.credit_note_id)}>
+            <Ionicons name="return-down-back-outline" size={18} color="#8A968F" />
+            <Text style={styles.dLockTxt}>Annulée par l’avoir {inv.credit_note_number}</Text>
+            {onOpenInvoice && inv.credit_note_id ? <Ionicons name="chevron-forward" size={16} color="#CBD5D1" /> : null}
+          </TouchableOpacity>
+        )}
+
         {/* Carte d'identité (nœud 9:13) : lignes libellé / valeur séparées d'un filet. */}
         <View style={[styles.dCard, { padding: 0 }]}>
           {[
@@ -1654,8 +1981,8 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction
             { label: 'Total HT', value: fmtEuro2(inv.amount_ht) },
             { label: 'TVA', value: fmtEuro2(inv.amount_vat) },
             { label: 'Émise le', value: inv.issued_at },
-            { label: isQuote ? 'Valable jusqu\'au' : 'Échéance', value: inv.due_at },
-            { label: 'Payée le', value: isQuote ? '' : inv.paid_at },
+            { label: isQuote ? 'Valable jusqu\'au' : 'Échéance', value: isCredit ? '' : inv.due_at },
+            { label: isCredit ? 'Remboursé le' : 'Payée le', value: isQuote ? '' : inv.paid_at },
           ].filter((r) => !!r.value).map((r, i) => (
             <View key={r.label} style={[styles.dRow, i > 0 ? styles.fgSep : null]}>
               <Text style={styles.dLabel}>{r.label}</Text>
@@ -1686,11 +2013,11 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction
         {/* ── Actions natives (envoi, encaissement, conversion) ── */}
         {onAction && (
           <>
-            {!isQuote && inv.status !== 'draft' && (
+            {!isQuote && inv.status !== 'draft' && !closed && (
               <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
                 onPress={busy ? undefined : () => onAction('send')}>
                 {busy === 'send' ? <ActivityIndicator color="#fff" /> : <Ionicons name="mail" size={18} color="#fff" />}
-                <Text style={styles.dPrimaryBtnTxt}>{inv.status === 'overdue' ? 'Relancer le client par email' : 'Envoyer la facture par email'}</Text>
+                <Text style={styles.dPrimaryBtnTxt}>{sendLabel}</Text>
               </TouchableOpacity>
             )}
             {isQuote && (
@@ -1700,11 +2027,19 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction
                 <Text style={styles.dPrimaryBtnTxt}>Envoyer le devis par email</Text>
               </TouchableOpacity>
             )}
-            {!isQuote && (inv.status === 'pending' || inv.status === 'overdue') && (
+            {!isQuote && !isCredit && (inv.status === 'pending' || inv.status === 'overdue') && (
               <TouchableOpacity accessibilityRole="button" style={[styles.dActBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
-                onPress={busy ? undefined : () => onAction('mark_paid')}>
+                onPress={busy ? undefined : openPay}>
                 {busy === 'mark_paid' ? <ActivityIndicator color="#065F46" /> : <Ionicons name="checkmark-circle" size={18} color="#065F46" />}
                 <Text style={styles.dActBtnTxt}>Marquer comme payée</Text>
+              </TouchableOpacity>
+            )}
+            {/* Avoir : can_credit_note du serveur (facture émise sans avoir) ; absent = ancien serveur, pas de bouton */}
+            {!isQuote && inv.can_credit_note === true && (
+              <TouchableOpacity accessibilityRole="button" style={[styles.dDangerBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+                onPress={busy ? undefined : () => { setReason(''); setCreditOpen(true); }}>
+                {busy === 'credit_note' ? <ActivityIndicator color="#991B1B" /> : <Ionicons name="return-down-back-outline" size={18} color="#991B1B" />}
+                <Text style={styles.dDangerBtnTxt}>Créer un avoir</Text>
               </TouchableOpacity>
             )}
             {isQuote && inv.status === 'signed' && (
@@ -1734,6 +2069,67 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction
           )}
         </View>
       </ScrollView>
+
+      {/* « Marquer comme payée » : mêmes champs que le site (date, moyen, référence) */}
+      <Modal visible={payOpen} transparent animationType="slide" onRequestClose={() => setPayOpen(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Pressable style={styles.sheetBackdrop} onPress={() => setPayOpen(false)}>
+            <Pressable style={styles.sheet}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Marquer comme payée</Text>
+              <Text style={[styles.dMuted, { marginBottom: 14, marginLeft: 4 }]}>
+                Facture {inv.number} · {fmtEuro2(inv.amount_ttc)}. Elle passe en « Payée » et les relances s’arrêtent.
+              </Text>
+              <Field label="Date du règlement" value={pay.date} onChangeText={(v) => setPay((p) => ({ ...p, date: v }))}
+                placeholder="JJ/MM/AAAA" keyboardType="numbers-and-punctuation" autoCapitalize="none" />
+              <Text style={styles.fLabel}>Moyen de paiement *</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 }}>
+                {INV_PAY_METHODS.map((m) => {
+                  const on = pay.method === m.value;
+                  return (
+                    <TouchableOpacity accessibilityRole="radio" accessibilityState={{ checked: on }} key={m.value}
+                      style={[styles.tierChip, on && styles.tierChipOn]} activeOpacity={0.8} onPress={() => setPay((p) => ({ ...p, method: m.value }))}>
+                      <Text style={[styles.tierChipTxt, on && styles.tierChipTxtOn]}>{m.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Field label="Référence (optionnel)" value={pay.reference} onChangeText={(v) => setPay((p) => ({ ...p, reference: v }))}
+                placeholder="N° de virement, de chèque…" maxLength={255} />
+              <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, { marginTop: 4 }, !pay.method ? { opacity: 0.55 } : null]} activeOpacity={0.85} onPress={submitPay}>
+                <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                <Text style={styles.dPrimaryBtnTxt}>Enregistrer le règlement</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* « Créer un avoir » : confirmation + motif facultatif (imprimé sur l'avoir) */}
+      <Modal visible={creditOpen} transparent animationType="slide" onRequestClose={() => setCreditOpen(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Pressable style={styles.sheetBackdrop} onPress={() => setCreditOpen(false)}>
+            <Pressable style={styles.sheet}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Créer un avoir</Text>
+              <Text style={[styles.dMuted, { marginBottom: 14, marginLeft: 4, lineHeight: 19 }]}>
+                Une facture émise ne se modifie pas. L’avoir de {fmtEuro2(inv.amount_ttc)} reprend ses lignes en négatif, porte son propre numéro et annule la facture {inv.number}{inv.status === 'paid' ? '' : ', qui n’est alors plus relancée'}.
+                {inv.status === 'paid' ? ' Cette facture est payée : l’avoir enregistre le remboursement au client à la date du jour. Effectuez ce remboursement.' : ''}
+                {' '}Cette opération est définitive.
+              </Text>
+              <Field label="Motif (imprimé sur l’avoir, optionnel)" value={reason} onChangeText={setReason}
+                placeholder="Ex. : erreur de montant, facture en double…" maxLength={300} />
+              <TouchableOpacity accessibilityRole="button" style={[styles.dDangerBtn, { marginTop: 4 }]} activeOpacity={0.85} onPress={submitCredit}>
+                <Ionicons name="return-down-back-outline" size={18} color="#991B1B" />
+                <Text style={styles.dDangerBtnTxt}>Créer l’avoir</Text>
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" style={{ paddingVertical: 14, alignItems: 'center' }} activeOpacity={0.7} onPress={() => setCreditOpen(false)}>
+                <Text style={styles.formLink}>Retour</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -1794,14 +2190,16 @@ function FormShell({ title, onBack, onSubmit, submitLabel, submitting, error, ch
   );
 }
 
-function MemberForm({ onBack, onSubmit, submitting, error, canAdmin }) {
+function MemberForm({ onBack, onSubmit, submitting, error, canAdmin, canCoord }) {
   const [f, setF] = useState({ first_name: '', last_name: '', email: '', phone: '', city: '', role: 'member', send_email: true });
   const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  // Mêmes règles que /api/app-create-member.php : « Coordinateur » pour un admin ou un
+  // coordinateur seulement, « Admin » pour un admin (sinon le serveur crée un simple membre).
   const roles = [
     { value: 'member', label: 'Membre' },
     { value: 'referent', label: 'Référent' },
-    { value: 'coordinator', label: 'Coordinateur' },
   ];
+  if (canCoord || canAdmin) roles.push({ value: 'coordinator', label: 'Coordinateur' });
   if (canAdmin) roles.push({ value: 'admin', label: 'Admin' });
   return (
     <FormShell title="Nouvel adhérent" onBack={onBack} onSubmit={() => onSubmit(f)} submitLabel="Créer l'adhérent" submitting={submitting} error={error}>
@@ -1823,17 +2221,71 @@ function MemberForm({ onBack, onSubmit, submitting, error, canAdmin }) {
   );
 }
 
-function ClientForm({ onBack, onSubmit, submitting, error }) {
-  const [f, setF] = useState({ client_type: 'company', display_name: '', email: '', phone: '', address_city: '', siren: '', vat_number: '' });
+/* Coordonnées d'un client (/api/app-client.php) → champs du formulaire de modification.
+   Champs séparés s'ils sont fournis, sinon découpage de l'adresse composée
+   (« rue \n complément \n CP ville ») renvoyée par le serveur. */
+function clientEditFields(c) {
+  const f = {
+    client_type: c.type === 'individual' ? 'individual' : 'company',
+    display_name: c.name || '', email: c.email || '', phone: c.phone || '',
+    address_street: '', address_complement: '', address_zip: '', address_city: c.city || '',
+    siren: c.siren || '', vat_number: c.vat_number || '',
+  };
+  if (c.address_street !== undefined || c.address_zip !== undefined) {
+    f.address_street = c.address_street || '';
+    f.address_complement = c.address_complement || '';
+    f.address_zip = c.address_zip || '';
+    if (c.address_city !== undefined) f.address_city = c.address_city || '';
+    return f;
+  }
+  const lines = String(c.address || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const last = lines.length ? lines[lines.length - 1] : '';
+  const m = last.match(/^(\d{4,5})\s*(.*)$/);
+  if (m) { f.address_zip = m[1]; if (m[2]) f.address_city = m[2]; lines.pop(); }
+  else if (last && f.address_city && last === f.address_city) lines.pop();
+  f.address_street = lines[0] || '';
+  f.address_complement = lines.slice(1).join(', ');
+  return f;
+}
+
+function ClientForm({ onBack, onSubmit, submitting, error, edit }) {
+  // edit : { client } de /api/app-client.php → modification (seuls les champs changés sont envoyés)
+  const [initial] = useState(() => (edit && edit.client ? clientEditFields(edit.client) : null));
+  const [f, setF] = useState(() => initial || { client_type: 'company', display_name: '', email: '', phone: '', address_city: '', siren: '', vat_number: '' });
   const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  const submit = () => {
+    if (!initial) { onSubmit(f); return; }
+    if (!f.display_name.trim()) { Alert.alert('Nom du client', 'Le nom du client est obligatoire.'); return; }
+    const out = {};
+    Object.keys(f).forEach((k) => { if (String(f[k]).trim() !== String(initial[k]).trim()) out[k] = String(f[k]).trim(); });
+    // Même contrôle que le serveur, qui refuse un email modifié invalide (ou vidé)
+    if ('email' in out && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(out.email)) { Alert.alert('Email', 'Saisissez une adresse email valide.'); return; }
+    // Adresse : les champs voyagent ensemble, pour enregistrer exactement ce qui est affiché
+    if (['address_street', 'address_complement', 'address_zip', 'address_city'].some((k) => k in out)) {
+      ['address_street', 'address_complement', 'address_zip', 'address_city'].forEach((k) => { out[k] = String(f[k]).trim(); });
+    }
+    if (!Object.keys(out).length) { onBack(); return; }
+    onSubmit(out);
+  };
   return (
-    <FormShell title="Nouveau client" onBack={onBack} onSubmit={() => onSubmit(f)} submitLabel="Enregistrer le client" submitting={submitting} error={error}>
+    <FormShell title={initial ? 'Modifier le client' : 'Nouveau client'} onBack={onBack} onSubmit={submit} submitLabel={initial ? 'Enregistrer les modifications' : 'Enregistrer le client'} submitting={submitting} error={error}>
       <Text style={styles.fLabel}>Type</Text>
       <Segmented options={[{ value: 'company', label: 'Entreprise' }, { value: 'individual', label: 'Particulier' }]} value={f.client_type} onChange={set('client_type')} />
       <Field label="Nom / Raison sociale *" value={f.display_name} onChangeText={set('display_name')} autoCapitalize="words" />
       <Field label="Email *" value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" />
       <Field label="Téléphone" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
-      <Field label="Ville" value={f.address_city} onChangeText={set('address_city')} autoCapitalize="words" />
+      {initial ? (
+        <>
+          <Field label="Adresse" value={f.address_street} onChangeText={set('address_street')} autoCapitalize="sentences" placeholder="N° et rue" />
+          <Field label="Complément d’adresse" value={f.address_complement} onChangeText={set('address_complement')} autoCapitalize="sentences" placeholder="Bâtiment, étage… (optionnel)" />
+          <View style={styles.formRow2}>
+            <View style={{ flex: 0.8 }}><Field label="Code postal" value={f.address_zip} onChangeText={set('address_zip')} keyboardType="number-pad" maxLength={10} /></View>
+            <View style={{ flex: 1.4, marginLeft: 10 }}><Field label="Ville" value={f.address_city} onChangeText={set('address_city')} autoCapitalize="words" /></View>
+          </View>
+        </>
+      ) : (
+        <Field label="Ville" value={f.address_city} onChangeText={set('address_city')} autoCapitalize="words" />
+      )}
       {f.client_type === 'company' && (
         <>
           <Field label="SIREN" value={f.siren} onChangeText={set('siren')} keyboardType="number-pad" />
@@ -1846,14 +2298,31 @@ function ClientForm({ onBack, onSubmit, submitting, error }) {
 
 // Sélecteur générique en bottom-sheet (liste d'options {value,label,sub?})
 function SheetPicker({ visible, title, options, selected, onPick, onClose }) {
+  // Longue liste (tous les adhérents d'une grande association) : champ de recherche
+  const [q, setQ] = useState('');
+  useEffect(() => { if (!visible) setQ(''); }, [visible]);
+  const opts = options || [];
+  const many = opts.length > 12;
+  const needle = q.trim().toLowerCase();
+  const shown = many && needle
+    ? opts.filter((o) => (String(o.label || '') + ' ' + String(o.sub || '')).toLowerCase().indexOf(needle) !== -1)
+    : opts;
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.sheetBackdrop} onPress={onClose}>
         <Pressable style={[styles.sheet, { maxHeight: '75%' }]}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>{title}</Text>
-          <ScrollView>
-            {options.map((o) => (
+          {many ? (
+            <View style={[mailStyles.searchBox, { marginHorizontal: 0, marginTop: 0 }]}>
+              <Ionicons name="search" size={16} color={INK_3} />
+              <TextInput style={mailStyles.searchInput} value={q} onChangeText={setQ} placeholder="Rechercher" placeholderTextColor={INK_3}
+                autoCorrect={false} returnKeyType="search" accessibilityLabel={'Rechercher : ' + title} />
+            </View>
+          ) : null}
+          <ScrollView keyboardShouldPersistTaps="handled">
+            {many && needle && shown.length === 0 ? <Text style={[styles.dMuted, { paddingVertical: 14 }]}>Aucun résultat.</Text> : null}
+            {shown.map((o) => (
               <TouchableOpacity accessibilityRole="button" key={String(o.value)} style={styles.qaRow} activeOpacity={0.7} onPress={() => { onPick(o.value); onClose(); }}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.qaLabel}>{o.label}</Text>
@@ -1875,6 +2344,32 @@ function todayISO() {
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
 }
 
+// Date du jour comme l'affiche toute l'app : JJ/MM/AAAA
+function todayFr() {
+  return fmtDayFr(todayISO());
+}
+
+/* Date saisie dans un formulaire → AAAA-MM-JJ, le seul format que tous les serveurs
+   acceptent (les anciens ignoraient en silence un JJ/MM/AAAA). Accepte JJ/MM/AAAA
+   (ou JJ.MM.AAAA, JJ-MM-AAAA) et AAAA-MM-JJ. '' si vide, null si illisible ou
+   inexistante (31/02/2026). */
+function dateToIso(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+  let y, mo, d;
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else {
+    m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+    if (!m) return null;
+    d = +m[1]; mo = +m[2]; y = +m[3];
+  }
+  if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1) return null;
+  const last = new Date(y, mo, 0).getDate();
+  if (d > last) return null;
+  return y + '-' + (mo < 10 ? '0' : '') + mo + '-' + (d < 10 ? '0' : '') + d;
+}
+
 // ── Enregistrement d'un paiement de cotisation (natif) ────────────────
 function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns, members, preCampaign }) {
   const camps = campaigns || [];
@@ -1882,7 +2377,7 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
   const [campaignId, setCampaignId] = useState(preCampaign || (camps.length === 1 ? camps[0].id : 0));
   const [tierId, setTierId] = useState(0);
   const [adherentId, setAdherentId] = useState(0);
-  const [f, setF] = useState({ payer_name: '', payer_email: '', amount: '', reference: '', notes: '', paid_at: todayISO() });
+  const [f, setF] = useState({ payer_name: '', payer_email: '', amount: '', reference: '', notes: '', paid_at: todayFr() });
   const [method, setMethod] = useState('bank');
   const [status, setStatus] = useState('paid');
   const [campPicker, setCampPicker] = useState(false);
@@ -1915,6 +2410,9 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
 
   const submit = () => {
     if (!campaignId) { Alert.alert('Campagne', 'Sélectionnez la campagne de cotisation concernée.'); return; }
+    // Saisie JJ/MM/AAAA, envoyée en AAAA-MM-JJ (lu par tous les serveurs, y compris les anciens)
+    const paidAt = dateToIso(f.paid_at);
+    if (status === 'paid' && paidAt === null) { Alert.alert('Date du paiement', 'Date invalide : utilisez JJ/MM/AAAA (ex : ' + todayFr() + ').'); return; }
     onSubmit({
       campaign_id: campaignId,
       tier_id: tierId || 0,
@@ -1924,7 +2422,7 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
       amount: f.amount,
       payment_method: method,
       status,
-      paid_at: f.paid_at.trim(),
+      paid_at: paidAt || '',
       reference: f.reference.trim(),
       notes: f.notes.trim(),
     });
@@ -1984,7 +2482,7 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
       <Text style={styles.fLabel}>Statut</Text>
       <Segmented options={[{ value: 'paid', label: 'Payé' }, { value: 'pending', label: 'En attente' }]} value={status} onChange={setStatus} />
       <View style={{ height: 14 }} />
-      <Field label="Date du paiement" value={f.paid_at} onChangeText={set('paid_at')} placeholder="AAAA-MM-JJ" autoCapitalize="none" hint="Format AAAA-MM-JJ." />
+      {status === 'paid' && <Field label="Date du paiement" value={f.paid_at} onChangeText={set('paid_at')} placeholder="JJ/MM/AAAA" keyboardType="numbers-and-punctuation" autoCapitalize="none" hint="Format JJ/MM/AAAA. Vide = aujourd’hui." />}
       <Field label="Référence (n° chèque, virement…)" value={f.reference} onChangeText={set('reference')} />
       <Field label="Notes" value={f.notes} onChangeText={set('notes')} multiline numberOfLines={2} style={[styles.fInput, { height: 74, textAlignVertical: 'top' }]} />
 
@@ -2000,6 +2498,8 @@ function CotisationPaymentForm({ onBack, onSubmit, submitting, error, campaigns,
 function CampaignForm({ onBack, onSubmit, submitting, error }) {
   const [f, setF] = useState({ name: '', year: String(new Date().getFullYear()), description: '', opens_at: '', closes_at: '' });
   const [active, setActive] = useState(true);
+  // « Ces paiements renouvellent l’adhésion » (comme le site) : '' automatique, '1' oui, '0' non
+  const [renews, setRenews] = useState('');
   const [tiers, setTiers] = useState([{ name: '', amount: '' }]);
   const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
   const setTier = (i, k, v) => setTiers((s) => s.map((t, j) => (j === i ? { ...t, [k]: v } : t)));
@@ -2008,13 +2508,20 @@ function CampaignForm({ onBack, onSubmit, submitting, error }) {
 
   const submit = () => {
     if (!f.name.trim()) { Alert.alert('Nom', 'Donnez un nom à la campagne (ex : Adhésion 2026).'); return; }
+    // JJ/MM/AAAA à l'écran, AAAA-MM-JJ à l'envoi (une date illisible était ignorée en silence)
+    const opens = dateToIso(f.opens_at);
+    const closes = dateToIso(f.closes_at);
+    if (opens === null) { Alert.alert('Ouverture', 'Date invalide : utilisez JJ/MM/AAAA.'); return; }
+    if (closes === null) { Alert.alert('Clôture', 'Date invalide : utilisez JJ/MM/AAAA.'); return; }
+    if (opens && closes && closes < opens) { Alert.alert('Clôture', 'La date de clôture précède la date d’ouverture.'); return; }
     onSubmit({
       name: f.name.trim(),
       year: f.year.trim(),
       description: f.description.trim(),
-      opens_at: f.opens_at.trim(),
-      closes_at: f.closes_at.trim(),
+      opens_at: opens,
+      closes_at: closes,
       is_active: active,
+      renews_membership: renews,
       tiers: tiers.filter((t) => t.name.trim()).map((t) => ({ name: t.name.trim(), amount: t.amount })),
     });
   };
@@ -2032,10 +2539,18 @@ function CampaignForm({ onBack, onSubmit, submitting, error }) {
         <Switch value={active} onValueChange={setActive} trackColor={{ true: BRAND }} accessibilityLabel="Campagne active" />
       </View>
 
+      <Text style={styles.fLabel}>Ces paiements renouvellent l’adhésion (12 mois)</Text>
+      <Segmented options={[{ value: '', label: 'Automatique' }, { value: '1', label: 'Oui' }, { value: '0', label: 'Non' }]} value={renews} onChange={setRenews} />
+      <Text style={[styles.fHint, { marginBottom: 14 }]}>
+        {renews === '1' ? 'Le payeur est à jour de son adhésion.'
+          : renews === '0' ? 'Participation aux frais, billetterie, don… : l’adhésion n’est pas prolongée.'
+          : 'Oui si le nom contient « adhésion » ou « cotisation ».'}
+      </Text>
+
       <View style={styles.formRow2}>
-        <View style={{ flex: 1 }}><Field label="Ouverture" value={f.opens_at} onChangeText={set('opens_at')} placeholder="AAAA-MM-JJ" autoCapitalize="none" /></View>
+        <View style={{ flex: 1 }}><Field label="Ouverture" value={f.opens_at} onChangeText={set('opens_at')} placeholder="JJ/MM/AAAA" keyboardType="numbers-and-punctuation" autoCapitalize="none" /></View>
         <View style={{ width: 12 }} />
-        <View style={{ flex: 1 }}><Field label="Clôture" value={f.closes_at} onChangeText={set('closes_at')} placeholder="AAAA-MM-JJ" autoCapitalize="none" /></View>
+        <View style={{ flex: 1 }}><Field label="Clôture" value={f.closes_at} onChangeText={set('closes_at')} placeholder="JJ/MM/AAAA" keyboardType="numbers-and-punctuation" autoCapitalize="none" /></View>
       </View>
 
       <Text style={[styles.formCardTitle, { marginTop: 6 }]}>Tarifs proposés</Text>
@@ -2181,14 +2696,17 @@ function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
   const selFunder = GRANT_FUNDERS.find((x) => x.value === funderType) || GRANT_FUNDERS[GRANT_FUNDERS.length - 1];
 
   const submit = () => {
+    const deadline = dateToIso(f.deadline_apply);
+    if (deadline === null) { Alert.alert('Date limite de dépôt', 'Date invalide : utilisez JJ/MM/AAAA.'); return; }
     onSubmit({
       name: f.name.trim(),
       funder: f.funder.trim(),
       funder_type: funderType,
       status,
       amount_requested: f.amount_requested,
-      amount_granted: status === 'granted' ? f.amount_granted : '',
-      deadline_apply: f.deadline_apply.trim(),
+      // « Bilan rendu » est aussi une subvention accordée (même règle que le serveur)
+      amount_granted: (status === 'granted' || status === 'reported') ? f.amount_granted : '',
+      deadline_apply: deadline,
       project_id: projectId || 0,
       description: f.description.trim(),
       steps: steps.map((s) => s.trim()).filter(Boolean),
@@ -2214,8 +2732,8 @@ function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
       <View style={{ height: 14 }} />
 
       <Field label="Montant demandé (€)" value={f.amount_requested} onChangeText={set('amount_requested')} keyboardType="decimal-pad" />
-      {status === 'granted' && <Field label="Montant accordé (€)" value={f.amount_granted} onChangeText={set('amount_granted')} keyboardType="decimal-pad" />}
-      <Field label="Date limite de dépôt" value={f.deadline_apply} onChangeText={set('deadline_apply')} placeholder="AAAA-MM-JJ" autoCapitalize="none" hint="Format AAAA-MM-JJ (optionnel)." />
+      {(status === 'granted' || status === 'reported') && <Field label="Montant accordé (€)" value={f.amount_granted} onChangeText={set('amount_granted')} keyboardType="decimal-pad" />}
+      <Field label="Date limite de dépôt" value={f.deadline_apply} onChangeText={set('deadline_apply')} placeholder="JJ/MM/AAAA" keyboardType="numbers-and-punctuation" autoCapitalize="none" hint="Format JJ/MM/AAAA (optionnel)." />
 
       <View style={styles.formCardHead}><Text style={styles.formCardTitle}>Projet lié</Text>
         {projs.length > 0 && <TouchableOpacity accessibilityRole="button" onPress={() => setProjPicker(true)} activeOpacity={0.7}><Text style={styles.formLink}>{selProj ? 'Changer' : 'Choisir'}</Text></TouchableOpacity>}
@@ -2260,7 +2778,7 @@ function GrantForm({ onBack, onSubmit, submitting, error, projects }) {
   );
 }
 
-function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients }) {
+function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients, defaultDueDays }) {
   const isQuote = mode === 'quote';
   const ei = edit && edit.invoice ? edit.invoice : null;
   const [client, setClient] = useState(ei
@@ -2270,7 +2788,22 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients 
     ? edit.lines.map((l) => ({ designation: l.label || '', quantity: String(l.qty ?? 1), unit_price_ht: String(l.unit ?? ''), vat_rate: l.vat != null ? String(l.vat) : '' }))
     : [{ designation: '', quantity: '1', unit_price_ht: '', vat_rate: '20' }]);
   const [status, setStatus] = useState(ei ? (ei.status === 'draft' ? 'draft' : (isQuote ? 'sent' : 'pending')) : (isQuote ? 'draft' : 'pending'));
-  const [dueDays, setDueDays] = useState(ei ? String((isQuote ? ei.validity_days : ei.due_days) || 30) : '30');
+  // Nouvelle facture : délai des paramètres de facturation (default_due_days de
+  // /api/app-invoices.php), 30 jours sans cette information (ancien serveur).
+  const orgDue = parseInt(defaultDueDays, 10);
+  const dueFallback = orgDue >= 0 && orgDue <= 365 ? orgDue : 30;
+  // Édition : le délai réel de la pièce. 0 jour (paiement à réception) reste 0 pour une facture ;
+  // seul un devis sans durée de validité retombe à 30 jours.
+  const eiRaw = ei ? (isQuote ? ei.validity_days : ei.due_days) : null;
+  const eiDays = eiRaw === null || eiRaw === undefined || eiRaw === '' ? NaN : Number(eiRaw);
+  const [dueDays, setDueDays] = useState(ei
+    ? String(isQuote ? (eiDays > 0 ? eiDays : 30) : (Number.isFinite(eiDays) && eiDays >= 0 ? eiDays : 30))
+    : String(isQuote ? 30 : dueFallback));
+  const dueTouched = useRef(false);
+  // Le délai de l'association arrive parfois après l'ouverture du formulaire
+  useEffect(() => {
+    if (!ei && !isQuote && !dueTouched.current) setDueDays(String(dueFallback));
+  }, [dueFallback]); // eslint-disable-line react-hooks/exhaustive-deps
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const setC = (k) => (v) => setClient((s) => ({ ...s, [k]: v, id: 0 }));
@@ -2283,7 +2816,10 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients 
   const submit = () => {
     const payload = { lines, status };
     if (isQuote) payload.validity_days = parseInt(dueDays, 10) || 30;
-    else payload.due_days = parseInt(dueDays, 10) || 30;
+    else {
+      const dd = parseInt(dueDays, 10);
+      payload.due_days = Number.isFinite(dd) && dd >= 0 ? dd : dueFallback;
+    }
     if (client.id > 0) payload.client_id = client.id;
     else payload.client = { client_type: client.client_type, display_name: client.display_name, email: client.email, phone: client.phone, address_city: client.address_city };
     onSubmit(payload);
@@ -2346,12 +2882,20 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients 
         <View style={[styles.dCardRow, { marginTop: 8 }]}><Text style={styles.dCardLabel}>Total TTC</Text><Text style={styles.dTotal}>{fmtEuro(t.ttc)}</Text></View>
       </View>
 
-      <View style={{ marginTop: 16 }}><Field label={isQuote ? 'Validité (jours)' : 'Échéance (jours)'} value={dueDays} onChangeText={setDueDays} keyboardType="number-pad" /></View>
+      <View style={{ marginTop: 16 }}><Field label={isQuote ? 'Validité (jours)' : 'Échéance (jours)'} value={dueDays} onChangeText={(v) => { dueTouched.current = true; setDueDays(v); }} keyboardType="number-pad" /></View>
 
-      <Text style={[styles.fLabel, { marginTop: 8 }]}>Statut</Text>
-      <Segmented
-        options={isQuote ? [{ value: 'draft', label: 'Brouillon' }, { value: 'sent', label: 'Envoyé' }] : [{ value: 'pending', label: 'À encaisser' }, { value: 'draft', label: 'Brouillon' }]}
-        value={status} onChange={setStatus} />
+      {/* Un devis se crée toujours en brouillon : « Envoyé » le comptait comme envoyé alors que
+          le client n'avait rien reçu. L'envoi réel se fait depuis la fiche du devis. */}
+      {isQuote && !ei ? (
+        <Text style={[styles.fHint, { marginTop: 4 }]}>Le devis est créé en brouillon : envoyez-le au client depuis sa fiche.</Text>
+      ) : (
+        <>
+          <Text style={[styles.fLabel, { marginTop: 8 }]}>Statut</Text>
+          <Segmented
+            options={isQuote ? [{ value: 'draft', label: 'Brouillon' }, { value: 'sent', label: 'Envoyé' }] : [{ value: 'pending', label: 'À encaisser' }, { value: 'draft', label: 'Brouillon' }]}
+            value={status} onChange={setStatus} />
+        </>
+      )}
 
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setPickerOpen(false)}>
@@ -2374,7 +2918,11 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients 
 }
 
 const PROJ_REF_ROLES = ['admin', 'coordinator', 'referent'];
-function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) {
+// canCreateFolders / canViewFinances : drapeaux de /api/app-folders.php (null = ancien serveur,
+// le formulaire garde alors le champ « Nouveau dossier » et le budget).
+function ProjectForm({ onBack, onSubmit, submitting, error, folders, members, canCreateFolders, canViewFinances }) {
+  const newFolderOk = canCreateFolders !== false;
+  const budgetOk = canViewFinances !== false;
   const [name, setName] = useState('');
   const [folderId, setFolderId] = useState(0);
   const [newFolder, setNewFolder] = useState('');
@@ -2386,9 +2934,21 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
   const [teamIds, setTeamIds] = useState([]);
   const [refPickerOpen, setRefPickerOpen] = useState(false);
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
+  // Recherche dans les listes de personnes (tous les adhérents d'une grande association)
+  const [refQ, setRefQ] = useState('');
+  const [teamQ, setTeamQ] = useState('');
+  useEffect(() => { if (!refPickerOpen) setRefQ(''); }, [refPickerOpen]);
+  useEffect(() => { if (!teamPickerOpen) setTeamQ(''); }, [teamPickerOpen]);
 
   const allMembers = members || [];
   const referents = allMembers.filter((m) => PROJ_REF_ROLES.includes(m.role));
+  const findPeople = (list, q) => {
+    const needle = list.length > 12 ? q.trim().toLowerCase() : '';
+    if (!needle) return list;
+    return list.filter((m) => (String(m.name || '') + ' ' + String(m.email || '') + ' ' + String(m.role_label || '')).toLowerCase().indexOf(needle) !== -1);
+  };
+  const shownReferents = findPeople(referents, refQ);
+  const shownTeam = findPeople(allMembers, teamQ);
   const selReferent = allMembers.find((m) => m.id === referentId);
   const toggleTeam = (id) => setTeamIds((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
 
@@ -2398,14 +2958,19 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
   const selFolder = folders && folders.find((f) => f.id === folderId);
 
   const submit = () => {
+    if (!newFolderOk && !(folderId > 0)) {
+      Alert.alert('Dossier', (folders && folders.length) ? 'Choisissez le dossier du projet.' : 'Aucun dossier disponible : demandez à un administrateur d’en créer un.');
+      return;
+    }
     const payload = {
       name,
       steps: steps.map((t) => ({ title: t })).filter((x) => x.title.trim() !== ''),
       description,
-      budget_planned: budget,
       referent_id: referentId || 0,
       member_ids: teamIds,
     };
+    // Budget : seulement pour les droits finances (le serveur l'ignore sinon)
+    if (budgetOk) payload.budget_planned = budget;
     if (folderId > 0) payload.folder_id = folderId; else payload.new_folder = newFolder;
     onSubmit(payload);
   };
@@ -2424,8 +2989,14 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
           <View style={{ flex: 1 }}><Text style={styles.pickedName}>{selFolder.name}</Text></View>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setFolderId(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close-circle" size={22} color="#CBD5D1" /></TouchableOpacity>
         </View>
-      ) : (
+      ) : newFolderOk ? (
         <Field label="Nouveau dossier *" value={newFolder} onChangeText={setNewFolder} placeholder="Ex : Événements 2026" autoCapitalize="sentences" hint="Un dossier regroupe vos projets." />
+      ) : (
+        <TouchableOpacity accessibilityRole="button" style={[styles.projPickBtn, !(folders && folders.length) && { opacity: 0.55 }]} activeOpacity={0.8}
+          disabled={!(folders && folders.length)} onPress={() => setPickerOpen(true)}>
+          <Ionicons name="folder-outline" size={18} color={BRAND} />
+          <Text style={styles.projPickTxt}>{folders && folders.length ? 'Choisir un dossier *' : 'Aucun dossier : un administrateur doit en créer un'}</Text>
+        </TouchableOpacity>
       )}
 
       <Text style={[styles.formCardTitle, { marginTop: 20 }]}>Étapes (4 minimum)</Text>
@@ -2490,7 +3061,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
 
       <View style={{ height: 18 }} />
       <Field label="Description" value={description} onChangeText={setDescription} multiline numberOfLines={3} style={[styles.fInput, { height: 90, textAlignVertical: 'top' }]} />
-      <Field label="Budget prévu (€)" value={budget} onChangeText={setBudget} keyboardType="decimal-pad" />
+      {budgetOk && <Field label="Budget prévu (€)" value={budget} onChangeText={setBudget} keyboardType="decimal-pad" />}
 
       {/* Picker référent */}
       <Modal visible={refPickerOpen} transparent animationType="slide" onRequestClose={() => setRefPickerOpen(false)}>
@@ -2498,8 +3069,16 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
           <Pressable style={[styles.sheet, { maxHeight: '70%' }]}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Référent du projet</Text>
-            <ScrollView>
-              {referents.map((m) => (
+            {referents.length > 12 ? (
+              <View style={[mailStyles.searchBox, { marginHorizontal: 0, marginTop: 0 }]}>
+                <Ionicons name="search" size={16} color={INK_3} />
+                <TextInput style={mailStyles.searchInput} value={refQ} onChangeText={setRefQ} placeholder="Rechercher" placeholderTextColor={INK_3}
+                  autoCorrect={false} returnKeyType="search" accessibilityLabel="Rechercher : Référent du projet" />
+              </View>
+            ) : null}
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {shownReferents.length === 0 && refQ.trim() ? <Text style={[styles.dMuted, { paddingVertical: 14 }]}>Aucun résultat.</Text> : null}
+              {shownReferents.map((m) => (
                 <TouchableOpacity accessibilityRole="button" key={m.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => { setReferentId(m.id); setRefPickerOpen(false); }}>
                   <View style={[styles.projPersonAv, { backgroundColor: m.color || BRAND, marginRight: 12 }]}><Text style={styles.projPersonAvTxt}>{m.initials}</Text></View>
                   <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{m.name}</Text><Text style={styles.projPersonRole}>{m.role_label || m.role}</Text></View>
@@ -2517,8 +3096,16 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
           <Pressable style={[styles.sheet, { maxHeight: '75%' }]}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Équipe du projet</Text>
-            <ScrollView>
-              {allMembers.map((m) => {
+            {allMembers.length > 12 ? (
+              <View style={[mailStyles.searchBox, { marginHorizontal: 0, marginTop: 0 }]}>
+                <Ionicons name="search" size={16} color={INK_3} />
+                <TextInput style={mailStyles.searchInput} value={teamQ} onChangeText={setTeamQ} placeholder="Rechercher" placeholderTextColor={INK_3}
+                  autoCorrect={false} returnKeyType="search" accessibilityLabel="Rechercher : Équipe du projet" />
+              </View>
+            ) : null}
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {shownTeam.length === 0 && teamQ.trim() ? <Text style={[styles.dMuted, { paddingVertical: 14 }]}>Aucun résultat.</Text> : null}
+              {shownTeam.map((m) => {
                 const on = teamIds.includes(m.id);
                 return (
                   <TouchableOpacity accessibilityRole="button" key={m.id} style={styles.qaRow} activeOpacity={0.7} onPress={() => toggleTeam(m.id)}>
@@ -2558,7 +3145,8 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members }) 
 
 const EXPENSE_CATS = ['Matériel', 'Fournitures', 'Alimentation', 'Transport', 'Location', 'Télécom', 'Prestations externes', 'Frais administratifs', 'Autre'];
 
-function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject, scanData, scanning, onScan }) {
+// teamOnly : des projets ont été retirés de la liste (can_add_expense false : hors de leur équipe)
+function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject, scanData, scanning, onScan, teamOnly }) {
   const [projectId, setProjectId] = useState(preProject || 0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [supplier, setSupplier] = useState('');
@@ -2645,7 +3233,7 @@ function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject
                   <View style={{ flex: 1 }}><Text style={styles.qaLabel}>{p.name}</Text><Text style={styles.pickedMail}>{p.folder}</Text></View>
                 </TouchableOpacity>
               ))}
-              {(!projects || projects.length === 0) && <Text style={[styles.dMuted, { padding: 16 }]}>Aucun projet actif.</Text>}
+              {(!projects || projects.length === 0) && <Text style={[styles.dMuted, { padding: 16 }]}>{teamOnly ? 'Aucun projet où vous pouvez ajouter une facture : seule l’équipe d’un projet peut le faire.' : 'Aucun projet actif.'}</Text>}
             </ScrollView>
           </Pressable>
         </Pressable>
@@ -2657,7 +3245,9 @@ function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject
 /* ================================================================== */
 /*  AGENDA (natif)                                                     */
 /* ================================================================== */
-function NativeAgenda({ data, loading, onRefresh, onOpen, onBack, onNew }) {
+// onNew absent (suiveur : can_create false) → aucun bouton de création. onMore : suite de la
+// liste quand le serveur la tronque (has_more / next_from).
+function NativeAgenda({ data, loading, onRefresh, onOpen, onBack, onNew, onMore, moreLoading }) {
   const events = data ? (data.events || []) : null;
   // Grouper par jour
   const groups = [];
@@ -2675,16 +3265,20 @@ function NativeAgenda({ data, loading, onRefresh, onOpen, onBack, onNew }) {
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : events.length === 0 ? (
         <View style={styles.emptyBox}><Ionicons name="calendar-outline" size={44} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun événement à venir</Text>
-          <TouchableOpacity accessibilityRole="button" style={[styles.listNewBtn, { marginTop: 16 }]} activeOpacity={0.85} onPress={onNew}>
-            <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvel événement</Text>
-          </TouchableOpacity>
+          {onNew ? (
+            <TouchableOpacity accessibilityRole="button" style={[styles.listNewBtn, { marginTop: 16 }]} activeOpacity={0.85} onPress={onNew}>
+              <Ionicons name="add-circle" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvel événement</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
-          <TouchableOpacity accessibilityRole="button" style={styles.listNewBtn} activeOpacity={0.85} onPress={onNew}>
-            <Ionicons name="add" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvel événement</Text>
-          </TouchableOpacity>
+          {onNew ? (
+            <TouchableOpacity accessibilityRole="button" style={styles.listNewBtn} activeOpacity={0.85} onPress={onNew}>
+              <Ionicons name="add" size={19} color="#fff" /><Text style={styles.listNewTxt}>Nouvel événement</Text>
+            </TouchableOpacity>
+          ) : null}
           {/* Une carte par jour, l'heure colorée reprend l'accent de l'événement (nœud 18:18). */}
           {groups.map((g) => (
             <View key={g.key} style={{ marginBottom: 20 }}>
@@ -2711,6 +3305,13 @@ function NativeAgenda({ data, loading, onRefresh, onOpen, onBack, onNew }) {
               </View>
             </View>
           ))}
+          {data.has_more === true && data.next_from && onMore ? (
+            <TouchableOpacity accessibilityRole="button" style={[styles.dWebBtn, { marginTop: 0 }, moreLoading ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+              disabled={!!moreLoading} onPress={() => onMore(data.next_from)}>
+              {moreLoading ? <ActivityIndicator size="small" color={BRAND} /> : <Ionicons name="chevron-down" size={18} color={BRAND} />}
+              <Text style={styles.dWebBtnTxt}>{moreLoading ? 'Chargement…' : 'Afficher plus tard'}</Text>
+            </TouchableOpacity>
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -2772,18 +3373,50 @@ const BILLING_FIELDS = [
   { key: 'billing_address_complement', label: 'Complément' },
   { key: 'billing_address_zip', label: 'Code postal' },
   { key: 'billing_address_city', label: 'Ville' },
-  { key: 'billing_address_country', label: 'Pays' },
+  { key: 'billing_address_country', label: 'Pays', country: true },
   { key: 'billing_email', label: 'Email de facturation', keyboardType: 'email-address', autoCapitalize: 'none' },
   { key: 'billing_phone', label: 'Téléphone de facturation', keyboardType: 'phone-pad' },
 ];
 
+// Pays de facturation : la liste et les codes du site (parametres.php), qui enregistre un code
+// (FR, BE…). Un libellé saisi par une ancienne version de l'app (« France ») est ramené à son
+// code ; une valeur inconnue est gardée telle quelle jusqu'à ce qu'un pays soit choisi.
+const BILLING_COUNTRIES = [
+  ['FR', 'France'], ['BE', 'Belgique'], ['CH', 'Suisse'], ['LU', 'Luxembourg'], ['MC', 'Monaco'], ['CA', 'Canada'],
+  ['MA', 'Maroc'], ['DZ', 'Algérie'], ['TN', 'Tunisie'], ['SN', 'Sénégal'], ['DE', 'Allemagne'], ['ES', 'Espagne'],
+  ['IT', 'Italie'], ['PT', 'Portugal'], ['GB', 'Royaume-Uni'], ['US', 'États-Unis'],
+];
+const COUNTRY_ALIASES = { 'royaume uni': 'GB', 'uk': 'GB', 'angleterre': 'GB', 'usa': 'US', 'etats unis': 'US', 'suisse romande': 'CH' };
+function countryKey(s) {
+  return String(s || '').toLowerCase()
+    .replace(/[àâä]/g, 'a').replace(/[éèêë]/g, 'e').replace(/[îï]/g, 'i').replace(/[ôö]/g, 'o').replace(/[ùûü]/g, 'u').replace(/ç/g, 'c')
+    .replace(/[-'’.]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function countryCode(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+  const up = s.toUpperCase();
+  if (BILLING_COUNTRIES.some((c) => c[0] === up)) return up;
+  const k = countryKey(s);
+  const byName = BILLING_COUNTRIES.find((c) => countryKey(c[1]) === k);
+  if (byName) return byName[0];
+  return COUNTRY_ALIASES[k] || s;
+}
+function countryLabel(code) {
+  const c = BILLING_COUNTRIES.find((x) => x[0] === code);
+  return c ? c[1] : String(code || '');
+}
+
 function NativeOrgSettings({ data, onBack, onSubmit, busy, error, done }) {
   const [f, setF] = useState(null);
+  const [countryOpen, setCountryOpen] = useState(false);
   const o = data && data.org;
-  useEffect(() => { if (o && !f) setF({ ...o }); }, [o]);
+  useEffect(() => { if (o && !f) setF({ ...o, billing_address_country: countryCode(o.billing_address_country) }); }, [o]);
   if (data && data.allowed === false) return <GatedScreen title="Organisation" message={data.message} onBack={onBack} />;
   if (!data || !f) return <DetailLoading title="Organisation" onBack={onBack} />;
   const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  const country = String(f.billing_address_country || '');
+  const countryKnown = !country || BILLING_COUNTRIES.some((c) => c[0] === country);
 
   return (
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -2804,10 +3437,23 @@ function NativeOrgSettings({ data, onBack, onSubmit, busy, error, done }) {
         ))}
 
         <Text style={styles.dSection}>Facturation</Text>
-        {BILLING_FIELDS.map((x) => (
+        {BILLING_FIELDS.map((x) => x.country ? (
+          <View key={x.key} style={{ marginBottom: 14 }}>
+            <Text style={styles.fLabel}>{x.label}</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={x.label + ' : ' + (country ? countryLabel(country) : 'non renseigné')}
+              style={[styles.fInput, { flexDirection: 'row', alignItems: 'center' }]} activeOpacity={0.8} onPress={() => setCountryOpen(true)}>
+              <Text style={{ flex: 1, fontSize: 15, color: country ? INK : '#B6C0CC' }} numberOfLines={1}>{country ? countryLabel(country) : 'Choisir un pays'}</Text>
+              <Ionicons name="chevron-down" size={18} color={INK_3} />
+            </TouchableOpacity>
+            {!countryKnown && <Text style={styles.fHint}>« {country} » ne figure pas dans la liste du site : choisissez un pays.</Text>}
+          </View>
+        ) : (
           <Field key={x.key} label={x.label} value={String(f[x.key] ?? '')} onChangeText={set(x.key)}
             keyboardType={x.keyboardType} autoCapitalize={x.autoCapitalize || 'sentences'} />
         ))}
+        <SheetPicker visible={countryOpen} title="Pays" onClose={() => setCountryOpen(false)} selected={country}
+          onPick={set('billing_address_country')}
+          options={[{ value: '', label: '— Non renseigné —' }].concat(BILLING_COUNTRIES.map((c) => ({ value: c[0], label: c[1] })))} />
         <View style={styles.switchRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.switchLabel}>Assujettie à la TVA</Text>
@@ -2867,7 +3513,7 @@ const DASH_TONE = {
 
 function NativeDashboard({ data, loading, onRefresh, onBack, onOpenProject, onOpenGrant, onGoto }) {
   const still = useReducedMotion();
-  if (data && data.ok === false) return <DetailError title="Tableau de bord" onBack={onBack} onRetry={onRefresh} />;
+  if (data && data.ok === false) return <DetailError title="Tableau de bord" onBack={onBack} onRetry={onRefresh} data={data} />;
   if (!data) return <DetailLoading title="Tableau de bord" onBack={onBack} />;
 
   const k = data.kpis || {};
@@ -2880,9 +3526,12 @@ function NativeDashboard({ data, loading, onRefresh, onBack, onOpenProject, onOp
   const projects = data.projects || [];
   const ag = data.next_ag;
 
+  // Suiveur : adhérents à null (non autorisé, comme sur le site) → carte remplacée par l'activité
   const cards = [
     { label: 'Projets actifs', value: String(k.active_projects ?? 0), sub: 'en cours', tone: INK, path: '/projets' },
-    { label: 'Adhérents', value: String(k.members ?? 0), sub: (k.new_members > 0 ? '+' + k.new_members + ' en 30 j' : 'à jour'), tone: INK, path: '/adherents' },
+    k.members === null
+      ? { label: 'Activité', value: String((data.activity && data.activity.total) || 0), sub: 'sur 30 jours', tone: INK, path: null }
+      : { label: 'Adhérents', value: String(k.members ?? 0), sub: (k.new_members > 0 ? '+' + k.new_members + ' en 30 j' : 'à jour'), tone: INK, path: '/adherents' },
     { label: 'Événements', value: String(k.events ?? 0), sub: 'à venir', tone: INK, path: '/agenda' },
     { label: 'Santé', value: (k.health ?? 0) + '/100', sub: k.health_label || '—', tone: (k.health ?? 0) >= 70 ? BRAND : '#B45309', path: null },
   ];
@@ -3106,6 +3755,9 @@ function NativeSubInvoices({ data, loading, onRefresh, onBack, onWeb, trial }) {
 const CHAN_ICON = { announce: 'megaphone', private: 'lock-closed', public: 'chatbubbles' };
 
 function NativeChannels({ data, loading, onRefresh, onOpen, onBack }) {
+  // Suiveur, ou compte sans association (no_org) : le serveur refuse la messagerie interne
+  // (allowed:false + message), comme le site ; agent d'une collectivité : 403 'mairie_space'
+  if (data && (data.allowed === false || data.error === 'mairie_space')) return <GatedScreen title="Messages" message={data.message} onBack={onBack} />;
   const list = data ? (data.channels || []) : null;
   return (
     <View style={styles.detailWrap}>
@@ -3217,7 +3869,7 @@ function NativeMailbox({ data, loading, view, onView, onSearch, onOpen, onMore, 
 
   return (
     <View style={styles.detailWrap}>
-      <DetailHeader title="Boîte mail" onBack={onBack} onAction={acc ? onSync : null} actionIcon={syncing ? 'hourglass' : 'refresh'} />
+      <DetailHeader title="Boîte mail" onBack={onBack} onAction={acc ? onSync : null} actionIcon={syncing ? 'hourglass' : 'refresh'} actionLabel="Synchroniser la boîte mail" />
       {!data ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : data.ok === false ? (
@@ -3239,7 +3891,8 @@ function NativeMailbox({ data, loading, view, onView, onSearch, onOpen, onMore, 
         </View>
       ) : (
         <View style={{ flex: 1 }}>
-          {acc.status !== 'active' ? <View style={mailStyles.warn}><Text style={mailStyles.warnTxt}>{acc.error || 'Connexion Gmail interrompue : reconnectez la boîte depuis le site.'}</Text></View> : null}
+          {/* alert : le serveur tolère un échec isolé récent (comme le site) ; absent = ancien serveur */}
+          {(acc.alert !== undefined ? !!acc.alert : acc.status !== 'active') ? <View style={mailStyles.warn}><Text style={mailStyles.warnTxt}>{acc.error || 'Connexion Gmail interrompue : reconnectez la boîte depuis le site.'}</Text></View> : null}
           <View style={mailStyles.searchBox}>
             <Ionicons name="search" size={16} color={INK_3} />
             <TextInput style={mailStyles.searchInput} value={q} onChangeText={setQ} placeholder="Rechercher (objet, expéditeur…)" placeholderTextColor={INK_3} returnKeyType="search" />
@@ -3495,13 +4148,15 @@ const MORE_GROUPS = [
     ],
   },
   {
+    // billing → droit Facturation (can_access_billing du serveur : admin, coordinateur, droit
+    // finances), le même périmètre que /mon-asso-factures sur le site
     title: 'Finances',
-    admin: true,
+    billing: true,
     items: [
-      { label: 'Factures', icon: 'receipt', nav: { tab: 'factures' }, admin: true },
-      { label: 'Devis', icon: 'document-text', nav: { screen: 'devis' }, admin: true },
-      { label: 'Clients', icon: 'briefcase', nav: { screen: 'clients' }, admin: true },
-      { label: 'Statistiques', icon: 'stats-chart', nav: { screen: 'stats' }, admin: true },
+      { label: 'Factures', icon: 'receipt', nav: { tab: 'factures' }, billing: true },
+      { label: 'Devis', icon: 'document-text', nav: { screen: 'devis' }, billing: true },
+      { label: 'Clients', icon: 'briefcase', nav: { screen: 'clients' }, billing: true },
+      { label: 'Statistiques', icon: 'stats-chart', nav: { screen: 'stats' }, billing: true },
     ],
   },
   {
@@ -3509,8 +4164,8 @@ const MORE_GROUPS = [
     items: [
       { label: 'Boîte mail', icon: 'mail-unread', nav: { screen: 'mail' }, badge: 'mail', mail: true },
       { label: 'Copilote IA', icon: 'sparkles', nav: { web: '/mon-asso-copilote' }, admin: true },
-      { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' }, badge: 'msg' },
-      { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' }, badge: 'notif' },
+      { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' }, badge: 'msg', noFollower: true },
+      { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' }, badge: 'notif', noOrg: true },
       { label: 'Communication', icon: 'mail', nav: { screen: 'broadcasts' }, admin: true },
       { label: 'Coach IA', icon: 'sparkles', nav: { screen: 'coach' }, admin: true },
     ],
@@ -3518,8 +4173,8 @@ const MORE_GROUPS = [
   {
     title: 'Compte',
     items: [
-      { label: 'Paramètres', icon: 'settings', nav: { screen: 'settings' } },
-      { label: 'Support', icon: 'help-buoy', nav: { screen: 'tickets' }, badge: 'support' },
+      { label: 'Paramètres', icon: 'settings', nav: { screen: 'settings' }, noOrg: true },
+      { label: 'Support', icon: 'help-buoy', nav: { screen: 'tickets' }, badge: 'support', noOrg: true },
     ],
   },
 ];
@@ -3533,7 +4188,8 @@ const FOUNDER_SHORTCUTS = [
   { label: 'Pilotage', icon: 'grid', fk: 'cockpit' },
 ];
 
-function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, canMail, isTpe, counts, onNav, onLogout, trial }) {
+// noOrg : compte sans association (Fondateur, super-admin) : seulement Notifications, Paramètres, Support
+function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, canMail, canBill, isTpe, isFollower, counts, onNav, onLogout, trial, noOrg }) {
   const cnt = counts || {};
   return (
     <View style={styles.detailWrap}>
@@ -3542,10 +4198,10 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, ca
           {logo ? <Image source={{ uri: logo }} style={styles.moreAvatarImg} resizeMode="contain" /> : <Text style={styles.moreAvatarTxt}>{initials || '·'}</Text>}
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.moreOrg} numberOfLines={1}>{orgName || 'Mon organisation'}</Text>
+          <Text style={styles.moreOrg} numberOfLines={1}>{orgName || (noOrg ? 'Assokit' : 'Mon organisation')}</Text>
           {trial ? (
             <Text style={[styles.moreSub, { color: trial.expired ? '#B91C1C' : '#B45309', fontWeight: '700' }]} numberOfLines={1}>{trial.text}</Text>
-          ) : <Text style={styles.moreSub}>Tous vos outils</Text>}
+          ) : <Text style={styles.moreSub}>{noOrg ? 'Aucune association rattachée' : 'Tous vos outils'}</Text>}
         </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
@@ -3571,8 +4227,11 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, ca
         )}
         {MORE_GROUPS.map((g) => {
           // Masque les fonctions propres aux associations pour un profil TPE.
-          // admin → admins seuls ; manage → admins ET coordinateurs (mêmes règles que le serveur)
-          const items = g.items.filter((it) => (!it.admin || isAdmin) && (!it.manage || isAdmin || canManage) && (!it.mail || canMail) && (!it.assoOnly || !isTpe));
+          // admin → admins seuls ; manage → admins ET coordinateurs ; billing → droit Facturation
+          // (canBill absent : règle d'avant, admins seuls) — mêmes règles que le serveur ;
+          // noFollower → masqué aux suiveurs (messagerie interne, comme le menu du site)
+          const billOk = canBill === undefined ? isAdmin : !!canBill;
+          const items = g.items.filter((it) => (!noOrg || it.noOrg) && (!it.admin || isAdmin) && (!it.manage || isAdmin || canManage) && (!it.billing || billOk) && (!it.mail || canMail) && (!it.assoOnly || !isTpe) && (!it.noFollower || !isFollower));
           if (items.length === 0) return null;
           return (
           <View key={g.title} style={{ marginBottom: 20 }}>
@@ -3630,7 +4289,20 @@ function orgTone(o) {
   return st === 'trial' ? 'trial' : st === 'suspended' ? 'suspended' : st === 'cancelled' ? 'cancelled' : st === 'active' ? 'active' : 'gray';
 }
 // Pastille de statut d'une association (liste, cockpit, fiche)
+// Association refusée par le Fondateur (refusée ET suspendue, comme sur le web) : liste
+// (rejected) ou fiche (validation_status). Réactivée ensuite par le Fondateur : son statut
+// réel (active, essai) reprend le dessus.
+function orgRejected(o) { return !!o && (o.rejected === true || o.validation_status === 'rejected') && o.status === 'suspended'; }
+// Réactiver une association refusée : seulement après une confirmation explicite
+function confirmReactivate(o, go) {
+  if (!orgRejected(o)) { go(); return; }
+  Alert.alert('Association refusée', 'Cette association a été refusée. La réactiver quand même ?', [
+    { text: 'Annuler', style: 'cancel' },
+    { text: 'Réactiver', onPress: go },
+  ]);
+}
 function orgChip(o) {
+  if (orgRejected(o)) return { label: 'Refusée', bg: '#FEE2E2', color: '#B91C1C' };
   if (o && o.pending) return { label: 'À valider', bg: '#EDE9FE', color: '#6D28D9' };
   if (o && o.status === 'cancelled') return { label: PLAN_TONE.cancelled.chip, bg: PLAN_TONE.cancelled.bg, color: PLAN_TONE.cancelled.color };
   const tone = orgTone(o);
@@ -3649,6 +4321,21 @@ function orgTrialLine(o) {
   return null;
 }
 function orgPlanLabel(o) { return (o && (o.plan_label || o.plan)) || '—'; }
+// Résiliation : l'abonnement Stripe n'a pas pu être annulé (stripe_warning du serveur) → le
+// fondateur doit l'annuler lui-même, sinon la carte du client reste prélevée
+function fdStripeWarn(text) {
+  Alert.alert('⚠️ Abonnement Stripe toujours actif', String(text) + '\n\nL’association est bien résiliée.', [{ text: 'J’ai compris' }]);
+}
+// Réponse de la résiliation (api/app-founder-action.php) : abonnement Stripe annulé
+// (stripe_cancelled) ou encore actif (stripe_warning). Ancien serveur sans ces clés : rien.
+function fdResiliated(r) {
+  if (!r) return;
+  if (r.stripe_warning) { fdStripeWarn(r.stripe_warning); return; }
+  if (!Array.isArray(r.stripe_cancelled)) return;
+  Alert.alert('Association résiliée', r.stripe_cancelled.length
+    ? 'Abonnement Stripe annulé : la carte du client n’est plus prélevée.'
+    : 'C’est fait.');
+}
 function TrialLine({ o, style }) {
   const tl = orgTrialLine(o);
   if (!tl) return null;
@@ -3694,11 +4381,19 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
   const mo = (data && data.month) || {};
   const signals = [];
   if (sig.pending > 0) signals.push({ tone: '#B45309', bg: '#FEF3C7', icon: 'construct', t: sig.pending + ' validation' + (sig.pending > 1 ? 's' : '') + ' en attente', filter: 'pending' });
-  if (sig.unpaid_nb > 0) signals.push({ tone: '#B91C1C', bg: '#FEE2E2', icon: 'cash', t: sig.unpaid_nb + ' impayé' + (sig.unpaid_nb > 1 ? 's' : '') + ' · ' + fmtEuro(sig.unpaid_total), filter: 'unpaid' });
+  // unpaid_nb compte des factures, unpaid_orgs les associations que liste le filtre « Impayés »
+  // (ancien serveur sans unpaid_orgs : factures seules)
+  if (sig.unpaid_nb > 0) signals.push({ tone: '#B91C1C', bg: '#FEE2E2', icon: 'cash', filter: 'unpaid',
+    t: sig.unpaid_nb + ' ' + plural(sig.unpaid_nb, 'facture impayée', 'factures impayées')
+      + (sig.unpaid_orgs > 0 ? ' · ' + sig.unpaid_orgs + ' ' + plural(sig.unpaid_orgs, 'asso', 'assos') : '')
+      + ' · ' + fmtEuro(sig.unpaid_total) });
   if (sig.expiring > 0) signals.push({ tone: '#B45309', bg: '#FEF3C7', icon: 'hourglass', t: sig.expiring + ' ' + plural(sig.expiring, 'essai se termine', 'essais se terminent') + ' sous 7 jours', filter: 'trial' });
   if (sig.trial_expired > 0) signals.push({ tone: '#B91C1C', bg: '#FEE2E2', icon: 'alert-circle', t: sig.trial_expired + ' ' + plural(sig.trial_expired, 'essai terminé', 'essais terminés') + ' sans formule payante', filter: 'trial' });
   const ctcUnread = sig.contacts_unread || 0;
   if (ctcUnread > 0) signals.push({ tone: '#BE185D', bg: '#FCE7F3', icon: 'mail-unread', t: ctcUnread + ' nouveau' + (ctcUnread > 1 ? 'x' : '') + ' message' + (ctcUnread > 1 ? 's' : '') + ' de contact', screen: 'contacts', filter: 'all' });
+  // Tickets support avec un message d'association non lu (retombe à 0 à l'ouverture du fil)
+  const supUnread = sig.support_unread || 0;
+  if (supUnread > 0) signals.push({ tone: '#1D4ED8', bg: '#DBEAFE', icon: 'chatbubbles', t: supUnread + ' ' + plural(supUnread, 'ticket support à lire', 'tickets support à lire'), screen: 'support', filter: 'open' });
 
   // Essais exclus du MRR : « payantes » = abonnement payant actif (ancien serveur : actives)
   const active = k.orgs_active ?? 0, trial = k.orgs_trial ?? 0, trialEnded = k.orgs_trial_expired ?? 0;
@@ -3830,7 +4525,7 @@ function NativeFounder({ data, loading, onRefresh, onBack, hasAsso, onGotoAsso, 
             <Text style={[styles.fcSec, { marginTop: 22, marginBottom: 12 }]}>CENTRE DE CONTRÔLE</Text>
             <View style={styles.fcTiles}>
               {FC_TILES.map((t) => {
-                const tileBadge = t.key === 'contacts' ? ctcUnread : 0;
+                const tileBadge = t.key === 'contacts' ? ctcUnread : t.key === 'support' ? supUnread : 0;
                 return (
                 <TouchableOpacity accessibilityRole="button" key={t.key} style={styles.fcTile} activeOpacity={0.88} onPress={() => onTile(t.key, t.key === 'billing' ? 'unpaid' : 'all')}>
                   <View style={[styles.fcTileIc, { backgroundColor: t.bg }]}><Ionicons name={t.icon} size={21} color={t.color} /></View>
@@ -3925,7 +4620,7 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
                   ) : (
                     <>
                       {o.status === 'suspended' ? (
-                        <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'activate')}><Ionicons name="play" size={14} color="#fff" /><Text style={styles.fcActGoTxt}>Réactiver</Text></TouchableOpacity>
+                        <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={() => confirmReactivate(o, () => onAction(o.id, 'activate'))}><Ionicons name="play" size={14} color="#fff" /><Text style={styles.fcActGoTxt}>Réactiver</Text></TouchableOpacity>
                       ) : o.status !== 'cancelled' ? (
                         <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={() => onAction(o.id, 'suspend')}><Ionicons name="pause" size={14} color="#B91C1C" /><Text style={styles.fcActNoTxt}>Suspendre</Text></TouchableOpacity>
                       ) : null}
@@ -4001,7 +4696,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
   // Statut lisible : celui du badge serveur (un essai terminé est « Essai terminé », pas « Suspendue » ;
   // un client payant resté en statut « trial » est « Active »). Sans badge (ancien serveur) : le statut.
   const TONE_STATUS = { cancelled: 'Résiliée', expired: 'Essai terminé', trial: 'En essai', suspended: 'Suspendue', pending: 'Active', active: 'Active' };
-  const statusLabel = o.status === 'cancelled' ? 'Résiliée' : (o.badge_tone && TONE_STATUS[o.badge_tone]) ? TONE_STATUS[o.badge_tone]
+  const statusLabel = o.status === 'cancelled' ? 'Résiliée' : orgRejected(o) ? 'Refusée' : o.pending ? 'À valider' : (o.badge_tone && TONE_STATUS[o.badge_tone]) ? TONE_STATUS[o.badge_tone]
     : o.status === 'trial' ? 'En essai' : o.status === 'active' ? 'Active' : o.status === 'suspended' ? 'Suspendue' : o.status;
   // « Essai suspendu · fin prévue le … » : suspendue à la main pendant l'essai (trial_paused)
   const showBadge = !!o.badge && (['trial', 'expired', 'pending'].includes(o.badge_tone) || !!o.trial_paused);
@@ -4089,7 +4784,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
         {/* Actions rapides */}
         <View style={styles.odActions}>
           {o.status === 'suspended' ? (
-            <TouchableOpacity accessibilityRole="button" style={[styles.odBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]} activeOpacity={0.85} onPress={() => onAction(o.id, 'activate')}>
+            <TouchableOpacity accessibilityRole="button" style={[styles.odBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]} activeOpacity={0.85} onPress={() => confirmReactivate(o, () => onAction(o.id, 'activate'))}>
               <Ionicons name="play" size={16} color="#047857" /><Text style={[styles.odBtnTxt, { color: '#047857' }]}>Réactiver</Text>
             </TouchableOpacity>
           ) : o.status !== 'cancelled' ? (
@@ -4107,17 +4802,34 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
 
         {members.length > 0 && (
           <>
-            <Text style={[styles.blogLabel, { marginTop: 22 }]}>Membres ({members.length})</Text>
+            {/* nb_users : total des membres actifs ; la liste s'arrête à 50 (members_more = le reste) */}
+            <Text style={[styles.blogLabel, { marginTop: 22 }]}>Membres ({typeof o.nb_users === 'number' && o.nb_users >= members.length ? o.nb_users : members.length})</Text>
             <View style={styles.odPanel}>
               {members.map((m, i) => (
-                <View key={i} style={[styles.odMember, i > 0 && styles.odMemberBorder]}>
+                <View key={m.id || i} style={[styles.odMember, i > 0 && styles.odMemberBorder]}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.odMemberName} numberOfLines={1}>{m.name}</Text>
                     <Text style={styles.odMemberMail} numberOfLines={1}>{m.email}</Text>
                   </View>
                   {m.role === 'admin' && <View style={[styles.fcChip, { backgroundColor: '#EDE9FE' }]}><Text style={[styles.fcChipTxt, { color: '#6D28D9' }]}>Admin</Text></View>}
+                  {/* Téléphone perdu : le Fondateur retire la double authentification (action reset_2fa) */}
+                  {data.can_reset_2fa === true && m.totp_enabled === true && m.id ? (
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel={'Réinitialiser la double authentification de ' + (m.email || m.name)}
+                      style={[styles.od2faBtn, busy && { opacity: 0.5 }]} activeOpacity={0.85} disabled={!!busy}
+                      onPress={() => Alert.alert('Réinitialiser la 2FA ?',
+                        'Réinitialiser la double authentification de ' + (m.email || m.name) + ' ? À la prochaine connexion, le mot de passe suffira.',
+                        [{ text: 'Annuler', style: 'cancel' }, { text: 'Réinitialiser', style: 'destructive', onPress: () => onAction(o.id, 'reset_2fa', { user_id: m.id }) }])}>
+                      <Ionicons name="key-outline" size={13} color="#B45309" />
+                      <Text style={styles.od2faTxt}>Réinitialiser la 2FA</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ))}
+              {o.members_more > 0 && (
+                <View style={[styles.odMember, styles.odMemberBorder]}>
+                  <Text style={styles.odMemberMail}>+ {o.members_more} autre{o.members_more > 1 ? 's' : ''} membre{o.members_more > 1 ? 's' : ''}</Text>
+                </View>
+              )}
             </View>
           </>
         )}
@@ -4157,6 +4869,12 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
     f.price_eur = p.price_eur != null ? String(p.price_eur) : '';
     setForm(f);
   };
+
+  // Plans et prix : Fondateur seul (403 forbidden pour un super-admin, comme sur le site)
+  if (data && data.ok === false) {
+    return <DetailError title="Plans tarifaires" onBack={onBack} onRetry={onRefresh}
+      data={data.error === 'forbidden' ? { ...data, message: 'Réservé au Fondateur.' } : data} />;
+  }
 
   if (form) {
     const isNew = !form.id;
@@ -4262,7 +4980,15 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
 }
 
 /* Fondateur — Vue globale des projets (lecture seule) */
-const FC_PROJ_FILTERS = [{ key: '', label: 'Tous' }, { key: 'in_progress', label: 'En cours' }, { key: 'completed', label: 'Terminés' }, { key: 'planned', label: 'À venir' }];
+// Statuts réels des projets (projects.status) : active, warning (« À suivre »), done, draft.
+// « En cours » réunit active et warning (deux lectures fusionnées, cf. fetchFdProjects) ;
+// in_progress / completed / planned n'existent pas et donnaient des listes toujours vides.
+const FC_PROJ_FILTERS = [
+  { key: '', label: 'Tous' },
+  { key: 'active', label: 'En cours', statuses: ['active', 'warning'] },
+  { key: 'done', label: 'Terminés' },
+  { key: 'draft', label: 'Brouillons' },
+];
 function NativeFounderProjects({ data, loading, filter, onFilter, onRefresh, onBack }) {
   const list = data ? (data.projects || []) : null;
   return (
@@ -4290,7 +5016,14 @@ function NativeFounderProjects({ data, loading, filter, onFilter, onRefresh, onB
                 <Text style={styles.plnSub} numberOfLines={1}>{p.org} · {p.created}{p.budget > 0 ? ' · ' + fmtEuro(p.used) + '/' + fmtEuro(p.budget) : ''}</Text>
                 <View style={styles.fdProgTrack}><View style={[styles.fdProgFill, { width: Math.max(3, Math.min(100, p.progress)) + '%' }]} /></View>
               </View>
-              <Text style={styles.plnPrice}>{p.progress}%</Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                {!!STATUS_META[p.status] && (
+                  <View style={[styles.fcChip, { backgroundColor: STATUS_META[p.status].bg, marginBottom: 4 }]}>
+                    <Text style={[styles.fcChipTxt, { color: STATUS_META[p.status].color }]}>{STATUS_META[p.status].label}</Text>
+                  </View>
+                )}
+                <Text style={styles.plnPrice}>{p.progress}%</Text>
+              </View>
             </View>
           ))}
         </ScrollView>
@@ -4678,7 +5411,7 @@ function NativeFounderStats({ data, loading, onBack, onRefresh }) {
     { icon: 'hourglass', color: PLAN_TONE.trial.color, bg: PLAN_TONE.trial.bg, v: String(o.trial ?? 0), l: 'Essais en cours', s: (o.expiring ?? 0) + ' ' + plural(o.expiring ?? 0, 'finit', 'finissent') + ' sous 7 j' },
     { icon: 'alert-circle', color: PLAN_TONE.expired.color, bg: PLAN_TONE.expired.bg, v: String(o.trial_expired ?? 0), l: 'Essais terminés', s: 'sans formule payante' },
     { icon: 'people', color: '#2563EB', bg: '#EFF6FF', v: String(u.total ?? 0), l: 'Utilisateurs', s: '+' + (u.new30 ?? 0) + ' /30j' },
-    { icon: 'alert-circle', color: '#DC2626', bg: '#FEF2F2', v: fmtEuro(r.unpaid_total), l: 'Impayés', s: (r.unpaid_nb ?? 0) + ' facture' + ((r.unpaid_nb ?? 0) > 1 ? 's' : '') },
+    { icon: 'alert-circle', color: '#DC2626', bg: '#FEF2F2', v: fmtEuro(r.unpaid_total), l: 'Impayés', s: (r.unpaid_nb ?? 0) + ' facture' + ((r.unpaid_nb ?? 0) > 1 ? 's' : '') + (r.unpaid_orgs > 0 ? ' · ' + r.unpaid_orgs + ' asso' + (r.unpaid_orgs > 1 ? 's' : '') : '') },
     { icon: 'sparkles', color: '#D97706', bg: '#FFFBEB', v: String(ia.nb ?? 0), l: 'Générations IA', s: fmtEuro(ia.cost) + ' dépensés' },
   ];
   return (
@@ -5069,6 +5802,17 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
             <Text style={styles.blogBusyTxt}>{result.org_name} est créée !</Text>
             <Text style={styles.blogBusySub}>{result.email_sent ? 'Email de bienvenue envoyé.' : 'Transmets ces identifiants au responsable :'}</Text>
           </View>
+          {/* Création par un Super Admin : l'association attend la validation du Fondateur (comme le web) */}
+          {result.pending_validation === true || result.validation_status === 'pending_founder' ? (
+            <View style={styles.pendingCard} accessible accessibilityRole="text"
+              accessibilityLabel="En attente de validation par le Fondateur. Une notification lui a été envoyée.">
+              <Ionicons name="hourglass-outline" size={18} color="#B45309" />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.pendingTitle}>En attente de validation par le Fondateur</Text>
+                <Text style={styles.pendingSub}>Une notification lui a été envoyée. L’association apparaît « À valider » jusqu’à sa validation.</Text>
+              </View>
+            </View>
+          ) : null}
           <View style={styles.credCard}>
             <Text style={styles.credLbl}>Email</Text><Text style={styles.credVal} selectable>{result.email}</Text>
             <View style={styles.credDivider} />
@@ -5363,12 +6107,20 @@ function NativeStats({ data, loading, onRefresh, onBack, cockpit, cockpitLoading
   );
 }
 
-function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead, onBack }) {
+// platformWeb : notifications de la plateforme non lues (fondateur) qu'un ancien serveur ne met pas
+// dans cette liste → lien vers la cloche du cockpit web (/super-admin/notifications), qui les solde.
+function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead, onBack, platformWeb, onPlatformWeb }) {
   const list = data ? (data.items || []) : null;
   const unread = data ? (data.unread || 0) : 0;
   return (
     <View style={styles.detailWrap}>
       <DetailHeader title="Notifications" onBack={onBack} />
+      {platformWeb > 0 && onPlatformWeb ? (
+        <TouchableOpacity accessibilityRole="button" style={styles.markAllBtn} activeOpacity={0.8} onPress={onPlatformWeb}>
+          <Ionicons name="star" size={15} color="#B45309" />
+          <Text style={[styles.markAllTxt, { color: '#B45309' }]}>{platformWeb} {platformWeb > 1 ? 'notifications' : 'notification'} de la plateforme</Text>
+        </TouchableOpacity>
+      ) : null}
       {unread > 0 ? (
         <TouchableOpacity accessibilityRole="button" style={styles.markAllBtn} activeOpacity={0.8} onPress={onMarkAllRead}>
           <Ionicons name="checkmark-done" size={16} color={BRAND} />
@@ -5400,6 +6152,8 @@ function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead,
 }
 
 function NativeCotisations({ data, loading, onRefresh, onBack, onNew, onNewCampaign, canManage, onOpen }) {
+  // Réservé aux administrateurs et coordinateurs (comme /cotisations sur le site)
+  if (data && data.allowed === false) return <GatedScreen title="Cotisations" message={data.message} onBack={onBack} />;
   const list = data ? (data.campaigns || []) : null;
   const s = (data && data.stats) || {};
   const hasCampaigns = !!(list && list.length);
@@ -5457,7 +6211,20 @@ function NativeCotisations({ data, loading, onRefresh, onBack, onNew, onNewCampa
   );
 }
 
+// Date limite de dépôt d'un dossier de la liste : deadline_days (serveur, même règle que le site)
+// n'est renseigné que pour un dossier pas encore déposé ; null = rien à afficher (jamais « en
+// retard » une fois déposé). Clé absente (ancien serveur) : la date seule, comme avant.
+function grantDeadline(g) {
+  if (g.deadline_days === undefined) return g.deadline ? { text: 'Échéance ' + g.deadline, color: MUTE } : null;
+  const n = g.deadline_days;
+  if (n === null || typeof n !== 'number' || !g.deadline) return null;
+  const when = n < 0 ? 'Retard ' + Math.abs(n) + 'j' : n === 0 ? 'Aujourd’hui' : 'J-' + n;
+  return { text: 'Échéance ' + String(g.deadline).slice(0, 5) + ' · ' + when, color: n < 0 ? '#B91C1C' : n <= 7 ? '#B45309' : MUTE };
+}
+
 function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onOpen }) {
+  // Dossiers réservés aux gestionnaires : le serveur répond allowed:false (liste vide) aux autres
+  if (data && data.allowed === false) return <GatedScreen title="Subventions" message={data.message} onBack={onBack} />;
   const list = data ? (data.grants || []) : null;
   const s = (data && data.stats) || {};
   return (
@@ -5482,6 +6249,10 @@ function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onOp
             <View style={styles.emptyBox}><Ionicons name="cash-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune subvention</Text></View>
           ) : list.map((g) => {
             const km = INV_KIND[g.status_kind] || INV_KIND.wait;
+            // « Bilan rendu » reste une subvention accordée (is_granted ; ancien serveur : statut)
+            const isGranted = !!(g.is_granted || g.status === 'granted' || g.status === 'reported');
+            const showGranted = isGranted && !!g.granted;   // accordée sans montant saisi : le demandé, comme le site
+            const dl = grantDeadline(g);
             return (
               <TouchableOpacity accessibilityRole="button" key={g.id} style={styles.projCard} activeOpacity={onOpen ? 0.85 : 1} onPress={onOpen ? () => onOpen(g.id) : undefined}>
                 <View style={styles.projCardTop}>
@@ -5492,8 +6263,8 @@ function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onOp
                   <View style={[styles.projChip, { backgroundColor: km.bg }]}><Text style={[styles.projChipTxt, { color: km.color }]}>{g.status_label}</Text></View>
                 </View>
                 <View style={[styles.dCardRow, { marginTop: 12 }]}>
-                  <Text style={styles.dMuted}>{g.deadline ? 'Échéance ' + g.deadline : ' '}</Text>
-                  <Text style={styles.bilanAmount}>{fmtEuro(g.status === 'granted' ? g.granted : g.requested)}</Text>
+                  <Text style={[styles.dMuted, dl ? { color: dl.color, fontWeight: dl.color !== MUTE ? '700' : '400' } : null]}>{dl ? dl.text : ' '}</Text>
+                  <Text style={styles.bilanAmount}>{fmtEuro(showGranted ? g.granted : g.requested)}<Text style={styles.dMuted}>{showGranted ? ' accordé' : g.requested ? ' demandé' : ''}</Text></Text>
                 </View>
               </TouchableOpacity>
             );
@@ -5506,7 +6277,7 @@ function NativeGrants({ data, loading, onRefresh, onBack, onNew, canManage, onOp
 
 function NativeEventDetail({ entry, onBack, onRefresh, onEdit, onDelete, busy }) {
   const d = entry.data;
-  if (d && d.ok === false) return <DetailError title="Événement" onBack={onBack} onRetry={onRefresh} />;
+  if (d && d.ok === false) return <DetailError title="Événement" onBack={onBack} onRetry={onRefresh} data={d} />;
   if (!d || !d.event) return <DetailLoading title="Événement" onBack={onBack} />;
   const e = d.event;
   const canEdit = d.can_edit !== false;
@@ -5553,7 +6324,7 @@ function NativeEventDetail({ entry, onBack, onRefresh, onEdit, onDelete, busy })
 function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayment, busy }) {
   const still = useReducedMotion();
   const d = entry.data;
-  if (d && d.ok === false) return <DetailError title="Campagne" onBack={onBack} onRetry={onRefresh} />;
+  if (d && d.ok === false) return <DetailError title="Campagne" onBack={onBack} onRetry={onRefresh} data={d} />;
   if (!d || !d.campaign) return <DetailLoading title="Campagne" onBack={onBack} />;
   const c = d.campaign;
   const s = d.stats || {};
@@ -5584,6 +6355,12 @@ function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayme
           <Text style={[styles.projChipTxt, { color: c.active ? '#065F46' : MUTE }]}>{c.active ? '● Campagne active' : 'Clôturée'}{c.year ? ' · ' + c.year : ''}</Text>
         </View>
         {!!c.closes_at && <Text style={[styles.dMuted, { marginTop: 10 }]}>Clôture le {c.closes_at}</Text>}
+        {c.renews_membership === false ? (
+          <View style={[styles.dLockCard, { marginTop: 12 }]}>
+            <Ionicons name="information-circle-outline" size={18} color="#8A968F" />
+            <Text style={styles.dLockTxt}>Les paiements de cette campagne ne prolongent pas l’adhésion.</Text>
+          </View>
+        ) : null}
         {!!c.description && <DescBlock label="Description" text={c.description} tint="#2563EB" />}
 
         {/* Deux cartes statistiques (nœud 10:14) : libellé capitales au-dessus de la valeur. */}
@@ -5674,7 +6451,9 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
   const [grantedAmt, setGrantedAmt] = useState('');
   const still = useReducedMotion();
   const d = entry.data;
-  if (d && d.ok === false) return <DetailError title="Subvention" onBack={onBack} onRetry={onRefresh} />;
+  // Non-gestionnaire : 403 { allowed:false, message } du serveur (avant le cas d'erreur générique)
+  if (d && d.allowed === false) return <GatedScreen title="Subvention" message={d.message} onBack={onBack} />;
+  if (d && d.ok === false) return <DetailError title="Subvention" onBack={onBack} onRetry={onRefresh} data={d} />;
   if (!d || !d.grant) return <DetailLoading title="Subvention" onBack={onBack} />;
   const g = d.grant;
   const steps = d.steps || [];
@@ -5774,6 +6553,27 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
               <Ionicons name="add" size={22} color="#065F46" />
             </TouchableOpacity>
           </View>
+        )}
+
+        {g.archived === true && (
+          <>
+            <View style={[styles.dLockCard, { marginTop: 22 }]}>
+              <Ionicons name="archive-outline" size={18} color="#8A968F" />
+              <Text style={styles.dLockTxt}>
+                Dossier archivé : il n’apparaît plus dans les demandes en cours.{d.is_admin ? '' : ' Seul un administrateur peut le désarchiver.'}
+              </Text>
+            </View>
+            {d.is_admin && (
+              <TouchableOpacity accessibilityRole="button" style={[styles.dActBtn, busy ? { opacity: 0.6 } : null]} activeOpacity={0.85}
+                disabled={!!busy} onPress={() => Alert.alert('Désarchiver', 'Rouvrir ce dossier ? Il retrouve son statut d’avant l’archivage et revient dans les demandes en cours.', [
+                  { text: 'Retour', style: 'cancel' },
+                  { text: 'Désarchiver', onPress: () => onAction('unarchive') },
+                ])}>
+                {busy === 'unarchive' ? <ActivityIndicator color="#065F46" /> : <Ionicons name="arrow-undo-outline" size={18} color="#065F46" />}
+                <Text style={styles.dActBtnTxt}>Désarchiver</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
 
         {canManage && !g.archived && (
@@ -5880,7 +6680,7 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
 /* ================================================================== */
 /*  ASSEMBLÉES / ÉMARGEMENT / COMMUNICATION / SUPPORT / COACH / RÉGLAGES */
 /* ================================================================== */
-function GatedList({ title, data, loading, onRefresh, onBack, emptyIcon, emptyLabel, renderStats, renderItem, itemsKey }) {
+function GatedList({ title, data, loading, onRefresh, onBack, emptyIcon, emptyLabel, renderStats, renderItem, itemsKey, renderTop }) {
   const allowed = !data || data.allowed !== false;
   const list = data ? (data[itemsKey] || []) : null;
   return (
@@ -5894,6 +6694,7 @@ function GatedList({ title, data, loading, onRefresh, onBack, emptyIcon, emptyLa
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           {renderStats ? renderStats(data.stats || {}) : null}
+          {renderTop ? renderTop(data) : null}
           {(!list || list.length === 0) ? (
             <View style={styles.emptyBox}><Ionicons name={emptyIcon} size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>{emptyLabel}</Text></View>
           ) : list.map(renderItem)}
@@ -5903,19 +6704,31 @@ function GatedList({ title, data, loading, onRefresh, onBack, emptyIcon, emptyLa
   );
 }
 
-function StatusItemCard({ title, sub, right, kind, statusLabel }) {
+// onPress : carte ouvrable ; unread : pastille « non lu » devant le titre
+function StatusItemCard({ title, sub, right, kind, statusLabel, onPress, unread, accessibilityLabel }) {
   const km = INV_KIND[kind] || INV_KIND.wait;
-  return (
-    <View style={styles.projCard}>
+  const body = (
+    <>
       <View style={styles.projCardTop}>
         <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.projName} numberOfLines={2}>{title}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {unread ? <View style={styles.chanDot} /> : null}
+            <Text style={[styles.projName, { flex: 1 }, unread ? { fontWeight: '800' } : null]} numberOfLines={2}>{title}</Text>
+          </View>
           {!!sub && <Text style={styles.projFolder} numberOfLines={1}>{sub}</Text>}
         </View>
         {statusLabel ? <View style={[styles.projChip, { backgroundColor: km.bg }]}><Text style={[styles.projChipTxt, { color: km.color }]}>{statusLabel}</Text></View> : right}
+        {onPress ? <Ionicons name="chevron-forward" size={16} color="#CBD5D1" style={{ marginLeft: 6, alignSelf: 'center' }} /> : null}
       </View>
       {right && statusLabel ? <View style={{ marginTop: 10, alignItems: 'flex-end' }}>{right}</View> : null}
-    </View>
+    </>
+  );
+  if (!onPress) return <View style={styles.projCard}>{body}</View>;
+  return (
+    <TouchableOpacity accessibilityRole="button" accessibilityLabel={accessibilityLabel || (title + (unread ? ', non lu' : ''))}
+      style={styles.projCard} activeOpacity={0.85} onPress={onPress}>
+      {body}
+    </TouchableOpacity>
   );
 }
 
@@ -5966,13 +6779,64 @@ function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack 
   );
 }
 
+/* Association suspendue (403 'org_suspended' d'une API, ou avis #ak-acces-suspendu de
+   /connexion) : l'app ne garde que le compte personnel (paramètres, mot de passe,
+   suppression RGPD) et la déconnexion. Aucun lien de paiement (règles des stores). */
+function SuspendedScreen({ message, onAccount, onLogout, onRetry }) {
+  return (
+    <View style={[styles.detailWrap, { justifyContent: 'center', paddingHorizontal: 24 }]}>
+      <View style={{ alignItems: 'center' }} accessible accessibilityRole="alert">
+        <View style={[styles.setPlanIc, { width: 58, height: 58, borderRadius: 18, backgroundColor: '#FEE2E2' }]}>
+          <Ionicons name="pause-circle-outline" size={32} color="#B91C1C" />
+        </View>
+        <Text style={[styles.dName, { textAlign: 'center', marginTop: 14 }]}>Accès suspendu</Text>
+        <Text style={[styles.dMuted, { textAlign: 'center', marginTop: 10, fontSize: 14, lineHeight: 21 }]}>
+          {message || 'L’accès de votre association à Assokit est suspendu. Vos données sont conservées.'}
+        </Text>
+      </View>
+      {onAccount ? (
+        <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={onAccount}>
+          <Ionicons name="person-circle-outline" size={19} color="#fff" />
+          <Text style={styles.dPrimaryBtnTxt}>Mon compte</Text>
+        </TouchableOpacity>
+      ) : null}
+      {onRetry ? (
+        <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={onRetry}>
+          <Ionicons name="refresh" size={17} color={BRAND} />
+          <Text style={styles.dWebBtnTxt}>Vérifier à nouveau</Text>
+        </TouchableOpacity>
+      ) : null}
+      <TouchableOpacity accessibilityRole="button" style={[styles.logoutBtn, { marginTop: 10 }]} activeOpacity={0.85} onPress={onLogout}>
+        <Ionicons name="log-out-outline" size={19} color="#DC2626" />
+        <Text style={styles.logoutTxt}>Se déconnecter</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav, plan }) {
   const a = (data && data.account) || null;
   const [f, setF] = useState(null);
-  useEffect(() => { if (a && !f) setF({ first_name: a.first_name, last_name: a.last_name, email: a.email, phone: a.phone, city: a.city }); }, [a]);
+  const [delOpen, setDelOpen] = useState(false);
+  const [delPw, setDelPw] = useState('');
+  useEffect(() => { if (a && !f) setF({ first_name: a.first_name, last_name: a.last_name, email: a.email, phone: a.phone, city: a.city, current_password: '' }); }, [a]);
+  // Adresse enregistrée (rechargement après succès) : le mot de passe saisi n'a plus d'usage
+  useEffect(() => { setF((s) => (s && s.current_password ? { ...s, current_password: '' } : s)); }, [a && a.email]);
   if (!data || !f) return <DetailLoading title="Paramètres" onBack={onBack} />;
   const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
   const org = data.org || {};
+  // Changer l'adresse de connexion demande le mot de passe actuel (api/app-update-account.php)
+  const emailChanged = String(f.email || '').trim().toLowerCase() !== String(a.email || '').trim().toLowerCase();
+  const save = () => {
+    const { current_password, ...rest } = f;
+    onSave(emailChanged ? { ...rest, current_password } : rest);
+  };
+  const confirmDelete = () => {
+    if (!delPw) return;
+    const pw = delPw;
+    setDelOpen(false); setDelPw('');
+    onDelete(pw);
+  };
   return (
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <DetailHeader title="Paramètres" onBack={onBack} />
@@ -6008,9 +6872,13 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
         <Field label="Prénom" value={f.first_name} onChangeText={set('first_name')} autoCapitalize="words" />
         <Field label="Nom" value={f.last_name} onChangeText={set('last_name')} autoCapitalize="words" />
         <Field label="Email" value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" />
+        {emailChanged && (
+          <Field label="Mot de passe actuel *" value={f.current_password} onChangeText={set('current_password')} secureTextEntry autoCapitalize="none"
+            autoCorrect={false} textContentType="password" hint="Requis pour changer l’adresse de connexion. Un lien de confirmation sera envoyé à la nouvelle adresse." />
+        )}
         <Field label="Téléphone" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
         <Field label="Ville" value={f.city} onChangeText={set('city')} autoCapitalize="words" />
-        <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, saving ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={saving ? undefined : () => onSave(f)}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, saving ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={saving ? undefined : save}>
           {saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark-circle" size={18} color="#fff" />}
           <Text style={styles.dPrimaryBtnTxt}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Text>
         </TouchableOpacity>
@@ -6031,11 +6899,36 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
         <TouchableOpacity accessibilityRole="button" style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
           <Ionicons name="log-out-outline" size={19} color="#DC2626" /><Text style={styles.logoutTxt}>Se déconnecter</Text>
         </TouchableOpacity>
-        {a.can_delete && (
-          <TouchableOpacity accessibilityRole="button" style={{ marginTop: 14, alignItems: 'center' }} activeOpacity={0.7} onPress={onDelete}>
+        {a.can_delete ? (
+          <TouchableOpacity accessibilityRole="button" style={{ marginTop: 14, alignItems: 'center' }} activeOpacity={0.7} onPress={() => { setDelPw(''); setDelOpen(true); }}>
             <Text style={styles.deleteTxt}>Supprimer mon compte (RGPD)</Text>
           </TouchableOpacity>
-        )}
+        ) : a.delete_blocked_reason ? (
+          // Suppression refusée (seul administrateur, compte Fondateur…) : on dit pourquoi au lieu de cacher le lien
+          <View style={{ marginTop: 14, alignItems: 'center', paddingHorizontal: 8 }} accessible accessibilityLabel={'Supprimer mon compte (RGPD), indisponible : ' + a.delete_blocked_reason}>
+            <Text style={[styles.deleteTxt, { color: INK_3, textDecorationLine: 'none' }]}>Supprimer mon compte (RGPD)</Text>
+            <Text style={[styles.fHint, { textAlign: 'center', marginTop: 4 }]}>{a.delete_blocked_reason}</Text>
+          </View>
+        ) : null}
+
+        <Modal visible={delOpen} transparent animationType="fade" onRequestClose={() => setDelOpen(false)}>
+          <Pressable style={[styles.sheetBackdrop, { justifyContent: 'center', padding: 22 }]} onPress={() => setDelOpen(false)}>
+            <Pressable style={[styles.sheet, { borderRadius: R_CARD, paddingTop: 18, paddingBottom: 12 }]}>
+              <Text style={styles.sheetTitle}>Supprimer mon compte</Text>
+              <Text style={[styles.dMuted, { marginBottom: 14 }]}>Cette action est définitive et anonymise vos données personnelles (RGPD). Saisissez votre mot de passe pour confirmer.</Text>
+              <Field label="Mot de passe" value={delPw} onChangeText={setDelPw} secureTextEntry autoCapitalize="none" autoCorrect={false}
+                textContentType="password" autoFocus returnKeyType="done" onSubmitEditing={confirmDelete} />
+              <TouchableOpacity accessibilityRole="button" style={[styles.dDangerBtn, { marginTop: 4 }, !delPw ? { opacity: 0.5 } : null]} activeOpacity={0.85}
+                disabled={!delPw} onPress={confirmDelete}>
+                <Ionicons name="trash-outline" size={18} color="#991B1B" />
+                <Text style={styles.dDangerBtnTxt}>Supprimer définitivement</Text>
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" style={{ alignItems: 'center', paddingVertical: 12 }} activeOpacity={0.7} onPress={() => setDelOpen(false)}>
+                <Text style={styles.formLink}>Annuler</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         <BuildStamp />
       </ScrollView>
@@ -6052,6 +6945,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const founderInit = useRef(false);
   const autoLoginTried = useRef(false);
   const pendingCreds = useRef(null);
+  const pwSentRef = useRef('');        // nouveau mot de passe envoyé (Sécurité), pour Face ID
+  const acctSentRef = useRef(null);    // { before, email } du dernier envoi de « Mon compte »
+  const webReturnRef = useRef(null);   // écran natif à rouvrir au retour d'une page du site
   const pendingLogin = useRef(null);   // identifiants à soumettre dès que /connexion est chargée
   const lastLoadAlert = useRef(0);      // anti-spam des alertes « chargement impossible »
   const logoutTimer = useRef(null);
@@ -6121,6 +7017,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [mailDraft, setMailDraft] = useState(null);
   const mailAppend = useRef(false);
   const mailActKind = useRef('');
+  // Synchro « occupée » (busy) : nombre d'attentes déjà faites et minuteur de la prochaine
+  const mailSyncTries = useRef(0);
+  const mailSyncTimer = useRef(null);
   const mailPage = useRef(1);
   const [chanMsgs, setChanMsgs] = useState(null);
   const [chanLoading, setChanLoading] = useState(false);
@@ -6221,11 +7120,33 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [statsCockpit, setStatsCockpit] = useState(null);
   const [statsCockpitLoading, setStatsCockpitLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  // Étape web de la connexion affichée telle quelle : 'password' (mot de passe provisoire à
+  // remplacer, /changer-mot-de-passe) ou '2fa' (/connexion-2fa). null sinon.
+  const [authPage, setAuthPage] = useState(null);
+  const authPageRef = useRef(null);
+  // Association suspendue : message du serveur (403 'org_suspended' ou avis de /connexion)
+  const [orgSuspended, setOrgSuspended] = useState(null);
+  // Droits renvoyés par les listes (null = inconnu ou ancien serveur → comportement d'avant)
+  const [evCanCreate, setEvCanCreate] = useState(null);      // app-events.php can_create
+  const evCapsAsked = useRef(false);
+  const [membersCanAdd, setMembersCanAdd] = useState(null);  // app-members.php can_add
+  const [folderRights, setFolderRights] = useState({ create: null, finances: null }); // app-folders.php
+  const [invMoreLoading, setInvMoreLoading] = useState(false);
+  const [eventsMoreLoading, setEventsMoreLoading] = useState(false);
 
   const profile = (kpi && kpi.profile) === 'tpe' ? 'tpe' : 'asso';
   const isTpe = profile === 'tpe';
+  // Agent d'une collectivité (profile « mairie ») : écran dédié, sans onglets d'association
+  const isMairie = !!kpi && kpi.profile === 'mairie';
   const isFounder = !!(kpi && kpi.is_founder);
-  const TABS = tabsFor(profile);
+  // Fondateur ou super-admin sans association (has_org false, api/app-dashboard.php) : aucune création,
+  // aucun onglet ni menu d'association ; restent l'Espace Fondateur, les notifications, les
+  // paramètres et le support. Clé absente (ancien serveur) : comme avant.
+  const noOrg = !!kpi && kpi.has_org === false && !isMairie;
+  // Cloche : notif_unread compte déjà les notifications de la plateforme (fondateur, platform_unread) ;
+  // un serveur qui les renvoyait à part ne les y comptait pas : le maximum ne compte jamais deux fois.
+  const notifCount = kpi ? Math.max(kpi.notif_unread || 0, kpi.platform_unread || 0) : 0;
+  const TABS = noOrg ? tabsFor(profile).filter((t) => t.key === 'accueil' || t.key === 'add' || t.key === 'menu') : tabsFor(profile);
   // « Réduire les animations » du système : neutralise tout le mouvement de l'app.
   const stillMotion = useReducedMotion();
 
@@ -6233,14 +7154,35 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   // qui échouerait après avoir rempli tout le formulaire.
   const isAdminOrg = !!kpi && (kpi.role === 'admin' || !!kpi.is_founder || !!kpi.is_super_admin);
   const canManageOrg = isAdminOrg || (!!kpi && kpi.role === 'coordinator');
+  // Suiveur (financeur, partenaire) : pas de messagerie interne, comme sur le site
+  const isFollower = !!kpi && kpi.role === 'follower' && !kpi.is_founder;
   const canCreateProjects = !kpi || kpi.can_create_projects !== false; // inconnu (ancien serveur) → on laisse
-  const QUICK_ACTIONS = (isTpe ? QUICK_ACTIONS_TPE : QUICK_ACTIONS_ASSO).filter((a) => {
-    if (a.form === 'invoice' || a.form === 'client') return isAdminOrg;
-    if (a.form === 'member' || a.form === 'quote') return canManageOrg;
+  // Facturation (factures, devis, clients, statistiques) : can_access_billing du serveur, la règle du
+  // site (admin, coordinateur, droit finances). Clé absente = ancien serveur, qui réservait les
+  // factures et les clients aux admins et les devis aux gestionnaires : on garde ces règles.
+  const billKnown = !!kpi && typeof kpi.can_access_billing === 'boolean';
+  const canBill = billKnown ? kpi.can_access_billing : isAdminOrg;
+  const canBillQuotes = billKnown ? kpi.can_access_billing : canManageOrg;
+  // Ajout d'adhérents : gestionnaires, ou droit « Gérer les adhérents » (can_add de app-members.php)
+  const canAddMember = canManageOrg || membersCanAdd === true;
+  // Création d'événements : refusée aux suiveurs (can_create de app-events.php)
+  const canCreateEvent = evCanCreate !== false;
+  const QUICK_ACTIONS = noOrg ? [] : (isTpe ? QUICK_ACTIONS_TPE : QUICK_ACTIONS_ASSO).filter((a) => {
+    if (a.form === 'invoice' || a.form === 'client') return canBill;
+    if (a.form === 'quote') return canBillQuotes;
+    if (a.form === 'member') return canAddMember;
     if (a.form === 'payment' || a.form === 'campaign' || a.form === 'grant') return canManageOrg;
     if (a.form === 'project') return canCreateProjects;
+    if (a.form === 'event') return canCreateEvent;
+    // Factures de projet : refusées aux suiveurs (403) et hors de l'équipe des projets ; can_add_expense
+    // du serveur (au moins un projet ouvert à ce compte), absent d'un ancien serveur
+    if (a.form === 'expense') return !isFollower && (!kpi || kpi.can_add_expense !== false);
+    if (a.screen === 'messages') return !isFollower;
     return true;
   });
+  // Rien à créer (suiveur : ni événement, ni facture de projet, ni message) : pas de « + » ni de
+  // feuille « Créer » vide.
+  const canQuickCreate = QUICK_ACTIONS.length > 0;
 
   const inject = useCallback((js) => {
     if (webRef.current) webRef.current.injectJavaScript(js);
@@ -6257,6 +7199,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   // référence pour ne pas rejouer une version périmée de la fonction.
   const fetchKpisRef = useRef(fetchKpis);
   useEffect(() => { fetchKpisRef.current = fetchKpis; }, [fetchKpis]);
+  const kpiRef = useRef(null);
+  useEffect(() => { kpiRef.current = kpi; }, [kpi]);
 
   const fetchProjects = useCallback(() => {
     setProjLoading(true);
@@ -6297,11 +7241,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (!s.length) return s;
       const top = s[s.length - 1];
       fetchDetail(top.type, top.id);
+      // Fiche projet : le bilan analytique se relit aussi (facture ajoutée, bilan indisponible…)
+      if (top.type === 'project') inject(fetchJS('/api/app-project-bilan.php?id=' + top.id, '__akbilan'));
       const cp = s.slice();
       cp[cp.length - 1] = { ...top, loading: true };
       return cp;
     });
-  }, [fetchDetail]);
+  }, [fetchDetail, inject]);
 
   // --- Formulaires natifs (création) ---------------------------------
   const CREATE_ENDPOINTS = {
@@ -6321,12 +7267,15 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     setQuickOpen(false);
     // Un paiement ouvert depuis une fiche campagne garde la fiche dessous : fermer le
     // formulaire (ou revenir en arrière) ramène sur la campagne, pas sur la liste.
-    if (!(type === 'payment' && preId)) clearDetail();
+    // Idem pour la modification d'un client : sa fiche reste dessous et se recharge après l'envoi.
+    if (!(type === 'payment' && preId) && !(type === 'client' && editData)) clearDetail();
     setWebMode(false);
     setFormErr('');
     setForm({ type, edit: editData });
     inject(FETCH_CSRF_JS);
     if (type === 'invoice' || type === 'quote') inject(fetchJS('/api/app-clients.php', '__akpick'));
+    // Délai de paiement par défaut de l'association (default_due_days de la liste des factures)
+    if (type === 'invoice' && !editData && !invoices) inject(FETCH_INVOICES_JS);
     if (type === 'project') { inject(fetchJS('/api/app-folders.php', '__akfolders')); inject(fetchJS('/api/app-members.php', '__akprojmembers')); }
     if (type === 'payment') {
       setPaymentCampaign(preId || 0);   // ouvert depuis une fiche campagne : elle est pré-sélectionnée
@@ -6340,7 +7289,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       setExpenseProject(preId || 0);
       if (!projects) inject(FETCH_PROJECTS_JS);
     }
-  }, [inject, clearDetail, projects]);
+  }, [inject, clearDetail, projects, invoices]);
 
   // Capture/sélection d'une photo + envoi à l'IA (scan de facture)
   const runScan = useCallback(async (source, projectId) => {
@@ -6399,6 +7348,18 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   // --- Écrans du menu « Plus » (natifs) ------------------------------
   const fetchEvents = useCallback(() => { setEventsLoading(true); inject(fetchJS('/api/app-events.php', '__akevents')); }, [inject]);
+  // Suite de l'agenda quand le serveur tronque la liste (has_more → ?from=next_from)
+  const fetchEventsMore = useCallback((from) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(from || ''))) return;
+    setEventsMoreLoading(true);
+    inject(fetchJS('/api/app-events.php?from=' + from, '__akeventsmore'));
+  }, [inject]);
+  // Factures suivantes (pagination ?p= de app-invoices.php)
+  const fetchInvoicesMore = useCallback(() => {
+    const next = (invoices && Number(invoices.page) > 0 ? Number(invoices.page) : 1) + 1;
+    setInvMoreLoading(true);
+    inject(fetchJS('/api/app-invoices.php?p=' + next, '__akinvmore'));
+  }, [inject, invoices]);
   const mailUrl = (v, p) => ('/api/app-mail.php?view=' + encodeURIComponent(v.view) + '&cat=' + encodeURIComponent(v.cat || '')
     + '&q=' + encodeURIComponent(v.q || '') + '&p=' + p).replace(/'/g, '%27');
   const fetchMail = useCallback((v, p) => {
@@ -6460,7 +7421,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const doPlanSave = useCallback((payload, cb) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } fdPlanCloseRef.current = cb || null; setFdPlansMBusy(true); inject(postJS('/api/app-founder-plans.php', { ...payload, csrf }, '__akfdplanact')); }, [csrf, inject]);
   const doPlanDelete = useCallback((id, cb) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } fdPlanCloseRef.current = cb || null; setFdPlansMBusy(true); inject(postJS('/api/app-founder-plans.php', { action: 'delete', plan_id: id, csrf }, '__akfdplanact')); }, [csrf, inject]);
   // Fondateur : projets globaux + activité (lecture seule)
-  const fetchFdProjects = useCallback((f) => { setFdProjectsLoading(true); inject(fetchJS('/api/app-founder-projects.php?status=' + encodeURIComponent(f || ''), '__akfdproj')); }, [inject]);
+  const fetchFdProjects = useCallback((f) => {
+    setFdProjectsLoading(true);
+    // Filtre à plusieurs statuts (« En cours » = active + warning) : une lecture par statut, fusionnées
+    const flt = FC_PROJ_FILTERS.find((x) => x.key === (f || ''));
+    if (flt && flt.statuses) inject(fetchMergedJS(flt.statuses.map((s) => '/api/app-founder-projects.php?status=' + encodeURIComponent(s)), '__akfdproj', 'projects'));
+    else inject(fetchJS('/api/app-founder-projects.php?status=' + encodeURIComponent(f || ''), '__akfdproj'));
+  }, [inject]);
   const openFdProjects = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdProjects(null); setFdProjFilter(''); setMenuScreen('fdprojects'); fetchFdProjects(''); }, [clearDetail, closeForm, fetchFdProjects]);
   const fetchFdActivity = useCallback(() => { setFdActivityLoading(true); inject(fetchJS('/api/app-founder-activity.php', '__akfdactiv')); }, [inject]);
   const openFdActivity = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdActivity(null); setMenuScreen('fdactivity'); fetchFdActivity(); }, [clearDetail, closeForm, fetchFdActivity]);
@@ -6531,12 +7498,39 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const changePassword = useCallback((f) => {
     if (!csrf) { setPwErr('Session en préparation, réessayez.'); inject(FETCH_CSRF_JS); return; }
     setPwErr(''); setPwDone(''); setPwBusy(true);
+    pwSentRef.current = String((f && f.new_password) || '');
     inject(postJS('/api/app-change-password.php', { ...f, csrf }, '__akpwsaved'));
   }, [csrf, inject]);
+
+  // Identifiants mémorisés pour Face ID (SecureStore ak_email / ak_pass) : ils suivent un
+  // changement de mot de passe ou d'e-mail fait dans l'app. Sinon la connexion automatique
+  // suivante envoie les anciens (« Email ou mot de passe incorrect. », un échec de plus
+  // au compteur anti-force brute). Seulement s'ils sont ceux de ce compte (fromEmail).
+  const followCreds = useCallback(async (fromEmail, patch) => {
+    try {
+      const em = await SecureStore.getItemAsync('ak_email');
+      const pw = await SecureStore.getItemAsync('ak_pass');
+      if (!em || !pw) return;   // rien de mémorisé sur cet appareil
+      if (fromEmail && String(em).trim().toLowerCase() !== String(fromEmail).trim().toLowerCase()) return;
+      if (onSaveCreds) await onSaveCreds({ email: patch.email || em, password: patch.password || pw });
+    } catch (e) {}
+  }, [onSaveCreds]);
   const fetchAssemblies = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-assemblies.php', '__akassemblies')); }, [inject]);
   const fetchAttendance = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-attendance.php', '__akattendance')); }, [inject]);
   const fetchBroadcasts = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-broadcasts.php', '__akbroadcasts')); }, [inject]);
   const fetchTickets = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-tickets.php', '__aktickets')); }, [inject]);
+  // Support de l'association : le fil d'un ticket (lecture, réponse) et la création se font sur
+  // les pages du site, comme sur ordinateur. Ouvrir le fil marque les réponses du support comme
+  // lues (support-ticket.php) ; au retour, la liste et le badge Support sont relus.
+  const openSupportWeb = useCallback((path, ticket) => {
+    if (ticket && ticket.unread) {
+      setTickets((d) => (d && Array.isArray(d.items)) ? { ...d, items: d.items.map((x) => x.id === ticket.id ? { ...x, unread: false } : x) } : d);
+      setKpi((k) => (k && k.support_unread > 0) ? { ...k, support_unread: k.support_unread - 1 } : k);
+    }
+    clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(null); setWebMode(true);
+    webReturnRef.current = 'tickets';
+    inject(gotoJS(path));
+  }, [clearDetail, closeForm, inject]);
   const fetchCoach = useCallback(() => { setSecLoading(true); inject(fetchJS('/api/app-coach.php', '__akcoach')); }, [inject]);
   const fetchAccount = useCallback(() => { inject(fetchJS('/api/app-account.php', '__akaccount')); }, [inject]);
 
@@ -6565,6 +7559,19 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     else if (screen === 'settings') { setSettingsErr(''); setAccount(null); fetchAccount(); inject(FETCH_CSRF_JS); }
   }, [clearDetail, closeForm, fetchEvents, fetchChannels, fetchSubInv, fetchQuotes, fetchStats, fetchNotifs, fetchFounder, fetchCoti, fetchGrants, fetchDash, fetchOrgSettings, fetchPeople, fetchAssemblies, fetchAttendance, fetchBroadcasts, fetchTickets, fetchCoach, fetchAccount, fetchMail, mailView, inject]);
 
+  // Retour d'une page du site ouverte depuis un écran natif (fil d'un ticket support) : on
+  // revient sur cet écran, relu, et l'accueil (badge Support) est relu lui aussi.
+  const leaveWebReturn = useCallback(() => {
+    const s = webReturnRef.current;
+    webReturnRef.current = null;
+    if (!s) return false;
+    openMenuScreen(s);
+    fetchKpis(true);
+    return true;
+  }, [openMenuScreen, fetchKpis]);
+  // Toute autre sortie du mode web (onglet, déconnexion…) oublie l'écran de retour
+  useEffect(() => { if (!webMode) webReturnRef.current = null; }, [webMode]);
+
   const onFounderTile = useCallback((key, filter) => {
     if (key === 'associations') openFdOrgs(filter || 'all');
     else if (key === 'create') openFdCreateOrg();
@@ -6587,20 +7594,51 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   const openChannelFn = useCallback((c) => {
     setOpenChannel(c); setChanMsgs(null); fetchChanMsgs(c.id);
-    // Ouvrir un canal = accuser réception des messages internes → on efface le badge Messages
-    setKpi((k) => k ? { ...k, notif_unread: Math.max(0, (k.notif_unread || 0) - (k.msg_unread || 0)), msg_unread: 0 } : k);
-    if (csrf) inject(postJS('/api/app-notif-read.php', { type: 'message', csrf }, '__aknotifread'));
+    // Ouvrir un canal solde les notifications de CE canal seulement (channel_id) ; les badges
+    // reviennent de la réponse (__aknotifread), qui a les vrais compteurs. type 'message' ne sert
+    // qu'à un ancien serveur sans channel_id (le serveur actuel lit channel_id en priorité).
+    setChannels((d) => (d && Array.isArray(d.channels)) ? { ...d, channels: d.channels.map((x) => x.id === c.id ? { ...x, unread: false } : x) } : d);
+    if (csrf) inject(postJS('/api/app-notif-read.php', { channel_id: c.id, type: 'message', csrf }, '__aknotifread'));
   }, [fetchChanMsgs, csrf, inject]);
 
   // --- Notifications : navigation 100% native + marquer lu ---
   const routeNotif = useCallback((link) => {
     const l = (link || '').toLowerCase();
     if (!l) return;
+    // Espace collectivité (/mairie-messages, /mairie-dashboard…) : pages du site, pas d'écran natif
+    const path = String(link).replace(/^https?:\/\/(www\.)?assokit\.fr/i, '');
+    if (/^\/mairie-/i.test(path)) {
+      clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(null);
+      setWebMode(true); inject(gotoJS(path));
+      return;
+    }
+    // Fil d'un ticket (/support/ticket/42, ancien lien /support?id=42) : sa page, puis retour à la liste
+    const tk = /^\/support(?:\/ticket\/|\?id=)(\d+)/i.exec(path);
+    if (tk) { openSupportWeb('/support/ticket/' + tk[1]); return; }
     if (l.indexOf('support') !== -1) { openMenuScreen('tickets'); return; }
+    // Discussion d'un projet (/projet/1519/messages) : c'est un projet, pas la messagerie interne
+    // (réservée aux membres : un suiveur y trouvait un écran fermé). La fiche native n'a pas le fil,
+    // on ouvre donc la page de la discussion ; les autres liens d'un projet ouvrent sa fiche.
+    const pj = /^\/projet\/(\d+)(\/messages)?/i.exec(path);
+    if (pj) {
+      clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(null);
+      if (pj[2]) { setWebMode(true); inject(gotoJS('/projet/' + pj[1] + '/messages')); return; }
+      setActive('projets'); setWebMode(false); pushDetail('project', Number(pj[1]));
+      return;
+    }
     if (l.indexOf('/messages') !== -1) { openMenuScreen('messages'); return; }
     if (l.indexOf('/projet') !== -1) { setMenuScreen(null); setActive('projets'); setWebMode(false); return; }
     // par défaut : on reste dans l'app (jamais de bascule web)
-  }, [openMenuScreen]);
+  }, [openMenuScreen, openSupportWeb, clearDetail, closeForm, inject, pushDetail]);
+
+  // Notification de la plateforme (fondateur, source 'platform' d'api/app-notifications.php) :
+  // écran natif du cockpit désigné par `target`. Sans cible : rien (son lien est une page du cockpit
+  // web ; routeNotif l'aurait pris pour le Support de l'association).
+  const routePlatformNotif = useCallback((t) => {
+    if (!t || typeof t !== 'object') return;
+    if (t.screen === 'fdsupport') { if (t.ticket_id) openFdThread({ id: t.ticket_id }); else openFdSupport('open'); return; }
+    if (t.screen === 'fdorgs') { if (t.org_id) openFdOrgDetail(t.org_id); else openFdOrgs('all'); }
+  }, [openFdThread, openFdSupport, openFdOrgDetail, openFdOrgs]);
 
   // Tap sur une notification push : router vers le bon ecran (le token etait enregistre
   // mais aucun listener ne consommait la reponse -> le tap n'ouvrait rien).
@@ -6629,20 +7667,32 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   const onNotifPress = useCallback((n) => {
     if (!n) return;
+    const isPlatform = n.source === 'platform';
     if (!n.read) {
-      setNotifs((prev) => prev ? { ...prev, unread: Math.max(0, (prev.unread || 0) - 1), items: (prev.items || []).map((it) => it.id === n.id ? { ...it, read: true } : it) } : prev);
-      const isSupport = ((n.link || '').toLowerCase().indexOf('support') !== -1) || n.icon === 'help-buoy';
-      setKpi((k) => k ? { ...k, notif_unread: Math.max(0, (k.notif_unread || 0) - 1), support_unread: isSupport ? Math.max(0, (k.support_unread || 0) - 1) : k.support_unread, msg_unread: !isSupport ? Math.max(0, (k.msg_unread || 0) - 1) : k.msg_unread } : k);
+      setNotifs((prev) => prev ? { ...prev, unread: Math.max(0, (prev.unread || 0) - 1), platform_unread: isPlatform && prev.platform_unread > 0 ? prev.platform_unread - 1 : prev.platform_unread, items: (prev.items || []).map((it) => it.id === n.id ? { ...it, read: true } : it) } : prev);
+      if (isPlatform) {
+        // Notification de la plateforme : comptée dans notif_unread (et platform_unread) seulement
+        setKpi((k) => k ? { ...k, notif_unread: Math.max(0, (k.notif_unread || 0) - 1), platform_unread: Math.max(0, (k.platform_unread || 0) - 1) } : k);
+      } else {
+        // Le badge Support compte les tickets dont une réponse n'est pas lue (comme le site) : lire
+        // une notification ne le change pas, seul le fil du ticket ouvert le fait.
+        const isSupport = ((n.link || '').toLowerCase().indexOf('support') !== -1) || n.icon === 'help-buoy';
+        setKpi((k) => k ? { ...k, notif_unread: Math.max(0, (k.notif_unread || 0) - 1), msg_unread: !isSupport ? Math.max(0, (k.msg_unread || 0) - 1) : k.msg_unread } : k);
+      }
+      // id « p<N> » d'une notification de la plateforme : reconnu par api/app-notif-read.php
       if (csrf) inject(postJS('/api/app-notif-read.php', { id: n.id, csrf }, '__aknotifread'));
     }
-    routeNotif(n.link);
-  }, [csrf, inject, routeNotif]);
+    if (isPlatform) routePlatformNotif(n.target);
+    else routeNotif(n.link);
+  }, [csrf, inject, routeNotif, routePlatformNotif]);
 
   const onMarkAllRead = useCallback(() => {
-    setNotifs((prev) => prev ? { ...prev, unread: 0, items: (prev.items || []).map((it) => ({ ...it, read: true })) } : prev);
-    setKpi((k) => k ? { ...k, notif_unread: 0, msg_unread: 0, support_unread: 0 } : k);
+    // Liste avec les notifications de la plateforme (platform_unread présent) : « all » les solde aussi
+    const merged = !!notifs && notifs.platform_unread !== undefined;
+    setNotifs((prev) => prev ? { ...prev, unread: 0, platform_unread: merged ? 0 : prev.platform_unread, items: (prev.items || []).map((it) => ({ ...it, read: true })) } : prev);
+    setKpi((k) => k ? { ...k, notif_unread: 0, msg_unread: 0, platform_unread: merged ? 0 : k.platform_unread } : k);
     if (csrf) inject(postJS('/api/app-notif-read.php', { all: true, csrf }, '__aknotifread'));
-  }, [csrf, inject]);
+  }, [csrf, inject, notifs]);
 
   const sendMessage = useCallback((chId, content) => {
     if (!csrf) { inject(FETCH_CSRF_JS); return; }
@@ -6666,8 +7716,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const saveAccount = useCallback((f) => {
     if (!csrf) { setSettingsErr('Session en préparation, réessayez.'); inject(FETCH_CSRF_JS); return; }
     setSettingsErr(''); setSettingsBusy(true);
+    acctSentRef.current = { before: (account && account.account && account.account.email) || '', email: String((f && f.email) || '').trim() };
     inject(postJS('/api/app-update-account.php', { ...f, csrf }, '__akaccountsaved'));
-  }, [csrf, inject]);
+  }, [csrf, inject, account]);
 
   const uploadLogo = useCallback(async () => {
     try {
@@ -6687,26 +7738,26 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     inject(postJS('/api/app-coach-generate.php', { csrf }, '__akcoachgen'));
   }, [csrf, inject]);
 
-  const deleteAccount = useCallback(() => {
-    Alert.alert('Supprimer mon compte', 'Cette action est définitive et anonymise vos données (RGPD). Continuer ?', [
-      { text: 'Annuler', style: 'cancel' },
-      { text: 'Supprimer', style: 'destructive', onPress: () => {
-        if (!csrf) { inject(FETCH_CSRF_JS); return; }
-        inject(postJS('/api/app-delete-account.php', { confirm: 'SUPPRIMER', csrf }, '__akdeleted'));
-      } },
-    ]);
+  // La confirmation (avec le mot de passe actuel) est demandée par l'écran Paramètres ;
+  // le serveur vérifie current_password quand il est envoyé.
+  const deleteAccount = useCallback((password) => {
+    if (!csrf) { inject(FETCH_CSRF_JS); Alert.alert('Un instant', 'Session en préparation, réessayez dans un instant.'); return; }
+    const payload = { confirm: 'SUPPRIMER', csrf };
+    if (typeof password === 'string') payload.current_password = password;
+    inject(postJS('/api/app-delete-account.php', payload, '__akdeleted'));
   }, [csrf, inject]);
 
   const submitForm = useCallback((type, data) => {
     if (!csrf) { setFormErr('Session en cours de préparation, réessayez dans un instant.'); inject(FETCH_CSRF_JS); return; }
     setFormErr('');
     setSubmitting(true);
-    const editing = form && form.edit && (type === 'invoice' || type === 'quote' || type === 'event');
+    const editing = form && form.edit && (type === 'invoice' || type === 'quote' || type === 'event' || type === 'client');
     let endpoint = CREATE_ENDPOINTS[type];
     let extra = {};
     if (editing) {
       if (type === 'quote') { endpoint = '/api/app-update-quote.php'; extra = { quote_id: form.edit.invoice.id }; }
       else if (type === 'invoice') { endpoint = '/api/app-update-invoice.php'; extra = { invoice_id: form.edit.invoice.id }; }
+      else if (type === 'client') { extra = { client_id: form.edit.client.id }; }   // même endpoint, avec client_id
       else { endpoint = '/api/app-event-action.php'; extra = { action: 'update', event_id: form.edit.id }; }
     }
     inject(postJS(endpoint, { ...data, ...extra, csrf }));
@@ -6732,6 +7783,23 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (authed && !csrf) inject(FETCH_CSRF_JS);
   }, [authed, csrf, inject]);
 
+  // Agent d'une collectivité : pas de menu « Plus » d'association. Un écran du compte refermé
+  // (paramètres, notifications) ramène à son accueil, pas à ce menu.
+  useEffect(() => {
+    if (isMairie && active === 'menu' && !menuScreen) setActive('accueil');
+    if (isMairie) setQuickOpen(false);
+  }, [isMairie, active, menuScreen]);
+  // Compte sans association : un onglet d'association resté ouvert ramène à l'accueil
+  useEffect(() => {
+    if (noOrg && ['projets', 'people', 'factures'].includes(active)) setActive('accueil');
+  }, [noOrg, active]);
+
+  // Droits connus après coup (rôle de suiveur, can_create des événements) : une feuille « Créer »
+  // déjà ouverte et devenue vide se referme.
+  useEffect(() => {
+    if (!canQuickCreate) setQuickOpen(false);
+  }, [canQuickCreate]);
+
   // Le Fondateur atterrit directement sur son cockpit natif (une seule fois au lancement)
   useEffect(() => {
     if (authed && kpi && kpi.is_founder && !founderInit.current) {
@@ -6739,6 +7807,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       openMenuScreen('founder');
     }
   }, [authed, kpi, openMenuScreen]);
+
+  // Suiveur : le droit de créer un événement (can_create de app-events.php) est demandé une
+  // fois au lancement, pour masquer « Nouvel événement » du menu Créer avant toute visite de
+  // l'agenda. ?to= limite la réponse aux événements du jour.
+  useEffect(() => {
+    if (authed && kpi && kpi.role === 'follower' && evCanCreate === null && !evCapsAsked.current) {
+      evCapsAsked.current = true;
+      inject(fetchJS('/api/app-events.php?to=' + todayISO(), '__akevcaps'));
+    }
+  }, [authed, kpi, evCanCreate, inject]);
 
   // Enregistre le token de notifications push une fois connecté
   useEffect(() => {
@@ -6781,8 +7859,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (Platform.OS !== 'android') return;
     const onBack = () => {
       if (quickOpen) { setQuickOpen(false); return true; }
+      // Mot de passe provisoire : on ne quitte la page qu'en le changeant ou en se déconnectant
+      if (authPage === 'password') return true;
+      if (authPage === '2fa') { leaveAuthPage(); return true; }
       if (form) { if (submitting) return true; closeForm(); return true; } // pas de fermeture pendant l'envoi (double création)
       if (stack.length) { popDetail(); return true; }
+      if (webMode && leaveWebReturn()) return true;
       if (webMode && canGoBack && webRef.current) { webRef.current.goBack(); return true; }
       if (webMode) { setWebMode(false); return true; }
       if (active === 'menu' && openChannel) { setOpenChannel(null); return true; }
@@ -6796,21 +7878,40 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
     // eslint-disable-next-line
-  }, [canGoBack, quickOpen, active, webMode, stack.length, form, submitting, menuScreen, openChannel, mailOpenId, mailClose, popDetail, closeForm, onExitToWelcome]);
+  }, [canGoBack, quickOpen, active, webMode, stack.length, form, submitting, menuScreen, openChannel, mailOpenId, mailClose, popDetail, closeForm, onExitToWelcome, authPage, leaveWebReturn]);
+
+  // Quitte l'étape web de la connexion (2FA abandonnée) : retour à l'écran de connexion natif
+  const leaveAuthPage = () => {
+    authPageRef.current = null; setAuthPage(null); setWebMode(false);
+    inject(gotoJS('/connexion'));
+  };
 
   const onNav = (nav) => {
     setCanGoBack(nav.canGoBack);
     const u = nav.url || '';
     lastUrl.current = u;
-    const isLogin = /\/(connexion|signup|deconnexion|login|mot-de-passe|verifier-email)/.test(u);
+    // Étapes web de la connexion : mot de passe provisoire à remplacer (must_change_password),
+    // code de double authentification. Le site les gère : la page reste affichée (webMode),
+    // sans l'accueil natif ni la barre d'onglets, jusqu'à ce que la WebView la quitte.
+    const step = !isAssokitUrl(u) ? null
+      : (/\/changer-mot-de-passe/.test(u) ? 'password' : (/\/connexion-2fa/.test(u) ? '2fa' : null));
+    if (step) {
+      if (authPageRef.current !== step) { authPageRef.current = step; setAuthPage(step); }
+      loginAttempted.current = false;
+      pendingLogin.current = null;
+      setLoginBusy(false); setLoginErr('');
+      setWebMode(true);
+      setAuthed(false);
+      return;
+    }
+    if (authPageRef.current) {
+      // Étape terminée : la suite (accueil, ou écran de connexion) redevient native
+      authPageRef.current = null; setAuthPage(null); setWebMode(false);
+    }
+    const isLogin = /\/(connexion(?!-2fa)|signup|deconnexion|login|mot-de-passe|verifier-email)/.test(u);
     if (isLogin) {
       setAuthed(false);
-      // Retour sur /connexion après une tentative native = identifiants refusés
-      if (loginAttempted.current && /\/connexion/.test(u)) {
-        loginAttempted.current = false;
-        setLoginBusy(false);
-        setLoginErr('Email ou mot de passe incorrect.');
-      }
+      // Le motif d'un refus de connexion est lu sur la page une fois chargée (onLoadEnd → LOGIN_PAGE_JS)
     } else if (isAssokitUrl(u)) {
       setAuthed(true);
       loginAttempted.current = false;
@@ -6827,7 +7928,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     setLoginBusy(true);
     // Le formulaire web doit être chargé pour que l'injection trouve les champs : si la WebView
     // charge encore (ou n'est pas sur /connexion), on mémorise et on soumet dans onLoadEnd.
-    const onLoginPage = /\/connexion/.test(lastUrl.current || '');
+    // La page du code de double authentification (/connexion-2fa) n'a pas de champs à remplir
+    const onLoginPage = /\/connexion(\.php)?\/?([?#]|$)/.test(lastUrl.current || '');
     if (loading || !onLoginPage) {
       pendingLogin.current = { email, password };
       if (!onLoginPage) inject(gotoJS('/connexion'));
@@ -6856,6 +7958,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (formTimer.current) clearTimeout(formTimer.current);
     if (logoutTimer.current) clearTimeout(logoutTimer.current);
     if (kpiRetryTimer.current) clearTimeout(kpiRetryTimer.current);
+    if (mailSyncTimer.current) clearTimeout(mailSyncTimer.current);
   }, []);
 
   const onMessage = (e) => {
@@ -6863,17 +7966,51 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       const msg = JSON.parse(e.nativeEvent.data);
       // Session serveur perdue (401 'auth' sur n'importe quel appel) : on ne laisse pas l'app « vide »,
       // on repasse sur l'écran de connexion (l'auto-login biométrique se relance).
-      const authLost = msg && typeof msg === 'object' && Object.keys(msg).some((k) => k.indexOf('__ak') === 0 && msg[k] && msg[k].ok === false && msg[k].error === 'auth');
-      if (authLost) {
+      const failKeys = msg && typeof msg === 'object' ? Object.keys(msg).filter((k) => k.indexOf('__ak') === 0 && msg[k] && typeof msg[k] === 'object' && msg[k].ok === false) : [];
+      const authLostKey = failKeys.find((k) => msg[k].error === 'auth');
+      if (authLostKey) {
         setCsrf(''); setAuthed(false); setWebMode(false); setLoggingOut(false);
+        setOrgSuspended(null); authPageRef.current = null; setAuthPage(null);
         autoLoginTried.current = false;
+        // Compte désactivé, association fermée… : le serveur dit pourquoi, l'écran de connexion l'affiche
+        const lostMsg = msg[authLostKey].message;
+        if (typeof lostMsg === 'string' && lostMsg.trim()) setLoginErr(lostMsg.trim());
         inject(gotoJS('/connexion'));
         return;
+      }
+      // Mot de passe provisoire à remplacer (403 'must_change_password') : la page du site
+      // s'affiche, seule, jusqu'au changement (cf. onNav). Une seule fois pour une salve d'appels.
+      const pwKey = failKeys.find((k) => msg[k].error === 'must_change_password');
+      if (pwKey && !authPageRef.current) {
+        authPageRef.current = 'password'; setAuthPage('password');
+        setQuickOpen(false); clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(null);
+        setAuthed(false); setWebMode(true);
+        inject(gotoJS('/changer-mot-de-passe'));
+        // Texte propre à l'app : celui du serveur renvoie vers « Paramètres › Mot de passe », que
+        // cet écran n'offre pas (la page à remplir est déjà ouverte).
+        Alert.alert('Mot de passe provisoire', 'Votre mot de passe est provisoire : choisissez-en un nouveau sur cette page pour continuer.');
+      }
+      // Association suspendue (403 'org_suspended') : avis natif, seuls le compte personnel et la
+      // déconnexion restent accessibles (comme sur le site)
+      const suspKey = failKeys.find((k) => msg[k].error === 'org_suspended');
+      if (suspKey) {
+        setOrgSuspended(msg[suspKey].message || 'L’accès de votre association à Assokit est suspendu. Vos données sont conservées.');
+        setQuickOpen(false);
       }
       // Échec de chargement d'un écran de données (réseau/serveur) : on prévient (au plus une fois / 5 s)
       // au lieu d'afficher silencieusement un écran vide ; le tirer-pour-rafraîchir relance.
       const DATA_KEYS = ['__akevents', '__akchannels', '__akchanmsgs', '__aksubinv', '__akquotes', '__akstats', '__aknotifs', '__akfounder', '__akfdorgs', '__akfdorgdet', '__akfdproj', '__akfdactiv', '__akfdpros', '__akfddir', '__akfdset', '__akfdplansm', '__akfdbill', '__akfdstats', '__akfdblog', '__akfdsup', '__akfdthread', '__akfdcontacts', '__akfdctcthread', '__akfdplans', '__akcoti', '__akgrants', '__akdash', '__akorgset', '__akassemblies', '__akattendance', '__akbroadcasts', '__aktickets', '__akcoach', '__akaccount', '__akmail'];
-      const failedKey = DATA_KEYS.find((k) => msg[k] && msg[k].ok === false);
+      // Agent d'une collectivité (403 'mairie_space') : jamais d'alerte. Sur le chargement d'un écran
+      // d'association, retour à son accueil (espace collectivité), relu sur le serveur s'il n'est pas
+      // encore affiché ; sur une écriture de fond (lecture d'une notification, jeton push…), rien.
+      const mairieKey = failKeys.find((k) => msg[k].error === 'mairie_space');
+      const SCREEN_KEYS = DATA_KEYS.concat(['__akprojects', '__akmembers', '__akclients', '__akinvoices', '__akdetail']);
+      if (mairieKey && SCREEN_KEYS.indexOf(mairieKey) !== -1) {
+        setQuickOpen(false); clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(null); setActive('accueil'); setWebMode(false);
+        if (!(kpiRef.current && kpiRef.current.profile === 'mairie')) fetchKpisRef.current(true);
+      }
+      const blocked = !!(pwKey || suspKey || mairieKey);
+      const failedKey = blocked ? null : DATA_KEYS.find((k) => msg[k] && msg[k].ok === false);
       if (failedKey && Date.now() - (lastLoadAlert.current || 0) > 5000) {
         lastLoadAlert.current = Date.now();
         Alert.alert('Chargement impossible', (msg[failedKey].message) || 'Vérifie ta connexion, puis tire vers le bas pour rafraîchir.');
@@ -6896,6 +8033,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         } else {
           kpiRetry.current = 0;
           setKpi(msg.__akkpi); setKpiError(false); setKpiLoading(false);
+          setOrgSuspended(null);   // accueil chargé : l'association n'est (plus) suspendue
         }
       }
       if (msg && msg.__akprojects) {
@@ -6906,6 +8044,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         if (msg.__akmembers.ok === false) { setPeopleLoading(false); }
         else { setPeople(msg.__akmembers); setPeopleLoading(false); }
       }
+      // Droit d'ajouter un adhérent (can_add), quelle que soit la liste qui l'a rapporté
+      ['__akmembers', '__akprojmembers', '__akpickmembers'].forEach((k) => {
+        if (msg && msg[k] && typeof msg[k].can_add === 'boolean') setMembersCanAdd(msg[k].can_add);
+      });
       if (msg && msg.__akclients) {
         if (msg.__akclients.ok === false) { setPeopleLoading(false); }
         else { setPeople(msg.__akclients); setPeopleLoading(false); }
@@ -6913,6 +8055,20 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akinvoices) {
         if (msg.__akinvoices.ok === false) { setInvLoading(false); }
         else { setInvoices(msg.__akinvoices); setInvLoading(false); }
+      }
+      if (msg && msg.__akinvmore) {
+        setInvMoreLoading(false);
+        const d = msg.__akinvmore;
+        if (d.ok === false || !Array.isArray(d.invoices)) {
+          if (!blocked) Alert.alert('Chargement impossible', 'Vérifie ta connexion, puis réessaie.');
+        } else {
+          // Page suivante ajoutée à la liste (sans doublon si une facture a été créée entre-temps)
+          setInvoices((prev) => {
+            const base = prev && Array.isArray(prev.invoices) ? prev.invoices : [];
+            const seen = new Set(base.map((i) => i.id));
+            return { ...(prev || {}), ...d, invoices: base.concat(d.invoices.filter((i) => !seen.has(i.id))) };
+          });
+        }
       }
       if (msg && msg.__akdetail) {
         setStack((s) => {
@@ -6929,7 +8085,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       if (msg && msg.__akcsrf && msg.__akcsrf.ok) setCsrf(msg.__akcsrf.csrf);
       if (msg && msg.__akpick && msg.__akpick.ok) setPickClients(msg.__akpick.clients || []);
-      if (msg && msg.__akfolders && msg.__akfolders.ok) setFolders(msg.__akfolders.folders || []);
+      if (msg && msg.__akfolders && msg.__akfolders.ok) {
+        const fo = msg.__akfolders;
+        setFolders(fo.folders || []);
+        setFolderRights({
+          create: typeof fo.can_create_folders === 'boolean' ? fo.can_create_folders : null,
+          finances: typeof fo.can_view_finances === 'boolean' ? fo.can_view_finances : null,
+        });
+      }
       if (msg && msg.__akprojmembers && msg.__akprojmembers.ok) setProjMembers(msg.__akprojmembers.members || []);
       if (msg && msg.__akpickcampaigns && msg.__akpickcampaigns.ok) setPickCampaigns(msg.__akpickcampaigns.campaigns || []);
       if (msg && msg.__akpickmembers && msg.__akpickmembers.ok) setPickMembers(msg.__akpickmembers.members || []);
@@ -6947,7 +8110,50 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         if (msg.__akscan.success) setScanData(msg.__akscan);
         else setFormErr(msg.__akscan.error || 'La facture n\'a pas pu être analysée.');
       }
-      if (msg && msg.__akevents) { setEvents(msg.__akevents); setEventsLoading(false); }
+      if (msg && msg.__akevents) {
+        setEvents(msg.__akevents); setEventsLoading(false);
+        if (typeof msg.__akevents.can_create === 'boolean') setEvCanCreate(msg.__akevents.can_create);
+      }
+      if (msg && msg.__akevcaps && typeof msg.__akevcaps.can_create === 'boolean') setEvCanCreate(msg.__akevcaps.can_create);
+      if (msg && msg.__akeventsmore) {
+        setEventsMoreLoading(false);
+        const d = msg.__akeventsmore;
+        if (d.ok === false || !Array.isArray(d.events)) {
+          if (!blocked) Alert.alert('Chargement impossible', 'Vérifie ta connexion, puis réessaie.');
+        } else {
+          setEvents((prev) => {
+            const base = prev && Array.isArray(prev.events) ? prev.events : [];
+            const seen = new Set(base.map((e) => e.id));
+            const added = d.events.filter((e) => !seen.has(e.id));
+            // Rien de nouveau (plus de 300 événements le même jour) : on arrête là
+            return { ...(prev || {}), ...d, events: base.concat(added), has_more: added.length > 0 && d.has_more === true };
+          });
+        }
+      }
+      // Page /connexion lue après chargement (LOGIN_PAGE_JS)
+      if (msg && msg.__akloginpage) {
+        const lp = msg.__akloginpage;
+        if (lp.suspended) {
+          // Identifiants acceptés, association suspendue : la session est ouverte, on affiche l'avis
+          loginAttempted.current = false; pendingLogin.current = null;
+          setLoginBusy(false); setLoginErr('');
+          setOrgSuspended(lp.notice || 'L’accès de votre association à Assokit est suspendu. Vos données sont conservées.');
+        } else {
+          setOrgSuspended(null);
+          if (lp.error) {
+            loginAttempted.current = false;
+            setLoginBusy(false); setLoginErr(String(lp.error));
+          } else if (loginAttempted.current) {
+            loginAttempted.current = false;
+            setLoginBusy(false); setLoginErr('Email ou mot de passe incorrect.');
+          }
+        }
+      }
+      // Nouveau mot de passe choisi sur /changer-mot-de-passe : c'est lui que « rester connecté » retiendra
+      if (msg && msg.__aknewpw && msg.__aknewpw.password) {
+        const em = (pendingCreds.current && pendingCreds.current.email) || (autoCreds && autoCreds.email) || '';
+        if (em) pendingCreds.current = { email: em, password: msg.__aknewpw.password };
+      }
       if (msg && msg.__akchannels) { setChannels(msg.__akchannels); setChannelsLoading(false); }
       if (msg && msg.__akchanmsgs) { setChanMsgs(msg.__akchanmsgs); setChanLoading(false); }
       if (msg && msg.__akmail) {
@@ -6971,6 +8177,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           setMailOpenId((id) => { if (id) fetchMailThread(id); return id; });
         } else if (kind === 'sync') {
           if (r.more) { mailAct('sync', { action: 'sync' }); return; }
+          // Une autre synchro de cette boîte tourne (tâche planifiée, collègue) : on attend
+          // qu'elle finisse (4 s, 10 fois au plus) avant de recharger la liste, comme le site
+          if (r.busy && mailSyncTries.current < 10) {
+            mailSyncTries.current += 1;
+            setMailBusy('sync');
+            if (mailSyncTimer.current) clearTimeout(mailSyncTimer.current);
+            mailSyncTimer.current = setTimeout(() => { mailSyncTimer.current = null; mailAct('sync', { action: 'sync' }); }, 4000);
+            return;
+          }
+          mailSyncTries.current = 0;
           fetchMail(mailView, 1);
           if (typeof r.unread === 'number') setKpi((k) => k ? { ...k, mail_unread: r.unread } : k);
         } else {
@@ -6989,6 +8205,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         if (r.ok) {
           fetchFdOrgs(fdOrgsFilter); fetchFounder();
           if (r.action === 'extend_trial') Alert.alert('Essai prolongé', r.trial_ends ? 'Nouvelle fin d’essai : ' + r.trial_ends + '.' : 'C’est fait.');
+          else if (r.action === 'resiliate') fdResiliated(r);
           else if (r.notice) Alert.alert('Association réactivée', r.notice);
         } else { Alert.alert('Action impossible', r.message || 'Réessaie dans un instant.'); }
       }
@@ -6998,8 +8215,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         const r = msg.__akfdorgedit;
         if (r.ok) {
           if (fdOrgDetailIdRef.current) fetchFdOrgDetail(fdOrgDetailIdRef.current);
-          fetchFdOrgs(fdOrgsFilter); fetchFounder();
+          if (r.action !== 'reset_2fa') { fetchFdOrgs(fdOrgsFilter); fetchFounder(); }
           if (r.action === 'extend_trial') Alert.alert('Essai prolongé', r.trial_ends ? 'Nouvelle fin d’essai : ' + r.trial_ends + '.' : 'C’est fait.');
+          else if (r.action === 'resiliate') fdResiliated(r);
+          else if (r.action === 'reset_2fa') Alert.alert('Double authentification réinitialisée', 'À la prochaine connexion, le mot de passe suffira ; elle pourra être réactivée dans Paramètres › Sécurité.');
           else if (r.plan_changed) Alert.alert('Formule mise à jour', (r.from || '—') + ' → ' + (r.to || '—') + (r.state && r.state.badge && (r.state.badge_tone === 'trial' || r.state.badge_tone === 'expired') ? '\n' + r.state.badge : '') + (r.warning ? '\n\n⚠️ ' + r.warning : ''));
           else if (r.notice) Alert.alert('Association réactivée', r.notice);
         } else { Alert.alert('Action impossible', r.message || 'Réessaie dans un instant.'); }
@@ -7039,13 +8258,19 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         if (r && r.ok) {
           if (r.plans) setFdPlansM({ ok: true, plans: r.plans });
           if (fdPlanCloseRef.current) { fdPlanCloseRef.current(); fdPlanCloseRef.current = null; }
+        } else if (r && r.error === 'forbidden') {
+          Alert.alert('Plans tarifaires', 'Réservé au Fondateur.');
         } else { Alert.alert('Opération impossible', (r && r.message) || 'Réessaie dans un instant.'); }
       }
       if (msg && msg.__akfdbill) { setFdBilling(msg.__akfdbill); setFdBillingLoading(false); }
       if (msg && msg.__akfdpay) {
         setFdBillBusy(0);
-        if (msg.__akfdpay.ok) { fetchFdBilling(fdBillingFilter); fetchFounder(); }
-        else { Alert.alert('Action impossible', 'Réessaie dans un instant.'); }
+        const r = msg.__akfdpay;
+        if (r.ok) {
+          fetchFdBilling(fdBillingFilter); fetchFounder();
+          // Paiement enregistré mais e-mail de confirmation non parti : prévenir le client soi-même
+          if (r.warning) Alert.alert('E-mail non envoyé', String(r.warning));
+        } else { Alert.alert('Action impossible', (r && r.message) || 'Réessaie dans un instant.'); }
       }
       if (msg && msg.__akfdstats) { setFdStats(msg.__akfdstats); setFdStatsLoading(false); }
       if (msg && msg.__akfdblog) { setFdBlog(msg.__akfdblog); setFdBlogLoading(false); }
@@ -7095,7 +8320,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       if (msg && msg.__aknotifread && msg.__aknotifread.ok) {
         const r = msg.__aknotifread;
-        setKpi((k) => k ? { ...k, notif_unread: r.notif_unread, msg_unread: r.msg_unread, support_unread: r.support_unread } : k);
+        // platform_unread (fondateur) : absent d'un ancien serveur → valeur gardée
+        // support_unread : compté sur les tickets (comme l'accueil) par un serveur qui renvoie aussi
+        // platform_unread ; un ancien serveur le comptait sur des notifications jamais créées (0) et
+        // faisait disparaître puis revenir le badge → on garde alors la valeur de l'accueil.
+        const fresh = typeof r.platform_unread === 'number';
+        setKpi((k) => k ? { ...k, notif_unread: r.notif_unread, msg_unread: r.msg_unread,
+          support_unread: fresh && typeof r.support_unread === 'number' ? r.support_unread : k.support_unread,
+          platform_unread: fresh ? r.platform_unread : k.platform_unread } : k);
       }
       if (msg && msg.__akcoti) { setCoti(msg.__akcoti); setCotiLoading(false); }
       if (msg && msg.__akgrants) { setGrantsData(msg.__akgrants); setGrantsLoading(false); }
@@ -7104,7 +8336,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akattendance) { setAttendance(msg.__akattendance); setSecLoading(false); }
       if (msg && msg.__akbroadcasts) { setBroadcasts(msg.__akbroadcasts); setSecLoading(false); }
       if (msg && msg.__aktickets) { setTickets(msg.__aktickets); setSecLoading(false); }
-      if (msg && msg.__akcoach) { setCoach(msg.__akcoach); setSecLoading(false); }
+      // Relecture en échec (réseau) : le rapport déjà affiché (celui qui vient d'être généré) reste
+      if (msg && msg.__akcoach) { setCoach((prev) => (msg.__akcoach.ok === false && prev && prev.report) ? prev : msg.__akcoach); setSecLoading(false); }
       if (msg && msg.__akcreds && msg.__akcreds.email && msg.__akcreds.password) { pendingCreds.current = msg.__akcreds; }
       if (msg && msg.__aklogout) { if (finishLogoutRef.current) finishLogoutRef.current(); }
       if (msg && msg.__akact) {
@@ -7140,9 +8373,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akpdf) {
         setPdfBusy(false);
         if (msg.__akpdf.ok && msg.__akpdf.data) sharePdfData(msg.__akpdf.data);
-        else Alert.alert('PDF', 'Impossible de récupérer le document.');
+        // Réponse du serveur qui n'est pas un PDF (accès réservé, export déjà utilisé…) : son motif
+        else Alert.alert('PDF', (typeof msg.__akpdf.message === 'string' && msg.__akpdf.message.trim()) ? msg.__akpdf.message.trim() : 'Impossible de récupérer le document.');
       }
-      if (msg && msg.__akinvai) { setInvAI(msg.__akinvai && msg.__akinvai.ok ? (msg.__akinvai.analysis || '') : 'Analyse indisponible.'); setInvAILoading(false); }
+      if (msg && msg.__akinvai) {
+        // allowed:false (rôle sans accès à la facturation) : le motif du serveur, pas un texte vide
+        const ia = msg.__akinvai;
+        setInvAI(ia.ok
+          ? (ia.allowed === false ? (ia.message || 'Réservé aux administrateurs et coordinateurs.') : (ia.analysis || 'Analyse indisponible.'))
+          : (ia.message || 'Analyse indisponible.'));
+        setInvAILoading(false);
+      }
       if (msg && msg.__akstatsai) { setStatsCockpit(msg.__akstatsai && msg.__akstatsai.ok ? (msg.__akstatsai.cockpit || null) : null); setStatsCockpitLoading(false); }
       if (msg && msg.__akaccount) {
         // Échec de chargement : on ne laisse pas l'écran Compte en chargement infini → retour au menu (alerte déjà affichée)
@@ -7156,13 +8397,26 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       if (msg && msg.__akpwsaved) {
         setPwBusy(false);
-        if (msg.__akpwsaved.ok) setPwDone(msg.__akpwsaved.message || 'Mot de passe mis à jour.');
-        else setPwErr(msg.__akpwsaved.message || 'Changement impossible.');
+        if (msg.__akpwsaved.ok) {
+          setPwDone(msg.__akpwsaved.message || 'Mot de passe mis à jour.');
+          // Face ID : le nouveau mot de passe remplace l'ancien dans les identifiants mémorisés
+          const npw = pwSentRef.current;
+          if (npw) followCreds((account && account.account && account.account.email) || '', { password: npw });
+        } else setPwErr(msg.__akpwsaved.message || 'Changement impossible.');
+        pwSentRef.current = '';
       }
       if (msg && msg.__akaccountsaved) {
         setSettingsBusy(false);
-        if (msg.__akaccountsaved.ok) { Alert.alert('Enregistré', msg.__akaccountsaved.message || 'Profil mis à jour.'); fetchAccount(); }
-        else setSettingsErr(msg.__akaccountsaved.message || 'Erreur.');
+        if (msg.__akaccountsaved.ok) {
+          // E-mail de connexion modifié (email_changed ; ancien serveur : comparaison avec l'envoi) :
+          // Face ID se connectera avec la nouvelle adresse
+          const sent = acctSentRef.current;
+          const changed = msg.__akaccountsaved.email_changed === true
+            || (msg.__akaccountsaved.email_changed === undefined && !!sent && !!sent.before && !!sent.email && sent.before.toLowerCase() !== sent.email.toLowerCase());
+          if (changed && sent && sent.email) followCreds(sent.before, { email: sent.email });
+          Alert.alert('Enregistré', msg.__akaccountsaved.message || 'Profil mis à jour.'); fetchAccount();
+        } else setSettingsErr(msg.__akaccountsaved.message || 'Erreur.');
+        acctSentRef.current = null;
       }
       if (msg && msg.__aklogosaved) {
         setLogoBusy(false);
@@ -7171,8 +8425,13 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       }
       if (msg && msg.__akcoachgen) {
         setCoachGen(false);
-        if (msg.__akcoachgen.ok) setCoach({ ok: true, allowed: true, report: msg.__akcoachgen.report });
-        else Alert.alert('Coach IA', msg.__akcoachgen.message || 'Génération impossible.');
+        if (msg.__akcoachgen.ok) {
+          const rep = msg.__akcoachgen.report || {};
+          setCoach({ ok: true, allowed: true, report: rep });
+          // Rapport sans semaine (le serveur la renvoie vide) : on relit le rapport enregistré,
+          // qui la porte, pour que la ligne « Semaine … » ne disparaisse pas
+          if (!rep.week) fetchCoach();
+        } else Alert.alert('Coach IA', msg.__akcoachgen.message || 'Génération impossible.');
       }
       if (msg && msg.__akdeleted) {
         if (msg.__akdeleted.ok) { if (onClearCreds) onClearCreds(); Alert.alert('Compte supprimé', msg.__akdeleted.message || 'À bientôt.'); onExitToWelcome(); }
@@ -7194,13 +8453,21 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         const w = msg.__akwrite;
         if (w.ok) {
           const created = form && form.type;
-          const editId = (form && form.edit) ? form.edit.invoice.id : 0;
+          // form.edit : { invoice, lines } pour une facture ou un devis, l'événement lui-même sinon
+          const editId = (form && form.edit && form.edit.invoice) ? form.edit.invoice.id : 0;
+          const editEventId = (created === 'event' && form.edit && form.edit.id) ? form.edit.id : 0;
+          const editClientId = (created === 'client' && form.edit && form.edit.client) ? form.edit.client.id : 0;
           closeForm();
           Alert.alert('C\'est fait ✅', w.message || 'Enregistré avec succès.');
           // Rafraîchir les données concernées
           fetchKpis();
           if (created === 'member') fetchPeople(false);
-          else if (created === 'client') fetchPeople(true);
+          else if (created === 'client') {
+            fetchPeople(true);
+            // Fiche du client restée sous le formulaire : elle se recharge avec les nouvelles coordonnées
+            const top = detailTopRef.current;
+            if (editClientId && top && top.type === 'client' && String(top.id) === String(editClientId)) refreshDetail();
+          }
           else if (created === 'invoice') { fetchInvoices(); if (editId) pushDetail('invoice', editId); }
           else if (created === 'quote') { fetchQuotes(); if (editId) pushDetail('quote', editId); }
           else if (created === 'project') fetchProjects();
@@ -7219,7 +8486,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             fetchCoti(); setActive('menu'); setMenuScreen('cotisations');
             if (w.id) pushDetail('cotisation', w.id);   // on ouvre la campagne créée
           }
-          else if (created === 'event') { fetchEvents(); setActive('menu'); setMenuScreen('agenda'); }
+          else if (created === 'event') {
+            fetchEvents(); setActive('menu'); setMenuScreen('agenda');
+            // On ouvre la fiche : un événement lointain peut être hors de la première page de l'agenda
+            const evId = w.id || editEventId;
+            if (evId) pushDetail('event', evId);
+          }
           else if (created === 'grant') {
             fetchGrants(); setActive('menu'); setMenuScreen('subventions');
             if (w.id) pushDetail('grant', w.id);   // on ouvre le dossier créé (étapes prêtes à cocher)
@@ -7232,7 +8504,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   };
 
   const goTab = (tab) => {
-    if (tab.key === 'add') { setQuickOpen(true); return; }
+    if (tab.key === 'add') { if (canQuickCreate) setQuickOpen(true); return; }
     clearDetail();
     closeForm();
     if (tab.key === 'menu') { setActive('menu'); setWebMode(false); setMenuScreen(null); setOpenChannel(null); return; }
@@ -7305,10 +8577,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     setMenuScreen(null); setOpenChannel(null); clearDetail(); closeForm(); setWebMode(false);
     // Déconnexion serveur via fetch (même session) : on attend la réponse (ou 3 s max) AVANT le
     // démontage, sinon le cookie pouvait rester valide → auto-connexion sans mot de passe.
-    inject(fetchJS('/deconnexion.php', '__aklogout'));
+    // Le jeton push de CET appareil est retiré (sans lui, le serveur retire ceux de tous les
+    // appareils du compte, qui ne reçoivent plus rien jusqu'à leur prochain lancement).
+    inject(fetchJS('/deconnexion.php' + (pushToken ? '?push_token=' + encodeURIComponent(pushToken) : ''), '__aklogout'));
     if (logoutTimer.current) clearTimeout(logoutTimer.current);
     logoutTimer.current = setTimeout(() => finishLogoutRef.current && finishLogoutRef.current(), 3000);
-  }, [inject, clearDetail, closeForm]);
+  }, [inject, clearDetail, closeForm, pushToken]);
 
   // Teardown complet côté racine : efface SecureStore + autoCreds + retour Welcome.
   // (onLogout fait clearCreds + setAutoCreds(null) + setPath(null) ; fallback si absent)
@@ -7334,6 +8608,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const showPeople = active === 'people' && authed && !webMode && !detailTop && !showForm;
   const showDetail = !!detailTop && authed && !webMode && !showForm;
   const showWeb = !showHome && !showProjects && !showInvoices && !showPeople && !showDetail && !showForm && !showMenu;
+  // Association suspendue : seuls les écrans natifs du compte personnel restent ouverts
+  const suspendAllowed = authed && !webMode && !detailTop && !showForm && active === 'menu' && (menuScreen === 'settings' || menuScreen === 'security');
+  const showSuspended = !!orgSuspended && !authPage && !loggingOut && !suspendAllowed;
 
   // Zone de statut : sur l'accueil elle prolonge le dégradé vert de l'en-tête.
   // Deux SafeAreaView superposées — la première (flex: 0) ne couvre que l'encoche,
@@ -7356,12 +8633,19 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             if (/\/(connexion|login|signup|mot-de-passe|verifier-email)/.test(u)) {
               inject(LOGIN_CSS);
             }
-            if (/\/(connexion|login)/.test(u)) {
+            if (/\/changer-mot-de-passe/.test(u)) inject(CAPTURE_NEWPW_JS);
+            // Pas sur /connexion-2fa : ni capture ni connexion automatique sur la page du code
+            if (/\/(connexion(?!-2fa)|login)/.test(u)) {
               inject(CAPTURE_CREDS_JS);
               if (pendingLogin.current) {
                 const c = pendingLogin.current; pendingLogin.current = null;
                 inject(autoLoginJS(c.email, c.password));
-              } else if (autoCreds && !autoLoginTried.current) { autoLoginTried.current = true; inject(autoLoginJS(autoCreds.email, autoCreds.password)); }
+              } else {
+                // Page /connexion chargée sans soumission en attente : on lit le motif d'un refus
+                // (ou l'avis de suspension) affiché par le serveur
+                if (/\/connexion(\.php)?\/?([?#]|$)/.test(u)) inject(LOGIN_PAGE_JS);
+                if (autoCreds && !autoLoginTried.current) { autoLoginTried.current = true; inject(autoLoginJS(autoCreds.email, autoCreds.password)); }
+              }
             }
             if (!webMode && authed && active === 'accueil') fetchKpis();
           }}
@@ -7401,11 +8685,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         />
         {showHome && (
           <View style={styles.homeOverlay}>
-            <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} profile={profile} error={kpiError}
-              onQuick={onQuick} quickActions={QUICK_ACTIONS} onNotifs={() => openMenuScreen('notifications')}
-              notifCount={(kpi && kpi.notif_unread) || 0}
-              showMail={!!kpi && (kpi.mail_access === true || (kpi.mail_access === undefined && canManageOrg))}
-              onMail={() => openMenuScreen('mail')} />
+            {isMairie ? (
+              <NativeMairieHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} notifCount={notifCount}
+                onNotifs={() => openMenuScreen('notifications')} onAccount={() => openMenuScreen('settings')} onLogout={doLogout}
+                onOpenSpace={(p) => { clearDetail(); closeForm(); setMenuScreen(null); setWebMode(true); inject(gotoJS(/^\/[A-Za-z0-9]/.test(String(p)) ? p : '/mairie-dashboard')); }} />
+            ) : (
+              <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} profile={profile} error={kpiError}
+                onQuick={onQuick} quickActions={QUICK_ACTIONS} onNotifs={() => openMenuScreen('notifications')}
+                notifCount={notifCount}
+                showMail={!!kpi && (kpi.mail_access === true || (kpi.mail_access === undefined && canManageOrg))}
+                onMail={() => openMenuScreen('mail')} />
+            )}
           </View>
         )}
         {showProjects && (
@@ -7416,9 +8706,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
         {showInvoices && (
           <View style={styles.homeOverlay}>
-            <NativeInvoices data={invoices} loading={invLoading} onRefresh={fetchInvoices} onOpen={openInvoice} onNew={isAdminOrg ? () => openForm('invoice') : undefined}
+            <NativeInvoices data={invoices} loading={invLoading} onRefresh={fetchInvoices} onOpen={openInvoice} onNew={canBill ? () => openForm('invoice') : undefined}
               onBack={TABS.some((t) => t.key === 'factures') ? undefined : backToHub}
-              aiText={invAI} aiLoading={invAILoading} onAnalyze={onAnalyzeInvoices} />
+              aiText={invAI} aiLoading={invAILoading} onAnalyze={onAnalyzeInvoices}
+              onMore={fetchInvoicesMore} moreLoading={invMoreLoading} />
           </View>
         )}
         {showPeople && (
@@ -7429,27 +8720,30 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               loading={peopleLoading}
               onRefresh={() => fetchPeople(isTpe)}
               onOpen={openPerson}
-              onNew={(isTpe ? isAdminOrg : canManageOrg) ? () => openForm(isTpe ? 'client' : 'member') : undefined}
+              onNew={(isTpe ? canBill : canAddMember) ? () => openForm(isTpe ? 'client' : 'member') : undefined}
             />
           </View>
         )}
         {showForm && (
           <View style={styles.homeOverlay}>
             {form.type === 'member' && (
-              <MemberForm onBack={closeForm} onSubmit={(d) => submitForm('member', d)} submitting={submitting} error={formErr} canAdmin={(kpi && kpi.role) === 'admin'} />
+              <MemberForm onBack={closeForm} onSubmit={(d) => submitForm('member', d)} submitting={submitting} error={formErr} canAdmin={(kpi && kpi.role) === 'admin'} canCoord={canManageOrg} />
             )}
             {form.type === 'client' && (
-              <ClientForm onBack={closeForm} onSubmit={(d) => submitForm('client', d)} submitting={submitting} error={formErr} />
+              <ClientForm edit={form.edit} onBack={closeForm} onSubmit={(d) => submitForm('client', d)} submitting={submitting} error={formErr} />
             )}
             {(form.type === 'invoice' || form.type === 'quote') && (
-              <BillingForm mode={form.type} edit={form.edit} onBack={closeForm} onSubmit={(d) => submitForm(form.type, d)} submitting={submitting} error={formErr} clients={pickClients} />
+              <BillingForm mode={form.type} edit={form.edit} onBack={closeForm} onSubmit={(d) => submitForm(form.type, d)} submitting={submitting} error={formErr} clients={pickClients}
+                defaultDueDays={invoices && invoices.default_due_days} />
             )}
             {form.type === 'project' && (
-              <ProjectForm onBack={closeForm} onSubmit={(d) => submitForm('project', d)} submitting={submitting} error={formErr} folders={folders} members={projMembers} />
+              <ProjectForm onBack={closeForm} onSubmit={(d) => submitForm('project', d)} submitting={submitting} error={formErr} folders={folders} members={projMembers}
+                canCreateFolders={folderRights.create} canViewFinances={folderRights.finances} />
             )}
             {form.type === 'expense' && (
               <ExpenseForm onBack={closeForm} onSubmit={(d) => submitForm('expense', d)} submitting={submitting} error={formErr}
-                projects={(projects && projects.projects) || []} preProject={expenseProject}
+                projects={((projects && projects.projects) || []).filter((pr) => pr.can_add_expense !== false)}
+                teamOnly={((projects && projects.projects) || []).some((pr) => pr.can_add_expense === false)} preProject={expenseProject}
                 scanData={scanData} scanning={scanning} onScan={pickAndScan} />
             )}
             {form.type === 'campaign' && (
@@ -7471,22 +8765,27 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         {showMenu && (
           <View style={styles.homeOverlay}>
             {menuScreen === 'agenda' ? (
-              <NativeAgenda data={events} loading={eventsLoading} onRefresh={fetchEvents} onOpen={(id) => pushDetail('event', id)} onNew={() => openForm('event')} onBack={() => setMenuScreen(null)} />
+              <NativeAgenda data={events} loading={eventsLoading} onRefresh={fetchEvents} onOpen={(id) => pushDetail('event', id)}
+                onNew={canCreateEvent ? () => openForm('event') : undefined} onBack={() => setMenuScreen(null)}
+                onMore={fetchEventsMore} moreLoading={eventsMoreLoading} />
             ) : menuScreen === 'subinvoices' ? (
               <NativeSubInvoices data={subInv} loading={subInvLoading} onRefresh={fetchSubInv} onBack={() => setMenuScreen(null)} onWeb={openWeb} trial={orgTrialInfo(kpi)} />
             ) : menuScreen === 'devis' ? (
-              <NativeQuotes data={quotes} loading={quotesLoading} onRefresh={fetchQuotes} onOpen={(id) => pushDetail('quote', id)} onNew={canManageOrg ? () => openForm('quote') : undefined} onBack={() => setMenuScreen(null)} />
+              <NativeQuotes data={quotes} loading={quotesLoading} onRefresh={fetchQuotes} onOpen={(id) => pushDetail('quote', id)} onNew={canBillQuotes ? () => openForm('quote') : undefined} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'stats' ? (
               <NativeStats data={stats} loading={statsLoading} onRefresh={fetchStats} onBack={() => setMenuScreen(null)}
                 cockpit={statsCockpit} cockpitLoading={statsCockpitLoading} onCockpit={onCockpit} />
             ) : menuScreen === 'members' ? (
               <NativePeople mode="members" data={people} loading={peopleLoading} onRefresh={() => fetchPeople(false)}
-                onOpen={(id) => pushDetail('member', id)} onNew={canManageOrg ? () => openForm('member') : undefined} onBack={() => setMenuScreen(null)} />
+                onOpen={(id) => pushDetail('member', id)} onNew={canAddMember ? () => openForm('member') : undefined} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'clients' ? (
               <NativePeople mode="clients" data={people} loading={peopleLoading} onRefresh={() => fetchPeople(true)}
-                onOpen={(id) => pushDetail('client', id)} onNew={isAdminOrg ? () => openForm('client') : undefined} onBack={() => setMenuScreen(null)} />
+                onOpen={(id) => pushDetail('client', id)} onNew={canBill ? () => openForm('client') : undefined} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'notifications' ? (
-              <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onPress={onNotifPress} onMarkAllRead={onMarkAllRead} onBack={() => setMenuScreen(null)} />
+              <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onPress={onNotifPress} onMarkAllRead={onMarkAllRead}
+                onBack={() => setMenuScreen(null)}
+                platformWeb={notifs && notifs.ok !== false && notifs.platform_unread === undefined && kpi ? (kpi.platform_unread || 0) : 0}
+                onPlatformWeb={() => openWeb('/super-admin/notifications')} />
             ) : menuScreen === 'cotisations' ? (
               <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)}
                 onNew={() => openForm('payment')} onNewCampaign={() => openForm('campaign')} canManage={canManageOrg} onOpen={(id) => pushDetail('cotisation', id)} />
@@ -7521,7 +8820,15 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <GatedList title="Support" data={tickets} loading={secLoading} onRefresh={fetchTickets} onBack={() => setMenuScreen(null)}
                 itemsKey="items" emptyIcon="help-buoy-outline" emptyLabel="Aucun ticket"
                 renderStats={(s) => (<View style={styles.miniKpiRow}><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.open || 0}</Text><Text style={styles.miniKpiLbl}>Ouverts</Text></View><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.nb || 0}</Text><Text style={styles.miniKpiLbl}>Total</Text></View></View>)}
-                renderItem={(it) => (<StatusItemCard key={it.id} title={it.title} sub={it.date} statusLabel={it.status_label} kind={it.status_kind} />)} />
+                renderTop={() => (
+                  <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, { marginTop: 0, marginBottom: 14 }]} activeOpacity={0.85} onPress={() => openSupportWeb('/support/nouveau')}>
+                    <Ionicons name="create-outline" size={18} color="#fff" />
+                    <Text style={styles.dPrimaryBtnTxt}>Écrire au support</Text>
+                  </TouchableOpacity>
+                )}
+                renderItem={(it) => (<StatusItemCard key={it.id} title={it.title} sub={it.unread ? (it.date ? it.date + ' · ' : '') + 'Nouvelle réponse du support' : it.date}
+                  statusLabel={it.status_label} kind={it.status_kind} unread={!!it.unread}
+                  onPress={() => openSupportWeb('/support/ticket/' + it.id, it)} />)} />
             ) : menuScreen === 'coach' ? (
               <NativeCoach data={coach} loading={secLoading} generating={coachGen} onGenerate={generateCoach} onRefresh={fetchCoach} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'settings' ? (
@@ -7540,7 +8847,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 <NativeMailbox data={mail} loading={mailLoading} view={mailView} syncing={mailBusy === 'sync'}
                   onView={mailSetView} onSearch={mailSearch} onOpen={mailOpen}
                   onMore={() => fetchMail(mailView, mailPage.current + 1)}
-                  onSync={() => mailAct('sync', { action: 'sync' })}
+                  onSync={() => {
+                    if (mailSyncTimer.current) { clearTimeout(mailSyncTimer.current); mailSyncTimer.current = null; }
+                    mailSyncTries.current = 0; mailAct('sync', { action: 'sync' });
+                  }}
                   onConnect={(url) => Linking.openURL(url)}
                   onBack={() => setMenuScreen(null)} />
               )
@@ -7556,7 +8866,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 onBack={() => { setMenuScreen(null); setActive('accueil'); }}
                 hasAsso={!!(kpi && kpi.org_name)} onGotoAsso={() => { setMenuScreen(null); setActive('accueil'); }}
                 onLogout={doLogout} onTile={onFounderTile} onNotifs={() => openMenuScreen('notifications')}
-                notifCount={(kpi && kpi.notif_unread) || 0} onOpenOrg={openFdOrgDetail} />
+                notifCount={notifCount} onOpenOrg={openFdOrgDetail} />
             ) : menuScreen === 'fdorgs' ? (
               <NativeFounderOrgs data={fdOrgs} loading={fdOrgsLoading} filter={fdOrgsFilter}
                 onFilter={(f) => { setFdOrgs(null); setFdOrgsFilter(f); fetchFdOrgs(f); }}
@@ -7629,14 +8939,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 initials={kpi && kpi.org_initials}
                 logo={kpi && kpi.org_logo}
                 canManage={canManageOrg}
+                canBill={canBill}
                 canMail={!!kpi && (kpi.mail_access === true || (kpi.mail_access === undefined && canManageOrg))}
                 isFounder={!!(kpi && kpi.is_founder)}
                 isAdmin={!!(kpi && (kpi.role === 'admin' || kpi.is_founder))}
                 isTpe={isTpe}
-                counts={{ msg: kpi && kpi.msg_unread, support: kpi && kpi.support_unread, notif: kpi && kpi.notif_unread, mail: kpi && kpi.mail_unread }}
+                isFollower={isFollower}
+                counts={{ msg: kpi && kpi.msg_unread, support: kpi && kpi.support_unread, notif: notifCount, mail: kpi && kpi.mail_unread }}
                 onNav={onMoreNav}
                 onLogout={doLogout}
                 trial={orgTrialInfo(kpi)}
+                noOrg={noOrg}
               />
             )}
           </View>
@@ -7644,23 +8957,25 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         {showDetail && (
           <View style={styles.homeOverlay}>
             {detailTop.type === 'project' && (
-              <NativeProjectDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onAddExpense={onAddExpense} onSharePdf={sharePdf} pdfBusy={pdfBusy} />
+              <NativeProjectDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} onAddExpense={isFollower ? undefined : onAddExpense} onSharePdf={sharePdf} pdfBusy={pdfBusy} />
             )}
             {detailTop.type === 'member' && (
               <NativeMemberDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onOpenProject={(id) => pushDetail('project', id)} onWeb={openWeb} />
             )}
             {detailTop.type === 'client' && (
-              <NativeClientDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onOpenInvoice={(id) => pushDetail('invoice', id)} onWeb={openWeb} />
+              <NativeClientDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onOpenInvoice={(id) => pushDetail('invoice', id)} onWeb={openWeb}
+                onEdit={canBill ? (c) => openForm('client', 0, { client: c }) : undefined} />
             )}
             {detailTop.type === 'invoice' && (
               <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} busy={actBusy}
                 onEdit={(dd, q) => openForm(q ? 'quote' : 'invoice', 0, { invoice: dd.invoice, lines: dd.lines })}
-                onAction={isAdminOrg ? (act) => runAction('/api/app-invoice-action.php', { invoice_id: detailTop.id, action: act }, act) : null} />
+                onOpenInvoice={(id) => pushDetail('invoice', id)}
+                onAction={canBill ? (act, extra) => runAction('/api/app-invoice-action.php', { ...(extra || {}), invoice_id: detailTop.id, action: act }, act) : null} />
             )}
             {detailTop.type === 'quote' && (
               <NativeInvoiceDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} onWeb={openWeb} busy={actBusy}
                 onEdit={(dd, q) => openForm(q ? 'quote' : 'invoice', 0, { invoice: dd.invoice, lines: dd.lines })}
-                onAction={canManageOrg ? (act) => runAction('/api/app-quote-action.php', { quote_id: detailTop.id, action: act }, act) : null} />
+                onAction={canBillQuotes ? (act) => runAction('/api/app-quote-action.php', { quote_id: detailTop.id, action: act }, act) : null} />
             )}
             {detailTop.type === 'event' && (
               <NativeEventDetail entry={detailTop} onBack={popDetail} onRefresh={refreshDetail} busy={actBusy}
@@ -7683,13 +8998,24 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             <ActivityIndicator size="large" color={BRAND} />
           </View>
         )}
-        {showWeb && webMode && (
-          <TouchableOpacity accessibilityRole="button" style={styles.floatBack} activeOpacity={0.85}
-            onPress={() => { if (canGoBack && webRef.current) webRef.current.goBack(); else { setWebMode(false); setMenuScreen(null); } }}>
+        {showWeb && webMode && authPage === 'password' ? (
+          // Mot de passe provisoire : pas de retour vers l'app avant le changement
+          <TouchableOpacity accessibilityRole="button" style={styles.floatBack} activeOpacity={0.85} onPress={doLogout}>
+            <Ionicons name="log-out-outline" size={18} color="#DC2626" />
+            <Text style={[styles.floatBackTxt, { color: '#DC2626', marginLeft: 4 }]}>Se déconnecter</Text>
+          </TouchableOpacity>
+        ) : showWeb && webMode && authPage === '2fa' ? (
+          <TouchableOpacity accessibilityRole="button" style={styles.floatBack} activeOpacity={0.85} onPress={leaveAuthPage}>
             <Ionicons name="chevron-back" size={20} color={INK} />
             <Text style={styles.floatBackTxt}>Retour</Text>
           </TouchableOpacity>
-        )}
+        ) : showWeb && webMode ? (
+          <TouchableOpacity accessibilityRole="button" style={styles.floatBack} activeOpacity={0.85}
+            onPress={() => { if (leaveWebReturn()) return; if (canGoBack && webRef.current) webRef.current.goBack(); else { setWebMode(false); setMenuScreen(null); } }}>
+            <Ionicons name="chevron-back" size={20} color={INK} />
+            <Text style={styles.floatBackTxt}>Retour</Text>
+          </TouchableOpacity>
+        ) : null}
         {!authed && !webMode && (
           <View style={styles.homeOverlay}>
             <NativeLogin
@@ -7702,6 +9028,18 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               hasFaceId={!!autoCreds}
               onFaceId={() => autoCreds && submitLogin(autoCreds.email, autoCreds.password)}
             />
+          </View>
+        )}
+        {showSuspended && (
+          <View style={styles.homeOverlay}>
+            <SuspendedScreen message={orgSuspended}
+              onAccount={() => { if (!authed) setAuthed(true); openMenuScreen('settings'); }}
+              onRetry={() => {
+                setOrgSuspended(null);
+                if (authed) { setMenuScreen(null); setActive('accueil'); fetchKpis(); }
+                else inject(gotoJS('/connexion'));
+              }}
+              onLogout={doLogout} />
           </View>
         )}
       </View>
@@ -7722,13 +9060,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       {/* Barre d'onglets + bouton « + » FLOTTANT : le « + » est un frère de la barre,
           posé par-dessus son bord supérieur (maquette 22:2). S'il était un enfant de
           la barre, celle-ci le rognerait — c'est le défaut corrigé sur la maquette. */}
-      {authed && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans', 'fdsettings', 'fdprospects', 'fddir'].includes(menuScreen) && (
+      {/* Agent d'une collectivité : ni onglets ni « Créer » (écrans d'association fermés, 403 'mairie_space') */}
+      {authed && !orgSuspended && !isMairie && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans', 'fdsettings', 'fdprospects', 'fddir'].includes(menuScreen) && (
       <View style={styles.tabDock}>
         <View style={styles.tabBar}>
           {TABS.map((tab) => {
-            if (tab.key === 'add') return <View key={tab.key} style={styles.tabSpacer} />;
+            if (tab.key === 'add') return canQuickCreate ? <View key={tab.key} style={styles.tabSpacer} /> : null;
             const isActive = active === tab.key;
-            const tabBadge = tab.key === 'menu' ? (kpi && kpi.notif_unread) || 0 : 0;
+            const tabBadge = tab.key === 'menu' ? notifCount : 0;
             return (
               <TouchableOpacity key={tab.key} style={styles.tab} onPress={() => goTab(tab)} activeOpacity={0.7}
                 accessibilityRole="tab" accessibilityState={{ selected: isActive }}
@@ -7742,7 +9081,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             );
           })}
         </View>
-        <CreateFab open={quickOpen} still={stillMotion} onPress={() => setQuickOpen((v) => !v)} />
+        {canQuickCreate && <CreateFab open={quickOpen} still={stillMotion} onPress={() => setQuickOpen((v) => !v)} />}
       </View>
       )}
 
@@ -7792,6 +9131,12 @@ export default function App() {
   const [pushToken, setPushToken] = useState(null);
   const [autoCreds, setAutoCreds] = useState(null);
   const [ready, setReady] = useState(false);
+  // Identifiants (re)mémorisés : connexion réussie, mot de passe ou e-mail changé dans l'app.
+  // Ceux du Face ID de cette session suivent aussi (reconnexion après une session expirée).
+  const onSaveCreds = useCallback((c) => {
+    setAutoCreds((a) => (a && c && c.email && c.password ? { email: c.email, password: c.password } : a));
+    return saveCreds(c);
+  }, []);
 
   // Au lancement : si des identifiants sont mémorisés, déverrouiller par Face ID puis auto-login
   useEffect(() => {
@@ -7853,7 +9198,7 @@ export default function App() {
       startPath={path}
       pushToken={pushToken}
       autoCreds={autoCreds}
-      onSaveCreds={saveCreds}
+      onSaveCreds={onSaveCreds}
       onClearCreds={clearCreds}
       onLogout={async () => { await clearCreds(); setAutoCreds(null); setPath(null); }}
       onExitToWelcome={() => setPath(null)}
@@ -7923,6 +9268,10 @@ const styles = StyleSheet.create({
   fgLinkTxt: { flex: 1, fontSize: 14, fontWeight: '600', color: INK },
   fgPrimary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 22, marginHorizontal: 20, paddingVertical: 15, borderRadius: R_BTN, backgroundColor: BRAND, ...SH_BTN },
   fgPrimaryTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  mairieCard: { marginTop: -28, padding: 18, overflow: 'visible', ...SH_CARD },
+  mairieIc: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  mairieTitle: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 12 },
+  mairieMsg: { fontSize: 13.5, lineHeight: 20, color: MUTE, marginTop: 6 },
 
   /* Accueil natif */
   homeAurora: { flex: 1, backgroundColor: CANVAS },
@@ -8055,6 +9404,10 @@ const styles = StyleSheet.create({
   stepTitle: { fontSize: 14.5, fontWeight: '600', color: INK },
   stepDone: { color: '#8A968F', textDecorationLine: 'line-through' },
   stepDesc: { fontSize: 13, color: MUTE, marginTop: 3 },
+  stepMeta: { fontSize: 12, color: '#5F6D66', marginTop: 5, fontWeight: '500' },
+  stepNote: { marginTop: 8, backgroundColor: '#F1F8F4', borderRadius: 10, borderLeftWidth: 3, borderLeftColor: '#10B981', paddingVertical: 8, paddingHorizontal: 10 },
+  stepNoteLbl: { fontSize: 11, fontWeight: '800', color: '#047857', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 },
+  stepNoteTxt: { fontSize: 13, lineHeight: 18, color: INK },
   dHero: { alignItems: 'center', paddingTop: 6, paddingBottom: 4 },
   dHeroAvatar: { width: 76, height: 76, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   dHeroAvatarTxt: { color: '#fff', fontSize: 28, fontWeight: '800' },
@@ -8683,6 +10036,11 @@ const styles = StyleSheet.create({
   credLbl: { fontSize: 12, fontWeight: '700', color: '#8A968F', textTransform: 'uppercase', letterSpacing: 0.4 },
   credVal: { fontSize: 16, fontWeight: '800', color: INK, marginTop: 3 },
   credDivider: { height: 1, backgroundColor: '#E7EDEA', marginVertical: 12 },
+  pendingCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: '#FFFBEB', borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: '#FDE68A' },
+  pendingTitle: { fontSize: 14, fontWeight: '800', color: '#92400E' },
+  pendingSub: { fontSize: 12.5, lineHeight: 18, color: '#78350F', marginTop: 3 },
+  od2faBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 9, borderRadius: 9, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A' },
+  od2faTxt: { fontSize: 11.5, fontWeight: '700', color: '#B45309' },
 
   /* Support thread */
   supHead: { marginBottom: 14 },

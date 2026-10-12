@@ -37,6 +37,11 @@ const DASHBOARD = {
     { kind: 'invoice', id: 18, time: '—', title: 'Facture FA-2026-018', sub: "Échéance aujourd'hui · 840 €", color: '#2563EB' },
     { kind: 'grant', id: 4, time: '—', title: 'Fonds de développement associatif', sub: 'À déposer avant le ' + fr(d(21)), color: '#B45309' },
   ],
+  mairie: null,
+  platform_unread: 0,
+  // Droits du rôle (api/app-dashboard.php) : faux → montants à null, cartes masquées par l'appli
+  can_view_finances: true,
+  can_access_billing: true,
   kpis: {
     projets_actifs: 7,
     membres: 248,
@@ -49,8 +54,27 @@ const DASHBOARD = {
     factures: 41,
     ca_paid: 18420,
     impayes: 2340,
+    a_encaisser: 5180,
   },
 };
+
+/* Accueil vu par d'autres rôles : ?role=membre ou ?role=suiveur dans l'adresse de l'aperçu.
+   Comme le serveur : sans droit finances ni facturation, montants à null ; un suiveur ne
+   voit ni les adhérents ni la messagerie. */
+const NO_MONEY = { budget_used: null, budget_planned: null, clients: null, devis_encours: null, factures: null, ca_paid: null, impayes: null, a_encaisser: null };
+const DASHBOARD_ROLES = {
+  membre: { ...DASHBOARD, role: 'member', can_view_finances: false, can_access_billing: false, kpis: { ...DASHBOARD.kpis, ...NO_MONEY },
+    head_line: '3 échéances cette semaine', today: DASHBOARD.today.filter((t) => t.kind === 'event') },
+  suiveur: { ...DASHBOARD, role: 'follower', can_create_projects: false, msg_unread: 0, can_view_finances: false, can_access_billing: false,
+    kpis: { ...DASHBOARD.kpis, ...NO_MONEY, projets_actifs: 2, membres: null, membres_nouveaux: null, evenements: 2 },
+    head_line: '1 échéance cette semaine', today: DASHBOARD.today.filter((t) => t.kind === 'event') },
+};
+function previewRole() {
+  try {
+    const m = /[?&]role=(membre|suiveur)\b/.exec((typeof window !== 'undefined' && window.location && window.location.search) || '');
+    return m ? m[1] : null;
+  } catch (e) { return null; }
+}
 
 const PROJECTS = {
   ok: true,
@@ -77,9 +101,12 @@ const PROJECT_DETAILS = {
       referent: { name: 'Haoua Ali', initials: 'HA' },
     },
     steps: [
-      { id: 1, title: 'Déposer la demande d’occupation du domaine public', description: 'Dossier mairie', done: true },
-      { id: 2, title: 'Signer les contrats des trois groupes', description: '', done: true },
-      { id: 3, title: 'Commander la scène et la sono', description: 'Devis retenu : 3 200 €', done: true },
+      { id: 1, title: 'Déposer la demande d’occupation du domaine public', description: 'Dossier mairie', done: true,
+        done_at: '2026-09-14T10:32:00+02:00', done_by: 'Haoua Ali', note: 'Dossier déposé en mairie, récépissé n° 2026-418 reçu par e-mail.' },
+      { id: 2, title: 'Signer les contrats des trois groupes', description: '', done: true,
+        done_at: '2026-09-21T18:05:00+02:00', done_by: 'Marc Dubois', note: '' },
+      { id: 3, title: 'Commander la scène et la sono', description: 'Devis retenu : 3 200 €', done: true,
+        done_at: '2026-10-02T09:15:00+02:00', done_by: 'Haoua Ali', note: 'Bon de commande signé, livraison le vendredi matin.' },
       { id: 4, title: 'Recruter 20 bénévoles supplémentaires', description: '', done: false },
       { id: 5, title: 'Boucler le plan de sécurité', description: 'À valider avec la préfecture', done: false },
       { id: 6, title: 'Lancer la communication', description: '', done: false },
@@ -397,7 +424,7 @@ const ORG_SETTINGS = {
     org_name: 'Latitude 91', legal_name: 'Association Latitude 91', legal_form: 'Association loi 1901',
     siren: '812345678', siret: '81234567800019', rna_number: 'W913004512',
     billing_address_street: '12 rue des Mares', billing_address_complement: 'Local associatif',
-    billing_address_zip: '91000', billing_address_city: 'Évry-Courcouronnes', billing_address_country: 'France',
+    billing_address_zip: '91000', billing_address_city: 'Évry-Courcouronnes', billing_address_country: 'FR',
     vat_subject: false, vat_number: '',
     billing_email: 'compta@exemple.fr', billing_phone: '01 60 12 34 56',
     branding_primary_color: '#059669', branding_secondary_color: '#6366F1',
@@ -456,6 +483,11 @@ export function mockResponse(url, isPost) {
   if (isPost) {
     // Les écritures réussissent, sans rien persister : l'aperçu est hors ligne.
     return { ok: true, id: Math.floor(Math.random() * 900) + 100, message: 'Aperçu hors ligne : rien n’est enregistré.' };
+  }
+  const role = previewRole();
+  if (role && path === '/api/app-dashboard.php') return DASHBOARD_ROLES[role];
+  if (role === 'suiveur' && path === '/api/app-dashboard-full.php') {
+    return { ...DASHBOARD_FULL, kpis: { ...DASHBOARD_FULL.kpis, members: null, new_members: null } };
   }
   const parId = ROUTES_PAR_ID[path];
   if (parId) {

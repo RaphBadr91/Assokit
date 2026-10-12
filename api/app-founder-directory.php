@@ -37,9 +37,10 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method !== 'POST') {
     try {
         // Vue liste : département + catégorie
-        if (!empty($_GET['dept'])) {
-            $dept = (string) $_GET['dept'];
-            $cat  = (string) ($_GET['category'] ?? '');
+        // Paramètres en tableau (?dept[]=…) : ignorés, sans avertissement
+        if (!empty($_GET['dept']) && is_string($_GET['dept'])) {
+            $dept = $_GET['dept'];
+            $cat  = (is_string($_GET['category'] ?? null) ? $_GET['category'] : '');
             $page = max(1, (int) ($_GET['page'] ?? 1));
             $per  = 50; $off = ($page - 1) * $per;
             $where = "dept_code = ?"; $args = [$dept];
@@ -62,8 +63,8 @@ if ($method !== 'POST') {
         }
 
         // Vue région : ses départements comptés (+ répartition par catégorie)
-        if (!empty($_GET['region'])) {
-            $region = (string) $_GET['region'];
+        if (!empty($_GET['region']) && is_string($_GET['region'])) {
+            $region = $_GET['region'];
             $st = $pdo->prepare("SELECT dept_code, dept_name, category, COUNT(*) n
                                  FROM asso_directory WHERE region = ?
                                  GROUP BY dept_code, dept_name, category ORDER BY dept_code");

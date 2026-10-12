@@ -49,7 +49,11 @@ try {
     }
     // Agent mairie : aucune donnée d'association. Sans association, les requêtes ci-dessous liraient
     // l'espace « org 0 », commun à toutes les collectivités (fermé aux agents : ak_mairie_space_guard)
-    if ($mairie) { $can_fin = false; $can_bill = false; $org_id = -1; }
+    // Fondateur ou super-admin non rattaché (org_id vide) : de même, aucun droit d'association
+    // (factures, budgets, boîte mail, créations : chaque écriture répond 400 'org'). has_org le dit à
+    // l'appli, qui ne garde alors que l'Espace Fondateur, les notifications, les paramètres et le support.
+    $has_org = $org_id > 0;
+    if ($mairie || !$has_org) { $can_fin = false; $can_bill = false; $org_id = -1; }
 
     // Suiveur (financeur externe) : uniquement ses projets suivis, comme /projets et /agenda.
     $fpids = function_exists('get_follower_project_ids') ? get_follower_project_ids()
@@ -63,7 +67,22 @@ try {
     // Subventions : la règle du site (gr_can_manage : /subventions, /financements, app-grants),
     // plus stricte que la facturation — un trésorier non coordinateur n'y a pas accès.
     require_once __DIR__ . '/../includes-grants.php';
-    $can_grants = !$mairie && !$is_follower && gr_can_manage($perm_user);
+    $can_grants = $has_org && !$mairie && !$is_follower && gr_can_manage($perm_user);
+
+    // Ajout d'une dépense de projet : admin, coordinateur, droit finances, ou équipe d'au moins un
+    // projet en cours (référent ou membre) — la règle d'api/app-create-expense.php
+    $can_add_expense = false;
+    if ($has_org && !$mairie && !$is_follower) {
+        $can_add_expense = ak_expense_any_project($user);
+        if (!$can_add_expense) try {
+            $st = $pdo->prepare("SELECT 1 FROM projects p JOIN folders f ON f.id = p.folder_id
+                                 WHERE f.org_id = ? AND p.archived_at IS NULL AND f.archived_at IS NULL
+                                   AND (p.referent_id = ? OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = ?))
+                                 LIMIT 1");
+            $st->execute([$org_id, $uid, $uid]);
+            $can_add_expense = (bool) $st->fetchColumn();
+        } catch (Throwable $e) {}
+    }
 
     // Organisation
     $stmt = $pdo->prepare("SELECT name FROM organizations WHERE id = ? LIMIT 1");
@@ -349,7 +368,7 @@ try {
     try {
         require_once __DIR__ . '/../mail-helpers.php';
         $mail_user = $user + ['is_founder' => $is_founder ? 1 : 0];
-        $mail_access = !$mairie && mail_can_access($mail_user);   // pas de boîte d'association pour un agent mairie
+        $mail_access = $has_org && !$mairie && mail_can_access($mail_user);   // pas de boîte d'association sans association (agent mairie, Fondateur non rattaché)
         if ($mail_access && mail_schema_ready($pdo)) {
             $mail_unread = mail_unread_count($pdo, $mail_user);
             $mail_connected = (bool)mail_get_account($pdo, (int)$user['org_id']);
@@ -369,7 +388,12 @@ try {
         'profile'      => $mairie ? 'mairie' : $profile,
         'role'         => $mairie ? 'mairie' : (string) ($user['role'] ?? 'member'),
         'mairie'       => $mairie,   // null hors agent mairie ; sinon nom, type, lien du site, message
-        'can_create_projects' => !$mairie && ((($user['role'] ?? '') === 'admin') || !empty($user['can_create_projects']) || $is_founder || !empty($user['is_super_admin'])),
+        'can_create_projects' => $has_org && !$mairie && ((($user['role'] ?? '') === 'admin') || !empty($user['can_create_projects']) || $is_founder || !empty($user['is_super_admin'])),
+        // false : compte sans association (agent mairie, Fondateur ou super-admin non rattaché)
+        'has_org'      => $has_org,
+        // « Scanner une facture » : au moins un projet où ce compte peut ajouter une dépense
+        // (même règle qu'api/app-create-expense.php ; can_add_expense de chaque projet d'app-projects.php)
+        'can_add_expense' => $can_add_expense,
         'is_founder'   => $is_founder,
         'is_super_admin' => ($is_founder || !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin'),
         'notif_unread' => $notif_unread + $platform_unread,

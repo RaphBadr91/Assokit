@@ -457,14 +457,31 @@ function ak_handle_invoice_paid(PDO $pdo, array $invoice): void {
 function ak_end_trial_after_payment(PDO $pdo, int $org_id, string $paid_stripe_sub_id, bool $paid = false): void {
     if ($org_id <= 0) return;
     try {
+        // Association en essai, ou suspendue à la fin de l'essai (cron d'essai : sans motif, ou motif
+        // « Fin de l'essai », « Essai terminé ») : elle repasse active, sans motif. Une suspension
+        // décidée par le support pendant l'essai (« Abus », « Fraude »…) reste en place : le paiement
+        // ne la lève pas (connexion.php ne l'annonce d'ailleurs pas). Une suspension pour impayé se
+        // lève sur un vrai paiement seulement ($paid), comme plus bas.
+        $ocols = ak_db_columns($pdo, 'organizations');
+        if (isset($ocols['suspended_reason'])) {
+            $lift = "fin (de l|d).{0,2}essai|essai[^.;:]{0,30}(termin|expir|fini|[eé]chu|achev|clos)"
+                  . ($paid ? "|impay|retard de paiement|paiement en retard|d[eé]faut de paiement|non[- ]paiement" : "");
+            $pdo->prepare("UPDATE organizations SET status = 'active', suspended_reason = NULL
+                           WHERE id = ? AND trial_ends_at IS NOT NULL
+                             AND (status = 'trial'
+                                  OR (status = 'suspended' AND (TRIM(COALESCE(suspended_reason, '')) = ''
+                                                                OR LOWER(suspended_reason) REGEXP ?)))")
+                ->execute([$org_id, $lift]);
+        } else {
+            // Sans colonne de motif, une suspension pendant l'essai ne peut venir que du cron d'essai
+            $pdo->prepare("UPDATE organizations SET status = 'active'
+                           WHERE id = ? AND trial_ends_at IS NOT NULL AND status IN ('trial', 'suspended')")
+                ->execute([$org_id]);
+        }
         // La fin d'essai est effacée quel que soit le statut (une association réactivée « active »
         // gardait sa date, et le cron d'essai l'aurait rétrogradée) : c'est le signe « converti ».
-        // Une association qui repasse active ne garde pas de motif de suspension (lu avant le statut :
-        // MySQL applique les SET de gauche à droite).
-        $reason = isset(ak_db_columns($pdo, 'organizations')['suspended_reason'])
-            ? "suspended_reason = IF(status IN ('trial', 'suspended'), NULL, suspended_reason), " : "";
-        $pdo->prepare("UPDATE organizations SET {$reason}status = IF(status IN ('trial', 'suspended'), 'active', status), trial_ends_at = NULL
-                       WHERE id = ? AND trial_ends_at IS NOT NULL")->execute([$org_id]);
+        // Une suspension restée en place (décision du support) se lève ensuite à la main.
+        $pdo->prepare("UPDATE organizations SET trial_ends_at = NULL WHERE id = ? AND trial_ends_at IS NOT NULL")->execute([$org_id]);
     } catch (Throwable $e) { error_log('[stripe-webhook] fin essai org: ' . get_class($e)); }
     try {
         // Suspension à la main pour impayé (motif « Impayé », « Paiement en retard », « Défaut de paiement »…) :

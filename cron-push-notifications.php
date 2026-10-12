@@ -7,7 +7,8 @@
  */
 require_once __DIR__ . '/config.php';
 
-if (PHP_SAPI !== 'cli' && !(defined('CRON_TOKEN') && CRON_TOKEN !== '' && is_string($_GET['cron_key'] ?? null) && hash_equals((string)CRON_TOKEN, $_GET['cron_key']))) {
+// php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
+if (PHP_SAPI !== 'cli' && isset($_SERVER['REQUEST_METHOD']) && !(defined('CRON_TOKEN') && CRON_TOKEN !== '' && is_string($_GET['cron_key'] ?? null) && hash_equals((string)CRON_TOKEN, $_GET['cron_key']))) {
     // Protection minimale si appele en HTTP
     http_response_code(403);
     exit('CLI only');

@@ -2239,7 +2239,9 @@ render_sidebar('projets');
     <?php
       // Lecture seule (collectivité, plateforme, projet archivé) : consultation uniquement
       $can_validate = !$is_readonly && ($is_admin || $is_coord);
-      $can_add = !$is_readonly; // tous les membres de l'org peuvent ajouter une facture
+      // Ajout : l'équipe du projet (référent, membres), administrateurs, coordinateurs et droit
+      // « Gérer les finances » — la règle d'action-facture.php, qui refuse les autres
+      $can_add = !$is_readonly && ak_user_can_add_expense($pdo, current_user() ?: [], (int)$project_id);
     ?>
 
     <!-- Messages de confirmation -->

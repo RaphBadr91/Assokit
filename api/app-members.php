@@ -34,15 +34,17 @@ try {
     // Coordonnées (e-mail, ville) : gestionnaires seulement — admin, coordinateur, droit « Gérer
     // les adhérents » donné par l'admin, fondateur, super-admin —, même règle que /adherents et
     // /adherent sur le site.
-    $can_add = in_array($role_me, ['admin', 'coordinator'], true)
-        || (function_exists('can') && can('manage_members'));
+    // Compte sans association (agent de collectivité, Fondateur non rattaché) : rien à inviter
+    // (l'ajout répond 400 « Aucune association n’est rattachée à ce compte. »)
+    $can_add = $org_id > 0 && (in_array($role_me, ['admin', 'coordinator'], true)
+        || (function_exists('can') && can('manage_members')));
     $is_admin = $can_add || $role_me === 'super_admin'
         || !empty($user['is_super_admin']) || !empty($user['is_founder']);
 
     // Liste complète par défaut (l'ancienne limite à 500 masquait la fin de l'alphabet
     // des grandes associations). Options : ?q= (nom, e-mail pour les gestionnaires),
     // ?limit= & ?offset= pour paginer ; la réponse indique alors total / has_more.
-    $q = trim((string) ($_GET['q'] ?? ''));
+    $q = trim(is_string($_GET['q'] ?? null) ? $_GET['q'] : '');   // ?q[]=… : ignoré, sans avertissement
     $limit = isset($_GET['limit']) ? max(1, min(500, (int) $_GET['limit'])) : 0;
     $offset = $limit ? max(0, (int) ($_GET['offset'] ?? 0)) : 0;
 

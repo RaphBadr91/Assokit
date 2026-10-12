@@ -34,6 +34,9 @@ try {
     // (api/app-create-project.php ignore sinon le montant reçu).
     require_once __DIR__ . '/../finance-permissions.php';
     $can_view_finances = $user ? user_can_view_finances($user) : false;
+    // Compte sans association (agent de collectivité, Fondateur non rattaché) : ni dossier à créer ni
+    // budget à voir (la création répond 400 'org')
+    if ($org_id <= 0) { $can_create_folders = false; $can_view_finances = false; }
     echo json_encode(['ok' => true, 'folders' => $folders, 'can_create_folders' => $can_create_folders, 'can_view_finances' => $can_view_finances], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-folders] ' . $e->getMessage());

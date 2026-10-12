@@ -12,7 +12,8 @@
  *   - Personnalisation par IA Claude si disponible, sinon gabarit professionnel.
  * NE MODIFIE PAS le site.
  */
-$CLI = (PHP_SAPI === 'cli');
+// php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
+$CLI = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
 
 ob_start();
 require_once __DIR__ . '/config.php';

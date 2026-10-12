@@ -4,7 +4,7 @@
  * À LANCER TOUTES LES 10 MINUTES (et non plus 1x par jour) : chaque
  * passage examine un lot de DOSSIERS, en commençant par ceux vus il y
  * a le plus longtemps.
- *   /usr/bin/php /home/pura7044/public_html/cron-grant-reminders.php
+ *   /usr/local/bin/php /home/pura7044/public_html/cron-grant-reminders.php
  *
  * Envoie un email aux admins de l'org pour :
  *   - J-7, J-1, jour J : avant deadline dépôt (dossier encore en brouillon)
@@ -22,7 +22,8 @@ require_once __DIR__ . '/asso-invoice-helpers.php';   // ak_asso_org_active_sql(
 @require_once __DIR__ . '/resend-helper.php';
 
 // CLI uniquement (avec key web optionnelle)
-$is_cli = (PHP_SAPI === 'cli');
+// php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
+$is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
 $has_key = is_string($_GET['key'] ?? null) && defined('CRON_SECRET') && (string)CRON_SECRET !== '' && hash_equals((string)CRON_SECRET, $_GET['key']);
 if (!$is_cli && !$has_key) { http_response_code(403); die('Forbidden'); }
 
