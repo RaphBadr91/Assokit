@@ -12,7 +12,8 @@ render_public_nav('');
   <div class="pub-container">
     <div class="pub-breadcrumb"><a href="/">Accueil</a><span class="pub-breadcrumb-sep">›</span><strong style="color:var(--c-encre);">CGU / CGV</strong></div>
     <h1 class="pub-h1" style="font-size:36px;">Conditions générales</h1>
-    <p class="pub-tagline">Dernière mise à jour : <?= date('d/m/Y') ?></p>
+    <?php /* Date de version du texte (dernière modification) : à changer seulement quand le texte change */ ?>
+    <p class="pub-tagline">Version du 16/09/2026</p>
   </div>
 </section>
 <section class="pub-section" style="padding-top:0;">

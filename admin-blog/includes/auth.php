@@ -59,19 +59,74 @@ function auth_require(): void
 }
 
 // --- IP whitelist (si configurée) ---
+function auth_ip_whitelist(): array
+{
+    $whitelist = trim((string) config_get('ip_whitelist', ''));
+    return $whitelist === '' ? [] : array_values(array_filter(array_map('trim', preg_split('/[\s,;]+/', $whitelist))));
+}
+
 function auth_check_ip_whitelist(): void
 {
     $whitelist = trim((string) config_get('ip_whitelist', ''));
     if ($whitelist === '') {
         return; // pas de restriction
     }
-    $allowed = array_filter(array_map('trim', preg_split('/[\s,;]+/', $whitelist)));
+    $allowed = auth_ip_whitelist();
     $current = $_SERVER['REMOTE_ADDR'] ?? '';
     if (!in_array($current, $allowed, true)) {
         admin_log('ip_blocked', "IP refusée: {$current}", 'warning');
         http_response_code(403);
         die('Access denied: IP not allowed');
     }
+}
+
+// --- Anti-bruteforce : blocage temporaire après plusieurs échecs ---
+// Un seul mot de passe protège cet espace (publication sur le site, clé IA) :
+// au-delà de 5 échecs en 15 min depuis une IP, ou de 30 échecs en 1 h toutes
+// IP confondues, on refuse d'essayer le mot de passe. Les échecs sont comptés
+// dans asso_blog_admin_logs (trace conservée) ; un compteur fichier atomique
+// arrête en plus les rafales de requêtes envoyées en parallèle.
+// Le plafond global ne bloque pas une IP connue (liste blanche, ou connexion
+// réussie depuis cette IP ces 90 derniers jours) : REMOTE_ADDR ne se falsifie
+// pas, donc entretenir le plafond depuis d'autres IP n'enferme pas le fondateur.
+const AUTH_MAX_FAILS_IP     = 5;    // par IP, sur 15 minutes
+const AUTH_MAX_FAILS_GLOBAL = 30;   // toutes IP, sur 1 heure
+
+/** Message à afficher si la tentative est refusée, null si elle peut être vérifiée. */
+function auth_login_blocked(): ?string
+{
+    $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+    $by_ip = $global = 0;
+    $known = false;
+    try {
+        $by_ip = (int) (DB::fetch(
+            "SELECT COUNT(*) AS n FROM asso_blog_admin_logs
+             WHERE action = 'login_failed' AND ip = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)",
+            [$ip]
+        )['n'] ?? 0);
+        $global = (int) (DB::fetch(
+            "SELECT COUNT(*) AS n FROM asso_blog_admin_logs
+             WHERE action = 'login_failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"
+        )['n'] ?? 0);
+        $known = $global >= AUTH_MAX_FAILS_GLOBAL && $ip !== '' && (in_array($ip, auth_ip_whitelist(), true) || DB::fetch(
+            "SELECT 1 AS ok FROM asso_blog_admin_logs
+             WHERE action = 'login_success' AND ip = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY) LIMIT 1",
+            [$ip]
+        ) !== null);
+    } catch (Throwable $e) {
+        // Journal illisible : le compteur fichier ci-dessous reste actif
+    }
+    require_once __DIR__ . '/../../rate-limit-helper.php';
+    $burst_ok = ak_rate_limit('blog_admin_login', 10, 900);
+
+    $global_hit = !$known && $global >= AUTH_MAX_FAILS_GLOBAL;
+    if ($global_hit || $by_ip >= AUTH_MAX_FAILS_IP || !$burst_ok) {
+        admin_log('login_blocked', "Trop de tentatives (IP {$ip}" . ($known ? ' connue' : '') . " : {$by_ip} échecs/15 min, total : {$global} échecs/1 h)", 'warning');
+        return $global_hit
+            ? 'Trop de tentatives. Réessaie dans une heure.'
+            : 'Trop de tentatives. Réessaie dans 15 minutes.';
+    }
+    return null;
 }
 
 // --- Login ---

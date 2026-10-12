@@ -12,7 +12,7 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 $faqs = [
     ['Quel logiciel de gestion pour une TPE ou un indépendant ?', "Un bon logiciel de gestion TPE réunit devis, factures, clients, projets/chantiers, trésorerie et agenda dans un seul outil, sans logiciel comptable en plus. Assokit est conçu pour ça : simple, français, hébergé en France, utilisable sur mobile comme au bureau."],
-    ['Existe-t-il un logiciel de gestion TPE gratuit ?', "Oui : Assokit propose un essai gratuit pour démarrer (devis, factures, suivi), sans carte bancaire. Vous testez toutes les fonctionnalités gratuitement pendant 14 jours, sans carte bancaire, puis vous choisissez votre formule."],
+    ['Existe-t-il un logiciel de gestion TPE gratuit ?', "Assokit n'est pas un logiciel gratuit à vie, mais vous pouvez le tester gratuitement : pendant 14 jours, sans carte bancaire et sans engagement, vous utilisez toutes les fonctionnalités (devis, factures, suivi), puis vous choisissez votre formule."],
     ['Le logiciel gère-t-il les chantiers et projets ?', "Oui. Chaque client ou chantier devient un projet : étapes, budget alloué vs dépensé, factures rattachées, collègues assignés. Vous savez en un coup d'œil où en est chaque affaire."],
     ['Puis-je suivre ma trésorerie et mes rendez-vous ?', "Oui : suivi des encaissements en temps réel, relances de paiement automatiques, et agenda intégré pour vos rendez-vous — tout au même endroit."],
     ['Assokit fonctionne-t-il sur mobile ?', "Oui, application iOS et Android : gérez devis, factures, projets et RDV depuis votre téléphone, même sur le terrain."],

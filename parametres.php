@@ -30,9 +30,19 @@ if ($org_id > 0) {
     $org_full = $stmt->fetch();
 }
 
-// Message flash
-$flash = $_GET['flash'] ?? '';
-$flash_type = $_GET['ft'] ?? 'success';
+// Message flash : posé en session par action-parametres.php et rgpd-supprimer-compte.php, lu une
+// seule fois. Jamais lu dans l'URL : un lien piégé ne peut pas afficher un faux avis sur la page.
+$flash = '';
+$flash_type = 'success';
+if (!empty($_SESSION['flash_parametres']) && is_array($_SESSION['flash_parametres'])) {
+    $flash = (string)($_SESSION['flash_parametres']['msg'] ?? '');
+    $flash_type = (string)($_SESSION['flash_parametres']['type'] ?? 'success');
+}
+unset($_SESSION['flash_parametres']);
+if (!in_array($flash_type, ['success', 'error', 'warning'], true)) $flash_type = 'success';
+
+// Suppression de son compte : refusée au seul administrateur de l'association (ak_account_delete_blocker)
+$delete_blocker = ($tab === 'compte' && function_exists('ak_account_delete_blocker')) ? ak_account_delete_blocker($pdo, $user_id) : '';
 $active = 'parametres';
 render_head('Paramètres · Assokit');
 render_sidebar('parametres');
@@ -93,8 +103,14 @@ render_sidebar('parametres');
 
         <div class="pa-fld">
           <label>Email *</label>
-          <input type="email" name="email" required maxlength="190" value="<?= h($user_full['email'] ?? '') ?>">
+          <input type="email" name="email" id="pa-email" required maxlength="190" value="<?= h($user_full['email'] ?? '') ?>" data-initial="<?= h($user_full['email'] ?? '') ?>">
           <span class="pa-fld-hint">Utilisé pour la connexion et les notifications.</span>
+        </div>
+
+        <div class="pa-fld" id="pa-email-pw">
+          <label>Mot de passe actuel</label>
+          <input type="password" name="current_password" maxlength="200" autocomplete="current-password">
+          <span class="pa-fld-hint">Demandé seulement pour changer d’adresse e-mail. L’ancienne adresse sera prévenue et la nouvelle devra être confirmée.</span>
         </div>
 
         <div class="pa-grid-2">
@@ -124,11 +140,17 @@ render_sidebar('parametres');
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 0;border-top:1px solid #E2E8F0;">
           <div><strong style="color:#DC2626;">Supprimer mon compte</strong><br><span style="color:#64748B;font-size:13px;">Action définitive : vos données personnelles seront anonymisées.</span></div>
-          <form method="post" action="/rgpd-supprimer-compte" onsubmit="return confirm('Êtes-vous sûr ? Cette action est définitive et anonymisera vos données personnelles.');" style="margin:0;">
+          <?php if ($delete_blocker !== ''): ?>
+            <button type="button" disabled style="background:#F8FAFC;color:#94A3B8;border:1px solid #E2E8F0;border-radius:8px;padding:10px 16px;font-weight:600;white-space:nowrap;cursor:not-allowed;">Supprimer mon compte</button>
+            <p style="flex-basis:100%;margin:0;color:#92400E;font-size:13px;"><?= h($delete_blocker) ?></p>
+          <?php else: ?>
+          <form method="post" action="/rgpd-supprimer-compte" onsubmit="return confirm('Êtes-vous sûr ? Cette action est définitive et anonymisera vos données personnelles.');" style="margin:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
             <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
             <input type="hidden" name="confirm" value="SUPPRIMER">
+            <input type="password" name="current_password" required maxlength="200" autocomplete="current-password" placeholder="Votre mot de passe" aria-label="Mot de passe actuel, pour confirmer la suppression" style="padding:10px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:14px;font-family:inherit;min-width:0;width:200px;max-width:100%;">
             <button type="submit" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:8px;padding:10px 16px;cursor:pointer;font-weight:600;white-space:nowrap;">Supprimer mon compte</button>
           </form>
+          <?php endif; ?>
         </div>
       </div>
       <!-- ============ /RGPD ============ -->
@@ -201,10 +223,10 @@ render_sidebar('parametres');
             </div>
             <div class="pa-logo-actions">
               <label class="pa-btn-upload">
-                <input type="file" name="logo" accept="image/png,image/jpeg,image/svg+xml" style="display:none;">
+                <input type="file" name="logo" accept="image/png,image/jpeg,image/gif" style="display:none;">
                 📁 Choisir un fichier
               </label>
-              <span class="pa-fld-hint">PNG, JPG ou SVG · Max 2 Mo · 512×512 px recommandé</span>
+              <span class="pa-fld-hint">PNG, JPG ou GIF · Max 2 Mo · 512×512 px recommandé</span>
             </div>
           </div>
 
@@ -384,6 +406,7 @@ render_sidebar('parametres');
 </div>
 
 <link rel="stylesheet" href="/css/pa-namespace.css">
+<style>.pa-flash-warning { background: #FFFBEB; color: #92400E; border: 1px solid #FCD34D; }</style>
 
 <script>
 // Sync color picker ↔ hex input
@@ -392,6 +415,20 @@ document.querySelectorAll('.pa-color-picker').forEach(picker => {
   picker.addEventListener('input', e => hex.value = e.target.value);
   hex.addEventListener('input', e => { if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) picker.value = e.target.value; });
 });
+
+// Mot de passe actuel : affiché (et exigé) seulement quand l'adresse e-mail change
+(function () {
+  const mail = document.getElementById('pa-email'), box = document.getElementById('pa-email-pw');
+  if (!mail || !box) return;
+  const pw = box.querySelector('input');
+  const sync = () => {
+    const changed = mail.value.trim().toLowerCase() !== (mail.dataset.initial || '').toLowerCase();
+    box.style.display = changed ? '' : 'none';
+    pw.required = changed;
+  };
+  mail.addEventListener('input', sync);
+  sync();
+})();
 
 // Theme switcher DISABLED 2026-05 — dark mode removed
 </script>

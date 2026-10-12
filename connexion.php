@@ -1,36 +1,85 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/app-context.php'; // ak_session_access(), ak_login_destination()
 
 // === Tracking activité (Fondateur audit) ===
 if (file_exists(__DIR__ . '/activity-tracker.php')) {
     require_once __DIR__ . '/activity-tracker.php';
 }
 
-// Si déjà connecté → dashboard (ou super-admin si super_admin)
-if (!empty($_SESSION['user_id'])) {
-    // Double casquette : role='super_admin' OU is_super_admin=1
-    $is_sa = (!empty($_SESSION['user_role']) && $_SESSION['user_role'] === 'super_admin')
-          || !empty($_SESSION['is_super_admin']);
-    if ($is_sa) {
-        header('Location: /super-admin');
-    } elseif (!empty($_SESSION['parent_org_id'])) {
-        header('Location: /mairie-dashboard');
-    } else {
-        header('Location: /dashboard');
-    }
+$error = null;
+$email_value = '';
+// Page demandée avant la connexion (?next=, posé lors de la redirection vers /connexion)
+$next = ak_login_next($_POST['next'] ?? ($_GET['next'] ?? ''));
+// Accès coupé pendant une session ouverte (ak_session_guard) : on dit pourquoi
+$acces_msgs = ['ferme' => ak_session_access_message('org_closed'), 'desactive' => ak_session_access_message('account_closed')];
+if (isset($_GET['acces'], $acces_msgs[$_GET['acces']])) $error = $acces_msgs[$_GET['acces']];
+$suspended_notice = null;
+// Retour de « Supprimer mon compte » (rgpd-supprimer-compte.php) : confirmation, texte fixe
+$success_msg = !empty($_GET['deleted']) ? 'Votre compte a bien été supprimé et vos données personnelles anonymisées.' : null;
+
+// Incarnation en cours (Fondateur) : /connexion mène au choix « revenir à mon compte »
+if (!empty($_SESSION['impersonation_target_user_id'])) {
+    header('Location: /super-admin/incarner-stop');
     exit;
 }
 
-$error = null;
-$email_value = '';
+// Déjà connecté → page d'accueil du rôle (ou page demandée), sauf si l'accès a été coupé entre-temps
+if (!empty($_SESSION['user_id'])) {
+    $acc = ak_session_access($pdo);
+    if ($acc['state'] === 'account_closed' || $acc['state'] === 'org_closed') {
+        ak_session_end();
+        session_id(session_create_id());
+        session_start();
+        $error = ak_session_access_message($acc['state']);
+    } elseif ($acc['state'] === 'must_change_password') {
+        header('Location: /changer-mot-de-passe' . ($next !== '' ? '?next=' . rawurlencode($next) : ''));
+        exit;
+    } elseif ($acc['state'] === 'org_suspended') {
+        // Avis de suspension : seules la régularisation, l'export RGPD et la déconnexion restent ouverts
+        $suspended_notice = $acc['user'];
+    } else {
+        // Double casquette : role='super_admin' OU is_super_admin=1
+        $is_sa = (!empty($_SESSION['user_role']) && $_SESSION['user_role'] === 'super_admin')
+              || !empty($_SESSION['is_super_admin']);
+        if ($next !== '') {
+            header('Location: ' . $next);
+        } elseif ($is_sa) {
+            header('Location: /super-admin');
+        } elseif (!empty($_SESSION['parent_org_id'])) {
+            header('Location: /mairie-dashboard');
+        } else {
+            header('Location: /dashboard');
+        }
+        exit;
+    }
+}
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+/**
+ * Tentatives de connexion échouées des 15 dernières minutes, d'après le journal
+ * (assokit_activity_log, rempli par activity_log_login_failed).
+ */
+$login_failures = function (string $where, array $params) use ($pdo): int {
+    try {
+        $s = $pdo->prepare("SELECT COUNT(*) FROM assokit_activity_log WHERE event_type = 'login_failed' AND $where AND created_at > (NOW() - INTERVAL 15 MINUTE)");
+        $s->execute($params);
+        return (int)$s->fetchColumn();
+    } catch (Throwable $e) {
+        return 0;
+    }
+};
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $suspended_notice === null) {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     $email_value = $email;
-    // === Anti-flood login (audit sécurité) : 30 POST / min / IP ===
+    // Adresse réelle du visiteur (derrière Cloudflare / le proxy de l'hébergeur), la même que celle
+    // enregistrée dans le journal des échecs
+    $ip = function_exists('activity_get_ip') ? activity_get_ip() : (string)($_SERVER['REMOTE_ADDR'] ?? '');
+    // === Anti-flood login (audit sécurité) : 120 POST / min / IP ===
+    // Assez large pour une salle de formation qui se connecte en même temps.
     require_once __DIR__ . '/rate-limit-helper.php';
-    $__login_flood = !ak_rate_limit('login_post', 30, 60);
+    $__login_flood = !ak_rate_limit('login_post', 120, 60, $ip);
     if ($__login_flood) {
         $error = 'Trop de tentatives de connexion. Merci de patienter une minute avant de réessayer.';
     }
@@ -50,35 +99,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Merci de remplir email et mot de passe.';
         } else {
             try {
+                // Comptes désactivés compris : un mot de passe correct reçoit alors un message clair
                 $stmt = $pdo->prepare("
                     SELECT u.*, o.name AS org_name
                     FROM users u
                     LEFT JOIN organizations o ON u.org_id = o.id
-                    WHERE u.email = ? AND u.is_active = 1
+                    WHERE u.email = ? AND u.deleted_at IS NULL
+                    ORDER BY u.is_active DESC
                     LIMIT 1
                 ");
                 $stmt->execute([$email]);
                 $user = $stmt->fetch();
 
-                if ((int)(function_exists('__ak_bf_count') ? __ak_bf_count($pdo, $email) : (function() use ($pdo, $email) {
-                    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
-                    // Comptes de démo partagés : blocage par IP seulement, sinon
-                    // n'importe qui bloquerait la démo en se trompant 10 fois.
-                    if (preg_match('/@demo-f\.assokit\.fr$/i', $email)) {
-                        $s = $pdo->prepare("SELECT COUNT(*) FROM assokit_activity_log WHERE event_type='login_failed' AND ip = ? AND created_at > (NOW() - INTERVAL 15 MINUTE)");
-                        $s->execute([$ip]);
-                        return (int)$s->fetchColumn();
-                    }
-                    $s = $pdo->prepare("SELECT COUNT(*) FROM assokit_activity_log WHERE event_type='login_failed' AND (user_email = ? OR ip = ?) AND created_at > (NOW() - INTERVAL 15 MINUTE)");
-                    $s->execute([$email, $ip]);
-                    return (int)$s->fetchColumn();
-                })()) >= 10) {
+                // Blocage par compte : 10 échecs en 15 minutes, même avec le bon mot de passe ensuite.
+                // Comptes de démo partagés : comptés pour cette adresse IP seulement, sinon n'importe
+                // qui bloquerait la démo en se trompant 10 fois.
+                $is_demo = (bool)preg_match('/@demo-f\.assokit\.fr$/i', $email);
+                $account_fails = $is_demo
+                    ? $login_failures('user_email = ? AND ip = ?', [$email, $ip])
+                    : $login_failures('user_email = ?', [$email]);
+
+                if ($account_fails >= 10) {
                     $error = 'Trop de tentatives de connexion échouées. Pour votre sécurité, patientez 15 minutes avant de réessayer.';
+                } elseif ($login_failures('ip = ?', [$ip]) >= 50) {
+                    // Plafond par IP, bon mot de passe compris : bloque l'essai d'un mot de passe sur
+                    // beaucoup de comptes. Bien plus haut que le blocage par compte, pour que quelques
+                    // erreurs de collègues derrière la même box ne gênent pas les autres.
+                    $error = 'Trop de tentatives de connexion échouées depuis votre connexion internet. Patientez 15 minutes avant de réessayer.';
                 } elseif (!$user || !password_verify($password, $user['password_hash'])) {
                     $error = 'Email ou mot de passe incorrect.';
                     // Track login failed
                     if (function_exists('activity_log_login_failed')) {
                         activity_log_login_failed($email, $user ? 'wrong_password' : 'unknown_email');
+                    }
+                } elseif ((int)($user['is_active'] ?? 1) !== 1) {
+                    // Mot de passe correct : on peut dire pourquoi la connexion est refusée
+                    $error = ak_session_access_message('account_closed');
+                    if (function_exists('activity_log_login_failed')) {
+                        activity_log_login_failed($email, 'account_inactive');
+                    }
+                } elseif (($org_access = ak_user_is_platform($user) ? 'ok' : ak_org_access($pdo, (int)($user['org_id'] ?? 0))) === 'closed') {
+                    // Association résiliée ou supprimée : pas de session
+                    $error = ak_session_access_message('org_closed');
+                    if (function_exists('activity_log_login_failed')) {
+                        activity_log_login_failed($email, 'org_closed');
                     }
                 } else {
                     // === 2FA : si activee, exiger le code TOTP avant d'ouvrir la session ===
@@ -86,6 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         session_regenerate_id(true);
                         $_SESSION['pending_2fa_user_id'] = (int)$user['id'];
                         $_SESSION['pending_2fa_time'] = time();
+                        $_SESSION['pending_2fa_next'] = $next;
                         header('Location: /connexion-2fa');
                         exit;
                     }
@@ -124,42 +189,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // IMPORTANT : écriture forcée avant redirection
                     session_write_close();
 
-                    // =======================================================
-                    // COMPTE DEMO COMMERCIAL → sélecteur d'organisation
-                    // =======================================================
-                    if ($user['email'] === 'demo@assokit.fr') {
-                        header('Location: /demo-selector.php');
-                        exit;
-                    }
-
-                    // =======================================================
-                    // REDIRECTION INTELLIGENTE selon le rôle
-                    // =======================================================
-                    // Double casquette : role='super_admin' OU is_super_admin=1
-                    $is_sa = !empty($user['is_super_admin']) || $user['role'] === 'super_admin';
-
-                    // 1. Super admin → cockpit dédié
-                    if ($is_sa) {
-                        if (!empty($user['must_change_password'])) {
-                            header('Location: /changer-mot-de-passe?next=/super-admin');
-                        } else {
-                            header('Location: /super-admin');
-                        }
-                        exit;
-                    }
-
-                    // 2. Utilisateur normal avec mdp temporaire
-                    if (!empty($user['must_change_password'])) {
-                        header('Location: /changer-mot-de-passe');
-                        exit;
-                    }
-
-                    // 3. Utilisateur normal → dashboard asso
-                    if (!empty($user['parent_org_id'])) {
-                        header('Location: /mairie-dashboard');
-                    } else {
-                        header('Location: /dashboard');
-                    }
+                    // REDIRECTION INTELLIGENTE : compte démo commercial → sélecteur d'organisation,
+                    // mot de passe provisoire → changement obligatoire, association suspendue → avis,
+                    // sinon la page demandée avant la connexion ou l'accueil du rôle (cockpit, mairie, asso)
+                    header('Location: ' . ak_login_destination($user, $next, $org_access));
                     exit;
                 }
             } catch (Exception $e) {
@@ -200,13 +233,20 @@ if (empty($_SESSION['csrf_token'])) {
     label{display:block;font-size:12.5px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
     input{width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#fff;font-family:inherit}
     input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(5,150,105,0.08)}
+    /* iPhone / iPad : sous 16px, Safari zoome sur le champ à chaque saisie */
+    @media (max-width:480px),(pointer:coarse){input{font-size:16px}}
     .btn-submit{width:100%;padding:12px;background:var(--acc);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;margin-top:8px;font-family:inherit}
     .btn-submit:hover{background:var(--acc-dark)}
     .error-box{background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px}
+    .success-box{background:#F0FDF4;border:1px solid #86EFAC;color:#166534;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px}
     .forgot-link{display:block;text-align:center;font-size:12.5px;color:var(--ink-3);margin-top:14px;text-decoration:none;transition:color .15s}
     .forgot-link:hover{color:var(--acc)}
     .footer-note{text-align:center;font-size:11.5px;color:var(--ink-3);margin-top:20px;padding-top:18px;border-top:1px solid var(--border)}
     .footer-note a{color:var(--acc);text-decoration:none;font-weight:500}
+    .notice-box{background:#FFFBEB;border:1px solid #FCD34D;color:#92400E;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.55;margin-bottom:18px}
+    .btn-link{display:block;text-align:center;text-decoration:none;margin-top:10px}
+    .btn-ghost{display:block;text-align:center;padding:11px;border:1px solid var(--border);border-radius:10px;color:var(--ink-2);font-size:13.5px;text-decoration:none;margin-top:10px}
+    .btn-ghost:hover{border-color:var(--acc);color:var(--acc)}
   </style>
 </head>
 <body>
@@ -215,11 +255,44 @@ if (empty($_SESSION['csrf_token'])) {
     <div class="logo-mark">asso<span>kit</span>.</div>
     <div class="logo-sub">L'art de mener vos projets</div>
   </div>
+<?php if ($suspended_notice !== null):
+    $is_org_admin = ($suspended_notice['role'] ?? '') === 'admin';
+    // Le paiement ne lève tout seul que la suspension de fin d'essai (stripe-webhook.php) ;
+    // les autres (impayé, décision du support) se lèvent à la main.
+    $auto_unsuspend = false;
+    if ($is_org_admin) {
+        try {
+            $st = $pdo->prepare('SELECT * FROM organizations WHERE id = ? LIMIT 1');
+            $st->execute([(int)($_SESSION['org_id'] ?? 0) ?: (int)($suspended_notice['org_id'] ?? 0)]);
+            $auto_unsuspend = !empty(($st->fetch(PDO::FETCH_ASSOC) ?: [])['trial_ends_at']);
+        } catch (Throwable $e) {
+            $auto_unsuspend = false;
+        }
+    }
+?>
+  <div id="ak-acces-suspendu">
+    <h1>Accès suspendu</h1>
+    <p class="subtitle"><?= htmlspecialchars(trim(($suspended_notice['first_name'] ?? '') . ' ' . ($suspended_notice['last_name'] ?? ''))) ?> · <?= htmlspecialchars($suspended_notice['email'] ?? '') ?></p>
+    <div class="notice-box"><?= htmlspecialchars(ak_session_access_message('org_suspended')) ?>
+      <?php if (!$is_org_admin): ?><br>Vous pouvez aussi en parler à l’administrateur de votre association.<?php endif; ?></div>
+    <?php if ($is_org_admin && !ak_billing_hidden()): ?>
+      <a href="/mon-asso-plan" class="btn-submit btn-link">Régulariser mon abonnement</a>
+      <p class="subtitle" style="margin:8px 0 0"><?= $auto_unsuspend
+          ? 'L’accès revient de lui-même dès que le paiement est enregistré, en général en quelques minutes.'
+          : 'Une fois le paiement effectué, prévenez ' . AK_SUPPORT_EMAIL . ' : nous rétablissons l’accès au plus vite.' ?></p>
+    <?php endif; ?>
+    <a href="mailto:<?= AK_SUPPORT_EMAIL ?>" class="btn-ghost">Écrire au support</a>
+    <a href="/rgpd-export" class="btn-ghost">Exporter mes données personnelles</a>
+    <a href="/deconnexion" class="forgot-link">Se déconnecter</a>
+  </div>
+<?php else: ?>
   <h1>Bienvenue</h1>
   <p class="subtitle">Connectez-vous à votre espace Assokit</p>
+  <?php if ($success_msg && !$error): ?><div class="success-box">✓ <?= htmlspecialchars($success_msg) ?></div><?php endif; ?>
   <?php if ($error): ?><div class="error-box">⚠️ <?= htmlspecialchars($error) ?></div><?php endif; ?>
   <form method="POST" action="/connexion" novalidate>
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+    <?php if ($next !== ''): ?><input type="hidden" name="next" value="<?= htmlspecialchars($next) ?>"><?php endif; ?>
     <div class="form-group">
       <label for="email">Email</label>
       <input type="email" id="email" name="email" required autofocus value="<?= htmlspecialchars($email_value) ?>" autocomplete="email" placeholder="vous@association.fr">
@@ -246,6 +319,7 @@ if (empty($_SESSION['csrf_token'])) {
   </form>
   <a href="/mot-de-passe-oublie" class="forgot-link">Mot de passe oublié ?</a>
   <div class="footer-note">Pas encore de compte ? <a href="/signup">Créer mon compte gratuit</a> · <a href="/contact">Parler à un conseiller</a></div>
+<?php endif; ?>
 </div>
 </body>
 </html>

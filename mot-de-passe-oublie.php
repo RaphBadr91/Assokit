@@ -113,6 +113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     border-radius: 9px; font-family: inherit; font-size: 14px; color: #1C1917;
   }
   .form-input:focus { outline: none; border-color: #059669; background: white; box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1); }
+  /* iPhone / iPad : sous 16px, Safari zoome sur le champ à chaque saisie */
+  @media (max-width: 480px), (pointer: coarse) { .form-input { font-size: 16px; } }
   .btn-primary {
     width: 100%; background: #059669; color: white; border: none;
     padding: 13px 20px; border-radius: 10px;

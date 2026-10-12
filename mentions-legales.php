@@ -1,5 +1,8 @@
 <?php
+require_once __DIR__ . '/config.php';          // paramètres société (identité de l'éditeur)
 require_once __DIR__ . '/includes-public.php';
+
+$L = pub_legal_identity();
 
 render_public_head([
     'title'       => 'Mentions légales',
@@ -12,22 +15,30 @@ render_public_nav('');
   <div class="pub-container">
     <div class="pub-breadcrumb"><a href="/">Accueil</a><span class="pub-breadcrumb-sep">›</span><strong style="color:var(--c-encre);">Mentions légales</strong></div>
     <h1 class="pub-h1" style="font-size:36px;">Mentions légales</h1>
-    <p class="pub-tagline">Dernière mise à jour : <?= date('d/m/Y') ?></p>
+    <?php /* Date de version : à changer seulement quand le texte change */ ?>
+    <p class="pub-tagline">Version du 12/10/2026</p>
   </div>
 </section>
 <section class="pub-section" style="padding-top:0;">
   <div class="pub-container-narrow">
     <article class="pub-article-content">
       <h2>Éditeur du site</h2>
-      <p>Le site <strong>assokit.fr</strong> est édité par <strong>RBPS</strong>, structure française basée à <strong>Évry</strong>.</p>
+      <p>Le site <strong>assokit.fr</strong> est édité par <strong><?= pub_h($L['name']) ?></strong>, structure française basée à <strong><?= pub_h($L['city'] ?: 'Évry') ?></strong>.</p>
       <ul>
-        <li>Forme juridique : en cours d'immatriculation en France</li>
-        <li>Siège social : Évry, France</li>
-        <li>Email : <a href="mailto:contact@assokit.fr">contact@assokit.fr</a></li>
+        <li>Forme juridique : <?= $L['form'] !== '' ? pub_h($L['form']) . ($L['capital'] !== '' ? ' au capital de ' . pub_h($L['capital']) : '') : 'en cours d’immatriculation en France' ?></li>
+        <li>Siège social : <?= pub_h($L['address'] ?: 'Évry, France') ?></li>
+        <?php if ($L['siren'] !== ''): ?><li>SIREN : <?= pub_h($L['siren']) ?><?= $L['rcs'] !== '' ? ' · ' . pub_h($L['rcs']) : '' ?></li><?php endif; ?>
+        <?php if ($L['vat'] !== ''): ?><li>N° de TVA intracommunautaire : <?= pub_h($L['vat']) ?></li><?php endif; ?>
+        <li>Téléphone : <a href="tel:<?= pub_h(preg_replace('/[^0-9+]/', '', $L['phone'])) ?>"><?= pub_h($L['phone']) ?></a></li>
+        <li>Email : <a href="mailto:<?= pub_h($L['email']) ?>"><?= pub_h($L['email']) ?></a></li>
       </ul>
 
       <h2>Directeur de la publication</h2>
-      <p>Le directeur de la publication est le représentant légal de RBPS.</p>
+      <?php if ($L['director'] !== ''): ?>
+      <p>Le directeur de la publication est <strong><?= pub_h($L['director']) ?></strong><?= $L['director_role'] !== '' ? ', ' . pub_h($L['director_role']) . ' de ' . pub_h($L['name']) : '' ?>.</p>
+      <?php else: ?>
+      <p>Le directeur de la publication est le représentant légal de <?= pub_h($L['name']) ?>.</p>
+      <?php endif; ?>
 
       <h2>Hébergement</h2>
       <p>Le site est hébergé par :</p>
@@ -35,6 +46,7 @@ render_public_nav('');
         <li><strong>O2Switch</strong></li>
         <li>Chemin des Pardiaux, 63000 Clermont-Ferrand</li>
         <li>France</li>
+        <li>Téléphone : <a href="tel:+33444446040">04 44 44 60 40</a></li>
         <li>Site : <a href="https://www.o2switch.fr" target="_blank" rel="noopener">o2switch.fr</a></li>
       </ul>
 
@@ -78,7 +90,7 @@ render_public_nav('');
         logiciel relève de la compétence des tribunaux français.</p>
 
       <h2>Contact</h2>
-      <p>Pour toute question relative aux présentes mentions légales : <a href="mailto:contact@assokit.fr">contact@assokit.fr</a></p>
+      <p>Pour toute question relative aux présentes mentions légales : <a href="mailto:<?= pub_h($L['email']) ?>"><?= pub_h($L['email']) ?></a></p>
     </article>
   </div>
 </section>

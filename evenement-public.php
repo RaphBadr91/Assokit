@@ -9,7 +9,7 @@
 
 require_once __DIR__ . '/config.php';
 
-$slug = $_GET['slug'] ?? '';
+$slug = is_string($_GET['slug'] ?? null) ? $_GET['slug'] : '';
 $slug = preg_replace('/[^a-z0-9-]/i', '', $slug);
 
 if (!$slug) {
@@ -32,73 +32,217 @@ if (!$event) {
     die('Événement introuvable ou non public.');
 }
 
-// Stats RSVP
-$stmt = $pdo->prepare("
-    SELECT response, COUNT(*) AS nb, SUM(nb_accompanying) AS acc
-    FROM communication_event_rsvps
-    WHERE event_id = ?
-    GROUP BY response
-");
-$stmt->execute([$event['id']]);
-$counts = ['yes' => 0, 'no' => 0, 'maybe' => 0, 'total_yes' => 0];
-foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-    $counts[$r['response']] = (int) $r['nb'];
-    if ($r['response'] === 'yes') {
-        $counts['total_yes'] = (int) $r['nb'] + (int) $r['acc'];
+@require_once __DIR__ . '/resend-helper.php';      // send_transactional_email() : lien de modification d'une réponse
+@require_once __DIR__ . '/rate-limit-helper.php';  // ak_rate_limit() : anti-remplissage de la jauge par un robot
+
+/** Compteurs de réponses ; total_yes = places prises (« oui » + leurs accompagnants). */
+function rsvp_counts(PDO $pdo, int $event_id): array {
+    $stmt = $pdo->prepare("
+        SELECT response, COUNT(*) AS nb, SUM(nb_accompanying) AS acc
+        FROM communication_event_rsvps
+        WHERE event_id = ?
+        GROUP BY response
+    ");
+    $stmt->execute([$event_id]);
+    $counts = ['yes' => 0, 'no' => 0, 'maybe' => 0, 'total_yes' => 0];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        if (!isset($counts[$r['response']])) continue;
+        $counts[$r['response']] = (int) $r['nb'];
+        if ($r['response'] === 'yes') {
+            $counts['total_yes'] = (int) $r['nb'] + (int) $r['acc'];
+        }
     }
+    return $counts;
 }
 
-$is_full = $event['max_attendees'] && $counts['total_yes'] >= $event['max_attendees'];
+/** Secret des liens « modifier ma réponse » ('' : aucun secret configuré, liens désactivés). */
+function rsvp_secret(): string {
+    foreach (['RESEND_API_KEY', 'DB_PASS', 'CRON_TOKEN'] as $c) {
+        if (defined($c) && (string) constant($c) !== '') return hash('sha256', 'akrsvp|' . $c . '|' . constant($c));
+    }
+    return '';
+}
+
+/** Jeton personnel d'une réponse : seul le titulaire de l'adresse (lien reçu par e-mail) ou l'appareil qui a répondu le possède. */
+function rsvp_token(array $rsvp): string {
+    $secret = rsvp_secret();
+    $email = mb_strtolower(trim((string) ($rsvp['guest_email'] ?? '')));
+    if ($secret === '' || $email === '') return '';
+    return (int) $rsvp['id'] . '-' . substr(hash_hmac('sha256', 'rsvp|' . (int) $rsvp['id'] . '|' . (int) $rsvp['event_id'] . '|' . $email, $secret), 0, 32);
+}
+
+/** Réponse désignée par un jeton valide pour cet événement, sinon null. */
+function rsvp_from_token(PDO $pdo, int $event_id, $token): ?array {
+    if (!is_string($token) || !preg_match('/^(\d+)-([a-f0-9]{32})$/', $token, $m)) return null;
+    $stmt = $pdo->prepare("SELECT * FROM communication_event_rsvps WHERE id = ? AND event_id = ? LIMIT 1");
+    $stmt->execute([(int) $m[1], $event_id]);
+    $r = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$r) return null;
+    $expected = rsvp_token($r);
+    return ($expected !== '' && hash_equals($expected, $token)) ? $r : null;
+}
+
+$event_id = (int) $event['id'];
+$max_attendees = (int) ($event['max_attendees'] ?? 0);
+$counts = rsvp_counts($pdo, $event_id);
+$is_full = $max_attendees > 0 && $counts['total_yes'] >= $max_attendees;
+
+// Modification d'une réponse existante : lien reçu par e-mail (?modifier=…) ou cookie
+// posé sur l'appareil qui a répondu. Sans ce jeton, une réponse existante n'est jamais écrasée.
+$host = $_SERVER['HTTP_HOST'] ?? 'assokit.fr';
+$https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+$cookie_name = 'ak_rsvp_' . $event_id;
+$set_rsvp_cookie = function (string $token) use ($cookie_name, $https) {
+    if ($token === '' || headers_sent()) return;
+    setcookie($cookie_name, $token, ['expires' => time() + 180 * 86400, 'path' => '/evenement-public/', 'secure' => $https, 'httponly' => true, 'samesite' => 'Lax']);
+};
+$edit_rsvp = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $edit_rsvp = rsvp_from_token($pdo, $event_id, $_POST['edit_token'] ?? null);
+} elseif (isset($_GET['modifier'])) {
+    $edit_rsvp = rsvp_from_token($pdo, $event_id, $_GET['modifier']);
+    if ($edit_rsvp) $set_rsvp_cookie(rsvp_token($edit_rsvp));   // la suite se fait sur cet appareil
+}
+if (!$edit_rsvp && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $edit_rsvp = rsvp_from_token($pdo, $event_id, $_COOKIE[$cookie_name] ?? null);
+}
+// Page personnelle (réponse pré-remplie, jeton de modification) : jamais mise en cache
+if ($edit_rsvp || $_SERVER['REQUEST_METHOD'] === 'POST') header('Cache-Control: private, no-store');
 
 // Traitement du RSVP
 $success = false;
 $error = null;
+$notice = null;   // réponse existante non modifiée : lien envoyé à son adresse
+$saved = null;    // réponse enregistrée (écran de confirmation)
+
+$post_str = fn(string $k): string => is_scalar($_POST[$k] ?? null) ? trim((string) $_POST[$k]) : '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $event['rsvp_enabled']) {
-    $guest_name = trim($_POST['guest_name'] ?? '');
-    $guest_email = trim($_POST['guest_email'] ?? '');
-    $response = $_POST['response'] ?? '';
-    $nb_accompanying = max(0, (int)($_POST['nb_accompanying'] ?? 0));
-    $comment = trim($_POST['comment'] ?? '');
+    $guest_name = mb_substr($post_str('guest_name'), 0, 100);
+    // L'adresse d'une réponse existante ne change pas (c'est elle qui l'identifie)
+    $guest_email = $edit_rsvp ? (string) $edit_rsvp['guest_email'] : mb_substr($post_str('guest_email'), 0, 200);
+    $response = $post_str('response');
+    // Plafond serveur (le max=10 du formulaire se contourne facilement)
+    $nb_accompanying = min(10, max(0, (int) $post_str('nb_accompanying')));
+    $comment = mb_substr($post_str('comment'), 0, 500);
 
-    if ($guest_name === '' || strlen($guest_name) < 2) {
+    if ($guest_name === '' || mb_strlen($guest_name) < 2) {
         $error = 'Merci d\'indiquer votre nom.';
     } elseif (!filter_var($guest_email, FILTER_VALIDATE_EMAIL)) {
         $error = 'Adresse email invalide.';
     } elseif (!in_array($response, ['yes', 'no', 'maybe'], true)) {
         $error = 'Merci de choisir une réponse.';
-    } elseif ($response === 'yes' && $is_full) {
-        $error = 'Désolé, l\'événement est complet.';
+    } elseif (!$edit_rsvp && function_exists('ak_rate_limit') && !ak_rate_limit('rsvp_' . $event_id, 60, 600)) {
+        $error = 'Trop de réponses envoyées depuis cette connexion. Merci de réessayer dans quelques minutes.';
     } else {
+        $existing = null;
         try {
-            // Vérifier si cet email a déjà répondu → on remplace
-            $stmt = $pdo->prepare("SELECT id FROM communication_event_rsvps WHERE event_id = ? AND guest_email = ? LIMIT 1");
-            $stmt->execute([$event['id'], $guest_email]);
-            $existing = $stmt->fetch();
+            // Jauge : une réponse à la fois (sinon deux « oui » simultanés dépasseraient les places)
+            $pdo->beginTransaction();
+            $pdo->prepare("SELECT id FROM communication_events WHERE id = ? FOR UPDATE")->execute([$event_id]);
 
-            if ($existing) {
-                $stmt = $pdo->prepare("
-                    UPDATE communication_event_rsvps
-                    SET response = ?, guest_name = ?, nb_accompanying = ?, comment = ?, responded_at = NOW()
-                    WHERE id = ?
-                ");
-                $stmt->execute([$response, $guest_name, $nb_accompanying, $comment ?: null, (int) $existing['id']]);
+            if ($edit_rsvp) {
+                $stmt = $pdo->prepare("SELECT * FROM communication_event_rsvps WHERE id = ? AND event_id = ? LIMIT 1");
+                $stmt->execute([(int) $edit_rsvp['id'], $event_id]);
             } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO communication_event_rsvps
-                        (event_id, guest_name, guest_email, response, nb_accompanying, comment, responded_at)
-                    VALUES (?, ?, ?, ?, ?, ?, NOW())
-                ");
-                $stmt->execute([$event['id'], $guest_name, $guest_email, $response, $nb_accompanying, $comment ?: null]);
+                $stmt = $pdo->prepare("SELECT * FROM communication_event_rsvps WHERE event_id = ? AND guest_email = ? ORDER BY id LIMIT 1");
+                $stmt->execute([$event_id, $guest_email]);
             }
+            $existing = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
-            $success = true;
+            if ($existing && (!$edit_rsvp || (int) $edit_rsvp['id'] !== (int) $existing['id'])) {
+                // Cette adresse a déjà répondu : on n'écrase pas la réponse d'autrui, on envoie
+                // à cette adresse un lien personnel pour la modifier.
+                $pdo->rollBack();
+                $token = rsvp_token($existing);
+                $sent = false;
+                if ($token !== '' && function_exists('send_transactional_email')
+                    && (!function_exists('ak_rate_limit') || ak_rate_limit('rsvp_link_' . (int) $existing['id'], 3, 3600, 'rsvp'))) {
+                    $link = ($https ? 'https' : 'http') . '://' . $host . '/evenement-public/' . $slug . '?modifier=' . $token;
+                    $html = '<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;">'
+                        . '<p style="font-size:14px;color:#374151;line-height:1.6;">Bonjour,</p>'
+                        . '<p style="font-size:14px;color:#374151;line-height:1.6;">Une modification de votre réponse à l’événement <strong>' . htmlspecialchars($event['title']) . '</strong> (' . htmlspecialchars($event['org_name']) . ') a été demandée. Pour modifier votre réponse, cliquez sur ce lien personnel :</p>'
+                        . '<p><a href="' . htmlspecialchars($link) . '" style="display:inline-block;background:#059669;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Modifier ma réponse →</a></p>'
+                        . '<p style="font-size:12px;color:#6b7280;">Si vous n’êtes pas à l’origine de cette demande, ignorez ce message : votre réponse n’a pas été modifiée.</p>'
+                        . '</div>';
+                    try {
+                        $res = send_transactional_email($guest_email, 'Modifier votre réponse : ' . $event['title'], $html, ['tag' => 'rsvp_modification', 'from_name' => (string) $event['org_name']]);
+                        $sent = !empty($res['success']);
+                    } catch (Throwable $e) {
+                        error_log('RSVP link email: ' . $e->getMessage());
+                    }
+                }
+                $notice = $sent
+                    ? 'Une réponse est déjà enregistrée avec cette adresse : elle n’a pas été modifiée. Pour la changer, cliquez sur le lien que nous venons d’envoyer à ' . $guest_email . '.'
+                    : 'Une réponse est déjà enregistrée avec cette adresse : elle n’a pas été modifiée. Pour la changer, utilisez le lien « Modifier ma réponse » reçu par e-mail, ou contactez ' . $event['org_name'] . '.';
+            } else {
+                // Places restantes, en retirant celles que cette personne occupait déjà. Un inscrit
+                // qui ne demande pas plus de places qu'il n'en a garde sa réponse, même si
+                // l'événement est déjà au-delà de sa jauge (jauge réduite depuis, anciennes réponses).
+                $counts = rsvp_counts($pdo, $event_id);
+                $mine = ($existing && $existing['response'] === 'yes') ? 1 + (int) $existing['nb_accompanying'] : 0;
+                $left = $max_attendees - ($counts['total_yes'] - $mine);
+                if ($response === 'yes' && $max_attendees > 0 && 1 + $nb_accompanying > $left && 1 + $nb_accompanying > $mine) {
+                    $pdo->rollBack();
+                    $error = $left <= 0
+                        ? 'Désolé, l\'événement est complet.'
+                        : ($left === 1
+                            ? 'Il ne reste qu’une place : vous pouvez venir, mais sans accompagnant.'
+                            : 'Il ne reste que ' . $left . ' places : vous pouvez venir avec ' . ($left - 1) . ' accompagnant' . ($left > 2 ? 's' : '') . ' au maximum.');
+                } else {
+                    if ($existing) {
+                        $stmt = $pdo->prepare("
+                            UPDATE communication_event_rsvps
+                            SET response = ?, guest_name = ?, nb_accompanying = ?, comment = ?, responded_at = NOW()
+                            WHERE id = ? AND event_id = ?
+                        ");
+                        $stmt->execute([$response, $guest_name, $nb_accompanying, $comment ?: null, (int) $existing['id'], $event_id]);
+                        $saved_id = (int) $existing['id'];
+                    } else {
+                        $stmt = $pdo->prepare("
+                            INSERT INTO communication_event_rsvps
+                                (event_id, guest_name, guest_email, response, nb_accompanying, comment, responded_at)
+                            VALUES (?, ?, ?, ?, ?, ?, NOW())
+                        ");
+                        $stmt->execute([$event_id, $guest_name, $guest_email, $response, $nb_accompanying, $comment ?: null]);
+                        $saved_id = (int) $pdo->lastInsertId();
+                    }
+                    $pdo->commit();
+                    $success = true;
+                    $saved = ['id' => $saved_id, 'event_id' => $event_id, 'guest_email' => $guest_email];
+                    $set_rsvp_cookie(rsvp_token($saved));   // modification possible depuis cet appareil
+                }
+            }
         } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             $error = 'Erreur technique. Merci de réessayer.';
             error_log('RSVP error: ' . $e->getMessage());
         }
     }
 }
+
+// Compteurs à jour (l'écran de confirmation inclut la réponse qui vient d'être enregistrée)
+if ($success) {
+    $counts = rsvp_counts($pdo, $event_id);
+    $is_full = $max_attendees > 0 && $counts['total_yes'] >= $max_attendees;
+}
+$saved_link = $saved ? rsvp_token($saved) : '';
+$saved_link = $saved_link !== '' ? '/evenement-public/' . $slug . '?modifier=' . $saved_link : '';
+
+// Valeurs du formulaire : saisie en cours, sinon la réponse en cours de modification
+$fv = [
+    'guest_name'      => $edit_rsvp['guest_name'] ?? '',
+    'guest_email'     => $edit_rsvp['guest_email'] ?? '',
+    'response'        => $edit_rsvp['response'] ?? '',
+    'nb_accompanying' => (string) (int) ($edit_rsvp['nb_accompanying'] ?? 0),
+    'comment'         => $edit_rsvp['comment'] ?? '',
+];
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    foreach (['guest_name', 'response', 'nb_accompanying', 'comment'] as $k) $fv[$k] = $post_str($k);
+    if (!$edit_rsvp) $fv['guest_email'] = $post_str('guest_email');
+}
+// « Oui » reste possible pour une personne déjà inscrite qui modifie sa réponse
+$yes_disabled = $is_full && !($edit_rsvp && $edit_rsvp['response'] === 'yes');
 
 // Dates formatees
 $start_ts = strtotime($event['start_date']);
@@ -354,6 +498,8 @@ $date_fr = $days_fr[(int)date('w', $start_ts)] . ' ' . (int)date('j', $start_ts)
           <?= (int) $counts['total_yes'] ?> / <?= (int) $event['max_attendees'] ?>
           <?php if ($is_full): ?>
             <span class="full-badge">Complet</span>
+          <?php else: ?>
+            <br><span style="font-weight: 400; color: #57534E; font-size: 13px;">Il reste <?= $max_attendees - (int) $counts['total_yes'] ?> place<?= $max_attendees - (int) $counts['total_yes'] > 1 ? 's' : '' ?> (accompagnants compris)</span>
           <?php endif; ?>
         </div>
       </div>
@@ -373,8 +519,11 @@ $date_fr = $days_fr[(int)date('w', $start_ts)] . ' ' . (int)date('j', $start_ts)
         <div class="success-icon">✓</div>
         <h2 class="success-title">Merci pour votre réponse !</h2>
         <p class="success-text">
-          Votre réponse a bien été enregistrée. Vous pouvez revenir sur cette page pour la modifier à tout moment.
+          Votre réponse a bien été enregistrée.<?= $saved_link !== '' ? ' Pour la modifier plus tard, gardez ce lien personnel (ne le partagez pas) :' : ' Pour la modifier, contactez ' . htmlspecialchars($event['org_name']) . '.' ?>
         </p>
+        <?php if ($saved_link !== ''): ?>
+          <p class="success-text"><a href="<?= htmlspecialchars($saved_link) ?>">Modifier ma réponse</a></p>
+        <?php endif; ?>
         <div class="stats-bar">
           <span><strong><?= $counts['yes'] ?></strong> oui</span>
           <span><strong style="color:#F59E0B"><?= $counts['maybe'] ?></strong> peut-être</span>
@@ -383,41 +532,47 @@ $date_fr = $days_fr[(int)date('w', $start_ts)] . ' ' . (int)date('j', $start_ts)
       </div>
     <?php else: ?>
       <div class="rsvp-section" style="border-top:none; padding-top:0;">
-        <h2 class="rsvp-title">Votre réponse</h2>
-        <p class="rsvp-sub">Merci de confirmer votre présence ci-dessous.</p>
+        <h2 class="rsvp-title"><?= $edit_rsvp ? 'Modifier votre réponse' : 'Votre réponse' ?></h2>
+        <p class="rsvp-sub"><?= $edit_rsvp ? 'Vous avez déjà répondu avec l’adresse ' . htmlspecialchars((string) $edit_rsvp['guest_email']) . ' : vous pouvez changer votre réponse ci-dessous.' : 'Merci de confirmer votre présence ci-dessous.' ?></p>
 
         <?php if ($error): ?>
           <div class="alert-error"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
+        <?php if ($notice): ?>
+          <div class="alert-error" style="background:#FFFBEB;border-color:#FDE68A;color:#92400E;"><?= htmlspecialchars($notice) ?></div>
+        <?php endif; ?>
 
-        <form method="POST">
+        <form method="POST" action="/evenement-public/<?= htmlspecialchars($slug) ?>">
+          <?php if ($edit_rsvp): ?>
+            <input type="hidden" name="edit_token" value="<?= htmlspecialchars(rsvp_token($edit_rsvp)) ?>">
+          <?php endif; ?>
           <div class="form-group">
             <label class="form-label" for="guest_name">Votre nom *</label>
             <input type="text" id="guest_name" name="guest_name" class="form-input" required minlength="2" maxlength="100"
-                   value="<?= htmlspecialchars($_POST['guest_name'] ?? '') ?>" placeholder="Prénom Nom">
+                   value="<?= htmlspecialchars($fv['guest_name']) ?>" placeholder="Prénom Nom">
           </div>
 
           <div class="form-group">
             <label class="form-label" for="guest_email">Email *</label>
             <input type="email" id="guest_email" name="guest_email" class="form-input" required maxlength="200"
-                   value="<?= htmlspecialchars($_POST['guest_email'] ?? '') ?>" placeholder="votre@email.fr">
+                   value="<?= htmlspecialchars($fv['guest_email']) ?>" placeholder="votre@email.fr"<?= $edit_rsvp ? ' readonly' : '' ?>>
           </div>
 
           <div class="form-group">
             <label class="form-label">Votre réponse *</label>
             <div class="response-group">
-              <label class="response-option<?= ($_POST['response'] ?? '') === 'yes' ? ' selected' : '' ?>" data-value="yes">
-                <input type="radio" name="response" value="yes" required <?= ($_POST['response'] ?? '') === 'yes' ? 'checked' : '' ?><?= $is_full ? ' disabled' : '' ?>>
+              <label class="response-option<?= $fv['response'] === 'yes' ? ' selected' : '' ?>" data-value="yes">
+                <input type="radio" name="response" value="yes" required <?= $fv['response'] === 'yes' ? 'checked' : '' ?><?= $yes_disabled ? ' disabled' : '' ?>>
                 <div class="response-icon">✓</div>
-                <div class="response-label">Oui, je viens</div>
+                <div class="response-label"><?= $yes_disabled ? 'Complet' : 'Oui, je viens' ?></div>
               </label>
-              <label class="response-option<?= ($_POST['response'] ?? '') === 'maybe' ? ' selected maybe' : '' ?>" data-value="maybe">
-                <input type="radio" name="response" value="maybe" required <?= ($_POST['response'] ?? '') === 'maybe' ? 'checked' : '' ?>>
+              <label class="response-option<?= $fv['response'] === 'maybe' ? ' selected maybe' : '' ?>" data-value="maybe">
+                <input type="radio" name="response" value="maybe" required <?= $fv['response'] === 'maybe' ? 'checked' : '' ?>>
                 <div class="response-icon">?</div>
                 <div class="response-label">Peut-être</div>
               </label>
-              <label class="response-option<?= ($_POST['response'] ?? '') === 'no' ? ' selected no' : '' ?>" data-value="no">
-                <input type="radio" name="response" value="no" required <?= ($_POST['response'] ?? '') === 'no' ? 'checked' : '' ?>>
+              <label class="response-option<?= $fv['response'] === 'no' ? ' selected no' : '' ?>" data-value="no">
+                <input type="radio" name="response" value="no" required <?= $fv['response'] === 'no' ? 'checked' : '' ?>>
                 <div class="response-icon">✕</div>
                 <div class="response-label">Non, désolé</div>
               </label>
@@ -425,14 +580,14 @@ $date_fr = $days_fr[(int)date('w', $start_ts)] . ' ' . (int)date('j', $start_ts)
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="nb_accompanying">Accompagnants (optionnel)</label>
+            <label class="form-label" for="nb_accompanying">Accompagnants (optionnel, 10 au maximum)</label>
             <input type="number" id="nb_accompanying" name="nb_accompanying" class="form-input" min="0" max="10"
-                   value="<?= htmlspecialchars($_POST['nb_accompanying'] ?? '0') ?>" placeholder="0">
+                   value="<?= htmlspecialchars($fv['nb_accompanying'] !== '' ? $fv['nb_accompanying'] : '0') ?>" placeholder="0">
           </div>
 
           <div class="form-group">
             <label class="form-label" for="comment">Message pour l'organisateur (optionnel)</label>
-            <textarea id="comment" name="comment" class="form-textarea" maxlength="500" placeholder="Allergie alimentaire, horaires, questions..."><?= htmlspecialchars($_POST['comment'] ?? '') ?></textarea>
+            <textarea id="comment" name="comment" class="form-textarea" maxlength="500" placeholder="Allergie alimentaire, horaires, questions..."><?= htmlspecialchars($fv['comment']) ?></textarea>
           </div>
 
           <button type="submit" class="btn-primary">Envoyer ma réponse →</button>

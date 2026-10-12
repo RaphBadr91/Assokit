@@ -5,13 +5,14 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/totp-helper.php';
+require_once __DIR__ . '/app-context.php'; // ak_org_access(), ak_login_destination()
 
 $pid   = $_SESSION['pending_2fa_user_id'] ?? null;
 $ptime = $_SESSION['pending_2fa_time'] ?? 0;
 
 // Pas de pré-auth valide ou expiré (5 min) → retour login
 if (!$pid || (time() - (int)$ptime) > 300) {
-    unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_time']);
+    unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_time'], $_SESSION['pending_2fa_next']);
     header('Location: /connexion.php');
     exit;
 }
@@ -20,8 +21,15 @@ $st = $pdo->prepare("SELECT * FROM users WHERE id = ? AND is_active = 1 LIMIT 1"
 $st->execute([(int)$pid]);
 $user = $st->fetch();
 if (!$user || empty($user['totp_enabled'])) {
-    unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_time']);
+    unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_time'], $_SESSION['pending_2fa_next']);
     header('Location: /connexion.php');
+    exit;
+}
+// Association résiliée ou supprimée depuis la saisie du mot de passe : pas de session
+$org_access = ak_user_is_platform($user) ? 'ok' : ak_org_access($pdo, (int)($user['org_id'] ?? 0));
+if ($org_access === 'closed') {
+    unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_time'], $_SESSION['pending_2fa_next']);
+    header('Location: /connexion?acces=ferme');
     exit;
 }
 
@@ -49,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $ok = true;
                         unset($backup[$i]);
                         $pdo->prepare("UPDATE users SET totp_backup_codes = ? WHERE id = ?")
-                            ->execute([json_encode(array_values($backup)), (int)$pid]);
+                            ->execute([ak_totp_backup_encode($backup), (int)$pid]);
                         break;
                     }
                 }
@@ -57,6 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($ok) {
                 // ===== Ouverture de session (repris de connexion.php) =====
+                $next = (string)($_SESSION['pending_2fa_next'] ?? '');
                 session_regenerate_id(true);
                 $_SESSION['user_id']         = (int)$user['id'];
                 $_SESSION['org_id']          = (int)$user['org_id'];
@@ -68,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['is_super_admin']  = !empty($user['is_super_admin']) || $user['role'] === 'super_admin' ? 1 : 0;
                 $_SESSION['logged_at']       = time();
                 $_SESSION['csrf_token']      = bin2hex(random_bytes(32));
-                unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_time']);
+                unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_time'], $_SESSION['pending_2fa_next']);
 
                 try { $pdo->prepare("UPDATE users SET last_login_at = NOW() WHERE id = ?")->execute([(int)$user['id']]); } catch (Throwable $e) {}
                 if (function_exists('activity_log_login')) {
@@ -76,14 +85,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 session_write_close();
 
-                if ($user['email'] === 'demo@assokit.fr') { header('Location: /demo-selector.php'); exit; }
-                $is_sa = !empty($user['is_super_admin']) || $user['role'] === 'super_admin';
-                if ($is_sa) {
-                    header('Location: ' . (!empty($user['must_change_password']) ? '/changer-mot-de-passe?next=/super-admin' : '/super-admin'));
-                    exit;
-                }
-                if (!empty($user['must_change_password'])) { header('Location: /changer-mot-de-passe'); exit; }
-                if (!empty($user['parent_org_id'])) { header('Location: /mairie-dashboard'); } else { header('Location: /dashboard'); }
+                // Mêmes règles que connexion.php (démo, mot de passe provisoire, suspension, page demandée)
+                header('Location: ' . ak_login_destination($user, $next, $org_access));
                 exit;
             } else {
                 $error = 'Code incorrect.';
@@ -121,6 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <button type="submit">Vérifier</button>
     </form>
     <p class="hint">Téléphone perdu ? Saisissez l'un de vos <strong>codes de secours</strong> dans le champ ci-dessus.</p>
+    <p class="hint">Plus aucun code de secours ? Contactez l’administrateur de votre association ou écrivez à <a href="mailto:<?= AK_SUPPORT_EMAIL ?>"><?= AK_SUPPORT_EMAIL ?></a> pour faire réinitialiser la double authentification.</p>
     <p class="hint"><a href="/deconnexion.php">Annuler</a></p>
   </div>
 </body>

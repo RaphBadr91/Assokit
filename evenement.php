@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+require_once __DIR__ . '/includes-attendance.php';
 
 require_login();
 $current = current_user();
@@ -9,6 +10,9 @@ $org_id = (int)$current['org_id'];
 $event_id = (int)($_GET['id'] ?? 0);
 if ($event_id <= 0) { header('Location: /agenda'); exit; }
 
+// Même visibilité que l'agenda : un événement que l'utilisateur ne peut pas voir
+// (« Équipe du projet uniquement », projet non suivi) est traité comme introuvable.
+[$vis_sql, $vis_params] = ak_event_visibility_sql($pdo, $current);
 $stmt = $pdo->prepare("
     SELECT e.*,
            p.name AS project_name, p.id AS project_id_ref, f.name AS folder_name, f.color_theme AS folder_color,
@@ -17,14 +21,15 @@ $stmt = $pdo->prepare("
     LEFT JOIN projects p ON e.project_id = p.id
     LEFT JOIN folders f ON p.folder_id = f.id
     LEFT JOIN users u ON e.created_by = u.id
-    WHERE e.id = ? AND e.org_id = ? AND e.deleted_at IS NULL
+    WHERE e.id = ? AND e.org_id = ? AND e.deleted_at IS NULL" . $vis_sql . "
     LIMIT 1
 ");
-$stmt->execute([$event_id, $org_id]);
+$stmt->execute(array_merge([$event_id, $org_id], $vis_params));
 $event = $stmt->fetch();
 if (!$event) { header('Location: /agenda?error=notfound'); exit; }
 
-$can_edit = $current['role'] === 'admin' || $current['role'] === 'coordinator' || $event['created_by'] == $current['id'];
+// Admin, coordinateur, droit « Gérer les événements » ou créateur ; jamais un suiveur (cf. action-evenement.php)
+$can_edit = ak_event_can_edit($current, $event);
 $edit_mode = isset($_GET['edit']) && $can_edit;
 
 $projects = [];
@@ -80,8 +85,9 @@ render_sidebar('agenda');
   <?php if (isset($_GET['updated'])): ?>
     <div class="alert alert-success" style="display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('check-circle',16) ?><span>Événement mis à jour<?= !empty($event['google_event_id']) ? ' et synchronisé avec Google Calendar' : '' ?>.</span></div>
   <?php elseif (isset($_GET['error'])):
-    $err_labels = ['permission' => 'Droits insuffisants.', 'dates' => 'Date de fin avant date de début.', 'invalid' => 'Données invalides.', 'csrf' => 'Session expirée.'];
-    $err_msg = $err_labels[$_GET['error']] ?? $_GET['error'];
+    $err_labels = ['permission' => 'Droits insuffisants.', 'dates' => 'Date de fin avant date de début.', 'invalid' => 'Données invalides.', 'csrf' => 'Session expirée : vos modifications n’ont pas été enregistrées. Rechargez la page puis recommencez.',
+                   'time' => 'Heure invalide : vos modifications n’ont pas été enregistrées. Saisissez une heure de début et de fin (ex. 14:00), ou cochez « Journée entière ».'];
+    $err_msg = $err_labels[is_string($_GET['error']) ? $_GET['error'] : ''] ?? 'Une erreur est survenue.';
   ?>
     <div class="alert alert-error" style="display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('alert-tri',16) ?><span><?= h($err_msg) ?></span></div>
   <?php endif; ?>

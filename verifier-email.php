@@ -1,6 +1,6 @@
 <?php
 /**
- * verifier-email.php — Confirmation d'email (tunnel demo)
+ * verifier-email.php — Confirmation d'email (inscription, changement d'adresse)
  * URL : /verifier-email?u=<user_id>&s=<signature HMAC>
  * La signature HMAC prouve la legitimite du lien (aucune table requise).
  * Page autonome : ne depend que de config.php ($pdo) et du helper de signature.
@@ -27,10 +27,10 @@ if ($u > 0 && $s !== '' && function_exists('ak_email_verify_check') && ak_email_
 $icon    = $ok ? '&#9989;' : '&#9888;&#65039;';
 $heading = $ok ? 'Votre email est confirm&eacute;' : 'Lien invalide ou expir&eacute;';
 $message = $ok
-    ? 'Merci ! Votre adresse email est bien confirm&eacute;e. Vous pouvez d&egrave;s maintenant explorer votre d&eacute;mo Assokit.'
+    ? 'Merci ! Votre adresse email est bien confirm&eacute;e. Vous pouvez d&egrave;s maintenant retrouver votre espace Assokit.'
     : 'Ce lien de confirmation n\'est pas valide. Vous pouvez vous connecter directement &agrave; votre espace.';
 $cta_url = $ok ? '/dashboard' : '/connexion';
-$cta_txt = $ok ? 'Acc&eacute;der &agrave; ma d&eacute;mo' : 'Se connecter';
+$cta_txt = $ok ? 'Acc&eacute;der &agrave; mon espace' : 'Se connecter';
 $title   = $ok ? 'Email confirm&eacute; — Assokit' : 'Lien invalide — Assokit';
 
 header('Content-Type: text/html; charset=utf-8');

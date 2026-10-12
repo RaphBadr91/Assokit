@@ -11,10 +11,18 @@ $ag = null; $resos = [];
 if ($id > 0) {
     $ag = ag_load($pdo, $id, $org_id);
     if (!$ag) { http_response_code(404); die('AG introuvable.'); }
+    if (ag_is_frozen($ag['status'])) {   // AG clôturée : figée (le PV doit rester celui de la séance)
+        $_SESSION['flash_assemblee'] = 'Cette assemblée est clôturée : elle n’est plus modifiable.';
+        header('Location: /assemblee/' . $id); exit;
+    }
     $resos = ag_load_resolutions($pdo, $id);
 }
+// Séance ouverte : type, date, quorum et résolutions ne sont plus modifiables (votes en cours).
+$locked = $ag && $ag['status'] === 'in_progress';
 $d = $ag ?: ['type'=>'ag_ord','title'=>'','description'=>'','scheduled_at'=>'','location'=>'','location_url'=>'','quorum_required'=>'','notes_internal'=>''];
-if (empty($resos)) {
+// Résolutions types proposées à la création seulement : en modification, une AG sans
+// résolution reste sans résolution (sinon un simple changement de date les créerait).
+if (!$ag && empty($resos)) {
     $resos = [
         ['id'=>0,'title'=>'Approbation du PV de l\'AG précédente','description'=>'','vote_type'=>'simple'],
         ['id'=>0,'title'=>'Rapport moral du président','description'=>'','vote_type'=>'simple'],
@@ -40,7 +48,7 @@ render_head($ag ? 'Modifier AG' : 'Nouvelle AG');
       <h2 class="ag-section">📌 Identité</h2>
       <div class="ag-row">
         <div class="ag-fld"><label>Type *</label>
-          <select name="type">
+          <select name="type" <?= $locked ? 'disabled' : '' ?>>
             <?php foreach (['ag_ord','ag_ext','ca','bureau'] as $t): ?>
               <option value="<?= h($t) ?>" <?= $d['type']==$t?'selected':'' ?>><?= h(ag_type_label($t)) ?></option>
             <?php endforeach; ?>
@@ -49,15 +57,23 @@ render_head($ag ? 'Modifier AG' : 'Nouvelle AG');
         <div class="ag-fld"><label>Titre *</label><input type="text" name="title" required maxlength="200" value="<?= h($d['title']) ?>" placeholder="Ex : AG Ordinaire 2026"></div>
       </div>
       <div class="ag-row">
-        <div class="ag-fld"><label>Date & heure *</label><input type="datetime-local" name="scheduled_at" required value="<?= $d['scheduled_at'] ? date('Y-m-d\TH:i', strtotime($d['scheduled_at'])) : '' ?>"></div>
-        <div class="ag-fld"><label>Quorum (nb min)</label><input type="number" name="quorum_required" min="0" value="<?= h($d['quorum_required']) ?>" placeholder="0 = pas de quorum"></div>
+        <div class="ag-fld"><label>Date & heure *</label><input type="datetime-local" name="scheduled_at" <?= $locked ? 'disabled' : 'required' ?> value="<?= $d['scheduled_at'] ? date('Y-m-d\TH:i', strtotime($d['scheduled_at'])) : '' ?>"></div>
+        <div class="ag-fld"><label>Quorum (nb min)</label><input type="number" name="quorum_required" min="0" <?= $locked ? 'disabled' : '' ?> value="<?= h($d['quorum_required']) ?>" placeholder="0 = pas de quorum"></div>
       </div>
       <div class="ag-fld"><label>Lieu</label><input type="text" name="location" maxlength="255" value="<?= h($d['location']) ?>" placeholder="Salle, adresse, ou « visioconférence »"></div>
       <div class="ag-fld"><label>Lien visio (optionnel)</label><input type="url" name="location_url" maxlength="500" value="<?= h($d['location_url']) ?>" placeholder="https://meet.jit.si/..."></div>
       <div class="ag-fld"><label>Présentation / contexte</label><textarea name="description" rows="3" placeholder="Présentation de la session"><?= h($d['description']) ?></textarea></div>
 
       <h2 class="ag-section">🗳️ Ordre du jour & résolutions</h2>
-      <p class="ag-help">Chaque résolution sera votée séparément. Tu peux les éditer plus tard.</p>
+      <?php if ($locked): ?>
+      <p class="ag-help">La séance est ouverte : le type, la date, le quorum, l’ordre du jour et les résolutions ne sont plus modifiables.</p>
+      <ol class="ag-reso-ro">
+        <?php foreach ($resos as $r): ?>
+          <li><strong><?= h($r['title']) ?></strong> <span class="ag-help">· <?= h(ag_vote_type_label((string)$r['vote_type'])) ?></span></li>
+        <?php endforeach; ?>
+      </ol>
+      <?php else: ?>
+      <p class="ag-help">Chaque résolution sera votée séparément. Tu peux les éditer jusqu’à l’ouverture de la séance.</p>
       <div id="ag-resos">
         <?php foreach ($resos as $r): ?>
         <div class="ag-reso">
@@ -73,6 +89,7 @@ render_head($ag ? 'Modifier AG' : 'Nouvelle AG');
         <?php endforeach; ?>
       </div>
       <button type="button" id="ag-add-reso" class="ag-btn-ghost">+ Ajouter une résolution</button>
+      <?php endif; ?>
 
       <h2 class="ag-section">📝 Notes internes</h2>
       <div class="ag-fld"><textarea name="notes_internal" rows="2" placeholder="Visible uniquement par les organisateurs"><?= h($d['notes_internal']) ?></textarea></div>
@@ -96,6 +113,7 @@ render_head($ag ? 'Modifier AG' : 'Nouvelle AG');
 .ag-fld input, .ag-fld select, .ag-fld textarea { width: 100%; padding: 9px 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; font-family: inherit; box-sizing: border-box; }
 .ag-fld input:focus, .ag-fld select:focus, .ag-fld textarea:focus { outline: none; border-color: #10B981; box-shadow: 0 0 0 3px rgba(16,185,129,0.12); }
 .ag-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.ag-reso-ro { margin: 0 0 6px; padding-left: 20px; font-size: 13.5px; line-height: 1.8; color: #374151; }
 .ag-reso { display: grid; grid-template-columns: 1fr 200px auto; gap: 6px; margin-bottom: 6px; align-items: center; }
 .ag-reso input, .ag-reso select { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 7px; font-size: 13px; font-family: inherit; }
 .ag-reso-rm { background: transparent; border: 1px solid #e5e7eb; padding: 0 12px; height: 36px; border-radius: 7px; cursor: pointer; color: #DC2626; font-size: 18px; }
@@ -108,7 +126,7 @@ render_head($ag ? 'Modifier AG' : 'Nouvelle AG');
 @media (max-width: 540px) { .ag-reso { grid-template-columns: 1fr auto; } .ag-reso select { grid-column: 1/-1; } }
 </style>
 <script>
-document.getElementById('ag-add-reso').addEventListener('click', function() {
+document.getElementById('ag-add-reso') && document.getElementById('ag-add-reso').addEventListener('click', function() {
   const c = document.getElementById('ag-resos');
   const div = document.createElement('div');
   div.className = 'ag-reso';

@@ -7,11 +7,6 @@ require_once __DIR__ . '/google-helper.php';
 require_login();
 $user = current_user();
 
-if ($user['role'] !== 'admin') {
-    header('Location: /mon-agenda?error=not_admin');
-    exit;
-}
-
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: /mon-agenda');
     exit;
@@ -23,6 +18,21 @@ if (!check_csrf($_POST['csrf_token'] ?? '')) {
 }
 
 $action = $_POST['action'] ?? '';
+
+// URL ICS personnelle : chaque utilisateur peut révoquer la sienne (et seulement la sienne).
+if ($action === 'regenerate') {
+    $new_token = bin2hex(random_bytes(20));   // 40 caractères hexadécimaux, format attendu par agenda-ics.php
+    $pdo->prepare("UPDATE users SET ics_token = ? WHERE id = ?")
+        ->execute([$new_token, (int)$user['id']]);
+    header('Location: /mon-agenda?ics_regenerated=1');
+    exit;
+}
+
+// Tout le reste concerne le Google Calendar de l'association : administrateurs uniquement.
+if ($user['role'] !== 'admin') {
+    header('Location: /mon-agenda?error=not_admin');
+    exit;
+}
 
 function push_all_assokit_events_now($org_id) {
     global $pdo;
@@ -99,14 +109,6 @@ if ($action === 'sync_now') {
 if ($action === 'disconnect') {
     disconnect_google($user['org_id']);
     header('Location: /mon-agenda?disconnected=1');
-    exit;
-}
-
-if ($action === 'regenerate') {
-    $new_token = sha1($user['id'] . '-' . $user['email'] . '-' . mt_rand() . '-' . time());
-    $pdo->prepare("UPDATE users SET ics_token = ? WHERE id = ?")
-        ->execute([$new_token, $user['id']]);
-    header('Location: /mon-agenda?ics_regenerated=1');
     exit;
 }
 

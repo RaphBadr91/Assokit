@@ -20,6 +20,7 @@
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes-attendance.php';
 
 $mode = null;
 $events = [];
@@ -34,13 +35,15 @@ if (isset($_GET['event'])) {
     $current = current_user();
     $event_id = (int)$_GET['event'];
 
+    // Mêmes règles que la fiche de l'événement (supprimé, suiveur, « Équipe du projet uniquement »)
+    [$vis_sql, $vis_params] = ak_event_visibility_sql($pdo, $current);
     $stmt = $pdo->prepare("
         SELECT e.*, p.name AS project_name
         FROM events e
         LEFT JOIN projects p ON e.project_id = p.id
-        WHERE e.id = ? AND e.org_id = ?
+        WHERE e.id = ? AND e.org_id = ? AND e.deleted_at IS NULL" . $vis_sql . "
     ");
-    $stmt->execute([$event_id, $current['org_id']]);
+    $stmt->execute(array_merge([$event_id, $current['org_id']], $vis_params));
     $event = $stmt->fetch();
 
     if (!$event) {
@@ -58,14 +61,16 @@ if (isset($_GET['event'])) {
 // MODE 2 : Abonnement permanent via token (pas besoin d'être connecté)
 // =========================================================
 elseif (isset($_GET['token'])) {
-    $token = trim($_GET['token']);
+    $token = is_string($_GET['token']) ? trim($_GET['token']) : '';
     if (!preg_match('/^[a-f0-9]{40}$/i', $token)) {
         http_response_code(403);
         die('Token invalide.');
     }
 
-    // Retrouver l'utilisateur à partir du token
-    $stmt = $pdo->prepare("SELECT id, org_id, first_name, last_name FROM users WHERE ics_token = ? LIMIT 1");
+    // Retrouver l'utilisateur à partir du token. Compte désactivé ou supprimé : le lien
+    // est révoqué (même règle que la connexion), l'agenda abonné cesse d'être alimenté.
+    $stmt = $pdo->prepare("SELECT id, org_id, role, first_name, last_name FROM users
+                           WHERE ics_token = ? AND is_active = 1 AND deleted_at IS NULL LIMIT 1");
     $stmt->execute([$token]);
     $user_from_token = $stmt->fetch();
 
@@ -74,15 +79,16 @@ elseif (isset($_GET['token'])) {
         die('Token invalide ou révoqué.');
     }
 
-    // Charger tous les événements de l'org
+    // Événements de l'org que le titulaire du lien peut voir (mêmes règles que /agenda)
+    [$vis_sql, $vis_params] = ak_event_visibility_sql($pdo, $user_from_token);
     $stmt = $pdo->prepare("
         SELECT e.*, p.name AS project_name
         FROM events e
         LEFT JOIN projects p ON e.project_id = p.id
-        WHERE e.org_id = ?
+        WHERE e.org_id = ? AND e.deleted_at IS NULL" . $vis_sql . "
         ORDER BY e.starts_at ASC
     ");
-    $stmt->execute([$user_from_token['org_id']]);
+    $stmt->execute(array_merge([$user_from_token['org_id']], $vis_params));
     $events = $stmt->fetchAll();
 
     // Récupérer le nom de l'organisation
@@ -104,10 +110,12 @@ else {
 // GÉNÉRATION DU FICHIER .ICS
 // =========================================================
 
-// Helper : escape les caractères spéciaux du format iCal
+// Helper : escape les caractères spéciaux du format iCal (RFC 5545 §3.3.11).
+// Antislashs d'abord, retours ligne en dernier : sinon le « \n » produit serait
+// lui-même échappé et les agendas afficheraient « \n » en clair.
 function ics_escape($text) {
+    $text = str_replace(['\\', ';', ','], ['\\\\', '\\;', '\\,'], (string)$text);
     $text = str_replace(["\r\n", "\r", "\n"], '\\n', $text);
-    $text = str_replace(['\\', ';', ','], ['\\\\', '\\;', '\\,'], $text);
     return $text;
 }
 
@@ -159,8 +167,12 @@ foreach ($events as $event) {
     $lines[] = 'BEGIN:VEVENT';
     $lines[] = 'UID:assokit-event-' . $event['id'] . '@' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr');
     $lines[] = 'DTSTAMP:' . gmdate('Ymd\THis\Z');
-    $lines[] = 'CREATED:' . gmdate('Ymd\THis\Z', strtotime($event['created_at']));
-    $lines[] = 'LAST-MODIFIED:' . gmdate('Ymd\THis\Z', strtotime($event['updated_at']));
+    if (!empty($event['created_at']) && strtotime($event['created_at'])) {
+        $lines[] = 'CREATED:' . gmdate('Ymd\THis\Z', strtotime($event['created_at']));
+    }
+    if (!empty($event['updated_at']) && strtotime($event['updated_at'])) {
+        $lines[] = 'LAST-MODIFIED:' . gmdate('Ymd\THis\Z', strtotime($event['updated_at']));
+    }
 
     if ($is_all_day) {
         $lines[] = 'DTSTART;VALUE=DATE:' . ics_datetime($event['starts_at'], true);
@@ -180,8 +192,9 @@ foreach ($events as $event) {
 
     // Description enrichie avec lien vers Assokit
     $desc_parts = [];
-    if ($event['description']) {
-        $desc_parts[] = $event['description'];
+    $plain_desc = ak_event_plain_text($event['description'] ?? '');   // description Google en HTML → texte
+    if ($plain_desc !== '') {
+        $desc_parts[] = $plain_desc;
     }
     if ($event['project_name']) {
         $desc_parts[] = "Projet : " . $event['project_name'];

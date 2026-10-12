@@ -4,9 +4,13 @@
  * Reproduit fidèlement nouveau-evenement.php (INSERT + sync Google).
  * Renvoie du JSON. NE MODIFIE PAS le site.
  *
- * Accessible à tous les membres de l'organisation (parité web).
+ * Accessible à tous les membres de l'organisation, sauf aux suiveurs (parité web).
  */
 require __DIR__ . '/_app-write-boot.php';
+require_once __DIR__ . '/../includes-attendance.php';
+
+// Suiveur (financeur externe) : pas d'écriture dans l'agenda de l'association (cf. nouveau-evenement.php).
+if (!ak_event_can_create($user)) app_fail(403, 'role', 'Votre compte ne permet pas de créer des événements.');
 
 $title       = trim((string) ($input['title'] ?? ''));
 $description = trim((string) ($input['description'] ?? ''));
@@ -23,10 +27,12 @@ $end_time    = (string) ($input['end_time'] ?? '16:00');
 
 // Validations (identiques au site)
 if ($title === '') app_fail(422, 'invalid', 'Le titre de l\'événement est obligatoire.');
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) app_fail(422, 'invalid', 'Date de début invalide.');
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date))   app_fail(422, 'invalid', 'Date de fin invalide.');
-if (!preg_match('/^\d{2}:\d{2}$/', $start_time)) $start_time = '14:00';
-if (!preg_match('/^\d{2}:\d{2}$/', $end_time))   $end_time   = '16:00';
+if (!ak_event_valid_date($start_date)) app_fail(422, 'invalid', 'Date de début invalide.');
+if (!ak_event_valid_date($end_date))   app_fail(422, 'invalid', 'Date de fin invalide.');
+if (!ak_event_valid_time($start_time)) $start_time = '14:00';
+if (!ak_event_valid_time($end_time))   $end_time   = '16:00';
+$start_time = substr($start_time, 0, 5);
+$end_time   = substr($end_time, 0, 5);
 
 if ($is_all_day) {
     $starts_at = $start_date . ' 00:00:00';

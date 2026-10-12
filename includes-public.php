@@ -9,6 +9,17 @@
 
 if (!defined('AK_PUBLIC_DOMAIN')) define('AK_PUBLIC_DOMAIN', 'https://assokit.fr');
 
+// Même en-tête sur toutes les pages publiques pour un client connecté (« Mon tableau
+// de bord ») : la plupart ne chargent pas config.php, la session n'y était donc pas
+// ouverte. Si le navigateur présente un cookie de session, on charge config.php, qui
+// ouvre la session avec les réglages de l'application (nom, cookie, stockage).
+// Ce fichier est inclus en tête de page, au niveau global : $pdo reste global et
+// rien n'a encore été envoyé au navigateur.
+if (PHP_SAPI !== 'cli' && session_status() === PHP_SESSION_NONE && !headers_sent()
+    && !empty($_COOKIE[session_name()]) && is_file(__DIR__ . '/config.php')) {
+    require_once __DIR__ . '/config.php';
+}
+
 if (!function_exists('pub_h')) {
     function pub_h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 }
@@ -17,6 +28,43 @@ if (!function_exists('pub_url')) {
     function pub_url(string $path = '/'): string {
         $path = '/' . ltrim($path, '/');
         return AK_PUBLIC_DOMAIN . $path;
+    }
+}
+
+if (!function_exists('pub_legal_identity')) {
+    /**
+     * Identité légale de l'éditeur (mentions légales, confidentialité, contact).
+     * Lue dans les paramètres société (super-admin › Paramètres société, table
+     * company_settings, voir company-helpers.php) quand la page a chargé config.php ;
+     * un champ vide garde la valeur affichée jusqu'ici, ou '' si aucune.
+     * Texte brut, à échapper à l'affichage.
+     */
+    function pub_legal_identity(): array {
+        static $id = null;
+        if ($id !== null) return $id;
+        $c = [];
+        if (isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO && is_file(__DIR__ . '/company-helpers.php')) {
+            require_once __DIR__ . '/company-helpers.php';
+            $c = ak_company() ?: [];
+        }
+        $get = static fn(string $k): string => trim((string) ($c[$k] ?? ''));
+        $address = $c ? str_replace("\n", ', ', ak_company_address_multiline()) : '';
+        if ($address !== '' && in_array($get('address_country'), ['', 'FR'], true)) $address .= ', France';
+        $capital = (int) ($c['capital_cents'] ?? 0);
+        return $id = [
+            'name'     => $get('legal_name') ?: 'RBPS',
+            'form'     => $get('legal_form'),
+            'capital'  => $capital > 0 ? number_format($capital / 100, 0, ',', "\u{00A0}") . "\u{00A0}€" : '',
+            'address'  => $address,
+            'city'     => $get('address_city'),
+            'siren'    => $get('siren'),
+            'rcs'      => ($get('rcs_city') !== '' && $get('rcs_number') !== '') ? 'RCS ' . $get('rcs_city') . ' ' . $get('rcs_number') : '',
+            'vat'      => (int) ($c['vat_subject'] ?? 0) === 1 ? $get('vat_number') : '',
+            'phone'    => $get('phone') ?: '+33 7 56 89 73 36',
+            'email'    => $get('email_legal') ?: 'contact@assokit.fr',
+            'director' => trim($get('legal_rep_first_name') . ' ' . $get('legal_rep_last_name')),
+            'director_role' => $get('legal_rep_role'),
+        ];
     }
 }
 
@@ -180,14 +228,28 @@ if (!function_exists('render_public_head')) {
     function gtag(){dataLayer.push(arguments);}
     function getCk(n){var m=document.cookie.match('(^|;)\\s*'+n+'\\s*=\\s*([^;]+)');return m?m.pop():'';}
     function setCk(n,v){var d=new Date();d.setTime(d.getTime()+182*864e5);document.cookie=n+'='+v+';expires='+d.toUTCString()+';path=/;SameSite=Lax';}
-    function loadGA(){var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+GA_ID;document.head.appendChild(s);gtag('js',new Date());gtag('config',GA_ID,{'anonymize_ip':true});}
+    // Cookies Google Analytics (_ga, _ga_<id>), posés sur le domaine le plus large possible : effacés au retrait du consentement
+    function clearGA(){
+      var past=';expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/', h=location.hostname.split('.');
+      document.cookie.split(';').forEach(function(c){
+        var n=c.split('=')[0].trim();
+        if(n.indexOf('_ga')!==0)return;
+        document.cookie=n+'='+past;
+        for(var i=0;i<h.length-1;i++)document.cookie=n+'='+past+';domain=.'+h.slice(i).join('.');
+      });
+    }
+    var gaLoaded=false;
+    // Durée des cookies GA limitée à 13 mois (recommandation CNIL ; 2 ans par défaut)
+    function loadGA(){window['ga-disable-'+GA_ID]=false;if(gaLoaded)return;gaLoaded=true;var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+GA_ID;document.head.appendChild(s);gtag('js',new Date());gtag('config',GA_ID,{'anonymize_ip':true,'cookie_expires':34128000});}
     function hideBanner(){var b=document.getElementById('ak-cookie-banner');if(b)b.remove();}
     window.akAcceptCookies=function(){setCk(CK,'granted');hideBanner();loadGA();};
-    window.akRefuseCookies=function(){setCk(CK,'denied');hideBanner();};
+    window.akRefuseCookies=function(){setCk(CK,'denied');hideBanner();window['ga-disable-'+GA_ID]=true;clearGA();};
+    // Retirer ou donner son consentement à tout moment (lien « Gérer mes cookies » du pied de page et de /cookies)
+    window.akShowCookieBanner=function(){hideBanner();showBanner();};
     function showBanner(){
       var html='<div id="ak-cookie-banner" style="position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#0F172A;color:#fff;padding:18px 20px;font-family:system-ui,sans-serif;font-size:14px;line-height:1.5;box-shadow:0 -4px 20px rgba(0,0,0,.25);">'
         +'<div style="max-width:1000px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:14px;justify-content:space-between;">'
-        +'<div style="flex:1;min-width:260px;">\ud83c\udf6a Nous utilisons des cookies de mesure d\'audience (Google Analytics) pour am\u00e9liorer le site. <a href="/cookies" style="color:#6EE7B7;text-decoration:underline;">En savoir plus</a></div>'
+        +'<div style="flex:1;min-width:260px;">\ud83c\udf6a Nous utilisons des cookies de mesure d\'audience (Google Analytics) pour am\u00e9liorer le site. Vous pourrez changer d\u2019avis \u00e0 tout moment via \u00ab\u00a0G\u00e9rer mes cookies\u00a0\u00bb en bas de page. <a href="/cookies" style="color:#6EE7B7;text-decoration:underline;">En savoir plus</a></div>'
         +'<div style="display:flex;gap:10px;flex-shrink:0;">'
         +'<button onclick="akRefuseCookies()" style="background:transparent;color:#fff;border:1px solid #475569;border-radius:8px;padding:10px 18px;cursor:pointer;font-size:14px;font-weight:600;">Refuser</button>'
         +'<button onclick="akAcceptCookies()" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:10px 18px;cursor:pointer;font-size:14px;font-weight:600;">Accepter</button>'
@@ -354,6 +416,7 @@ if (!function_exists('render_public_footer')) {
                 <a href="/cgu">CGU / CGV</a>
                 <a href="/confidentialite">Confidentialité</a>
                 <a href="/cookies">Cookies</a>
+                <a href="/cookies#gerer" onclick="if(window.akShowCookieBanner){akShowCookieBanner();return false;}">Gérer mes cookies</a>
               </div>
             </div>
 

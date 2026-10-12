@@ -10,13 +10,22 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/demo-guard.php';
+require_once __DIR__ . '/app-context.php'; // ak_login_next()
 
 require_login();
 $user = current_user();
+// Page à rejoindre une fois le mot de passe changé (lien reçu par e-mail, cockpit…)
+$next = ak_login_next($_GET['next'] ?? '');
+
+// Relu en base : current_user() ne charge pas forcément toutes les colonnes
+$st = $pdo->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
+$st->execute([(int)$user['id']]);
+$user = array_merge($user, $st->fetch(PDO::FETCH_ASSOC) ?: []);
 
 $error = null;
 $success = false;
 $is_forced = !empty($user['must_change_password']);
+$continue_to = null; // après un changement obligatoire : page où reprendre, après la confirmation
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!check_csrf($_POST['csrf_token'] ?? '')) {
@@ -48,11 +57,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $success = true;
 
-            // Si c'était forcé, on redirige vers le dashboard
+            // Si c'était forcé : confirmation, puis on reprend là où l'utilisateur allait (sinon son
+            // accueil : cockpit, mairie ou association). La confirmation s'affiche ici, avant de
+            // partir : aucune page d'arrivée ne lisait l'ancien « ?password_changed=1 ».
             if ($is_forced) {
-                session_write_close();
-                header('Location: /dashboard?password_changed=1');
-                exit;
+                if ($next !== '') {
+                    $continue_to = $next;
+                } elseif (!empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin') {
+                    $continue_to = '/super-admin';
+                } elseif (!empty($user['parent_org_id'])) {
+                    $continue_to = '/mairie-dashboard';
+                } else {
+                    $continue_to = '/dashboard';
+                }
             }
         }
     }
@@ -62,7 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Changer mon mot de passe — Assokit</title>
+  <title><?= $continue_to ? 'Mot de passe modifié' : 'Changer mon mot de passe' ?> — Assokit</title>
+  <?php if ($continue_to): ?><meta http-equiv="refresh" content="3;url=<?= h($continue_to) ?>"><?php endif; ?>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     :root{--acc:#059669;--acc-dark:#047857;--bg:#FAFAF9;--ink:#1C1917;--ink-2:#44403C;--ink-3:#78716C;--border:#E7E5E4}
@@ -78,6 +96,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     label{display:block;font-size:12.5px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
     input{width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#fff;font-family:inherit}
     input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(5,150,105,0.08)}
+    /* iPhone / iPad : sous 16px, Safari zoome sur le champ à chaque saisie */
+    @media (max-width:480px),(pointer:coarse){input{font-size:16px}}
     .pwd-hint{font-size:11.5px;color:var(--ink-3);margin-top:5px}
     .btn-submit{width:100%;padding:12px;background:var(--acc);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;margin-top:8px;font-family:inherit}
     .btn-submit:hover{background:var(--acc-dark)}
@@ -93,6 +113,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="logo-mark">asso<span>kit</span>.</div>
   </div>
 
+<?php if ($continue_to): ?>
+  <h1>Mot de passe modifié</h1>
+  <div class="success-box" style="margin-top:14px;">✅ Votre nouveau mot de passe est enregistré. Utilisez-le à votre prochaine connexion.</div>
+  <a href="<?= h($continue_to) ?>" class="btn-submit" style="display:block;text-align:center;text-decoration:none;">Continuer →</a>
+<?php else: ?>
   <h1>Changer votre mot de passe</h1>
   <p class="subtitle">Bienvenue <?= h($user['first_name']) ?> !</p>
 
@@ -138,7 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <?php if (!$is_forced): ?>
     <div class="footer-link"><a href="/dashboard">← Retour au dashboard</a></div>
+  <?php else: ?>
+    <div class="footer-link"><a href="/deconnexion">Se déconnecter</a></div>
   <?php endif; ?>
+<?php endif; ?>
 </div>
 </body>
 </html>

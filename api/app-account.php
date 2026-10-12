@@ -36,7 +36,13 @@ try {
         if ($lp !== '') $org_logo = (strpos($lp, 'http') === 0) ? $lp : 'https://assokit.fr/' . ltrim($lp, '/');
     } catch (Throwable $e) {}
 
-    $can_delete = empty($u['is_founder']) && empty($u['is_platform_admin']);
+    // Mêmes règles que le site (ak_account_delete_blocker) : Fondateur, seul administrateur de l'association…
+    $delete_blocked = function_exists('ak_account_delete_blocker') ? ak_account_delete_blocker($pdo, $uid)
+        : ((!empty($u['is_founder']) || !empty($u['is_platform_admin'])) ? 'Contactez le support.' : '');
+    if ($delete_blocked === '' && !empty($_SESSION['impersonation_target_user_id'])) {
+        $delete_blocked = 'Suppression impossible pendant une incarnation.';
+    }
+    $can_delete = ($delete_blocked === '');
 
     echo json_encode([
         'ok' => true,
@@ -48,6 +54,8 @@ try {
             'city'       => (string) ($u['city'] ?? ''),
             'role'       => (string) ($u['role'] ?? 'member'),
             'can_delete' => $can_delete,
+            // Raison du refus, à afficher sous le bouton grisé (null si la suppression est possible)
+            'delete_blocked_reason' => $can_delete ? null : $delete_blocked,
         ],
         'org' => ['name' => $org_name, 'logo' => $org_logo, 'is_admin' => (($u['role'] ?? '') === 'admin')],
     ], JSON_UNESCAPED_UNICODE);

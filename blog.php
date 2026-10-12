@@ -92,7 +92,7 @@ render_public_nav('blog');
 
       <form method="get" action="/blog" style="margin-left:auto;display:flex;gap:8px;">
         <?php if ($cat_filter): ?><input type="hidden" name="categorie" value="<?= pub_h($cat_filter) ?>"><?php endif; ?>
-        <input type="search" name="q" value="<?= pub_h($q) ?>" placeholder="🔍 Rechercher…" style="padding:8px 14px;border:1px solid var(--c-border);border-radius:8px;font-size:13px;background:white;font-family:inherit;width:200px;">
+        <input type="search" name="q" value="<?= pub_h($q) ?>" placeholder="🔍 Rechercher…" style="padding:8px 14px;border:1px solid var(--c-border);border-radius:8px;font-size:16px;background:white;font-family:inherit;width:200px;"><?php /* 16px : en dessous, Safari iOS zoome au focus */ ?>
       </form>
     </div>
   </div>

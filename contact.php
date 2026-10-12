@@ -39,9 +39,19 @@ $subjects_list = [
     'other'       => ['icon' => '✏️', 'label' => 'Autre',                      'full' => 'Autre demande'],
 ];
 
+// Longueurs maximales (contrôlées côté serveur, rappelées par maxlength dans le formulaire)
+$ct_max = ['name' => 100, 'email' => 190, 'phone' => 30, 'subject_other' => 150, 'message' => 5000];
+
+// Champ texte reçu en GET/POST (un tableau forgé compte comme vide)
+$ct_str = static fn($v): string => is_string($v) ? trim($v) : '';
+
 // === Pré-remplissage URL ===
-$prefill_subject_key = $_GET['subject'] ?? '';
-$prefill_plan = $_GET['plan'] ?? '';
+$prefill_subject_key = $ct_str($_GET['subject'] ?? '');
+// Le plan est recopié dans l'objet des e-mails, y compris l'accusé de réception
+// envoyé à l'adresse saisie : seuls les plans connus sont acceptés, sous leur nom.
+$ct_plans = ['demarrage' => 'Démarrage', 'assokit' => 'Assokit', 'sur-mesure' => 'Sur-mesure'];
+$prefill_plan = $ct_str($_GET['plan'] ?? '');
+if (!isset($ct_plans[$prefill_plan])) $prefill_plan = '';
 
 $selected_subject_key = '';
 if (isset($subjects_list[$prefill_subject_key])) {
@@ -57,7 +67,7 @@ if ($prefill_plan === 'sur-mesure') {
 
 // Récupérer la valeur depuis POST (en cas d'erreur de soumission)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['subject_key'])) {
-    $posted_key = $_POST['subject_key'];
+    $posted_key = $ct_str($_POST['subject_key']);
     if (isset($subjects_list[$posted_key])) {
         $selected_subject_key = $posted_key;
     }
@@ -68,15 +78,28 @@ $form_message = '';
 $form_status = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = trim($_POST['name'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    $phone = trim($_POST['phone'] ?? '');
-    $subject_key = $_POST['subject_key'] ?? '';
-    $subject_other = trim($_POST['subject_other'] ?? '');
-    $message = trim($_POST['message'] ?? '');
+    // Caractères de contrôle retirés des champs sur une ligne (ils sont repris dans l'objet des e-mails)
+    $ct_line = static fn(string $s): string => trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $s) ?? '');
+    $name = $ct_line($ct_str($_POST['name'] ?? ''));
+    $email = $ct_str($_POST['email'] ?? '');
+    $phone = $ct_line($ct_str($_POST['phone'] ?? ''));
+    $subject_key = $ct_str($_POST['subject_key'] ?? '');
+    $subject_other = $subject_key === 'other' ? $ct_line($ct_str($_POST['subject_other'] ?? '')) : '';
+    // Retours à la ligne normalisés : le navigateur envoie \r\n, mais compte 1 caractère (maxlength)
+    $message = str_replace("\r\n", "\n", $ct_str($_POST['message'] ?? ''));
     $consent = !empty($_POST['consent']);
-    $hp_website = trim($_POST['website'] ?? '');
+    $hp_website = $ct_str($_POST['website'] ?? '');
     require_once __DIR__ . '/rate-limit-helper.php';
+
+    // Premier champ trop long, pour le nommer dans l'erreur
+    $ct_labels = ['name' => 'le nom', 'email' => 'l’e-mail', 'phone' => 'le téléphone', 'subject_other' => 'l’objet', 'message' => 'le message'];
+    $too_long = '';
+    foreach (compact('name', 'email', 'phone', 'subject_other', 'message') as $k => $v) {
+        if (mb_strlen($v) > $ct_max[$k]) {
+            $too_long = '⚠️ Texte trop long pour ' . $ct_labels[$k] . ' : ' . number_format($ct_max[$k], 0, ',', "\u{00A0}") . ' caractères au maximum.';
+            break;
+        }
+    }
 
     // Construction de l'objet final
     if ($subject_key === 'other' && $subject_other !== '') {
@@ -84,7 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (isset($subjects_list[$subject_key])) {
         $subject_final = $subjects_list[$subject_key]['full'];
         if ($prefill_plan && in_array($subject_key, ['demo', 'quote'], true)) {
-            $subject_final .= ' — Plan ' . ucfirst($prefill_plan);
+            $subject_final .= ' — Plan ' . $ct_plans[$prefill_plan];
         }
     } else {
         $subject_final = '';
@@ -94,70 +117,100 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Honeypot rempli = bot : faux succès, aucun envoi
         $form_status = 'success';
         $form_message = 'Merci ! Votre message a bien été envoyé. On vous répond en moins de 24h.';
-    } elseif (!ak_rate_limit('contact', 5, 600)) {
+    } elseif (!isset($subjects_list[$subject_key])) {
+        // Objet absent (cartes non cliquées) ou forgé
         $form_status = 'error';
-        $form_message = '⚠️ Trop de messages envoyés. Merci de patienter quelques minutes avant de réessayer.';
-    } elseif (!$name || !$email || !$message || !$consent || !$subject_key) {
-        $form_status = 'error';
-        $form_message = '⚠️ Tous les champs marqués * sont obligatoires (objet, nom, email, message, consentement).';
-    } elseif ($subject_key === 'other' && !$subject_other) {
+        $form_message = '⚠️ Choisissez l’objet de votre demande (cartes en haut du formulaire).';
+    } elseif ($subject_key === 'other' && $subject_other === '') {
         $form_status = 'error';
         $form_message = '⚠️ Veuillez préciser l\'objet de votre demande.';
+    } elseif ($name === '' || $email === '' || $message === '' || !$consent) {
+        $form_status = 'error';
+        $form_message = '⚠️ Tous les champs marqués * sont obligatoires (nom, email, message, consentement).';
+    } elseif ($too_long !== '') {
+        $form_status = 'error';
+        $form_message = $too_long;
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $form_status = 'error';
         $form_message = '⚠️ Votre email ne semble pas valide.';
+    } elseif (!ak_rate_limit('contact', 5, 600)) {
+        // Compté ici seulement : une erreur de saisie ne consomme pas le quota de l'IP
+        $form_status = 'error';
+        $form_message = '⚠️ Trop de messages envoyés. Merci de patienter quelques minutes avant de réessayer.';
     } else {
+        // === Persistance en base : le message arrive dans l'app Fondateur + active le double-sens ===
+        // (table asso_contact_messages créée par migration v45)
+        $saved = false;
         try {
-            // === Persistance en base : le message arrive dans l'app Fondateur + active le double-sens ===
-            // (table asso_contact_messages créée par migration v45 ; échec DB non bloquant pour l'email)
-            try {
-                if (isset($pdo) && $pdo instanceof PDO) {
-                    $name_parts = preg_split('/\s+/', trim($name), 2);
-                    $ct_first = $name_parts[0] ?? $name;
-                    $ct_last  = $name_parts[1] ?? '';
-                    $ct_msg   = $message . ($phone !== '' ? "\n\nTéléphone : " . $phone : '');
-                    $st = $pdo->prepare("INSERT INTO asso_contact_messages
-                        (firstname, lastname, email, organization, type, subject, message, ip, user_agent, created_at)
-                        VALUES (:f, :l, :e, :o, :t, :s, :m, :ip, :ua, NOW())");
-                    $st->execute([
-                        ':f' => $ct_first, ':l' => $ct_last, ':e' => $email,
-                        ':o' => '', ':t' => '', ':s' => $subject_final, ':m' => $ct_msg,
-                        ':ip' => $_SERVER['REMOTE_ADDR'] ?? '',
-                        ':ua' => mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
-                    ]);
-                }
-            } catch (Throwable $eDb) {
-                error_log('[contact save] ' . $eDb->getMessage());
+            if (isset($pdo) && $pdo instanceof PDO) {
+                $name_parts = preg_split('/\s+/', $name, 2);
+                $ct_first = $name_parts[0] ?? $name;
+                $ct_last  = $name_parts[1] ?? '';
+                $ct_msg   = $message . ($phone !== '' ? "\n\nTéléphone : " . $phone : '');
+                $st = $pdo->prepare("INSERT INTO asso_contact_messages
+                    (firstname, lastname, email, organization, type, subject, message, ip, user_agent, created_at)
+                    VALUES (:f, :l, :e, :o, :t, :s, :m, :ip, :ua, NOW())");
+                $st->execute([
+                    ':f' => $ct_first, ':l' => $ct_last, ':e' => $email,
+                    ':o' => '', ':t' => '', ':s' => $subject_final, ':m' => $ct_msg,
+                    ':ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+                    ':ua' => mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
+                ]);
+                $saved = true;
             }
-            if (function_exists('send_transactional_email')) {
+        } catch (Throwable $eDb) {
+            error_log('[contact save] ' . $eDb->getMessage());
+        }
+
+        $notified = false;
+        if (function_exists('send_transactional_email')) {
+            // Ces deux envois ne vont qu'à l'équipe et à l'adresse saisie : une session de
+            // démo ouverte dans ce navigateur ne doit pas les bloquer (voir demo-guard.php)
+            require_once __DIR__ . '/demo-guard.php';
+            ak_demo_public_form_mail(true);
+            try {
+                $category = $subjects_list[$subject_key]['icon'] . ' ' . $subjects_list[$subject_key]['label'];
                 $body_html = '<h2>Nouveau message contact Assokit</h2>';
                 $body_html .= '<p><strong>De :</strong> ' . htmlspecialchars($name) . ' (' . htmlspecialchars($email) . ')</p>';
                 if ($phone) $body_html .= '<p><strong>Téléphone :</strong> ' . htmlspecialchars($phone) . '</p>';
-                $body_html .= '<p><strong>Catégorie :</strong> ' . htmlspecialchars($subjects_list[$subject_key]['icon'] . ' ' . $subjects_list[$subject_key]['label']) . '</p>';
+                $body_html .= '<p><strong>Catégorie :</strong> ' . htmlspecialchars($category) . '</p>';
                 $body_html .= '<p><strong>Objet :</strong> ' . htmlspecialchars($subject_final) . '</p>';
                 $body_html .= '<p><strong>Message :</strong></p><p>' . nl2br(htmlspecialchars($message)) . '</p>';
 
-                send_transactional_email(
-                    'contact@assokit.fr',
-                    '[' . strtoupper($subject_key) . '] ' . $subject_final,
-                    $body_html,
-                    ['tag' => 'contact_form', 'reply_to' => $email]
-                );
+                try {
+                    $sent = send_transactional_email(
+                        'contact@assokit.fr',
+                        '[' . strtoupper($subject_key) . '] ' . $subject_final,
+                        $body_html,
+                        ['tag' => 'contact_form', 'reply_to' => $email]
+                    );
+                    $notified = !empty($sent['success']);
+                } catch (Throwable $e1) {
+                    error_log('[contact notify] ' . $e1->getMessage());
+                }
 
-                // === NOUVEAU : Email de confirmation au visiteur ===
+                // === Email de confirmation au visiteur ===
+                // Il part vers l'adresse saisie, quelle qu'elle soit : aucun texte libre du
+                // visiteur n'y est recopié (objet « Autre » exclu), sauf un prénom court
+                // sans lien ni adresse, pour qu'il ne serve pas de relais de spam.
+                $ack_first = mb_substr((string) (preg_split('/\s+/', $name)[0] ?? ''), 0, 40);
+                if (preg_match('~[/:@<>]|www\.|\.[a-z]{2,}~i', $ack_first)) $ack_first = '';
+                $ack_name = $ack_first !== '' ? ' ' . htmlspecialchars($ack_first) : '';
                 $confirm_html = '<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:30px 20px;color:#0F172A;">';
                 $confirm_html .= '<div style="background:linear-gradient(135deg,#059669,#047857);color:white;padding:36px 28px;border-radius:16px 16px 0 0;text-align:center;">';
                 $confirm_html .= '<div style="font-size:48px;margin-bottom:10px;">🌿</div>';
-                $confirm_html .= '<h1 style="margin:0;font-size:24px;font-weight:700;">Merci ' . htmlspecialchars(explode(' ', $name)[0]) . ' !</h1>';
+                $confirm_html .= '<h1 style="margin:0;font-size:24px;font-weight:700;">Merci' . $ack_name . ' !</h1>';
                 $confirm_html .= '<p style="margin:8px 0 0;opacity:0.95;font-size:15px;">Votre message a bien été reçu</p>';
                 $confirm_html .= '</div>';
                 $confirm_html .= '<div style="background:white;padding:32px 28px;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 16px 16px;">';
-                $confirm_html .= '<p style="margin:0 0 18px;line-height:1.6;font-size:15px;">Bonjour ' . htmlspecialchars(explode(' ', $name)[0]) . ',</p>';
+                $confirm_html .= '<p style="margin:0 0 18px;line-height:1.6;font-size:15px;">Bonjour' . $ack_name . ',</p>';
                 $confirm_html .= '<p style="margin:0 0 18px;line-height:1.6;font-size:15px;">Nous avons bien reçu votre demande sur Assokit et nous vous remercions pour votre intérêt.</p>';
                 $confirm_html .= '<div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:10px;padding:16px 18px;margin:0 0 22px;">';
                 $confirm_html .= '<div style="font-size:11px;color:#047857;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;margin-bottom:6px;">📋 Récapitulatif de votre demande</div>';
-                $confirm_html .= '<div style="font-size:14px;color:#0F172A;line-height:1.6;"><strong>Catégorie :</strong> ' . htmlspecialchars($subjects_list[$subject_key]['icon'] . ' ' . $subjects_list[$subject_key]['label']) . '</div>';
-                $confirm_html .= '<div style="font-size:14px;color:#0F172A;line-height:1.6;"><strong>Objet :</strong> ' . htmlspecialchars($subject_final) . '</div>';
+                $confirm_html .= '<div style="font-size:14px;color:#0F172A;line-height:1.6;"><strong>Catégorie :</strong> ' . htmlspecialchars($category) . '</div>';
+                if ($subject_key !== 'other') {
+                    $confirm_html .= '<div style="font-size:14px;color:#0F172A;line-height:1.6;"><strong>Objet :</strong> ' . htmlspecialchars($subject_final) . '</div>';
+                }
                 $confirm_html .= '</div>';
                 $confirm_html .= '<p style="margin:0 0 18px;line-height:1.6;font-size:15px;"><strong>Notre équipe humaine</strong> vous répondra <strong>en moins de 24h ouvrées</strong>. Pas de bot, pas de FAQ qui tourne en rond — juste de vraies réponses, par de vraies personnes 🌿</p>';
                 $confirm_html .= '<p style="margin:0 0 24px;line-height:1.6;font-size:14px;color:#475569;">En attendant, n\'hésitez pas à explorer nos <a href="https://assokit.fr/fonctionnalites" style="color:#047857;font-weight:600;">fonctionnalités</a> ou consulter nos <a href="https://assokit.fr/tarifs" style="color:#047857;font-weight:600;">tarifs</a>.</p>';
@@ -178,12 +231,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     error_log('[contact confirm] ' . $e2->getMessage());
                     // On ne fait pas échouer pour autant
                 }
+            } finally {
+                ak_demo_public_form_mail(false);
             }
+        }
+
+        if ($saved || $notified) {
             $form_status = 'success';
             $form_message = 'Merci ! Votre message a bien été envoyé. On vous répond en moins de 24h.';
             // Sauvegarder l'email pour l'afficher dans le succès
             $sent_email = $email;
-        } catch (Throwable $e) {
+        } else {
+            // Ni enregistré ni transmis à l'équipe : ne pas annoncer un envoi qui n'a pas eu lieu
             $form_status = 'error';
             $form_message = '⚠️ Une erreur est survenue. Réessayez ou écrivez-nous directement à contact@assokit.fr';
         }
@@ -263,7 +322,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <input type="text" id="ct-subject-other" name="subject_other"
                      class="contact-input"
                      placeholder="Décrivez en quelques mots l'objet de votre demande..."
-                     value="<?= htmlspecialchars($_POST['subject_other'] ?? '') ?>">
+                     maxlength="<?= $ct_max['subject_other'] ?>"
+                     value="<?= htmlspecialchars($ct_str($_POST['subject_other'] ?? '')) ?>">
             </div>
 
             <!-- ============ NOM + EMAIL ============ -->
@@ -273,14 +333,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <input type="text" id="ct-name" name="name" required
                        class="contact-input"
                        placeholder="Marie Dupont"
-                       value="<?= htmlspecialchars($_POST['name'] ?? '') ?>">
+                       maxlength="<?= $ct_max['name'] ?>"
+                       value="<?= htmlspecialchars($ct_str($_POST['name'] ?? '')) ?>">
               </div>
               <div class="contact-field">
                 <label for="ct-email" class="contact-label">Email <span class="contact-req">*</span></label>
                 <input type="email" id="ct-email" name="email" required
                        class="contact-input"
                        placeholder="marie@exemple.fr"
-                       value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
+                       maxlength="<?= $ct_max['email'] ?>"
+                       value="<?= htmlspecialchars($ct_str($_POST['email'] ?? '')) ?>">
               </div>
             </div>
 
@@ -290,7 +352,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <input type="tel" id="ct-phone" name="phone"
                      class="contact-input"
                      placeholder="06 12 34 56 78"
-                     value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
+                     maxlength="<?= $ct_max['phone'] ?>"
+                     value="<?= htmlspecialchars($ct_str($_POST['phone'] ?? '')) ?>">
             </div>
 
             <!-- ============ MESSAGE ============ -->
@@ -298,7 +361,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <label for="ct-message" class="contact-label">Votre message <span class="contact-req">*</span></label>
               <textarea id="ct-message" name="message" required rows="6"
                         class="contact-textarea"
-                        placeholder="Parlez-nous de votre association ou de votre TPE, vos besoins, vos objectifs..."><?= htmlspecialchars($_POST['message'] ?? '') ?></textarea>
+                        maxlength="<?= $ct_max['message'] ?>"
+                        placeholder="Parlez-nous de votre association ou de votre TPE, vos besoins, vos objectifs..."><?= htmlspecialchars($ct_str($_POST['message'] ?? '')) ?></textarea>
             </div>
 
             <!-- Checkbox RGPD -->
@@ -345,8 +409,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
           <div class="contact-info-row">
             <div class="contact-info-label">Société éditrice</div>
-            <div class="contact-info-value contact-info-rbps">RBPS</div>
-            <div class="contact-info-sub">Évry · France 🇫🇷<br>En cours d'immatriculation</div>
+            <?php $legal = pub_legal_identity(); // paramètres société (super-admin) ?>
+            <div class="contact-info-value contact-info-rbps"><?= htmlspecialchars($legal['name']) ?></div>
+            <div class="contact-info-sub"><?= htmlspecialchars($legal['city'] ?: 'Évry') ?> · France 🇫🇷<br><?= $legal['siren'] !== '' ? 'SIREN ' . htmlspecialchars($legal['siren']) : 'En cours d\'immatriculation' ?></div>
           </div>
 
           <hr class="contact-info-divider">
@@ -390,6 +455,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     card.setAttribute('aria-pressed', 'true');
     const key = card.getAttribute('data-key');
     hiddenInput.value = key;
+    const hint = document.getElementById('contact-subject-hint');
+    if (hint) hint.remove();
 
     // Afficher/masquer le champ "Autre"
     if (key === 'other') {
@@ -403,6 +470,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   // Click handlers sur chaque carte
   grid.querySelectorAll('.contact-subject-card').forEach(card => {
     card.addEventListener('click', () => selectCard(card));
+  });
+
+  // Objet obligatoire : les cartes ne ressemblent pas à des champs, on le rappelle
+  // avant l'envoi plutôt que de recharger la page pour une erreur
+  const form = document.getElementById('contact-form');
+  if (form) form.addEventListener('submit', (e) => {
+    if (hiddenInput.value) return;
+    e.preventDefault();
+    if (!document.getElementById('contact-subject-hint')) {
+      const hint = document.createElement('div');
+      hint.id = 'contact-subject-hint';
+      hint.className = 'contact-error';
+      hint.setAttribute('role', 'alert');
+      hint.textContent = '⚠️ Choisissez l’objet de votre demande en cliquant sur une carte.';
+      grid.parentNode.insertBefore(hint, grid);
+    }
+    grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 
   // Permettre la sélection via une fonction globale (depuis CTA)
@@ -578,7 +662,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     border: 1.5px solid var(--c-border, #E2E8F0);
     border-radius: 10px;
     font-family: 'Geist', system-ui, -apple-system, sans-serif;
-    font-size: 14.5px;
+    font-size: 16px; /* 16px minimum : en dessous, Safari iOS zoome au focus */
     color: var(--c-encre, #0F172A);
     transition: all 0.2s ease;
     box-sizing: border-box;
@@ -601,7 +685,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     border: 1.5px solid var(--c-border, #E2E8F0);
     border-radius: 10px;
     font-family: 'Geist', system-ui, -apple-system, sans-serif;
-    font-size: 14.5px;
+    font-size: 16px; /* idem .contact-input */
     line-height: 1.6;
     color: var(--c-encre, #0F172A);
     resize: vertical;
@@ -880,11 +964,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     .contact-input {
       height: 46px;
-      font-size: 15px;
+      font-size: 16px;
     }
     .contact-textarea {
       min-height: 130px;
-      font-size: 15px;
+      font-size: 16px;
     }
     .contact-consent {
       padding: 14px;

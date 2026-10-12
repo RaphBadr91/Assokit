@@ -18,12 +18,23 @@ require_once __DIR__ . '/google-helper.php';
 require_login();
 $current = current_user();
 
-// Générer un token ICS si absent
+// Jeton ICS : relu en base (current_user() ne charge pas forcément cette colonne selon
+// les serveurs). Le régénérer à tort casserait les abonnements déjà configurés.
+try {
+    $st = $pdo->prepare("SELECT ics_token FROM users WHERE id = ? LIMIT 1");
+    $st->execute([(int)$current['id']]);
+    $current['ics_token'] = (string)($st->fetchColumn() ?: '');
+} catch (Throwable $e) {
+    error_log('[mon-agenda] ics_token : ' . $e->getMessage());
+}
+// Générer un token ICS s'il n'existe vraiment pas encore (sans écraser un jeton créé entre-temps)
 if (empty($current['ics_token'])) {
-    $new_token = sha1($current['id'] . '-' . $current['email'] . '-' . mt_rand() . '-' . time());
-    $pdo->prepare("UPDATE users SET ics_token = ? WHERE id = ?")
+    $new_token = bin2hex(random_bytes(20));   // 40 caractères hexadécimaux (format attendu par agenda-ics.php)
+    $pdo->prepare("UPDATE users SET ics_token = ? WHERE id = ? AND (ics_token IS NULL OR ics_token = '')")
         ->execute([$new_token, $current['id']]);
-    $current['ics_token'] = $new_token;
+    $st = $pdo->prepare("SELECT ics_token FROM users WHERE id = ? LIMIT 1");
+    $st->execute([(int)$current['id']]);
+    $current['ics_token'] = (string)($st->fetchColumn() ?: $new_token);
 }
 
 $is_admin = ($current['role'] === 'admin');
@@ -112,7 +123,8 @@ render_sidebar('agenda');
       'invalid_calendar' => 'Calendrier invalide.',
       'sync_failed' => 'Synchronisation échouée.',
     ];
-    $err_msg = $err_labels[$_GET['error']] ?? ('Erreur : ' . $_GET['error']);
+    $err_code = is_string($_GET['error']) ? $_GET['error'] : '';
+    $err_msg = $err_labels[$err_code] ?? ($err_code !== '' ? 'Erreur : ' . $err_code : 'Une erreur est survenue.');
   ?>
     <div class="alert alert-error">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/></svg>
@@ -327,6 +339,11 @@ render_sidebar('agenda');
   <?php endif; ?>
 
 </main>
+
+<style>
+.alert-warn { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; }
+.alert-info { background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE; }
+</style>
 
 <script>
 function copyIcs() {

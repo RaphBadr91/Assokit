@@ -1,5 +1,8 @@
 <?php
+require_once __DIR__ . '/config.php';          // paramètres société (identité du responsable)
 require_once __DIR__ . '/includes-public.php';
+
+$L = pub_legal_identity();
 
 render_public_head([
     'title'       => 'Politique de confidentialité',
@@ -18,13 +21,19 @@ render_public_nav('');
 <section class="pub-section" style="padding-top:0;">
   <div class="pub-container-narrow">
     <article class="pub-article-content">
+      <?php /* Adresses d'API Google (section 12.1) : coupées au besoin, sinon la page déborde sur mobile */ ?>
+      <style>.pub-article-content code{overflow-wrap:anywhere;word-break:break-word}</style>
       <p style="background:var(--c-emeraude-light);border-left:4px solid var(--c-emeraude);padding:16px 20px;border-radius:8px;font-style:italic;color:var(--c-encre);">
         🌿 <strong>En une phrase</strong> : on ne collecte que le strict nécessaire, on l'héberge en France, on ne le revend jamais, et vous pouvez tout récupérer ou tout supprimer en un clic.
       </p>
 
       <h2>1. Qui est responsable du traitement ?</h2>
-      <p><strong>RBPS</strong>, éditeur d'Assokit, est responsable du traitement de vos données personnelles.</p>
-      <p>Contact : <a href="mailto:contact@assokit.fr">contact@assokit.fr</a></p>
+      <p><strong><?= pub_h($L['name']) ?></strong>, éditeur d'Assokit, est responsable du traitement de vos données personnelles.</p>
+      <ul>
+        <li>Adresse : <?= pub_h($L['address'] ?: 'Évry, France') ?></li>
+        <li>Contact : <a href="mailto:contact@assokit.fr">contact@assokit.fr</a></li>
+      </ul>
+      <p>Les autres informations sur l'éditeur figurent dans les <a href="/mentions-legales">mentions légales</a>.</p>
 
       <h2>2. Quelles données collectons-nous ?</h2>
       <p>Nous collectons uniquement les données nécessaires au fonctionnement du Service :</p>
@@ -35,13 +44,16 @@ render_public_nav('');
         <li><strong>Contenus</strong> : ce que vous téléversez (factures, contacts, messages…)</li>
       </ul>
 
-      <h2>3. Pourquoi ces données ?</h2>
-      <p>Vos données sont utilisées exclusivement pour :</p>
+      <h2>3. Pourquoi ces données, et sur quelle base légale ?</h2>
+      <p>Vos données sont utilisées exclusivement pour les finalités suivantes, chacune fondée sur une base légale de l'article 6 du RGPD :</p>
       <ul>
-        <li>Vous fournir le Service (gestion de votre compte, fonctionnalités)</li>
-        <li>Vous envoyer les informations contractuelles (factures, support)</li>
-        <li>Améliorer le Service de manière anonymisée</li>
-        <li>Respecter nos obligations légales (comptabilité, fiscalité)</li>
+        <li><strong>Vous fournir le Service</strong> (gestion de votre compte, fonctionnalités, abonnement et paiement) — <em>exécution du contrat</em> (nos <a href="/cgu">conditions générales</a>)</li>
+        <li><strong>Vous envoyer les informations contractuelles</strong> (factures, support, sécurité du compte) — <em>exécution du contrat</em></li>
+        <li><strong>Relier Gmail ou Google Agenda</strong>, si un administrateur de votre association le décide (section 12) — <em>exécution du contrat</em>, révocable à tout moment</li>
+        <li><strong>Respecter nos obligations légales</strong> (comptabilité, fiscalité, conservation des factures) — <em>obligation légale</em></li>
+        <li><strong>Sécuriser le Service</strong> (journaux de connexion, prévention des abus) et <strong>l'améliorer</strong> à partir de statistiques anonymisées — <em>intérêt légitime</em> à fournir un service fiable</li>
+        <li><strong>Répondre à vos demandes</strong> envoyées par le formulaire de contact — <em>mesures précontractuelles</em> prises à votre demande, ou <em>intérêt légitime</em> à vous répondre</li>
+        <li><strong>Mesurer l'audience du site public</strong> (Google Analytics) — <em>votre consentement</em>, que vous pouvez retirer à tout moment (section 9)</li>
       </ul>
       <p>Nous ne faisons <strong>aucune publicité ciblée</strong>. Nous ne <strong>revendons aucune donnée</strong>. Jamais.</p>
 
@@ -51,22 +63,23 @@ render_public_nav('');
         <li><strong>Après résiliation</strong> : 30 jours pour permettre l'export, puis suppression définitive</li>
         <li><strong>Factures et obligations légales</strong> : 10 ans (obligation comptable française)</li>
         <li><strong>Logs techniques</strong> : 12 mois maximum</li>
+        <li><strong>Cookies de mesure d'audience</strong> : 13 mois maximum ; votre choix sur ces cookies est conservé 6 mois</li>
       </ul>
 
       <h2>5. Avec qui partageons-nous vos données ?</h2>
-      <p>Nous utilisons des sous-traitants français ou européens, conformes RGPD :</p>
+      <p>Nous faisons appel aux sous-traitants suivants, conformes au RGPD et limités à leur mission. Certains sont situés aux États-Unis (voir section 11) :</p>
       <ul>
         <li><strong>O2Switch</strong> (France) — hébergement</li>
         <li><strong>Resend</strong> (UE) — envoi d'emails transactionnels</li>
-        <li><strong>Stripe</strong> (UE) — traitement des paiements (à venir)</li>
+        <li><strong>Stripe</strong> (UE) — traitement des paiements (abonnements Assokit, paiements en ligne)</li>
         <li><strong>Anthropic</strong> (USA) — pour les fonctions IA : contenus que vous générez volontairement et, si la Boîte mail est reliée, tri et brouillons de réponse (voir section 12.3). Pas d'entraînement de modèles sur vos données.</li>
         <li><strong>Google LLC</strong> (USA) — uniquement si vous reliez Gmail ou Google Agenda (voir section 12)</li>
-        <li><strong>Google Analytics</strong> (Google LLC, USA) — mesure d'audience anonymisée sur le site public uniquement (pas dans l'application). IP anonymisée. Aucune publicité.</li>
+        <li><strong>Google Analytics</strong> (Google LLC, USA) — mesure d'audience anonymisée sur le site public uniquement (pas dans l'application), <strong>seulement si vous l'acceptez</strong> (section 9). IP anonymisée. Aucune publicité.</li>
       </ul>
       <p>Aucun partage à des fins publicitaires.</p>
 
       <h2>6. Où sont stockées vos données ?</h2>
-      <p>Vos données sont stockées sur des serveurs <strong>situés en France</strong> (O2Switch, Clermont-Ferrand). Aucun transfert hors UE en dehors des cas mentionnés ci-dessus.</p>
+      <p>Vos données sont stockées sur des serveurs <strong>situés en France</strong> (O2Switch, Clermont-Ferrand). Aucun transfert hors UE en dehors des cas mentionnés ci-dessus (voir section 11).</p>
 
       <h2>7. Comment sont-elles protégées ?</h2>
       <ul>
@@ -90,10 +103,13 @@ render_public_nav('');
       <p>Pour exercer ces droits : <a href="mailto:contact@assokit.fr">contact@assokit.fr</a> · réponse sous 30 jours maximum.</p>
 
       <h2>9. Cookies</h2>
-      <p>Nous utilisons uniquement des cookies <strong>strictement nécessaires</strong> au fonctionnement du Service (session, sécurité). Pas de cookies publicitaires, pas de tracking tiers. Voir notre <a href="/cookies">politique cookies</a> pour le détail.</p>
+      <p>Le site utilise des cookies <strong>strictement nécessaires</strong> (session, sécurité, mémorisation de votre choix) et, <strong>uniquement si vous l'acceptez</strong>, des cookies de mesure d'audience Google Analytics sur le site public : adresse IP anonymisée, 13 mois au maximum, aucun usage publicitaire. Vous pouvez donner ou retirer ce consentement à tout moment avec le lien <a href="/cookies#gerer" onclick="if(window.akShowCookieBanner){akShowCookieBanner();return false;}">Gérer mes cookies</a>, présent en bas de chaque page. Pas de cookies publicitaires. Voir notre <a href="/cookies">politique cookies</a> pour le détail.</p>
 
       <h2>10. Réclamation</h2>
       <p>Si vous estimez que vos droits ne sont pas respectés, vous pouvez introduire une réclamation auprès de la <a href="https://www.cnil.fr" target="_blank" rel="noopener">CNIL</a>.</p>
+
+      <h2>11. Transferts hors de l'Union européenne</h2>
+      <p>Vos données sont hébergées en France. Certains sous-traitants sont établis aux <strong>États-Unis</strong> : <strong>Anthropic</strong> (fonctions d'IA) et <strong>Google</strong> (Gmail et Google Agenda si vous les reliez, Google Analytics si vous l'acceptez). Ces transferts se limitent aux données nécessaires à la fonction concernée et sont encadrés par les garanties prévues par le RGPD : décision d'adéquation de la Commission européenne pour les entreprises adhérant au cadre de protection des données UE–États-Unis (<em>Data Privacy Framework</em>), ou à défaut clauses contractuelles types de la Commission européenne (article 46 du RGPD).</p>
 
       <h2 id="google-api">12. Connexion à Google (Gmail et Google Agenda)</h2>
       <p>Deux connexions à Google sont proposées dans Assokit, toutes deux <strong>facultatives</strong>, activées uniquement par un administrateur de l'association et <strong>révocables à tout moment</strong> : la <strong>Boîte mail</strong> (Gmail) et la <strong>synchronisation de l'agenda</strong> (Google Agenda). L'accès passe par le protocole sécurisé <strong>OAuth 2.0</strong> : Assokit ne connaît jamais votre mot de passe Google.</p>
@@ -152,7 +168,8 @@ render_public_nav('');
       <h2>13. Modifications</h2>
       <p>Cette politique peut évoluer. Toute modification substantielle vous sera notifiée par email avec un préavis de 30 jours.</p>
 
-      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Dernière mise à jour : <?= date('d/m/Y') ?></p>
+      <?php /* Date de version : à changer seulement quand le texte change */ ?>
+      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 12/10/2026</p>
     </article>
   </div>
 </section>

@@ -31,7 +31,8 @@ if ($action === 'create' || $action === 'update') {
 
     if ($action === 'create') {
         $token = att_random_token();
-        $stmt = $pdo->prepare("INSERT INTO attendance_sessions (org_id, project_id, title, description, location, starts_at, ends_at, access_token, require_signature, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)");
+        // Ouverte dès sa création : ne dépend pas d'une valeur par défaut en base.
+        $stmt = $pdo->prepare("INSERT INTO attendance_sessions (org_id, project_id, title, description, location, starts_at, ends_at, access_token, require_signature, created_by, is_open) VALUES (?,?,?,?,?,?,?,?,?,?,1)");
         $stmt->execute([$org_id, $project_id, $title, $desc, $loc, $starts_dt, $ends_dt, $token, $req_sig, $user_id]);
         $id = (int)$pdo->lastInsertId();
     } else {

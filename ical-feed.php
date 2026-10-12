@@ -4,8 +4,9 @@
  * Pas de session, pas de cookie : auth via token uniquement.
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes-attendance.php';   // ak_event_visibility_sql(), ak_event_plain_text()
 
-$token = trim($_GET['t'] ?? '');
+$token = is_string($_GET['t'] ?? null) ? trim($_GET['t']) : '';
 if (!preg_match('/^[a-f0-9]{32,64}$/', $token)) {
     http_response_code(404);
     die('Token invalide.');
@@ -15,7 +16,7 @@ if (!preg_match('/^[a-f0-9]{32,64}$/', $token)) {
 $stmt = $pdo->prepare("SELECT t.id AS tok_id, t.user_id, t.label, u.org_id, u.role, u.first_name, u.last_name
                        FROM user_calendar_tokens t
                        JOIN users u ON u.id = t.user_id
-                       WHERE t.token = ? AND t.revoked_at IS NULL AND u.is_active = 1
+                       WHERE t.token = ? AND t.revoked_at IS NULL AND u.is_active = 1 AND u.deleted_at IS NULL
                        LIMIT 1");
 $stmt->execute([$token]);
 $ctx = $stmt->fetch();
@@ -30,37 +31,20 @@ try {
         ->execute([(int)$ctx['tok_id']]);
 } catch (Throwable $e) {}
 
-// Charger events
-// Filtrage : org + (admin/coord voient tout, sinon events de leurs projets)
-$is_admin = ($ctx['role'] === 'admin' || $ctx['role'] === 'coordinator');
+// Charger events : les mêmes que l'agenda web du titulaire du lien (/agenda) :
+// suiveur limité à ses projets, « Équipe du projet uniquement » réservé à l'équipe.
+// Pas de repli « toute l'association » si la requête échoue : un flux vide plutôt qu'une fuite.
 $events = [];
 try {
-    if ($is_admin) {
-        $stmt = $pdo->prepare("SELECT e.*, p.name AS project_name FROM events e
-                               LEFT JOIN projects p ON p.id = e.project_id
-                               LEFT JOIN folders f ON f.id = p.folder_id
-                               WHERE (e.org_id = ? OR f.org_id = ?) AND e.deleted_at IS NULL
-                               ORDER BY e.starts_at DESC LIMIT 500");
-        $stmt->execute([$org_id, $org_id]);
-    } else {
-        $stmt = $pdo->prepare("SELECT e.*, p.name AS project_name FROM events e
-                               LEFT JOIN projects p ON p.id = e.project_id
-                               LEFT JOIN folders f ON f.id = p.folder_id
-                               LEFT JOIN project_members pm ON pm.project_id = e.project_id AND pm.user_id = ?
-                               WHERE (e.org_id = ? OR f.org_id = ?) AND e.deleted_at IS NULL
-                                 AND (pm.user_id IS NOT NULL OR p.referent_id = ? OR e.created_by = ?)
-                               GROUP BY e.id
-                               ORDER BY e.starts_at DESC LIMIT 500");
-        $stmt->execute([$user_id, $org_id, $org_id, $user_id, $user_id]);
-    }
+    [$vis_sql, $vis_params] = ak_event_visibility_sql($pdo, ['id' => $user_id, 'role' => (string)$ctx['role']]);
+    $stmt = $pdo->prepare("SELECT e.*, p.name AS project_name FROM events e
+                           LEFT JOIN projects p ON p.id = e.project_id
+                           WHERE e.org_id = ? AND e.deleted_at IS NULL" . $vis_sql . "
+                           ORDER BY e.starts_at DESC LIMIT 500");
+    $stmt->execute(array_merge([$org_id], $vis_params));
     $events = $stmt->fetchAll();
 } catch (Throwable $e) {
-    // Si schéma diffère, fallback : org_id uniquement
-    try {
-        $stmt = $pdo->prepare("SELECT * FROM events WHERE org_id = ? AND deleted_at IS NULL ORDER BY starts_at DESC LIMIT 500");
-        $stmt->execute([$org_id]);
-        $events = $stmt->fetchAll();
-    } catch (Throwable $e2) { $events = []; }
+    error_log('[ical-feed] ' . $e->getMessage());
 }
 
 // Helpers iCal
@@ -69,19 +53,24 @@ function ic_esc(string $v): string {
     return $v;
 }
 function ic_fold(string $line): string {
-    // RFC 5545 : lignes max 75 octets, plier avec CRLF + space
-    if (strlen($line) <= 75) return $line . "\r\n";
+    // RFC 5545 : lignes max 75 octets (espace de continuation compris), pliées par CRLF + espace,
+    // sans couper un caractère UTF-8 en deux (sinon « é » devient « �� » dans l'agenda)
     $out = '';
-    while (strlen($line) > 75) {
-        $out .= substr($line, 0, 75) . "\r\n ";
-        $line = substr($line, 75);
+    $max = 75;
+    while (strlen($line) > $max) {
+        $chunk = mb_strcut($line, 0, $max, 'UTF-8');
+        if ($chunk === '') $chunk = substr($line, 0, $max);
+        $out .= $chunk . "\r\n ";
+        $line = substr($line, strlen($chunk));
+        $max = 74;
     }
     return $out . $line . "\r\n";
 }
+// Les dates sont stockées en heure de Paris (fuseau de l'appli) : conversion en UTC pour le suffixe Z.
 function ic_dt(string $iso, bool $allDay = false): string {
     $t = strtotime($iso);
     if (!$t) $t = time();
-    return $allDay ? date('Ymd', $t) : date('Ymd\THis\Z', $t);
+    return $allDay ? date('Ymd', $t) : gmdate('Ymd\THis\Z', $t);
 }
 
 $host = $_SERVER['HTTP_HOST'] ?? 'assokit.fr';
@@ -105,12 +94,12 @@ $out .= ic_fold("X-WR-CALDESC:Événements AssoKit synchronisés");
 
 foreach ($events as $e) {
     $title = $e['title'] ?? 'Événement';
-    $desc = $e['description'] ?? '';
+    $desc = ak_event_plain_text($e['description'] ?? '');   // description Google en HTML → texte
     if (!empty($e['project_name'])) $desc = '[' . $e['project_name'] . "]\n" . $desc;
     $loc = $e['location'] ?? '';
-    $all_day = !empty($e['all_day']);
+    $all_day = !empty($e['is_all_day']);
     $start = $e['starts_at'] ?? null;
-    $end = $e['end_at'] ?? $start;
+    $end = !empty($e['ends_at']) ? $e['ends_at'] : $start;
     if (!$start) continue;
 
     $uid = 'ak-event-' . (int)$e['id'] . '@' . $host;
@@ -121,8 +110,9 @@ foreach ($events as $e) {
     $out .= ic_fold("DTSTAMP:" . ic_dt('now'));
     $out .= ic_fold("CREATED:" . $created);
     if ($all_day) {
+        // Journée entière : DTEND exclusif = lendemain du dernier jour (RFC 5545)
         $out .= ic_fold("DTSTART;VALUE=DATE:" . ic_dt($start, true));
-        $out .= ic_fold("DTEND;VALUE=DATE:"   . ic_dt($end ?: $start, true));
+        $out .= ic_fold("DTEND;VALUE=DATE:"   . date('Ymd', strtotime(date('Y-m-d', strtotime($end) ?: strtotime($start)) . ' +1 day')));
     } else {
         $out .= ic_fold("DTSTART:" . ic_dt($start));
         $out .= ic_fold("DTEND:"   . ic_dt($end ?: $start));

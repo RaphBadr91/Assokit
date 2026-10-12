@@ -12,6 +12,12 @@ require_once __DIR__ . '/sa-permissions.php';
 require_once __DIR__ . '/impersonation-helpers.php';
 
 require_login();
+// Pendant une incarnation, la session est celle de la personne incarnée (pas de droits
+// plateforme) : la page de sortie propose de revenir au compte Fondateur.
+if (is_impersonating()) {
+    header('Location: /super-admin/incarner-stop');
+    exit;
+}
 $user = sa_require_super_admin();
 $ctx = sa_get_permissions_context();
 

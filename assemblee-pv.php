@@ -12,14 +12,18 @@ if (!$ag) { http_response_code(404); die('AG introuvable.'); }
 
 $attendees = ag_load_attendees($pdo, $id);
 $resos = ag_load_resolutions($pdo, $id);
+// Séance close sans quorum : aucune résolution n'a pu être valablement adoptée.
+$not_deliberated = ag_not_deliberated($ag, $attendees);
 
 // Org info
 $org_name = '';
 try { $stmt = $pdo->prepare("SELECT name FROM organizations WHERE id = ?"); $stmt->execute([$org_id]); $org_name = $stmt->fetchColumn() ?: ''; } catch (Throwable $e) {}
 
-$nb_present = 0; $nb_excused = 0; $nb_absent = 0;
+$att_by_id = ag_index_attendees($attendees);
+$nb_present = 0; $nb_proxy = 0; $nb_excused = 0; $nb_absent = 0;
 foreach ($attendees as $a) {
-    if (in_array($a['status'], ['present','proxy'], true)) $nb_present++;
+    if ($a['status'] === 'present') $nb_present++;
+    elseif ($a['status'] === 'proxy') $nb_proxy++;
     elseif ($a['status'] === 'excused') $nb_excused++;
     else $nb_absent++;
 }
@@ -62,21 +66,25 @@ th { background: #f9fafb; font-weight: 600; }
 </div>
 
 <h2>Présences</h2>
-<p>Présents : <strong><?= $nb_present ?></strong> · Excusés : <strong><?= $nb_excused ?></strong> · Absents : <strong><?= $nb_absent ?></strong> · Total convoqués : <strong><?= count($attendees) ?></strong>
+<p>Présents : <strong><?= $nb_present ?></strong> · Représentés : <strong><?= $nb_proxy ?></strong> · Excusés : <strong><?= $nb_excused ?></strong> · Absents : <strong><?= $nb_absent ?></strong> · Total convoqués : <strong><?= count($attendees) ?></strong>
 <?php if ($ag['quorum_required']): $q = ag_quorum_status($ag, $attendees); ?>
- · Quorum requis : <strong><?= (int)$ag['quorum_required'] ?></strong> · <?= $q['ok'] ? '<span style="color:#10B981;">✓ Atteint</span>' : '<span style="color:#EF4444;">✗ Non atteint</span>' ?>
+ · Quorum requis : <strong><?= (int)$ag['quorum_required'] ?></strong> (présents ou valablement représentés : <strong><?= (int)$q['present'] ?></strong>) · <?= $q['ok'] ? '<span style="color:#10B981;">✓ Atteint</span>' : '<span style="color:#EF4444;">✗ Non atteint</span>' ?>
 <?php endif; ?></p>
+<?php if ($not_deliberated): ?>
+<p><strong>Le quorum n’étant pas atteint, l’assemblée n’a pas pu délibérer valablement : aucune résolution n’est adoptée.</strong></p>
+<?php endif; ?>
 
 <table>
 <thead><tr><th>Nom</th><th>Statut</th><th>Émargement</th></tr></thead>
 <tbody>
 <?php foreach ($attendees as $a):
   $stl = ['invited'=>'Invité','present'=>'Présent','excused'=>'Excusé','absent'=>'Absent','proxy'=>'Pouvoir'][$a['status']] ?? '—';
+  $holder = ($a['status'] === 'proxy' && !empty($a['proxy_attendee_id'])) ? ($att_by_id[(int)$a['proxy_attendee_id']] ?? null) : null;
 ?>
 <tr>
   <td><?= h($a['full_name']) ?></td>
-  <td><?= $stl ?></td>
-  <td><?= $a['signed_at'] ? date('d/m H:i', strtotime($a['signed_at'])) : '—' ?></td>
+  <td><?= $stl ?><?= $holder ? ' — représenté·e par ' . h($holder['full_name']) : '' ?></td>
+  <td><?= $a['signed_at'] ? date('d/m H:i', strtotime($a['signed_at'])) . (empty($a['signature_data']) ? ' (pointé par l’organisateur)' : '') : '—' ?></td>
 </tr>
 <?php endforeach; ?>
 </tbody>
@@ -84,21 +92,24 @@ th { background: #f9fafb; font-weight: 600; }
 
 <h2>Résolutions et votes</h2>
 <?php foreach ($resos as $i => $r):
+  // Votants = pour + contre + abstention ; suffrages exprimés = pour + contre (les abstentions
+  // n'en sont pas : c'est sur eux que se calcule la majorité, cf. ag_compute_result).
   $stats = ag_resolution_stats($pdo, (int)$r['id']);
-  $cls = $r['result'];
-  $rlbl = ['adopted'=>'ADOPTÉE','rejected'=>'REJETÉE','pending'=>'En attente'][$r['result']] ?? '—';
+  $cls = $not_deliberated ? 'pending' : $r['result'];
+  $rlbl = $not_deliberated ? 'NON DÉLIBÉRÉE (quorum non atteint)' : (['adopted'=>'ADOPTÉE','rejected'=>'REJETÉE','pending'=>'En attente'][$r['result']] ?? '—');
 ?>
 <div class="reso">
   <div class="reso-title">Résolution n°<?= $i + 1 ?> — <?= h($r['title']) ?>
     <span class="reso-result <?= $cls ?>"><?= $rlbl ?></span>
   </div>
-  <div style="font-size:9.5pt;color:#6b7280;margin:4px 0;"><?= h(ag_vote_type_label($r['vote_type'])) ?></div>
+  <div style="font-size:9.5pt;color:#6b7280;margin:4px 0;"><?= h(ag_vote_type_label((string)$r['vote_type'])) ?></div>
   <?php if ($r['description']): ?><p style="font-size:10pt;"><?= h($r['description']) ?></p><?php endif; ?>
   <p style="font-size:10pt;margin:6px 0 0;">
     Pour : <strong><?= $stats['for'] ?></strong> ·
     Contre : <strong><?= $stats['against'] ?></strong> ·
     Abstention : <strong><?= $stats['abstain'] ?></strong> ·
-    Total exprimés : <strong><?= $stats['total'] ?></strong>
+    Votants : <strong><?= $stats['total'] ?></strong><?= $stats['by_proxy'] ? ' (dont ' . $stats['by_proxy'] . ' par pouvoir)' : '' ?> ·
+    Suffrages exprimés : <strong><?= $stats['for'] + $stats['against'] ?></strong>
   </p>
 </div>
 <?php endforeach; ?>

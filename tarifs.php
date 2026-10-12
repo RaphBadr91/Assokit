@@ -13,8 +13,10 @@ require_once __DIR__ . '/includes-public.php';
 require_once __DIR__ . '/app-context.php';
 
 // Page publique, mais c'est la vitrine tarifaire : elle n'a rien à faire dans
-// l'app (Apple 3.1.1). Depuis un navigateur, rien ne change.
-ak_block_billing_page();
+// l'app (Apple 3.1.1). Depuis un navigateur, rien ne change : la session y est
+// désormais ouverte (en-tête « Mon tableau de bord », includes-public.php), mais
+// un client ou un prospect connecté à la démo doit toujours pouvoir lire les tarifs.
+if (ak_is_mobile_app()) ak_block_billing_page();
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],

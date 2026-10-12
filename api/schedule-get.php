@@ -13,6 +13,14 @@ if (empty($_SESSION['user_id'])) {
     exit;
 }
 
+// Suiveurs (financeurs externes) : pas d'accès à l'emploi du temps ni aux absences
+// de l'équipe (même règle que la page emploi-du-temps.php).
+if (is_follower()) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Accès refusé']);
+    exit;
+}
+
 $user = current_user();
 $id = (int)($_GET['id'] ?? 0);
 

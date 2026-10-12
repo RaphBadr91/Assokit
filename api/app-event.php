@@ -6,6 +6,7 @@
 ob_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/../includes-attendance.php';
 ob_end_clean();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -28,14 +29,16 @@ try {
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
 
+    // Même visibilité que l'agenda : un événement invisible pour ce compte est introuvable.
+    [$vis_sql, $vis_params] = ak_event_visibility_sql($pdo, $user ?: []);
     $stmt = $pdo->prepare("
         SELECT e.*, p.name AS project_name, f.color_theme AS folder_color
         FROM events e
         LEFT JOIN projects p ON e.project_id = p.id
         LEFT JOIN folders f ON p.folder_id = f.id
-        WHERE e.id = ? AND e.org_id = ? AND e.deleted_at IS NULL LIMIT 1
+        WHERE e.id = ? AND e.org_id = ? AND e.deleted_at IS NULL" . $vis_sql . " LIMIT 1
     ");
-    $stmt->execute([$id, $org_id]);
+    $stmt->execute(array_merge([$id, $org_id], $vis_params));
     $e = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$e) { http_response_code(404); echo json_encode(['ok' => false, 'error' => 'not_found']); exit; }
 
@@ -72,7 +75,8 @@ try {
             'when'        => $when,
             'location'    => (string) ($e['location'] ?? ''),
             // Texte brut pour l'écran natif : balises (Google/Outlook/éditeur) → sauts de ligne, entités décodées.
-            'description' => trim(html_entity_decode(strip_tags(preg_replace('#<br\s*/?>|</p>|</div>|</li>|</h[1-6]>#i', "\n", (string) ($e['description'] ?? ''))), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
+            // Renvoyé tel quel à la modification, il ne remplace pas la description d'origine (cf. app-event-action).
+            'description' => ak_event_plain_text($e['description'] ?? ''),
             'project'     => (string) ($e['project_name'] ?? ''),
             'type_label'  => $TYPE_LABEL[$e['event_type'] ?? 'other'] ?? 'Autre',
             'color'       => $color,
@@ -86,11 +90,12 @@ try {
             'is_all_day'  => !empty($e['is_all_day']),
             'event_type'  => (string) ($e['event_type'] ?? 'other'),
             'visibility'  => (string) ($e['visibility'] ?? 'organization'),
+            'color_theme' => (string) ($e['color_theme'] ?? ''),
             'project_id'  => (int) ($e['project_id'] ?? 0),
         ],
-        // Mêmes droits que action-evenement.php : admin, coordinateur ou créateur.
-        'can_edit' => (($user['role'] ?? '') === 'admin' || ($user['role'] ?? '') === 'coordinator'
-                       || (int) ($e['created_by'] ?? 0) === (int) ($user['id'] ?? 0)),
+        // Mêmes droits que action-evenement.php : admin, coordinateur, droit « Gérer les
+        // événements » ou créateur ; jamais un suiveur.
+        'can_edit' => ak_event_can_edit($user ?: [], $e),
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-event] ' . $e->getMessage());

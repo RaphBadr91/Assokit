@@ -30,28 +30,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $flash = ak_demo_message(); $flash_type = 'error';
     } else {
         $act = $_POST['act'] ?? '';
-        if ($act === 'confirm') {
+        // Activer comme désactiver la 2FA demande le mot de passe : une session restée ouverte ne
+        // suffit pas (sinon un tiers active SA 2FA et le titulaire ne peut plus se connecter).
+        require_once __DIR__ . '/rate-limit-helper.php';
+        $pw_error = function () use ($pdo, $uid): string {
+            if (!ak_rate_limit('totp_password', 8, 600, (string)$uid)) return 'Trop de tentatives. Merci de patienter quelques minutes.';
+            $st = $pdo->prepare("SELECT password_hash FROM users WHERE id = ? LIMIT 1");
+            $st->execute([$uid]);
+            $h = $st->fetchColumn();
+            return ($h && password_verify($_POST['password'] ?? '', $h)) ? '' : 'Mot de passe incorrect.';
+        };
+        if ($act === 'confirm' && ($err = $pw_error()) !== '') {
+            $flash = $err; $flash_type = 'error';
+        } elseif ($act === 'confirm') {
             $secret = $_SESSION['totp_setup_secret'] ?? '';
             if ($secret && ak_totp_verify($secret, $_POST['code'] ?? '')) {
-                $codes  = ak_totp_generate_backup_codes(8);
+                // Autant de codes que la colonne peut en contenir (8, ou moins si elle est trop courte)
+                $codes  = ak_totp_generate_backup_codes(ak_totp_backup_capacity($pdo, 8));
                 $hashed = array_map(fn($c) => password_hash($c, PASSWORD_BCRYPT), $codes);
-                $st = $pdo->prepare("UPDATE users SET totp_secret = ?, totp_enabled = 1, totp_backup_codes = ? WHERE id = ?");
-                $st->execute([$secret, json_encode($hashed), $uid]);
-                unset($_SESSION['totp_setup_secret']);
-                $enabled = true; $backup_codes_show = $codes;
-                $flash = 'Double authentification activée !';
+                try {
+                    $st = $pdo->prepare("UPDATE users SET totp_secret = ?, totp_enabled = 1, totp_backup_codes = ? WHERE id = ?");
+                    $st->execute([$secret, ak_totp_backup_encode($hashed), $uid]);
+                    unset($_SESSION['totp_setup_secret']);
+                    $enabled = true; $backup_codes_show = $codes;
+                    $flash = 'Double authentification activée !';
+                } catch (Throwable $e) {
+                    error_log('[securite-2fa] activation : ' . $e->getMessage());
+                    $flash = 'Activation impossible pour le moment : la double authentification n’a pas été activée. Merci de réessayer plus tard.'; $flash_type = 'error';
+                }
             } else {
                 $flash = 'Code incorrect. Vérifiez l\'heure de votre téléphone et réessayez.'; $flash_type = 'error';
             }
         } elseif ($act === 'disable') {
-            $st = $pdo->prepare("SELECT password_hash FROM users WHERE id = ? LIMIT 1");
-            $st->execute([$uid]);
-            $h = $st->fetchColumn();
-            if ($h && password_verify($_POST['password'] ?? '', $h)) {
+            if (($err = $pw_error()) === '') {
                 $pdo->prepare("UPDATE users SET totp_secret = NULL, totp_enabled = 0, totp_backup_codes = NULL WHERE id = ?")->execute([$uid]);
                 $enabled = false; $flash = 'Double authentification désactivée.';
             } else {
-                $flash = 'Mot de passe incorrect.'; $flash_type = 'error';
+                $flash = $err; $flash_type = 'error';
             }
         }
     }
@@ -113,6 +128,8 @@ render_sidebar('parametres');
         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
         <input type="hidden" name="act" value="confirm">
         <input type="text" name="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" required style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:20px;text-align:center;letter-spacing:6px;margin-bottom:14px;box-sizing:border-box;">
+        <label style="display:block;font-size:14px;margin-bottom:6px;">3. Confirmez avec votre mot de passe :</label>
+        <input type="password" name="password" required autocomplete="current-password" style="width:100%;padding:10px;border:1px solid #CBD5E1;border-radius:8px;margin-bottom:14px;box-sizing:border-box;font-size:16px;">
         <button type="submit" style="width:100%;background:#059669;color:#fff;border:none;border-radius:8px;padding:12px;cursor:pointer;font-weight:600;font-size:15px;">Activer la 2FA</button>
       </form>
     </div>

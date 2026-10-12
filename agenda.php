@@ -12,6 +12,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+require_once __DIR__ . '/includes-attendance.php';
 
 require_login();
 
@@ -22,7 +23,7 @@ $org_id = (int)$current['org_id'];
 $view = $_GET['view'] ?? 'month';
 if (!in_array($view, ['month', 'list'], true)) $view = 'month';
 
-$ym = $_GET['ym'] ?? date('Y-m');
+$ym = is_string($_GET['ym'] ?? null) ? $_GET['ym'] : date('Y-m');
 if (!preg_match('/^\d{4}-\d{2}$/', $ym)) $ym = date('Y-m');
 list($year, $month) = array_map('intval', explode('-', $ym));
 
@@ -43,8 +44,9 @@ $list_end = strtotime(date('Y-m-t', $first_day_of_month) . ' +2 months');
 $range_start = $view === 'month' ? date('Y-m-d', $grid_start) : date('Y-m-d', $list_start);
 $range_end = $view === 'month' ? date('Y-m-d', $grid_end) : date('Y-m-d', $list_end);
 
-// Filtrage follower : seulement les événements liés à ses projets
-$follower_pids = get_follower_project_ids();
+// Visibilité : un suiveur ne voit que ses projets, les événements « Équipe du projet
+// uniquement » restent réservés à l'équipe du projet (règle commune site / appli / .ics).
+[$vis_sql, $vis_params] = ak_event_visibility_sql($pdo, $current);
 $events_sql = "
     SELECT e.*,
            p.name AS project_name, f.color_theme AS folder_color,
@@ -58,19 +60,8 @@ $events_sql = "
       AND e.starts_at <= ?
       AND e.ends_at >= ?
 ";
-$events_params = [$org_id, $range_end . ' 23:59:59', $range_start . ' 00:00:00'];
-
-if ($follower_pids !== null) {
-    if (empty($follower_pids)) {
-        $events_sql .= " AND 1 = 0";
-    } else {
-        $placeholders = implode(',', array_fill(0, count($follower_pids), '?'));
-        $events_sql .= " AND e.project_id IN ($placeholders)";
-        $events_params = array_merge($events_params, $follower_pids);
-    }
-}
-
-$events_sql .= " ORDER BY e.starts_at ASC";
+$events_params = array_merge([$org_id, $range_end . ' 23:59:59', $range_start . ' 00:00:00'], $vis_params);
+$events_sql .= $vis_sql . " ORDER BY e.starts_at ASC";
 $stmt = $pdo->prepare($events_sql);
 $stmt->execute($events_params);
 $events = $stmt->fetchAll();
@@ -79,6 +70,8 @@ $events = $stmt->fetchAll();
 // - color_theme = hex (#xxxxxx) : couleur Google explicite -> utilisée telle quelle
 // - événement importé de Google sans couleur : couleur stable dérivée du titre
 //   (comme un vrai agenda coloré : chaque type d'événement a sa couleur constante)
+// - couleur (de l'événement ou de son dossier) sans classe ev-* (indigo, emerald, slate…) :
+//   même teinte que le dossier, comme dans l'appli
 function event_hex($evt) {
     $c = (string)($evt['color_theme'] ?? '');
     if ($c !== '' && $c[0] === '#') return $c;
@@ -86,6 +79,10 @@ function event_hex($evt) {
         $palette = ['#7986CB', '#33B679', '#8E24AA', '#E67C73', '#F6BF26', '#039BE5', '#3F51B5', '#0B8043', '#D50000', '#F4511E'];
         $base = function_exists('mb_strtolower') ? mb_strtolower(trim((string)($evt['title'] ?? ''))) : strtolower(trim((string)($evt['title'] ?? '')));
         return $base === '' ? $palette[0] : $palette[abs(crc32($base)) % count($palette)];
+    }
+    $theme = $c !== '' ? $c : (string)($evt['folder_color'] ?? '');
+    if ($theme !== '' && !in_array($theme, ['blue', 'purple', 'amber', 'pink', 'teal', 'green', 'red'], true)) {
+        return folder_color_hex($theme);
     }
     return '';
 }
@@ -121,12 +118,16 @@ function event_bar_style($evt) {
 // Groupe les événements par date (pour la vue calendrier)
 $events_by_day = [];
 foreach ($events as $e) {
+    // Événement qui s'étend sur plusieurs jours : on l'affiche sur chaque jour, du jour
+    // de début au jour de fin inclus (calcul sur les dates : l'heure de fin peut être
+    // plus tôt dans la journée que l'heure de début).
     $start = strtotime($e['starts_at']);
     $end = strtotime($e['ends_at']);
-    // Événement qui s'étend sur plusieurs jours : on l'affiche sur chaque jour
-    for ($d = $start; $d <= $end; $d = strtotime('+1 day', $d)) {
-        $key = date('Y-m-d', $d);
-        $events_by_day[$key][] = $e;
+    if ($end > $start && date('H:i:s', $end) === '00:00:00') $end--;   // fin à minuit : jour précédent
+    $day = strtotime(date('Y-m-d', $start));
+    $last_day = strtotime(date('Y-m-d', $end));
+    for (; $day <= $last_day; $day = strtotime('+1 day', $day)) {
+        $events_by_day[date('Y-m-d', $day)][] = $e;
     }
 }
 
@@ -207,12 +208,27 @@ render_sidebar('agenda');
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Synchroniser
       </a>
+      <?php if (ak_event_can_create($current)): // pas pour un suiveur (financeur externe) ?>
       <a href="/nouveau-evenement" class="btn btn-primary">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Nouvel événement
       </a>
+      <?php endif; ?>
     </div>
   </div>
+
+  <?php if (isset($_GET['deleted'])): ?>
+    <div class="alert alert-success" style="display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('check-circle',16) ?><span>Événement supprimé.</span></div>
+  <?php elseif (isset($_GET['error'])):
+    $err_labels = [
+      'csrf' => 'Session expirée : vos modifications n’ont pas été enregistrées. Rechargez la page puis recommencez.',
+      'notfound' => 'Événement introuvable : il a peut-être été supprimé.',
+      'permission' => 'Votre compte ne permet pas de créer ou de modifier des événements.',
+    ];
+    $err_msg = $err_labels[is_string($_GET['error']) ? $_GET['error'] : ''] ?? 'Une erreur est survenue.';
+  ?>
+    <div class="alert alert-error" style="display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('alert-tri',16) ?><span><?= h($err_msg) ?></span></div>
+  <?php endif; ?>
 
   <!-- Toolbar : navigation + vue -->
   <div class="cal-toolbar">

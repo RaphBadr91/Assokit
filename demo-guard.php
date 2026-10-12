@@ -78,13 +78,29 @@ if (!function_exists('ak_demo_address')) {
     }
 }
 
+if (!function_exists('ak_demo_public_form_mail')) {
+    /**
+     * Envois d'un formulaire public (page Contact) : ils ne partent que vers
+     * l'équipe Assokit et vers l'adresse que le visiteur vient de saisir,
+     * jamais vers un tiers choisi dans la démo. Une session de démo ouverte
+     * dans le même navigateur (le prospect qui vient de tester) ne doit donc
+     * pas les bloquer. Appeler avec true juste avant l'envoi, false juste
+     * après ; les adresses de démo restent simulées.
+     */
+    function ak_demo_public_form_mail(?bool $on = null): bool {
+        static $flag = false;
+        if ($on !== null) $flag = $on;
+        return $flag;
+    }
+}
+
 if (!function_exists('ak_demo_mail_blocked')) {
     /**
      * TRUE = ne pas envoyer (et faire comme si l'envoi avait réussi).
      * @param string|array $to
      */
     function ak_demo_mail_blocked($to): bool {
-        if (ak_demo_session()) {
+        if (!ak_demo_public_form_mail() && ak_demo_session()) {
             error_log('[demo] e-mail simulé (session DEMO F)');
             return true;
         }

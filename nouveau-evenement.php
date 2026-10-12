@@ -4,20 +4,28 @@
  * ASSOKIT — Nouvel événement
  * ============================================================
  * Formulaire de création d'un événement.
- * Accessible à tous les membres de l'organisation.
+ * Accessible à tous les membres de l'organisation, sauf aux suiveurs (financeurs).
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+require_once __DIR__ . '/includes-attendance.php';
 
 require_login();
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
 
+// Suiveur (financeur externe) : il ne voit que les projets qu'il suit et n'écrit pas
+// dans l'agenda de l'association (même règle que l'appli, api/app-create-event.php).
+if (!ak_event_can_create($user)) {
+    header('Location: /agenda?error=permission');
+    exit;
+}
+
 // Pré-sélection éventuelle : ?project=X pour créer un événement directement lié à un projet
 $preselected_project = (int)($_GET['project'] ?? 0);
-$preselected_date = $_GET['date'] ?? date('Y-m-d');
+$preselected_date = is_string($_GET['date'] ?? null) ? $_GET['date'] : date('Y-m-d');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $preselected_date)) {
     $preselected_date = date('Y-m-d');
 }
@@ -56,25 +64,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Session expirée, rechargez la page.';
     } else {
         foreach ($data as $k => $v) {
-            $data[$k] = $_POST[$k] ?? $v;
+            $data[$k] = is_scalar($_POST[$k] ?? null) ? (string)$_POST[$k] : $v;
         }
         $data['is_all_day'] = isset($_POST['is_all_day']) ? 1 : 0;
 
         // Validations
         if (trim($data['title']) === '') $errors[] = 'Le titre de l\'événement est obligatoire.';
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['start_date'])) $errors[] = 'Date de début invalide.';
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['end_date'])) $errors[] = 'Date de fin invalide.';
+        if (!ak_event_valid_date($data['start_date'])) $errors[] = 'Date de début invalide.';
+        if (!ak_event_valid_date($data['end_date'])) $errors[] = 'Date de fin invalide.';
+        // Heure vidée ou à moitié saisie : message au lieu d'une date fausse (ou d'une erreur 500)
+        if (!$data['is_all_day']) {
+            if (!ak_event_valid_time($data['start_time'])) $errors[] = 'Heure de début invalide : saisissez une heure (ex. 14:00) ou cochez « journée entière ».';
+            if (!ak_event_valid_time($data['end_time'])) $errors[] = 'Heure de fin invalide : saisissez une heure (ex. 16:00) ou cochez « journée entière ».';
+        }
 
         // Construction des datetimes
         if ($data['is_all_day']) {
             $starts_at = $data['start_date'] . ' 00:00:00';
             $ends_at = $data['end_date'] . ' 23:59:59';
         } else {
-            $starts_at = $data['start_date'] . ' ' . $data['start_time'] . ':00';
-            $ends_at = $data['end_date'] . ' ' . $data['end_time'] . ':00';
+            $starts_at = $data['start_date'] . ' ' . substr($data['start_time'], 0, 5) . ':00';
+            $ends_at = $data['end_date'] . ' ' . substr($data['end_time'], 0, 5) . ':00';
         }
 
-        if (strtotime($ends_at) < strtotime($starts_at)) {
+        if (!$errors && strtotime($ends_at) < strtotime($starts_at)) {
             $errors[] = 'La date/heure de fin est avant celle de début.';
         }
 

@@ -6,6 +6,7 @@
 ob_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/../includes-attendance.php';
 ob_end_clean();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -28,16 +29,18 @@ try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
 
-    $now = date('Y-m-d 00:00:00');
-    $end = date('Y-m-d 23:59:59', strtotime('+120 days'));
+    // Tous les événements à venir (même compte que « événements à venir » de l'accueil),
+    // les plus proches d'abord. Facultatif : ?from=AAAA-MM-JJ (suite de la liste, cf. next_from)
+    // et ?to=AAAA-MM-JJ (borne de fin).
+    $LIMIT = 300;
+    $from = is_string($_GET['from'] ?? null) ? $_GET['from'] : '';
+    $to   = is_string($_GET['to'] ?? null) ? $_GET['to'] : '';
+    $now = preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) && strtotime($from) ? $from . ' 00:00:00' : date('Y-m-d 00:00:00');
+    $end = preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) && strtotime($to) ? $to . ' 23:59:59' : null;
 
-    // Parité site (agenda.php) : un « follower » ne voit que les événements de ses projets autorisés.
-    $fpids = function_exists('get_follower_project_ids') ? get_follower_project_ids() : null;
-    $fsql = ''; $fparams = [];
-    if ($fpids !== null) {
-        if (empty($fpids)) { $fsql = ' AND 1 = 0'; }
-        else { $fsql = ' AND e.project_id IN (' . implode(',', array_fill(0, count($fpids), '?')) . ')'; $fparams = array_map('intval', $fpids); }
-    }
+    // Même visibilité que le site (agenda.php) : suiveur limité à ses projets,
+    // « Équipe du projet uniquement » réservé à l'équipe du projet.
+    [$vis_sql, $vis_params] = ak_event_visibility_sql($pdo, $user ?: []);
 
     $stmt = $pdo->prepare("
         SELECT e.id, e.title, e.location, e.event_type, e.color_theme, e.sync_origin,
@@ -47,12 +50,14 @@ try {
         LEFT JOIN projects p ON e.project_id = p.id
         LEFT JOIN folders f ON p.folder_id = f.id
         WHERE e.org_id = ? AND e.deleted_at IS NULL
-          AND e.ends_at >= ? AND e.starts_at <= ?" . $fsql . "
-        ORDER BY e.starts_at ASC
-        LIMIT 150
+          AND e.ends_at >= ?" . ($end !== null ? " AND e.starts_at <= ?" : '') . $vis_sql . "
+        ORDER BY e.starts_at ASC, e.id ASC
+        LIMIT " . ($LIMIT + 1) . "
     ");
-    $stmt->execute(array_merge([$org_id, $now, $end], $fparams));
+    $stmt->execute(array_merge([$org_id, $now], $end !== null ? [$end] : [], $vis_params));
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $has_more = count($rows) > $LIMIT;
+    if ($has_more) $rows = array_slice($rows, 0, $LIMIT);
 
     $GPAL = ['#7986CB', '#33B679', '#8E24AA', '#E67C73', '#F6BF26', '#039BE5', '#3F51B5', '#0B8043', '#D50000', '#F4511E'];
     $events = [];
@@ -89,7 +94,16 @@ try {
         ];
     }
 
-    echo json_encode(['ok' => true, 'events' => $events], JSON_UNESCAPED_UNICODE);
+    echo json_encode([
+        'ok' => true,
+        'events' => $events,
+        // Liste tronquée : la suite se charge avec ?from=next_from (jour du dernier
+        // événement renvoyé, à dédoublonner par id).
+        'has_more' => $has_more,
+        'next_from' => $has_more && $rows ? date('Y-m-d', strtotime((string) end($rows)['starts_at'])) : null,
+        // Bouton « Nouvel événement » : masqué pour un suiveur (même règle que le site, agenda.php).
+        'can_create' => ak_event_can_create($user ?: []),
+    ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-events] ' . $e->getMessage());
     http_response_code(500);

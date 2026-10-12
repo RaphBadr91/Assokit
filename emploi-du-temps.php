@@ -79,7 +79,11 @@ try {
 // PARAMÈTRES VUE (semaine ou mois)
 // =============================================================
 $view = in_array($_GET['view'] ?? '', ['week','month'], true) ? $_GET['view'] : 'week'; // whitelist (anti-XSS réfléchi)
-$current_date = $_GET['date'] ?? date('Y-m-d');
+// Date AAAA-MM-JJ réelle (sinon semaine courante) : une URL modifiée ne doit pas faire planter la page
+$current_date = is_string($_GET['date'] ?? null) ? $_GET['date'] : '';
+if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $current_date, $dm) || !checkdate((int)$dm[2], (int)$dm[3], (int)$dm[1])) {
+    $current_date = date('Y-m-d');
+}
 
 // Ancrer sur lundi de la semaine demandée
 $dt = new DateTime($current_date);
@@ -95,9 +99,9 @@ if ($view === 'month') {
     $cal_end = (clone $last_of_month)->modify('+' . (7 - (int)$last_of_month->format('N')) . ' days');
 }
 
-// Navigation prev/next
-$prev_date = (clone $dt)->modify($view === 'week' ? '-7 days' : '-1 month')->format('Y-m-d');
-$next_date = (clone $dt)->modify($view === 'week' ? '+7 days' : '+1 month')->format('Y-m-d');
+// Navigation prev/next (vue mois : depuis le 1er du mois, sinon « +1 month » un 31 saute un mois)
+$prev_date = (clone $dt)->modify($view === 'week' ? '-7 days' : 'first day of previous month')->format('Y-m-d');
+$next_date = (clone $dt)->modify($view === 'week' ? '+7 days' : 'first day of next month')->format('Y-m-d');
 
 // =============================================================
 // FILTRE MEMBRE
@@ -157,7 +161,7 @@ $stmt = $pdo->prepare("
     JOIN users u ON u.id = a.user_id
     WHERE a.org_id = ? 
       AND ((a.start_date BETWEEN ? AND ?) OR (a.end_date BETWEEN ? AND ?) OR (a.start_date <= ? AND a.end_date >= ?))
-      $where_user
+      " . ($filter_user > 0 ? ' AND a.user_id = ?' : '') . "
 ");
 $abs_params = [$org_id, $period_start, $period_end, $period_start, $period_end, $period_start, $period_end];
 if ($filter_user > 0) $abs_params[] = $filter_user;
@@ -207,6 +211,65 @@ function build_day_map(array $weekly, array $once, array $absences, DateTime $mo
 }
 
 $day_map = build_day_map($weekly_slots, $once_slots, $absences, $view === 'week' ? $monday : $cal_start);
+
+/** Heure décimale d'un champ TIME (« 09:30:00 » → 9.5). */
+function edt_hour($time): float {
+    return (float)substr((string)$time, 0, 2) + (float)substr((string)$time, 3, 2) / 60;
+}
+
+/** [début, fin] d'un créneau en heures décimales : fin après minuit → 24h, durée nulle → 30 min. */
+function edt_slot_range(array $slot): array {
+    $start = edt_hour($slot['start_time']);
+    $end = edt_hour($slot['end_time']);
+    if ($end < $start) $end = 24.0;
+    return [$start, min(24.0, max($start + 0.5, $end))];
+}
+
+/**
+ * Vue semaine : répartit en colonnes les créneaux d'un même jour qui se chevauchent,
+ * pour les afficher côte à côte au lieu de les empiler au même endroit.
+ * Ajoute à chaque créneau _start/_end (heures décimales), _col (sa colonne)
+ * et _cols (nombre de colonnes de son groupe de chevauchement).
+ */
+function edt_layout_slots(array $slots): array {
+    usort($slots, fn($a, $b) => strcmp($a['start_time'], $b['start_time']) ?: strcmp($b['end_time'], $a['end_time']));
+    $out = [];
+    $group = [];      // créneaux du groupe de chevauchement en cours
+    $col_ends = [];   // heure de fin du dernier créneau de chaque colonne du groupe
+    $group_end = 0.0;
+    foreach ($slots as $s) {
+        [$s['_start'], $s['_end']] = edt_slot_range($s);
+        if ($group && $s['_start'] >= $group_end) {   // plus aucun chevauchement : groupe terminé
+            foreach ($group as $g) { $g['_cols'] = count($col_ends); $out[] = $g; }
+            $group = []; $col_ends = [];
+        }
+        $col = count($col_ends);
+        foreach ($col_ends as $c => $c_end) {
+            if ($c_end <= $s['_start']) { $col = $c; break; }
+        }
+        $col_ends[$col] = $s['_end'];
+        $s['_col'] = $col;
+        $group_end = $group ? max($group_end, $s['_end']) : $s['_end'];
+        $group[] = $s;
+    }
+    foreach ($group as $g) { $g['_cols'] = count($col_ends); $out[] = $g; }
+    return $out;
+}
+
+// Plage horaire de la grille : 7h-22h au minimum, élargie aux créneaux de la semaine
+// (activités du soir, permanences matinales) pour qu'aucun ne sorte de la zone visible.
+$grid_h_min = 7;
+$grid_h_max = 22;
+if ($view === 'week') {
+    foreach ($day_map as $k => $dd) {
+        $day_map[$k]['slots'] = edt_layout_slots($dd['slots']);
+        foreach ($day_map[$k]['slots'] as $s) {
+            $grid_h_min = min($grid_h_min, (int)floor($s['_start']));
+            $grid_h_max = max($grid_h_max, (int)ceil($s['_end']));
+        }
+    }
+}
+$grid_height = ($grid_h_max - $grid_h_min) * 50;
 
 // Mois pour vue mois
 $month_map = [];
@@ -424,38 +487,42 @@ render_sidebar('emploi-du-temps');
     
     <div class="edt-week-grid">
         <div class="edt-time-col">
-            <?php for ($h = 7; $h <= 20; $h++): ?>
+            <?php for ($h = $grid_h_min; $h < $grid_h_max; $h++): ?>
                 <div class="edt-time-slot"><?= $h ?>h</div>
             <?php endfor; ?>
         </div>
-        
+
         <?php for ($i = 0; $i < 7; $i++):
             $d = (clone $monday)->modify("+$i days");
             $key = $d->format('Y-m-d');
             $day_data = $day_map[$key] ?? ['slots' => [], 'absences' => []];
+            $n_abs = count($day_data['absences']);
         ?>
-        <div class="edt-day-col" data-date="<?= $key ?>" onclick="if(event.target===this) openSlotModal('<?= $key ?>')">
-            <?php foreach ($day_data['absences'] as $abs):
+        <div class="edt-day-col" data-date="<?= $key ?>" style="height: <?= $grid_height ?>px; min-height: 0;" onclick="if(event.target===this) openSlotModal('<?= $key ?>')">
+            <?php foreach ($day_data['absences'] as $ai => $abs):
                 $abs_info = $absence_labels[$abs['type']] ?? $absence_labels['other'];
+                // Plusieurs absences le même jour : côte à côte, pour que chaque nom reste lisible
+                $abs_w = 100 / max(1, $n_abs);
             ?>
-            <div class="edt-slot absence" 
-                 style="top: 0; height: 100%; background: <?= $abs_info['color'] ?>15; border-left-color: <?= $abs_info['color'] ?>; opacity: 0.7;"
+            <div class="edt-slot absence"
+                 style="top: 0; height: 100%; left: calc(<?= round($ai * $abs_w, 4) ?>% + 2px); width: calc(<?= round($abs_w, 4) ?>% - 4px); right: auto; background: <?= $abs_info['color'] ?>15; border-left-color: <?= $abs_info['color'] ?>; opacity: 0.7;"
                  onclick="event.stopPropagation(); editAbsence(<?= (int)$abs['id'] ?>)">
                 <div class="edt-slot-title"><?= h($abs_info['label']) ?></div>
                 <div class="edt-slot-user"><?= ak_icon('user',11,'2') ?> <?= h($abs['first_name']) ?> <?= h(mb_substr($abs['last_name'], 0, 1)) ?>.</div>
             </div>
             <?php endforeach; ?>
-            
+
             <?php foreach ($day_data['slots'] as $slot):
                 $type_info = $type_labels[$slot['type']] ?? $type_labels['other'];
-                $start_h = (float)substr($slot['start_time'], 0, 2) + (float)substr($slot['start_time'], 3, 2) / 60;
-                $end_h = (float)substr($slot['end_time'], 0, 2) + (float)substr($slot['end_time'], 3, 2) / 60;
-                $top = ($start_h - 7) * 50;
-                $height = max(30, ($end_h - $start_h) * 50);
+                $top = ($slot['_start'] - $grid_h_min) * 50;
+                $height = max(30, ($slot['_end'] - $slot['_start']) * 50);
+                // Créneaux simultanés : chacun sa colonne (largeur partagée) au lieu d'être superposés
+                $col_w = 100 / max(1, (int)$slot['_cols']);
                 $bg_color = $slot['color'] ?: $type_info['color'];
             ?>
-            <div class="edt-slot <?= !empty($slot['_recurring']) ? 'edt-slot-recurring' : '' ?>" 
-                 style="top: <?= $top ?>px; height: <?= $height ?>px; background: <?= $bg_color ?>15; border-left-color: <?= $bg_color ?>;"
+            <div class="edt-slot <?= !empty($slot['_recurring']) ? 'edt-slot-recurring' : '' ?>"
+                 title="<?= h(($slot['title'] ?: $type_info['label']) . ' · ' . format_time($slot['start_time']) . ' - ' . format_time($slot['end_time']) . ' · ' . $slot['first_name'] . ' ' . $slot['last_name']) ?>"
+                 style="top: <?= round($top, 2) ?>px; height: <?= round($height, 2) ?>px; left: calc(<?= round($slot['_col'] * $col_w, 4) ?>% + 2px); width: calc(<?= round($col_w, 4) ?>% - 4px); right: auto; z-index: 2; background: <?= $bg_color ?>15; border-left-color: <?= $bg_color ?>;"
                  onclick="event.stopPropagation(); editSlot(<?= (int)$slot['id'] ?>)">
                 <div class="edt-slot-title"><?= h($slot['title'] ?: $type_info['label']) ?></div>
                 <div class="edt-slot-time"><?= format_time($slot['start_time']) ?> - <?= format_time($slot['end_time']) ?></div>

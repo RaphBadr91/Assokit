@@ -27,44 +27,67 @@ render_public_nav('');
 
       <h2>Quels cookies utilisons-nous ?</h2>
 
-      <h3>1. Cookies de session (obligatoires)</h3>
-      <p>Permettent de maintenir votre connexion au compte Assokit pendant votre navigation.</p>
+      <h3>1. Cookie de session (obligatoire)</h3>
+      <p>Maintient votre connexion au compte Assokit pendant votre navigation. Le jeton de sécurité anti-falsification de requêtes (CSRF) est conservé sur nos serveurs, dans cette session : il ne fait pas l’objet d’un cookie distinct.</p>
       <ul>
         <li><strong>Nom</strong> : <code>PHPSESSID</code></li>
         <li><strong>Durée</strong> : durée de la session</li>
         <li><strong>Finalité</strong> : authentification, sécurité</li>
       </ul>
 
-      <h3>2. Cookies de sécurité CSRF (obligatoires)</h3>
-      <p>Empêchent les attaques de type "cross-site request forgery".</p>
+      <h3>2. Mémorisation de votre choix (obligatoire)</h3>
+      <p>Retient si vous avez accepté ou refusé la mesure d’audience, pour ne pas vous reposer la question à chaque page.</p>
       <ul>
-        <li><strong>Nom</strong> : <code>csrf_token</code></li>
-        <li><strong>Durée</strong> : session</li>
-        <li><strong>Finalité</strong> : sécurité</li>
+        <li><strong>Nom</strong> : <code>ak_cookie_consent</code></li>
+        <li><strong>Durée</strong> : 6 mois</li>
+        <li><strong>Finalité</strong> : respect de votre choix</li>
       </ul>
 
-      <h3>3. Cookies de préférences (optionnels)</h3>
-      <p>Mémorisent vos préférences d'affichage (mode sombre, taille de texte, etc.).</p>
+      <h3>3. Mesure d’audience Google Analytics (avec votre consentement)</h3>
+      <p>Statistiques de fréquentation du site public (pages vues, provenance), adresse IP anonymisée. Ces cookies ne sont déposés qu’après votre accord, et jamais dans l’application.</p>
       <ul>
-        <li><strong>Durée</strong> : 1 an</li>
-        <li><strong>Finalité</strong> : confort d'utilisation</li>
+        <li><strong>Noms</strong> : <code>_ga</code>, <code>_ga_&lt;identifiant&gt;</code></li>
+        <li><strong>Durée</strong> : 13 mois maximum</li>
+        <li><strong>Finalité</strong> : mesure d’audience · <strong>Émetteur</strong> : Google (voir notre <a href="/confidentialite">politique de confidentialité</a>)</li>
       </ul>
 
-      <h2>Cookies que nous N'utilisons PAS</h2>
+      <h3>4. Origine de la visite</h3>
+      <p>Déposé uniquement si vous arrivez sur le site par un lien personnalisé reçu dans un e-mail d’Assokit, pour savoir que la visite vient de ce message.</p>
+      <ul>
+        <li><strong>Nom</strong> : <code>ak_src</code></li>
+        <li><strong>Durée</strong> : 30 jours</li>
+        <li><strong>Finalité</strong> : suivi de nos propres e-mails, sans aucun tiers</li>
+      </ul>
+
+      <h3>5. Réponse à un événement public</h3>
+      <p>Déposé seulement si vous répondez à l’invitation publique d’un événement, pour vous permettre de modifier votre réponse depuis le même appareil.</p>
+      <ul>
+        <li><strong>Nom</strong> : <code>ak_rsvp_&lt;numéro de l’événement&gt;</code></li>
+        <li><strong>Durée</strong> : 6 mois</li>
+        <li><strong>Finalité</strong> : modification de votre réponse, sans aucun tiers</li>
+      </ul>
+
+      <h3>6. Préférences d’affichage dans l’application</h3>
+      <p>L’application retient par exemple la rubrique du menu que vous avez ouverte. Cette préférence est gardée dans le stockage local de votre navigateur (ce n’est pas un cookie) et n’est jamais transmise.</p>
+
+      <h2>Ce que nous n’utilisons pas</h2>
       <ul>
         <li>❌ Cookies publicitaires</li>
-        <li>✅ Mesure d'audience Google Analytics (IP anonymisée) — uniquement après consentement · ❌ Pas de Meta Pixel ni de tracking publicitaire</li>
+        <li>❌ Meta Pixel ou autre traceur publicitaire</li>
         <li>❌ Cookies de profilage marketing</li>
         <li>❌ Cookies de partage social</li>
       </ul>
 
-      <h2>Comment gérer les cookies ?</h2>
-      <p>Vous pouvez à tout moment configurer ou supprimer les cookies via les paramètres de votre navigateur. Sachez que la désactivation des cookies de session vous empêchera d'utiliser votre compte Assokit.</p>
+      <h2 id="gerer">Comment gérer les cookies ?</h2>
+      <p>Vous pouvez changer d’avis à tout moment, aussi simplement que vous avez donné votre choix : le lien <strong>« Gérer mes cookies »</strong>, ici ou en bas de chaque page, rouvre le bandeau pour accepter ou refuser la mesure d’audience. Si vous la refusez, les cookies Google Analytics déjà déposés sont effacés.</p>
+      <p><button type="button" class="pub-btn pub-btn-primary" onclick="if(window.akShowCookieBanner)akShowCookieBanner();">Gérer mes cookies</button></p>
+      <p>Vous pouvez aussi configurer ou supprimer les cookies via les paramètres de votre navigateur. Sachez que la désactivation du cookie de session vous empêchera d’utiliser votre compte Assokit.</p>
 
       <h2>Contact</h2>
       <p>Pour toute question : <a href="mailto:contact@assokit.fr">contact@assokit.fr</a></p>
 
-      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Dernière mise à jour : <?= date('d/m/Y') ?></p>
+      <?php /* Date de version : à changer seulement quand le texte change */ ?>
+      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 12/10/2026</p>
     </article>
   </div>
 </section>

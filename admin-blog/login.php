@@ -19,10 +19,13 @@ if (strpos($redirect, '/admin-blog/') !== 0) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!csrf_check($_POST['_csrf'] ?? '')) {
+    if (!csrf_check(is_string($_POST['_csrf'] ?? null) ? $_POST['_csrf'] : '')) {
         $error = 'Session expirée, recharge la page.';
+    } elseif (($blocked = auth_login_blocked()) !== null) {
+        // Le mot de passe n'est même pas vérifié tant que le blocage dure
+        $error = $blocked;
     } else {
-        $password = $_POST['password'] ?? '';
+        $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
         if (auth_login($password)) {
             header("Location: {$redirect}");
             exit;

@@ -13,16 +13,32 @@ $attendees = ag_load_attendees($pdo, $id);
 $resos = ag_load_resolutions($pdo, $id);
 $quorum = ag_quorum_status($ag, $attendees);
 $m = ag_status_meta($ag['status']);
+$frozen = ag_is_frozen($ag['status']);
+$before_session = in_array($ag['status'], ['draft', 'sent'], true);
+$not_deliberated = ag_not_deliberated($ag, $attendees);
 $flash_error = $_SESSION['flash_assemblee'] ?? null;
-unset($_SESSION['flash_assemblee']);
+$flash_warn = $_SESSION['flash_assemblee_warn'] ?? null;
+$flash_ok = $_SESSION['flash_assemblee_ok'] ?? null;
+unset($_SESSION['flash_assemblee'], $_SESSION['flash_assemblee_warn'], $_SESSION['flash_assemblee_ok']);
 
-$nb_invited = $nb_present = $nb_excused = $nb_absent = $nb_signed = 0;
+// Pouvoirs : mandataire de chaque représenté, et pouvoirs portés par chaque participant
+$has_holder = ag_has_proxy_holder($pdo);
+$att_by_id = ag_index_attendees($attendees);
+$held = [];
+foreach ($attendees as $a) {
+    if ($a['status'] === 'proxy' && !empty($a['proxy_attendee_id'])) $held[(int)$a['proxy_attendee_id']][] = $a['full_name'];
+}
+
+$nb_invited = $nb_present = $nb_proxy = $nb_excused = $nb_absent = $nb_signed = $nb_convoked = $nb_coming = 0;
 foreach ($attendees as $a) {
     $nb_invited++;
-    if ($a['status'] === 'present' || $a['status'] === 'proxy') $nb_present++;
+    if ($a['status'] === 'present') $nb_present++;
+    if ($a['status'] === 'proxy') $nb_proxy++;
     if ($a['status'] === 'excused') $nb_excused++;
     if ($a['status'] === 'absent') $nb_absent++;
     if (!empty($a['signed_at'])) $nb_signed++;
+    if (!empty($a['invitation_sent_at'])) $nb_convoked++;
+    if (ag_rsvp($a) === 'yes') $nb_coming++;
 }
 
 render_head($ag['title']);
@@ -38,6 +54,18 @@ render_head($ag['title']);
         <div><?= h($flash_error) ?></div>
       </div>
     <?php endif; ?>
+    <?php if ($flash_warn): ?>
+      <div class="alert alert-warn" style="margin:12px 0;">
+        <span>⚠️</span>
+        <div><?= h($flash_warn) ?></div>
+      </div>
+    <?php endif; ?>
+    <?php if ($flash_ok): ?>
+      <div class="alert alert-success" style="margin:12px 0;">
+        <span>✓</span>
+        <div><?= h($flash_ok) ?></div>
+      </div>
+    <?php endif; ?>
 
     <div class="ag-detail-hero">
       <div>
@@ -49,7 +77,9 @@ render_head($ag['title']);
         </div>
       </div>
       <div class="ag-detail-actions">
-        <a href="/assemblee-form?id=<?= (int)$ag['id'] ?>" class="ag-btn-ghost">✏️ Modifier</a>
+        <?php if (!$frozen): ?>
+          <a href="/assemblee-form?id=<?= (int)$ag['id'] ?>" class="ag-btn-ghost">✏️ Modifier</a>
+        <?php endif; ?>
         <?php if ($ag['status'] === 'draft' || $ag['status'] === 'sent'): ?>
           <form method="POST" action="/action-assemblee" style="display:inline;">
             <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
@@ -66,7 +96,9 @@ render_head($ag['title']);
             <button type="submit" class="ag-btn-go">🟢 Ouvrir la séance</button>
           </form>
         <?php elseif ($ag['status'] === 'in_progress'): ?>
-          <form method="POST" action="/action-assemblee" style="display:inline;" onsubmit="return confirm('Clôturer définitivement la séance et générer le PV ?')">
+          <form method="POST" action="/action-assemblee" style="display:inline;" onsubmit="return confirm(<?= h(json_encode($quorum['ok']
+              ? 'Clôturer définitivement la séance et générer le PV ?'
+              : 'Quorum non atteint (' . $quorum['present'] . '/' . $quorum['required'] . ') : en clôturant maintenant, aucune résolution ne sera adoptée et le PV les déclarera non délibérées. Clôturer quand même ?', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>)">
             <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
             <input type="hidden" name="action" value="close">
             <input type="hidden" name="id" value="<?= (int)$ag['id'] ?>">
@@ -79,12 +111,12 @@ render_head($ag['title']);
     </div>
 
     <div class="ag-kpis">
-      <div class="ag-kpi"><div class="ag-kpi-lbl">Convoqués</div><div class="ag-kpi-val"><?= $nb_invited ?></div></div>
-      <div class="ag-kpi"><div class="ag-kpi-lbl">Présents</div><div class="ag-kpi-val ag-green"><?= $nb_present ?></div></div>
+      <div class="ag-kpi"><div class="ag-kpi-lbl">Participants</div><div class="ag-kpi-val"><?= $nb_invited ?></div><div class="ag-kpi-sub"><?= $nb_convoked ?> convoqué<?= $nb_convoked > 1 ? 's' : '' ?> par e-mail</div></div>
+      <div class="ag-kpi"><div class="ag-kpi-lbl">Présents</div><div class="ag-kpi-val ag-green"><?= $nb_present ?></div><?php if ($before_session): ?><div class="ag-kpi-sub"><?= $nb_coming ?> annoncé<?= $nb_coming > 1 ? 's' : '' ?> · émargement en séance</div><?php endif; ?><?php if ($nb_proxy): ?><div class="ag-kpi-sub">+ <?= $nb_proxy ?> représenté<?= $nb_proxy > 1 ? 's' : '' ?> (pouvoir<?= $nb_proxy > 1 ? 's' : '' ?>)</div><?php endif; ?></div>
       <div class="ag-kpi"><div class="ag-kpi-lbl">Excusés</div><div class="ag-kpi-val"><?= $nb_excused ?></div></div>
       <div class="ag-kpi"><div class="ag-kpi-lbl">Signés</div><div class="ag-kpi-val ag-blue"><?= $nb_signed ?></div></div>
       <?php if ($ag['quorum_required']): ?>
-        <div class="ag-kpi"><div class="ag-kpi-lbl">Quorum</div><div class="ag-kpi-val <?= $quorum['ok'] ? 'ag-green' : 'ag-red' ?>"><?= $nb_present ?>/<?= (int)$ag['quorum_required'] ?></div><div class="ag-kpi-sub"><?= $quorum['ok'] ? '✓ atteint' : 'manquant' ?></div></div>
+        <div class="ag-kpi"><div class="ag-kpi-lbl">Quorum</div><div class="ag-kpi-val <?= $quorum['ok'] ? 'ag-green' : 'ag-red' ?>"><?= $quorum['present'] ?>/<?= (int)$ag['quorum_required'] ?></div><div class="ag-kpi-sub"><?= $quorum['ok'] ? '✓ atteint' : 'manquant' ?> · présents et représentés</div></div>
       <?php endif; ?>
     </div>
 
@@ -93,18 +125,21 @@ render_head($ag['title']);
         <!-- Convocations -->
         <div class="ag-card">
           <div class="ag-card-head">
-            <h2>👥 Convoqués (<?= $nb_invited ?>)</h2>
+            <h2>👥 Participants (<?= $nb_invited ?>)</h2>
+            <?php if (!$frozen): ?>
             <div class="ag-card-actions">
               <button type="button" onclick="document.getElementById('ag-add-att').style.display='block'" class="ag-btn-mini">+ Ajouter</button>
               <form method="POST" action="/action-assemblee" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
                 <input type="hidden" name="action" value="import_adherents">
                 <input type="hidden" name="id" value="<?= (int)$ag['id'] ?>">
-                <button type="submit" class="ag-btn-mini" title="Importer tous les adhérents actifs">📥 Importer adhérents</button>
+                <button type="submit" class="ag-btn-mini" title="Importer les adhérents actifs à jour de leur adhésion (hors financeurs)">📥 Importer adhérents</button>
               </form>
             </div>
+            <?php endif; ?>
           </div>
 
+          <?php if (!$frozen): ?>
           <form method="POST" action="/action-assemblee" id="ag-add-att" style="display:none; margin-bottom:12px; padding:12px; background:#f9fafb; border-radius:8px;">
             <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
             <input type="hidden" name="action" value="add_attendee">
@@ -115,9 +150,10 @@ render_head($ag['title']);
               <button type="submit" class="ag-btn-primary">Ajouter</button>
             </div>
           </form>
+          <?php endif; ?>
 
           <?php if (empty($attendees)): ?>
-            <p class="ag-muted">Aucun convoqué. Importe tes adhérents ou ajoute manuellement.</p>
+            <p class="ag-muted">Aucun participant. Importe tes adhérents ou ajoute manuellement.</p>
           <?php else: ?>
           <table class="ag-table">
             <thead><tr><th>Nom</th><th>Email</th><th>Statut</th><th>Signature</th><th></th></tr></thead>
@@ -126,14 +162,69 @@ render_head($ag['title']);
               $st_meta = ['invited'=>['Invité','#6b7280'],'present'=>['Présent','#10B981'],'excused'=>['Excusé','#F59E0B'],'absent'=>['Absent','#EF4444'],'proxy'=>['Pouvoir','#8B5CF6']];
               $sm = $st_meta[$a['status']] ?? ['—','#6b7280'];
               $public_url = "https://" . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr') . "/ag-public/" . $a['access_token'];
+              $email_ok = !empty($a['email']) && filter_var($a['email'], FILTER_VALIDATE_EMAIL);
+              $a_rsvp = ag_rsvp($a);
             ?>
               <tr>
                 <td><strong><?= h($a['full_name']) ?></strong></td>
-                <td><?= h($a['email'] ?? '—') ?></td>
-                <td><span class="ag-mini-status" style="color:<?= $sm[1] ?>;"><?= $sm[0] ?></span></td>
-                <td><?= $a['signed_at'] ? '<span style="color:#10B981;">✓ '.date('d/m H:i', strtotime($a['signed_at'])).'</span>' : '—' ?></td>
+                <td>
+                  <?= h($a['email'] ?: '—') ?>
+                  <?php if (!$email_ok): ?><div class="ag-att-sub" style="color:#B45309;">⚠️ <?= empty($a['email']) ? 'Pas d’e-mail : à convoquer autrement' : 'E-mail invalide : non convoqué' ?></div>
+                  <?php elseif (!empty($a['invitation_sent_at'])): ?><div class="ag-att-sub">✉️ Convoqué le <?= date('d/m', strtotime($a['invitation_sent_at'])) ?></div>
+                  <?php elseif (!$frozen): ?><div class="ag-att-sub">Pas encore convoqué</div><?php endif; ?>
+                </td>
+                <td>
+                  <?php if ($frozen): ?>
+                    <span class="ag-mini-status" style="color:<?= $sm[1] ?>;"><?= $sm[0] ?></span>
+                  <?php else: ?>
+                    <form method="POST" action="/action-assemblee" style="display:inline;">
+                      <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+                      <input type="hidden" name="action" value="set_attendee_status">
+                      <input type="hidden" name="id" value="<?= (int)$ag['id'] ?>">
+                      <input type="hidden" name="attendee_id" value="<?= (int)$a['id'] ?>">
+                      <select name="status" class="ag-att-status" style="color:<?= $sm[1] ?>;" onchange="this.form.submit()" aria-label="Statut de <?= h($a['full_name']) ?>">
+                        <?php foreach ($st_meta as $k => $meta):
+                          $dis = $k === 'present' && $ag['status'] !== 'in_progress' && $a['status'] !== 'present'; ?>
+                          <option value="<?= $k ?>" <?= $a['status'] === $k ? 'selected' : '' ?> <?= $dis ? 'disabled' : '' ?>><?= $meta[0] ?><?= $dis ? ' (en séance)' : '' ?></option>
+                        <?php endforeach; ?>
+                        <?php if (!isset($st_meta[$a['status']])): ?><option value="" selected disabled>—</option><?php endif; ?>
+                      </select>
+                    </form>
+                  <?php endif; ?>
+                  <?php if ($a_rsvp === 'yes' && $a['status'] !== 'present'): ?><div class="ag-att-sub">A répondu : viendra</div>
+                  <?php elseif ($before_session && $a['status'] === 'proxy' && ($a['rsvp'] ?? null) === 'yes'): ?><div class="ag-att-sub">A répondu : viendra finalement (pouvoir conservé d’ici là)</div><?php endif; ?>
+                  <?php if ($a['status'] === 'proxy' && $has_holder):
+                    $holder = !empty($a['proxy_attendee_id']) ? ($att_by_id[(int)$a['proxy_attendee_id']] ?? null) : null; ?>
+                    <?php if ($frozen): ?>
+                      <div class="ag-att-sub"><?= $holder ? 'Représenté·e par ' . h($holder['full_name']) : 'Pouvoir sans mandataire' ?></div>
+                    <?php else: ?>
+                      <form method="POST" action="/action-assemblee" class="ag-att-sub">
+                        <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+                        <input type="hidden" name="action" value="set_proxy_holder">
+                        <input type="hidden" name="id" value="<?= (int)$ag['id'] ?>">
+                        <input type="hidden" name="attendee_id" value="<?= (int)$a['id'] ?>">
+                        <label>Représenté·e par
+                          <select name="proxy_to" class="ag-att-status" onchange="this.form.submit()" aria-label="Mandataire de <?= h($a['full_name']) ?>">
+                            <option value="0"><?= $holder ? '— retirer le mandataire —' : '— choisir le mandataire —' ?></option>
+                            <?php foreach ($attendees as $o):
+                              if ((int)$o['id'] === (int)$a['id'] || (!ag_can_hold_proxy($o) && (int)$o['id'] !== (int)($a['proxy_attendee_id'] ?? 0))) continue; ?>
+                              <option value="<?= (int)$o['id'] ?>" <?= (int)$o['id'] === (int)($a['proxy_attendee_id'] ?? 0) ? 'selected' : '' ?>><?= h($o['full_name']) ?></option>
+                            <?php endforeach; ?>
+                          </select>
+                        </label>
+                        <?php if (!$holder): ?><div style="color:#B45309;">⚠️ Sans mandataire, ce pouvoir compte pour le quorum mais ne vote pas.</div>
+                        <?php elseif (!ag_proxy_valid($a, $att_by_id, $ag['status'])): ?><div style="color:#B45309;">⚠️ Mandataire <?= $before_session ? 'indisponible' : 'pas encore présent' ?> : pouvoir non compté.</div><?php endif; ?>
+                      </form>
+                    <?php endif; ?>
+                  <?php endif; ?>
+                  <?php if (!empty($held[(int)$a['id']]) && $a['status'] !== 'proxy'): ?>
+                    <div class="ag-att-sub">🤝 Porte <?= count($held[(int)$a['id']]) > 1 ? 'les pouvoirs' : 'le pouvoir' ?> de <?= h(implode(', ', $held[(int)$a['id']])) ?></div>
+                  <?php endif; ?>
+                </td>
+                <td><?php if ($a['signed_at']): ?><span style="color:#10B981;">✓ <?= date('d/m H:i', strtotime($a['signed_at'])) ?></span><?php if (empty($a['signature_data'])): ?><div class="ag-att-sub">pointé par l’organisateur</div><?php endif; ?><?php else: ?>—<?php endif; ?></td>
                 <td>
                   <button aria-label="Copier le lien de vote" type="button" class="ag-btn-mini" onclick="navigator.clipboard.writeText('<?= h($public_url) ?>');this.textContent='✓';setTimeout(()=>this.textContent='🔗',1500);" title="Copier le lien personnel">🔗</button>
+                  <?php if (!$frozen): ?>
                   <form method="POST" action="/action-assemblee" style="display:inline;" onsubmit="return confirm('Retirer ?')">
                     <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
                     <input type="hidden" name="action" value="remove_attendee">
@@ -141,6 +232,7 @@ render_head($ag['title']);
                     <input type="hidden" name="attendee_id" value="<?= (int)$a['id'] ?>">
                     <button type="submit" class="ag-btn-mini-rm">×</button>
                   </form>
+                  <?php endif; ?>
                 </td>
               </tr>
             <?php endforeach; ?>
@@ -152,6 +244,9 @@ render_head($ag['title']);
         <!-- Résolutions -->
         <div class="ag-card">
           <h2>🗳️ Résolutions (<?= count($resos) ?>)</h2>
+          <?php if ($not_deliberated): ?>
+            <p class="ag-muted" style="color:#B45309;">Quorum non atteint (<?= $quorum['present'] ?>/<?= $quorum['required'] ?>) : l’assemblée n’a pas pu délibérer valablement, aucune résolution n’est adoptée.</p>
+          <?php endif; ?>
           <?php if (empty($resos)): ?>
             <p class="ag-muted">Aucune résolution. Ajoute-en via "Modifier".</p>
           <?php else: ?>
@@ -162,14 +257,14 @@ render_head($ag['title']);
               $pct_ag = $total > 0 ? round(($stats['against'] / $total) * 100) : 0;
               $pct_ab = $total > 0 ? round(($stats['abstain'] / $total) * 100) : 0;
               $rmeta = ['adopted'=>['Adoptée','#10B981','#ECFDF5'],'rejected'=>['Rejetée','#EF4444','#FEE2E2'],'pending'=>['En attente','#6b7280','#f3f4f6']];
-              $rm = $rmeta[$r['result']] ?? $rmeta['pending'];
+              $rm = $not_deliberated ? ['Non délibérée','#B45309','#FEF3C7'] : ($rmeta[$r['result']] ?? $rmeta['pending']);
             ?>
             <div class="ag-reso-card">
               <div class="ag-reso-head">
                 <div>
                   <div class="ag-reso-num">Résolution n°<?= $i + 1 ?></div>
                   <div class="ag-reso-name"><?= h($r['title']) ?></div>
-                  <div class="ag-reso-type"><?= h(ag_vote_type_label($r['vote_type'])) ?></div>
+                  <div class="ag-reso-type"><?= h(ag_vote_type_label((string)$r['vote_type'])) ?></div>
                 </div>
                 <span class="ag-mini-status" style="background:<?= $rm[2] ?>;color:<?= $rm[1] ?>;padding:4px 10px;border-radius:999px;"><?= $rm[0] ?></span>
               </div>
@@ -183,7 +278,7 @@ render_head($ag['title']);
                 <span>✓ Pour : <strong><?= $stats['for'] ?></strong> (<?= $pct_for ?>%)</span>
                 <span>✗ Contre : <strong><?= $stats['against'] ?></strong> (<?= $pct_ag ?>%)</span>
                 <span>○ Abstention : <strong><?= $stats['abstain'] ?></strong></span>
-                <span class="ag-muted">Total : <?= $total ?></span>
+                <span class="ag-muted">Votants : <?= $total ?><?= $stats['by_proxy'] ? ' (dont ' . $stats['by_proxy'] . ' par pouvoir)' : '' ?> · Exprimés : <?= $stats['for'] + $stats['against'] ?></span>
               </div>
               <?php endif; ?>
             </div>
@@ -211,6 +306,7 @@ render_head($ag['title']);
   </div>
 </main>
 <style>
+.alert-warn { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; }
 .ag-detail-hero { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; margin-bottom:18px; flex-wrap:wrap; }
 .ag-detail-hero .ag-status { display:inline-block; margin-bottom:8px; }
 .ag-detail-hero h1 { margin:0 0 6px; }
@@ -246,6 +342,8 @@ render_head($ag['title']);
 .ag-table th { text-align:left; padding:8px 10px; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #e5e7eb; }
 .ag-table td { padding:9px 10px; font-size:13px; border-bottom:1px solid #f3f4f6; }
 .ag-mini-status { font-weight:600; font-size:12px; }
+.ag-att-status { font-weight:600; font-size:12px; padding:3px 6px; border:1px solid #e5e7eb; border-radius:6px; background:#fff; font-family:inherit; cursor:pointer; }
+.ag-att-sub { font-size:11px; color:#6b7280; margin-top:2px; }
 .ag-reso-card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; margin-bottom:8px; }
 .ag-reso-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px; }
 .ag-reso-num { font-size:10.5px; color:#6b7280; text-transform:uppercase; font-weight:700; letter-spacing:0.04em; }

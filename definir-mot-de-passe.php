@@ -33,13 +33,20 @@ if (!$token || strlen($token) !== 64) {
         $token_data = validate_password_token($pdo, $token, 'reset_password');
     }
 
-    if (!$token_data) {
-        $error = 'Ce lien est invalide ou a expiré. Demandez un nouveau lien à votre administrateur, ou utilisez "Mot de passe oublié".';
+    if (!$token_data && $_SERVER['REQUEST_METHOD'] === 'POST'
+        && ($again = password_token_just_used($pdo, $token, (string)($_POST['password'] ?? ''))) !== null) {
+        // Deuxième envoi du même formulaire (double clic) : le mot de passe est déjà enregistré
+        $success = true;
+        $token_data = $again;
+    } elseif (!$token_data) {
+        $error = 'Ce lien est invalide ou a expiré. Demandez un nouveau lien à votre administrateur, ou utilisez « Mot de passe oublié ».';
     } else {
         $is_valid = true;
         $user_info = $token_data;
     }
 }
+// Mot de passe oublié (le compte existait déjà) ou invitation (premier mot de passe)
+$is_reset = $token_data && $token_data['token_type'] === 'reset_password';
 
 // Soumission du formulaire
 if ($is_valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -57,14 +64,19 @@ if ($is_valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $pdo->beginTransaction();
         try {
-            // Hasher et sauvegarder
+            // Hasher et sauvegarder. Le lien ne (ré)active jamais un compte : tous les parcours de
+            // création ouvrent déjà le compte actif, et un compte désactivé par l'administrateur
+            // doit le rester (validate_password_token refuse d'ailleurs ses liens).
             $password_hash = password_hash($password, PASSWORD_BCRYPT);
             $stmt = $pdo->prepare("
                 UPDATE users
-                SET password_hash = ?, must_change_password = 0, is_active = 1
-                WHERE id = ?
+                SET password_hash = ?, must_change_password = 0
+                WHERE id = ? AND is_active = 1
             ");
             $stmt->execute([$password_hash, (int)$token_data['user_id']]);
+            if ($stmt->rowCount() === 0) {
+                throw new RuntimeException('compte inactif');
+            }
 
             // Consommer le token
             consume_password_token($pdo, (int)$token_data['id']);
@@ -94,7 +106,7 @@ if ($is_valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
-<title><?= $success ? 'Compte activé' : ($is_valid ? 'Définir votre mot de passe' : 'Lien invalide') ?> — Assokit</title>
+<title><?= $success ? ($is_reset ? 'Mot de passe modifié' : 'Compte activé') : ($is_valid ? 'Définir votre mot de passe' : 'Lien invalide') ?> — Assokit</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -174,6 +186,8 @@ if ($is_valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
     transition: border-color 0.15s, background 0.15s;
   }
   .form-input:focus { outline: none; border-color: #059669; background: white; box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1); }
+  /* iPhone / iPad : sous 16px, Safari zoome sur le champ à chaque saisie */
+  @media (max-width: 480px), (pointer: coarse) { .form-input { font-size: 16px; } }
 
   .pw-hint { font-size: 11.5px; color: #78716C; margin-top: 6px; line-height: 1.5; }
 
@@ -211,9 +225,9 @@ if ($is_valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if ($success): ?>
       <div class="success-state">
         <div class="success-icon">✓</div>
-        <h2 class="success-title">Compte activé !</h2>
+        <h2 class="success-title"><?= $is_reset ? 'Mot de passe modifié' : 'Compte activé !' ?></h2>
         <p class="success-text">
-          Votre mot de passe a été enregistré avec succès.<br>
+          <?= $is_reset ? 'Votre nouveau mot de passe est enregistré.' : 'Votre mot de passe a été enregistré avec succès.' ?><br>
           Vous pouvez maintenant vous connecter à Assokit.
         </p>
         <a href="/connexion" class="btn-primary" style="display:inline-block; text-decoration:none; text-align:center; padding:12px 28px;">Me connecter →</a>
@@ -222,10 +236,10 @@ if ($is_valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php elseif (!$is_valid): ?>
       <h1>Lien invalide ou expiré</h1>
       <p class="sub"><?= h($error ?: 'Ce lien n\'est plus valide.') ?></p>
+      <a href="/mot-de-passe-oublie" class="btn-primary" style="display:block; text-decoration:none; text-align:center; margin-bottom:12px;">Recevoir un nouveau lien</a>
       <a href="/connexion" class="btn-secondary">← Retour à la connexion</a>
 
     <?php else: ?>
-      <?php $is_reset = ($token_data['token_type'] === 'reset_password'); ?>
       <h1><?= $is_reset ? 'Nouveau mot de passe' : 'Bienvenue sur Assokit' ?></h1>
       <p class="sub">
         <?= $is_reset
@@ -234,14 +248,14 @@ if ($is_valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
       </p>
 
       <div class="greet">
-        👤 Connecté en tant que <strong><?= h($user_info['first_name'] . ' ' . $user_info['last_name']) ?></strong> (<?= h($user_info['email']) ?>)
+        👤 Compte : <strong><?= h($user_info['first_name'] . ' ' . $user_info['last_name']) ?></strong> (<?= h($user_info['email']) ?>)
       </div>
 
       <?php if ($error): ?>
         <div class="alert-error"><?= h($error) ?></div>
       <?php endif; ?>
 
-      <form method="POST" autocomplete="off">
+      <form method="POST" autocomplete="off" onsubmit="var b=this.querySelector('button[type=submit]'); if (b) { b.disabled = true; b.textContent = 'Enregistrement…'; }">
         <div class="form-group">
           <label class="form-label" for="password">Nouveau mot de passe *</label>
           <input type="password" id="password" name="password" class="form-input" required minlength="8" autocomplete="new-password" autofocus>

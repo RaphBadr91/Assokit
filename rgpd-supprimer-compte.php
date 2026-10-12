@@ -11,8 +11,10 @@ require_login();
 $current = current_user();
 $uid = (int)$current['id'];
 
+// Retour vers Paramètres › Compte : message en session (jamais dans l'URL, cf. parametres.php)
 function redir($msg, $type='error'){
-    header('Location: /parametres?tab=compte&flash=' . urlencode($msg) . '&ft=' . $type);
+    $_SESSION['flash_parametres'] = ['msg' => (string)$msg, 'type' => $type];
+    header('Location: /parametres?tab=compte');
     exit;
 }
 
@@ -20,15 +22,24 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST')        redir('Requête invalide.');
 if (!check_csrf($_POST['csrf_token'] ?? ''))      redir('Session expirée, merci de réessayer.');
 if (($_POST['confirm'] ?? '') !== 'SUPPRIMER')    redir('Confirmation manquante.');
 if (ak_demo_protected_account((int)(current_user()['id'] ?? 0))) redir(ak_demo_message());
+// Incarnation (support Fondateur) : seule la personne elle-même peut supprimer son compte
+if (!empty($_SESSION['impersonation_target_user_id'])) redir('Suppression impossible pendant une incarnation.');
 
-// Recharger le user pour vérifier les statuts critiques
-$st = $pdo->prepare("SELECT is_founder, is_platform_admin FROM users WHERE id = ? LIMIT 1");
+// Garde-fous : Fondateur / administrateur de la plateforme, seul administrateur de l'association
+// (mêmes règles que l'app : ak_account_delete_blocker, app-context.php)
+$blocker = ak_account_delete_blocker($pdo, $uid);
+if ($blocker !== '') redir($blocker);
+
+// Action définitive : le mot de passe est demandé (une session restée ouverte ne suffit pas)
+require_once __DIR__ . '/rate-limit-helper.php';
+if (!ak_rate_limit('account_delete_pw', 8, 600, (string)$uid)) {
+    redir('Trop de tentatives. Merci de patienter quelques minutes.');
+}
+$st = $pdo->prepare("SELECT password_hash FROM users WHERE id = ? LIMIT 1");
 $st->execute([$uid]);
-$u = $st->fetch(PDO::FETCH_ASSOC) ?: [];
-
-// Garde-fou : comptes critiques non auto-supprimables
-if (!empty($u['is_founder']) || !empty($u['is_platform_admin'])) {
-    redir("Votre compte gère la structure : contactez le support pour transférer la propriété avant suppression.");
+$hash = (string)($st->fetchColumn() ?: '');
+if ($hash === '' || !password_verify((string)($_POST['current_password'] ?? ''), $hash)) {
+    redir('Mot de passe incorrect : votre compte n’a pas été supprimé.');
 }
 
 // Anonymisation + soft-delete (préserve l'intégrité référentielle)
@@ -46,6 +57,9 @@ try {
         WHERE id = ? AND deleted_at IS NULL
     ");
     $st->execute([$uid]);
+
+    // Plus aucune notification push sur les téléphones de ce compte
+    try { $pdo->prepare("DELETE FROM asso_push_tokens WHERE user_id = ?")->execute([$uid]); } catch (Throwable $e) {}
 
     // Journaliser (sans donnée personnelle)
     try {

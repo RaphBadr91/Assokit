@@ -4,7 +4,9 @@
  * ASSOKIT — impersonation-banner.php
  * Bannière orange fixe affichée sur CHAQUE page en incarnation
  * ============================================================
- * Inclus automatiquement par includes-layout.php (voir patch)
+ * Affichée juste après <body> par render_impersonation_banner()
+ * (impersonation-helpers.php), appelée par includes-layout.php.
+ * Le bouton poste vers /super-admin/incarner-stop avec le jeton CSRF.
  * ============================================================
  */
 

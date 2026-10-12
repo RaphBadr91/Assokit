@@ -56,7 +56,7 @@ td.sig img { max-width: 100px; max-height: 32px; }
   <td><strong><?= h($r['full_name']) ?></strong></td>
   <td><?= h($r['email'] ?? '') ?></td>
   <td><?= h($r['phone'] ?? '') ?></td>
-  <td><?= date('H:i', strtotime($r['signed_at'])) ?></td>
+  <td><?= att_fmt_time($r['signed_at'], 'H:i') ?></td>
   <td class="sig"><?php if ($r['signature_data']): ?><img src="<?= h($r['signature_data']) ?>"><?php endif; ?></td>
 </tr>
 <?php endforeach; ?>

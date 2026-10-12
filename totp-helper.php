@@ -66,3 +66,41 @@ function ak_totp_generate_backup_codes(int $n = 8): array {
     for ($i = 0; $i < $n; $i++) $codes[] = strtoupper(bin2hex(random_bytes(4)));
     return $codes;
 }
+
+/** Codes de secours hachés → valeur de users.totp_backup_codes (JSON compact, « / » non échappés). */
+function ak_totp_backup_encode(array $hashes): string {
+    return (string)json_encode(array_values($hashes), JSON_UNESCAPED_SLASHES);
+}
+
+/**
+ * Nombre de codes de secours (hachés en bcrypt) que users.totp_backup_codes peut contenir, au plus
+ * $wanted. Les 8 codes font environ 500 caractères : une colonne VARCHAR(255) n'en tient que 4.
+ * Sans cette limite, l'activation de la 2FA échouait en erreur 500 (« Data too long »). La
+ * migration 2026-10-11-L01-auth.sql passe la colonne en TEXT (8 codes).
+ */
+function ak_totp_backup_capacity(PDO $pdo, int $wanted = 8): int {
+    if (!function_exists('ak_db_columns')) require_once __DIR__ . '/trial-helpers.php';
+    $type = (string)(ak_db_columns($pdo, 'users')['totp_backup_codes']['type'] ?? '');
+    if (preg_match('/^(?:var)?char\((\d+)\)/', $type, $m)) $max = (int)$m[1];
+    elseif (strpos($type, 'tinytext') === 0) $max = 255;
+    else return $wanted; // TEXT, JSON… ou type illisible
+    // ["<60>","<60>",…] : 2 crochets, 62 caractères par code, une virgule entre deux codes
+    $fit = intdiv($max - 1, 63);
+    return max(1, min($wanted, $fit));
+}
+
+/**
+ * Réinitialise la double authentification d'un compte (téléphone perdu sans code de secours) :
+ * à la prochaine connexion, le mot de passe suffit, et l'utilisateur peut la réactiver.
+ * Réservé à l'administrateur de l'association du compte ($org_id : limite la requête à cette
+ * association) ou au Fondateur ($org_id null). L'appelant journalise l'action.
+ * @return bool vrai si un compte avec la 2FA active a été réinitialisé
+ */
+function ak_totp_reset(PDO $pdo, int $user_id, ?int $org_id = null): bool {
+    $sql = "UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_backup_codes = NULL WHERE id = ? AND totp_enabled = 1";
+    $params = [$user_id];
+    if ($org_id !== null) { $sql .= " AND org_id = ?"; $params[] = $org_id; }
+    $st = $pdo->prepare($sql);
+    $st->execute($params);
+    return $st->rowCount() > 0;
+}

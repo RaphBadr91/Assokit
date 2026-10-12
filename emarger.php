@@ -6,7 +6,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-attendance.php';
 require_once __DIR__ . '/includes-layout.php';   // fr_format_date()
 
-$token = trim($_GET['t'] ?? '');
+$token = is_string($_GET['t'] ?? null) ? trim($_GET['t']) : '';
 if (!preg_match('/^[a-f0-9]{32,64}$/', $token)) { http_response_code(404); die('Lien invalide.'); }
 
 $sess = att_load_by_token($pdo, $token);
@@ -33,7 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flash = 'Tu as déjà émargé il y a moins de 30 minutes.';
             } else {
                 $ip = $_SERVER['REMOTE_ADDR'] ?? null;
-                $pdo->prepare("INSERT INTO attendance_records (session_id, full_name, email, phone, signature_data, ip) VALUES (?,?,?,?,?,?)")
+                // Horodatage écrit par le code (anti-doublon, liste, PDF, export) : pas de valeur par défaut supposée.
+                $pdo->prepare("INSERT INTO attendance_records (session_id, full_name, email, phone, signature_data, ip, signed_at) VALUES (?,?,?,?,?,?,NOW())")
                     ->execute([(int)$sess['id'], $name, $email, $phone, $sess['require_signature'] ? $sig : null, $ip]);
                 $flash = '✅ Émargement enregistré. Merci !';
                 $flash_ok = true;

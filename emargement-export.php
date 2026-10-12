@@ -18,9 +18,9 @@ header('Content-Disposition: attachment; filename="' . $filename . '"');
 
 $out = fopen('php://output', 'w');
 fputs($out, "\xEF\xBB\xBF"); // BOM UTF-8 pour Excel
-fputcsv($out, ['Nom complet', 'Email', 'Téléphone', 'Date émargement', 'IP'], ';');
+fputcsv($out, ['Nom complet', 'Email', 'Téléphone', 'Date émargement', 'IP'], ';', '"', '\\');
 foreach ($records as $r) {
-    fputcsv($out, ak_csv_safe([$r['full_name'], $r['email'] ?? '', $r['phone'] ?? '', date('d/m/Y H:i:s', strtotime($r['signed_at'])), $r['ip'] ?? '']), ';');
+    fputcsv($out, ak_csv_safe([$r['full_name'], $r['email'] ?? '', $r['phone'] ?? '', att_fmt_time($r['signed_at'], 'd/m/Y H:i:s'), $r['ip'] ?? '']), ';', '"', '\\');
 }
 fclose($out);
 exit;

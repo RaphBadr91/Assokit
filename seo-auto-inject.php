@@ -10,6 +10,8 @@
  * v2 — FIX : ne démarre PAS l'output buffering pour les pages
  *           avec session active (qui peuvent faire des header(Location)).
  *           → Évite la page blanche sur /connexion, /dashboard, etc.
+ * v3 — FIX : plus d'ob_start() dans le gestionnaire de sortie (fatal) ;
+ *           les pages qui ont déjà leurs balises OG sont laissées intactes.
  *
  * Usage :
  *   Dans config.php :
@@ -140,51 +142,49 @@ $ak_seo_page_key = ak_seo_detect_current_page();
 
 if ($ak_seo_page_key !== null && isset(AK_SEO_PAGES[$ak_seo_page_key])) {
 
-    ob_start(function($html) use ($ak_seo_page_key) {
+    // v3 — Les balises sont produites ICI, avant la page : un gestionnaire de
+    // sortie ne peut pas lui-même appeler ob_start() (erreur fatale PHP, la page
+    // partait vide avec un code 200).
+    $ak_seo_capture = static function (callable $render): string {
+        ob_start();
+        $render();
+        return (string) ob_get_clean();
+    };
+    $ak_seo_parts = [
+        'meta'         => $ak_seo_capture(static fn() => ak_seo_render(AK_SEO_PAGES[$ak_seo_page_key])),
+        'Organization' => $ak_seo_capture('ak_seo_render_organization_jsonld'),
+        'WebSite'      => $ak_seo_capture('ak_seo_render_website_jsonld'),
+        'SoftwareApplication' => ak_seo_should_inject_software() ? $ak_seo_capture('ak_seo_render_software_jsonld') : '',
+        'FAQPage'      => isset(AK_SEO_FAQS[$ak_seo_page_key])
+            ? $ak_seo_capture(static fn() => ak_seo_render_faq_jsonld(AK_SEO_FAQS[$ak_seo_page_key])) : '',
+    ];
+
+    ob_start(static function($html) use ($ak_seo_parts) {
 
         // Si pas de <head>, on ne touche pas (probablement pas du HTML, ou redirection)
-        if (stripos($html, '<head>') === false && stripos($html, '<head ') === false) {
+        if (!preg_match('/<head(?:\s[^>]*)?>/i', $html, $m, PREG_OFFSET_CAPTURE)) {
             return $html;
         }
 
-        // Détection : page a déjà des balises OG complètes
-        $already_has_og = (stripos($html, 'property="og:title"') !== false || stripos($html, "property='og:title'") !== false);
+        // La page rend déjà ses propres balises (render_public_head : title,
+        // description, OG, canonical, JSON-LD) : rien à ajouter, sinon doublons.
+        if (stripos($html, 'property="og:title"') !== false || stripos($html, "property='og:title'") !== false) {
+            return $html;
+        }
 
-        // Génère les balises SEO en buffer interne
-        ob_start();
+        $seo_block = "\n<!-- 🌿 SEO Auto-Inject Assokit -->\n" . $ak_seo_parts['meta'];
 
-        echo "\n<!-- 🌿 SEO Auto-Inject Assokit -->\n";
-
-        if (!$already_has_og) {
-            ak_seo_render(AK_SEO_PAGES[$ak_seo_page_key]);
-        } else {
-            $canonical_url = ak_seo_canonical_url(AK_SEO_PAGES[$ak_seo_page_key]['canonical'] ?? null);
-            if (stripos($html, 'rel="canonical"') === false && stripos($html, "rel='canonical'") === false) {
-                echo '<link rel="canonical" href="' . htmlspecialchars($canonical_url) . '">' . "\n";
+        // JSON-LD (sans doublon, que la page l'écrive compact ou indenté)
+        foreach (['Organization', 'WebSite', 'SoftwareApplication', 'FAQPage'] as $type) {
+            if ($ak_seo_parts[$type] !== '' && !preg_match('/["\']@type["\']\s*:\s*["\']' . $type . '["\']/i', $html)) {
+                $seo_block .= $ak_seo_parts[$type];
             }
         }
 
-        // JSON-LD (sans doublon)
-        if (stripos($html, '"@type":"Organization"') === false && stripos($html, "'@type':'Organization'") === false) {
-            ak_seo_render_organization_jsonld();
-        }
-        if (stripos($html, '"@type":"WebSite"') === false) {
-            ak_seo_render_website_jsonld();
-        }
-        if (ak_seo_should_inject_software() && stripos($html, '"@type":"SoftwareApplication"') === false) {
-            ak_seo_render_software_jsonld();
-        }
-        if (isset(AK_SEO_FAQS[$ak_seo_page_key]) && stripos($html, '"@type":"FAQPage"') === false) {
-            ak_seo_render_faq_jsonld(AK_SEO_FAQS[$ak_seo_page_key]);
-        }
+        $seo_block .= "<!-- /🌿 SEO Auto-Inject -->\n";
 
-        echo "<!-- /🌿 SEO Auto-Inject -->\n";
-
-        $seo_block = ob_get_clean();
-
-        // Injecte juste après <head>
-        $html = preg_replace('/(<head[^>]*>)/i', '$1' . $seo_block, $html, 1);
-
-        return $html;
+        // Injecte juste après <head> (insertion littérale : pas de motif de remplacement)
+        $after_head = $m[0][1] + strlen($m[0][0]);
+        return substr($html, 0, $after_head) . $seo_block . substr($html, $after_head);
     });
 }

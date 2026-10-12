@@ -69,10 +69,11 @@ render_head($sess['title']);
           <h2>📊 Statistiques</h2>
           <div style="font-size:13px;line-height:1.8;">
             <div>Signatures : <strong style="color:#10B981;font-size:18px;"><?= count($records) ?></strong></div>
-            <?php if (!empty($records)): ?>
+            <?php $timed = array_values(array_filter($records, fn($r) => !empty($r['signed_at']))); ?>
+            <?php if (!empty($timed)): ?>
               <div style="font-size:11.5px;color:#6b7280;margin-top:4px;">
-                Première : <?= date('d/m H:i', strtotime(end($records)['signed_at'])) ?><br>
-                Dernière : <?= date('d/m H:i', strtotime($records[0]['signed_at'])) ?>
+                Première : <?= att_fmt_time(end($timed)['signed_at'], 'd/m H:i') ?><br>
+                Dernière : <?= att_fmt_time($timed[0]['signed_at'], 'd/m H:i') ?>
               </div>
             <?php endif; ?>
           </div>
@@ -95,7 +96,7 @@ render_head($sess['title']);
                   <?php if ($r['email']): ?><div style="font-size:12px;"><?= h($r['email']) ?></div><?php endif; ?>
                   <?php if ($r['phone']): ?><div style="font-size:12px;color:#6b7280;"><?= h($r['phone']) ?></div><?php endif; ?>
                 </td>
-                <td style="font-variant-numeric:tabular-nums;"><?= date('d/m H:i:s', strtotime($r['signed_at'])) ?></td>
+                <td style="font-variant-numeric:tabular-nums;"><?= att_fmt_time($r['signed_at'], 'd/m H:i:s') ?></td>
                 <td>
                   <?php if ($r['signature_data']): ?>
                     <img src="<?= h($r['signature_data']) ?>" style="max-width:80px;max-height:30px;border:1px solid #e5e7eb;border-radius:4px;background:#fff;">
