@@ -71,7 +71,7 @@ render_sidebar('boite-mail');
   <section class="bp-card">
     <div class="bp-card-head">
       <div><h2>Catégories</h2>
-      <p class="bp-muted">Un e-mail va dans la première catégorie (dans cet ordre) dont un mot-clé apparaît dans l’objet. Un mot-clé avec @ vise l’expéditeur : <code>@opco.fr</code> (tout le domaine) ou <code>nom@exemple.fr</code>. Sans règle, l’IA choisit ; sinon « Autres ».</p></div>
+      <p class="bp-muted">Un e-mail va dans la première catégorie (dans cet ordre) dont un mot-clé apparaît dans l’objet. Un mot-clé avec @ vise l’expéditeur : <code>@opco.fr</code> (tout le domaine, sous-domaines compris) ou <code>nom@exemple.fr</code>. Sans règle, l’IA choisit ; sinon « Autres ».</p></div>
       <?php if ($acc): ?><button type="button" class="bp-btn ghost" id="bpReclassify">Re-trier toute la boîte</button><?php endif; ?>
     </div>
     <div class="bp-cats" id="bpCats">
@@ -190,8 +190,8 @@ render_sidebar('boite-mail');
 
   var dc = document.getElementById('bpDisconnect');
   if (dc) dc.addEventListener('click', function () {
-    if (!confirm('Déconnecter la boîte ? L’accès Google est retiré et la copie des e-mails dans Assokit est effacée (rien n’est supprimé dans Gmail).')) return;
-    call({ action: 'disconnect' }).then(function (r) { r.ok ? (location.href = '/boite-mail') : toast(r.error || 'Erreur'); });
+    if (!confirm('Déconnecter la boîte ? L’accès Google est retiré (sauf si ce compte Google sert aussi à l’agenda ou à une autre association) et la copie des e-mails dans Assokit est effacée (rien n’est supprimé dans Gmail).')) return;
+    call({ action: 'disconnect' }).then(function (r) { r.ok ? (location.href = '/boite-mail' + (r.google_kept ? '?deconnectee=partage' : '')) : toast(r.error || 'Erreur'); });
   });
 })();
 </script>

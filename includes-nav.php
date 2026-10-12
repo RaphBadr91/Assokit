@@ -29,9 +29,9 @@ if (!function_exists('ak_nav_familles')) {
  * Décrit le menu.
  *
  * @param array $ctx  Droits et compteurs déjà calculés par render_sidebar :
- *                    role, is_follower, peut_finances, peut_marketing,
- *                    peut_admin, active, proj_count, user_count,
- *                    support_unread.
+ *                    role, is_follower, peut_finances, peut_facturation,
+ *                    peut_marketing, peut_admin, active, proj_count,
+ *                    user_count, support_unread.
  * @return array      Familles, chacune avec ses entrées.
  */
 function ak_nav_familles(array $ctx): array
@@ -39,8 +39,11 @@ function ak_nav_familles(array $ctx): array
     $role        = (string)($ctx['role'] ?? '');
     $estAdmin    = ($role === 'admin');
     $estCoord    = in_array($role, ['admin', 'coordinator'], true);
-    // Facturation, Relances et Radar subventions : aussi pour les Coordinateurs
-    $billing     = !empty($ctx['peut_finances']) || $role === 'coordinator';
+    // Facturation, Relances et Tags : même règle que les pages (user_can_access_billing :
+    // admin, coordinateur, trésorier qui a « Gérer les finances », jamais un suiveur)
+    $billing     = array_key_exists('peut_facturation', $ctx)
+                 ? !empty($ctx['peut_facturation'])
+                 : (!empty($ctx['peut_finances']) || $role === 'coordinator');
     $membre      = empty($ctx['is_follower']);        // « pas un simple suiveur »
     $finances    = !empty($ctx['peut_finances']);
     $marketing   = !empty($ctx['peut_marketing']);
@@ -66,7 +69,7 @@ function ak_nav_familles(array $ctx): array
                 ['agenda',          '/agenda',           'Agenda',          true,                ['agenda']],
                 ['emploi-du-temps', '/emploi-du-temps',  'Emploi du temps', $membre,             ['emploi-du-temps']],
                 ['assemblees',      '/assemblees',       'Assemblées',      $estAdmin,           ['assemblees']],
-                ['emargement',      '/emargement',       'Émargement',      $estAdmin,           ['emargement']],
+                ['emargement',      '/emargement',       'Émargement',      $estCoord,           ['emargement']],   // admin et coordinateur, comme emargement.php
             ],
         ],
         [
@@ -75,7 +78,7 @@ function ak_nav_familles(array $ctx): array
             'icone' => $i('projets', 16),
             'entrees' => [
                 ['projets',       '/projets',       $membre ? 'Projets' : 'Projets suivis', true, ['projets'], $membre ? ($ctx['proj_count'] ?? null) : null],
-                ['tags',          '/mon-asso-tags', 'Tags',                                 $finances, ['tags']],
+                ['tags',          '/mon-asso-tags', 'Tags',                                 $billing,  ['tags']],
                 ['notes-de-frais','/notes-de-frais','Notes de frais',                       $membre,   ['notes-de-frais']],
             ],
         ],

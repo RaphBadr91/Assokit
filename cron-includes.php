@@ -51,44 +51,60 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
 // LOGGER CRON
 // ============================================================
 
+// Le journal (cron_runs, cron_email_log : migrations/2026-10-11-L11-abonnement.sql) ne bloque
+// jamais un job : sans lui, le job tourne quand même (run 0) et l'erreur part dans error_log.
+
 function cron_log_start(PDO $pdo, string $jobName, string $triggeredBy = 'cron', ?int $userId = null): int
 {
-    $stmt = $pdo->prepare("
-        INSERT INTO cron_runs (job_name, status, started_at, triggered_by, triggered_by_user_id)
-        VALUES (:job, 'running', NOW(), :by, :uid)
-    ");
-    $stmt->execute([':job' => $jobName, ':by' => $triggeredBy, ':uid' => $userId]);
-    return (int) $pdo->lastInsertId();
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO cron_runs (job_name, status, started_at, triggered_by, triggered_by_user_id)
+            VALUES (:job, 'running', NOW(), :by, :uid)
+        ");
+        $stmt->execute([':job' => $jobName, ':by' => $triggeredBy, ':uid' => $userId]);
+        return (int) $pdo->lastInsertId();
+    } catch (Throwable $e) {
+        error_log('[CRON] cron_runs indisponible (' . $jobName . ') : ' . $e->getMessage());
+        return 0;
+    }
 }
 
 function cron_log_end(PDO $pdo, int $runId, string $status, array $stats = [], ?string $errorMessage = null): void
 {
-    $stmt = $pdo->prepare("SELECT started_at FROM cron_runs WHERE id = :id");
-    $stmt->execute([':id' => $runId]);
-    $row = $stmt->fetch();
-    $durationMs = 0;
-    if ($row && !empty($row['started_at'])) {
-        $durationMs = max(0, (int) round((microtime(true) - strtotime($row['started_at'])) * 1000));
+    if ($runId <= 0) {
+        if ($errorMessage) error_log('[CRON] run non journalisé, ' . $status . ' : ' . $errorMessage);
+        return;
     }
+    try {
+        $stmt = $pdo->prepare("SELECT started_at FROM cron_runs WHERE id = :id");
+        $stmt->execute([':id' => $runId]);
+        $row = $stmt->fetch();
+        $durationMs = 0;
+        if ($row && !empty($row['started_at'])) {
+            $durationMs = max(0, (int) round((microtime(true) - strtotime($row['started_at'])) * 1000));
+        }
 
-    $upd = $pdo->prepare("
-        UPDATE cron_runs SET
-            status = :status, finished_at = NOW(), duration_ms = :dur,
-            items_processed = :proc, items_succeeded = :ok, items_failed = :ko,
-            emails_sent = :emails, details = :det, error_message = :err
-        WHERE id = :id
-    ");
-    $upd->execute([
-        ':status' => $status,
-        ':dur'    => $durationMs,
-        ':proc'   => (int)($stats['processed']  ?? 0),
-        ':ok'     => (int)($stats['succeeded']  ?? 0),
-        ':ko'     => (int)($stats['failed']     ?? 0),
-        ':emails' => (int)($stats['emails']     ?? 0),
-        ':det'    => isset($stats['details'])   ? json_encode($stats['details'], JSON_UNESCAPED_UNICODE) : null,
-        ':err'    => $errorMessage,
-        ':id'     => $runId,
-    ]);
+        $upd = $pdo->prepare("
+            UPDATE cron_runs SET
+                status = :status, finished_at = NOW(), duration_ms = :dur,
+                items_processed = :proc, items_succeeded = :ok, items_failed = :ko,
+                emails_sent = :emails, details = :det, error_message = :err
+            WHERE id = :id
+        ");
+        $upd->execute([
+            ':status' => $status,
+            ':dur'    => $durationMs,
+            ':proc'   => (int)($stats['processed']  ?? 0),
+            ':ok'     => (int)($stats['succeeded']  ?? 0),
+            ':ko'     => (int)($stats['failed']     ?? 0),
+            ':emails' => (int)($stats['emails']     ?? 0),
+            ':det'    => isset($stats['details'])   ? json_encode($stats['details'], JSON_UNESCAPED_UNICODE) : null,
+            ':err'    => $errorMessage,
+            ':id'     => $runId,
+        ]);
+    } catch (Throwable $e) {
+        error_log('[CRON] fin du run #' . $runId . ' non journalisée : ' . $e->getMessage());
+    }
 }
 
 // ============================================================
@@ -154,24 +170,30 @@ function cron_log_email(
     PDO $pdo, int $runId, string $emailTo, string $emailType, string $subject,
     string $status, ?string $providerId, ?string $errorMessage, array $context = []
 ): void {
-    $stmt = $pdo->prepare("
-        INSERT INTO cron_email_log
-            (cron_run_id, user_id, invoice_id, org_id, email_to, email_type, subject, status, provider_id, error_message, sent_at)
-        VALUES
-            (:run, :uid, :iid, :oid, :to, :type, :subj, :status, :pid, :err, NOW())
-    ");
-    $stmt->execute([
-        ':run'    => $runId,
-        ':uid'    => $context['user_id']    ?? null,
-        ':iid'    => $context['invoice_id'] ?? null,
-        ':oid'    => $context['org_id']     ?? null,
-        ':to'     => $emailTo,
-        ':type'   => $emailType,
-        ':subj'   => mb_substr($subject, 0, 255),
-        ':status' => $status,
-        ':pid'    => $providerId,
-        ':err'    => $errorMessage ? mb_substr($errorMessage, 0, 2000) : null,
-    ]);
+    // Jamais d'exception ici : l'e-mail est déjà parti, une erreur de journal ferait croire
+    // à un échec et la relance serait renvoyée au passage suivant.
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO cron_email_log
+                (cron_run_id, user_id, invoice_id, org_id, email_to, email_type, subject, status, provider_id, error_message, sent_at)
+            VALUES
+                (:run, :uid, :iid, :oid, :to, :type, :subj, :status, :pid, :err, NOW())
+        ");
+        $stmt->execute([
+            ':run'    => $runId,
+            ':uid'    => $context['user_id']    ?? null,
+            ':iid'    => $context['invoice_id'] ?? null,
+            ':oid'    => $context['org_id']     ?? null,
+            ':to'     => $emailTo,
+            ':type'   => $emailType,
+            ':subj'   => mb_substr($subject, 0, 255),
+            ':status' => $status,
+            ':pid'    => $providerId,
+            ':err'    => $errorMessage ? mb_substr($errorMessage, 0, 2000) : null,
+        ]);
+    } catch (Throwable $e) {
+        error_log('[CRON] cron_email_log indisponible (' . $emailType . ' → ' . $emailTo . ', ' . $status . ') : ' . $e->getMessage());
+    }
 }
 
 // ============================================================
@@ -359,24 +381,102 @@ function cron_cockpit_time_left(): int
 }
 
 // ============================================================
-// NUMÉROTATION FACTURES
+// FACTURES ASSOKIT (renouvellements, relances)
 // ============================================================
 
-function cron_generate_invoice_number(PDO $pdo): string
+/**
+ * Lien « Régler ma facture » des e-mails de renouvellement et de relance :
+ * la page « Mon abonnement » (dernières factures, PDF, régularisation).
+ * L'ancien lien /facturation n'existait pas (404).
+ */
+function cron_billing_url(): string
+{
+    return 'https://assokit.fr/mon-asso-plan';
+}
+
+/**
+ * Recale la séquence AK-AAAA-NNNNNN (invoice_sequences, utilisée par
+ * ak_generate_invoice_number) sur le plus grand numéro déjà émis dans invoices.
+ * L'ancien cron de renouvellement numérotait à part (« dernier numéro + 1 ») sans
+ * la mettre à jour : sans ce recalage, le numéro suivant serait un doublon.
+ * Ne fait que remonter la séquence, jamais la baisser.
+ */
+function cron_invoice_sequence_sync(PDO $pdo): void
 {
     $year = (int) date('Y');
     $stmt = $pdo->prepare("
-        SELECT invoice_number FROM invoices
-        WHERE invoice_number LIKE :prefix
-        ORDER BY id DESC LIMIT 1
+        SELECT MAX(CAST(SUBSTRING_INDEX(invoice_number, '-', -1) AS UNSIGNED))
+        FROM invoices WHERE invoice_number LIKE :prefix
     ");
     $stmt->execute([':prefix' => 'AK-' . $year . '-%']);
-    $last = $stmt->fetchColumn();
-    $next = 1;
-    if ($last && preg_match('/AK-\d{4}-(\d+)/', $last, $m)) {
-        $next = (int) $m[1] + 1;
+    $max = (int) $stmt->fetchColumn();
+    if ($max <= 0) return;
+    $pdo->prepare("
+        INSERT INTO invoice_sequences (year, next_sequence) VALUES (:y, :n)
+        ON DUPLICATE KEY UPDATE next_sequence = GREATEST(next_sequence, VALUES(next_sequence))
+    ")->execute([':y' => $year, ':n' => $max + 1]);
+}
+
+/**
+ * Abonnement Assokit RÉEL d'une association : la ligne courante d'asso_subscriptions
+ * (même choix que le reste de l'appli, ak_sub_order) et son plan. null sans ligne.
+ * Clés : status, slug, name, price_cents, payment_mode, cancelled_at, cancel_at_period_end,
+ * is_trial, is_paid (ak_paid_sub_sql), is_stripe, is_custom (Sur-mesure / sur devis), plan_changed
+ * (previous_plan_id ou downgraded_at renseigné : la formule a été changée, ligne non créée d'office),
+ * billing_cycle (ancienne table subscriptions, '' si inconnue).
+ */
+function cron_org_billing_state(PDO $pdo, int $orgId): ?array
+{
+    require_once __DIR__ . '/trial-helpers.php';
+    $sc = ak_db_columns($pdo, 'asso_subscriptions');
+    $pc = ak_db_columns($pdo, 'asso_plans');
+    $sel = "s.status, p.slug, p.name, COALESCE(p.price_cents, 0) AS price_cents, "
+         . "(" . ak_plan_trial_sql($pdo, 'p') . ") AS is_trial_plan, "
+         . "(" . ak_paid_sub_sql($pdo, 's', 'p') . ") AS is_paid, "
+         . (isset($sc['payment_mode']) ? "s.payment_mode" : "NULL") . " AS payment_mode, "
+         . (isset($sc['stripe_subscription_id']) ? "s.stripe_subscription_id" : "NULL") . " AS stripe_subscription_id, "
+         . (isset($sc['cancel_at_period_end']) ? "COALESCE(s.cancel_at_period_end, 0)" : "0") . " AS cancel_at_period_end, "
+         . (isset($sc['cancelled_at']) ? "s.cancelled_at" : "NULL") . " AS cancelled_at, "
+         // Changement de formule enregistré (résiliation, fin d'essai, Fondateur) : jamais sur la ligne
+         // Démarrage créée automatiquement par ak_get_current_plan
+         . "(" . (isset($sc['previous_plan_id']) ? "s.previous_plan_id IS NOT NULL" : "0")
+         . (isset($sc['downgraded_at']) ? " OR s.downgraded_at IS NOT NULL" : "") . ") AS plan_changed, "
+         . (isset($pc['is_custom_quote']) ? "COALESCE(p.is_custom_quote, 0)" : "0") . " AS is_custom_quote";
+    $stmt = $pdo->prepare("
+        SELECT $sel
+        FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
+        WHERE s.org_id = :oid
+        ORDER BY " . ak_sub_order('s') . "
+        LIMIT 1
+    ");
+    $stmt->execute([':oid' => $orgId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+
+    $cycle = '';
+    if (isset(ak_db_columns($pdo, 'subscriptions')['billing_cycle'])) {
+        try {
+            $c = $pdo->prepare("SELECT billing_cycle FROM subscriptions WHERE org_id = :oid ORDER BY id DESC LIMIT 1");
+            $c->execute([':oid' => $orgId]);
+            $cycle = strtolower((string) $c->fetchColumn());
+        } catch (Throwable $e) {}
     }
-    return sprintf('AK-%d-%06d', $year, $next);
+
+    return [
+        'status'               => (string) $row['status'],
+        'slug'                 => (string) $row['slug'],
+        'name'                 => (string) ($row['name'] ?: $row['slug']),
+        'price_cents'          => (int) $row['price_cents'],
+        'payment_mode'         => (string) ($row['payment_mode'] ?? ''),
+        'cancelled_at'         => $row['cancelled_at'] ?: null,
+        'cancel_at_period_end' => (int) $row['cancel_at_period_end'] === 1,
+        'is_trial'             => (int) $row['is_trial_plan'] === 1 || $row['status'] === 'trial',
+        'plan_changed'         => (int) $row['plan_changed'] === 1,
+        'is_paid'              => (int) $row['is_paid'] === 1,
+        'is_stripe'            => ($row['payment_mode'] ?? '') === 'stripe' || (string) ($row['stripe_subscription_id'] ?? '') !== '',
+        'is_custom'            => $row['slug'] === 'sur-mesure' || (int) $row['is_custom_quote'] === 1,
+        'billing_cycle'        => $cycle,
+    ];
 }
 
 // ============================================================

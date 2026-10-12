@@ -11,6 +11,7 @@
  *   instant) + e-mail de fin ; jamais pour un client payant, ni d'e-mail à une association
  *   résiliée ou suspendue à la main
  * - J-7, J-3, J-1 et J-0 → e-mail de rappel (essais en cours seulement)
+ * - abonnement résilié arrivé à échéance → plan gratuit Démarrage (ak_sub_expire_cancelled)
  * Idempotent : chaque fin d'essai et chaque rappel ne part qu'une fois (cron_envois).
  */
 require_once __DIR__ . '/config.php';
@@ -107,6 +108,16 @@ foreach (ak_trial_expired_org_ids($pdo, max(1, (int) ak_lot_place())) as $oid) {
     } catch (Throwable $e) { error_log('[cron-trial-check] rattrapage org #' . $oid . ': ' . get_class($e)); }
 }
 if ($rattrapes) echo "→ " . $rattrapes . " fin(s) d'essai rattrapée(s) (sans ancienne ligne)\n";
+
+// 1 ter. Abonnements résiliés arrivés à échéance → plan gratuit Démarrage (comme une fin d'essai,
+// sans e-mail : la date a été annoncée à la résiliation). La page la fait aussi à la première visite.
+if (ak_lot_encore()) {
+    $resilies = ak_sub_expire_cancelled($pdo, null, max(1, (int) ak_lot_place()));
+    if ($resilies) {
+        ak_lot_fait($resilies);
+        echo "→ " . $resilies . " abonnement(s) résilié(s) passé(s) au plan Démarrage\n";
+    }
+}
 
 // 2. Rappels J-7, J-3, J-1 et J-0
 //

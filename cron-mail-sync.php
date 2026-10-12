@@ -13,6 +13,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/mail-helpers.php';
+require_once __DIR__ . '/app-context.php';   // ak_org_access()
 @require_once __DIR__ . '/ai-helper.php';
 
 $is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
@@ -29,8 +30,19 @@ $accs = $pdo->query("SELECT * FROM mail_accounts WHERE provider = 'gmail' AND st
 $t0 = microtime(true);
 foreach ($accs as $acc) {
     if (microtime(true) - $t0 > 240) break;
+    // Association supprimée, résiliée ou suspendue (accès coupé) : ni lecture Gmail ni tri par l'IA.
+    // La synchro reprend d'elle-même si l'accès est rétabli. (Fin d'essai sans motif : accès conservé.)
+    $access = function_exists('ak_org_access') ? ak_org_access($pdo, (int)$acc['org_id']) : 'ok';
+    if ($access !== 'ok') {
+        echo date('H:i:s') . " org #{$acc['org_id']} : ignorée (association " . ($access === 'closed' ? 'supprimée ou résiliée' : 'suspendue') . ")\n";
+        continue;
+    }
     try {
         $r = mail_sync($pdo, $acc, 40.0);
+        if (!empty($r['occupe'])) {
+            echo date('H:i:s') . " org #{$acc['org_id']} : synchro déjà en cours (lancée depuis le site), reprise au prochain passage\n";
+            continue;
+        }
         echo date('H:i:s') . " org #{$acc['org_id']} : +{$r['ajoutes']}" . ($r['encore'] ? ' (suite au prochain passage)' : '') . ($r['erreur'] ? " — {$r['erreur']}" : '') . "\n";
         if ((int)date('G') === 3 && (int)date('i') < 5) {
             $n = mail_purge_old($pdo, $acc);

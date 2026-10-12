@@ -11,6 +11,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/rate-limit-helper.php';
+require_once __DIR__ . '/finance-permissions.php';
 ak_rate_limit_or_die('api_search', 60, 60, (string)($_SESSION['user_id'] ?? ($_SERVER['REMOTE_ADDR'] ?? 'anon')));
 require_login();
 
@@ -18,7 +19,6 @@ header('Content-Type: application/json; charset=utf-8');
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
-$is_admin = ($user['role'] === 'admin');
 $q = trim($_GET['q'] ?? '');
 
 if (mb_strlen($q) < 2) {
@@ -95,20 +95,20 @@ if (!$is_follower) {
     } catch (Throwable $e) {}
 }
 
-// === FACTURES (admins ou managers finance uniquement) ===
-$can_finance = $is_admin || (function_exists('user_can_view_finances') && user_can_view_finances($user));
-if ($can_finance) {
+// === FACTURES (mêmes droits que /mon-asso-facture-edit : admin et coordinateur) ===
+// Colonnes réelles : invoice_number et amount_ttc_cents (number / amount_total n'existent pas).
+if (user_can_access_billing($user)) {
     try {
-        $stmt = $pdo->prepare("SELECT i.id, i.number, i.amount_total, c.display_name
+        $stmt = $pdo->prepare("SELECT i.id, i.invoice_number, i.amount_ttc_cents, c.display_name
                                FROM asso_invoices i LEFT JOIN asso_clients c ON c.id = i.client_id
-                               WHERE i.org_id = ? AND (i.number LIKE ? OR c.display_name LIKE ?)
+                               WHERE i.org_id = ? AND (i.invoice_number LIKE ? OR c.display_name LIKE ?)
                                ORDER BY i.issued_at DESC LIMIT 5");
         $stmt->execute([$org_id, $like, $like]);
         foreach ($stmt->fetchAll() as $r) {
-            $amt = number_format((float)$r['amount_total'], 0, ',', ' ') . ' €';
+            $amt = number_format(((int)$r['amount_ttc_cents']) / 100, 2, ',', ' ') . ' €';
             $results[] = [
                 'type' => 'facture', 'icon' => '💰',
-                'label' => $r['number'], 'sub' => ($r['display_name'] ?: 'Client') . ' · ' . $amt,
+                'label' => $r['invoice_number'], 'sub' => ($r['display_name'] ?: 'Client') . ' · ' . $amt,
                 'url' => '/mon-asso-facture-edit?id=' . (int)$r['id'],
             ];
         }

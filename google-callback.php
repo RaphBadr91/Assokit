@@ -22,6 +22,24 @@ if ($__mail_state !== '' && hash_equals($__mail_state, (string)($_GET['state'] ?
     require __DIR__ . '/mail-oauth-callback.php';
     exit;
 }
+// Retour pour la boîte mail dont l'état n'est plus en session (déjà utilisé, onglet rejoué,
+// plus de 15 min sur l'écran Google) : on reste dans la boîte mail, pas dans l'agenda
+// (les états de l'agenda ne commencent jamais par « mail_»).
+if (strncmp((string)($_GET['state'] ?? ''), 'mail_', 5) === 0) {
+    $__expired = $__mail_state !== '' && hash_equals($__mail_state, (string)$_GET['state']);
+    // On n'efface l'état en session que s'il est le bon mais périmé : un ancien état (autre
+    // onglet) ne doit pas faire échouer la connexion encore en cours dans l'onglet suivant.
+    if ($__expired) {
+        unset($_SESSION['mail_oauth_state'], $_SESSION['mail_oauth_time']);
+    } else {
+        // Page de retour rejouée après une connexion réussie : la boîte est déjà reliée
+        require_once __DIR__ . '/mail-helpers.php';
+        $__acc = mail_get_account($pdo, (int)$user['org_id']);
+        if ($__acc && $__acc['status'] === 'active') { header('Location: /boite-mail'); exit; }
+    }
+    header('Location: /boite-mail?err=' . urlencode('La connexion à Google a expiré : cliquez à nouveau sur « Se connecter avec Google ».'));
+    exit;
+}
 
 if ($user['role'] !== 'admin') {
     header('Location: /mon-agenda?error=not_admin');

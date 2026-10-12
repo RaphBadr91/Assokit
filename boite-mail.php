@@ -223,8 +223,10 @@ function bm_reader_html(array $d, array $cats, array $cat_by_id, array $acc, boo
         <button type="button" class="bm-ic" data-act="<?= (int)$t['is_archived'] ? 'unarchive' : 'archive' ?>" title="<?= (int)$t['is_archived'] ? 'Désarchiver' : 'Archiver (touche E)' ?>"><?= ak_icon('download', 15) ?></button>
         <?php if ($acc['provider'] === 'gmail'): ?><a class="bm-ic" target="_blank" rel="noopener" title="Ouvrir dans Gmail" href="https://mail.google.com/mail/?authuser=<?= urlencode($acc['email']) ?>#all/<?= h(urlencode($t['gmail_thread_id'])) ?>"><?= ak_icon('external', 15) ?></a><?php endif; ?>
       </div>
-      <?php if ($manage && $t['counterpart_email']): ?>
-        <label class="bm-learn" hidden><input type="checkbox" data-learn><span>Toujours ranger les e-mails de <strong><?= h($t['counterpart_email']) ?></strong> dans cette catégorie</span></label>
+      <?php if ($manage && $t['counterpart_email']):
+          // Règle déjà en place pour cet expéditeur dans la catégorie du fil : case cochée (la décocher la retire)
+          $has_rule = $cc && in_array(strtolower((string)$t['counterpart_email']), array_map(fn($k) => strtolower(trim($k)), explode(',', (string)$cc['keywords'])), true); ?>
+        <label class="bm-learn"<?= $has_rule ? '' : ' hidden' ?>><input type="checkbox" data-learn<?= $has_rule ? ' checked' : '' ?>><span>Toujours ranger les e-mails de <strong><?= h($t['counterpart_email']) ?></strong> dans cette catégorie</span></label>
       <?php endif; ?>
       <?php if ($d['links']): ?><div class="bm-links"><?php foreach ($d['links'] as [$ic, $lbl, $url]): ?><a href="<?= h($url) ?>"><?= ak_icon($ic, 14) ?> <?= h($lbl) ?></a><?php endforeach; ?></div><?php endif; ?>
     </div>
@@ -284,7 +286,7 @@ $opts = function () use ($cat_by_slug, $promos_id, $has_prio) {
     return [
         'cat' => $cat_by_slug[(string)($_GET['c'] ?? '')] ?? null,
         'f' => $f, 'q' => mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100),
-        'page' => max(1, (int)($_GET['p'] ?? 1)), 'promos_id' => $promos_id, 'has_prio' => $has_prio,
+        'page' => min(10000, max(1, (int)($_GET['p'] ?? 1))), 'promos_id' => $promos_id, 'has_prio' => $has_prio,
     ];
 };
 
@@ -351,7 +353,7 @@ render_sidebar('boite-mail');
       <button type="button" class="bm-btn ghost" id="bmSync" title="Synchroniser maintenant"><?= ak_icon('refresh', 15) ?> <span>Synchroniser</span></button>
       <div class="bm-accmenu">
         <button type="button" class="bm-btn ghost" id="bmAccBtn" aria-haspopup="true">
-          <span class="bm-dot <?= $acc['status'] === 'active' ? 'ok' : 'ko' ?>"></span><span class="bm-acc-mail"><?= h($acc['email']) ?></span> ▾
+          <span class="bm-dot <?= mail_account_alert($acc) ? 'ko' : 'ok' ?>"></span><span class="bm-acc-mail"><?= h($acc['email']) ?></span> ▾
         </button>
         <div class="bm-accpop" id="bmAccPop" hidden>
           <div class="bm-accpop-h"><?= h($acc['email']) ?><?= $acc['provider'] === 'demo' ? ' · démonstration' : '' ?><br><span class="bm-muted"><?= $acc['last_sync_at'] ? 'Synchronisée ' . h(bm_when($acc['last_sync_at'])) : 'Jamais synchronisée' ?></span></div>
@@ -367,6 +369,7 @@ render_sidebar('boite-mail');
   </div>
 
   <?php if (!empty($_GET['err'])): ?><div class="bm-alert err"><?= h($_GET['err']) ?></div><?php endif; ?>
+  <?php if (($_GET['deconnectee'] ?? '') === 'partage' && !$acc): ?><div class="bm-alert ok">Boîte déconnectée : la copie des e-mails dans Assokit est effacée. L’autorisation Google, elle, est conservée, car ce compte Google sert aussi à l’agenda Assokit ou à une autre association (Google ne retire pas un seul accès à la fois). Pour tout retirer, passez par <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a> : l’agenda sera alors déconnecté lui aussi.</div><?php endif; ?>
   <?php if (!empty($_GET['connected'])): ?><div class="bm-alert ok" id="bmConnected">Boîte reliée. Première synchronisation en cours : les e-mails des <?= (int)($acc['sync_days'] ?? 30) ?> derniers jours arrivent et se rangent dans les catégories…</div><?php endif; ?>
 
 <?php if (!$ready): ?>
@@ -408,9 +411,10 @@ render_sidebar('boite-mail');
   </div>
 
 <?php else: ?>
-  <?php if ($acc['status'] !== 'active'): ?>
-    <div class="bm-alert err"><?= h($acc['last_error'] ?: 'La connexion à Gmail est interrompue.') ?>
-      <?php if ($can_connect && !$demo): ?> <a href="/mail-google-connect?email=<?= urlencode($acc['email']) ?>">Reconnecter la boîte →</a><?php endif; ?></div>
+  <?php if (mail_account_alert($acc)): ?>
+    <div class="bm-alert err" id="bmAccErr"><?= h($acc['last_error'] ?: 'La connexion à Gmail est interrompue.') ?>
+      <?php if ($acc['status'] !== 'revoked'): ?> Nouvel essai automatique toutes les 5 minutes.<?php endif; ?>
+      <?php if ($can_connect && !$demo): ?> <a href="/mail-google-connect?email=<?= urlencode($acc['email']) ?>"><?= $acc['status'] === 'revoked' ? 'Reconnecter la boîte →' : 'Si l’erreur persiste, reconnectez la boîte →' ?></a><?php endif; ?></div>
   <?php endif; ?>
 
   <div class="bm-grid">
@@ -418,7 +422,7 @@ render_sidebar('boite-mail');
       <?php if ($has_prio): ?>
       <a class="bm-cat prio<?= $o['f'] === 'prio' ? ' on' : '' ?>" href="?f=prio" data-nav="f=prio"><span class="bm-cat-ic">⚡</span><span>Prioritaires</span><b data-count="prio"<?= $counts['prio'] ? '' : ' hidden' ?>><?= $counts['prio'] ?></b></a>
       <?php endif; ?>
-      <a class="bm-cat<?= !$o['cat'] && $o['f'] === '' ? ' on' : '' ?>" href="?" data-nav=""><?= ak_icon('inbox', 15) ?><span>Boîte principale</span><b data-count="main"<?= $counts['main_u'] ? '' : ' hidden' ?>><?= $counts['main_u'] ?></b></a>
+      <a class="bm-cat<?= !$o['cat'] && in_array($o['f'], ['', 'unread'], true) ? ' on' : '' ?>" href="?" data-nav=""><?= ak_icon('inbox', 15) ?><span>Boîte principale</span><b data-count="main"<?= $counts['main_u'] ? '' : ' hidden' ?>><?= $counts['main_u'] ?></b></a>
       <div class="bm-cats-sep"></div>
       <?php foreach ($cats as $c): $n = $counts['by'][(int)$c['id']] ?? ['n' => 0, 'u' => 0]; ?>
         <a class="bm-cat<?= $o['cat'] && $o['cat']['id'] === $c['id'] ? ' on' : '' ?><?= $c['slug'] === 'promos' ? ' muted' : '' ?>" href="?c=<?= h($c['slug']) ?>" data-nav="c=<?= h($c['slug']) ?>">
@@ -650,8 +654,8 @@ render_sidebar('boite-mail');
   }
   var disc = document.getElementById('bmDisconnect');
   if (disc) disc.addEventListener('click', function () {
-    if (!confirm('Déconnecter cette boîte ? L’accès Google est retiré et la copie des e-mails dans Assokit est effacée (rien n’est supprimé dans Gmail). Vous pourrez relier une autre boîte juste après.')) return;
-    call({ action: 'disconnect' }).then(function (r) { r.ok ? (location.href = '/boite-mail') : toast(r.error || 'Erreur'); });
+    if (!confirm('Déconnecter cette boîte ? L’accès Google est retiré (sauf si ce compte Google sert aussi à l’agenda ou à une autre association) et la copie des e-mails dans Assokit est effacée (rien n’est supprimé dans Gmail). Vous pourrez relier une autre boîte juste après.')) return;
+    call({ action: 'disconnect' }).then(function (r) { r.ok ? (location.href = '/boite-mail' + (r.google_kept ? '?deconnectee=partage' : '')) : toast(r.error || 'Erreur'); });
   });
 
   if (!rows) return;
@@ -716,6 +720,15 @@ render_sidebar('boite-mail');
     if (state.more && !state.busy && scroller.scrollTop + scroller.clientHeight > scroller.scrollHeight - 300) loadList(true);
   });
 
+  // Menu, titre et bouton « Non lus » alignés sur la liste demandée
+  function syncNav() {
+    var key = state.c ? 'c=' + state.c : (state.f === 'prio' || state.f === 'archived' ? 'f=' + state.f : '');
+    var cur = document.querySelector('.bm-cat[data-nav="' + key + '"]');
+    document.querySelectorAll('.bm-cat').forEach(function (x) { x.classList.toggle('on', x === cur); });
+    if (cur) document.getElementById('bmView').textContent = cur.querySelector('span:not(.bm-cat-ic)').textContent;
+    document.querySelector('[data-unread]').classList.toggle('on', state.f === 'unread');
+  }
+
   // Catégories, onglets, recherche : sans rechargement
   document.querySelectorAll('[data-nav]').forEach(function (a) {
     a.addEventListener('click', function (e) {
@@ -731,8 +744,8 @@ render_sidebar('boite-mail');
   });
   document.querySelector('[data-unread]').addEventListener('click', function () {
     var on = !this.classList.contains('on');
-    this.classList.toggle('on', on);
     state.f = on ? 'unread' : (state.f === 'unread' ? '' : state.f);
+    syncNav();   // depuis « Prioritaires » ou « Archivés », les non-lus sont ceux de la boîte principale
     pushUrl(); loadList(false);
   });
   var searchT;
@@ -784,7 +797,7 @@ render_sidebar('boite-mail');
   window.addEventListener('popstate', function () {
     var p = new URLSearchParams(location.search);
     var c = p.get('c') || '', f = p.get('f') || '', q = p.get('q') || '';
-    if (c !== state.c || f !== state.f || q !== state.q) { state.c = c; state.f = f; state.q = q; loadList(false); }
+    if (c !== state.c || f !== state.f || q !== state.q) { state.c = c; state.f = f; state.q = q; syncNav(); loadList(false); }
     var t = +(p.get('t') || 0);
     if (t && t !== current) openThread(t, false); else if (!t && current) closeThread(false);
   });
@@ -833,9 +846,14 @@ render_sidebar('boite-mail');
     var catSel = reader.querySelector('[data-cat]'), lw = reader.querySelector('.bm-learn');
     if (sel && lw) lw.hidden = false;
     var opt = catSel.options[catSel.selectedIndex];
-    call({ action: 'category', thread_id: current, category_id: +catSel.value, learn: learn && learn.checked ? 1 : 0 }).then(function (r) {
+    // Règle d'expéditeur : 1 = la poser (ou la déplacer avec la catégorie), -1 = la retirer, 0 = simple rangement
+    var box = reader.querySelector('[data-learn]');
+    var rule = learn ? (learn.checked ? 1 : -1) : (box && box.checked ? 1 : 0);
+    call({ action: 'category', thread_id: current, category_id: +catSel.value, learn: rule }).then(function (r) {
       if (!r.ok) return toast(r.error || 'Erreur');
-      toast(learn ? 'Règle enregistrée : les prochains e-mails de cet expéditeur iront ici' : 'Rangé dans « ' + opt.text + ' »');
+      toast(rule === 1 ? 'Règle enregistrée : les prochains e-mails de cet expéditeur iront ici'
+        : rule === -1 ? 'Règle retirée : les prochains e-mails de cet expéditeur seront triés normalement'
+        : 'Rangé dans « ' + opt.text + ' »');
       var tag = rows.querySelector('.bm-row[data-id="' + current + '"] .bm-tag'); if (tag) tag.textContent = opt.text;
     });
   });
@@ -870,13 +888,19 @@ render_sidebar('boite-mail');
 
   // Synchronisation : met la liste à jour sans recharger
   var sync = document.getElementById('bmSync');
-  function runSync(total) {
+  function runSync(total, waits) {
     sync.disabled = true; sync.querySelector('span').textContent = 'Synchronisation…' + (total ? ' (' + total + ')' : '');
     return call({ action: 'sync' }).then(function (r) {
       total = (total || 0) + (r.added || 0);
       if (r.ok && r.more) return runSync(total);
+      // Synchro déjà lancée (passage automatique, autre membre de l'équipe) : on attend qu'elle finisse
+      if (r.ok && r.busy && (waits || 0) < 10) { setTimeout(function () { runSync(total, (waits || 0) + 1); }, 4000); return; }
       sync.disabled = false; sync.querySelector('span').textContent = 'Synchroniser';
-      if (!r.ok) { toast(r.error || 'Synchronisation impossible'); return; }
+      var dot = document.querySelector('#bmAccBtn .bm-dot');
+      if (!r.ok) { if (dot) dot.className = 'bm-dot ko'; toast(r.error || 'Synchronisation impossible'); return; }
+      // Synchro réussie : l'éventuel avertissement d'une synchro précédente n'a plus lieu d'être
+      var warn = document.getElementById('bmAccErr'); if (warn) warn.remove();
+      if (dot) dot.className = 'bm-dot ok';
       toast(total > 0 ? total + ' nouvel(s) e-mail(s), triés' : 'Boîte à jour');
       loadList(false);
       var ok = document.getElementById('bmConnected'); if (ok) ok.remove();

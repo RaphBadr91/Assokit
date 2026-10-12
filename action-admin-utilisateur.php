@@ -14,6 +14,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/activity-tracker.php';  // journal fondateur : qui a fait quoi, à la minute près
+@require_once __DIR__ . '/plan-helpers.php';     // limite d'utilisateurs du plan (ak_can_add_user)
 activity_log_request();
 
 require_login();
@@ -66,9 +67,10 @@ function log_admin_action($admin_id, $target_id, $action_name, $details = null) 
     }
 }
 
-// Helper : récupérer et valider un user cible
+// Helper : récupérer et valider un user cible. Un compte supprimé (corbeille de /adherents)
+// est introuvable ici : le réactiver créerait un compte connecté mais absent des listes.
 function get_target_user($pdo, $user_id, $org_id) {
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND org_id = ?");
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND org_id = ? AND deleted_at IS NULL");
     $stmt->execute([$user_id, $org_id]);
     $t = $stmt->fetch() ?: null;
     // Un compte plateforme (fondateur / super admin) ne se gère jamais depuis l'admin d'une asso :
@@ -76,6 +78,14 @@ function get_target_user($pdo, $user_id, $org_id) {
     if ($t && (!empty($t['is_super_admin']) || !empty($t['is_founder'])
                || in_array($t['role'] ?? '', ['super_admin', 'founder'], true))) return null;
     return $t;
+}
+
+// Helper : limite d'utilisateurs du plan, vérifiée à l'enregistrement (la page de création
+// ne fait que l'afficher). Renvoie le message de refus, ou null si l'ajout est permis.
+function plan_user_limit_error($pdo, $org_id) {
+    if (!function_exists('ak_can_add_user')) return null;
+    $chk = ak_can_add_user($pdo, (int)$org_id);
+    return empty($chk['ok']) ? ($chk['reason'] ?: 'Limite d\'utilisateurs de votre plan atteinte.') : null;
 }
 
 // Helper : générer un mot de passe temporaire lisible
@@ -117,6 +127,13 @@ function validate_avatar_color($color) {
 // ACTION : CRÉER UN UTILISATEUR
 // =========================================================
 if ($action === 'create') {
+    if ($limit_err = plan_user_limit_error($pdo, $org_id)) {
+        $_SESSION['form_errors'] = [$limit_err];
+        $_SESSION['form_data'] = $_POST;
+        header('Location: /admin-nouveau-utilisateur');
+        exit;
+    }
+
     $first_name = trim($_POST['first_name'] ?? '');
     $last_name = trim($_POST['last_name'] ?? '');
     $email = strtolower(trim($_POST['email'] ?? ''));
@@ -176,14 +193,14 @@ if ($action === 'create') {
             organization_name, avatar_color, adhesion_date,
             can_create_projects, can_manage_members, can_manage_finances,
             can_access_marketing, can_manage_events, can_moderate_messages,
-            is_active, must_change_password, created_by_user_id, notes_admin, ics_token
+            is_active, must_change_password, created_by_user_id, notes_admin, ics_token, created_at
         ) VALUES (
             ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
             ?, ?, ?,
             ?, ?, ?,
             ?, ?, ?,
-            1, ?, ?, ?, ?
+            1, ?, ?, ?, ?, NOW()
         )
     ");
     $stmt->execute([
@@ -325,8 +342,14 @@ if ($action === 'reactivate') {
         header('Location: /admin?error=notfound');
         exit;
     }
+    // Un compte réactivé compte à nouveau dans la limite d'utilisateurs du plan
+    if (empty($target['is_active']) && ($limit_err = plan_user_limit_error($pdo, $org_id))) {
+        $_SESSION['form_errors'] = [rtrim($limit_err, '. ') . '. Passez à un plan supérieur pour réactiver ce compte.'];
+        header('Location: /admin-modifier-utilisateur/' . $target_id);
+        exit;
+    }
 
-    $pdo->prepare("UPDATE users SET is_active = 1 WHERE id = ? AND org_id = ?")
+    $pdo->prepare("UPDATE users SET is_active = 1 WHERE id = ? AND org_id = ? AND deleted_at IS NULL")
         ->execute([$target_id, $org_id]);
 
     log_admin_action($current['id'], $target_id, 'reactivate_user', ['email' => $target['email']]);

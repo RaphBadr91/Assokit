@@ -6,9 +6,13 @@
  *
  * Flow :
  *   1. Page de confirmation avec récap (date fin, conséquences)
- *   2. POST → annulation Stripe (cancel_at_period_end = true)
+ *   2. POST → annulation Stripe (cancel_at_period_end = true), ou hors
+ *      Stripe : ligne « cancelled » avec sa date de fin (ak_sub_cancel_manual)
  *   3. Webhook customer.subscription.updated met à jour BDD
- *   4. Le client garde l'accès jusqu'à fin de période payée
+ *   4. Le client garde l'accès jusqu'à fin de période payée, puis passe
+ *      au plan gratuit Démarrage (ak_sub_expire_cancelled)
+ *   Paiement en retard (« Passer au plan Démarrage » de l'écran bloquant
+ *   et des relances) : arrêt immédiat de l'abonnement impayé et Démarrage.
  * --------------------------------------------------------------
  */
 require_once __DIR__ . '/config.php';
@@ -28,6 +32,11 @@ if ($org_id <= 0) { header('Location: /'); exit; }
 require_once __DIR__ . '/finance-permissions.php';
 require_finance_access('mon-asso-plan', 'l\'annulation d\'abonnement');
 
+// Formule et essai : même vérité que « Mon abonnement » et le cockpit fondateur (ak_org_plan_state).
+// Lu AVANT la ligne à annuler : une résiliation arrivée à échéance passe d'abord à Démarrage.
+require_once __DIR__ . '/plan-helpers.php';
+$trial_info = ak_plan_trial_info($pdo, $org_id);
+
 $active_sub = ak_get_org_active_subscription($pdo, $org_id);
 
 if (!$active_sub) {
@@ -36,9 +45,6 @@ if (!$active_sub) {
     exit;
 }
 
-// Formule et essai : même vérité que « Mon abonnement » et le cockpit fondateur (ak_org_plan_state)
-require_once __DIR__ . '/plan-helpers.php';
-$trial_info = ak_plan_trial_info($pdo, $org_id);
 $plan_label = function_exists('ak_plan_label')
     ? ak_plan_label($active_sub['plan_slug'] ?? '', $active_sub['plan_name'] ?? null)
     : (string)($active_sub['plan_name'] ?? '');
@@ -47,14 +53,42 @@ $plan_label = function_exists('ak_plan_label')
 // Un abonnement Stripe pris pendant l'essai (paiement en cours) reste, lui, annulable.
 $is_trial_sub = ak_trial_blocks_cancel($pdo, $org_id, $active_sub, $trial_info);
 
+$sub_status = (string)($active_sub['status'] ?? '');
+$stripe_sub_id = trim((string)($active_sub['stripe_subscription_id'] ?? ''));
+$payment_mode = (string)($active_sub['payment_mode'] ?? 'manual');
+$is_stripe_sub = $payment_mode === 'stripe' && $stripe_sub_id !== '';
+// Déjà résilié : hors Stripe (« cancelled ») ou résiliation programmée chez Stripe
+$is_already_cancelled = $sub_status === 'cancelled' || !empty($active_sub['cancel_at_period_end']);
+// Paiement en retard : « Passer au plan Démarrage » (lien de l'écran bloquant et des e-mails de relance)
+// arrête l'abonnement impayé et rétrograde TOUT DE SUITE, sans attendre une fin de période non payée
+$is_overdue = $sub_status === 'overdue';
+// Formule gratuite sans prélèvement par carte en cours : rien à annuler
+$is_free_sub = !$is_trial_sub && !$is_stripe_sub && (int)($active_sub['price_cents_monthly'] ?? 0) <= 0
+    && ($active_sub['plan_slug'] ?? '') !== 'sur-mesure' && empty($active_sub['plan_is_custom_quote']);
+// Date jusqu'à laquelle la formule reste acquise (annoncée avant la confirmation, puis appliquée)
+if ($is_already_cancelled) {
+    $access_until = ak_sub_row_access_end($pdo, $org_id, $active_sub);
+} elseif ($is_stripe_sub) {
+    $access_until = ak_sub_access_end($active_sub['current_period_end'] ?? null, null);
+} else {
+    $access_until = ak_sub_cancel_end_date($pdo, $org_id, $active_sub['current_period_end'] ?? null);
+}
+$access_until_fr = $access_until ? date('d/m/Y', strtotime($access_until)) : '';
+
 $flash_msg = null;
 $flash_type = 'success';
 
 // Traitement annulation
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_trial_sub) {
-    $_SESSION['flash_error'] = !empty($trial_info['trial_expired'])
-        ? 'Votre essai est terminé : il n’y a pas d’abonnement payant à annuler.'
-        : 'Votre association est en essai : il n’y a pas d’abonnement à annuler.';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($is_trial_sub || $is_free_sub || $is_already_cancelled)) {
+    if ($is_trial_sub) {
+        $_SESSION['flash_error'] = !empty($trial_info['trial_expired'])
+            ? 'Votre essai est terminé : il n’y a pas d’abonnement payant à annuler.'
+            : 'Votre association est en essai : il n’y a pas d’abonnement à annuler.';
+    } elseif ($is_free_sub) {
+        $_SESSION['flash_error'] = 'Votre association est sur le plan gratuit Démarrage : il n’y a pas d’abonnement à annuler.';
+    } else {
+        $_SESSION['flash_error'] = 'Votre abonnement est déjà résilié' . ($access_until_fr !== '' ? ' : vous gardez votre formule jusqu’au ' . $access_until_fr . '.' : '.');
+    }
     header('Location: /mon-asso-plan');
     exit;
 }
@@ -64,16 +98,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /mon-asso-plan'); exit;
     }
     $action = (string)($_POST['action'] ?? '');
-    $confirm = (string)($_POST['confirm'] ?? '');
+    // Le champ s'affiche en majuscules (text-transform) : « confirmer » tapé en minuscules est accepté
+    $confirm = mb_strtoupper(trim((string)($_POST['confirm'] ?? '')), 'UTF-8');
 
     if ($action === 'cancel_subscription' && $confirm === 'CONFIRMER') {
-        $stripe_sub_id = $active_sub['stripe_subscription_id'] ?? null;
-        $payment_mode = $active_sub['payment_mode'] ?? 'manual';
-
         try {
-            if ($payment_mode === 'stripe' && $stripe_sub_id && ak_stripe_is_configured($pdo)) {
+            if ($is_stripe_sub && !ak_stripe_is_configured($pdo)) {
+                // Ne jamais marquer « résilié » ici un abonnement que Stripe continuerait de prélever
+                throw new Exception('Votre abonnement par carte ne peut pas être arrêté d’ici pour le moment. Contactez-nous : nous l’arrêtons pour vous.');
+            }
+            if ($is_overdue) {
+                // Paiement en retard : arrêt immédiat de l'abonnement impayé, puis plan gratuit Démarrage
+                $stripe_ended = false;
+                if ($is_stripe_sub) {
+                    $resp = ak_stripe_api_call($pdo, 'DELETE', '/subscriptions/' . rawurlencode($stripe_sub_id));
+                    // Déjà arrêté chez Stripe (introuvable) : rien de plus à faire là-bas
+                    if (empty($resp['ok']) && (int)($resp['http_code'] ?? 0) !== 404) {
+                        throw new Exception('Erreur Stripe : ' . ($resp['error'] ?? 'arrêt refusé'));
+                    }
+                    $stripe_ended = true;
+                }
+                ak_db_update($pdo, 'asso_subscriptions', (int)$active_sub['id'], ['status' => 'cancelled'], ['cancelled_at' => 'NOW()', 'updated_at' => 'NOW()']);
+                ak_sub_downgrade_free($pdo, (int)$active_sub['id'], $stripe_ended);
+                $flash_msg = 'Votre association est passée au plan gratuit Démarrage. L’abonnement impayé est arrêté : plus aucun prélèvement. Vos données sont conservées.';
+            } elseif ($is_stripe_sub) {
                 // Annulation via API Stripe (à fin de période)
-                $resp = ak_stripe_api_call($pdo, 'POST', '/subscriptions/' . $stripe_sub_id, [
+                $resp = ak_stripe_api_call($pdo, 'POST', '/subscriptions/' . rawurlencode($stripe_sub_id), [
                     'cancel_at_period_end' => 'true',
                 ]);
                 if (!$resp['ok']) {
@@ -81,19 +131,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 // Le webhook fera la mise à jour BDD
                 // Mais on met aussi à jour localement par sécurité
-                $upd = $pdo->prepare("UPDATE asso_subscriptions SET cancel_at_period_end = 1, cancelled_at = NOW(), updated_at = NOW() WHERE id = :id");
-                $upd->execute([':id' => (int)$active_sub['id']]);
-
-                $flash_msg = '✅ Annulation confirmée. Vous gardez l\'accès jusqu\'à la fin de la période payée.';
+                // (échéance donnée par Stripe : la même date partout)
+                $stripe_end = !empty($resp['data']['current_period_end']) ? date('Y-m-d H:i:s', (int)$resp['data']['current_period_end']) : null;
+                ak_db_update($pdo, 'asso_subscriptions', (int)$active_sub['id'],
+                    ['cancel_at_period_end' => 1] + ($stripe_end ? ['current_period_end' => $stripe_end] : []),
+                    ['cancelled_at' => 'NOW()', 'updated_at' => 'NOW()']);
+                $end = $stripe_end ? date('d/m/Y', strtotime($stripe_end)) : $access_until_fr;
+                $flash_msg = 'Résiliation enregistrée. Vous gardez votre formule ' . $plan_label . ($end !== '' ? ' jusqu’au ' . $end : ' jusqu’à la fin de la période payée')
+                           . ', puis votre association passe au plan gratuit Démarrage. Aucun nouveau prélèvement.';
             } else {
-                // Annulation manuelle (mode manual / wire_transfer / free_grant)
-                $upd = $pdo->prepare("
-                    UPDATE asso_subscriptions
-                    SET status = 'cancelled', cancelled_at = NOW(), cancel_at_period_end = 1, updated_at = NOW()
-                    WHERE id = :id
-                ");
-                $upd->execute([':id' => (int)$active_sub['id']]);
-                $flash_msg = '✅ Abonnement annulé. Pour toute question, contactez-nous.';
+                // Annulation manuelle (mode manual / wire_transfer / free_grant) : la formule reste jusqu'à
+                // la fin de la période, puis Démarrage (ak_sub_expire_cancelled)
+                $end = ak_sub_cancel_manual($pdo, $active_sub, $org_id);
+                $flash_msg = 'Résiliation enregistrée. Vous gardez votre formule ' . $plan_label . ' jusqu’au ' . date('d/m/Y', strtotime($end))
+                           . ', puis votre association passe au plan gratuit Démarrage.';
             }
 
             $_SESSION['flash_success'] = $flash_msg;
@@ -110,8 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$is_already_cancelled = !empty($active_sub['cancel_at_period_end']);
-$period_end = $active_sub['current_period_end'] ?? null;
+$regularize_url = $is_overdue && function_exists('ak_get_regularize_url') ? ak_get_regularize_url($pdo, $org_id) : '/contact?subject=billing';
 
 render_head('Annuler mon abonnement');
 render_sidebar('mon-asso-plan');
@@ -165,11 +215,64 @@ render_sidebar('mon-asso-plan');
         <h1 style="margin:0 0 12px;font-size:22px;color:#92400E;">Annulation déjà en cours</h1>
         <p style="color:#78350F;line-height:1.65;font-size:14.5px;margin:0 0 22px;">
           Votre abonnement <strong><?= h($plan_label) ?></strong> a déjà été annulé.<br>
-          <?php if ($period_end): ?>
-            Vous gardez l'accès jusqu'au <strong><?= htmlspecialchars(date('d/m/Y', strtotime($period_end))) ?></strong>.
+          <?php if ($access_until_fr !== ''): ?>
+            Vous gardez l'accès jusqu'au <strong><?= h($access_until_fr) ?></strong>, puis votre association passe au plan gratuit Démarrage.
+          <?php else: ?>
+            Votre association passera ensuite au plan gratuit Démarrage.
           <?php endif; ?>
         </p>
         <a href="/mon-asso-plan" style="background:#92400E;color:white;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour</a>
+      </div>
+
+    <?php elseif ($is_free_sub): ?>
+
+      <!-- Formule gratuite : rien à annuler -->
+      <div style="background:#F8FAFC;border:2px solid #E2E8F0;border-radius:18px;padding:36px 32px;text-align:center;">
+        <div style="font-size:54px;margin-bottom:14px;">📋</div>
+        <h1 style="margin:0 0 12px;font-size:22px;color:#0F172A;">Plan gratuit <?= h($plan_label) ?></h1>
+        <p style="color:#475569;line-height:1.65;font-size:14.5px;margin:0 0 22px;">
+          Votre association est sur le plan gratuit : il n’y a pas d’abonnement à annuler et rien ne vous est facturé.
+        </p>
+        <a href="/mon-asso-plan" style="background:#0F172A;color:white;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour</a>
+      </div>
+
+    <?php elseif ($is_overdue): ?>
+
+      <!-- Paiement en retard : passage immédiat au plan gratuit -->
+      <div style="background:white;border:2px solid #FECACA;border-radius:18px;padding:36px 32px;">
+        <div style="text-align:center;margin-bottom:22px;">
+          <div style="font-size:54px;margin-bottom:10px;">↓</div>
+          <h1 style="margin:0 0 8px;font-size:22px;color:#0F172A;">Passer au plan gratuit Démarrage</h1>
+          <p style="color:#64748B;font-size:14px;margin:0;">Plan actuel : <strong><?= h($plan_label) ?></strong> · paiement en retard</p>
+        </div>
+
+        <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:12px;padding:18px 20px;margin-bottom:22px;color:#78350F;line-height:1.7;font-size:13.5px;">
+          Le dernier paiement de votre abonnement <strong><?= h($plan_label) ?></strong> n’a pas abouti. En confirmant :
+          <ul style="margin:8px 0 0;padding-left:20px;">
+            <li>l’abonnement est <strong>arrêté tout de suite</strong> : plus aucun prélèvement ;</li>
+            <li>votre association passe au <strong>plan gratuit Démarrage</strong> (sans diffusion email, factures récurrentes ni statistiques avancées) ;</li>
+            <li><strong>vos données sont conservées</strong> et vous pouvez reprendre une formule à tout moment.</li>
+          </ul>
+        </div>
+
+        <div style="text-align:center;margin-bottom:22px;">
+          <a href="<?= h($regularize_url) ?>" style="display:inline-block;background:#059669;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">💳 Régulariser plutôt mon paiement</a>
+        </div>
+
+        <form method="post" action="" style="border-top:1px solid #E2E8F0;padding-top:22px;">
+          <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
+          <input type="hidden" name="action" value="cancel_subscription">
+
+          <label style="display:block;font-weight:600;font-size:14px;color:#0F172A;margin-bottom:8px;">
+            Pour confirmer, tapez <code style="background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:4px;font-family:monospace;">CONFIRMER</code> ci-dessous :
+          </label>
+          <input type="text" name="confirm" placeholder="Tapez CONFIRMER" required autocomplete="off" style="width:100%;padding:12px 14px;border:2px solid #FECACA;border-radius:10px;font-family:monospace;font-size:14px;margin-bottom:18px;text-transform:uppercase;">
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <a href="/mon-asso-plan" style="background:#0F172A;color:white;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;flex:1;text-align:center;">← Garder mon abonnement</a>
+            <button type="submit" style="background:#DC2626;color:white;padding:12px 24px;border:none;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;">↓ Passer au plan Démarrage</button>
+          </div>
+        </form>
       </div>
 
     <?php else: ?>
@@ -201,8 +304,8 @@ render_sidebar('mon-asso-plan');
         <div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:12px;padding:18px 20px;margin-bottom:22px;">
           <div style="font-weight:700;color:#047857;margin-bottom:10px;font-size:14px;">✅ Vos garanties :</div>
           <ul style="margin:0;padding-left:20px;color:#065F46;line-height:1.85;font-size:13.5px;">
-            <li><strong>Vous gardez l'accès</strong> jusqu'à la fin de la période payée<?php if ($period_end): ?> (<?= htmlspecialchars(date('d/m/Y', strtotime($period_end))) ?>)<?php endif; ?></li>
-            <li><strong>Vos données sont conservées 30 jours</strong> après expiration (vous pouvez les exporter)</li>
+            <li><strong>Vous gardez l'accès</strong> jusqu'à la fin de la période payée<?php if ($access_until_fr !== ''): ?> (<?= h($access_until_fr) ?>)<?php endif; ?>, puis votre association passe au plan gratuit Démarrage</li>
+            <li><strong>Vos données sont conservées</strong> (vous pouvez les exporter à tout moment)</li>
             <li><strong>Aucun frais d'annulation</strong></li>
             <li><strong>Vous pouvez vous réabonner</strong> à tout moment, vos données seront restaurées</li>
           </ul>
@@ -226,7 +329,7 @@ render_sidebar('mon-asso-plan');
           <label style="display:block;font-weight:600;font-size:14px;color:#0F172A;margin-bottom:8px;">
             Pour confirmer, tapez <code style="background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:4px;font-family:monospace;">CONFIRMER</code> ci-dessous :
           </label>
-          <input type="text" name="confirm" placeholder="Tapez CONFIRMER" required style="width:100%;padding:12px 14px;border:2px solid #FECACA;border-radius:10px;font-family:monospace;font-size:14px;margin-bottom:18px;text-transform:uppercase;">
+          <input type="text" name="confirm" placeholder="Tapez CONFIRMER" required autocomplete="off" style="width:100%;padding:12px 14px;border:2px solid #FECACA;border-radius:10px;font-family:monospace;font-size:14px;margin-bottom:18px;text-transform:uppercase;">
 
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <a href="/mon-asso-plan" style="background:#0F172A;color:white;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;flex:1;text-align:center;">← Garder mon abonnement</a>

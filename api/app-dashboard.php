@@ -27,6 +27,55 @@ try {
     require_once __DIR__ . '/_app-founder.php';
     $is_founder = app_is_founder($pdo, $user);
 
+    // Droits : les mêmes règles que le site. Budgets = user_can_view_finances() (dashboard.php,
+    // projet.php) ; factures, devis, clients, impayés = user_can_access_billing() (admin et
+    // coordinateur, comme /mon-asso-factures). Les montants non autorisés partent à null.
+    require_once __DIR__ . '/../finance-permissions.php';
+    $perm_user = $user ?: [];
+    if ($is_founder) $perm_user['is_founder'] = 1;   // current_user() ne le porte pas toujours
+    $can_fin  = user_can_view_finances($perm_user);
+    $can_bill = user_can_access_billing($perm_user);
+
+    // Agent mairie / collectivité : aucun espace association (org_id vide). L'appli n'a pas
+    // d'espace collectivité : on renvoie profile « mairie » et le lien du site, au lieu d'un
+    // faux espace association vide où l'agent passait pour « admin ».
+    $mairie = null;
+    if ($org_id <= 0 && $user) {
+        try {
+            require_once __DIR__ . '/../includes-permissions.php';
+            if (is_parent_org_user($user)) {
+                // Collectivité en attente, suspendue ou refusée : son espace est fermé sur le site
+                // aussi (current_parent_org) ; l'appli l'explique au lieu de renvoyer vers le site.
+                $po = ak_parent_org_row_for_user($user);
+                $po_open = parent_org_is_open($po) || is_platform_admin($user);
+                $mairie = [
+                    'name'     => (string) ($po['name'] ?? ''),
+                    'type'     => (string) ($po['type'] ?? 'mairie'),
+                    'web_path' => '/mairie-dashboard',
+                    'message'  => $po_open
+                        ? 'L’espace collectivité (associations suivies, messagerie, quota) est disponible sur le site.'
+                        : ak_parent_org_closed_message($po),
+                    'open'     => $po_open,
+                ];
+            }
+        } catch (Throwable $e) {}
+    }
+    if ($mairie) { $can_fin = false; $can_bill = false; }
+
+    // Suiveur (financeur externe) : uniquement ses projets suivis, comme /projets et /agenda.
+    $fpids = function_exists('get_follower_project_ids') ? get_follower_project_ids()
+           : ((($user['role'] ?? '') === 'follower') ? [] : null);
+    $is_follower = ($fpids !== null);
+    $fol_sql = function (string $col) use ($fpids): string {
+        if ($fpids === null) return '';
+        return $fpids ? ' AND ' . $col . ' IN (' . implode(',', array_map('intval', $fpids)) . ')' : ' AND 1 = 0';
+    };
+
+    // Subventions : la règle du site (gr_can_manage : /subventions, /financements, app-grants),
+    // plus stricte que la facturation — un trésorier non coordinateur n'y a pas accès.
+    require_once __DIR__ . '/../includes-grants.php';
+    $can_grants = !$mairie && !$is_follower && gr_can_manage($perm_user);
+
     // Organisation
     $stmt = $pdo->prepare("SELECT name FROM organizations WHERE id = ? LIMIT 1");
     $stmt->execute([$org_id]);
@@ -48,40 +97,46 @@ try {
         SELECT COUNT(*) FROM projects p
         JOIN folders f ON p.folder_id = f.id
         WHERE f.org_id = ? AND p.status IN ('active','warning')
-          AND p.archived_at IS NULL AND f.archived_at IS NULL
+          AND p.archived_at IS NULL AND f.archived_at IS NULL" . $fol_sql('p.id') . "
     ");
     $stmt->execute([$org_id]);
     $active_projects = (int) $stmt->fetchColumn();
 
-    // Membres actifs
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE org_id = ? AND (deleted_at IS NULL OR deleted_at = '') AND is_active = 1");
-    $stmt->execute([$org_id]);
-    $total_users = (int) $stmt->fetchColumn();
+    // Membres actifs (pas pour un suiveur : il ne voit pas les adhérents sur le site)
+    $total_users = null; $new_users = null;
+    if (!$is_follower) {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE org_id = ? AND (deleted_at IS NULL OR deleted_at = '') AND is_active = 1");
+        $stmt->execute([$org_id]);
+        $total_users = (int) $stmt->fetchColumn();
 
-    // Nouveaux membres (30j)
-    $stmt = $pdo->prepare("
-        SELECT COUNT(*) FROM users
-        WHERE org_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-          AND is_active = 1 AND (deleted_at IS NULL OR deleted_at = '')
-    ");
-    $stmt->execute([$org_id]);
-    $new_users = (int) $stmt->fetchColumn();
+        // Nouveaux membres (30j)
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM users
+            WHERE org_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+              AND is_active = 1 AND (deleted_at IS NULL OR deleted_at = '')
+        ");
+        $stmt->execute([$org_id]);
+        $new_users = (int) $stmt->fetchColumn();
+    }
 
-    // Budget engage (projets actifs)
-    $stmt = $pdo->prepare("
-        SELECT COALESCE(SUM(p.budget_used),0) AS used, COALESCE(SUM(p.budget_planned),0) AS planned
-        FROM projects p JOIN folders f ON p.folder_id = f.id
-        WHERE f.org_id = ? AND p.status IN ('active','warning')
-          AND p.archived_at IS NULL AND f.archived_at IS NULL
-    ");
-    $stmt->execute([$org_id]);
-    $b = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['used' => 0, 'planned' => 0];
+    // Budget engage (projets actifs) : réservé aux rôles finances
+    $b = ['used' => null, 'planned' => null];
+    if ($can_fin) {
+        $stmt = $pdo->prepare("
+            SELECT COALESCE(SUM(p.budget_used),0) AS used, COALESCE(SUM(p.budget_planned),0) AS planned
+            FROM projects p JOIN folders f ON p.folder_id = f.id
+            WHERE f.org_id = ? AND p.status IN ('active','warning')
+              AND p.archived_at IS NULL AND f.archived_at IS NULL
+        ");
+        $stmt->execute([$org_id]);
+        $b = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['used' => 0, 'planned' => 0];
+    }
 
     // Evenements a venir
     $events = 0;
     try {
         // Colonne réelle : starts_at (start_date n'existe pas → le KPI restait à 0)
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL" . $fol_sql('project_id'));
         $stmt->execute([$org_id]);
         $events = (int) $stmt->fetchColumn();
     } catch (Throwable $e) {}
@@ -115,9 +170,9 @@ try {
         if ($declared === 'tpe' || $declared === 'asso') $profile = $declared;
     } catch (Throwable $e) {}   // colonne absente tant que la migration n'est pas passée
 
-    // KPIs facturation (utiles pour TPE, calcules pour les deux)
+    // KPIs facturation (utiles pour TPE, calcules pour les deux) : rôles facturation uniquement
     $ca_paid_cents = 0; $impayes_cents = 0; $factures_count = 0; $devis_encours = 0;
-    try {
+    if ($can_bill) try {
         $stmt = $pdo->prepare("
             SELECT
               COALESCE(SUM(CASE WHEN status = 'paid' AND YEAR(issued_at) = YEAR(CURDATE()) THEN amount_ttc_cents ELSE 0 END), 0) AS paid,
@@ -131,7 +186,7 @@ try {
         $impayes_cents  = (int) ($fi['due'] ?? 0);
         $factures_count = (int) ($fi['total'] ?? 0);
     } catch (Throwable $e) {}
-    try {
+    if ($can_bill) try {
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM asso_quotes WHERE org_id = ? AND status = 'sent'");
         $stmt->execute([$org_id]);
         $devis_encours = (int) $stmt->fetchColumn();
@@ -154,14 +209,15 @@ try {
     /* ── Fil « Aujourd'hui » de l'accueil natif (maquette V2) ───────────────
        Trois sources, une couleur d'accent par type, comme sur l'écran de
        référence : événement (vert), facture échue (bleu), subvention (ambre).
-       Chaque source est défensive : une table absente ne casse pas l'accueil. */
+       Chaque source est défensive : une table absente ne casse pas l'accueil.
+       Factures et subventions : rôles facturation (admin, coordinateur). */
     $today = [];
     try {
         $stmt = $pdo->prepare("
             SELECT id, title, location, starts_at, is_all_day
             FROM events
             WHERE org_id = ? AND deleted_at IS NULL
-              AND starts_at >= NOW() AND starts_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+              AND starts_at >= NOW() AND starts_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY)" . $fol_sql('project_id') . "
             ORDER BY starts_at ASC LIMIT 4
         ");
         $stmt->execute([$org_id]);
@@ -176,7 +232,7 @@ try {
             ];
         }
     } catch (Throwable $e) {}
-    try {
+    if ($can_bill) try {
         $stmt = $pdo->prepare("
             SELECT i.id, i.invoice_number, i.amount_ttc_cents, i.due_at, c.display_name AS client_name
             FROM asso_invoices i
@@ -198,7 +254,8 @@ try {
             ];
         }
     } catch (Throwable $e) {}
-    try {
+    // Subventions : admin et coordinateur (Radar subventions, /subventions), pas les autres rôles
+    if ($can_grants) try {
         $stmt = $pdo->prepare("
             SELECT id, name, deadline_apply FROM grants
             WHERE org_id = ? AND archived_at IS NULL
@@ -226,13 +283,13 @@ try {
         $stmt = $pdo->prepare("
             SELECT COUNT(*) FROM events
             WHERE org_id = ? AND deleted_at IS NULL
-              AND starts_at >= NOW() AND starts_at < DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+              AND starts_at >= NOW() AND starts_at < DATE_ADD(CURDATE(), INTERVAL 7 DAY)" . $fol_sql('project_id') . "
         ");
         $stmt->execute([$org_id]);
         $week_due = (int) $stmt->fetchColumn();
     } catch (Throwable $e) {}
     $late_invoices = 0;
-    try {
+    if ($can_bill) try {
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM asso_invoices WHERE org_id = ? AND status IN ('pending','overdue') AND due_at < CURDATE()");
         $stmt->execute([$org_id]);
         $late_invoices = (int) $stmt->fetchColumn();
@@ -241,6 +298,9 @@ try {
     if ($week_due > 0)      $head_bits[] = $week_due . ' échéance' . ($week_due > 1 ? 's' : '') . ' cette semaine';
     if ($late_invoices > 0) $head_bits[] = $late_invoices . ' facture' . ($late_invoices > 1 ? 's' : '') . ' à relancer';
     $head_line = $head_bits ? implode(' · ', $head_bits) : 'Tout est à jour, rien ne vous attend.';
+    if ($mairie) $head_line = !empty($mairie['open'])
+        ? 'Votre espace collectivité est disponible sur le site.'
+        : 'L’espace de votre collectivité n’est pas accessible pour le moment.';
 
     // Compteurs de notifications non lues (endpoint dédié app — aucun impact site)
     $notif_unread = 0; $msg_unread = 0; $support_unread = 0;
@@ -256,6 +316,17 @@ try {
         $nst->execute([(int) ($user['id'] ?? 0)]);
         $notif_unread = (int) $nst->fetchColumn();
     } catch (Throwable $e) {}
+    // Fondateur / super admin : notifications de la plateforme (nouveau message support,
+    // association à valider…), celles de la cloche du cockpit web (platform_notifications).
+    // Clé séparée : la liste de l'appli (app-notifications.php) ne les contient pas encore.
+    $platform_unread = 0;
+    if ($is_founder || !empty($user['is_super_admin'])) {
+        try {
+            $nst = $pdo->prepare("SELECT COUNT(*) FROM platform_notifications WHERE recipient_user_id = ? AND is_read = 0");
+            $nst->execute([(int) ($user['id'] ?? 0)]);
+            $platform_unread = (int) $nst->fetchColumn();
+        } catch (Throwable $e) {}   // table absente : aucune notification plateforme
+    }
     // Support : messages du support non lus par l'org (calcul direct, comme la sidebar web)
     try {
         $sst = $pdo->prepare("
@@ -273,7 +344,7 @@ try {
     try {
         require_once __DIR__ . '/../mail-helpers.php';
         $mail_user = $user + ['is_founder' => $is_founder ? 1 : 0];
-        $mail_access = mail_can_access($mail_user);
+        $mail_access = !$mairie && mail_can_access($mail_user);   // pas de boîte d'association pour un agent mairie
         if ($mail_access && mail_schema_ready($pdo)) {
             $mail_unread = mail_unread_count($pdo, $mail_user);
             $mail_connected = (bool)mail_get_account($pdo, (int)$user['org_id']);
@@ -290,12 +361,14 @@ try {
 
     echo json_encode([
         'ok'           => true,
-        'profile'      => $profile,
-        'role'         => (string) ($user['role'] ?? 'member'),
-        'can_create_projects' => (($user['role'] ?? '') === 'admin') || !empty($user['can_create_projects']) || $is_founder || !empty($user['is_super_admin']),
+        'profile'      => $mairie ? 'mairie' : $profile,
+        'role'         => $mairie ? 'mairie' : (string) ($user['role'] ?? 'member'),
+        'mairie'       => $mairie,   // null hors agent mairie ; sinon nom, type, lien du site, message
+        'can_create_projects' => !$mairie && ((($user['role'] ?? '') === 'admin') || !empty($user['can_create_projects']) || $is_founder || !empty($user['is_super_admin'])),
         'is_founder'   => $is_founder,
         'is_super_admin' => ($is_founder || !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin'),
         'notif_unread' => $notif_unread,
+        'platform_unread' => $platform_unread,
         'msg_unread'   => $msg_unread,
         'support_unread' => $support_unread,
         'mail_unread'  => $mail_unread,
@@ -315,19 +388,23 @@ try {
         'plan_label'      => (string) (!empty($plan_info['in_trial']) && !empty($plan_info['trial_name']) ? $plan_info['trial_name']
                                        : ($plan_info['plan_label'] === '—' ? '' : $plan_info['plan_label'])),
         'today'        => $today,
+        // L'appli masque les cartes Budget / Facturation quand ces drapeaux sont faux
+        'can_view_finances'  => $can_fin,
+        'can_access_billing' => $can_bill,
+        // null = non autorisé pour ce rôle (les clés restent présentes pour l'appli)
         'kpis'         => [
             'projets_actifs'   => $active_projects,
             'membres'          => $total_users,
             'membres_nouveaux' => $new_users,
             'evenements'       => $events,
-            'budget_used'      => (float) $b['used'],
-            'budget_planned'   => (float) $b['planned'],
+            'budget_used'      => $can_fin ? (float) $b['used'] : null,
+            'budget_planned'   => $can_fin ? (float) $b['planned'] : null,
             // TPE
-            'clients'          => $clients_count,
-            'devis_encours'    => $devis_encours,
-            'factures'         => $factures_count,
-            'ca_paid'          => $ca_paid_cents / 100,
-            'impayes'          => $impayes_cents / 100,
+            'clients'          => $can_bill ? $clients_count : null,
+            'devis_encours'    => $can_bill ? $devis_encours : null,
+            'factures'         => $can_bill ? $factures_count : null,
+            'ca_paid'          => $can_bill ? $ca_paid_cents / 100 : null,
+            'impayes'          => $can_bill ? $impayes_cents / 100 : null,
         ],
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {

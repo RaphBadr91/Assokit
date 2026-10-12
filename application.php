@@ -12,7 +12,9 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 render_public_head([
     'title'       => 'L\'application Assokit',
-    'description' => 'Installez Assokit sur votre iPhone ou Android : acc&egrave;s rapide, plein &eacute;cran, m&ecirc;me hors-ligne. G&eacute;rez votre association depuis votre t&eacute;l&eacute;phone.',
+    // Texte brut en UTF-8 : render_public_head l'échappe lui-même (des entités ici
+    // s'affichaient telles quelles, « acc&egrave;s », dans Google et au partage).
+    'description' => 'Installez Assokit sur votre iPhone ou Android : accès rapide, plein écran, même hors-ligne. Gérez votre association depuis votre téléphone.',
     'path'        => '/application',
     'schema_jsonld' => [$breadcrumb],
 ]);

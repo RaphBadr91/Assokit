@@ -61,6 +61,19 @@ if ($amount_ttc_cents < 0) $amount_ttc_cents = 0;
 
 $vat_rate_input = (float) str_replace(',', '.', $_POST['vat_rate'] ?? '0');
 
+// Brouillon (seul cas où le contenu change) : TVA cohérente avec la société, comme à la génération —
+// soit une TVA, soit la mention « TVA non applicable, art. 293 B », jamais les deux sur le PDF
+if ((string)($invoice['status'] ?? '') === 'draft') {
+    $vat_subject = (int) ak_company('vat_subject') === 1;
+    if ($vat_subject !== ($vat_rate_input > 0)) {
+        $_SESSION['flash_invoice_edit'] = ['type' => 'error', 'message' => $vat_subject
+            ? 'La société est assujettie à la TVA : choisissez le taux applicable.'
+            : 'La société n’est pas assujettie à la TVA (art. 293 B du CGI) : la facture est émise sans TVA.'];
+        header('Location: /super-admin-facture-edit.php?id=' . $invoice_id);
+        exit;
+    }
+}
+
 // Calcul auto HT et TVA depuis TTC
 if ($vat_rate_input > 0 && $amount_ttc_cents > 0) {
     $amount_ht_cents = (int) round($amount_ttc_cents / (1 + $vat_rate_input / 100));
@@ -93,15 +106,20 @@ if ($status === 'paid' && empty($paid_at)) {
 // son contenu (montants, description, TVA, période, échéance) — art. 289 CGI / facture
 // électronique. On n'autorise plus que le cycle de vie : statut, règlement, notes internes.
 // Toute correction du contenu doit passer par un avoir (note de crédit).
+// Facture de l'ancien cron de renouvellement (seuls amount_cents et due_date remplis) : son montant
+// et son échéance sont recopiés dans les colonnes du cockpit, jamais remis à 0 € / au 01/01/1970 ;
+// HT et TVA, inconnus, restent tels quels.
 if ((string)($invoice['status'] ?? '') !== 'draft') {
     $description      = $invoice['description'];
-    $amount_ht_cents  = (int)$invoice['amount_ht_cents'];
-    $amount_vat_cents = (int)$invoice['amount_vat_cents'];
-    $amount_ttc_cents = (int)$invoice['amount_ttc_cents'];
+    $amount_ht_cents  = $invoice['amount_ht_cents'];
+    $amount_vat_cents = $invoice['amount_vat_cents'];
+    $amount_ttc_cents = !empty($invoice['amount_ttc_cents']) ? (int)$invoice['amount_ttc_cents']
+                      : (!empty($invoice['amount_cents']) ? (int)$invoice['amount_cents'] : $invoice['amount_ttc_cents']);
     $vat_rate_db      = $invoice['vat_rate'];
     $period_start     = $invoice['period_start'];
     $period_end       = $invoice['period_end'];
-    $due_at           = $invoice['due_at'];
+    $due_at           = !empty($invoice['due_at']) ? $invoice['due_at']
+                      : (!empty($invoice['due_date']) ? $invoice['due_date'] . ' 23:59:59' : null);
 }
 
 try {
@@ -136,13 +154,18 @@ try {
         ':id'      => $invoice_id,
     ]);
 
-    // Régénérer PDF
-    try {
-        ak_render_invoice_pdf($pdo, $invoice_id);
-        $msg = 'Facture mise à jour et PDF régénéré avec succès.';
-    } catch (Throwable $e) {
-        error_log('[INVOICE EDIT] PDF regen error : ' . $e->getMessage());
-        $msg = 'Facture mise à jour, mais erreur lors de la régénération du PDF : ' . $e->getMessage();
+    // Régénérer PDF : seulement pour une facture du cockpit (coordonnées figées à l'émission). Une ancienne
+    // facture du cron, sans ces coordonnées ni détail HT / TVA, change de statut sans PDF : il serait faux.
+    if (!empty($invoice['client_snapshot'])) {
+        try {
+            ak_render_invoice_pdf($pdo, $invoice_id);
+            $msg = 'Facture mise à jour et PDF régénéré avec succès.';
+        } catch (Throwable $e) {
+            error_log('[INVOICE EDIT] PDF regen error : ' . $e->getMessage());
+            $msg = 'Facture mise à jour, mais erreur lors de la régénération du PDF : ' . $e->getMessage();
+        }
+    } else {
+        $msg = 'Facture mise à jour (ancienne facture du renouvellement automatique : pas de PDF généré).';
     }
 
     $_SESSION['flash_invoice_edit'] = ['type' => 'success', 'message' => $msg];

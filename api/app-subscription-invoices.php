@@ -1,11 +1,15 @@
 <?php
 /**
- * api/app-subscription-invoices.php — Factures d'abonnement Assokit (Stripe) pour l'app.
+ * api/app-subscription-invoices.php — Factures d'abonnement Assokit pour l'app.
  * JSON, lecture seule, scope org. NE MODIFIE PAS le site.
+ * Même liste que « Mes factures » du site (ak_get_org_invoices_all : Stripe, manuelles
+ * et factures AK-AAAA-NNNNNN), réservée aux administrateurs comme « Mon abonnement ».
  */
 ob_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/../finance-permissions.php';
+require_once __DIR__ . '/../stripe-helpers.php';
 ob_end_clean();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -34,26 +38,13 @@ try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
 
-    // Parité site (abonnement.php) : factures d'abonnement réservées aux administrateurs.
-    $role = (string) ($user['role'] ?? '');
-    if (!in_array($role, ['admin', 'super_admin'], true) && empty($user['is_founder']) && empty($user['is_super_admin'])) {
+    // Parité site (« Mon abonnement », abonnement.php) : abonnement Assokit réservé aux administrateurs.
+    if (!user_can_view_finances($user)) {
         echo json_encode(['ok' => true, 'allowed' => false, 'invoices' => [], 'stats' => [], 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    $rows = [];
-    try {
-        $stmt = $pdo->prepare("
-            SELECT invoice_number, amount_cents, tax_cents, currency, status,
-                   invoice_pdf_url, hosted_invoice_url, paid_at, created_at, period_start, period_end
-            FROM asso_invoices_stripe
-            WHERE org_id = ?
-            ORDER BY COALESCE(created_at, paid_at) DESC, id DESC
-            LIMIT 200
-        ");
-        $stmt->execute([$org_id]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    } catch (Throwable $e) {}
+    $rows = ($org_id > 0 && function_exists('ak_get_org_invoices_all')) ? ak_get_org_invoices_all($pdo, $org_id, 200) : [];
 
     $invoices = [];
     $total_paid = 0; $nb_paid = 0; $nb_pending = 0;
@@ -66,6 +57,8 @@ try {
         $ps = sfd($r['period_start'] ?? null);
         $pe = sfd($r['period_end'] ?? null);
         $invoices[] = [
+            'id'           => (int) ($r['id'] ?? 0),
+            'source'       => (string) ($r['source'] ?? 'stripe'),
             'number'       => (string) ($r['invoice_number'] ?? ''),
             'amount'       => $cents / 100,
             'status'       => $status,

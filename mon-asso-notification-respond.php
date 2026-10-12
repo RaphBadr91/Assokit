@@ -12,28 +12,29 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/asso-invoice-email-helpers.php';
+require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/platform-flags.php';
 
 require_login();
 $user = current_user();
 if (empty($user['org_id'])) { http_response_code(403); die('Aucune asso.'); }
 $org_id = (int)$user['org_id'];
 
-$is_admin = false;
-try {
-    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
-    $stmt->execute([':id' => (int)$user['id']]);
-    $is_admin = in_array($stmt->fetchColumn(), ['admin', 'coordinator'], true);
-} catch (Throwable $e) {}
-if (!$is_admin) { http_response_code(403); die('Accès refusé.'); }
+// Même règle que /relances et la facturation (user_can_access_billing) : admin,
+// coordinateur, trésorier qui a le droit « Gérer les finances ».
+if (!user_can_access_billing(ak_platform_flags($user))) { http_response_code(403); die('Accès refusé.'); }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: /dashboard'); exit;
 }
 
+// Chaque issue revient au tableau de bord avec son message (dashboard.php l'affiche
+// au-dessus du widget « Relances en attente »).
 $csrf_post = $_POST['csrf_token'] ?? '';
 $csrf_sess = $_SESSION['csrf_token'] ?? '';
-if (empty($csrf_sess) || !hash_equals($csrf_sess, $csrf_post)) {
-    http_response_code(419); exit('Session expirée.');
+if (empty($csrf_sess) || !is_string($csrf_post) || !hash_equals($csrf_sess, $csrf_post)) {
+    $_SESSION['flash_asso_factures'] = ['type' => 'error', 'message' => 'Session expirée : rechargez la page puis répondez de nouveau.'];
+    header('Location: /dashboard'); exit;
 }
 
 $notification_id = (int)($_POST['notification_id'] ?? 0);
@@ -134,9 +135,9 @@ try {
     }
 
 } catch (Throwable $e) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) $pdo->rollBack();
     error_log('[ASSO NOTIF RESPOND] ' . $e->getMessage());
-    $_SESSION['flash_asso_factures'] = ['type' => 'error', 'message' => 'Erreur : ' . $e->getMessage()];
+    $_SESSION['flash_asso_factures'] = ['type' => 'error', 'message' => 'La réponse n’a pas pu être enregistrée. Réessayez dans un instant.'];
 }
 
 header('Location: /dashboard');

@@ -44,7 +44,9 @@ $color = fn($s) => ['#0EA5E9', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899', '#14B
 
 $base = [
     'ok' => true,
+    // alert : afficher l'avertissement (autorisation retirée, ou synchro en échec depuis plus de 15 min)
     'account' => $acc ? ['email' => $acc['email'], 'status' => $acc['status'], 'error' => $acc['status'] !== 'active' ? $acc['last_error'] : null,
+                         'alert' => mail_account_alert($acc),
                          'demo' => $acc['provider'] !== 'gmail' || ak_demo_session(), 'last_sync' => $acc['last_sync_at'] ? $fr_when($acc['last_sync_at']) : null] : null,
     'can_connect' => mail_can_connect($user),
     'connect_url' => 'https://assokit.fr/boite-mail',
@@ -109,7 +111,7 @@ if ($q !== '') {
     $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
     array_push($args, $like, $like, $like, $like);
 }
-$page = max(1, (int)($_GET['p'] ?? 1)); $per = 30;
+$page = min(10000, max(1, (int)($_GET['p'] ?? 1))); $per = 30;   // borné : un OFFSET géant casserait la requête
 $s = $pdo->prepare("SELECT t.* FROM mail_threads t WHERE " . implode(' AND ', $w) . " ORDER BY $order LIMIT " . ($per + 1) . " OFFSET " . (($page - 1) * $per));
 $s->execute($args);
 $rows = $s->fetchAll(PDO::FETCH_ASSOC);

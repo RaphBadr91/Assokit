@@ -138,14 +138,30 @@ function mail_ensure_categories(PDO $pdo, int $org_id): void {
         }
         return;
     }
-    // Boîte déjà en place : on ajoute seulement les catégories nouvelles,
-    // juste avant « Autres » (les réglages de l'association restent intacts).
-    $autre = (int)($have['autre'] ?? 100);
+    // Boîte déjà en place : on ajoute seulement les catégories nouvelles, après
+    // les catégories existantes (les réglages de l'association restent intacts).
+    // Cette fonction tourne à chaque page vue (badge du menu) : rien n'est écrit
+    // quand tout est déjà en ordre.
+    $others = array_map('intval', array_diff_key($have, ['autre' => 1]));
+    $last = $others ? max($others) : 0;
+    if ($last > 1000) {
+        // Positions gonflées par l'ancien calcul (+1 à chaque appel, colonne SMALLINT) :
+        // on renumérote 1, 2, 3… dans l'ordre affiché.
+        $s = $pdo->prepare("SELECT id FROM mail_categories WHERE org_id = ? AND slug <> 'autre' ORDER BY position, id");
+        $s->execute([$org_id]);
+        $up = $pdo->prepare("UPDATE mail_categories SET position = ? WHERE id = ? AND org_id = ?");
+        $last = 0;
+        foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $cid) $up->execute([++$last, $cid, $org_id]);
+    }
     foreach (mail_default_categories() as [$slug, $label, $color, $icon, $kw, $roles]) {
         if (isset($have[$slug]) || $slug === 'autre') continue;
-        $ins->execute([$org_id, $slug, $label, $color, $icon, $kw, $roles, $autre, $slug === 'promos' ? 1 : 0]);
+        $ins->execute([$org_id, $slug, $label, $color, $icon, $kw, $roles, $last + 1, $slug === 'promos' ? 1 : 0]);
+        if ($ins->rowCount() > 0) $last++;
     }
-    $pdo->prepare("UPDATE mail_categories SET position = ? WHERE org_id = ? AND slug = 'autre'")->execute([$autre + 1, $org_id]);
+    // « Autres » reste en dernier, juste après les autres catégories.
+    if (isset($have['autre']) && (int)$have['autre'] !== $last + 1) {
+        $pdo->prepare("UPDATE mail_categories SET position = ? WHERE org_id = ? AND slug = 'autre'")->execute([$last + 1, $org_id]);
+    }
 }
 
 function mail_categories(PDO $pdo, int $org_id): array {
@@ -232,7 +248,16 @@ function mail_access_token(PDO $pdo, array &$acc): ?string {
     $d = json_decode((string)$r, true) ?: [];
     if ($c !== 200 || empty($d['access_token'])) {
         $revoked = ($d['error'] ?? '') === 'invalid_grant';
-        mail_set_error($pdo, $acc, $revoked ? 'Google a retiré l\'autorisation : reconnectez la boîte.' : 'Rafraîchissement du jeton impossible (' . ($d['error'] ?? $e ?: 'HTTP ' . $c) . ').', $revoked ? 'revoked' : 'error');
+        if ($revoked) {
+            $msg = 'Google a retiré l\'autorisation : reconnectez la boîte.';
+        } elseif ($c === 0 || $c >= 500) {
+            // Panne passagère : message lisible, le détail technique part dans le journal
+            error_log('Boîte mail #' . (int)$acc['id'] . ' : renouvellement du jeton impossible (HTTP ' . $c . ', ' . ($d['error'] ?? $e ?: 'sans détail') . ')');
+            $msg = 'Google ne répond pas : renouvellement de l’accès impossible pour le moment.';
+        } else {
+            $msg = 'Rafraîchissement du jeton impossible (' . ($d['error'] ?? 'HTTP ' . $c) . ').';
+        }
+        mail_set_error($pdo, $acc, $msg, $revoked ? 'revoked' : 'error');
         return null;
     }
     $acc['access_token_enc'] = mail_encrypt($d['access_token']);
@@ -249,13 +274,27 @@ function mail_set_error(PDO $pdo, array &$acc, string $msg, string $status = 'er
 }
 
 /**
+ * Faut-il afficher l'avertissement de la boîte (bandeau du site, encart de l'appli) ?
+ * Une autorisation retirée : tout de suite. Une synchro en échec : seulement si l'échec
+ * dure (pas de synchro réussie depuis 15 min), pour qu'une coupure isolée de Gmail — le
+ * cron réessaie toutes les 5 min — ne déclenche pas d'alerte rouge.
+ */
+function mail_account_alert(array $acc): bool {
+    $st = (string)($acc['status'] ?? 'active');
+    if ($st === 'active') return false;
+    if ($st !== 'error' || empty($acc['last_sync_at'])) return true;
+    return strtotime((string)$acc['last_sync_at']) < time() - 900;
+}
+
+/**
  * Appel à l'API Gmail.
  * @param array $query  paramètres GET (les tableaux donnent des paramètres répétés)
  * @return array [code HTTP, données décodées]
  */
 function mail_api(PDO $pdo, array &$acc, string $method, string $path, array $query = [], ?array $json = null): array {
     $tok = mail_access_token($pdo, $acc);
-    if (!$tok) return [401, ['error' => ['message' => $acc['last_error'] ?? 'Non connecté']]];
+    // local : message déjà rédigé par mail_access_token(), repris tel quel par mail_api_error()
+    if (!$tok) return [401, ['error' => ['message' => $acc['last_error'] ?? 'Non connecté', 'local' => true]]];
     $qs = [];
     foreach ($query as $k => $v) {
         foreach ((array)$v as $vv) $qs[] = rawurlencode($k) . '=' . rawurlencode((string)$vv);
@@ -269,19 +308,52 @@ function mail_api(PDO $pdo, array &$acc, string $method, string $path, array $qu
     return [$c, is_array($d) ? $d : []];
 }
 
-/** Retire l'accès chez Google et efface la boîte locale. */
-function mail_disconnect(PDO $pdo, int $org_id, bool $purge = true): void {
+/**
+ * Retire l'accès chez Google et efface la boîte locale.
+ * @return bool false quand l'autorisation Google a été conservée, parce que le même
+ *              compte Google sert encore ailleurs (agenda, boîte d'une autre association)
+ */
+function mail_disconnect(PDO $pdo, int $org_id, bool $purge = true): bool {
     $acc = mail_get_account($pdo, $org_id);
-    if (!$acc) return;
+    if (!$acc) return true;
+    $revoked = true;
     if ($acc['provider'] === 'gmail') {
-        $t = mail_decrypt($acc['refresh_token_enc']) ?: mail_decrypt($acc['access_token_enc']);
-        if ($t) mail_http('POST', MAIL_GOOGLE_REVOKE, ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['token' => $t]), 10);
+        if (mail_google_account_in_use($pdo, (string)$acc['email'], $org_id, 0)) {
+            $revoked = false;   // seuls les jetons locaux sont effacés (ci-dessous)
+        } else {
+            $t = mail_decrypt($acc['refresh_token_enc']) ?: mail_decrypt($acc['access_token_enc']);
+            if ($t) mail_http('POST', MAIL_GOOGLE_REVOKE, ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['token' => $t]), 10);
+        }
     }
     if ($purge) {
         $pdo->prepare("DELETE FROM mail_messages WHERE org_id = ?")->execute([$org_id]);
         $pdo->prepare("DELETE FROM mail_threads WHERE org_id = ?")->execute([$org_id]);
     }
     $pdo->prepare("DELETE FROM mail_accounts WHERE org_id = ?")->execute([$org_id]);
+    return $revoked;
+}
+
+/**
+ * Le compte Google $email sert-il encore à Assokit ailleurs : agenda Google d'une
+ * association (sauf $calendar_except_org), boîte mail d'une autre association (sauf
+ * $mail_except_org) ? Google ne retire pas un seul usage : révoquer un jeton coupe
+ * tous les accès que ce compte a accordés à Assokit, agenda et boîte mail compris.
+ */
+function mail_google_account_in_use(PDO $pdo, string $email, int $mail_except_org = 0, int $calendar_except_org = 0): bool {
+    $email = strtolower(trim($email));
+    if ($email === '') return false;
+    $checks = [
+        ["SELECT 1 FROM org_google_calendar WHERE LOWER(google_email) = ? AND org_id <> ? LIMIT 1", $calendar_except_org],
+        ["SELECT 1 FROM mail_accounts WHERE provider = 'gmail' AND LOWER(email) = ? AND org_id <> ? LIMIT 1", $mail_except_org],
+    ];
+    foreach ($checks as [$sql, $except]) {
+        try {
+            $s = $pdo->prepare($sql);
+            $s->execute([$email, $except]);
+            if ($s->fetchColumn()) return true;
+        } catch (Throwable $e) {}   // table absente sur ce serveur : rien à préserver de ce côté
+    }
+    return false;
 }
 
 // ============================================================
@@ -347,17 +419,32 @@ function mail_part_text(array $part): string {
     $raw = mail_b64url_decode($data);
     $charset = 'UTF-8';
     foreach ($part['headers'] ?? [] as $h) {
-        if (strcasecmp($h['name'], 'Content-Type') === 0 && preg_match('/charset="?([\w\-]+)/i', $h['value'], $m)) $charset = strtoupper($m[1]);
+        if (strcasecmp($h['name'], 'Content-Type') === 0 && preg_match('/charset="?([\w.:\-]+)/i', $h['value'], $m)) $charset = strtoupper($m[1]);
     }
     // Certains expéditeurs annoncent ISO-8859-1 mais envoient de l'UTF-8 :
     // convertir donnerait « Ã© ». On ne convertit que si ce n'est pas déjà de l'UTF-8.
     $is_utf8 = mb_check_encoding($raw, 'UTF-8') && preg_match('/[\xC2-\xF4][\x80-\xBF]/', $raw);
     if (!$is_utf8 && $charset !== 'UTF-8' && $charset !== 'US-ASCII') {
-        $conv = @mb_convert_encoding($raw, 'UTF-8', $charset);
-        if ($conv !== false) $raw = $conv;
+        $conv = mail_charset_to_utf8($raw, $charset);
+        if ($conv !== null) $raw = $conv;
     }
     if (!mb_check_encoding($raw, 'UTF-8')) $raw = mb_convert_encoding($raw, 'UTF-8', 'Windows-1252');
     return mail_fix_mojibake($raw);
+}
+
+/**
+ * Conversion en UTF-8 depuis le jeu de caractères annoncé par l'expéditeur.
+ * mbstring ne connaît pas tous les noms (windows-1250, macintosh, unknown-8bit…) et
+ * lève alors une ValueError, que le @ n'arrête pas : on passe par iconv. null si
+ * aucun des deux ne sait faire (l'appelant retombe sur Windows-1252).
+ */
+function mail_charset_to_utf8(string $raw, string $charset): ?string {
+    try {
+        $conv = @mb_convert_encoding($raw, 'UTF-8', $charset);
+    } catch (\ValueError $e) {
+        $conv = @iconv($charset, 'UTF-8//IGNORE', $raw);
+    }
+    return ($conv !== false && $conv !== '') ? $conv : null;
 }
 
 /** Répare le texte doublement encodé (« Ã© » → « é », « â€™ » → « ’ »). */
@@ -436,40 +523,92 @@ function mail_store(PDO $pdo, array $acc, array $p, ?int $sent_by = null): ?int 
     $me = strtolower($acc['email']);
     $dir = (in_array('SENT', $p['labels'], true) || $p['from_email'] === $me) ? 'out' : 'in';
 
-    $s = $pdo->prepare("SELECT id, counterpart_email FROM mail_threads WHERE account_id = ? AND gmail_thread_id = ?");
-    $s->execute([$acc['id'], $p['thread_id']]);
-    $th = $s->fetch(PDO::FETCH_ASSOC);
-    if (!$th) {
-        $cp = $dir === 'in' ? ['email' => $p['from_email'], 'name' => $p['from_name']] : ($p['to'][0] ?? ['email' => null, 'name' => null]);
-        $pdo->prepare("INSERT INTO mail_threads (org_id, account_id, gmail_thread_id, subject, counterpart_email, counterpart_name, category_source) VALUES (?,?,?,?,?,?, 'none')")
-            ->execute([$org, $acc['id'], $p['thread_id'], mb_substr(mail_clean_subject($p['subject']), 0, 500), $cp['email'], $cp['name'] ?: null]);
-        $thread_id = (int)$pdo->lastInsertId();
-    } else {
-        $thread_id = (int)$th['id'];
-        if (empty($th['counterpart_email']) && $dir === 'in') {
-            $pdo->prepare("UPDATE mail_threads SET counterpart_email = ?, counterpart_name = ? WHERE id = ?")->execute([$p['from_email'], $p['from_name'] ?: null, $thread_id]);
-        }
-    }
+    // Valeurs choisies par l'expéditeur, bornées aux colonnes (VARCHAR 190) : trop longues,
+    // elles feraient échouer l'enregistrement à chaque passage et bloqueraient la boîte.
+    // Une adresse n'est jamais coupée (tronquée, elle pourrait viser quelqu'un d'autre) :
+    // trop longue, elle reste vide et la page se rabat sur l'autre adresse connue.
+    $name = fn($v) => ($v = trim((string)$v)) !== '' ? mb_substr($v, 0, 190) : null;
+    $addr = fn($v) => ($v = trim((string)$v)) !== '' && mb_strlen($v) <= 190 ? $v : null;
 
-    $ins = $pdo->prepare("
-        INSERT INTO mail_messages (org_id, thread_id, gmail_message_id, rfc_message_id, references_hdr, direction, from_email, from_name, reply_to,
-                                   to_list, cc_list, subject, body_text, body_html, sent_at, label_ids, is_bulk, attachments_json, sent_by_user_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ON DUPLICATE KEY UPDATE label_ids = VALUES(label_ids), thread_id = VALUES(thread_id)
-    ");
-    $ins->execute([
-        $org, $thread_id, $p['gmail_id'], mb_substr($p['rfc_id'], 0, 500), $p['references'] ?: null, $dir,
-        $p['from_email'], $p['from_name'] ?: null, $p['reply_to'],
-        json_encode($p['to'], JSON_UNESCAPED_UNICODE), json_encode($p['cc'], JSON_UNESCAPED_UNICODE),
-        mb_substr($p['subject'], 0, 500), $p['text'], $p['html'] ?: null, $p['sent_at'],
-        implode(',', $p['labels']), !empty($p['bulk']) ? 1 : 0, $p['attachments'] ? json_encode($p['attachments'], JSON_UNESCAPED_UNICODE) : null, $sent_by,
-    ]);
-    // Nouveau message reçu : la priorité est réévaluée au prochain tri
-    if ($ins->rowCount() === 1 && $dir === 'in') {
-        $pdo->prepare("UPDATE mail_threads SET ai_done = 0 WHERE id = ?")->execute([$thread_id]);
+    // Fil et message ensemble ou pas du tout : jamais de conversation vide dans la liste
+    $own_tx = !$pdo->inTransaction();
+    if ($own_tx) $pdo->beginTransaction();
+    try {
+        $s = $pdo->prepare("SELECT id, counterpart_email FROM mail_threads WHERE account_id = ? AND gmail_thread_id = ?");
+        $s->execute([$acc['id'], $p['thread_id']]);
+        $th = $s->fetch(PDO::FETCH_ASSOC);
+        if (!$th) {
+            $cp = $dir === 'in' ? ['email' => $p['from_email'], 'name' => $p['from_name']] : ($p['to'][0] ?? ['email' => null, 'name' => null]);
+            // Deux synchros simultanées (cron et bouton « Synchroniser ») peuvent créer le
+            // même fil : la seconde reprend celui de la première au lieu d'échouer.
+            $pdo->prepare("INSERT INTO mail_threads (org_id, account_id, gmail_thread_id, subject, counterpart_email, counterpart_name, category_source) VALUES (?,?,?,?,?,?, 'none')
+                           ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)")
+                ->execute([$org, $acc['id'], $p['thread_id'], mb_substr(mail_clean_subject($p['subject']), 0, 500), $addr($cp['email']), $name($cp['name'])]);
+            $thread_id = (int)$pdo->lastInsertId();
+        } else {
+            $thread_id = (int)$th['id'];
+            if (empty($th['counterpart_email']) && $dir === 'in' && $addr($p['from_email'])) {
+                $pdo->prepare("UPDATE mail_threads SET counterpart_email = ?, counterpart_name = ? WHERE id = ?")->execute([$addr($p['from_email']), $name($p['from_name']), $thread_id]);
+            }
+        }
+
+        // En-tête References : les plus récentes sont à la fin (colonne TEXT, 64 Ko)
+        $refs = trim((string)$p['references']);
+        if (strlen($refs) > 10000) $refs = trim(substr($refs, -10000));
+        $ins = $pdo->prepare("
+            INSERT INTO mail_messages (org_id, thread_id, gmail_message_id, rfc_message_id, references_hdr, direction, from_email, from_name, reply_to,
+                                       to_list, cc_list, subject, body_text, body_html, sent_at, label_ids, is_bulk, attachments_json, sent_by_user_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON DUPLICATE KEY UPDATE label_ids = VALUES(label_ids), thread_id = VALUES(thread_id)
+        ");
+        $ins->execute([
+            $org, $thread_id, $p['gmail_id'], mb_substr($p['rfc_id'], 0, 500), $refs !== '' ? $refs : null, $dir,
+            $addr($p['from_email']), $name($p['from_name']), $addr($p['reply_to']),
+            mail_addresses_json($p['to']), mail_addresses_json($p['cc']),
+            mb_substr($p['subject'], 0, 500), $p['text'], $p['html'] ?: null, $p['sent_at'],
+            mail_labels_str($p['labels']), !empty($p['bulk']) ? 1 : 0, $p['attachments'] ? mail_json_list($p['attachments']) : null, $sent_by,
+        ]);
+        // Nouveau message reçu : la priorité est réévaluée au prochain tri, et la
+        // conversation archivée revient dans la boîte (comme dans Gmail)
+        if ($ins->rowCount() === 1 && $dir === 'in') {
+            $pdo->prepare("UPDATE mail_threads SET ai_done = 0, is_archived = 0 WHERE id = ?")->execute([$thread_id]);
+        }
+        mail_refresh_thread($pdo, $thread_id);
+        if ($own_tx) $pdo->commit();
+    } catch (Throwable $e) {
+        if ($own_tx && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
     }
-    mail_refresh_thread($pdo, $thread_id);
     return $thread_id;
+}
+
+/**
+ * Libellés Gmail d'un message, pour la colonne label_ids (VARCHAR 500). Les libellés
+ * personnels (« Label_123 ») ne servent pas à Assokit : ils sont écartés, pour que
+ * UNREAD, SENT, CATEGORY_PROMOTIONS… tiennent toujours dans la colonne.
+ */
+function mail_labels_str(array $labels): string {
+    $s = implode(',', array_filter(array_map('strval', $labels), fn($l) => $l !== '' && strncmp($l, 'Label_', 6) !== 0));
+    if (strlen($s) <= 500) return $s;
+    $s = substr($s, 0, 501);
+    return substr($s, 0, (int)strrpos($s, ','));
+}
+
+/** Destinataires (À, Cc) en JSON : un envoi groupé peut en lister des centaines. */
+function mail_addresses_json(array $list): string {
+    $out = [];
+    foreach (array_slice($list, 0, 200) as $a) $out[] = ['email' => (string)($a['email'] ?? ''), 'name' => mb_substr((string)($a['name'] ?? ''), 0, 190)];
+    return mail_json_list($out);
+}
+
+/** Liste en JSON pour une colonne TEXT (64 Ko) : si elle déborde, les derniers éléments sautent. */
+function mail_json_list(array $list): string {
+    $list = array_values($list);
+    do {
+        $j = (string)json_encode($list, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        if (strlen($j) <= 60000) return $j;
+        $list = array_slice($list, 0, intdiv(count($list), 2));
+    } while (true);
 }
 
 /** Recalcule les champs agrégés d'un fil (dernier message, non-lu, extrait…). */
@@ -504,22 +643,55 @@ function mail_snippet(string $text): string {
 
 /**
  * Synchronise la boîte, dans la limite d'un budget de temps.
- * @return array ['ajoutes' => int, 'encore' => bool, 'erreur' => ?string]
+ * @return array ['ajoutes' => int, 'encore' => bool, 'erreur' => ?string, 'occupe' => bool]
+ *               occupe = une autre synchro de cette boîte est déjà en cours (rien n'a été fait)
  */
 function mail_sync(PDO $pdo, array $acc, float $budget = 20.0): array {
-    $t0 = microtime(true);
-    $res = ['ajoutes' => 0, 'encore' => false, 'erreur' => null];
+    $res = ['ajoutes' => 0, 'encore' => false, 'erreur' => null, 'occupe' => false];
     if ($acc['provider'] !== 'gmail') return $res;   // boîte de démonstration
+    // Une seule synchro à la fois par boîte : le cron et le bouton « Synchroniser »
+    // (ou deux membres de l'équipe) liraient et trieraient sinon les mêmes e-mails.
+    $lock = @fopen(sys_get_temp_dir() . '/assokit-mail-sync-' . (int)$acc['id'] . '.lock', 'c');
+    if ($lock && !flock($lock, LOCK_EX | LOCK_NB)) {
+        fclose($lock);
+        return ['occupe' => true] + $res;
+    }
+    try {
+        return mail_sync_run($pdo, $acc, $budget);
+    } finally {
+        if ($lock) { flock($lock, LOCK_UN); fclose($lock); }
+    }
+}
+
+function mail_sync_run(PDO $pdo, array $acc, float $budget): array {
+    $t0 = microtime(true);
+    $res = ['ajoutes' => 0, 'encore' => false, 'erreur' => null, 'occupe' => false];
     $touched = [];
+
+    // Un e-mail impossible à enregistrer (contenu hors norme) est journalisé puis sauté :
+    // il ne doit pas bloquer toute la boîte. Les pannes passagères (connexion perdue,
+    // verrou) remontent, et le message est repris au passage suivant.
+    $store = function (string $gmail_id) use ($pdo, &$acc): ?int {
+        try {
+            return mail_fetch_store($pdo, $acc, $gmail_id);
+        } catch (\ValueError | \PDOException $e) {
+            if ($e instanceof \PDOException && strncmp((string)$e->getCode(), '22', 2) !== 0) throw $e;
+            error_log('Boîte mail org #' . (int)$acc['org_id'] . ' : e-mail Gmail ' . $gmail_id . ' ignoré (' . $e->getMessage() . ')');
+            return null;
+        }
+    };
 
     if (empty($acc['history_id'])) {
         [$c, $d] = mail_api($pdo, $acc, 'GET', 'profile');
-        if ($c !== 200) return ['ajoutes' => 0, 'encore' => false, 'erreur' => mail_api_error($c, $d)];
-        $acc['history_id'] = (string)$d['historyId'];
-        $pdo->prepare("UPDATE mail_accounts SET history_id = ? WHERE id = ?")->execute([$acc['history_id'], $acc['id']]);
+        if ($c !== 200) {
+            $res['erreur'] = mail_api_error($c, $d);
+        } else {
+            $acc['history_id'] = (string)$d['historyId'];
+            $pdo->prepare("UPDATE mail_accounts SET history_id = ? WHERE id = ?")->execute([$acc['history_id'], $acc['id']]);
+        }
     }
 
-    if (empty($acc['initial_done'])) {
+    if (empty($acc['initial_done']) && !$res['erreur']) {
         // Première passe : les N derniers jours, page par page
         $done = (int)$pdo->query("SELECT COUNT(*) FROM mail_messages WHERE org_id = " . (int)$acc['org_id'])->fetchColumn();
         do {
@@ -530,7 +702,7 @@ function mail_sync(PDO $pdo, array $acc, float $budget = 20.0): array {
             foreach ($d['messages'] ?? [] as $m) {
                 if (microtime(true) - $t0 > $budget) { $res['encore'] = true; break 2; }
                 if (mail_known($pdo, (int)$acc['org_id'], $m['id'])) continue;
-                $tid = mail_fetch_store($pdo, $acc, $m['id']);
+                $tid = $store($m['id']);
                 if ($tid) { $touched[$tid] = true; $res['ajoutes']++; $done++; }
             }
             $acc['sync_cursor'] = $d['nextPageToken'] ?? null;
@@ -560,7 +732,7 @@ function mail_sync(PDO $pdo, array $acc, float $budget = 20.0): array {
                     $m = $x['message'];
                     if (array_intersect($m['labelIds'] ?? [], ['SPAM', 'TRASH', 'DRAFT', 'CHAT'])) continue;
                     if (mail_known($pdo, (int)$acc['org_id'], $m['id'])) continue;
-                    $tid = mail_fetch_store($pdo, $acc, $m['id']);
+                    $tid = $store($m['id']);
                     if ($tid) { $touched[$tid] = true; $res['ajoutes']++; }
                 }
                 foreach (array_merge($h['labelsAdded'] ?? [], $h['labelsRemoved'] ?? []) as $x) {
@@ -577,19 +749,39 @@ function mail_sync(PDO $pdo, array $acc, float $budget = 20.0): array {
         }
     }
 
-    if ($touched) {
-        foreach (array_keys($touched) as $tid) mail_link_thread($pdo, (int)$acc['org_id'], $tid);
-        mail_classify_pending($pdo, $acc);
+    foreach (array_keys($touched) as $tid) mail_link_thread($pdo, (int)$acc['org_id'], $tid);
+    // Tri des nouveaux fils, et des fils restés en attente (IA indisponible au passage précédent)
+    if ($touched || mail_classify_has_pending($pdo, (int)$acc['org_id'])) mail_classify_pending($pdo, $acc);
+
+    if ($res['erreur']) {
+        // Échec : « Synchronisée à … » garde l'heure de la dernière synchro réussie et
+        // l'erreur reste affichée tant qu'elle dure (le cron réessaie toutes les 5 min).
+        // Une autorisation retirée par Google reste « revoked » (reconnexion nécessaire).
+        $pdo->prepare("UPDATE mail_accounts SET status = IF(status = 'revoked', 'revoked', 'error'), last_error = ? WHERE id = ?")
+            ->execute([mb_substr($res['erreur'], 0, 500), $acc['id']]);
+    } else {
+        $pdo->prepare("UPDATE mail_accounts SET last_sync_at = NOW(), last_error = NULL, status = 'active' WHERE id = ?")->execute([$acc['id']]);
     }
-    $pdo->prepare("UPDATE mail_accounts SET last_sync_at = NOW()" . ($res['erreur'] ? ", last_error = ?" : ", last_error = NULL, status = 'active'") . " WHERE id = ?")
-        ->execute($res['erreur'] ? [mb_substr($res['erreur'], 0, 500), $acc['id']] : [$acc['id']]);
     return $res;
 }
 
+/**
+ * Message lisible d'un échec de l'API Gmail (bandeau de la boîte, appli, bouton Synchroniser).
+ * Les pannes passagères (réseau, quota, panne Google) ont un texte en français ; le détail
+ * technique de cURL ou de Google part dans le journal.
+ */
 function mail_api_error(int $c, array $d): string {
-    $m = $d['error']['message'] ?? ($d['error_description'] ?? 'erreur ' . $c);
+    $m = (string)($d['error']['message'] ?? ($d['error_description'] ?? 'erreur ' . $c));
+    if (!empty($d['error']['local'])) return $m;
     if ($c === 403 && stripos($m, 'has not been used') !== false) return 'L\'API Gmail n\'est pas activée dans le projet Google Cloud.';
-    return 'Gmail : ' . $m;
+    $reason = (string)($d['error']['errors'][0]['reason'] ?? '');
+    if ($c === 0) $txt = 'Gmail ne répond pas (connexion interrompue).';
+    elseif ($c === 429 || ($c === 403 && preg_match('/rate ?limit|limit ?exceeded|quota/i', $reason . ' ' . $m))) $txt = 'Gmail limite temporairement les accès (trop de demandes).';
+    elseif ($c >= 500) $txt = 'Gmail est momentanément indisponible.';
+    elseif ($c === 401) $txt = 'Gmail a refusé l’accès à la boîte.';
+    else return 'Gmail : ' . $m;
+    error_log('Boîte mail : échec Gmail HTTP ' . $c . ' (' . mb_substr($m, 0, 300) . ')');
+    return $txt;
 }
 
 function mail_known(PDO $pdo, int $org, string $gmail_id): bool {
@@ -612,7 +804,7 @@ function mail_update_labels(PDO $pdo, int $org, string $gmail_id, array $labels)
     if (array_intersect($labels, ['SPAM', 'TRASH'])) {
         $pdo->prepare("DELETE FROM mail_messages WHERE id = ?")->execute([$m['id']]);
     } else {
-        $pdo->prepare("UPDATE mail_messages SET label_ids = ? WHERE id = ?")->execute([implode(',', $labels), $m['id']]);
+        $pdo->prepare("UPDATE mail_messages SET label_ids = ? WHERE id = ?")->execute([mail_labels_str($labels), $m['id']]);
     }
     mail_refresh_thread($pdo, (int)$m['thread_id']);
     return (int)$m['thread_id'];
@@ -680,9 +872,12 @@ function mail_rule_category(array $cats, string $subject, string $from): ?array 
     foreach ($cats as $c) {
         foreach (array_filter(array_map('trim', explode(',', (string)$c['keywords']))) as $kw) {
             if (strpos($kw, '@') !== false) {
-                // « @domaine.fr » = tout le domaine ; « nom@domaine.fr » = cet expéditeur
+                // « @domaine.fr » = tout le domaine, sous-domaines compris (« @gouv.fr » couvre
+                // …@essonne.gouv.fr) ; « nom@domaine.fr » = cet expéditeur
                 $kwl = strtolower($kw);
-                if ($from !== '' && ($kwl[0] === '@' ? substr($from, -strlen($kwl)) === $kwl : $from === $kwl)) return $c;
+                if ($from !== '' && ($kwl[0] === '@'
+                        ? (str_ends_with($from, $kwl) || (strlen($kwl) > 1 && str_ends_with($from, '.' . substr($kwl, 1))))
+                        : $from === $kwl)) return $c;
                 continue;
             }
             $k = trim(mail_norm($kw));
@@ -693,6 +888,9 @@ function mail_rule_category(array $cats, string $subject, string $from): ?array 
 }
 
 const MAIL_PRIORITIES = ['urgent', 'important', 'normal', 'faible'];
+// Tri par l'IA raté (panne, surcharge, quota…) : nombre d'essais, un par passage du cron
+// (toutes les 5 min), avant de garder le tri de repli (règles et mots d'alerte).
+const MAIL_AI_TRIES = 6;
 
 /** Ce que recouvre chaque catégorie par défaut (guide l'IA). */
 function mail_category_guide(): array {
@@ -728,8 +926,15 @@ function mail_priority_fallback(string $subject, string $body, ?string $cat_slug
  * Trie les conversations à (re)traiter : catégorie (règles, sinon IA, sinon
  * « Autres ») et priorité (IA, sinon mots d'alerte). Les promotions repérées
  * par Gmail sont rangées sans appel à l'IA.
+ *
+ * mail_threads.ai_done : 0 = à trier, 1 = trié, 2 et plus = l'IA n'a pas répondu
+ * (ai_done − 1 essais) : le tri de repli est en place et l'IA est retentée au
+ * passage suivant, jusqu'à MAIL_AI_TRIES essais.
  */
 function mail_classify_pending(PDO $pdo, array $acc, int $limit = 60): int {
+    // Un fil n'est soumis qu'une fois par exécution (« Re-trier » enchaîne plusieurs
+    // lots) : les nouveaux essais attendent le passage suivant.
+    static $seen = [];
     $org = (int)$acc['org_id'];
     $cats = mail_categories($pdo, $org);
     $by_slug = []; $by_id = [];
@@ -738,14 +943,17 @@ function mail_classify_pending(PDO $pdo, array $acc, int $limit = 60): int {
     $promos = $by_slug['promos'] ?? $autre;
     $s = $pdo->prepare("SELECT t.id, t.subject, t.counterpart_email, t.counterpart_name, t.category_id, t.category_source, t.is_bulk,
                                (SELECT body_text FROM mail_messages m WHERE m.thread_id = t.id AND m.direction = 'in' ORDER BY sent_at DESC LIMIT 1) AS body,
-                               (SELECT COUNT(*) FROM mail_messages m WHERE m.thread_id = t.id AND (m.label_ids LIKE '%CATEGORY_PROMOTIONS%' OR m.label_ids LIKE '%CATEGORY_SOCIAL%')) AS promo_lbl
-                          FROM mail_threads t WHERE t.org_id = ? AND (t.ai_done = 0 OR t.category_source = 'none')
+                               (SELECT COUNT(*) FROM mail_messages m WHERE m.thread_id = t.id AND (m.label_ids LIKE '%CATEGORY_PROMOTIONS%' OR m.label_ids LIKE '%CATEGORY_SOCIAL%')) AS promo_lbl,
+                               t.ai_done
+                          FROM mail_threads t WHERE t.org_id = ? AND (t.ai_done <> 1 OR t.category_source = 'none')"
+                     . ($seen ? ' AND t.id NOT IN (' . implode(',', array_keys($seen)) . ')' : '') . "
                          ORDER BY t.last_message_at DESC LIMIT " . (int)$limit);
     $s->execute([$org]);
     $todo = $s->fetchAll(PDO::FETCH_ASSOC);
     if (!$todo) return 0;
+    foreach ($todo as $t) $seen[(int)$t['id']] = true;
 
-    $save = $pdo->prepare("UPDATE mail_threads SET category_id = ?, category_source = ?, priority = ?, priority_reason = ?, ai_done = 1 WHERE id = ?");
+    $save = $pdo->prepare("UPDATE mail_threads SET category_id = ?, category_source = ?, priority = ?, priority_reason = ?, ai_done = ? WHERE id = ?");
     $ai_on = !empty($acc['ai_sort']) && function_exists('ask_claude') && function_exists('is_ai_enabled') && is_ai_enabled();
     $pour_ia = [];
     foreach ($todo as $t) {
@@ -753,13 +961,13 @@ function mail_classify_pending(PDO $pdo, array $acc, int $limit = 60): int {
         $t['manual'] = $t['category_source'] === 'manual' && isset($by_id[(int)$t['category_id']]);
         $bulk = (int)$t['is_bulk'] === 1;
         if ($bulk && (int)$t['promo_lbl'] > 0 && !$t['rule'] && !$t['manual']) {
-            $save->execute([$promos['id'], 'auto', 'faible', null, $t['id']]);   // publicité repérée par Gmail
+            $save->execute([$promos['id'], 'auto', 'faible', null, 1, $t['id']]);   // publicité repérée par Gmail
             continue;
         }
         if ($ai_on) { $pour_ia[] = $t; continue; }
         $cat = $t['manual'] ? $by_id[(int)$t['category_id']] : ($t['rule'] ?: ($bulk ? $promos : $autre));
         [$p, $r] = mail_priority_fallback((string)$t['subject'], (string)$t['body'], $cat['slug'], $bulk);
-        $save->execute([$cat['id'], $t['manual'] ? 'manual' : ($t['rule'] ? 'rule' : 'default'), $p, $r, $t['id']]);
+        $save->execute([$cat['id'], $t['manual'] ? 'manual' : ($t['rule'] ? 'rule' : 'default'), $p, $r, 1, $t['id']]);
     }
 
     foreach (array_chunk($pour_ia, 15) as $lot) {
@@ -778,10 +986,25 @@ function mail_classify_pending(PDO $pdo, array $acc, int $limit = 60): int {
             } else {
                 [$p, $r] = mail_priority_fallback((string)$t['subject'], (string)$t['body'], $cat['slug'], $bulk);
             }
-            $save->execute([$cat['id'], $src, $p, $r, $t['id']]);
+            // IA muette pour ce fil : le repli est enregistré et l'IA retentée au passage suivant
+            $done = 1;
+            if (!$res) {
+                $echecs = ((int)$t['ai_done'] >= 2 ? (int)$t['ai_done'] - 1 : 0) + 1;
+                $done = $echecs < MAIL_AI_TRIES ? $echecs + 1 : 1;
+            }
+            $save->execute([$cat['id'], $src, $p, $r, $done, $t['id']]);
         }
     }
     return count($todo);
+}
+
+/** Reste-t-il des conversations à trier (nouvelles, ou tri par l'IA à retenter) ? */
+function mail_classify_has_pending(PDO $pdo, int $org): bool {
+    try {
+        $s = $pdo->prepare("SELECT 1 FROM mail_threads WHERE org_id = ? AND (ai_done <> 1 OR category_source = 'none') LIMIT 1");
+        $s->execute([$org]);
+        return (bool)$s->fetchColumn();
+    } catch (Throwable $e) { return false; }   // migration 2026-10-07 (ai_done) pas encore passée
 }
 
 /**
@@ -838,8 +1061,12 @@ function mail_mime_header(string $s): string {
 }
 
 function mail_format_address(string $email, string $name = ''): string {
-    $name = trim(str_replace(['"', "\r", "\n"], '', $name));
-    return $name !== '' ? mail_mime_header('"' . $name . '"') . ' <' . $email . '>' : $email;
+    $name = trim(preg_replace('/[\r\n\t]+/', ' ', $name));
+    if ($name === '') return $email;
+    // Nom accentué : mot encodé seul (des guillemets autour feraient partie du nom affiché) ;
+    // nom ASCII : chaîne entre guillemets, pour les virgules et points du nom
+    if (preg_match('/[^\x20-\x7E]/', $name)) return mail_mime_header($name) . ' <' . $email . '>';
+    return '"' . addcslashes($name, '"\\') . '" <' . $email . '>';
 }
 
 function mail_text_to_html(string $text): string {
@@ -937,7 +1164,7 @@ function mail_mark_read(PDO $pdo, array $acc, array $thread, bool $read = true):
     foreach ($msgs->fetchAll(PDO::FETCH_ASSOC) as $m) {
         $l = array_filter(explode(',', (string)$m['label_ids']));
         $l = $read ? array_values(array_diff($l, ['UNREAD'])) : array_values(array_unique(array_merge($l, ['UNREAD'])));
-        $up->execute([implode(',', $l), $m['id']]);
+        $up->execute([mail_labels_str($l), $m['id']]);
     }
     mail_refresh_thread($pdo, (int)$thread['id']);
     if ($acc['provider'] === 'gmail' && strncmp((string)$thread['gmail_thread_id'], 'demo', 4) !== 0) {
@@ -1112,14 +1339,18 @@ function mail_purge_old(PDO $pdo, array $acc): int {
     return count($ids);
 }
 
-/** Non-lus visibles pour le badge du menu. */
+/**
+ * Non-lus visibles pour le badge du menu (et la carte de l'appli) : ceux de la
+ * « Boîte principale », donc sans les newsletters, comme son compteur.
+ */
 function mail_unread_count(PDO $pdo, array $user): int {
     if (!mail_can_access($user) || !mail_schema_ready($pdo)) return 0;
     try {
         $cats = mail_visible_categories($pdo, (int)$user['org_id'], $user);
         if (!$cats) return 0;
-        $ids = implode(',', array_map(fn($c) => (int)$c['id'], $cats));
-        $s = $pdo->prepare("SELECT COUNT(*) FROM mail_threads WHERE org_id = ? AND unread = 1 AND is_archived = 0 AND (category_id IN ($ids) OR category_id IS NULL)");
+        $ids = array_map(fn($c) => (int)$c['id'], array_filter($cats, fn($c) => $c['slug'] !== 'promos'));
+        $in = $ids ? 'category_id IN (' . implode(',', $ids) . ') OR ' : '';
+        $s = $pdo->prepare("SELECT COUNT(*) FROM mail_threads WHERE org_id = ? AND unread = 1 AND is_archived = 0 AND ($in category_id IS NULL)");
         $s->execute([(int)$user['org_id']]);
         return (int)$s->fetchColumn();
     } catch (Throwable $e) { return 0; }

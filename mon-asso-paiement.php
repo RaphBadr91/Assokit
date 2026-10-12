@@ -12,6 +12,14 @@
  *   5. Confirmation côté Stripe via Stripe.js
  *   6. Redirection vers /mon-asso-paiement-success
  *
+ * Association déjà abonnée par carte (abonnement Stripe actif ou en retard) :
+ * JAMAIS de second abonnement (double facturation). À la place :
+ *   - ?action=update_card → portail client Stripe (changer la carte, payer
+ *     une facture en attente), retour sur /mon-asso-plan ;
+ *   - ?addon_domain=1 → confirmation, puis POST action=add_domain qui ajoute
+ *     l'add-on domaine à l'abonnement existant (POST /v1/subscription_items) ;
+ *   - sinon → rappel de l'abonnement en place (changement de formule : contact).
+ *
  * SI Stripe pas encore configuré → affiche un message d'attente
  * --------------------------------------------------------------
  */
@@ -36,6 +44,77 @@ require_finance_access('mon-asso-plan', 'le paiement de l\'abonnement');
 // Récupération paramètres
 $target_plan_slug = (string)($_GET['plan'] ?? 'assokit');
 $with_addon_domain = !empty($_GET['addon_domain']);
+$page_action = (string)($_POST['action'] ?? ($_GET['action'] ?? ''));
+
+// Abonnement par carte déjà en vigueur : aucun nouvel abonnement ne doit naître de cette page
+$live_stripe = function_exists('ak_org_live_stripe_subscription') ? ak_org_live_stripe_subscription($pdo, $org_id) : null;
+$has_addon = function_exists('ak_has_addon_custom_domain') && ak_has_addon_custom_domain($pdo, $org_id);
+$addon_price_id = ak_stripe_config_get($pdo, 'addon_domain_price_id', null);
+
+// « Changer ma CB » : portail client Stripe (carte, factures en attente), jamais un nouvel abonnement
+if ($page_action === 'update_card') {
+    $customer_id = function_exists('ak_get_stripe_customer_id') ? ak_get_stripe_customer_id($pdo, $org_id) : null;
+    if (!ak_stripe_is_configured($pdo) || !$customer_id) {
+        $_SESSION['flash_error'] = 'Aucune carte bancaire n’est enregistrée pour votre association. Pour toute question, contactez-nous.';
+        header('Location: /mon-asso-plan');
+        exit;
+    }
+    $host = (string)($_SERVER['HTTP_HOST'] ?? '');
+    $base = preg_match('/^[a-z0-9.-]+(:\d+)?$/i', $host)
+        ? ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https' ? 'https' : 'http') . '://' . $host
+        : 'https://assokit.fr';
+    $resp = ak_stripe_api_call($pdo, 'POST', '/billing_portal/sessions', [
+        'customer'   => $customer_id,
+        'return_url' => $base . '/mon-asso-plan',
+    ]);
+    $portal_url = (string)($resp['data']['url'] ?? '');
+    if (!empty($resp['ok']) && preg_match('#^https://[a-z0-9.-]*stripe\.com/#i', $portal_url)) {
+        header('Location: ' . $portal_url);
+        exit;
+    }
+    error_log('[mon-asso-paiement] portail Stripe org #' . $org_id . ' : ' . ($resp['error'] ?? 'réponse invalide'));
+    $_SESSION['flash_error'] = 'La gestion de la carte bancaire est momentanément indisponible. Contactez-nous : nous la mettons à jour avec vous.';
+    header('Location: /mon-asso-plan');
+    exit;
+}
+
+// Add-on domaine sur un abonnement par carte déjà actif : ajouté à CET abonnement (prorata sur la
+// prochaine facture), jamais un second abonnement qui refacturerait le plan
+$addon_possible = $live_stripe && $live_stripe['status'] === 'active' && empty($live_stripe['cancel_at_period_end'])
+    && !$has_addon && !empty($addon_price_id) && ak_stripe_is_configured($pdo);
+if ($live_stripe && $_SERVER['REQUEST_METHOD'] === 'POST' && $page_action === 'add_domain') {
+    if (!check_csrf($_POST['csrf_token'] ?? '')) {
+        $_SESSION['flash_error'] = 'Session expirée, veuillez réessayer.';
+    } elseif (!$addon_possible) {
+        $_SESSION['flash_error'] = $has_addon ? 'Le domaine personnalisé est déjà inclus dans votre abonnement.'
+            : 'L’ajout du domaine personnalisé n’est pas possible sur votre abonnement actuel. Contactez-nous.';
+    } else {
+        $resp = ak_stripe_api_call($pdo, 'POST', '/subscription_items', [
+            'subscription'       => $live_stripe['stripe_subscription_id'],
+            'price'              => $addon_price_id,
+            'proration_behavior' => 'create_prorations',
+            'metadata[org_id]'   => (string)$org_id,
+        ]);
+        if (!empty($resp['ok'])) {
+            // Le webhook customer.subscription.updated l'enregistre aussi (même ligne, sans doublon)
+            try {
+                ak_db_insert($pdo, 'asso_subscription_addons', [
+                    'subscription_id' => (int)$live_stripe['id'], 'org_id' => $org_id, 'addon_type' => 'custom_domain',
+                    'addon_name' => 'Domaine personnalisé', 'price_cents_monthly' => 1000, 'stripe_price_id' => $addon_price_id,
+                    'stripe_subscription_item_id' => $resp['data']['id'] ?? null, 'status' => 'active',
+                ], ['created_at' => 'NOW()']);
+            } catch (Throwable $e) {
+                error_log('[mon-asso-paiement] add-on local org #' . $org_id . ' : ' . get_class($e));
+            }
+            $_SESSION['flash_success'] = 'Domaine personnalisé ajouté à votre abonnement (+10,00€/mois, au prorata sur la prochaine facture).';
+        } else {
+            error_log('[mon-asso-paiement] add-on Stripe org #' . $org_id . ' : ' . ($resp['error'] ?? '?'));
+            $_SESSION['flash_error'] = 'L’ajout du domaine personnalisé a échoué. Aucun montant n’a été prélevé. Réessayez ou contactez-nous.';
+        }
+    }
+    header('Location: /mon-asso-plan');
+    exit;
+}
 
 // Récupération du plan cible
 $plan = null;
@@ -54,7 +133,6 @@ if (!$plan) {
 // Détection si Stripe est configuré
 $stripe_ready = ak_stripe_is_configured($pdo);
 $stripe_pk = $stripe_ready ? ak_stripe_get_publishable_key($pdo) : null;
-$addon_price_id = ak_stripe_config_get($pdo, 'addon_domain_price_id', null);
 
 // Calculs prix
 $plan_cents = (int)($plan['price_cents'] ?? 0);
@@ -79,6 +157,62 @@ render_sidebar('mon-asso-paiement');
     <span class="sep">›</span>
     <span class="current">💳 Paiement</span>
   </nav>
+
+  <?php if ($live_stripe):
+    $live_label = function_exists('ak_plan_label') ? ak_plan_label($live_stripe['plan_slug'] ?? '', $live_stripe['plan_name'] ?? null) : (string)($live_stripe['plan_name'] ?? '');
+    $live_end_fr = !empty($live_stripe['current_period_end']) && strtotime((string)$live_stripe['current_period_end']) ? date('d/m/Y', strtotime((string)$live_stripe['current_period_end'])) : '';
+    $btn = 'display:inline-flex;align-items:center;gap:7px;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;';
+  ?>
+
+  <!-- ============================================ -->
+  <!-- Abonnement par carte déjà en place : pas de second abonnement -->
+  <!-- ============================================ -->
+  <div class="main-head" style="margin-bottom:24px;">
+    <div>
+      <h1 style="margin:0 0 4px;">💳 Mon abonnement par carte</h1>
+      <p style="color:#64748B;margin:0;">Plan <strong><?= htmlspecialchars($live_label) ?></strong> — déjà réglé par carte via Stripe</p>
+    </div>
+  </div>
+
+  <?php if ($with_addon_domain && $addon_possible): ?>
+    <div style="background:linear-gradient(135deg, #EFF6FF 0%, white 100%);border:1px solid #BFDBFE;border-radius:14px;padding:28px;max-width:640px;">
+      <div style="font-size:32px;margin-bottom:8px;">🏆</div>
+      <h2 style="margin:0 0 8px;font-size:18px;color:#1E40AF;">Ajouter un domaine personnalisé</h2>
+      <p style="font-size:14px;color:#475569;margin:0 0 18px;line-height:1.6;">
+        <strong>+10,00€/mois</strong> ajoutés à votre abonnement <?= htmlspecialchars($live_label) ?> en cours, avec la même carte.
+        La période déjà entamée est facturée au prorata sur votre prochaine facture. Aucun nouvel abonnement, votre plan n’est pas refacturé.
+      </p>
+      <form method="post" action="/mon-asso-paiement" style="display:flex;gap:10px;flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_token'] ?? '')) ?>">
+        <input type="hidden" name="action" value="add_domain">
+        <button type="submit" style="<?= $btn ?>background:#1E40AF;color:white;border:none;cursor:pointer;">Confirmer l’ajout (+10,00€/mois)</button>
+        <a href="/mon-asso-plan" style="<?= $btn ?>background:white;color:#475569;border:1px solid #E2E8F0;">← Retour</a>
+      </form>
+    </div>
+  <?php else: ?>
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:28px;max-width:640px;">
+      <?php if ($live_stripe['status'] === 'overdue'): ?>
+        <p style="font-size:14px;color:#991B1B;margin:0 0 16px;line-height:1.6;">⚠️ Le dernier paiement de votre abonnement n’a pas abouti. Mettez à jour votre carte bancaire : le paiement est relancé, sans nouvel abonnement.</p>
+      <?php elseif (!empty($live_stripe['cancel_at_period_end'])): ?>
+        <p style="font-size:14px;color:#92400E;margin:0 0 16px;line-height:1.6;">🛑 Résiliation programmée<?= $live_end_fr !== '' ? ' le ' . htmlspecialchars($live_end_fr) : '' ?>. Pour reprendre votre abonnement ou changer de formule, contactez-nous.</p>
+      <?php else: ?>
+        <p style="font-size:14px;color:#475569;margin:0 0 16px;line-height:1.6;">
+          Votre association a déjà un abonnement par carte en cours : il n’y a rien à payer ici.
+          <?php if ($with_addon_domain && $has_addon): ?>Le domaine personnalisé est déjà inclus.<?php endif; ?>
+          Pour changer de formule, contactez-nous : nous ajustons votre abonnement sans double prélèvement.
+        </p>
+      <?php endif; ?>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <?php if ($stripe_ready && empty($live_stripe['cancel_at_period_end'])): ?>
+          <a href="/mon-asso-paiement?action=update_card" style="<?= $btn ?>background:#059669;color:white;">💳 Changer ma carte bancaire</a>
+        <?php endif; ?>
+        <a href="/contact?subject=billing" style="<?= $btn ?>background:white;color:#475569;border:1px solid #E2E8F0;">📞 Nous contacter</a>
+        <a href="/mon-asso-plan" style="<?= $btn ?>background:white;color:#475569;border:1px solid #E2E8F0;">← Mon abonnement</a>
+      </div>
+    </div>
+  <?php endif; ?>
+
+  <?php else: ?>
 
   <div class="main-head" style="margin-bottom:24px;">
     <div>
@@ -330,6 +464,8 @@ render_sidebar('mon-asso-paiement');
     </style>
 
   <?php endif; ?>
+
+  <?php endif; /* $live_stripe */ ?>
 
 </main>
 

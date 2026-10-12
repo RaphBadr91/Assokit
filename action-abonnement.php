@@ -70,36 +70,46 @@ if ($action === 'cancel_subscription') {
         // Source de verite Stripe = asso_subscriptions ; on annule a la fin de la periode payee.
         if (function_exists('ak_get_org_active_subscription')) {
             $active_sub = ak_get_org_active_subscription($pdo, $org_id);
-            if ($active_sub) {
+            // Déjà résilié : rien à refaire (la date de fin déjà annoncée ne bouge pas)
+            if ($active_sub && ($active_sub['status'] ?? '') !== 'cancelled' && empty($active_sub['cancel_at_period_end'])) {
                 $stripe_sub_id = $active_sub['stripe_subscription_id'] ?? null;
                 $payment_mode  = $active_sub['payment_mode'] ?? 'manual';
-                if ($payment_mode === 'stripe' && $stripe_sub_id
-                    && function_exists('ak_stripe_is_configured') && ak_stripe_is_configured($pdo)) {
-                    $resp = ak_stripe_api_call($pdo, 'POST', '/subscriptions/' . $stripe_sub_id, [
+                if ($payment_mode === 'stripe' && $stripe_sub_id) {
+                    // Jamais « résilié » ici un abonnement que Stripe continuerait de prélever
+                    if (!function_exists('ak_stripe_is_configured') || !ak_stripe_is_configured($pdo)) {
+                        throw new Exception('Stripe non configure : abonnement par carte a arreter par le Fondateur');
+                    }
+                    $resp = ak_stripe_api_call($pdo, 'POST', '/subscriptions/' . rawurlencode($stripe_sub_id), [
                         'cancel_at_period_end' => 'true',
                     ]);
                     if (empty($resp['ok'])) {
                         throw new Exception('Stripe: ' . ($resp['error'] ?? 'annulation refusee'));
                     }
-                    $pdo->prepare("UPDATE asso_subscriptions SET cancel_at_period_end = 1, cancelled_at = NOW(), updated_at = NOW() WHERE id = :id")
-                        ->execute([':id' => (int)$active_sub['id']]);
+                    $stripe_end = !empty($resp['data']['current_period_end']) ? date('Y-m-d H:i:s', (int)$resp['data']['current_period_end']) : null;
+                    ak_db_update($pdo, 'asso_subscriptions', (int)$active_sub['id'],
+                        ['cancel_at_period_end' => 1] + ($stripe_end ? ['current_period_end' => $stripe_end] : []),
+                        ['cancelled_at' => 'NOW()', 'updated_at' => 'NOW()']);
                 } else {
-                    $pdo->prepare("UPDATE asso_subscriptions SET status = 'cancelled', cancel_at_period_end = 1, cancelled_at = NOW(), updated_at = NOW() WHERE id = :id")
-                        ->execute([':id' => (int)$active_sub['id']]);
+                    // Même règle que /mon-asso-annuler-abonnement : formule gardée jusqu'à la fin de la
+                    // période (date écrite sur la ligne), puis plan gratuit Démarrage
+                    ak_sub_cancel_manual($pdo, $active_sub, $org_id);
                 }
             }
         }
 
-        // Table legacy conservee pour l'affichage de /abonnement
+        // Table legacy conservee pour l'affichage de /abonnement (colonnes lues si elles existent)
+        $lcols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'subscriptions') : [];
+        $lsets = ["status = 'cancelled'"]; $largs = [];
+        if (!$lcols || isset($lcols['cancelled_at'])) $lsets[] = 'cancelled_at = NOW()';
+        if (!$lcols || isset($lcols['cancellation_reason'])) { $lsets[] = 'cancellation_reason = ?'; $largs[] = $reason !== '' ? $reason : null; }
+        $largs[] = $org_id;
         $stmt = $pdo->prepare("
             UPDATE subscriptions
-            SET status = 'cancelled',
-                cancelled_at = NOW(),
-                cancellation_reason = ?
+            SET " . implode(', ', $lsets) . "
             WHERE org_id = ?
               AND status IN ('active', 'trialing', 'past_due', 'paused')
         ");
-        $stmt->execute([$reason !== '' ? $reason : null, $org_id]);
+        $stmt->execute($largs);
 
         header('Location: /abonnement?tab=mon-abonnement&flash=' . urlencode('Abonnement annule. Vous gardez l\'acces jusqu\'a la fin de la periode payee.') . '&ft=success');
     } catch (Throwable $e) {
@@ -117,7 +127,8 @@ if ($action === 'delete_account') {
     $reason  = trim($_POST['reason'] ?? '');
     if (strlen($reason) > 500) $reason = substr($reason, 0, 500);
 
-    if ($confirm !== 'SUPPRIMER') {
+    // Le champ s'affiche en majuscules (text-transform) : la casse tapée ne compte pas
+    if (mb_strtoupper(trim((string)$confirm), 'UTF-8') !== 'SUPPRIMER') {
         header('Location: /abonnement?tab=danger&flash=' . urlencode('Confirmation invalide : tapez SUPPRIMER') . '&ft=error');
         exit;
     }

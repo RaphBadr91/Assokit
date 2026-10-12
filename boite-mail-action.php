@@ -30,6 +30,13 @@ $acc = mail_get_account($pdo, $org);
 $action = (string)($in['action'] ?? '');
 $manage = mail_can_manage($user);
 
+// Limite de fréquence : message lisible dans « error » (le site et l'appli affichent ce champ)
+$limit = function (string $bucket, int $max, int $window) use ($user, $out) {
+    if (!function_exists('ak_rate_limit') || ak_rate_limit($bucket, $max, $window, (string)$user['id'])) return;
+    header('Retry-After: ' . $window);
+    $msg = 'Trop de demandes en peu de temps : patientez quelques instants.';
+    $out(['ok' => false, 'error' => $msg, 'message' => $msg], 429);
+};
 $thread = function () use ($pdo, $user, $in, $out) {
     $t = mail_thread_for_user($pdo, $user, (int)($in['thread_id'] ?? 0));
     if (!$t) $out(['ok' => false, 'error' => 'Conversation introuvable.'], 404);
@@ -40,11 +47,19 @@ if (!$acc && !in_array($action, ['category_save', 'category_delete', 'category_o
 switch ($action) {
 
 case 'sync':
-    if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('mail_sync', 30, 300, (string)$user['id']);
+    $limit('mail_sync', 30, 300);
     @set_time_limit(60);
-    $r = mail_sync($pdo, $acc, 20.0);
+    try {
+        $r = mail_sync($pdo, $acc, 20.0);
+    } catch (Throwable $e) {
+        // Panne passagère (base, réseau) : message lisible plutôt qu'une page d'erreur
+        error_log('Boîte mail org #' . $org . ' : synchronisation interrompue (' . $e->getMessage() . ')');
+        $out(['ok' => false, 'added' => 0, 'more' => false, 'error' => 'Synchronisation interrompue : réessayez dans un instant.',
+              'unread' => mail_unread_count($pdo, $user)], 503);
+    }
+    // busy : une synchro de cette boîte tourne déjà (cron, autre membre) ; le site patiente puis relance
     $out(['ok' => !$r['erreur'], 'added' => $r['ajoutes'], 'more' => $r['encore'], 'error' => $r['erreur'],
-          'unread' => mail_unread_count($pdo, $user)]);
+          'busy' => !empty($r['occupe']), 'unread' => mail_unread_count($pdo, $user)]);
 
 case 'read':
 case 'unread':
@@ -65,24 +80,29 @@ case 'category':
     $cat = null; foreach ($vis as $c) if ((int)$c['id'] === $cid) $cat = $c;
     if (!$cat) $out(['ok' => false, 'error' => 'Catégorie inconnue.'], 400);
     $pdo->prepare("UPDATE mail_threads SET category_id = ?, category_source = 'manual' WHERE id = ?")->execute([$cid, $t['id']]);
-    $learned = false;
-    if (!empty($in['learn']) && $manage && filter_var($t['counterpart_email'], FILTER_VALIDATE_EMAIL)) {
-        // « Toujours ranger les e-mails de cet expéditeur ici »
+    // « Toujours ranger les e-mails de cet expéditeur ici » : 1 = case cochée, -1 = décochée, 0 = simple rangement
+    $learn = (int)($in['learn'] ?? 0);
+    $learned = $unlearned = false;
+    if ($learn !== 0 && $manage && filter_var($t['counterpart_email'], FILTER_VALIDATE_EMAIL)) {
         $email = strtolower($t['counterpart_email']);
-        foreach (mail_categories($pdo, $org) as $c) {   // retire la règle d'une autre catégorie
+        foreach (mail_categories($pdo, $org) as $c) {   // retire la règle des autres catégories (de toutes si décochée)
             $kws = array_values(array_filter(array_map('trim', explode(',', (string)$c['keywords'])), fn($k) => strtolower($k) !== $email));
-            if ((int)$c['id'] === $cid) $kws[] = $email;
-            $pdo->prepare("UPDATE mail_categories SET keywords = ? WHERE id = ?")->execute([implode(', ', array_unique($kws)), $c['id']]);
+            if ($learn > 0 && (int)$c['id'] === $cid) $kws[] = $email;
+            $pdo->prepare("UPDATE mail_categories SET keywords = ? WHERE id = ? AND org_id = ?")->execute([implode(', ', array_unique($kws)), $c['id'], $org]);
         }
-        $pdo->prepare("UPDATE mail_threads SET category_id = ?, category_source = 'rule' WHERE org_id = ? AND LOWER(counterpart_email) = ? AND category_source <> 'manual'")
-            ->execute([$cid, $org, $email]);
-        $learned = true;
+        if ($learn > 0) {
+            $pdo->prepare("UPDATE mail_threads SET category_id = ?, category_source = 'rule' WHERE org_id = ? AND LOWER(counterpart_email) = ? AND category_source <> 'manual'")
+                ->execute([$cid, $org, $email]);
+            $learned = true;
+        } else {
+            $unlearned = true;
+        }
     }
-    $out(['ok' => true, 'learned' => $learned]);
+    $out(['ok' => true, 'learned' => $learned, 'unlearned' => $unlearned]);
 
 case 'reply':
     $t = $thread();
-    if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('mail_reply', 40, 600, (string)$user['id']);
+    $limit('mail_reply', 40, 600);
     $split = fn($v) => array_filter(array_map('trim', preg_split('/[,;\s]+/', (string)$v)));
     $body = (string)($in['body'] ?? '');
     if (mb_strlen($body) > 50000) $out(['ok' => false, 'error' => 'Message trop long.'], 400);
@@ -95,7 +115,7 @@ case 'reply':
 
 case 'draft':
     $t = $thread();
-    if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('mail_draft', 30, 600, (string)$user['id']);
+    $limit('mail_draft', 30, 600);
     @set_time_limit(90);
     $r = mail_ai_draft($pdo, $acc, $t, $user, mb_substr(trim((string)($in['consigne'] ?? '')), 0, 500), [
         'ton'   => (string)($in['ton'] ?? 'auto'),
@@ -136,7 +156,10 @@ case 'category_save':
     } else {
         $slug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower(@iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $label) ?: 'cat')), '-') ?: 'cat';
         $slug = substr($slug, 0, 30) . '-' . substr(bin2hex(random_bytes(2)), 0, 4);
-        $pos = (int)$pdo->query("SELECT COALESCE(MAX(position),0) FROM mail_categories WHERE org_id = $org")->fetchColumn();
+        mail_ensure_categories($pdo, $org);
+        $s = $pdo->prepare("SELECT COALESCE(MAX(position), 0) FROM mail_categories WHERE org_id = ? AND slug <> 'autre'");
+        $s->execute([$org]);
+        $pos = (int)$s->fetchColumn() + 1;
         $pdo->prepare("INSERT INTO mail_categories (org_id, slug, label, color, icon, keywords, roles, position) VALUES (?,?,?,?, 'tag', ?,?,?)")
             ->execute([$org, $slug, $label, $color, $kw, $roles ?: null, $pos]);
         // « Autres » reste en dernier
@@ -166,8 +189,9 @@ case 'disconnect':
     if (!mail_can_connect($user)) $out(['ok' => false, 'error' => 'Réservé aux administrateurs et coordinateurs.'], 403);
     require_once __DIR__ . '/demo-guard.php';
     if (ak_demo_session()) $out(['ok' => false, 'error' => 'Désactivé dans l’espace de démonstration.'], 403);
-    mail_disconnect($pdo, $org, true);
+    $revoked = mail_disconnect($pdo, $org, true);
     if (function_exists('activity_log_action')) { try { activity_log_action('mail_disconnect', []); } catch (Throwable $e) {} }
-    $out(['ok' => true]);
+    // google_kept : l'autorisation Google est conservée (même compte Google utilisé pour l'agenda ou une autre association)
+    $out(['ok' => true, 'google_kept' => !$revoked]);
 }
 $out(['ok' => false, 'error' => 'Action inconnue.'], 400);

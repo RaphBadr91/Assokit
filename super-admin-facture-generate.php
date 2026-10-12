@@ -9,6 +9,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/company-helpers.php';
 require_once __DIR__ . '/org-billing-helpers.php';
 require_once __DIR__ . '/invoice-helpers.php';
+require_once __DIR__ . '/trial-helpers.php';   // ak_db_update (colonnes selon le schéma)
 
 require_login();
 $user = current_user();
@@ -52,6 +53,20 @@ if ($org_id <= 0 || $amount_ttc <= 0) {
     exit;
 }
 
+// TVA cohérente avec la société (company_settings.vat_subject) : la facture porte soit une TVA, soit la
+// mention « TVA non applicable, art. 293 B du CGI », jamais les deux (le PDF les affichait ensemble)
+$vat_subject = (int) ak_company('vat_subject') === 1;
+if (!$vat_subject && $vat_rate_input > 0) {
+    $_SESSION['flash_factures'] = ['type' => 'error', 'message' => 'La société n’est pas assujettie à la TVA (art. 293 B du CGI) : la facture est émise sans TVA. Si elle l’est devenue, mettez à jour les paramètres de la société.'];
+    header('Location: /super-admin-factures.php');
+    exit;
+}
+if ($vat_subject && $vat_rate_input <= 0) {
+    $_SESSION['flash_factures'] = ['type' => 'error', 'message' => 'La société est assujettie à la TVA : choisissez le taux applicable.'];
+    header('Location: /super-admin-factures.php');
+    exit;
+}
+
 // Calcul auto TTC → HT + TVA
 $amount_ttc_cents = (int) round($amount_ttc * 100);
 if ($vat_rate_input > 0) {
@@ -70,7 +85,8 @@ try {
         'amount_vat_cents' => $amount_vat_cents,
         'amount_ttc_cents' => $amount_ttc_cents,
         'vat_rate'         => $vat_rate_db,
-        'description'      => 'Abonnement Assokit (test)',
+        // « (test) » seulement sur un spécimen (société non immatriculée), jamais sur une facture légale
+        'description'      => 'Abonnement Assokit' . (ak_invoice_is_test_mode() ? ' (test)' : ''),
         'plan_code'        => 'association',
         'period_start'     => date('Y-m-d'),
         'period_end'       => date('Y-m-d', strtotime('+1 month')),
@@ -113,6 +129,9 @@ function ak_create_invoice_v2(PDO $pdo, int $org_id, array $opts): array
     $amount_ttc_cents = (int)($opts['amount_ttc_cents'] ?? ($amount_ht_cents + $amount_vat_cents));
     $vat_rate         = $opts['vat_rate'] ?? null;
 
+    // Une seule numérotation AK-AAAA-NNNNNN : la séquence est d'abord recalée sur le plus grand numéro
+    // déjà émis (anciennes factures du cron de renouvellement, numérotées sans elle), jamais un doublon
+    ak_invoice_sequence_catch_up($pdo);
     $invoice_number = ak_generate_invoice_number($pdo);
     $year = (int) date('Y');
     preg_match('/-(\d+)$/', $invoice_number, $m);
@@ -169,6 +188,9 @@ function ak_create_invoice_v2(PDO $pdo, int $org_id, array $opts): array
     ]);
 
     $invoice_id = (int) $pdo->lastInsertId();
+    // Mêmes colonnes de montant que les factures du cron de renouvellement (amount_cents = TTC), pour
+    // tous les lecteurs de la table (colonne absente : rien n'est écrit)
+    if (function_exists('ak_db_update')) ak_db_update($pdo, 'invoices', $invoice_id, ['amount_cents' => $amount_ttc_cents]);
     $pdf_path = ak_render_invoice_pdf($pdo, $invoice_id);
 
     return [
@@ -176,4 +198,23 @@ function ak_create_invoice_v2(PDO $pdo, int $org_id, array $opts): array
         'invoice_number' => $invoice_number,
         'pdf_path' => $pdf_path,
     ];
+}
+
+
+/**
+ * Recale invoice_sequences sur le plus grand numéro AK-AAAA-NNNNNN déjà présent dans invoices pour
+ * l'année (ne fait que remonter la séquence). Même règle que cron_invoice_sequence_sync (cron-includes.php)
+ * et la migration 2026-10-11-L11-abonnement.sql : sans elle, un numéro déjà émis par l'ancien cron
+ * pouvait être redonné ici.
+ */
+function ak_invoice_sequence_catch_up(PDO $pdo): void
+{
+    $year = (int) date('Y');
+    $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(invoice_number, '-', -1) AS UNSIGNED)) FROM invoices WHERE invoice_number LIKE :prefix");
+    $stmt->execute([':prefix' => 'AK-' . $year . '-%']);
+    $max = (int) $stmt->fetchColumn();
+    if ($max <= 0) return;
+    $pdo->prepare("INSERT INTO invoice_sequences (year, next_sequence) VALUES (:y, :n)
+                   ON DUPLICATE KEY UPDATE next_sequence = GREATEST(next_sequence, VALUES(next_sequence))")
+        ->execute([':y' => $year, ':n' => $max + 1]);
 }

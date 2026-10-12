@@ -58,7 +58,12 @@ $is_test_mode = (int)$invoice['is_test_mode'] === 1;
 
 // Détermine le taux TVA pour pré-cocher le radio
 $current_vat = $invoice['vat_rate'] !== null ? (float)$invoice['vat_rate'] : 0;
-$current_ttc = (float)$invoice['amount_ttc_cents'] / 100;
+// Facture de l'ancien cron de renouvellement : montant dans amount_cents, échéance dans due_date
+$current_ttc = (float)(!empty($invoice['amount_ttc_cents']) ? $invoice['amount_ttc_cents'] : ($invoice['amount_cents'] ?? 0)) / 100;
+$due_value   = !empty($invoice['due_at']) ? date('Y-m-d', strtotime($invoice['due_at'])) : (string)($invoice['due_date'] ?? '');
+$issued_ts   = !empty($invoice['issued_at']) ? strtotime($invoice['issued_at']) : (!empty($invoice['created_at']) ? strtotime($invoice['created_at']) : false);
+// PDF régénéré seulement avec les coordonnées figées à l'émission (super-admin-facture-edit-save.php)
+$regen_pdf   = !empty($invoice['client_snapshot']);
 
 render_head('Modifier facture ' . $invoice['invoice_number']);
 render_sidebar('abonnements');
@@ -113,7 +118,7 @@ render_sidebar('abonnements');
             </div>
             <div>
                 <div style="color:#6B7280; font-size:11px; text-transform:uppercase; margin-bottom:3px;">Émise le</div>
-                <div style="color:#111827;"><?= h(date('d/m/Y H:i', strtotime($invoice['issued_at']))) ?></div>
+                <div style="color:#111827;"><?= $issued_ts ? h(date('d/m/Y H:i', $issued_ts)) : '—' ?></div>
             </div>
             <div>
                 <div style="color:#6B7280; font-size:11px; text-transform:uppercase; margin-bottom:3px;">Mode</div>
@@ -146,12 +151,17 @@ render_sidebar('abonnements');
                 <label style="display:block; font-size:12px; color:#374151; margin-bottom:8px; font-weight:600;">📋 TVA applicable</label>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
                     <?php
+                    // Taux proposés selon la société (super-admin-facture-edit-save.php refuse les autres
+                    // sur un brouillon) ; le taux déjà porté par la facture reste affiché
+                    $vat_subject = (int) ak_company('vat_subject') === 1;
                     $tva_options = [
                         ['value' => 0,    'label' => 'Pas de TVA',    'note' => 'art. 293 B'],
                         ['value' => 5.5,  'label' => 'TVA 5,5%',      'note' => 'taux réduit'],
                         ['value' => 10,   'label' => 'TVA 10%',       'note' => 'taux intermédiaire'],
                         ['value' => 20,   'label' => 'TVA 20%',       'note' => 'taux normal'],
                     ];
+                    $tva_options = array_values(array_filter($tva_options, fn($o) =>
+                        ($vat_subject === ($o['value'] > 0)) || abs($current_vat - $o['value']) < 0.01));
                     foreach ($tva_options as $opt):
                         $checked = abs($current_vat - $opt['value']) < 0.01;
                     ?>
@@ -206,7 +216,7 @@ render_sidebar('abonnements');
 
                 <div>
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px; font-weight:500;">Échéance</label>
-                    <input type="date" name="due_at" value="<?= h(date('Y-m-d', strtotime($invoice['due_at']))) ?>" required style="width:100%; padding:10px 12px; border:1px solid #E5E7EB; border-radius:8px; font-size:14px;">
+                    <input type="date" name="due_at" value="<?= h($due_value) ?>" <?= ($due_value !== '' || $invoice['status'] === 'draft') ? 'required' : '' ?> style="width:100%; padding:10px 12px; border:1px solid #E5E7EB; border-radius:8px; font-size:14px;">
                 </div>
 
                 <div>
@@ -235,7 +245,7 @@ render_sidebar('abonnements');
             </div>
             <div style="display:flex; gap:10px;">
                 <a href="/super-admin-factures.php" class="btn btn-ghost">Annuler</a>
-                <button type="submit" class="btn btn-primary" style="padding:10px 20px;">💾 Enregistrer + régénérer PDF</button>
+                <button type="submit" class="btn btn-primary" style="padding:10px 20px;">💾 Enregistrer<?= $regen_pdf ? ' + régénérer PDF' : '' ?></button>
             </div>
         </div>
     </form>

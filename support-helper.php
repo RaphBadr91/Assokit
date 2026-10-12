@@ -100,7 +100,8 @@ function support_log_event(int $ticket_id, int $user_id, string $event_type, ?st
  *
  * Si message cote 'org' : notifie tous les SA+Fondateurs (si non-assigne)
  *                         OU juste l'assigne (si assigne)
- * Si message cote 'support' : notifie tous les users de l'asso
+ * Si message cote 'support' : notifie l'auteur du ticket et les admins de l'asso
+ *                             (jamais les adherents ni le financeur suiveur)
  */
 function support_notify_new_message(int $ticket_id, int $author_user_id, string $author_side, string $body): void {
     global $pdo;
@@ -141,7 +142,7 @@ function support_notify_new_message(int $ticket_id, int $author_user_id, string 
                     'new_ticket_message',
                     '💬 Nouveau message — ' . $ticket['title'],
                     $ticket['org_name'] . ' : ' . $body_preview,
-                    '/super-admin/support?id=' . $ticket_id,
+                    '/super-admin/support/' . $ticket_id,
                     (int) $ticket['org_id']
                 );
             }
@@ -162,14 +163,21 @@ function support_notify_new_message(int $ticket_id, int $author_user_id, string 
             }
         }
     } else {
-        // Le cote SUPPORT a ecrit → notifier tous les users de l'asso
+        // Le cote SUPPORT a ecrit → notifier l'auteur du ticket et les admins de l'asso.
+        // Avant : un e-mail a chaque compte actif de l'asso (adherents, financeur suiveur),
+        // avec le texte de la reponse.
         try {
             $stmt = $pdo->prepare("
                 SELECT id, email, first_name FROM users
-                WHERE org_id = ? AND is_active = 1
+                WHERE org_id = ? AND is_active = 1 AND deleted_at IS NULL
+                  AND (id = ? OR role = 'admin')
+                  AND email IS NOT NULL AND email <> ''
             ");
-            $stmt->execute([(int) $ticket['org_id']]);
-            $org_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->execute([(int) $ticket['org_id'], (int) ($ticket['created_by_user_id'] ?? 0)]);
+            $org_users = [];
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $u) {
+                $org_users[strtolower(trim((string) $u['email']))] = $u;   // une adresse, un e-mail
+            }
 
             foreach ($org_users as $u) {
                 // Email Resend uniquement (notifs in-app seulement pour SA/Fondateur dans cette V1)
@@ -218,7 +226,7 @@ function support_render_email_new_message_to_support(array $data): string {
       </div>';
 
     if (function_exists('email_wrap')) {
-        return email_wrap('Nouveau message support', $content, 'Répondre', 'https://assokit.fr/super-admin/support?id=' . (int) $ticket['id']);
+        return email_wrap('Nouveau message support', $content, 'Répondre', 'https://assokit.fr/super-admin/support/' . (int) $ticket['id']);
     }
     return $content;
 }
@@ -244,7 +252,7 @@ function support_render_email_new_message_to_org(array $data): string {
       </div>';
 
     if (function_exists('email_wrap')) {
-        return email_wrap('Réponse support Assokit', $content, 'Voir la conversation', 'https://assokit.fr/support?id=' . (int) $ticket['id']);
+        return email_wrap('Réponse support Assokit', $content, 'Voir la conversation', 'https://assokit.fr/support/ticket/' . (int) $ticket['id']);
     }
     return $content;
 }

@@ -16,7 +16,40 @@ $current = current_user();
 $org_id = (int)($current['org_id'] ?? 0);
 $invoice_id = (int)($_GET['id'] ?? 0);
 
+// Factures de l'abonnement Assokit (adresse de facturation, SIREN, montants) : administrateurs
+// seulement, pour les deux sources, même règle que « Mon abonnement » et l'appli
+// (api/app-subscription-invoices.php). Ni membre, ni bénévole, ni financeur, ni coordinateur.
+require_once __DIR__ . '/finance-permissions.php';
+if (!user_can_view_finances($current)) { http_response_code(403); die('Accès réservé aux administrateurs.'); }
+
 if ($invoice_id <= 0 || $org_id <= 0) { http_response_code(400); die('ID invalide'); }
+
+// Facture Assokit AK-AAAA-NNNNNN (table invoices : cockpit Factures, renouvellements) :
+// PDF déjà généré à l'émission, servi ici et non par son lien direct.
+if (($_GET['source'] ?? '') === 'platform') {
+    require_once __DIR__ . '/trial-helpers.php';
+    $cols = ak_db_columns($pdo, 'invoices');
+    // Sans coordonnées figées (ancienne facture du cron), un PDF éventuel a été régénéré à tort : pas servi
+    $stmt = $pdo->prepare("SELECT invoice_number, pdf_path FROM invoices
+                           WHERE id = ? AND org_id = ? AND status <> 'draft'"
+                           . (isset($cols['is_test_mode']) ? " AND COALESCE(is_test_mode, 0) = 0" : "")
+                           . (isset($cols['client_snapshot']) ? " AND COALESCE(client_snapshot, '') <> ''" : "") . " LIMIT 1");
+    $stmt->execute([$invoice_id, $org_id]);
+    $pinv = $stmt->fetch(PDO::FETCH_ASSOC);
+    $dir = realpath(__DIR__ . '/uploads/invoices');
+    $file = $pinv && !empty($pinv['pdf_path']) ? realpath(__DIR__ . '/' . ltrim((string)$pinv['pdf_path'], '/')) : false;
+    if (!$pinv || !$dir || !$file || strpos($file, $dir . DIRECTORY_SEPARATOR) !== 0 || !preg_match('/\.pdf$/i', $file)) {
+        http_response_code(404); die('Facture introuvable.');
+    }
+    $fname = 'Facture-' . preg_replace('/[^A-Za-z0-9\-]/', '-', (string)$pinv['invoice_number']) . '.pdf';
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: inline; filename="' . $fname . '"');
+    header('Content-Length: ' . filesize($file));
+    header('Cache-Control: private, no-store');
+    header('X-Content-Type-Options: nosniff');
+    readfile($file);
+    exit;
+}
 
 $stmt = $pdo->prepare("SELECT * FROM subscription_invoices WHERE id = ? AND org_id = ? LIMIT 1");
 $stmt->execute([$invoice_id, $org_id]);
@@ -111,7 +144,7 @@ table.totals td { padding: 6px 12px; font-size: 12px; }
 
 <table class="totals">
   <tr><td>Sous-total HT</td><td style="text-align:right;">' . fpdf_amount($inv['amount_ht']) . '</td></tr>
-  <tr><td>TVA (' . number_format((float)$inv['tva_rate'], 2, ',', '') . ' %)</td><td style="text-align:right;">' . fpdf_amount($inv['amount_tva']) . '</td></tr>
+  <tr><td>TVA (' . number_format(isset($inv['tva_rate']) ? (float)$inv['tva_rate'] : ((float)($inv['amount_ht'] ?? 0) > 0 ? round((float)($inv['amount_tva'] ?? 0) / (float)$inv['amount_ht'] * 100, 1) : 0), 2, ',', '') . ' %)</td><td style="text-align:right;">' . fpdf_amount($inv['amount_tva']) . '</td></tr>
   <tr class="total-final"><td>Total TTC</td><td style="text-align:right;">' . fpdf_amount($inv['amount_ttc']) . '</td></tr>
 </table>
 

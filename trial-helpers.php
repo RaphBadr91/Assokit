@@ -751,6 +751,190 @@ if (!function_exists('ak_essai_vers_gratuit')) {
     }
 }
 
+// ============================================================
+// Résiliation : la formule reste jusqu'à la fin de la période, puis Démarrage
+// ============================================================
+// Une ligne résiliée garde sa formule jusqu'à sa « fin d'accès » (ak_sub_access_end), puis passe au
+// plan gratuit Démarrage (ak_sub_expire_cancelled), comme une fin d'essai. Deux formes, le même sens :
+//   - paiement hors Stripe : statut « cancelled » dès la résiliation (cockpit : « Résiliée »), la fin
+//     d'accès écrite dans current_period_end (ak_sub_cancel_manual) ;
+//   - Stripe : « active » avec cancel_at_period_end = 1 jusqu'à ce que Stripe arrête l'abonnement à
+//     l'échéance (webhook customer.subscription.deleted → « cancelled »).
+
+if (!function_exists('ak_sub_access_end')) {
+    /**
+     * Fin d'accès d'une ligne résiliée : son échéance (current_period_end). Sans échéance (résiliation
+     * antérieure à cette règle) : la fin du mois de la résiliation, ou la fin de la période déjà facturée
+     * hors Stripe (organizations.current_period_end) si elle est plus tardive. Une date sans heure compte
+     * pour la journée entière. null si rien ne permet de la dater (la ligne n'est alors pas rétrogradée).
+     * @return ?string 'Y-m-d H:i:s'
+     */
+    function ak_sub_access_end(?string $period_end, ?string $cancelled_at, ?string $org_period_end = null): ?string {
+        $ts = function (?string $d): ?int {
+            $d = trim((string)$d);
+            if ($d === '' || !preg_match('/^(\d{4})-\d{2}-\d{2}/', $d, $m) || (int)$m[1] < 2000) return null;
+            $t = strtotime(strlen($d) === 10 ? $d . ' 23:59:59' : $d);
+            return $t ?: null;
+        };
+        if (($t = $ts($period_end)) !== null) return date('Y-m-d H:i:s', $t);
+        if (($c = $ts($cancelled_at)) === null) return null;
+        $t = (int)strtotime(date('Y-m-t 23:59:59', $c));
+        if (($o = $ts($org_period_end)) !== null && $o > $t) $t = $o;
+        return date('Y-m-d H:i:s', $t);
+    }
+}
+
+if (!function_exists('ak_sub_row_access_end')) {
+    /**
+     * ak_sub_access_end pour une ligne déjà lue (ak_get_current_plan, ak_get_org_active_subscription) :
+     * organizations.current_period_end n'est lue que si la ligne n'a pas d'échéance.
+     */
+    function ak_sub_row_access_end(PDO $pdo, int $org_id, array $sub): ?string {
+        $org_end = null;
+        if (trim((string)($sub['current_period_end'] ?? '')) === '' && isset(ak_db_columns($pdo, 'organizations')['current_period_end'])) {
+            try {
+                $o = $pdo->prepare("SELECT current_period_end FROM organizations WHERE id = ?");
+                $o->execute([$org_id]);
+                $org_end = (string)$o->fetchColumn();
+            } catch (Throwable $e) {}
+        }
+        return ak_sub_access_end($sub['current_period_end'] ?? null, $sub['cancelled_at'] ?? null, $org_end);
+    }
+}
+
+if (!function_exists('ak_sub_cancel_end_date')) {
+    /**
+     * Jusqu'à quand une association garde sa formule si elle résilie MAINTENANT un abonnement payé hors
+     * Stripe : l'échéance de la ligne si elle est à venir, sinon la fin de la période déjà facturée
+     * (organizations.current_period_end, tenue par le cron de renouvellement) si elle est à venir, sinon la
+     * fin du mois en cours. La page d'annulation l'annonce avant la confirmation, ak_sub_cancel_manual l'écrit.
+     * @return string 'Y-m-d H:i:s'
+     */
+    function ak_sub_cancel_end_date(PDO $pdo, int $org_id, ?string $period_end): string {
+        $now = time();
+        $end = ak_sub_access_end($period_end, null);
+        if ($end !== null && strtotime($end) > $now) return $end;
+        if (isset(ak_db_columns($pdo, 'organizations')['current_period_end'])) {
+            try {
+                $o = $pdo->prepare("SELECT current_period_end FROM organizations WHERE id = ?");
+                $o->execute([$org_id]);
+                $end = ak_sub_access_end((string)$o->fetchColumn(), null);
+                if ($end !== null && strtotime($end) > $now) return $end;
+            } catch (Throwable $e) {}
+        }
+        return date('Y-m-t 23:59:59', $now);
+    }
+}
+
+if (!function_exists('ak_sub_cancel_manual')) {
+    /**
+     * Résiliation d'un abonnement payé hors Stripe (facture, virement, offert) : la ligne passe
+     * « cancelled » (résiliation programmée), garde sa formule jusqu'à ak_sub_cancel_end_date, écrite dans
+     * current_period_end, puis ak_sub_expire_cancelled la passe à Démarrage. « Mon abonnement » et
+     * l'ancienne page Abonnement suivent la même règle.
+     * @param array $sub ligne asso_subscriptions (id, current_period_end)
+     * @return string fin d'accès 'Y-m-d H:i:s'
+     */
+    function ak_sub_cancel_manual(PDO $pdo, array $sub, int $org_id): string {
+        $end = ak_sub_cancel_end_date($pdo, $org_id, $sub['current_period_end'] ?? null);
+        ak_db_update($pdo, 'asso_subscriptions', (int)$sub['id'],
+            ['status' => 'cancelled', 'cancel_at_period_end' => 1, 'current_period_end' => $end],
+            ['cancelled_at' => 'NOW()', 'updated_at' => 'NOW()']);
+        return $end;
+    }
+}
+
+if (!function_exists('ak_sub_downgrade_free')) {
+    /**
+     * Fin d'un abonnement résilié : la ligne passe au plan gratuit « demarrage », active, sans résiliation
+     * programmée ni échéance, ni add-on. previous_plan_id garde l'ancienne formule, downgraded_at la date ;
+     * cancelled_at reste (historique). $stripe_ended : l'abonnement est terminé chez Stripe, la ligne cesse d'être « payée
+     * par carte » (sinon « Prélèvement par carte à arrêter » s'afficherait). Ancien libellé recalé.
+     * N'agit que sur une ligne encore résiliée hors Démarrage : deux appels simultanés ne rétrogradent qu'une fois.
+     * @return bool ligne rétrogradée
+     */
+    function ak_sub_downgrade_free(PDO $pdo, int $sub_id, bool $stripe_ended = false): bool {
+        $free = (int)$pdo->query("SELECT id FROM asso_plans WHERE slug = 'demarrage' LIMIT 1")->fetchColumn();
+        if ($free <= 0 || $sub_id <= 0) return false;
+        $cols = ak_db_columns($pdo, 'asso_subscriptions');
+        $cape = isset($cols['cancel_at_period_end']) ? "COALESCE(cancel_at_period_end, 0) = 1" : "0";
+        // MySQL évalue SET de gauche à droite : previous_plan_id lit l'ancien plan_id
+        $sets = [];
+        if (isset($cols['previous_plan_id'])) $sets[] = 'previous_plan_id = plan_id';
+        $sets[] = 'plan_id = ?';
+        $sets[] = "status = 'active'";
+        foreach (['current_period_end', 'grace_period_end'] as $c) if (isset($cols[$c])) $sets[] = "$c = NULL";
+        if (isset($cols['cancel_at_period_end'])) $sets[] = 'cancel_at_period_end = 0';
+        if ($stripe_ended && isset($cols['payment_mode']) && ak_db_accepts($pdo, 'asso_subscriptions', 'payment_mode', 'manual')) {
+            $sets[] = "payment_mode = IF(payment_mode = 'stripe', 'manual', payment_mode)";
+        }
+        if (isset($cols['downgraded_at'])) $sets[] = 'downgraded_at = NOW()';
+        if (isset($cols['updated_at']))    $sets[] = 'updated_at = NOW()';
+        $st = $pdo->prepare("UPDATE asso_subscriptions SET " . implode(', ', $sets) . "
+                             WHERE id = ? AND plan_id <> ? AND (status = 'cancelled' OR (status = 'active' AND $cape))");
+        $st->execute([$free, $sub_id, $free]);
+        if ($st->rowCount() < 1) return false;
+        // Les add-ons de l'abonnement (domaine personnalisé) s'arrêtent avec lui
+        try {
+            $pdo->prepare("UPDATE asso_subscription_addons SET status = 'cancelled' WHERE subscription_id = ? AND status = 'active'")->execute([$sub_id]);
+        } catch (Throwable $e) {}
+        $o = $pdo->prepare("SELECT org_id FROM asso_subscriptions WHERE id = ?");
+        $o->execute([$sub_id]);
+        if ($org_id = (int)$o->fetchColumn()) ak_org_sync_plan_label($pdo, $org_id);
+        return true;
+    }
+}
+
+if (!function_exists('ak_sub_expire_cancelled')) {
+    /**
+     * Résiliations arrivées à échéance → plan gratuit Démarrage (ak_sub_downgrade_free). Seule la ligne
+     * COURANTE d'une association (ak_sub_order) compte : résiliée (« cancelled ») ou à résiliation
+     * programmée (cancel_at_period_end), fin d'accès (ak_sub_access_end) passée. Jamais Démarrage, un plan
+     * d'essai (la fin d'essai s'en charge), une association supprimée ou un espace de démonstration.
+     * Idempotent. Appelée par ak_get_current_plan (formule retirée dès la date passée, même sans cron),
+     * cron-trial-check, cron_subscriptions et le webhook Stripe.
+     * @param int|null $org_id une association, ou null pour toutes
+     * @return int lignes rétrogradées
+     */
+    function ak_sub_expire_cancelled(PDO $pdo, ?int $org_id = null, int $limit = 500): int {
+        $n = 0;
+        try {
+            $cols = ak_db_columns($pdo, 'asso_subscriptions');
+            $ocols = ak_db_columns($pdo, 'organizations');
+            $cape = isset($cols['cancel_at_period_end']) ? "COALESCE(s.cancel_at_period_end, 0)" : "0";
+            $st = $pdo->query("
+                SELECT s.id, s.status, s.current_period_end, $cape AS cape, "
+                . (isset($cols['cancelled_at']) ? "s.cancelled_at" : "NULL") . " AS cancelled_at, "
+                . (isset($cols['stripe_subscription_id']) ? "s.stripe_subscription_id" : "NULL") . " AS stripe_subscription_id, "
+                . (isset($ocols['current_period_end']) ? "o.current_period_end" : "NULL") . " AS org_period_end
+                FROM organizations o
+                JOIN asso_subscriptions s ON s.id = (
+                    SELECT s2.id FROM asso_subscriptions s2 JOIN asso_plans p2 ON p2.id = s2.plan_id
+                    WHERE s2.org_id = o.id ORDER BY " . ak_sub_order('s2') . " LIMIT 1)
+                JOIN asso_plans p ON p.id = s.plan_id
+                WHERE (s.status = 'cancelled' OR (s.status = 'active' AND $cape = 1))
+                  AND p.slug <> 'demarrage' AND NOT (" . ak_plan_trial_sql($pdo) . ")
+                  AND o.deleted_at IS NULL AND (o.slug IS NULL OR o.slug NOT LIKE 'demo-%')"
+                . ($org_id !== null ? " AND o.id = " . (int)$org_id : "") . "
+                ORDER BY s.id
+                LIMIT " . max(1, (int)$limit));
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $end = ak_sub_access_end($r['current_period_end'], $r['cancelled_at'], $r['org_period_end']);
+                if ($end === null || strtotime($end) > time()) continue;
+                // Ligne Stripe « cancelled » (Stripe a arrêté l'abonnement, webhook) ou résiliation programmée
+                // arrivée à échéance (Stripe ne prélève plus rien après la fin de période) : plus « par carte »,
+                // sans attendre le webhook customer.subscription.deleted
+                $stripe_ended = trim((string)$r['stripe_subscription_id']) !== ''
+                    && ($r['status'] === 'cancelled' || (int)$r['cape'] === 1);
+                if (ak_sub_downgrade_free($pdo, (int)$r['id'], $stripe_ended)) $n++;
+            }
+        } catch (Throwable $e) {
+            error_log('[ak_sub_expire_cancelled] ' . ($org_id !== null ? 'org #' . $org_id . ' : ' : '') . get_class($e) . ' ' . $e->getMessage());
+        }
+        return $n;
+    }
+}
+
 if (!function_exists('ak_trial_expired_org_ids')) {
     /**
      * Associations dont l'essai est terminé et pas encore traité par ak_trial_expire() : fin d'essai

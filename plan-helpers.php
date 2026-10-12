@@ -71,13 +71,19 @@ function ak_plan_trial_name(PDO $pdo, string $plan_label): string {
 function ak_plan_trial_info(PDO $pdo, int $org_id): array {
     $info = ['in_trial' => false, 'trial_expired' => false, 'trial_paused' => false, 'trial_ends_at' => null, 'days_left' => null,
              'end_fr' => '', 'end_short' => '', 'ends_today' => false,
-             'plan_label' => '', 'plan_slug' => '', 'badge' => '', 'badge_tone' => 'gray', 'trial_name' => '', 'label' => ''];
+             'plan_label' => '', 'plan_slug' => '', 'badge' => '', 'badge_tone' => 'gray', 'trial_name' => '', 'label' => '',
+             'cancel_scheduled' => false, 'access_until' => null, 'access_until_fr' => ''];
     if ($org_id <= 0 || !function_exists('ak_org_plan_state')) return $info;
     // Ligne d'abonnement courante garantie (essai ou Démarrage, comme pour les quotas) : sans elle,
     // ak_org_plan_state() retomberait sur l'ancien libellé organizations.plan (« Association »…)
     // alors que les fonctionnalités appliquées sont celles d'ak_get_current_plan().
-    ak_get_current_plan($pdo, $org_id);
+    $cur = ak_get_current_plan($pdo, $org_id);
     $st = ak_org_plan_state($pdo, $org_id);
+    // Compte historique sans ligne (ak_legacy_plan_row) : la formule appliquée, pas l'ancien libellé
+    if ($cur && !empty($cur['legacy_plan']) && empty($st['is_trial'])) {
+        $st['plan_label'] = ak_plan_display_name($cur);
+        $st['plan_slug'] = (string)$cur['slug'];
+    }
     $info['trial_expired'] = !empty($st['trial_expired']);
     // Essai suspendu à la main : ni « en cours » (fonctionnalités, achat) ni « terminé », comme le cockpit
     $info['trial_paused']  = !empty($st['trial_paused']) && !$info['trial_expired'];
@@ -106,6 +112,20 @@ function ak_plan_trial_info(PDO $pdo, int $org_id): array {
             . ($d !== null ? ' (' . ($d <= 0 ? 'dernier jour' : 'J-' . $d) . ')' : '');
     } else {
         $info['label'] = $info['plan_label'];
+        // Résiliation : la formule reste jusqu'à la fin de la période (ak_sub_access_end), puis Démarrage.
+        // « Résiliée » (paiement hors Stripe) ou « Résiliation programmée » (Stripe), avec la date, partout.
+        if ($cur && (($cur['status'] ?? '') === 'cancelled' || !empty($cur['cancel_at_period_end']))
+            && ($cur['slug'] ?? '') !== 'demarrage' && empty($cur['is_trial']) && ($cur['slug'] ?? '') !== 'pro-essai'
+            && function_exists('ak_sub_row_access_end')) {
+            $until = ak_sub_row_access_end($pdo, $org_id, $cur);
+            $info['cancel_scheduled'] = true;
+            $info['access_until']     = $until;
+            $info['access_until_fr']  = $until ? date('d/m/Y', strtotime($until)) : '';
+            $info['badge'] = ($cur['status'] ?? '') === 'cancelled'
+                ? 'Résiliée' . ($until ? ' · accès jusqu’au ' . $info['access_until_fr'] : '')
+                : 'Résiliation programmée' . ($until ? ' le ' . $info['access_until_fr'] : '');
+            $info['badge_tone'] = 'cancelled';
+        }
     }
     return $info;
 }
@@ -150,7 +170,8 @@ function ak_get_current_plan(PDO $pdo, int $org_id): ?array {
         // Mode de paiement de la ligne courante (mon-asso-plan) : lu seulement si les colonnes existent
         $scols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'asso_subscriptions') : [];
         $pay = (isset($scols['payment_mode']) ? ", s.payment_mode" : "")
-             . (isset($scols['stripe_subscription_id']) ? ", s.stripe_subscription_id" : "");
+             . (isset($scols['stripe_subscription_id']) ? ", s.stripe_subscription_id" : "")
+             . (isset($scols['cancel_at_period_end']) ? ", COALESCE(s.cancel_at_period_end, 0) AS cancel_at_period_end" : "");
         $st = $pdo->prepare("
             SELECT
               s.id AS subscription_id, s.status, s.started_at, s.current_period_end,
@@ -165,6 +186,18 @@ function ak_get_current_plan(PDO $pdo, int $org_id): ?array {
         ");
         $st->execute([':o' => $org_id]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
+
+        // Abonnement résilié dont la période est finie : la formule s'arrête, l'association passe au plan
+        // gratuit Démarrage (ak_sub_expire_cancelled, trial-helpers.php) dès cette lecture, cron ou pas.
+        if ($row && (($row['status'] ?? '') === 'cancelled' || !empty($row['cancel_at_period_end']))
+            && ($row['slug'] ?? '') !== 'demarrage' && empty($row['is_trial']) && ($row['slug'] ?? '') !== 'pro-essai'
+            && function_exists('ak_sub_expire_cancelled')) {
+            $end = function_exists('ak_sub_access_end') ? ak_sub_access_end($row['current_period_end'] ?? null, null) : null;
+            if (($end === null || strtotime($end) <= time()) && ak_sub_expire_cancelled($pdo, $org_id, 1) > 0) {
+                $st->execute([':o' => $org_id]);
+                $row = $st->fetch(PDO::FETCH_ASSOC);
+            }
+        }
 
         if (!$row) {
             // Association en essai sans ligne d'abonnement : on crée la ligne d'ESSAI (jamais
@@ -182,6 +215,13 @@ function ak_get_current_plan(PDO $pdo, int $org_id): ?array {
                     return ak_get_current_plan($pdo, $org_id);
                 }
             }
+            // Compte historique (créé avant les abonnements, ancien libellé organizations.plan payant) :
+            // il garde la formule équivalente, sans ligne créée, jamais une rétrogradation en Démarrage
+            $legacy = ak_legacy_plan_row($pdo, $org_id);
+            if ($legacy) {
+                $cache[$org_id] = $legacy;
+                return $legacy;
+            }
             // Pas d'abonnement → on auto-crée un Démarrage
             $defaultPlanId = (int)$pdo->query("SELECT id FROM asso_plans WHERE slug='demarrage' LIMIT 1")->fetchColumn();
             if ($defaultPlanId > 0) {
@@ -196,6 +236,47 @@ function ak_get_current_plan(PDO $pdo, int $org_id): ?array {
         return $row;
     } catch (Throwable $e) {
         error_log('[ak_get_current_plan] ' . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Formule d'une association active SANS ligne d'abonnement (compte historique) d'après l'ancien libellé
+ * organizations.plan : un plan existant du même slug, sinon « association » / « pro » → Assokit,
+ * « organisation » (199 €/mois, Sur-mesure dans les démos) → Sur-mesure, ou un ancien montant mensuel
+ * payant → Assokit (« essentiel », l'ancienne offre gratuite, seulement avec un tel montant). Aucune ligne n'est créée : le Fondateur régularise depuis le cockpit (« Plan »),
+ * le cron de renouvellement continue de la signaler « à facturer à la main », et rien ne change dans ce
+ * qui est facturé. Ligne virtuelle au format d'ak_get_current_plan (subscription_id null, legacy_plan =
+ * ancien libellé). null : libellé gratuit, d'essai ou inconnu sans montant, association non active.
+ */
+function ak_legacy_plan_row(PDO $pdo, int $org_id): ?array {
+    try {
+        $o = $pdo->prepare("SELECT * FROM organizations WHERE id = :o");
+        $o->execute([':o' => $org_id]);
+        $org = $o->fetch(PDO::FETCH_ASSOC);
+        if (!$org || !in_array((string)($org['status'] ?? ''), ['active', ''], true)) return null;
+        $label = strtolower(trim((string)($org['plan'] ?? '')));
+        $paid_amount = (int)($org['monthly_price_cents'] ?? 0) > 0;
+        if (in_array($label, ['demarrage', 'gratuit', 'free', 'trial', 'essai', 'pro-essai'], true)) return null;
+        // « essentiel » = l'offre gratuite (« Essentiel (gratuit) » à la création par le Fondateur, DÉMARRAGE
+        // dans les démos) : Démarrage, sauf ancien montant mensuel payant
+        if ($label === 'essentiel' && !$paid_amount) return null;
+        $map = ['association' => 'assokit', 'pro' => 'assokit', 'organisation' => 'sur-mesure'];
+        $trial = function_exists('ak_plan_trial_sql') ? " AND NOT (" . ak_plan_trial_sql($pdo) . ")" : " AND p.slug <> 'pro-essai'";
+        $find = $pdo->prepare("SELECT p.* FROM asso_plans p WHERE p.slug = ?$trial LIMIT 1");
+        $plan = null;
+        foreach (array_filter([$label, $map[$label] ?? null, $paid_amount ? 'assokit' : null]) as $slug) {
+            $find->execute([$slug]);
+            if ($plan = $find->fetch(PDO::FETCH_ASSOC)) break;
+        }
+        if (!$plan || $plan['slug'] === 'demarrage') return null;
+        return array_merge([
+            'subscription_id' => null, 'status' => 'active', 'started_at' => null, 'current_period_end' => null,
+            'grace_period_end' => null, 'downgraded_at' => null, 'cancelled_at' => null, 'previous_plan_id' => null,
+            'notes' => null, 'payment_mode' => 'manual', 'stripe_subscription_id' => null, 'cancel_at_period_end' => 0,
+        ], $plan, ['plan_id' => (int)$plan['id'], 'legacy_plan' => $label]);
+    } catch (Throwable $e) {
+        error_log('[ak_legacy_plan_row] org #' . $org_id . ' : ' . get_class($e));
         return null;
     }
 }
@@ -250,19 +331,24 @@ function ak_get_usage(PDO $pdo, int $org_id): array {
             try { $st->execute([':o' => $org_id]); $usage['contacts'] = (int)$st->fetchColumn(); } catch (Throwable $e) {}
         }
 
-        // IA texte sur le mois en cours
-        if (ak_table_exists($pdo, 'asso_ai_logs')) {
+        // IA texte / image sur le mois en cours : les générations réussies réellement enregistrées
+        // (asso_ai_generations, écrite par ak_ai_save_generation). L'ancienne table asso_ai_logs
+        // n'est alimentée nulle part : le compteur restait à 0 et la limite du plan jamais appliquée.
+        $ai_table = ak_table_exists($pdo, 'asso_ai_generations') ? 'asso_ai_generations'
+                  : (ak_table_exists($pdo, 'asso_ai_logs') ? 'asso_ai_logs' : null);
+        if ($ai_table !== null) {
+            $ok = $ai_table === 'asso_ai_generations' ? " AND status = 'success'" : '';
             $st = $pdo->prepare("
-                SELECT COUNT(*) FROM asso_ai_logs
-                WHERE org_id = :o
+                SELECT COUNT(*) FROM {$ai_table}
+                WHERE org_id = :o{$ok}
                   AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')
                   AND (tool_type IS NULL OR tool_type NOT LIKE 'image-%')
             ");
             try { $st->execute([':o' => $org_id]); $usage['ai_text_month'] = (int)$st->fetchColumn(); } catch (Throwable $e) {}
 
             $st = $pdo->prepare("
-                SELECT COUNT(*) FROM asso_ai_logs
-                WHERE org_id = :o
+                SELECT COUNT(*) FROM {$ai_table}
+                WHERE org_id = :o{$ok}
                   AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')
                   AND tool_type LIKE 'image-%'
             ");
@@ -544,6 +630,10 @@ function ak_get_subscription_status(PDO $pdo, int $org_id): array {
         'trial_label'     => $ti['label'],
         'badge'           => $ti['badge'],
         'badge_tone'      => $ti['badge_tone'],
+        // Résiliation en cours : formule gardée jusqu'à access_until, puis Démarrage
+        'cancel_scheduled' => $ti['cancel_scheduled'],
+        'access_until'     => $ti['access_until'],
+        'access_until_fr'  => $ti['access_until_fr'],
     ];
     if (!$plan) {
         return ['status' => 'none', 'is_overdue' => false, 'in_grace_period' => false, 'days_remaining' => 0, 'show_overlay' => false,
@@ -695,13 +785,14 @@ function ak_render_overdue_overlay(PDO $pdo, int $org_id): string {
 
     $html .= '<div style="display:flex;flex-direction:column;gap:10px;">';
     // URL régulariser dynamique : Stripe direct si configuré
-    $regularize_url = function_exists('ak_get_regularize_url') ? ak_get_regularize_url($pdo, $org_id) : '/mon-asso-plan?action=pay';
+    $regularize_url = function_exists('ak_get_regularize_url') ? ak_get_regularize_url($pdo, $org_id) : '/contact?subject=billing';
     // 1. CTA principal — Régulariser
     $html .= '<a href="' . htmlspecialchars($regularize_url, ENT_QUOTES, 'UTF-8') . '" style="background:linear-gradient(180deg,#059669 0%,#047857 100%);color:white;padding:14px 24px;border-radius:12px;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 4px 14px rgba(5,150,105,0.30);">💳 Régulariser le paiement</a>';
     // 2. CTA secondaire — Contact (NOUVEAU)
     $html .= '<a href="/contact?subject=billing" style="background:#F0F9FF;color:#0C4A6E;padding:13px 24px;border-radius:12px;text-decoration:none;font-weight:600;font-size:14px;border:1px solid #BAE6FD;display:inline-flex;align-items:center;justify-content:center;gap:8px;">📞 Nous contacter — On va trouver une solution</a>';
-    // 3. CTA tertiaire — Downgrade (en mode discret)
-    $html .= '<a href="/mon-asso-plan?action=downgrade" style="background:transparent;color:#64748B;padding:10px 24px;border-radius:12px;text-decoration:none;font-size:13px;border:1px solid #E2E8F0;">↓ Passer au plan Démarrage (gratuit)</a>';
+    // 3. CTA tertiaire — Downgrade (en mode discret) : page de confirmation (POST + CSRF), qui arrête
+    // l'abonnement impayé et passe l'association en Démarrage tout de suite
+    $html .= '<a href="/mon-asso-annuler-abonnement" style="background:transparent;color:#64748B;padding:10px 24px;border-radius:12px;text-decoration:none;font-size:13px;border:1px solid #E2E8F0;">↓ Passer au plan Démarrage (gratuit)</a>';
     $html .= '</div>';
 
     $html .= '<p style="color:#DC2626;font-size:12px;margin:18px 0 0;line-height:1.5;">';
@@ -740,7 +831,7 @@ function ak_render_grace_banner(PDO $pdo, int $org_id): string {
     $html .= '</div>';
     $html .= '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
     // URL régulariser dynamique : Stripe direct si configuré, sinon /contact
-    $regularize_url = function_exists('ak_get_regularize_url') ? ak_get_regularize_url($pdo, $org_id) : '/mon-asso-plan?action=pay';
+    $regularize_url = function_exists('ak_get_regularize_url') ? ak_get_regularize_url($pdo, $org_id) : '/contact?subject=billing';
     $html .= '<a href="' . htmlspecialchars($regularize_url, ENT_QUOTES, 'UTF-8') . '" style="background:#EA580C;color:white;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">💳 Régulariser</a>';
     $html .= '<a href="/contact?subject=billing" style="background:white;color:#9A3412;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;border:1px solid #FDBA74;">📞 Nous contacter</a>';
     $html .= '</div>';

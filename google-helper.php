@@ -76,7 +76,7 @@ function google_api_call($connection, $method, $endpoint, $body = null, $query_p
         $connection['access_token'] = $new_token;
     }
 
-    $url = 'https://www.googleapis.com/calendar/v3/' . ltrim($endpoint, '/');
+    $url = (defined('GOOGLE_CALENDAR_API') ? GOOGLE_CALENDAR_API : 'https://www.googleapis.com/calendar/v3/') . ltrim($endpoint, '/');
     if (!empty($query_params)) $url .= '?' . http_build_query($query_params);
 
     $ch = curl_init($url);
@@ -239,13 +239,13 @@ function delete_event_from_google($event_id) {
     return $result;
 }
 
-function pull_events_from_google($org_id) {
+function pull_events_from_google($org_id, $retried = false) {
     global $pdo;
     $connection = get_org_google_connection($org_id);
     if (!$connection) return ['success' => false, 'error' => 'Pas de connexion Google'];
 
     $calendar_id = urlencode($connection['google_calendar_id']);
-    $query_params = [];
+    $query_params = ['maxResults' => 2500];   // 250 par défaut : moins d'appels
 
     if (!empty($connection['sync_token'])) {
         $query_params['syncToken'] = $connection['sync_token'];
@@ -255,33 +255,46 @@ function pull_events_from_google($org_id) {
         $query_params['singleEvents'] = 'true';
     }
 
-    $result = google_api_call($connection, 'GET', "calendars/{$calendar_id}/events", null, $query_params);
-
-    if (!$result['success'] && ($result['http_code'] ?? 0) === 410) {
-        $pdo->prepare("UPDATE org_google_calendar SET sync_token = NULL WHERE id = ?")->execute([$connection['id']]);
-        return pull_events_from_google($org_id);
-    }
-
-    if (!$result['success']) {
-        sync_log($org_id, null, 'pull', 'list', 'error', $result['error']);
-        return ['success' => false, 'error' => $result['error']];
-    }
-
+    // Google répond par pages : on les lit toutes, et seule la dernière porte le
+    // nextSyncToken de la synchro suivante (sans lui, chaque passage relirait la première page).
     $stats = ['imported' => 0, 'updated' => 0, 'deleted' => 0, 'errors' => []];
-    $items = $result['data']['items'] ?? [];
+    $next_sync_token = null;
+    $page_token = null;
+    $pages = 0;
+    do {
+        $params = $query_params + ($page_token !== null ? ['pageToken' => $page_token] : []);
+        $result = google_api_call($connection, 'GET', "calendars/{$calendar_id}/events", null, $params);
 
-    foreach ($items as $item) {
-        try {
-            $outcome = google_event_to_assokit($item, $org_id, $connection['connected_by_user_id']);
-            if ($outcome) $stats[$outcome]++;
-        } catch (Exception $e) {
-            $stats['errors'][] = $e->getMessage();
+        if (!$result['success'] && ($result['http_code'] ?? 0) === 410 && !$retried) {
+            // Jeton de synchro périmé : on repart d'une lecture complète (une seule fois)
+            $pdo->prepare("UPDATE org_google_calendar SET sync_token = NULL WHERE id = ?")->execute([$connection['id']]);
+            return pull_events_from_google($org_id, true);
         }
-    }
 
-    if (!empty($result['data']['nextSyncToken'])) {
+        if (!$result['success']) {
+            sync_log($org_id, null, 'pull', 'list', 'error', $result['error']);
+            return ['success' => false, 'error' => $result['error']];
+        }
+
+        foreach ($result['data']['items'] ?? [] as $item) {
+            try {
+                $outcome = google_event_to_assokit($item, $org_id, $connection['connected_by_user_id']);
+                if ($outcome) $stats[$outcome]++;
+            } catch (Exception $e) {
+                $stats['errors'][] = $e->getMessage();
+            }
+        }
+
+        $page_token = !empty($result['data']['nextPageToken']) ? (string)$result['data']['nextPageToken'] : null;
+        if (!empty($result['data']['nextSyncToken'])) $next_sync_token = $result['data']['nextSyncToken'];
+        $pages++;
+        // Jeton d'accès éventuellement rafraîchi pendant la lecture : on le reprend pour la page suivante
+        if ($page_token !== null) $connection = get_org_google_connection($org_id) ?: $connection;
+    } while ($page_token !== null && $pages < 40);
+
+    if ($next_sync_token) {
         $pdo->prepare("UPDATE org_google_calendar SET sync_token = ?, last_pull_at = NOW() WHERE id = ?")
-            ->execute([$result['data']['nextSyncToken'], $connection['id']]);
+            ->execute([$next_sync_token, $connection['id']]);
     } else {
         $pdo->prepare("UPDATE org_google_calendar SET last_pull_at = NOW() WHERE id = ?")->execute([$connection['id']]);
     }
@@ -325,8 +338,10 @@ function google_event_to_assokit($google_event, $org_id, $default_user_id) {
     $gcolor = gcal_color_hex($google_event['colorId'] ?? '');
     if (!$gcolor) $gcolor = gcal_color_from_title($google_event['summary'] ?? '');
 
-    $stmt = $pdo->prepare("SELECT id, sync_origin FROM events WHERE google_event_id = ? LIMIT 1");
-    $stmt->execute([$google_id]);
+    // Le même événement Google peut exister dans deux associations (agenda partagé,
+    // invitation commune) : chacune ne lit et ne modifie que sa propre copie.
+    $stmt = $pdo->prepare("SELECT id, sync_origin FROM events WHERE google_event_id = ? AND org_id = ? LIMIT 1");
+    $stmt->execute([$google_id, $org_id]);
     $existing = $stmt->fetch();
 
     if (($google_event['status'] ?? '') === 'cancelled') {
@@ -377,12 +392,20 @@ function google_event_to_assokit($google_event, $org_id, $default_user_id) {
     return 'imported';
 }
 
+/**
+ * Déconnecte l'agenda Google de l'association.
+ * @return true|string 'kept' quand l'autorisation Google a été conservée : le même compte
+ *                     Google sert encore à Assokit ailleurs (boîte mail, autre association),
+ *                     et Google retire tous les accès d'un compte d'un seul coup.
+ */
 function disconnect_google($org_id) {
     global $pdo;
     $connection = get_org_google_connection($org_id);
     if (!$connection) return true;
 
-    if (!empty($connection['access_token'])) {
+    require_once __DIR__ . '/mail-helpers.php';
+    $kept = mail_google_account_in_use($pdo, (string)($connection['google_email'] ?? ''), 0, (int)$org_id);
+    if (!$kept && !empty($connection['access_token'])) {
         $ch = curl_init('https://oauth2.googleapis.com/revoke?token=' . urlencode($connection['access_token']));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
@@ -394,5 +417,5 @@ function disconnect_google($org_id) {
     $pdo->prepare("DELETE FROM org_google_calendar WHERE org_id = ?")->execute([$org_id]);
     $pdo->prepare("UPDATE events SET google_event_id = NULL, synced_at = NULL WHERE org_id = ?")->execute([$org_id]);
 
-    return true;
+    return $kept ? 'kept' : true;
 }

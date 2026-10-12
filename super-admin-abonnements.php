@@ -15,6 +15,11 @@
  *   2. La facture passe de "draft" a "sent" quand envoyee
  *   3. Quand l'asso paye (virement, cheque), le super admin l'enregistre
  *   4. La facture passe a "paid"
+ *
+ * Chaque action se termine par une redirection 303 (rechargement sans renvoi du formulaire).
+ * Seule une facture envoyée ou en retard peut être payée (une seule fois, comme dans l'appli
+ * Fondateur) ; une facture payée n'est jamais annulée. Les e-mails partent à l'adresse de
+ * facturation de l'association (sinon à son premier admin) et l'écran dit s'ils sont partis.
  */
 
 require_once __DIR__ . '/config.php';
@@ -22,181 +27,233 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-plan-state-helpers.php';
 @require_once __DIR__ . '/resend-helper.php';
+require_once __DIR__ . '/trial-helpers.php';   // ak_db_columns / ak_db_insert (colonnes selon le schéma)
 require_login();
 $user = sa_require_super_admin();
 
-$error = null;
-$success = null;
+// Message de l'action précédente (motif PRG : chaque POST se termine par une redirection 303, un
+// rechargement de la page ne renvoie jamais le formulaire, donc ni seconde facture ni second paiement)
+$flash = $_SESSION['sa_abonnements_flash'] ?? null;
+unset($_SESSION['sa_abonnements_flash']);
+$error = ($flash && $flash['type'] === 'error') ? $flash['message'] : null;
+$success = ($flash && $flash['type'] === 'success') ? $flash['message'] : null;
+$warning = ($flash && $flash['type'] === 'warning') ? $flash['message'] : null;
+
+/**
+ * Destinataire des e-mails de facturation : adresse de facturation de l'association, sinon son
+ * premier administrateur actif (la colonne organizations.email n'existe pas : la requête échouait
+ * et aucun e-mail ne partait). ['name' => …, 'recipient' => …] ou null.
+ */
+function sa_abo_recipient(PDO $pdo, int $org_id): ?array {
+    $ocols = ak_db_columns($pdo, 'organizations');
+    $ucols = ak_db_columns($pdo, 'users');
+    $mails = [];
+    foreach (['billing_email', 'email'] as $c) if (isset($ocols[$c])) $mails[] = "NULLIF(o.$c, '')";
+    $mails[] = "(SELECT u.email FROM users u WHERE u.org_id = o.id AND u.role = 'admin' AND u.is_active = 1"
+             . (isset($ucols['deleted_at']) ? " AND u.deleted_at IS NULL" : "") . " ORDER BY u.id ASC LIMIT 1)";
+    $st = $pdo->prepare("SELECT o.name, COALESCE(" . implode(', ', $mails) . ") AS recipient FROM organizations o WHERE o.id = ? LIMIT 1");
+    $st->execute([$org_id]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    $row['recipient'] = trim((string)($row['recipient'] ?? ''));
+    return $row;
+}
+
+/** Envoi d'un e-mail de facturation : true seulement s'il est réellement parti. */
+function sa_abo_send(?array $org, string $subject, string $html, string $tag, string $log): bool {
+    if (!$org || $org['recipient'] === '' || !filter_var($org['recipient'], FILTER_VALIDATE_EMAIL) || !function_exists('send_transactional_email')) return false;
+    try {
+        $res = send_transactional_email($org['recipient'], $subject, $html, ['tag' => $tag]);
+    } catch (Throwable $e) {
+        $res = ['success' => false, 'error' => $e->getMessage()];
+    }
+    if (empty($res['success'])) error_log('[super-admin-abonnements] ' . $log . ' : ' . ($res['error'] ?? 'échec'));
+    return !empty($res['success']);
+}
+
+/** Date AAAA-MM-JJ valide, sinon null. */
+function sa_abo_date(string $v): ?string {
+    return (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m) && checkdate((int)$m[2], (int)$m[3], (int)$m[1])) ? $v : null;
+}
 
 // =====================================================================
 // Traitement POST
 // =====================================================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && check_csrf($_POST['csrf_token'] ?? '')) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $flash = null;
+    if (!function_exists('check_csrf') || !check_csrf($_POST['csrf_token'] ?? '')) {
+        $flash = ['type' => 'error', 'message' => 'Session expirée : rechargez la page et recommencez.'];
+    } else {
     $action = $_POST['action'] ?? '';
 
     // ---- CREATE INVOICE ----
     if ($action === 'create_invoice') {
         $org_id = (int) ($_POST['org_id'] ?? 0);
-        $period_start = $_POST['period_start'] ?? '';
-        $period_end = $_POST['period_end'] ?? '';
-        $amount_ht = (float) ($_POST['amount_ht'] ?? 0);
-        $tva_rate = (float) ($_POST['tva_rate'] ?? 20);
-        $due_date = $_POST['due_date'] ?? '';
+        $period_start = sa_abo_date((string) ($_POST['period_start'] ?? ''));
+        $period_end = sa_abo_date((string) ($_POST['period_end'] ?? ''));
+        $amount_ht = round((float) str_replace(',', '.', (string) ($_POST['amount_ht'] ?? 0)), 2);
+        $tva_rate = (float) str_replace(',', '.', (string) ($_POST['tva_rate'] ?? 20));
+        $due_date = sa_abo_date((string) ($_POST['due_date'] ?? ''));
 
-        if (!$org_id || !$period_start || !$period_end || !$amount_ht) {
-            $error = 'Tous les champs sont obligatoires.';
+        $org_ok = false;
+        if ($org_id > 0) {
+            $chk = $pdo->prepare("SELECT 1 FROM organizations WHERE id = ?");
+            $chk->execute([$org_id]);
+            $org_ok = (bool) $chk->fetchColumn();
+        }
+        if (!$org_ok || !$period_start || !$period_end || $amount_ht <= 0) {
+            $flash = ['type' => 'error', 'message' => 'Tous les champs sont obligatoires (association, période, montant HT positif).'];
+        } elseif ($period_end < $period_start) {
+            $flash = ['type' => 'error', 'message' => 'La fin de période est antérieure à son début.'];
+        } elseif ($tva_rate < 0 || $tva_rate > 100) {
+            $flash = ['type' => 'error', 'message' => 'Taux de TVA invalide.'];
         } else {
             $amount_tva = round($amount_ht * $tva_rate / 100, 2);
             $amount_ttc = round($amount_ht + $amount_tva, 2);
 
-            // Generer un numero de facture : AAAA-XXXX
-            $year = date('Y');
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM subscription_invoices WHERE invoice_number LIKE ?");
-            $stmt->execute([$year . '-%']);
-            $count = (int) $stmt->fetchColumn();
-            $invoice_number = sprintf('%s-%04d', $year, $count + 1);
+            // Double envoi du formulaire (double clic) : la même facture n'est pas créée deux fois
+            $dup = $pdo->prepare("SELECT invoice_number FROM subscription_invoices
+                                  WHERE org_id = ? AND period_start = ? AND period_end = ? AND amount_ttc = ?
+                                    AND COALESCE(status, '') <> 'cancelled' AND created_at >= NOW() - INTERVAL 10 MINUTE
+                                  ORDER BY id DESC LIMIT 1");
+            $dup->execute([$org_id, $period_start, $period_end, $amount_ttc]);
+            $dup_number = $dup->fetchColumn();
+            if ($dup_number) {
+                $flash = ['type' => 'warning', 'message' => "La facture {$dup_number} vient déjà d’être créée pour cette période : aucune seconde facture."];
+            } else {
+                // Numéro AAAA-XXXX : le plus grand numéro de l'année + 1 (COUNT + 1 redonnait un numéro
+                // existant dès qu'une facture manquait dans la suite)
+                $year = date('Y');
+                $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(invoice_number, '-', -1) AS UNSIGNED)) FROM subscription_invoices WHERE invoice_number LIKE ?");
+                $stmt->execute([$year . '-%']);
+                $invoice_number = sprintf('%s-%04d', $year, (int) $stmt->fetchColumn() + 1);
 
-            $stmt = $pdo->prepare("
-                INSERT INTO subscription_invoices
-                    (org_id, invoice_number, period_start, period_end,
-                     amount_ht, tva_rate, amount_tva, amount_ttc,
-                     status, issued_at, due_date, created_by_user_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', CURDATE(), ?, ?, NOW())
-            ");
-            $stmt->execute([
-                $org_id, $invoice_number, $period_start, $period_end,
-                $amount_ht, $tva_rate, $amount_tva, $amount_ttc,
-                $due_date ?: null, (int) $user['id']
-            ]);
+                ak_db_insert($pdo, 'subscription_invoices', [
+                    'org_id' => $org_id, 'invoice_number' => $invoice_number,
+                    'period_start' => $period_start, 'period_end' => $period_end,
+                    'amount_ht' => $amount_ht, 'tva_rate' => $tva_rate, 'amount_tva' => $amount_tva, 'amount_ttc' => $amount_ttc,
+                    'status' => 'sent', 'issued_at' => date('Y-m-d'), 'due_date' => $due_date,
+                    'created_by_user_id' => (int) $user['id'],
+                ], ['created_at' => 'NOW()']);
 
-            sa_log_action((int) $user['id'], 'create_invoice', $org_id, null, [
-                'invoice_number' => $invoice_number,
-                'amount_ttc' => $amount_ttc,
-            ]);
+                sa_log_action((int) $user['id'], 'create_invoice', $org_id, null, [
+                    'invoice_number' => $invoice_number,
+                    'amount_ttc' => $amount_ttc,
+                ]);
 
-            // Envoi email facture via Resend (a l'email de l'asso si defini, sinon au premier admin)
-            if (function_exists('send_transactional_email')) {
-                try {
-                    $stmt_org = $pdo->prepare("
-                        SELECT o.name, o.email,
-                               (SELECT u.email FROM users u WHERE u.org_id = o.id AND u.role = 'admin' AND u.is_active = 1 ORDER BY u.id ASC LIMIT 1) AS admin_email
-                        FROM organizations o WHERE o.id = ?
-                    ");
-                    $stmt_org->execute([$org_id]);
-                    $org_data = $stmt_org->fetch(PDO::FETCH_ASSOC);
-                    $recipient = $org_data['email'] ?: $org_data['admin_email'];
+                // Envoi email facture via Resend (adresse de facturation de l'asso, sinon premier admin)
+                $org_data = sa_abo_recipient($pdo, $org_id);
+                $sent = function_exists('render_email_invoice_sent') && sa_abo_send($org_data,
+                    'Nouvelle facture ' . $invoice_number . ' — Assokit',
+                    render_email_invoice_sent([
+                        'org_name' => $org_data['name'] ?? '',
+                        'invoice_number' => $invoice_number,
+                        'amount_ttc' => $amount_ttc,
+                        'period_start' => $period_start,
+                        'period_end' => $period_end,
+                        'due_date' => $due_date,
+                    ]),
+                    'invoice_sent', 'e-mail facture ' . $invoice_number);
 
-                    if ($recipient) {
-                        send_transactional_email(
-                            $recipient,
-                            'Nouvelle facture ' . $invoice_number . ' — Assokit',
-                            render_email_invoice_sent([
-                                'org_name' => $org_data['name'],
-                                'invoice_number' => $invoice_number,
-                                'amount_ttc' => $amount_ttc,
-                                'period_start' => $period_start,
-                                'period_end' => $period_end,
-                                'due_date' => $due_date,
-                            ]),
-                            ['tag' => 'invoice_sent']
-                        );
-                    }
-                } catch (Throwable $e) {
-                    error_log('Invoice email fail: ' . $e->getMessage());
-                }
+                $amount_fr = number_format($amount_ttc, 2, ',', ' ') . ' € TTC';
+                $flash = $sent
+                    ? ['type' => 'success', 'message' => "Facture {$invoice_number} créée ({$amount_fr}) et envoyée par email à " . $org_data['recipient'] . '.']
+                    : ['type' => 'warning', 'message' => "Facture {$invoice_number} créée ({$amount_fr}), mais l’e-mail n’est pas parti"
+                        . (empty($org_data['recipient']) ? ' (aucune adresse e-mail pour cette association)' : '') . ' : envoyez-la au client vous-même.'];
             }
-
-            $success = "Facture {$invoice_number} créée (" . number_format($amount_ttc, 2, ',', ' ') . " € TTC) et envoyée par email.";
         }
     }
 
     // ---- MARK AS PAID ----
     elseif ($action === 'mark_paid') {
         $invoice_id = (int) ($_POST['invoice_id'] ?? 0);
-        $payment_date = $_POST['payment_date'] ?? date('Y-m-d');
-        $payment_method = $_POST['payment_method'] ?? 'virement';
-        $reference = trim($_POST['reference'] ?? '');
+        $today = date('Y-m-d');
+        $payment_date = sa_abo_date((string) ($_POST['payment_date'] ?? '')) ?? $today;
+        if ($payment_date > $today) $payment_date = $today;
+        $payment_method = (string) ($_POST['payment_method'] ?? 'virement');
+        if (!in_array($payment_method, ['virement', 'cheque', 'especes', 'carte', 'autre'], true)) $payment_method = 'virement';
+        $reference = mb_substr(trim((string) ($_POST['reference'] ?? '')), 0, 120);
 
         $stmt = $pdo->prepare("SELECT * FROM subscription_invoices WHERE id = ?");
         $stmt->execute([$invoice_id]);
         $inv = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$inv) {
-            $error = 'Facture introuvable.';
+            $flash = ['type' => 'error', 'message' => 'Facture introuvable.'];
         } else {
+            // Seule une facture envoyée ou en retard attend un paiement (même règle que l'appli Fondateur,
+            // api/app-founder-billing-action.php) ; la condition est dans l'UPDATE : un second envoi du
+            // formulaire (rechargement, double clic) n'enregistre jamais un second paiement
             $pdo->beginTransaction();
+            $icols = ak_db_columns($pdo, 'subscription_invoices');
+            $sets = ["status = 'paid'"]; $params = [];
+            if (isset($icols['paid_at'])) { $sets[] = 'paid_at = ?'; $params[] = $payment_date; }
+            if (isset($icols['payment_method'])) { $sets[] = 'payment_method = ?'; $params[] = $payment_method; }
+            $params[] = $invoice_id;
+            $stmt = $pdo->prepare("UPDATE subscription_invoices SET " . implode(', ', $sets) . " WHERE id = ? AND status IN ('sent', 'overdue')");
+            $stmt->execute($params);
 
-            // Marquer comme payee
-            $stmt = $pdo->prepare("
-                UPDATE subscription_invoices
-                SET status = 'paid', paid_at = ?, payment_method = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([$payment_date, $payment_method, $invoice_id]);
-
-            // Enregistrer le paiement
-            $stmt = $pdo->prepare("
-                INSERT INTO subscription_payments
-                    (invoice_id, org_id, amount, payment_date, payment_method, reference, recorded_by_user_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-            ");
-            $stmt->execute([
-                $invoice_id, $inv['org_id'], $inv['amount_ttc'],
-                $payment_date, $payment_method, $reference ?: null,
-                (int) $user['id']
-            ]);
-
-            $pdo->commit();
-
-            sa_log_action((int) $user['id'], 'mark_invoice_paid', $inv['org_id'], null, [
-                'invoice_number' => $inv['invoice_number'],
-                'amount' => $inv['amount_ttc'],
-                'method' => $payment_method,
-            ]);
-
-            // Envoi email de confirmation via Resend
-            if (function_exists('send_transactional_email')) {
-                try {
-                    $stmt_org = $pdo->prepare("
-                        SELECT o.name, o.email,
-                               (SELECT u.email FROM users u WHERE u.org_id = o.id AND u.role = 'admin' AND u.is_active = 1 ORDER BY u.id ASC LIMIT 1) AS admin_email
-                        FROM organizations o WHERE o.id = ?
-                    ");
-                    $stmt_org->execute([$inv['org_id']]);
-                    $org_data = $stmt_org->fetch(PDO::FETCH_ASSOC);
-                    $recipient = $org_data['email'] ?: $org_data['admin_email'];
-
-                    if ($recipient) {
-                        send_transactional_email(
-                            $recipient,
-                            'Paiement reçu — Facture ' . $inv['invoice_number'],
-                            render_email_invoice_paid([
-                                'org_name' => $org_data['name'],
-                                'invoice_number' => $inv['invoice_number'],
-                                'amount_ttc' => $inv['amount_ttc'],
-                                'payment_date' => $payment_date,
-                                'payment_method' => $payment_method,
-                            ]),
-                            ['tag' => 'invoice_paid']
-                        );
-                    }
-                } catch (Throwable $e) {
-                    error_log('Payment confirm email fail: ' . $e->getMessage());
+            if ($stmt->rowCount() !== 1) {
+                $pdo->rollBack();
+                $flash = ['type' => 'error', 'message' => ($inv['status'] ?? '') === 'paid'
+                    ? "La facture {$inv['invoice_number']} est déjà payée : aucun second paiement enregistré."
+                    : "La facture {$inv['invoice_number']} n’attend pas de paiement (" . (($inv['status'] ?? '') === 'cancelled' ? 'annulée' : 'brouillon') . ').'];
+            } else {
+                // Enregistrer le paiement (table absente sur un ancien schéma : ignoré)
+                if (ak_db_columns($pdo, 'subscription_payments')) {
+                    ak_db_insert($pdo, 'subscription_payments', [
+                        'invoice_id' => $invoice_id, 'org_id' => (int) $inv['org_id'], 'amount' => $inv['amount_ttc'],
+                        'payment_date' => $payment_date, 'payment_method' => $payment_method,
+                        'reference' => $reference !== '' ? $reference : null, 'recorded_by_user_id' => (int) $user['id'],
+                    ], ['created_at' => 'NOW()']);
                 }
-            }
+                $pdo->commit();
 
-            $success = "Facture {$inv['invoice_number']} marquée comme payée. Email de confirmation envoyé.";
+                sa_log_action((int) $user['id'], 'mark_invoice_paid', $inv['org_id'], null, [
+                    'invoice_number' => $inv['invoice_number'],
+                    'amount' => $inv['amount_ttc'],
+                    'method' => $payment_method,
+                ]);
+
+                // Envoi email de confirmation via Resend
+                $org_data = sa_abo_recipient($pdo, (int) $inv['org_id']);
+                $sent = function_exists('render_email_invoice_paid') && sa_abo_send($org_data,
+                    'Paiement reçu — Facture ' . $inv['invoice_number'],
+                    render_email_invoice_paid([
+                        'org_name' => $org_data['name'] ?? '',
+                        'invoice_number' => $inv['invoice_number'],
+                        'amount_ttc' => $inv['amount_ttc'],
+                        'payment_date' => $payment_date,
+                        'payment_method' => $payment_method,
+                    ]),
+                    'invoice_paid', 'e-mail paiement ' . $inv['invoice_number']);
+
+                $flash = $sent
+                    ? ['type' => 'success', 'message' => "Facture {$inv['invoice_number']} marquée comme payée. Email de confirmation envoyé à " . $org_data['recipient'] . '.']
+                    : ['type' => 'warning', 'message' => "Facture {$inv['invoice_number']} marquée comme payée, mais l’e-mail de confirmation n’est pas parti"
+                        . (empty($org_data['recipient']) ? ' (aucune adresse e-mail pour cette association)' : '') . ' : prévenez le client vous-même.'];
+            }
         }
     }
 
     // ---- CANCEL INVOICE ----
     elseif ($action === 'cancel_invoice') {
         $invoice_id = (int) ($_POST['invoice_id'] ?? 0);
-        $stmt = $pdo->prepare("UPDATE subscription_invoices SET status = 'cancelled' WHERE id = ?");
+        // Jamais une facture payée (ses paiements resteraient rattachés à une facture « annulée »)
+        $stmt = $pdo->prepare("UPDATE subscription_invoices SET status = 'cancelled' WHERE id = ? AND status IN ('draft', 'sent', 'overdue')");
         $stmt->execute([$invoice_id]);
-        sa_log_action((int) $user['id'], 'cancel_invoice', null, null, ['invoice_id' => $invoice_id]);
-        $success = 'Facture annulée.';
+        if ($stmt->rowCount() === 1) {
+            sa_log_action((int) $user['id'], 'cancel_invoice', null, null, ['invoice_id' => $invoice_id]);
+            $flash = ['type' => 'success', 'message' => 'Facture annulée.'];
+        } else {
+            $flash = ['type' => 'error', 'message' => 'Cette facture ne peut pas être annulée (introuvable, déjà payée ou déjà annulée).'];
+        }
     }
+    }
+
+    if ($flash) $_SESSION['sa_abonnements_flash'] = $flash;
+    header('Location: /super-admin/abonnements', true, 303);
+    exit;
 }
 
 // =====================================================================
@@ -315,6 +372,7 @@ sa_render_sidebar('abonnements');
 
 <?php if ($error): ?><div class="sa-alert sa-alert-error">⚠️ <?= h($error) ?></div><?php endif; ?>
 <?php if ($success): ?><div class="sa-alert sa-alert-success">✅ <?= h($success) ?></div><?php endif; ?>
+<?php if ($warning): ?><div class="sa-alert sa-alert-error">⚠️ <?= h($warning) ?></div><?php endif; ?>
 <?php if (isset($db_error)): ?>
     <div class="sa-alert sa-alert-error">
         ⚠️ Base de données : <?= h($db_error) ?>.
@@ -423,7 +481,7 @@ sa_render_sidebar('abonnements');
                             <?= $i['due_date'] ? date('d/m/Y', strtotime($i['due_date'])) : '—' ?>
                         </td>
                         <td>
-                            <?php if (in_array($i['status'], ['sent','draft','overdue'], true)): ?>
+                            <?php if (in_array($i['status'], ['sent','overdue'], true)): ?>
                                 <button type="button" class="sa-btn sa-btn-violet sa-btn-sm"
                                         onclick="openPayModal(<?= (int) $i['id'] ?>, '<?= h(addslashes($i['invoice_number'])) ?>', <?= (float) $i['amount_ttc'] ?>)">
                                     ✓ Marquer payée

@@ -27,8 +27,9 @@ $filter_contract = $_GET['contract'] ?? 'all';
 $filter_active = $_GET['active'] ?? 'active';
 $search = trim($_GET['q'] ?? '');
 
-// Construction de la requête
-$where_parts = ['u.org_id = ?'];
+// Construction de la requête. Les comptes supprimés (corbeille de /adherents) n'apparaissent
+// pas ici : ils se restaurent depuis la corbeille, jamais par « Réactiver ».
+$where_parts = ['u.org_id = ?', 'u.deleted_at IS NULL'];
 $params = [$org_id];
 
 if ($filter_role !== 'all') {
@@ -77,7 +78,7 @@ $stats_stmt = $pdo->prepare("
         SUM(CASE WHEN role = 'follower' THEN 1 ELSE 0 END) AS followers,
         SUM(CASE WHEN contract_type = 'intern' THEN 1 ELSE 0 END) AS interns,
         SUM(CASE WHEN contract_type = 'civic_service' THEN 1 ELSE 0 END) AS civic_services
-    FROM users WHERE org_id = ?
+    FROM users WHERE org_id = ? AND deleted_at IS NULL
 ");
 $stats_stmt->execute([$org_id]);
 $stats = $stats_stmt->fetch();
@@ -159,6 +160,14 @@ render_sidebar('admin');
       <code style="background: #fff; padding: 3px 8px; border-radius: 4px; margin-left: 8px;"><?= h($_SESSION['admin_temp_password'] ?? '(déjà affiché)') ?><?php unset($_SESSION['admin_temp_password']); ?></code>
       (l'utilisateur devra le changer à sa prochaine connexion)
     </div>
+  <?php elseif (isset($_GET['error'])):
+    $err_labels = [
+      'csrf'     => 'Votre session a expiré : l’action n’a pas été enregistrée. Merci de réessayer.',
+      'notfound' => 'Utilisateur introuvable : il a peut-être été supprimé (voir la corbeille des adhérents).',
+    ];
+    $err_key = is_string($_GET['error'] ?? null) ? $_GET['error'] : '';
+  ?>
+    <div class="alert alert-error">⚠️ <?= h($err_labels[$err_key] ?? 'L’action n’a pas pu être effectuée. Merci de réessayer.') ?></div>
   <?php endif; ?>
 
   <!-- Stats de l'org -->

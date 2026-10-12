@@ -195,8 +195,14 @@ function render_trial_banner() {
         $days_left = max(0, (int)$ps['days_left']);
         $end_fr = date('d/m/Y', $end_ts);
         $expired = ($ps['badge_tone'] === 'expired');
+        // Bouton d'achat : seulement pour qui peut payer (mon-asso-paiement exige
+        // require_finance_access). Les autres rôles recevaient un 403 au clic.
+        if (!function_exists('user_can_view_finances')) require_once __DIR__ . '/finance-permissions.php';
+        $can_pay = user_can_view_finances($user);
 
-        if ($expired) {
+        if ($expired && !$can_pay) {
+            $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, l’administrateur de votre association peut choisir une formule pour retrouver toutes les fonctionnalités";
+        } elseif ($expired) {
             $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, choisissez une formule pour retrouver toutes les fonctionnalités";
         } elseif ($days_left === 0) {
             $msg = "se termine <strong>aujourd'hui</strong>";
@@ -214,6 +220,7 @@ function render_trial_banner() {
 .ak-trial-banner-text strong { color: #78350F; }
 .ak-trial-banner-btn { background: #92400E; color: #fff !important; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 12.5px; white-space: nowrap; flex-shrink: 0; transition: background 0.15s; }
 .ak-trial-banner-btn:hover { background: #78350F; }
+.ak-trial-banner-note { color: #92400E; font-size: 12.5px; font-weight: 600; flex-shrink: 0; }
 @media (max-width: 640px) {
   .ak-trial-banner { padding: 10px 14px; }
   .ak-trial-banner-info { flex-basis: 100%; }
@@ -226,7 +233,11 @@ function render_trial_banner() {
     <span class="ak-trial-banner-icon"><?= $expired ? '⏳' : '🚀' ?></span>
     <div class="ak-trial-banner-text"><strong>Essai gratuit</strong> &middot; <?= $msg ?></div>
   </div>
+  <?php if ($can_pay): ?>
   <a href="/mon-asso-paiement?plan=assokit" class="ak-trial-banner-btn">⚡ <?= $expired ? 'Choisir ma formule' : "S'abonner" ?></a>
+  <?php elseif (!$expired): ?>
+  <span class="ak-trial-banner-note">Pour vous abonner, parlez-en à l’administrateur de votre association.</span>
+  <?php endif; ?>
 </div>
         <?php
     } catch (Throwable $e) {}
@@ -406,6 +417,11 @@ function render_sidebar($active = 'accueil') {
           'role'           => $user['role'] ?? '',
           'is_follower'    => is_follower(),
           'peut_finances'  => can('manage_finances'),
+          // Facturation, Relances, Tags : la règle des pages (user_can_access_billing)
+          'peut_facturation' => (function () use ($user) {
+              if (!function_exists('user_can_access_billing')) require_once __DIR__ . '/finance-permissions.php';
+              return user_can_access_billing(ak_platform_flags($user));
+          })(),
           'peut_marketing' => can('access_marketing'),
           'peut_admin'     => can('admin'),
           'proj_count'     => $proj_count,
@@ -456,7 +472,8 @@ function render_sidebar_mairie($active = 'mairie-dashboard') {
     $nb_assos = 0;
     if ($parent_org_id > 0) {
         try {
-            $nb_assos = (int)$pdo->query("SELECT COUNT(*) FROM organizations WHERE parent_org_id = $parent_org_id")->fetchColumn();
+            // Associations supprimées depuis le cockpit exclues (même compte que la liste)
+            $nb_assos = (int)$pdo->query("SELECT COUNT(*) FROM organizations WHERE parent_org_id = $parent_org_id AND deleted_at IS NULL")->fetchColumn();
         } catch (Exception $e) {}
     }
     $type_emoji = match($parent_org['type'] ?? 'mairie') {
@@ -554,9 +571,13 @@ function render_foot() {
 
 <?php
 // ========== COPILOTE IA — lanceur flottant permanent (toutes pages) ==========
-if (function_exists('current_user') && function_exists('can')):
+// Même règle que la page /mon-asso-copilote et son endpoint (ak_copilote_allowed) : la bulle
+// dépendait de can('manage_finances'), absente pour un coordinateur autorisé et affichée à un
+// membre trésorier qui recevait ensuite « Accès non autorisé ».
+if (function_exists('current_user')):
+    if (!function_exists('ak_copilote_allowed')) require_once __DIR__ . '/finance-permissions.php';
     $cop_user = current_user();
-    if ($cop_user && (int)($cop_user['org_id'] ?? 0) > 0 && can('manage_finances')):
+    if ($cop_user && ak_copilote_allowed($cop_user)):
         $cop_csrf = h($_SESSION['csrf_token'] ?? '');
 ?>
 <button id="akCopFab" type="button" aria-label="Ouvrir le Copilote IA" title="Copilote IA — pose ta question">

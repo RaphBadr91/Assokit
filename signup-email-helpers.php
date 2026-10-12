@@ -379,14 +379,18 @@ function send_demo_founder_notification(string $org_name, string $admin_name, st
 /**
  * Bienvenue au prospect : son essai est ACTIF, jusqu'au JJ/MM/AAAA.
  */
-function send_demo_welcome_email(string $email, string $first_name, string $org_name, string $verify_url, string $trial_end_label = ''): bool
+function send_demo_welcome_email(string $email, string $first_name, string $org_name, string $verify_url, string $trial_end_label = '', string $org_type = 'asso'): bool
 {
     if (!function_exists('send_transactional_email')) return false;
     $days = defined('AK_TRIAL_DAYS') ? AK_TRIAL_DAYS : 14;
+    // Ce que contient l'espace, dans le vocabulaire de la structure (une TPE n'a ni adhérents ni subventions)
+    $features = $org_type === 'tpe'
+        ? 'clients, devis, factures, relances, projets, comptabilité analytique'
+        : 'projets, adhérents, cotisations, factures, subventions, comptabilité analytique';
 
     $content = '<h1 style="font-size:22px;margin:0 0 14px;color:#1C1917">Votre essai PRO Assokit est activé &#127881;</h1>'
              . '<p>Bonjour ' . ak_signup_h($first_name) . ',</p>'
-             . '<p>L’espace de <strong>' . ak_signup_h($org_name) . '</strong> est prêt&nbsp;: projets, adhérents, cotisations, factures, subventions, comptabilité analytique&hellip; '
+             . '<p>L’espace de <strong>' . ak_signup_h($org_name) . '</strong> est prêt&nbsp;: ' . $features . '&hellip; '
              . 'Vous profitez de toutes les fonctionnalités <strong>PRO</strong> pendant <strong>' . (int)$days . ' jours</strong>'
              . ($trial_end_label !== '' ? ', jusqu’au <strong>' . ak_signup_h($trial_end_label) . '</strong>' : '') . ', sans carte bancaire.</p>'
              . '<p>Confirmez votre adresse e-mail pour sécuriser votre accès&nbsp;:</p>'

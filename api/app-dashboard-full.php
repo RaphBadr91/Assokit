@@ -36,30 +36,44 @@ try {
     $is_admin = ($role === 'admin') || !empty($user['is_super_admin']);
     $is_coord = $is_admin || ($role === 'coordinator');
 
+    // Suiveur (financeur externe) : uniquement ses projets suivis, comme /projets et /agenda
+    // (le site le renvoie d'ailleurs vers /projets au lieu du tableau de bord).
+    $fpids = function_exists('get_follower_project_ids') ? get_follower_project_ids()
+           : ((($user['role'] ?? '') === 'follower') ? [] : null);
+    $is_follower = ($fpids !== null);
+    $fol_sql = function (string $col) use ($fpids): string {
+        if ($fpids === null) return '';
+        return $fpids ? ' AND ' . $col . ' IN (' . implode(',', array_map('intval', $fpids)) . ')' : ' AND 1 = 0';
+    };
+
     /* ── Compteurs de base (parité dashboard.php) ───────────────────────── */
     $stmt = $pdo->prepare("
         SELECT COUNT(*) FROM projects p JOIN folders f ON p.folder_id = f.id
         WHERE f.org_id = ? AND p.status IN ('active','warning')
-          AND p.archived_at IS NULL AND f.archived_at IS NULL
+          AND p.archived_at IS NULL AND f.archived_at IS NULL" . $fol_sql('p.id') . "
     ");
     $stmt->execute([$org_id]);
     $active_projects = (int) $stmt->fetchColumn();
 
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE org_id = ? AND is_active = 1 AND (deleted_at IS NULL OR deleted_at = '')");
-    $stmt->execute([$org_id]);
-    $total_users = (int) $stmt->fetchColumn();
+    // Adhérents : pas pour un suiveur (null = non autorisé, la clé reste présente)
+    $total_users = null; $new_users = null;
+    if (!$is_follower) {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE org_id = ? AND is_active = 1 AND (deleted_at IS NULL OR deleted_at = '')");
+        $stmt->execute([$org_id]);
+        $total_users = (int) $stmt->fetchColumn();
 
-    $stmt = $pdo->prepare("
-        SELECT COUNT(*) FROM users WHERE org_id = ? AND is_active = 1
-          AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-          AND (deleted_at IS NULL OR deleted_at = '')
-    ");
-    $stmt->execute([$org_id]);
-    $new_users = (int) $stmt->fetchColumn();
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM users WHERE org_id = ? AND is_active = 1
+              AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+              AND (deleted_at IS NULL OR deleted_at = '')
+        ");
+        $stmt->execute([$org_id]);
+        $new_users = (int) $stmt->fetchColumn();
+    }
 
     $upcoming_events = 0;
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL" . $fol_sql('project_id'));
         $stmt->execute([$org_id]);
         $upcoming_events = (int) $stmt->fetchColumn();
     } catch (Throwable $e) {}
@@ -75,7 +89,7 @@ try {
             FROM project_activity_log pal
             JOIN projects p ON pal.project_id = p.id
             JOIN folders f ON p.folder_id = f.id
-            WHERE f.org_id = ? AND pal.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            WHERE f.org_id = ? AND pal.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)" . $fol_sql('p.id') . "
             GROUP BY DATE(pal.created_at)
         ");
         $stmt->execute([$org_id]);
@@ -92,7 +106,7 @@ try {
                 FROM project_messages m
                 JOIN projects p ON m.project_id = p.id
                 JOIN folders f ON p.folder_id = f.id
-                WHERE f.org_id = ? AND m.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                WHERE f.org_id = ? AND m.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)" . $fol_sql('p.id') . "
                 GROUP BY DATE(m.created_at)
             ");
             $stmt->execute([$org_id]);
@@ -105,16 +119,18 @@ try {
     $total_activity = array_sum($activity);
 
     /* ── Répartition par statut (anneau) ────────────────────────────────── */
+    // Un projet terminé porte le statut 'done' en base : il compte dans « Terminés ».
     $status_counts = ['active' => 0, 'warning' => 0, 'completed' => 0, 'paused' => 0];
     try {
         $stmt = $pdo->prepare("
             SELECT p.status, COUNT(*) AS cnt FROM projects p JOIN folders f ON p.folder_id = f.id
-            WHERE f.org_id = ? AND p.archived_at IS NULL AND f.archived_at IS NULL
+            WHERE f.org_id = ? AND p.archived_at IS NULL AND f.archived_at IS NULL" . $fol_sql('p.id') . "
             GROUP BY p.status
         ");
         $stmt->execute([$org_id]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) {
-            if (isset($status_counts[$r['status']])) $status_counts[$r['status']] = (int) $r['cnt'];
+            $k = ($r['status'] === 'done') ? 'completed' : (string) $r['status'];
+            if (isset($status_counts[$k])) $status_counts[$k] += (int) $r['cnt'];
         }
     } catch (Throwable $e) {}
 
@@ -129,60 +145,79 @@ try {
     $health = max(0, min(100, $health));
     $health_label = $health >= 85 ? 'Excellent' : ($health >= 70 ? 'Bon' : ($health >= 55 ? 'Correct' : 'À surveiller'));
 
-    /* ── Actions à mener ────────────────────────────────────────────────── */
+    /* ── Actions à mener (mêmes requêtes que ak_dash_coach_actions du site) ── */
+    // Les nombres affichés sont de vrais COUNT : avec un LIMIT, ils plafonnaient (5 ici, 3 sur
+    // le site) et les deux écrans ne donnaient pas le même chiffre.
     $actions = [];
     try {
-        $st = $pdo->prepare("
-            SELECT ps.title, p.id AS pid, p.name AS pname
+        $from = "
             FROM project_steps ps
             JOIN projects p ON ps.project_id = p.id
             JOIN folders f ON p.folder_id = f.id
             WHERE f.org_id = ? AND ps.assigned_to_user_id = ? AND ps.is_completed = 0
-              AND p.archived_at IS NULL AND f.archived_at IS NULL
-            ORDER BY ps.position ASC LIMIT 5
-        ");
+              AND p.archived_at IS NULL AND f.archived_at IS NULL" . $fol_sql('p.id');
+        $st = $pdo->prepare("SELECT ps.title, p.id AS pid, p.name AS pname" . $from . " ORDER BY ps.created_at ASC LIMIT 1");
         $st->execute([$org_id, $uid]);
-        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        if (count($rows) === 1) {
-            $actions[] = ['tone' => 'warn', 'icon' => 'flag', 'title' => 'Une étape vous attend',
-                'body' => adf_plain($rows[0]['title']) . ' — sur ' . adf_plain($rows[0]['pname']),
-                'type' => 'project', 'id' => (int) $rows[0]['pid']];
-        } elseif (count($rows) > 1) {
-            $actions[] = ['tone' => 'warn', 'icon' => 'flag', 'title' => count($rows) . ' étapes assignées en attente',
-                'body' => 'Elles vous sont assignées et ne sont pas encore terminées.',
-                'type' => 'project', 'id' => (int) $rows[0]['pid']];
+        $first = $st->fetch(PDO::FETCH_ASSOC);
+        if ($first) {
+            $st = $pdo->prepare("SELECT COUNT(*)" . $from);
+            $st->execute([$org_id, $uid]);
+            $n = max(1, (int) $st->fetchColumn());
+            if ($n === 1) {
+                $actions[] = ['tone' => 'warn', 'icon' => 'flag', 'title' => 'Une étape vous attend',
+                    'body' => adf_plain($first['title']) . ' — sur ' . adf_plain($first['pname']),
+                    'type' => 'project', 'id' => (int) $first['pid']];
+            } else {
+                $actions[] = ['tone' => 'warn', 'icon' => 'flag', 'title' => $n . ' étapes assignées en attente',
+                    'body' => 'Elles vous sont assignées et ne sont pas encore terminées.',
+                    'type' => 'project', 'id' => (int) $first['pid']];
+            }
         }
     } catch (Throwable $e) {}
     try {
-        $st = $pdo->prepare("
-            SELECT p.id, p.name, p.progress_percent FROM projects p JOIN folders f ON p.folder_id = f.id
-            WHERE f.org_id = ? AND p.status IN ('active','warning') AND p.progress_percent >= 75
-              AND p.archived_at IS NULL AND f.archived_at IS NULL
-            ORDER BY p.progress_percent DESC LIMIT 5
-        ");
-        $st->execute([$org_id]);
-        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        if (count($rows) === 1) {
-            $actions[] = ['tone' => 'success', 'icon' => 'rocket', 'title' => 'Un projet à terminer',
-                'body' => adf_plain($rows[0]['name']) . ' est à ' . (int) $rows[0]['progress_percent'] . ' %. Une dernière poussée.',
-                'type' => 'project', 'id' => (int) $rows[0]['id']];
-        } elseif (count($rows) > 1) {
-            $actions[] = ['tone' => 'success', 'icon' => 'rocket', 'title' => count($rows) . ' projets presque finis',
-                'body' => 'Ils dépassent 75 % d’avancement. Les boucler dégagerait le tableau.',
-                'type' => 'project', 'id' => (int) $rows[0]['id']];
-        }
-    } catch (Throwable $e) {}
-    try {
-        $st = $pdo->prepare("
-            SELECT p.id, p.name FROM projects p JOIN folders f ON p.folder_id = f.id
+        // « Presque fini » : de 80 à 99 %, comme sur le site
+        $from = "
+            FROM projects p JOIN folders f ON p.folder_id = f.id
             WHERE f.org_id = ? AND p.status IN ('active','warning')
-              AND p.updated_at < DATE_SUB(NOW(), INTERVAL 14 DAY)
-              AND p.archived_at IS NULL AND f.archived_at IS NULL
-            ORDER BY p.updated_at ASC LIMIT 1
+              AND p.progress_percent >= 80 AND p.progress_percent < 100
+              AND p.archived_at IS NULL AND f.archived_at IS NULL" . $fol_sql('p.id');
+        $st = $pdo->prepare("SELECT p.id, p.name, p.progress_percent" . $from . " ORDER BY p.progress_percent DESC LIMIT 1");
+        $st->execute([$org_id]);
+        $first = $st->fetch(PDO::FETCH_ASSOC);
+        if ($first) {
+            $st = $pdo->prepare("SELECT COUNT(*)" . $from);
+            $st->execute([$org_id]);
+            $n = max(1, (int) $st->fetchColumn());
+            if ($n === 1) {
+                $actions[] = ['tone' => 'success', 'icon' => 'rocket', 'title' => 'Un projet à terminer',
+                    'body' => adf_plain($first['name']) . ' est à ' . (int) $first['progress_percent'] . ' %. Une dernière poussée.',
+                    'type' => 'project', 'id' => (int) $first['id']];
+            } else {
+                $actions[] = ['tone' => 'success', 'icon' => 'rocket', 'title' => $n . ' projets presque finis',
+                    'body' => 'Ils sont à 80 % d’avancement ou plus. Les boucler dégagerait le tableau.',
+                    'type' => 'project', 'id' => (int) $first['id']];
+            }
+        }
+    } catch (Throwable $e) {}
+    try {
+        // Projet au repos : aucune activité (message, étape close, fichier) depuis 14 jours
+        $st = $pdo->prepare("
+            SELECT p.id, p.name,
+                   GREATEST(
+                     COALESCE((SELECT MAX(created_at) FROM project_messages WHERE project_id = p.id), '2000-01-01'),
+                     COALESCE((SELECT MAX(completed_at) FROM project_steps WHERE project_id = p.id AND completed_at IS NOT NULL), '2000-01-01'),
+                     COALESCE((SELECT MAX(created_at) FROM project_files WHERE project_id = p.id), '2000-01-01'),
+                     p.created_at
+                   ) AS last_activity
+            FROM projects p JOIN folders f ON p.folder_id = f.id
+            WHERE f.org_id = ? AND p.status IN ('active','warning')
+              AND p.archived_at IS NULL AND f.archived_at IS NULL" . $fol_sql('p.id') . "
+            HAVING last_activity < DATE_SUB(NOW(), INTERVAL 14 DAY)
+            ORDER BY last_activity ASC LIMIT 1
         ");
         $st->execute([$org_id]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
-        if ($row) {
+        if ($row && count($actions) < 3) {
             $actions[] = ['tone' => 'info', 'icon' => 'moon', 'title' => 'Un projet au repos',
                 'body' => adf_plain($row['name']) . ' n’a plus bougé depuis 14 jours.',
                 'type' => 'project', 'id' => (int) $row['id']];
@@ -194,8 +229,9 @@ try {
     }
 
     /* ── Échéances associatives (AG, émargement, subventions) ───────────── */
+    // Assemblées : réservées à l'admin, comme la fiche /assemblee et le bloc du site.
     $next_ag = null; $attendance = []; $grants_urgent = [];
-    if ($is_coord) {
+    if ($role === 'admin') {
         try {
             $st = $pdo->prepare("
                 SELECT id, title, scheduled_at, location FROM assemblies
@@ -248,7 +284,7 @@ try {
             SELECT p.id, p.name, p.progress_percent, p.status, f.name AS folder_name
             FROM projects p JOIN folders f ON p.folder_id = f.id
             WHERE f.org_id = ? AND p.status IN ('active','warning')
-              AND p.archived_at IS NULL AND f.archived_at IS NULL
+              AND p.archived_at IS NULL AND f.archived_at IS NULL" . $fol_sql('p.id') . "
             ORDER BY p.status = 'warning' DESC, p.updated_at DESC LIMIT 6
         ");
         $st->execute([$org_id]);

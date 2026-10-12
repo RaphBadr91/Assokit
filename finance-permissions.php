@@ -14,6 +14,8 @@
  *   ❌ Référent (Projet)
  *   ❌ Coordinateur (sauf Facturation, Relances et Radar subventions :
  *      voir user_can_access_billing())
+ *   ❌ Trésorier non administrateur (droit « Gérer les finances ») : sauf
+ *      Facturation et Relances, voir user_can_access_billing()
  *   ❌ Suiveur (Follower)
  *   ❌ Membre
  *
@@ -50,10 +52,13 @@ if (!function_exists('user_can_view_finances')) {
 
 if (!function_exists('user_can_access_billing')) {
     /**
-     * Facturation (factures, devis, clients, récurrences), Relances et Radar
-     * subventions : ouverts aussi aux Coordinateurs, qui pilotent l'activité
-     * au quotidien. Le reste des finances (comptabilité, FEC, prévisions,
-     * anomalies, budgets) reste réservé aux rôles de user_can_view_finances().
+     * Facturation (factures, devis, clients, récurrences, statistiques) et Relances :
+     * ouverts aussi aux Coordinateurs, qui pilotent l'activité au quotidien (ils ont en
+     * plus le Radar subventions), et à l'adhérent qui a le droit « Gérer les finances »
+     * (trésorier non administrateur, coché dans admin-modifier-utilisateur.php) : le
+     * menu Finances lui montre Facturation et Relances, les pages doivent s'ouvrir.
+     * Jamais à un suiveur (financeur externe), même coché. Les budgets restent réservés
+     * aux rôles de user_can_view_finances().
      */
     function user_can_access_billing(?array $user = null): bool {
         if ($user === null) {
@@ -61,7 +66,20 @@ if (!function_exists('user_can_access_billing')) {
             $user = current_user();
         }
         if (!$user || !is_array($user)) return false;
-        return user_can_view_finances($user) || ($user['role'] ?? '') === 'coordinator';
+        $role = (string)($user['role'] ?? '');
+        if (user_can_view_finances($user) || $role === 'coordinator') return true;
+        if ($role === 'follower' || (int)($user['org_id'] ?? 0) <= 0) return false;
+        if (!array_key_exists('can_manage_finances', $user)) {
+            // Utilisateur partiel (colonnes choisies) : droit relu en base
+            if (empty($user['id'])) return false;
+            global $pdo;
+            try {
+                $st = $pdo->prepare("SELECT can_manage_finances FROM users WHERE id = ? LIMIT 1");
+                $st->execute([(int)$user['id']]);
+                $user['can_manage_finances'] = (int)$st->fetchColumn();
+            } catch (Throwable $e) { return false; }
+        }
+        return !empty($user['can_manage_finances']);
     }
 }
 
@@ -70,6 +88,38 @@ if (!function_exists('require_billing_access')) {
     function require_billing_access(string $sidebar_active = 'dashboard', string $context = 'cette page'): void {
         if (user_can_access_billing()) return;
         require_finance_access($sidebar_active, $context);   // affiche le refus et s'arrête
+    }
+}
+
+if (!function_exists('ak_finance_a_contexte')) {
+    /**
+     * « à » + contexte, avec la contraction du français : « à le paiement… » → « au paiement… »,
+     * « à les factures » → « aux factures » ; « à la… », « à l'… », « à cette page » inchangés.
+     */
+    function ak_finance_a_contexte(string $context): string {
+        $context = trim($context);
+        if (preg_match('/^les\s+(.*)$/isu', $context, $m)) return 'aux ' . $m[1];
+        if (preg_match('/^le\s+(.*)$/isu', $context, $m)) return 'au ' . $m[1];
+        return 'à ' . $context;
+    }
+}
+
+if (!function_exists('ak_copilote_allowed')) {
+    /**
+     * Copilote IA : rôles de pilotage d'une association (admin, coordinateur, fondateur,
+     * super admin). Règle de mon-asso-copilote.php et mon-asso-copilote-ask.php, reprise
+     * par la bulle flottante (includes-layout.php) : la bulle ne s'affiche que si la
+     * question posée sera acceptée.
+     */
+    function ak_copilote_allowed(?array $user = null): bool {
+        if ($user === null) {
+            if (!function_exists('current_user')) return false;
+            $user = current_user();
+        }
+        if (!$user || !is_array($user) || (int)($user['org_id'] ?? 0) <= 0) return false;
+        $role = strtolower((string)($user['role'] ?? ''));
+        return in_array($role, ['admin', 'coordinator', 'founder'], true)
+            || !empty($user['is_founder']) || !empty($user['is_super_admin']);
     }
 }
 
@@ -90,7 +140,7 @@ if (!function_exists('require_finance_access')) {
             echo '<div style="font-size:54px;margin-bottom:14px;">🔒</div>';
             echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
             echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">';
-            echo 'L\'accès à ' . htmlspecialchars($context) . ' est strictement réservé aux <strong>Administrateurs</strong> de l\'association.';
+            echo 'L\'accès ' . htmlspecialchars(ak_finance_a_contexte($context)) . ' est strictement réservé aux <strong>Administrateurs</strong> de l\'association.';
             echo '</p>';
             echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
             echo '</div></main>';

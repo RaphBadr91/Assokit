@@ -15,6 +15,14 @@ require_login();
 $user = current_user();
 $org_id = (int) ($user['org_id'] ?? 0);
 
+// Anciens liens des e-mails « Réponse du support » (/support?id=N) : ouvrent le ticket.
+// La fiche vérifie elle-même que le ticket appartient à l'association.
+$legacy_ticket_id = (int) ($_GET['id'] ?? 0);
+if ($legacy_ticket_id > 0) {
+    header('Location: ' . ($org_id > 0 ? '/support/ticket/' : '/super-admin/support/') . $legacy_ticket_id, true, 302);
+    exit;
+}
+
 // Un super admin pur (sans org) n'a rien a faire ici
 if ($org_id <= 0) {
     header('Location: /super-admin/support');

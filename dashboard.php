@@ -31,6 +31,17 @@ require_login();
 
 $user = current_user();
 
+// Agent de collectivité (aucune association) : son accueil est l'espace mairie, et non un
+// tableau de bord d'association vide. Espace de la collectivité fermé (en attente de
+// validation, suspendu, refusé) : page d'explication.
+if ((int)($user['org_id'] ?? 0) <= 0 && !empty($user['parent_org_id'])) {
+    require_once __DIR__ . '/includes-permissions.php';
+    if (!is_platform_admin($user)) {
+        if (current_parent_org()) { header('Location: /mairie-dashboard'); exit; }
+        ak_parent_org_closed_stop(ak_parent_org_row_for_user($user));
+    }
+}
+
 // Permissions finances
 $role = $user['role'] ?? '';
 $can_view_finances = (
@@ -45,6 +56,22 @@ $user_id = (int)$user['id'];
 if (is_follower()) {
     header('Location: /projets');
     exit;
+}
+
+// Raccourci « Nouveau dossier » : même règle que nouveau-dossier.php (admin, ou droit
+// « Peut créer des dossiers » donné dans modifier-adherent.php), relu en base si
+// current_user() ne porte pas la colonne.
+$can_create_folders = ($role === 'admin');
+if (!$can_create_folders) {
+    if (array_key_exists('can_create_folders', $user)) {
+        $can_create_folders = !empty($user['can_create_folders']);
+    } else {
+        try {
+            $st = $pdo->prepare("SELECT can_create_folders FROM users WHERE id = ? AND org_id = ? LIMIT 1");
+            $st->execute([(int)$user['id'], $org_id]);
+            $can_create_folders = !empty($st->fetchColumn());
+        } catch (Throwable $e) {}
+    }
 }
 
 // ====== Logo de la structure (carte admin sur l'accueil) ======
@@ -67,6 +94,22 @@ if ($logo_admin) {
 }
 $logo_flash = $_SESSION['flash_asso_logo'] ?? null;
 unset($_SESSION['flash_asso_logo']);
+
+// Messages des pages qui renvoient ici : accès refusé (?error=not_admin ou flash_error)
+// et réponse à une relance de facture (mon-asso-notification-respond).
+$dash_flashes = [];   // [type ok|err, texte affiché tel quel]
+if (($_GET['error'] ?? '') === 'not_admin') {
+    $dash_flashes[] = ['err', '⚠️ Cette page est réservée aux administrateurs de l’association.'];
+}
+if (!empty($_SESSION['flash_error']) && is_string($_SESSION['flash_error'])) {
+    $dash_flashes[] = ['err', '⚠️ ' . $_SESSION['flash_error']];
+}
+unset($_SESSION['flash_error']);
+if (!empty($_SESSION['flash_asso_factures']['message'])) {
+    $fl_ok = (($_SESSION['flash_asso_factures']['type'] ?? '') === 'success');   // le message porte déjà son icône
+    $dash_flashes[] = [$fl_ok ? 'ok' : 'err', ($fl_ok ? '' : '⚠️ ') . (string) $_SESSION['flash_asso_factures']['message']];
+}
+unset($_SESSION['flash_asso_factures']);
 
 // ====== Salutation contextuelle selon l'heure ======
 $hour = (int)date('H');
@@ -208,7 +251,7 @@ try {
 $total_activity = array_sum($activity_data);
 $max_activity = max($activity_data) ?: 1;
 
-// 2) Donut chart : répartition projets par statut
+// 2) Donut chart : répartition projets par statut (un projet terminé porte le statut 'done')
 $status_counts = ['active' => 0, 'warning' => 0, 'completed' => 0, 'paused' => 0];
 try {
     $stmt = $pdo->prepare("
@@ -220,8 +263,9 @@ try {
     ");
     $stmt->execute([$org_id]);
     foreach ($stmt->fetchAll() as $row) {
-        if (isset($status_counts[$row['status']])) {
-            $status_counts[$row['status']] = (int)$row['cnt'];
+        $st_key = ($row['status'] === 'done') ? 'completed' : (string)$row['status'];
+        if (isset($status_counts[$st_key])) {
+            $status_counts[$st_key] += (int)$row['cnt'];
         }
     }
 } catch (Throwable $e) {}
@@ -389,7 +433,7 @@ function ak_dash_top_movers(PDO $pdo, int $org_id, ?array $follower_ids): array 
  * Génère 3-5 suggestions d'action concrètes pour le coach IA.
  * Priorité : étapes assignées en attente > projets quasi-finis > projets dormants > encouragement.
  */
-function ak_dash_coach_actions(PDO $pdo, int $user_id, int $org_id, ?array $follower_ids): array {
+function ak_dash_coach_actions(PDO $pdo, int $user_id, int $org_id, ?array $follower_ids, bool $can_create_projects = true): array {
     $actions = [];
     $project_filter_sql = '';
     $extra_params = [];
@@ -400,21 +444,22 @@ function ak_dash_coach_actions(PDO $pdo, int $user_id, int $org_id, ?array $foll
         $extra_params = $follower_ids;
     }
 
-    // 1) Étapes assignées à moi, non complétées (les + anciennes en premier)
+    // 1) Étapes assignées à moi, non complétées (les + anciennes en premier).
+    //    Le nombre affiché est un vrai COUNT : avec un LIMIT, il plafonnait à 3.
     try {
-        $sql = "SELECT ps.id, ps.title, p.id AS pid, p.name AS pname
-                FROM project_steps ps
+        $from = "FROM project_steps ps
                 JOIN projects p ON p.id = ps.project_id
                 JOIN folders f ON f.id = p.folder_id
                 WHERE f.org_id = ? AND f.archived_at IS NULL AND p.archived_at IS NULL
                   AND ps.assigned_to_user_id = ? AND ps.is_completed = 0
-                  $project_filter_sql
-                ORDER BY ps.created_at ASC LIMIT 3";
-        $stmt = $pdo->prepare($sql);
+                  $project_filter_sql";
+        $stmt = $pdo->prepare("SELECT ps.id, ps.title, p.id AS pid, p.name AS pname $from ORDER BY ps.created_at ASC LIMIT 1");
         $stmt->execute(array_merge([$org_id, $user_id], $extra_params));
         $rows = $stmt->fetchAll();
         if (!empty($rows)) {
-            $n = count($rows);
+            $stmt = $pdo->prepare("SELECT COUNT(*) $from");
+            $stmt->execute(array_merge([$org_id, $user_id], $extra_params));
+            $n = max(1, (int)$stmt->fetchColumn());
             if ($n === 1) {
                 $r = $rows[0];
                 $actions[] = ['icon' => '🎯', 'tone' => 'warn', 'title' => 'Une étape t\'attend', 'body' => 'Étape <strong>' . htmlspecialchars($r['title']) . '</strong> sur <strong>' . htmlspecialchars($r['pname']) . '</strong> — prête à clore ?', 'link' => '/projet/' . (int)$r['pid']];
@@ -424,21 +469,22 @@ function ak_dash_coach_actions(PDO $pdo, int $user_id, int $org_id, ?array $foll
         }
     } catch (Throwable $e) {}
 
-    // 2) Projets ≥ 80% (presque finis) sur l'org
+    // 2) Projets ≥ 80% (presque finis) sur l'org — même seuil et même comptage que
+    //    l'appli (api/app-dashboard-full.php) ; COUNT séparé, le LIMIT ne sert qu'au projet cité.
     try {
-        $sql = "SELECT p.id, p.name, p.progress_percent
-                FROM projects p
+        $from = "FROM projects p
                 JOIN folders f ON f.id = p.folder_id
                 WHERE f.org_id = ? AND f.archived_at IS NULL AND p.archived_at IS NULL
                   AND p.status IN ('active','warning')
                   AND p.progress_percent >= 80 AND p.progress_percent < 100
-                  $project_filter_sql
-                ORDER BY p.progress_percent DESC LIMIT 3";
-        $stmt = $pdo->prepare($sql);
+                  $project_filter_sql";
+        $stmt = $pdo->prepare("SELECT p.id, p.name, p.progress_percent $from ORDER BY p.progress_percent DESC LIMIT 1");
         $stmt->execute(array_merge([$org_id], $extra_params));
         $rows = $stmt->fetchAll();
         if (!empty($rows)) {
-            $n = count($rows);
+            $stmt = $pdo->prepare("SELECT COUNT(*) $from");
+            $stmt->execute(array_merge([$org_id], $extra_params));
+            $n = max(1, (int)$stmt->fetchColumn());
             $first = $rows[0];
             if ($n === 1) {
                 $actions[] = ['icon' => '🚀', 'tone' => 'success', 'title' => 'Un projet à terminer', 'body' => '<strong>' . htmlspecialchars($first['name']) . '</strong> est à <strong>' . (int)$first['progress_percent'] . '%</strong>. Une dernière poussée et c\'est plié !', 'link' => '/projet/' . (int)$first['id']];
@@ -472,9 +518,12 @@ function ak_dash_coach_actions(PDO $pdo, int $user_id, int $org_id, ?array $foll
         }
     } catch (Throwable $e) {}
 
-    // 4) Toujours au moins une action positive si rien d'urgent
-    if (count($actions) < 3) {
-        $actions[] = ['icon' => '✨', 'tone' => 'info', 'title' => 'Tout est sous contrôle', 'body' => 'Pas d\'urgence détectée. Profites-en pour planifier les prochaines étapes ou créer un nouveau projet.', 'link' => '/nouveau-projet'];
+    // 4) Une action positive seulement quand rien d'autre n'est signalé : affichée sous des
+    //    alertes, « Pas d'urgence détectée » les contredisait.
+    if (empty($actions)) {
+        $actions[] = $can_create_projects
+            ? ['icon' => '✨', 'tone' => 'info', 'title' => 'Tout est sous contrôle', 'body' => 'Pas d\'urgence détectée. Profites-en pour planifier les prochaines étapes ou créer un nouveau projet.', 'link' => '/nouveau-projet']
+            : ['icon' => '✨', 'tone' => 'info', 'title' => 'Tout est sous contrôle', 'body' => 'Pas d\'urgence détectée. Profites-en pour parcourir les projets de l\'association.', 'link' => '/projets'];
     }
 
     return array_slice($actions, 0, 3);
@@ -483,9 +532,20 @@ function ak_dash_coach_actions(PDO $pdo, int $user_id, int $org_id, ?array $foll
 /**
  * Échéances 30 prochains jours : events de l'org + projets à 75%+ (signaux de fin proche).
  * Renvoie : [['date','label','tone','link','icon'], ...] triées par date asc, max 5.
+ *
+ * $viewer (id, role, is_founder, is_super_admin) : chaque rôle ne voit que les échéances
+ * qu'il peut ouvrir, avec les règles des pages visées — assemblées : admin (assemblee-detail),
+ * ou le lien de convocation personnel du membre convoqué ; émargement : admin et
+ * coordinateur (emargement-detail) ; subventions : admin et coordinateur, comme le bloc
+ * « Vie associative » plus bas et l'appli.
  */
-function ak_dash_upcoming_deadlines(PDO $pdo, int $org_id, ?array $follower_ids): array {
+function ak_dash_upcoming_deadlines(PDO $pdo, int $org_id, ?array $follower_ids, array $viewer = []): array {
     $items = [];
+    $v_role  = (string)($viewer['role'] ?? '');
+    $v_admin = ($v_role === 'admin');
+    $v_coord = $v_admin || $v_role === 'coordinator';
+    $v_grants = $v_coord || !empty($viewer['is_founder']) || !empty($viewer['is_super_admin']);
+    $v_uid   = (int)($viewer['id'] ?? 0);
 
     // Palette calendrier (couleurs Google) — pour donner à chaque événement sa vraie couleur
     $GPAL = ['#7986CB', '#33B679', '#8E24AA', '#E67C73', '#F6BF26', '#039BE5', '#3F51B5', '#0B8043', '#D50000', '#F4511E'];
@@ -586,28 +646,54 @@ function ak_dash_upcoming_deadlines(PDO $pdo, int $org_id, ?array $follower_ids)
         }
     } catch (Throwable $e) {}
 
-    // Source 3 : Assemblées planifiées dans 7 jours
+    // Source 3 : Assemblées planifiées dans 7 jours. La fiche est réservée à l'admin ;
+    // un autre adhérent ne voit que les assemblées où il est convoqué (convocation envoyée),
+    // avec son lien personnel /ag-public/<jeton> (réponse, émargement et vote).
     try {
-        $sql = "SELECT id, title, scheduled_at, status FROM assemblies
-                WHERE org_id = ? AND archived_at IS NULL
-                  AND status IN ('draft','sent','in_progress')
-                  AND scheduled_at >= NOW() AND scheduled_at <= DATE_ADD(NOW(), INTERVAL 7 DAY)
-                ORDER BY scheduled_at ASC LIMIT 5";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$org_id]);
-        foreach ($stmt->fetchAll() as $a) {
-            $items[] = [
-                'date' => substr($a['scheduled_at'], 0, 10),
-                'label' => $a['title'],
-                'tone' => 'event',
-                'icon' => ak_dash_date_badge(substr($a['scheduled_at'], 0, 10)),
-                'link' => '/assemblee/' . (int)$a['id'],
-            ];
+        if ($v_admin) {
+            $sql = "SELECT id, title, scheduled_at, status, NULL AS access_token FROM assemblies
+                    WHERE org_id = ? AND archived_at IS NULL
+                      AND status IN ('draft','sent','in_progress')
+                      AND scheduled_at >= NOW() AND scheduled_at <= DATE_ADD(NOW(), INTERVAL 7 DAY)
+                    ORDER BY scheduled_at ASC LIMIT 5";
+            $params = [$org_id];
+        } elseif ($v_uid > 0 && $follower_ids === null) {
+            $sql = "SELECT a.id, a.title, a.scheduled_at, a.status, MAX(t.access_token) AS access_token
+                    FROM assemblies a
+                    JOIN assembly_attendees t ON t.assembly_id = a.id AND t.user_id = ?
+                    WHERE a.org_id = ? AND a.archived_at IS NULL
+                      AND a.status IN ('sent','in_progress')
+                      AND a.scheduled_at >= NOW() AND a.scheduled_at <= DATE_ADD(NOW(), INTERVAL 7 DAY)
+                    GROUP BY a.id, a.title, a.scheduled_at, a.status
+                    ORDER BY a.scheduled_at ASC LIMIT 5";
+            $params = [$v_uid, $org_id];
+        } else {
+            $sql = null;
+        }
+        if ($sql) {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            foreach ($stmt->fetchAll() as $a) {
+                if ($v_admin) {
+                    $link = '/assemblee/' . (int)$a['id'];
+                } elseif (preg_match('/^[a-f0-9]{32,64}$/', (string)$a['access_token'])) {
+                    $link = '/ag-public/' . $a['access_token'];
+                } else {
+                    continue;   // pas de lien personnel utilisable : rien qu'il puisse ouvrir
+                }
+                $items[] = [
+                    'date' => substr($a['scheduled_at'], 0, 10),
+                    'label' => $a['title'],
+                    'tone' => 'event',
+                    'icon' => ak_dash_date_badge(substr($a['scheduled_at'], 0, 10)),
+                    'link' => $link,
+                ];
+            }
         }
     } catch (Throwable $e) {}
 
-    // Source 4 : Sessions émargement à venir 7j
-    try {
+    // Source 4 : Sessions émargement à venir 7j (admin et coordinateur)
+    if ($v_coord) try {
         $sql = "SELECT id, title, starts_at FROM attendance_sessions
                 WHERE org_id = ? AND archived_at IS NULL
                   AND starts_at >= NOW() AND starts_at <= DATE_ADD(NOW(), INTERVAL 7 DAY)
@@ -625,8 +711,8 @@ function ak_dash_upcoming_deadlines(PDO $pdo, int $org_id, ?array $follower_ids)
         }
     } catch (Throwable $e) {}
 
-    // Source 5 : Subventions deadline 7j (dépôt ou bilan)
-    try {
+    // Source 5 : Subventions deadline 7j (dépôt ou bilan) — admin et coordinateur
+    if ($v_grants) try {
         $sql = "SELECT id, name, deadline_apply, deadline_report, status FROM grants
                 WHERE org_id = ? AND archived_at IS NULL
                   AND ((status IN ('draft','submitted','in_review') AND deadline_apply IS NOT NULL AND deadline_apply BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY))
@@ -762,8 +848,9 @@ if ($_is_admin_dash || $_is_coord_dash) {
         $asso_open_attendance = $st->fetchAll();
     } catch (Throwable $e) {}
 }
-$dash_coach = ak_dash_coach_actions($pdo, (int)$user['id'], $org_id, $_dash_follower_ids);
-$dash_deadlines = ak_dash_upcoming_deadlines($pdo, $org_id, $_dash_follower_ids);
+$dash_coach = ak_dash_coach_actions($pdo, (int)$user['id'], $org_id, $_dash_follower_ids,
+    ($role === 'admin') || !empty($user['can_create_projects']));
+$dash_deadlines = ak_dash_upcoming_deadlines($pdo, $org_id, $_dash_follower_ids, ak_platform_flags($user) ?: []);
 
 render_head('Tableau de bord');
 render_sidebar('accueil');
@@ -810,6 +897,10 @@ render_sidebar('accueil');
       <div class="dash-search-results" id="dash-search-results" hidden></div>
     </div>
   </div>
+
+  <?php foreach ($dash_flashes as [$fl_type, $fl_msg]): ?>
+    <div class="alert <?= $fl_type === 'ok' ? 'alert-success' : 'alert-error' ?>" role="<?= $fl_type === 'ok' ? 'status' : 'alert' ?>"><?= h($fl_msg) ?></div>
+  <?php endforeach; ?>
 
   <?php if ($logo_admin): ?>
   <!-- ====== LOGO DE LA STRUCTURE (admin uniquement) ====== -->
@@ -916,8 +1007,10 @@ render_sidebar('accueil');
 
   <!-- ====== WIDGET RELANCES FACTURES ====== -->
   <?php
+  // Même règle que la réponse (mon-asso-notification-respond) et /relances
+  if (!function_exists('user_can_access_billing')) require_once __DIR__ . '/finance-permissions.php';
   if (function_exists('ak_render_invoice_notifications')
-      && in_array($user['role'] ?? '', ['admin', 'coordinator'], true)) {
+      && user_can_access_billing(ak_platform_flags($user))) {
       ak_render_invoice_notifications($pdo, $org_id);
   }
   ?>
@@ -1333,7 +1426,7 @@ render_sidebar('accueil');
     <h2>Actions rapides</h2>
   </div>
   <div class="dash-quick-actions">
-    <?php if ($user['role'] === 'admin' || !empty($user['can_create_folders'])): ?>
+    <?php if ($can_create_folders): ?>
     <a href="/nouveau-dossier" class="dash-action">
       <div class="dash-action-icon" style="background: linear-gradient(135deg, #FEF3C7, #FDE68A); color: #B45309;">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>

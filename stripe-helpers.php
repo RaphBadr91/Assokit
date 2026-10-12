@@ -83,6 +83,11 @@ if (!function_exists('ak_get_regularize_url')) {
             if ($invoice_url) {
                 return $invoice_url;
             }
+            // Abonnement par carte déjà en place (paiement refusé) : mettre à jour la carte dans le portail
+            // Stripe, qui relance le paiement. Jamais un second abonnement (double facturation).
+            if (ak_org_live_stripe_subscription($pdo, $org_id)) {
+                return '/mon-asso-paiement?action=update_card';
+            }
             // Pas de facture impayée mais Stripe actif → page paiement
             return '/mon-asso-paiement';
         }
@@ -129,13 +134,62 @@ if (!function_exists('ak_get_org_active_subscription')) {
      */
     function ak_get_org_active_subscription(PDO $pdo, int $org_id): ?array {
         try {
+            // Colonnes du plan absentes (schéma sans Stripe) : la ligne est lue quand même
+            $pcols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'asso_plans') : [];
+            $scols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'asso_subscriptions') : [];
+            $price_id = (!$pcols || isset($pcols['stripe_price_id_monthly'])) ? 'p.stripe_price_id_monthly' : 'NULL AS stripe_price_id_monthly';
+            $quote = (!$pcols || isset($pcols['is_custom_quote'])) ? 'COALESCE(p.is_custom_quote, 0)' : '0';
+            // La ligne qui compte : d'abord l'abonnement par carte en vigueur (actif ou en retard : c'est
+            // lui qui est prélevé), puis la ligne courante (même ordre qu'ak_get_current_plan), jamais un
+            // paiement par carte en attente (tentative pas encore payée) devant l'essai ou la formule en place.
+            // Avant : la ligne la plus récente, qui pouvait être cette tentative (« Plan actuel : Assokit »
+            // et « Annuler mon abonnement » pour une association en essai).
+            $has_sid = !$scols || isset($scols['stripe_subscription_id']);
+            $live = $has_sid ? "(COALESCE(s.stripe_subscription_id, '') <> '' AND s.status IN ('active', 'overdue')) DESC, " : '';
+            $attempt = $has_sid ? "(s.status = 'pending_payment' AND COALESCE(s.stripe_subscription_id, '') <> '') ASC, " : '';
+            $order = function_exists('ak_sub_order') ? ak_sub_order('s') : 's.id DESC';
             $st = $pdo->prepare("
                 SELECT s.*, p.name AS plan_name, p.slug AS plan_slug,
-                       p.price_cents AS price_cents_monthly, p.stripe_price_id_monthly
+                       p.price_cents AS price_cents_monthly, $price_id, $quote AS plan_is_custom_quote
                 FROM asso_subscriptions s
                 INNER JOIN asso_plans p ON p.id = s.plan_id
                 WHERE s.org_id = :id
-                ORDER BY s.id DESC
+                ORDER BY {$live}{$attempt}{$order}
+                LIMIT 1
+            ");
+            $st->execute([':id' => $org_id]);
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+            return $row ?: null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+}
+
+if (!function_exists('ak_org_live_stripe_subscription')) {
+    /**
+     * Abonnement Stripe encore en vigueur pour l'association : ligne « payée par carte » (identifiant
+     * Stripe renseigné) active ou en retard de paiement, quelle que soit sa formule (un client passé à la
+     * main sur une autre formule est encore prélevé tant que Stripe n'a pas arrêté l'abonnement).
+     * Tant qu'il existe, aucun nouvel abonnement ne doit être créé : changer de carte passe par le portail
+     * Stripe, l'add-on domaine s'ajoute à cet abonnement.
+     * Clés : id, org_id, plan_id, plan_slug, plan_name, status, stripe_subscription_id, current_period_end,
+     * cancel_at_period_end (0/1). null s'il n'y en a pas.
+     */
+    function ak_org_live_stripe_subscription(PDO $pdo, int $org_id): ?array {
+        try {
+            $cols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'asso_subscriptions') : [];
+            if ($cols && !isset($cols['stripe_subscription_id'])) return null;
+            $cape = (!$cols || isset($cols['cancel_at_period_end'])) ? "COALESCE(s.cancel_at_period_end, 0)" : "0";
+            $pay = (!$cols || isset($cols['payment_mode'])) ? " AND COALESCE(s.payment_mode, 'stripe') = 'stripe'" : "";
+            $st = $pdo->prepare("
+                SELECT s.id, s.org_id, s.plan_id, s.status, s.stripe_subscription_id, s.current_period_end,
+                       $cape AS cancel_at_period_end, p.slug AS plan_slug, p.name AS plan_name
+                FROM asso_subscriptions s
+                LEFT JOIN asso_plans p ON p.id = s.plan_id
+                WHERE s.org_id = :id AND COALESCE(s.stripe_subscription_id, '') <> ''
+                  AND s.status IN ('active', 'overdue')$pay
+                ORDER BY (s.status = 'active') DESC, s.id DESC
                 LIMIT 1
             ");
             $st->execute([':id' => $org_id]);
@@ -358,8 +412,10 @@ if (!function_exists('ak_get_org_invoices_all')) {
      * [unified] Retourne toutes les factures abonnement Assokit pour une org :
      *   - subscription_invoices (manuelles, pre-Stripe)
      *   - asso_invoices_stripe (auto via webhook Stripe)
+     *   - invoices (factures AK-AAAA-NNNNNN : cockpit Factures et renouvellements
+     *     du cron), hors brouillons et hors spécimens du mode test
      * Format unifie compatible avec mon-asso-factures.php.
-     * Chaque ligne contient `source` = 'manual' ou 'stripe'.
+     * Chaque ligne contient `source` = 'manual', 'stripe' ou 'platform'.
      */
     function ak_get_org_invoices_all(PDO $pdo, int $org_id, int $limit = 200): array {
         $invoices = [];
@@ -415,7 +471,64 @@ if (!function_exists('ak_get_org_invoices_all')) {
             error_log('[invoices_all] manual: ' . $e->getMessage());
         }
 
-        // 3. Tri par date desc
+        // 3. Factures Assokit de la table invoices (colonnes du cockpit ou du cron selon le cas)
+        try {
+            if (!function_exists('ak_db_columns') && is_file(__DIR__ . '/trial-helpers.php')) require_once __DIR__ . '/trial-helpers.php';
+            $ic = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'invoices') : [];
+            if ($ic && isset($ic['org_id'], $ic['invoice_number'], $ic['status'])) {
+                $c = fn(string $col) => isset($ic[$col]) ? "i.$col" : 'NULL';
+                $amount = isset($ic['amount_ttc_cents'])
+                    ? (isset($ic['amount_cents']) ? 'COALESCE(NULLIF(i.amount_ttc_cents, 0), i.amount_cents)' : 'i.amount_ttc_cents')
+                    : $c('amount_cents');
+                $issued = isset($ic['issued_at']) ? (isset($ic['created_at']) ? 'COALESCE(i.issued_at, i.created_at)' : 'i.issued_at') : $c('created_at');
+                $due    = isset($ic['due_at']) ? (isset($ic['due_date']) ? 'COALESCE(DATE(i.due_at), i.due_date)' : 'DATE(i.due_at)') : $c('due_date');
+                $stmt = $pdo->prepare("
+                    SELECT i.id, i.invoice_number, i.status, $amount AS amount_cents,
+                           " . $c('amount_vat_cents') . " AS tax_cents,
+                           " . $c('period_start') . " AS period_start, " . $c('period_end') . " AS period_end,
+                           " . $c('paid_at') . " AS paid_at, $due AS due_date, $issued AS created_at,
+                           " . $c('pdf_path') . " AS pdf_path,
+                           " . (isset($ic['client_snapshot']) ? "(COALESCE(i.client_snapshot, '') <> '')" : '1') . " AS has_snapshot
+                    FROM invoices i
+                    WHERE i.org_id = ? AND i.status <> 'draft'
+                    " . (isset($ic['is_test_mode']) ? 'AND COALESCE(i.is_test_mode, 0) = 0' : '') . "
+                    ORDER BY $issued DESC, i.id DESC
+                    LIMIT ?
+                ");
+                $stmt->bindValue(1, $org_id, PDO::PARAM_INT);
+                $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+                $stmt->execute();
+
+                $status_map = ['pending' => 'open', 'overdue' => 'open', 'paid' => 'paid', 'cancelled' => 'void', 'refunded' => 'void'];
+
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    // PDF servi par /facture-abonnement-pdf (contrôle d'association et de rôle), jamais en lien direct.
+                    // Facture sans coordonnées figées (ancien cron) : son PDF éventuel, régénéré à tort par
+                    // l'écran « Modifier » (0,00 €, échéance 01/01/1970), n'est pas proposé.
+                    $has_pdf = preg_match('/\.pdf$/i', (string)($row['pdf_path'] ?? '')) && !empty($row['has_snapshot']);
+                    $invoices[] = [
+                        'id' => (int)$row['id'],
+                        'source' => 'platform',
+                        'invoice_number' => $row['invoice_number'],
+                        'amount_cents' => (int)$row['amount_cents'],
+                        'tax_cents' => (int)$row['tax_cents'],
+                        'currency' => 'eur',
+                        'status' => $status_map[$row['status']] ?? $row['status'],
+                        'period_start' => $row['period_start'],
+                        'period_end' => $row['period_end'],
+                        'paid_at' => $row['paid_at'],
+                        'due_date' => $row['due_date'],
+                        'created_at' => $row['created_at'],
+                        'invoice_pdf_url' => $has_pdf ? '/facture-abonnement-pdf?source=platform&id=' . (int)$row['id'] : null,
+                        'hosted_invoice_url' => null,
+                    ];
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('[invoices_all] platform: ' . $e->getMessage());
+        }
+
+        // 4. Tri par date desc
         usort($invoices, function($a, $b) {
             return strtotime($b['created_at'] ?? '0') - strtotime($a['created_at'] ?? '0');
         });

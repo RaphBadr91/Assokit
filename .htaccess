@@ -372,6 +372,10 @@ RewriteRule ^super-admin/logs-incarnation/?$          super-admin-impersonation-
 
 
 # Pack 2 Support — cote cockpit
+# Anciens liens des e-mails et notifications « Nouveau message » (/super-admin/support?id=42) :
+# ouvrent le ticket au lieu de la liste.
+RewriteCond %{QUERY_STRING} (^|&)id=([0-9]+)(&|$)
+RewriteRule ^super-admin/support/?$               /super-admin/support/%2? [R=302,L]
 RewriteRule ^super-admin/support/?$               super-admin-support.php [L,QSA]
 RewriteRule ^super-admin/support/(\d+)/?$         super-admin-support-ticket.php?id=$1 [L,QSA]
 
@@ -426,6 +430,9 @@ RewriteRule ^modifier-adherent/(\d+)/?$      modifier-adherent.php?id=$1 [L,QSA]
 RewriteCond %{REQUEST_METHOD} !=POST
 RewriteCond %{REQUEST_URI} !^/api/
 RewriteCond %{REQUEST_URI} !^/(vendor|demo-sql|demo-formation|migrations)/ [NC]
+# Crons appelés par URL (cron_xxx.php?token=…) : jamais de 301, car un
+# « curl » sans -L s'arrêterait sur la redirection et le job ne tournerait pas.
+RewriteCond %{REQUEST_URI} !^/cron_[a-z0-9_]+\.php$ [NC]
 RewriteCond %{THE_REQUEST} \s/+(.+?)\.php[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
 
@@ -555,6 +562,11 @@ RedirectMatch 404 /private_campagnes
 <Files "robots.txt">
     Require all granted
 </Files>
+# llms.txt (moteurs IA) et la clé IndexNow (<32 hex>.txt, servie par
+# indexnow-key.php) aussi : le refus s'appliquerait avant la réécriture.
+<FilesMatch "^(llms\.txt|[a-f0-9]{32}\.txt)$">
+    Require all granted
+</FilesMatch>
 
 <Files ".htaccess">
     Require all denied
@@ -617,9 +629,17 @@ Options -Indexes
 # SÉCURITÉ — ajouté lors de l'audit (defense in depth)
 # ════════════════════════════════════════════════
 
+# Pages publiques intégrées en iframe par le plugin WordPress (widget
+# « Espace projets », projet, événement) : elles seules peuvent être encadrées
+# par un autre site. Le « .php » couvre la requête après réécriture interne.
+<IfModule mod_setenvif.c>
+    SetEnvIf Request_URI "^/(espace-public|projet-public|evenement-public)(/|\.php|$)" AK_EMBED
+</IfModule>
+
 # Headers de sécurité (ne cassent pas les styles/scripts inline)
 <IfModule mod_headers.c>
-    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Frame-Options "SAMEORIGIN" env=!AK_EMBED
+    Header always set Content-Security-Policy "frame-ancestors *" env=AK_EMBED
     Header always set X-Content-Type-Options "nosniff"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"

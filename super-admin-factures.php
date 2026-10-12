@@ -81,6 +81,9 @@ foreach ($orgs as &$o) {
 unset($o);
 
 $is_test_mode = ak_invoice_is_test_mode();
+// Taux proposés selon la société : non assujettie → « Pas de TVA » (art. 293 B) seulement ;
+// assujettie → les taux de TVA, 20 % coché (même règle que super-admin-facture-generate.php)
+$vat_subject = (int) ak_company('vat_subject') === 1;
 
 render_head('Factures — Super Admin');
 render_sidebar('abonnements');
@@ -139,7 +142,7 @@ render_sidebar('abonnements');
 
     <!-- Bouton générer (TTC + radio TVA + calcul live) -->
     <div class="card" style="margin-bottom:20px; padding:24px; background:linear-gradient(135deg, #F0FDF4 0%, #D1FAE5 100%); border-color:#10B981;">
-        <h3 style="margin:0 0 8px 0; font-size:16px;">🧪 Générer une facture test</h3>
+        <h3 style="margin:0 0 8px 0; font-size:16px;"><?= $is_test_mode ? '🧪 Générer une facture test' : '🧾 Générer une facture' ?></h3>
         <p style="margin:0 0 18px 0; font-size:13px; color:#065F46;">
             Saisis le <strong>montant TTC</strong> (le prix que paie l'asso). Le système calcule HT et TVA automatiquement.
         </p>
@@ -166,15 +169,17 @@ render_sidebar('abonnements');
                 <label style="display:block; font-size:12px; color:#065F46; margin-bottom:8px; font-weight:600;">📋 TVA applicable</label>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
                     <?php
-                    $tva_options = [
-                        ['value' => 0,    'label' => 'Pas de TVA',    'note' => 'art. 293 B'],
+                    $tva_options = $vat_subject ? [
                         ['value' => 5.5,  'label' => 'TVA 5,5%',      'note' => 'taux réduit'],
                         ['value' => 10,   'label' => 'TVA 10%',       'note' => 'taux intermédiaire'],
                         ['value' => 20,   'label' => 'TVA 20%',       'note' => 'taux normal'],
+                    ] : [
+                        ['value' => 0,    'label' => 'Pas de TVA',    'note' => 'art. 293 B'],
                     ];
+                    $tva_default = $vat_subject ? 20 : 0;
                     foreach ($tva_options as $i => $opt): ?>
                         <label class="tva-radio" style="flex:1; min-width:140px; cursor:pointer;">
-                            <input type="radio" name="vat_rate" value="<?= $opt['value'] ?>" <?= $i === 0 ? 'checked' : '' ?> onchange="recalcGen()" style="display:none;">
+                            <input type="radio" name="vat_rate" value="<?= $opt['value'] ?>" <?= $opt['value'] == $tva_default ? 'checked' : '' ?> onchange="recalcGen()" style="display:none;">
                             <div class="tva-radio-card" style="padding:12px; border:2px solid #A7F3D0; border-radius:8px; background:white; text-align:center; transition:all 0.15s;">
                                 <div style="font-size:14px; font-weight:700; color:#065F46;"><?= h($opt['label']) ?></div>
                                 <div style="font-size:10px; color:#6B7280; margin-top:2px;"><?= h($opt['note']) ?></div>
@@ -239,7 +244,8 @@ render_sidebar('abonnements');
                             <td style="padding:12px 14px; font-size:13px;"><?= h($inv['org_name'] ?? 'N/A') ?></td>
                             <td style="padding:12px 14px; font-size:13px; color:#6B7280;"><?= h(date('d/m/Y H:i', strtotime($inv['issued_at']))) ?></td>
                             <td style="padding:12px 14px; font-size:13px; text-align:right; font-variant-numeric:tabular-nums; font-weight:600;">
-                                <?= h(ak_format_cents_eur((int)$inv['amount_ttc_cents'])) ?>
+                                <?php // Factures de l'ancien cron de renouvellement : montant dans amount_cents seulement ?>
+                                <?= h(ak_format_cents_eur((int)($inv['amount_ttc_cents'] ?? 0) ?: (int)($inv['amount_cents'] ?? 0))) ?>
                             </td>
                             <td style="padding:12px 14px; text-align:center;">
                                 <?php

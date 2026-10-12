@@ -18,6 +18,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/google-helper.php';
+require_once __DIR__ . '/app-context.php';   // ak_org_access()
 
 // ============================================================
 // SÉCURITÉ : CLI uniquement (ou ?key=CRON_SECRET pour test web)
@@ -64,6 +65,12 @@ foreach ($connections as $connection) {
 
     $org_id = (int)$connection['org_id'];
     echo "── Org #$org_id ──\n";
+    // Association supprimée, résiliée ou suspendue (accès coupé) : on ne lit ni n'écrit plus son agenda
+    $access = function_exists('ak_org_access') ? ak_org_access($pdo, $org_id) : 'ok';
+    if ($access !== 'ok') {
+        echo "  ignorée (association " . ($access === 'closed' ? 'supprimée ou résiliée' : 'suspendue') . ")\n";
+        continue;
+    }
     $total_stats['orgs']++;
 
     // ============================================================

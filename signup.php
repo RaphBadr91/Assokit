@@ -230,10 +230,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email_max = min(190, ak_signup_col_max($pdo, 'users', 'email') ?? 190, ak_signup_col_max($pdo, 'organizations', 'billing_email') ?? 190,
                          ak_signup_col_max($pdo, 'public_signups', 'admin_email') ?? 190);
 
+        // Vocabulaire du type de structure choisi (TPE : « entreprise »), comme les libellés du formulaire
+        $org_noun = $t === 'tpe' ? 'de votre entreprise' : 'de l’association';
         if ($form['org_name'] === '' || mb_strlen($form['org_name']) < 2) {
-            $error = 'Le nom de l\'association est requis (2 caractères minimum).';
+            $error = 'Le nom ' . $org_noun . ' est requis (2 caractères minimum).';
         } elseif (mb_strlen($form['org_name']) > 200) {
-            $error = 'Le nom de l\'association est trop long.';
+            $error = 'Le nom ' . $org_noun . ' est trop long.';
         } elseif ($form['first_name'] === '' || $form['last_name'] === '') {
             $error = 'Veuillez renseigner votre prénom et votre nom.';
         } elseif (mb_strlen($form['first_name']) > 100 || mb_strlen($form['last_name']) > 100) {
@@ -546,7 +548,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         @require_once __DIR__ . '/signup-email-helpers.php';
                         $verify_url = function_exists('ak_email_verify_url') ? ak_email_verify_url($user_id) : 'https://assokit.fr/connexion';
                         if (function_exists('send_demo_welcome_email')) {
-                            send_demo_welcome_email($form['email'], $form['first_name'], $form['org_name'], $verify_url, ak_trial_end_label($trial_end));
+                            send_demo_welcome_email($form['email'], $form['first_name'], $form['org_name'], $verify_url, ak_trial_end_label($trial_end), $form['type']);
                         }
                         if (function_exists('ak_signup_alert_founder')) {
                             ak_signup_alert_founder($pdo, $lead, $warnings ? 'incomplete' : 'ok', $org_id, null, $warnings);

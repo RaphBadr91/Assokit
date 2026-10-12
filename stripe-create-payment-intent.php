@@ -11,9 +11,11 @@
  *   2. Crée la Subscription Stripe (avec add-on optionnel)
  *   3. Récupère le client_secret du PaymentIntent associé
  *   4. Retourne { clientSecret } au JavaScript
+ *   (la ligne asso_subscriptions naît au paiement réussi, via le webhook)
  *
  * Sécurité :
- *   - Authentification obligatoire
+ *   - Authentification obligatoire, administrateurs de l'association (comme la page)
+ *   - 409 si un abonnement par carte est déjà en vigueur (jamais deux abonnements)
  *   - Vérification CSRF via X-Requested-With
  *   - Réponse JSON uniquement
  * --------------------------------------------------------------
@@ -24,6 +26,8 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/app-context.php';
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
+// Colonnes réelles d'asso_subscriptions (ak_db_columns) pour ak_org_live_stripe_subscription
+require_once __DIR__ . '/trial-helpers.php';
 
 // Aucun paiement ne peut naître d'une requête de l'app : masquer le bouton ne
 // suffirait pas, l'endpoint lui-même doit refuser (Apple 3.1.1).
@@ -67,6 +71,23 @@ if (!$user || empty($user['org_id'])) {
     exit;
 }
 $org_id = (int)$user['org_id'];
+
+// Même accès que la page de paiement (mon-asso-paiement) : administrateurs de l'association seulement.
+// Un membre ne crée ni client Stripe ni abonnement pour toute l'association.
+require_once __DIR__ . '/finance-permissions.php';
+if (!user_can_view_finances($user)) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Le paiement de l’abonnement est réservé aux administrateurs de l’association.']);
+    exit;
+}
+
+// Abonnement par carte déjà en vigueur (actif, en retard ou résiliation programmée) : jamais un second
+// abonnement (double prélèvement). Même règle que la page de paiement, qui n'affiche alors pas le formulaire.
+if (function_exists('ak_org_live_stripe_subscription') && ak_org_live_stripe_subscription($pdo, $org_id)) {
+    http_response_code(409);
+    echo json_encode(['error' => 'Votre association a déjà un abonnement par carte en cours : gérez-le depuis Mon abonnement.']);
+    exit;
+}
 
 // Vérification Stripe configuré
 if (!ak_stripe_is_configured($pdo)) {
@@ -182,31 +203,14 @@ try {
     }
 
     // ============================================
-    // 3. Pré-enregistrement local de la subscription (en attente de webhook)
+    // 3. Aucune ligne locale tant que rien n'est payé
     // ============================================
-    try {
-        $check = $pdo->prepare("SELECT id FROM asso_subscriptions WHERE stripe_subscription_id = :sid LIMIT 1");
-        $check->execute([':sid' => $subscription['id']]);
-        $existing = $check->fetchColumn();
-
-        if (!$existing) {
-            $ins = $pdo->prepare("
-                INSERT INTO asso_subscriptions
-                    (org_id, plan_id, stripe_subscription_id, stripe_price_id, payment_mode, status, created_at)
-                VALUES
-                    (:org, :plan, :sid, :pid, 'stripe', 'pending_payment', NOW())
-            ");
-            $ins->execute([
-                ':org' => $org_id,
-                ':plan' => (int)$plan['id'],
-                ':sid' => $subscription['id'],
-                ':pid' => $plan_price_id,
-            ]);
-        }
-    } catch (Throwable $e) {
-        // Ne pas bloquer si l'insert local échoue, le webhook fera le job
-        error_log('[stripe-create-payment-intent] Pré-insert: ' . $e->getMessage());
-    }
+    // L'abonnement Stripe reste « incomplete » jusqu'au paiement. Une ligne « pending_payment »
+    // pré-enregistrée ici survivait à un paiement abandonné ou refusé : relances d'impayé envoyées à
+    // une association en essai, « Résiliée » ou retard masqué selon les cas. La ligne d'abonnement
+    // est écrite par le webhook au premier paiement réussi (customer.subscription.* « active »,
+    // formule retrouvée par son prix Stripe ou par metadata[plan_slug]) ; la page de succès affiche
+    // « activation en cours » d'ici là.
 
     // Réponse JSON
     echo json_encode([
