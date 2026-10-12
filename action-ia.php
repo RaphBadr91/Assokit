@@ -42,13 +42,26 @@ if (!$stmt->fetch()) {
     die('Accès refusé.');
 }
 
+// Même règle que projet.php : pas d'Assistant IA pour un suiveur (financeur
+// externe), même sur les projets qu'il suit — le contexte envoyé à l'IA
+// contient les échanges internes de l'équipe.
+if (is_follower()) {
+    http_response_code(403);
+    die('Accès refusé.');
+}
+
 if (!is_ai_enabled()) {
     header('Location: /projet/' . $project_id . '/ia?err=nokey');
     exit;
 }
 
+// Budget et factures : seulement pour qui voit l'onglet Factures du projet.
+// Les autres peuvent générer les mêmes documents, sans données financières.
+require_once __DIR__ . '/finance-permissions.php';
+$with_fin = user_can_view_finances($user);
+
 // Construire le contexte du projet (infos + étapes + messages + fichiers)
-$context = build_project_context($project_id, $pdo);
+$context = build_project_context($project_id, $pdo, $with_fin);
 $system = assokit_system_prompt($context);
 
 if ($mode === 'generate') {
@@ -83,10 +96,26 @@ if ($mode === 'generate') {
         }
     }
 
+    // Sections financières des documents : sans accès aux finances, le
+    // contexte n'a ni budget ni factures, et l'IA ne doit rien inventer.
+    $no_fin = "les données financières ne sont pas communiquées pour ce document. Écris seulement « Bilan financier : à compléter par le trésorier » et n'avance aucun montant.";
+    $fin_ag = $with_fin
+        ? "- **Bilan financier** : utilise OBLIGATOIREMENT les factures validées listées dans le contexte. Présente le total dépensé, la répartition par catégorie, et les principaux postes de dépense (fournisseurs clés). Compare avec le budget prévu.\n"
+        : "- **Bilan financier** : " . $no_fin . "\n";
+    $fin_sub = $with_fin
+        ? "- **Justification détaillée de l'utilisation du budget** : utilise OBLIGATOIREMENT la liste complète des factures validées. Présente un tableau de dépenses par catégorie, cite les principaux fournisseurs, total dépensé vs prévu, taux d'exécution budgétaire en %.\n"
+        : "- **Justification de l'utilisation du budget** : " . $no_fin . "\n";
+    $fin_synth = $with_fin
+        ? "- **Point budget** : dépenses engagées vs prévu (en % et en €), alertes éventuelles si dérive\n"
+        : "- **Point budget** : " . $no_fin . "\n";
+    $fin_date = $with_fin
+        ? "## Bilan financier\n**OBLIGATOIRE** : utilise les factures validées listées dans le contexte.\n- Budget prévu vs dépensé (en € et en %)\n- Tableau des principales dépenses par fournisseur/catégorie\n- Reste à engager\n- Si pas de factures dans le contexte : indique-le clairement (\"Aucune facture enregistrée à cette date — le bilan financier sera complété au fur et à mesure\").\n\n"
+        : "## Bilan financier\nLes données financières ne sont pas communiquées pour ce document : écris seulement « Bilan financier : à compléter par le trésorier », sans aucun montant.\n\n";
+
     $prompts = [
         'bilan_ag' => [
             'title' => 'Bilan pour l\'Assemblée Générale',
-            'user_msg' => "Rédige un **bilan du projet pour l'Assemblée Générale**.\n\nFormat attendu :\n- Une présentation courte du projet (contexte et objectif)\n- Les étapes franchies (ce qu'on a concrètement accompli)\n- Les chiffres clés (participants, portée)\n- **Bilan financier** : utilise OBLIGATOIREMENT les factures validées listées dans le contexte. Présente le total dépensé, la répartition par catégorie, et les principaux postes de dépense (fournisseurs clés). Compare avec le budget prévu.\n- Les réussites notables et les apprentissages\n- Les perspectivespour la suite\n\nTon : professionnel, fier mais sincère, accessible à des adhérents non-experts.",
+            'user_msg' => "Rédige un **bilan du projet pour l'Assemblée Générale**.\n\nFormat attendu :\n- Une présentation courte du projet (contexte et objectif)\n- Les étapes franchies (ce qu'on a concrètement accompli)\n- Les chiffres clés (participants, portée)\n" . $fin_ag . "- Les réussites notables et les apprentissages\n- Les perspectivespour la suite\n\nTon : professionnel, fier mais sincère, accessible à des adhérents non-experts.",
         ],
         'email_parents' => [
             'title' => 'Email aux parents',
@@ -94,7 +123,7 @@ if ($mode === 'generate') {
         ],
         'rapport_subvention' => [
             'title' => 'Rapport de subvention',
-            'user_msg' => "Rédige un **rapport de subvention** pour un financeur public (DRAC, mairie, conseil départemental, etc.).\n\nFormat attendu :\n- Rappel du projet et de ses objectifs\n- Réalisations concrètes (avec chiffres précis)\n- Indicateurs de résultats (participants touchés, H/F, jeunes, etc.)\n- Difficultés rencontrées et solutions apportées\n- **Justification détaillée de l'utilisation du budget** : utilise OBLIGATOIREMENT la liste complète des factures validées. Présente un tableau de dépenses par catégorie, cite les principaux fournisseurs, total dépensé vs prévu, taux d'exécution budgétaire en %.\n- Perspectives\n\nTon : factuel, rigoureux, transparent. Les financeurs veulent voir CHAQUE euro justifié.",
+            'user_msg' => "Rédige un **rapport de subvention** pour un financeur public (DRAC, mairie, conseil départemental, etc.).\n\nFormat attendu :\n- Rappel du projet et de ses objectifs\n- Réalisations concrètes (avec chiffres précis)\n- Indicateurs de résultats (participants touchés, H/F, jeunes, etc.)\n- Difficultés rencontrées et solutions apportées\n" . $fin_sub . "- Perspectives\n\nTon : factuel, rigoureux, transparent." . ($with_fin ? " Les financeurs veulent voir CHAQUE euro justifié." : ''),
         ],
         'fiche_com' => [
             'title' => 'Fiche de communication',
@@ -102,11 +131,11 @@ if ($mode === 'generate') {
         ],
         'synthese_etape' => [
             'title' => 'Synthèse d\'étape (point d\'avancement)',
-            'user_msg' => "Fais une **synthèse d'étape** du projet.\n\nFormat attendu :\n- Où on en est (étapes validées, en cours)\n- **Point budget** : dépenses engagées vs prévu (en % et en €), alertes éventuelles si dérive\n- Ce qui va bien\n- Les points de vigilance\n- Ce qu'il reste à faire\n- Recommandations concrètes\n\nTon : direct, factuel, orienté action. C'est un outil de travail en interne.",
+            'user_msg' => "Fais une **synthèse d'étape** du projet.\n\nFormat attendu :\n- Où on en est (étapes validées, en cours)\n" . $fin_synth . "- Ce qui va bien\n- Les points de vigilance\n- Ce qu'il reste à faire\n- Recommandations concrètes\n\nTon : direct, factuel, orienté action. C'est un outil de travail en interne.",
         ],
         'bilan_date' => [
             'title' => 'Bilan du projet — ' . ($bilan_date_fr ?? date('d/m/Y')),
-            'user_msg' => "Rédige un **BILAN DU PROJET arrêté à la date du " . ($bilan_date_fr ?? date('d/m/Y')) . "**.\n\nC'est un bilan ponctuel destiné à la fois à l'équipe interne ET à un partage externe (financeurs, partenaires, AG ponctuelle). Il doit être complet, lisible et exportable tel quel.\n\nFormat attendu (utilise des titres en markdown ## et ###) :\n\n## Synthèse exécutive\nUn paragraphe de 4-6 lignes qui résume l'essentiel : contexte, où on en est, et la perspective. Doit pouvoir être lu seul.\n\n## Présentation du projet\n- Contexte et raison d'être\n- Objectif principal (cite l'objectif officiel s'il existe dans le contexte)\n- Public cible / bénéficiaires\n- Lieu et période\n\n## Avancement à la date du " . ($bilan_date_fr ?? date('d/m/Y')) . "\n- Pourcentage d'avancement global\n- Étapes validées (liste avec dates de validation et qui a validé)\n- Étapes en cours ou à venir\n- Indicateur de santé du projet\n\n## Réalisations concrètes\nDécris ce qui a été VRAIMENT accompli, en t'appuyant sur les étapes complétées, les fichiers déposés, et les échanges de l'équipe. Sois factuel, cite des exemples concrets.\n\n## Bilan financier\n**OBLIGATOIRE** : utilise les factures validées listées dans le contexte.\n- Budget prévu vs dépensé (en € et en %)\n- Tableau des principales dépenses par fournisseur/catégorie\n- Reste à engager\n- Si pas de factures dans le contexte : indique-le clairement (\"Aucune facture enregistrée à cette date — le bilan financier sera complété au fur et à mesure\").\n\n## Mobilisation et engagement\n- Nombre de participants impliqués\n- Activité de l'équipe (messages échangés, étapes validées sur la période)\n- Référent et contributeurs principaux\n\n## Points forts et apprentissages\nIdentifie 2 à 4 réussites concrètes, et 1 à 2 apprentissages utiles.\n\n## Points de vigilance\nIdentifie ce qui pourrait poser problème (étapes en retard, budget tendu, baisse d'activité). Sois honnête mais constructif.\n\n## Prochaines étapes\nLes 3 à 5 actions prioritaires pour la suite, avec si possible une échéance.\n\n---\n\nTon : professionnel, fier des accomplissements, transparent sur les difficultés, orienté action pour la suite. Rédige comme si ce bilan allait être imprimé et partagé. Ne mets pas de \"je\" dans le texte — utilise \"l'équipe\", \"le projet\", \"l'association\".\n\nCommence par le bloc \"## Synthèse exécutive\" — n'ajoute pas de titre principal, le titre du document est déjà géré.",
+            'user_msg' => "Rédige un **BILAN DU PROJET arrêté à la date du " . ($bilan_date_fr ?? date('d/m/Y')) . "**.\n\nC'est un bilan ponctuel destiné à la fois à l'équipe interne ET à un partage externe (financeurs, partenaires, AG ponctuelle). Il doit être complet, lisible et exportable tel quel.\n\nFormat attendu (utilise des titres en markdown ## et ###) :\n\n## Synthèse exécutive\nUn paragraphe de 4-6 lignes qui résume l'essentiel : contexte, où on en est, et la perspective. Doit pouvoir être lu seul.\n\n## Présentation du projet\n- Contexte et raison d'être\n- Objectif principal (cite l'objectif officiel s'il existe dans le contexte)\n- Public cible / bénéficiaires\n- Lieu et période\n\n## Avancement à la date du " . ($bilan_date_fr ?? date('d/m/Y')) . "\n- Pourcentage d'avancement global\n- Étapes validées (liste avec dates de validation et qui a validé)\n- Étapes en cours ou à venir\n- Indicateur de santé du projet\n\n## Réalisations concrètes\nDécris ce qui a été VRAIMENT accompli, en t'appuyant sur les étapes complétées, les fichiers déposés, et les échanges de l'équipe. Sois factuel, cite des exemples concrets.\n\n" . $fin_date . "## Mobilisation et engagement\n- Nombre de participants impliqués\n- Activité de l'équipe (messages échangés, étapes validées sur la période)\n- Référent et contributeurs principaux\n\n## Points forts et apprentissages\nIdentifie 2 à 4 réussites concrètes, et 1 à 2 apprentissages utiles.\n\n## Points de vigilance\nIdentifie ce qui pourrait poser problème (étapes en retard, budget tendu, baisse d'activité). Sois honnête mais constructif.\n\n## Prochaines étapes\nLes 3 à 5 actions prioritaires pour la suite, avec si possible une échéance.\n\n---\n\nTon : professionnel, fier des accomplissements, transparent sur les difficultés, orienté action pour la suite. Rédige comme si ce bilan allait être imprimé et partagé. Ne mets pas de \"je\" dans le texte — utilise \"l'équipe\", \"le projet\", \"l'association\".\n\nCommence par le bloc \"## Synthèse exécutive\" — n'ajoute pas de titre principal, le titre du document est déjà géré.",
         ],
     ];
 
@@ -181,9 +210,10 @@ if ($user_message === '' || mb_strlen($user_message) > 4000) {
 }
 
 $conv_id = (int)($_POST['conversation_id'] ?? 0);
-if ($conv_id > 0) {   // la conversation doit appartenir à ce projet
-    $ck = $pdo->prepare("SELECT id FROM ai_conversations WHERE id = ? AND project_id = ? LIMIT 1");
-    $ck->execute([$conv_id, $project_id]);
+if ($conv_id > 0) {   // la conversation doit appartenir à ce projet ET à cet utilisateur
+    // (celle d'un admin contient des réponses chiffrées qu'un autre rôle ne doit pas relire)
+    $ck = $pdo->prepare("SELECT id FROM ai_conversations WHERE id = ? AND project_id = ? AND user_id = ? LIMIT 1");
+    $ck->execute([$conv_id, $project_id, (int)$user['id']]);
     if (!$ck->fetchColumn()) $conv_id = 0;
 }
 

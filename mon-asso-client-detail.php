@@ -26,7 +26,38 @@ $stmt->execute([':id' => $client_id, ':org' => $org_id]);
 $client = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$client) { http_response_code(404); die('Client introuvable.'); }
 
-$stats = ak_asso_client_stats($pdo, $client_id);
+if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+$csrf = $_SESSION['csrf_token'];
+
+// ────── Modification de la fiche client ──────
+// Les factures et devis déjà émis gardent les coordonnées figées à leur émission ;
+// les prochains (et les brouillons à leur prochain enregistrement) prennent les nouvelles.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_client') {
+    if (!hash_equals($csrf, (string)($_POST['csrf_token'] ?? ''))) { http_response_code(419); exit('Session expirée.'); }
+    $data = [];
+    foreach (['client_type', 'display_name', 'legal_name', 'contact_first_name', 'contact_last_name', 'email', 'phone',
+              'address_street', 'address_complement', 'address_zip', 'address_city', 'address_country',
+              'siren', 'siret', 'vat_number'] as $f) {
+        if (array_key_exists($f, $_POST)) $data[$f] = trim((string)$_POST[$f]);
+    }
+    if (trim((string)($data['display_name'] ?? '')) === '' || !filter_var($data['email'] ?? '', FILTER_VALIDATE_EMAIL)) {
+        $_SESSION['flash_asso_client'] = ['type' => 'error', 'message' => 'Le nom et une adresse e-mail valide sont obligatoires.'];
+    } else {
+        try {
+            ak_asso_client_update($pdo, $org_id, $client_id, $data);
+            $_SESSION['flash_asso_client'] = ['type' => 'success', 'message' => 'Fiche client mise à jour. Les factures et devis déjà émis gardent les coordonnées de leur émission.'];
+        } catch (Throwable $e) {
+            error_log('[mon-asso-client-detail] ' . $e->getMessage());
+            $_SESSION['flash_asso_client'] = ['type' => 'error', 'message' => 'La fiche n’a pas pu être enregistrée. Réessayez dans un instant.'];
+        }
+    }
+    header('Location: /mon-asso-client-detail?id=' . $client_id);
+    exit;
+}
+$flash = $_SESSION['flash_asso_client'] ?? null;
+unset($_SESSION['flash_asso_client']);
+
+$stats = ak_asso_client_stats($pdo, $client_id, $org_id);
 
 // Historique factures
 $stmt = $pdo->prepare("
@@ -64,6 +95,10 @@ render_sidebar('factures');
             <a href="/mon-asso-clients.php" class="btn btn-ghost">← Retour</a>
         </div>
     </div>
+
+    <?php if ($flash): ?>
+    <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom:16px;"><?= h($flash['message']) ?></div>
+    <?php endif; ?>
 
     <!-- Stats -->
     <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:20px;">
@@ -129,6 +164,49 @@ render_sidebar('factures');
             <?php endif; ?>
         </div>
     </div>
+
+    <!-- Modifier la fiche -->
+    <details class="card" style="padding:0; margin-bottom:16px; overflow:hidden;">
+        <summary style="padding:14px 22px; cursor:pointer; font-size:14px; font-weight:600; display:flex; align-items:center; gap:8px;"><?= ak_icon('edit',16) ?> Modifier les coordonnées</summary>
+        <form method="POST" action="/mon-asso-client-detail?id=<?= (int)$client_id ?>" style="padding:4px 22px 20px;">
+            <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+            <input type="hidden" name="action" value="update_client">
+            <?php
+            $fld = function (string $name, string $label, string $type = 'text', bool $req = false, bool $wide = false) use ($client) {
+                return '<div' . ($wide ? ' style="grid-column:1/-1;"' : '') . '><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">'
+                     . h($label) . ($req ? ' *' : '') . '</label><input type="' . $type . '" name="' . $name . '" value="' . h($client[$name] ?? '') . '"'
+                     . ($req ? ' required' : '') . ' maxlength="' . ($name === 'display_name' ? 200 : 255) . '" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;"></div>';
+            };
+            ?>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+                <div>
+                    <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Type</label>
+                    <select name="client_type" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                        <option value="company" <?= ($client['client_type'] ?? 'company') === 'company' ? 'selected' : '' ?>>Entreprise / Asso</option>
+                        <option value="individual" <?= ($client['client_type'] ?? '') === 'individual' ? 'selected' : '' ?>>Particulier</option>
+                    </select>
+                </div>
+                <?= $fld('display_name', 'Nom affiché', 'text', true) ?>
+                <?= $fld('email', 'Email', 'email', true) ?>
+                <?= $fld('phone', 'Téléphone') ?>
+                <?= $fld('legal_name', 'Raison sociale', 'text', false, true) ?>
+                <?= $fld('contact_first_name', 'Prénom contact') ?>
+                <?= $fld('contact_last_name', 'Nom contact') ?>
+                <?= $fld('address_street', 'Adresse (n° + rue)', 'text', false, true) ?>
+                <?= $fld('address_complement', 'Complément', 'text', false, true) ?>
+                <?= $fld('address_zip', 'Code postal') ?>
+                <?= $fld('address_city', 'Ville') ?>
+                <?= $fld('address_country', 'Pays') ?>
+                <?= $fld('siren', 'SIREN') ?>
+                <?= $fld('siret', 'SIRET') ?>
+                <?= $fld('vat_number', 'N° TVA intracommunautaire') ?>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:16px;">
+                <div style="font-size:12px; color:#6B7280;">Les factures et devis déjà émis gardent les coordonnées de leur émission.</div>
+                <button type="submit" class="btn btn-primary" style="padding:10px 20px;">💾 Enregistrer la fiche</button>
+            </div>
+        </form>
+    </details>
 
     <!-- Historique factures -->
     <div class="card" style="padding:0; overflow:hidden;">

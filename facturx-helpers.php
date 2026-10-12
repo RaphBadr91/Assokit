@@ -69,9 +69,13 @@ if (!function_exists('ak_facturx_build_xml')) {
         $buyerSiren = ak_fx_siren($client['siren'] ?? null, $client['siret'] ?? null);
         $buyerRef = trim((string) ($client['siret'] ?? '')) ?: null; // BT-10 (routage), optionnel
 
-        $ht  = ak_fx_amount((int) ($inv['amount_ht_cents'] ?? 0));
-        $vat = ak_fx_amount((int) ($inv['amount_vat_cents'] ?? 0));
-        $ttc = ak_fx_amount((int) ($inv['amount_ttc_cents'] ?? 0));
+        // Avoir : type 381 et montants positifs (EN 16931 : le signe est porté par le type,
+        // les montants de l'avoir sont enregistrés négatifs en base)
+        $isCredit = ($inv['invoice_type'] ?? 'invoice') === 'credit_note';
+        $typeCode = $isCredit ? '381' : '380';
+        $ht  = ak_fx_amount($isCredit ? abs((int) ($inv['amount_ht_cents'] ?? 0)) : (int) ($inv['amount_ht_cents'] ?? 0));
+        $vat = ak_fx_amount($isCredit ? abs((int) ($inv['amount_vat_cents'] ?? 0)) : (int) ($inv['amount_vat_cents'] ?? 0));
+        $ttc = ak_fx_amount($isCredit ? abs((int) ($inv['amount_ttc_cents'] ?? 0)) : (int) ($inv['amount_ttc_cents'] ?? 0));
 
         $sellerLegal = '<ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">' . ak_fx_x($sellerSiren) . '</ram:ID></ram:SpecifiedLegalOrganization>';
         $sellerVatXml = $sellerVat ? '<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">' . ak_fx_x($sellerVat) . '</ram:ID></ram:SpecifiedTaxRegistration>' : '';
@@ -90,7 +94,7 @@ if (!function_exists('ak_facturx_build_xml')) {
             . '</rsm:ExchangedDocumentContext>'
             . '<rsm:ExchangedDocument>'
             . '<ram:ID>' . ak_fx_x($num) . '</ram:ID>'
-            . '<ram:TypeCode>380</ram:TypeCode>'
+            . '<ram:TypeCode>' . $typeCode . '</ram:TypeCode>'
             . '<ram:IssueDateTime><udt:DateTimeString format="102">' . ak_fx_x($issued) . '</udt:DateTimeString></ram:IssueDateTime>'
             . '</rsm:ExchangedDocument>'
             . '<rsm:SupplyChainTradeTransaction>'

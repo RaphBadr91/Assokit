@@ -66,6 +66,45 @@ function ak_rel_decide(int $days_overdue, int $max_sent, ?int $days_since_last):
 }
 }
 
+if (!function_exists('ak_rel_invoice_history')) {
+/**
+ * Relances déjà parties pour ces factures, d'après asso_invoice_emails_log :
+ * c'est le journal commun à /relances (manuel et cron-relances) et aux relances
+ * validées depuis le tableau de bord (cron_asso_invoice_dunning_*), d'où une
+ * seule cadence pour tous les circuits.
+ * @return array<int, array{max_sent:int, count:int, last_at:?string, days_since:?int}>
+ */
+function ak_rel_invoice_history(PDO $pdo, array $invoice_ids): array {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $invoice_ids))));
+    if (!$ids) return [];
+    $place = implode(',', array_fill(0, count($ids), '?'));
+    $hist = [];
+    try {
+        $hs = $pdo->prepare(
+            "SELECT invoice_id, email_type, MAX(sent_at) last_at, COUNT(*) n
+             FROM asso_invoice_emails_log
+             WHERE status='sent' AND email_type LIKE 'dunning%' AND invoice_id IN ($place)
+             GROUP BY invoice_id, email_type");
+        $hs->execute($ids);
+        foreach ($hs->fetchAll(PDO::FETCH_ASSOC) as $h) {
+            $iid = (int)$h['invoice_id'];
+            $stage = (int)substr($h['email_type'], -1);
+            if (!isset($hist[$iid])) $hist[$iid] = ['max_sent'=>0, 'count'=>0, 'last_at'=>null, 'days_since'=>null];
+            $hist[$iid]['max_sent'] = max($hist[$iid]['max_sent'], $stage);
+            $hist[$iid]['count'] += (int)$h['n'];
+            if ($h['last_at'] && ($hist[$iid]['last_at'] === null || $h['last_at'] > $hist[$iid]['last_at'])) {
+                $hist[$iid]['last_at'] = $h['last_at'];
+            }
+        }
+    } catch (Throwable $e) { /* log absent : on part de 0 relance */ }
+    foreach ($hist as &$h) {
+        $h['days_since'] = $h['last_at'] ? (int)floor((time() - strtotime($h['last_at']))/86400) : null;
+    }
+    unset($h);
+    return $hist;
+}
+}
+
 if (!function_exists('ak_rel_invoice_targets')) {
 /**
  * Factures à relancer pour une org. Retourne une liste enrichie
@@ -89,34 +128,14 @@ function ak_rel_invoice_targets(PDO $pdo, int $org_id): array {
     if (!$rows) return [];
 
     // Historique de relances par facture (types dunning déjà envoyés).
-    $ids = array_map(fn($r)=>(int)$r['id'], $rows);
-    $place = implode(',', array_fill(0, count($ids), '?'));
-    $hist = [];
-    try {
-        $hs = $pdo->prepare(
-            "SELECT invoice_id, email_type, MAX(sent_at) last_at, COUNT(*) n
-             FROM asso_invoice_emails_log
-             WHERE status='sent' AND email_type LIKE 'dunning%' AND invoice_id IN ($place)
-             GROUP BY invoice_id, email_type");
-        $hs->execute($ids);
-        foreach ($hs->fetchAll(PDO::FETCH_ASSOC) as $h) {
-            $iid = (int)$h['invoice_id'];
-            $stage = (int)substr($h['email_type'], -1);
-            if (!isset($hist[$iid])) $hist[$iid] = ['max_sent'=>0, 'count'=>0, 'last_at'=>null];
-            $hist[$iid]['max_sent'] = max($hist[$iid]['max_sent'], $stage);
-            $hist[$iid]['count'] += (int)$h['n'];
-            if ($h['last_at'] && ($hist[$iid]['last_at'] === null || $h['last_at'] > $hist[$iid]['last_at'])) {
-                $hist[$iid]['last_at'] = $h['last_at'];
-            }
-        }
-    } catch (Throwable $e) { /* log absent : on part de 0 relance */ }
+    $hist = ak_rel_invoice_history($pdo, array_map(fn($r)=>(int)$r['id'], $rows));
 
     $out = [];
     foreach ($rows as $r) {
         $iid = (int)$r['id'];
-        $h = $hist[$iid] ?? ['max_sent'=>0, 'count'=>0, 'last_at'=>null];
+        $h = $hist[$iid] ?? ['max_sent'=>0, 'count'=>0, 'last_at'=>null, 'days_since'=>null];
         $days = (int)$r['days_overdue'];
-        $since = $h['last_at'] ? (int)floor((time() - strtotime($h['last_at']))/86400) : null;
+        $since = $h['days_since'];
         $dec = ak_rel_decide($days, (int)$h['max_sent'], $since);
         $out[] = [
             'type' => 'invoice',
@@ -129,6 +148,7 @@ function ak_rel_invoice_targets(PDO $pdo, int $org_id): array {
             'due_date' => $r['due_date'],
             'days_overdue' => $days,
             'relances_sent' => (int)$h['count'],
+            'max_sent' => (int)$h['max_sent'],
             'last_relance_at' => $h['last_at'],
             'stage' => $dec['stage'],
             'due_now' => $dec['due_now'] && !empty($r['client_email']),

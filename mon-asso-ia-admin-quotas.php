@@ -183,13 +183,10 @@ render_sidebar('ia');
       // Icônes par rôle
       $role_icons = [
           'admin'       => ['🛡️', '#7E22CE', '#F3E8FF'],
-          'manager'     => ['🛡️', '#7E22CE', '#F3E8FF'],
           'coordinator' => ['🤝', '#0EA5E9', '#E0F2FE'],
-          'editor'      => ['✏️', '#0EA5E9', '#E0F2FE'],
+          'referent'    => ['🧭', '#059669', '#D1FAE5'],
           'member'      => ['👥', '#059669', '#D1FAE5'],
-          'adherent'    => ['👥', '#059669', '#D1FAE5'],
           'follower'    => ['👤', '#64748B', '#F1F5F9'],
-          'viewer'      => ['👁️', '#64748B', '#F1F5F9'],
       ];
       foreach ($visible_roles as $key => $cfg):
           $ic = $role_icons[$key] ?? ['👤', '#64748B', '#F1F5F9'];
@@ -203,7 +200,11 @@ render_sidebar('ia');
             </div>
           </div>
           <div class="qa-quota">
-            <?= (int)$cfg['daily_limit'] ?> <span class="unit">/ outil / jour</span>
+            <?php if ((int)$cfg['daily_limit'] === 0): ?>
+              — <span class="unit">pas d’accès à la Communication IA</span>
+            <?php else: ?>
+              <?= (int)$cfg['daily_limit'] ?> <span class="unit">/ outil / jour</span>
+            <?php endif; ?>
           </div>
           <div>
             <?php if (!empty($cfg['allow_images'])): ?>

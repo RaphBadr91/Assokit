@@ -356,7 +356,7 @@ if (!function_exists('ak_ai_tools_catalog')) {
                     ['name' => 'contexte',   'type' => 'textarea', 'label' => 'Contexte', 'rows' => 3],
                     ['name' => 'infos_cles', 'type' => 'textarea', 'label' => 'Informations clés (chiffres, dates)', 'rows' => 4],
                     ['name' => 'ville',      'type' => 'text', 'label' => 'Ville d\'émission'],
-                    ['name' => 'date',       'type' => 'text', 'label' => 'Date', 'default' => 'auto'],
+                    ['name' => 'date',       'type' => 'text', 'label' => 'Date', 'placeholder' => 'Vide = date du jour'],
                     ['name' => 'contact',    'type' => 'text', 'label' => 'Contact presse'],
                     $tone_field, $length_field,
                 ],
@@ -708,12 +708,15 @@ if (!function_exists('ak_ai_build_prompt')) {
                 break;
 
             case 'presse':
+                // Champ vide ou ancienne valeur « auto » (préremplie jusqu'ici) : date du jour
+                $press_date = trim((string)$g('date'));
+                if ($press_date === '' || strcasecmp($press_date, 'auto') === 0) $press_date = date('d/m/Y');
                 $user = "{$ctx}\n\nRédige un communiqué de presse au format pro français.\n\n"
                       . "Sujet : " . $g('sujet') . "\n"
                       . ($g('contexte') ? "Contexte : " . $g('contexte') . "\n" : '')
                       . ($g('infos_cles') ? "Informations clés : " . $g('infos_cles') . "\n" : '')
                       . ($g('ville') ? "Ville : " . $g('ville') . "\n" : '')
-                      . "Date : " . $g('date', date('d/m/Y')) . "\n"
+                      . "Date : " . $press_date . "\n"
                       . ($g('contact') ? "Contact presse : " . $g('contact') . "\n" : '')
                       . "\nStructure : 'COMMUNIQUÉ DE PRESSE' en haut, ville+date, titre fort, chapeau résumé, 2-4 paragraphes, citation marquante, encadré 'À propos de {$org_name}', bloc 'Contact presse'.\n"
                       . "{$tone_dir}\n{$length_dir}\n{$lang_dir}";
@@ -746,7 +749,8 @@ if (!function_exists('ak_ai_call_api')) {
         $api_key = defined('CLAUDE_API_KEY') ? CLAUDE_API_KEY : (getenv('CLAUDE_API_KEY') ?: '');
         if (!$api_key) {
             return ['ok' => false, 'text' => '', 'tokens_in' => 0, 'tokens_out' => 0,
-                    'error' => 'Clé API IA non configurée (CLAUDE_API_KEY manquante).', 'model' => AK_AI_MODEL];
+                    'error' => 'Le service IA n’est pas configuré sur ce serveur. Prévenez l’équipe Assokit.',
+                    'error_detail' => 'CLAUDE_API_KEY manquante', 'model' => AK_AI_MODEL];
         }
         $payload = [
             'model'      => AK_AI_MODEL,
@@ -773,11 +777,28 @@ if (!function_exists('ak_ai_call_api')) {
         $err  = curl_error($ch);
         curl_close($ch);
 
-        if ($resp === false) return ['ok' => false, 'text' => '', 'tokens_in' => 0, 'tokens_out' => 0, 'error' => 'Erreur réseau : ' . ($err ?: 'inconnue'), 'model' => AK_AI_MODEL];
+        // Message affiché à l'utilisateur : en français et compréhensible.
+        // Le détail technique (anglais, cURL…) va dans error_detail, gardé
+        // avec la génération (asso_ai_generations.error_message) et le journal.
+        if ($resp === false) {
+            error_log('[ak_ai_call_api] réseau : ' . ($err ?: 'inconnue'));
+            return ['ok' => false, 'text' => '', 'tokens_in' => 0, 'tokens_out' => 0,
+                    'error' => 'Le service IA est injoignable pour le moment. Réessayez dans une minute.',
+                    'error_detail' => 'Erreur réseau : ' . ($err ?: 'inconnue'), 'model' => AK_AI_MODEL];
+        }
         $data = json_decode($resp, true);
         if ($code < 200 || $code >= 300) {
+            $detail = "HTTP {$code} : " . ($data['error']['message'] ?? mb_substr((string)$resp, 0, 200));
+            error_log('[ak_ai_call_api] ' . $detail);
+            if ($code === 429 || $code === 529 || $code >= 500) {
+                $msg = 'Le service IA est surchargé, réessayez dans une minute.';
+            } elseif ($code === 400 || $code === 413) {
+                $msg = 'Le service IA n’a pas pu traiter cette demande (texte trop long ?). Raccourcissez-la puis réessayez.';
+            } else {
+                $msg = 'Le service IA est momentanément indisponible. Réessayez dans quelques minutes.';
+            }
             return ['ok' => false, 'text' => '', 'tokens_in' => 0, 'tokens_out' => 0,
-                    'error' => $data['error']['message'] ?? "Erreur HTTP {$code}", 'model' => AK_AI_MODEL];
+                    'error' => $msg, 'error_detail' => $detail, 'model' => AK_AI_MODEL];
         }
         $text = '';
         if (isset($data['content']) && is_array($data['content'])) {
@@ -818,18 +839,49 @@ if (!function_exists('ak_ai_save_generation')) {
                 ':tin' => (int)($result['tokens_in']  ?? 0),
                 ':tout' => (int)($result['tokens_out'] ?? 0),
                 ':status' => !empty($result['ok']) ? 'success' : 'error',
-                ':err' => $result['error'] ?? null,
+                ':err' => $result['error_detail'] ?? ($result['error'] ?? null),
             ]);
             return (int)$pdo->lastInsertId();
         } catch (Throwable $e) { error_log('[ak_ai_save_generation] ' . $e->getMessage()); return null; }
     }
 }
 
+// --------------------------------------------------------------
+// Droits sur les générations
+// --------------------------------------------------------------
+if (!function_exists('ak_ai_user_has_access')) {
+    /** Le suiveur (financeur externe) ne voit que ses projets : pas de Communication IA. */
+    function ak_ai_user_has_access(array $user): bool {
+        return ($user['role'] ?? '') !== 'follower';
+    }
+}
+
+if (!function_exists('ak_ai_can_manage_all')) {
+    /**
+     * Admin, coordinateur, fondateur, super-admin : voient et gèrent toutes les
+     * générations de l'association. Les autres rôles, seulement les leurs.
+     */
+    function ak_ai_can_manage_all(array $user): bool {
+        return in_array((string)($user['role'] ?? ''), ['admin', 'coordinator'], true)
+            || !empty($user['is_founder']) || !empty($user['is_super_admin']);
+    }
+}
+
 if (!function_exists('ak_ai_load_generation')) {
-    function ak_ai_load_generation(PDO $pdo, int $gen_id, int $org_id): ?array {
+    /**
+     * Charge une génération de l'association. Avec $user, applique en plus
+     * les droits : un membre ou un référent n'ouvre que ses propres générations.
+     */
+    function ak_ai_load_generation(PDO $pdo, int $gen_id, int $org_id, ?array $user = null): ?array {
         try {
-            $st = $pdo->prepare("SELECT * FROM asso_ai_generations WHERE id = :id AND org_id = :org LIMIT 1");
-            $st->execute([':id' => $gen_id, ':org' => $org_id]);
+            $sql = "SELECT * FROM asso_ai_generations WHERE id = :id AND org_id = :org";
+            $params = [':id' => $gen_id, ':org' => $org_id];
+            if ($user !== null && !ak_ai_can_manage_all($user)) {
+                $sql .= " AND user_id = :u";
+                $params[':u'] = (int)($user['id'] ?? 0);
+            }
+            $st = $pdo->prepare($sql . " LIMIT 1");
+            $st->execute($params);
             return $st->fetch(PDO::FETCH_ASSOC) ?: null;
         } catch (Throwable $e) { return null; }
     }

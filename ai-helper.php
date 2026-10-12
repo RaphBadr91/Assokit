@@ -35,11 +35,16 @@ function is_ai_enabled() {
  *   - les 20 derniers messages du chat d'équipe
  *   - la liste des fichiers (nom + type)
  *
- * @param int $project_id
- * @param PDO $pdo
+ * Sans $with_finances (utilisateur qui n'a pas accès aux finances, voir
+ * user_can_view_finances()), ni budget ni factures ne partent vers l'IA :
+ * le document produit ne peut donc pas les révéler.
+ *
+ * @param int  $project_id
+ * @param PDO  $pdo
+ * @param bool $with_finances Inclure budget et factures (défaut : oui)
  * @return string Le contexte formaté
  */
-function build_project_context($project_id, $pdo) {
+function build_project_context($project_id, $pdo, bool $with_finances = true) {
     // Infos projet
     $stmt = $pdo->prepare("
         SELECT p.*, f.name AS folder_name,
@@ -69,8 +74,10 @@ function build_project_context($project_id, $pdo) {
         $ctx .= " (dont " . (int)$p['participants_female'] . " femmes et " . (int)$p['participants_male'] . " hommes)";
     }
     $ctx .= "\n";
-    $ctx .= "- Budget prévu : " . number_format((float)$p['budget_planned'], 2, ',', ' ') . " €\n";
-    $ctx .= "- Budget utilisé : " . number_format((float)$p['budget_used'], 2, ',', ' ') . " €\n";
+    if ($with_finances) {
+        $ctx .= "- Budget prévu : " . number_format((float)$p['budget_planned'], 2, ',', ' ') . " €\n";
+        $ctx .= "- Budget utilisé : " . number_format((float)$p['budget_used'], 2, ',', ' ') . " €\n";
+    }
     $ctx .= "- Avancement : " . (int)$p['progress_percent'] . " %\n";
     $ctx .= "- Statut : " . $p['status'] . "\n";
     if ($p['start_date']) $ctx .= "- Démarrage : " . $p['start_date'] . "\n";
@@ -138,6 +145,14 @@ function build_project_context($project_id, $pdo) {
             $ctx .= "- " . $f['filename']
                  . " (" . ($f['mime_type'] ?: 'inconnu') . ", ajouté le " . date('d/m/Y', strtotime($f['created_at'])) . ")\n";
         }
+    }
+
+    if (!$with_finances) {
+        $ctx .= "\n## Données financières\n"
+              . "Non communiquées (accès réservé aux responsables financiers de l'association). "
+              . "N'invente AUCUN montant : dans toute section budget ou financière, écris seulement "
+              . "« Bilan financier : à compléter par le trésorier ».\n";
+        return $ctx;
     }
 
     // Factures liées au projet (bilan financier détaillé)

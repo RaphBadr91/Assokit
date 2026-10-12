@@ -9,12 +9,19 @@
  *   $pdf_emitter  (array - snapshot organization)
  *   $pdf_client   (array - snapshot asso_clients)
  *   $pdf_settings (array - org_invoice_settings)
+ *   $pdf_parent   (?array - avoir : facture d'origine, invoice_number + issued_at)
  */
 
-$emName = $pdf_emitter['legal_name_effective'] ?? $pdf_emitter['name'] ?? 'Association';
+$pdf_emitter = is_array($pdf_emitter ?? null) ? $pdf_emitter : [];
+$pdf_client  = is_array($pdf_client ?? null) ? $pdf_client : [];
+// Identité légale identique au vendeur du XML Factur-X (raison sociale, SIREN, n° TVA)
+$emId = ak_asso_emitter_identity($pdf_emitter);
+$emName = $emId['name'];
 $emForm = $pdf_emitter['legal_form'] ?? '';
 $emRna  = $pdf_emitter['rna_number'] ?? '';
-$emSiren = $pdf_emitter['siren'] ?? '';
+$emSiren = $emId['siren'];
+$emSiret = $emId['siret'];
+$emVat   = $emId['vat_number'];
 $emStreet = $pdf_emitter['billing_address_street'] ?? '';
 $emCompl  = $pdf_emitter['billing_address_complement'] ?? '';
 $emZip = $pdf_emitter['billing_address_zip'] ?? '';
@@ -43,6 +50,15 @@ $clSiren = $pdf_client['siren'] ?? '';
 $dateIssue = date('d/m/Y', strtotime($pdf_invoice['issued_at']));
 $dateDue   = date('d/m/Y', strtotime($pdf_invoice['due_at']));
 
+// Avoir : titre « AVOIR », référence de la facture annulée, ni échéance ni règlement attendu
+$isCredit  = function_exists('ak_asso_is_credit_note') && ak_asso_is_credit_note($pdf_invoice);
+$docTitle  = $isCredit ? 'AVOIR' : 'FACTURE';
+$pdf_parent = is_array($pdf_parent ?? null) ? $pdf_parent : null;
+
+// Mentions TVA selon le régime de l'émetteur, conditions de règlement (clients professionnels)
+$vatMentions = ak_asso_vat_mentions($pdf_emitter, abs((int)$pdf_invoice['amount_vat_cents']), $pdf_lines);
+$payTerms = $isCredit ? null : ak_asso_payment_terms($pdf_client);
+
 $iban = $pdf_settings['bank_iban'] ?? '';
 $bic = $pdf_settings['bank_bic'] ?? '';
 $bank = $pdf_settings['bank_name'] ?? '';
@@ -53,7 +69,7 @@ $htF = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Facture <?= $htF($pdf_invoice['invoice_number']) ?></title>
+<title><?= $isCredit ? 'Avoir' : 'Facture' ?> <?= $htF($pdf_invoice['invoice_number']) ?></title>
 <style>
 @page { margin: 15mm; }
 body {
@@ -223,14 +239,18 @@ table.lines tbody td.num { text-align: right; font-variant-numeric: tabular-nums
                     <?= $htF(trim($emZip . ' ' . $emCity)) ?><br>
                 <?php endif; ?>
                 <?php if ($emRna): ?>RNA : <?= $htF($emRna) ?><br><?php endif; ?>
-                <?php if ($emSiren): ?>SIREN : <?= $htF($emSiren) ?><br><?php endif; ?>
+                <?php if ($emSiren): ?>SIREN : <?= $htF($emSiren) ?><?php if ($emSiret): ?> · SIRET : <?= $htF($emSiret) ?><?php endif; ?><br><?php endif; ?>
+                <?php if ($emVat): ?>N° TVA intracommunautaire : <?= $htF($emVat) ?><br><?php endif; ?>
                 <?php if ($emEmail): ?><?= $htF($emEmail) ?><?php endif; ?>
                 <?php if ($emPhone): ?> · <?= $htF($emPhone) ?><?php endif; ?>
             </div>
         </td>
         <td class="invoice-title">
-            <h1>FACTURE</h1>
+            <h1><?= $docTitle ?></h1>
             <div class="number"><?= $htF($pdf_invoice['invoice_number']) ?></div>
+            <?php if ($isCredit && $pdf_parent): ?>
+                <div style="font-size:9pt; color:#4B5563; margin-top:4px;">Annule la facture n° <?= $htF($pdf_parent['invoice_number']) ?><br>du <?= $htF(date('d/m/Y', strtotime($pdf_parent['issued_at']))) ?></div>
+            <?php endif; ?>
         </td>
     </tr>
 </table>
@@ -240,13 +260,15 @@ table.lines tbody td.num { text-align: right; font-variant-numeric: tabular-nums
         <tr>
             <td style="width:42%;">
                 <table class="dates">
-                    <tr><td class="k">Émise le</td><td class="v"><?= $htF($dateIssue) ?></td></tr>
+                    <tr><td class="k">Émis<?= $isCredit ? '' : 'e' ?> le</td><td class="v"><?= $htF($dateIssue) ?></td></tr>
+                    <?php if (!$isCredit): ?>
                     <tr><td class="k">Échéance</td><td class="v"><?= $htF($dateDue) ?></td></tr>
+                    <?php endif; ?>
                 </table>
             </td>
             <td style="width:58%;">
                 <div class="client-box">
-                    <div class="label">Facturé à</div>
+                    <div class="label"><?= $isCredit ? 'Avoir au profit de' : 'Facturé à' ?></div>
                     <div class="name"><?= $htF($clName) ?></div>
                     <?php if ($clLegal && $clLegal !== $clName): ?><?= $htF($clLegal) ?><br><?php endif; ?>
                     <?php if ($clStreet): ?><?= $htF($clStreet) ?><br><?php endif; ?>
@@ -297,14 +319,14 @@ table.lines tbody td.num { text-align: right; font-variant-numeric: tabular-nums
         <td class="lbl">Total HT</td>
         <td class="val"><?= $htF(ak_asso_fmt_cents((int)$pdf_invoice['amount_ht_cents'])) ?></td>
     </tr>
-    <?php if ((int)$pdf_invoice['amount_vat_cents'] > 0): ?>
+    <?php if ((int)$pdf_invoice['amount_vat_cents'] !== 0): ?>
         <tr>
             <td class="lbl">TVA</td>
             <td class="val"><?= $htF(ak_asso_fmt_cents((int)$pdf_invoice['amount_vat_cents'])) ?></td>
         </tr>
     <?php else: ?>
         <tr>
-            <td class="lbl">TVA non applicable</td>
+            <td class="lbl"><?= $htF($vatMentions['zero_label']) ?></td>
             <td class="val">0,00 €</td>
         </tr>
     <?php endif; ?>
@@ -314,13 +336,19 @@ table.lines tbody td.num { text-align: right; font-variant-numeric: tabular-nums
     </tr>
 </table>
 
-<?php if ((int)$pdf_invoice['amount_vat_cents'] === 0): ?>
+<?php if (!empty($vatMentions['notice'])): ?>
 <div class="notice">
-    <strong>TVA non applicable — article 293 B du Code Général des Impôts.</strong>
+    <strong><?= $htF($vatMentions['notice']) ?></strong>
 </div>
 <?php endif; ?>
 
-<?php if ($iban || $bic): ?>
+<?php if ($payTerms): ?>
+<div style="margin-top:12px; font-size:8pt; color:#4B5563; line-height:1.5;">
+    <strong>Conditions de règlement :</strong> paiement au plus tard le <?= $htF($dateDue) ?>. <?= $htF($payTerms) ?>
+</div>
+<?php endif; ?>
+
+<?php if (($iban || $bic) && !$isCredit): ?>
 <div class="payment-info">
     <div class="title">💳 Coordonnées bancaires</div>
     <table>
@@ -341,13 +369,14 @@ table.lines tbody td.num { text-align: right; font-variant-numeric: tabular-nums
 <?php endif; ?>
 
 <div class="footer">
-    Facture émise le <?= $htF(date('d/m/Y à H:i', strtotime($pdf_invoice['created_at'] ?? 'now'))) ?>
+    <?= $isCredit ? 'Avoir émis le' : 'Facture émise le' ?> <?= $htF(date('d/m/Y à H:i', strtotime($pdf_invoice['created_at'] ?? 'now'))) ?>
     <?php if ($emName): ?> par <?= $htF($emName) ?><?php endif; ?>
     <?php if ($emRna || $emSiren): ?>
         ·
         <?php if ($emRna): ?>RNA <?= $htF($emRna) ?><?php endif; ?>
         <?php if ($emSiren): ?>SIREN <?= $htF($emSiren) ?><?php endif; ?>
     <?php endif; ?>
+    <?php if ($emVat): ?> · TVA <?= $htF($emVat) ?><?php endif; ?>
 </div>
 
 </body>

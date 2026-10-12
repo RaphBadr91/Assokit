@@ -56,12 +56,24 @@ try {
 // Requête liste factures client
 $where = 'i.org_id = :o';
 $params = [':o' => $org_id];
-if ($f_status !== '') { $where .= ' AND i.status = :st'; $params[':st'] = $f_status; }
+// « En retard » = échue et non payée, comme le hub, l'appli et /relances : une facture
+// « pending » dont l'échéance est passée est en retard (aucun traitement ne change son statut).
+if ($f_status === 'overdue') {
+    $where .= " AND (i.status = 'overdue' OR (i.status = 'pending' AND i.due_at < NOW()))";
+} elseif ($f_status === 'pending') {
+    $where .= " AND i.status = 'pending' AND (i.due_at IS NULL OR i.due_at >= NOW())";
+} elseif ($f_status !== '') {
+    $where .= ' AND i.status = :st'; $params[':st'] = $f_status;
+}
 if ($f_year > 0)     { $where .= ' AND YEAR(i.issued_at) = :yr'; $params[':yr'] = $f_year; }
 
 $invoices = [];
+// Avoirs : colonne invoice_type (migration 2026-08-12), lue seulement si elle existe
+require_once __DIR__ . '/trial-helpers.php';
+$type_col = isset(ak_db_columns($pdo, 'asso_invoices')['invoice_type']) ? 'i.invoice_type' : "'invoice'";
 try {
-    $sql = "SELECT i.id, i.invoice_number, i.issued_at, i.due_at, i.amount_ttc_cents, i.status,
+    $sql = "SELECT i.id, i.invoice_number, i.issued_at, i.due_at, i.amount_ttc_cents, i.status, i.client_marked_paid_at,
+                   $type_col AS invoice_type,
                    COALESCE(NULLIF(c.display_name, ''),
                             JSON_UNQUOTE(JSON_EXTRACT(i.client_snapshot, '$.display_name')),
                             'Client') AS client_name
@@ -79,6 +91,12 @@ try {
 }
 
 $fmt_cents = fn($c) => function_exists('_fh_fmt_cents') ? _fh_fmt_cents((int)$c) : number_format((int)$c / 100, 2, ',', ' ') . ' €';
+
+// Messages (encaissement constaté depuis la liste, etc.)
+$flash = $_SESSION['flash_asso_factures'] ?? null;
+unset($_SESSION['flash_asso_factures']);
+if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+$csrf = $_SESSION['csrf_token'];
 
 $status_style = function(string $s): array {
     switch ($s) {
@@ -101,6 +119,15 @@ render_sidebar('factures');
           '<a href="/mon-asso-devis-new" class="fh-btn fh-btn-ghost"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Nouveau devis</a>'
         . '<a href="/mon-asso-facture-new" class="fh-btn fh-btn-primary"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Nouvelle facture</a>',
   ]); ?>
+
+  <?php if ($flash): ?>
+  <div class="card" style="padding:12px 18px;margin-bottom:14px;font-size:14px;border-left:4px solid <?= $flash['type'] === 'success' ? '#10B981' : '#DC2626' ?>;background:<?= $flash['type'] === 'success' ? '#ECFDF5' : '#FEF2F2' ?>;color:<?= $flash['type'] === 'success' ? '#065F46' : '#991B1B' ?>;">
+    <?= h($flash['message']) ?>
+    <?php if (!empty($flash['pdf_link'])): ?>
+      — <a href="<?= h($flash['pdf_link']) ?>" target="_blank" style="font-weight:600;color:inherit;">Télécharger le PDF</a>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
 
   <!-- Filtres -->
   <form method="get" action="/mon-asso-factures-client" class="card" style="padding:14px 18px;margin-bottom:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
@@ -149,7 +176,12 @@ render_sidebar('factures');
         </thead>
         <tbody>
           <?php foreach ($invoices as $inv):
-            [$st_color, $st_bg, $st_label] = $status_style((string)$inv['status']);
+            $eff_status = (string)$inv['status'];
+            if ($eff_status === 'pending' && !empty($inv['due_at']) && strtotime($inv['due_at']) < time()) $eff_status = 'overdue';
+            [$st_color, $st_bg, $st_label] = ($inv['invoice_type'] ?? 'invoice') === 'credit_note'
+                ? ['#7C2D12', '#FFEDD5', 'Avoir']
+                : $status_style($eff_status);
+            $payable = in_array((string)$inv['status'], ['pending', 'overdue'], true);
           ?>
           <tr style="border-top:1px solid #F1F5F9;">
             <td style="padding:14px 16px;font-family:monospace;font-size:13px;font-weight:600;"><?= h($inv['invoice_number'] ?? ('#' . $inv['id'])) ?></td>
@@ -158,8 +190,15 @@ render_sidebar('factures');
             <td style="padding:14px 16px;text-align:right;font-weight:700;"><?= h($fmt_cents($inv['amount_ttc_cents'])) ?></td>
             <td style="padding:14px 16px;text-align:center;">
               <span style="background:<?= $st_bg ?>;color:<?= $st_color ?>;font-size:11px;padding:3px 10px;border-radius:999px;font-weight:600;"><?= h($st_label) ?></span>
+              <?php if ($payable && !empty($inv['client_marked_paid_at'])): ?>
+                <div style="margin-top:4px;font-size:11px;color:#047857;font-weight:600;" title="Le client a déclaré son règlement sur la page de la facture : à confirmer">Paiement déclaré</div>
+              <?php endif; ?>
             </td>
-            <td style="padding:14px 16px;text-align:right;">
+            <td style="padding:14px 16px;text-align:right;white-space:nowrap;">
+              <?php if ($payable): ?>
+                <button type="button" class="js-mark-paid" data-id="<?= (int)$inv['id'] ?>" data-number="<?= h($inv['invoice_number'] ?? ('#' . $inv['id'])) ?>"
+                        style="display:inline-flex;align-items:center;gap:5px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;padding:5px 11px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px;">✓ Payée</button>
+              <?php endif; ?>
               <a href="/mon-asso-facture-edit?id=<?= (int)$inv['id'] ?>" style="display:inline-flex;align-items:center;gap:5px;background:#F0FDF4;color:#047857;padding:6px 12px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('inbox',14) ?>Ouvrir</a>
             </td>
           </tr>
@@ -169,6 +208,43 @@ render_sidebar('factures');
       </div>
     <?php endif; ?>
   </div>
+
+  <!-- Encaissement constaté (bouton « ✓ Payée » d'une ligne) -->
+  <dialog id="mark-paid-dialog" style="border:none;border-radius:12px;padding:0;max-width:440px;width:calc(100% - 32px);box-shadow:0 20px 50px rgba(15,23,42,.25);">
+    <form method="POST" action="/mon-asso-facture-save" style="padding:22px;">
+      <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+      <input type="hidden" name="action" value="mark_paid">
+      <input type="hidden" name="return" value="list">
+      <input type="hidden" name="invoice_id" id="mp-id" value="">
+      <h3 style="margin:0 0 4px;font-size:16px;color:#0F172A;">Marquer comme payée</h3>
+      <div id="mp-number" style="font-family:monospace;font-size:13px;color:#64748B;margin-bottom:14px;"></div>
+      <label style="display:block;font-size:12px;color:#64748B;margin-bottom:5px;">Date du règlement</label>
+      <input type="date" name="paid_at" required max="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>" style="width:100%;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:10px;">
+      <label style="display:block;font-size:12px;color:#64748B;margin-bottom:5px;">Moyen de paiement</label>
+      <select name="payment_method" required style="width:100%;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:10px;">
+        <option value="">— Choisir —</option>
+        <?php foreach (ak_asso_payment_methods() as $k => $lbl): ?>
+          <option value="<?= h($k) ?>"><?= h($lbl) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <label style="display:block;font-size:12px;color:#64748B;margin-bottom:5px;">Référence (optionnel)</label>
+      <input type="text" name="payment_reference" maxlength="255" placeholder="N° de virement, de chèque…" style="width:100%;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;">
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+        <button type="button" onclick="this.closest('dialog').close()" style="background:#F1F5F9;color:#334155;border:none;padding:9px 16px;border-radius:8px;font-size:13.5px;cursor:pointer;">Annuler</button>
+        <button type="submit" style="background:#059669;color:white;border:none;padding:9px 16px;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;">✅ Enregistrer le règlement</button>
+      </div>
+    </form>
+  </dialog>
+  <script>
+  document.querySelectorAll('.js-mark-paid').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var dlg = document.getElementById('mark-paid-dialog');
+      document.getElementById('mp-id').value = b.dataset.id;
+      document.getElementById('mp-number').textContent = 'Facture ' + b.dataset.number;
+      if (dlg.showModal) dlg.showModal(); else location.href = '/mon-asso-facture-edit?id=' + encodeURIComponent(b.dataset.id) + '#encaissement';
+    });
+  });
+  </script>
 
   <p style="text-align:center;margin-top:18px;color:#64748B;font-size:13px;">
     Vos factures émises à vos clients.<?php if (!ak_billing_hidden()): ?> Les factures d'abonnement Assokit sont dans <a href="/abonnement" style="color:#059669;font-weight:600;text-decoration:none;">Abonnement</a>.<?php endif; ?>

@@ -8,9 +8,12 @@ require __DIR__ . '/_app-write-boot.php';
 @require_once __DIR__ . '/../finance-permissions.php';
 @require_once __DIR__ . '/../asso-invoice-helpers.php';
 
-// Même contrôle d'accès que le site (mon-asso-facture-save.php) : finances réservées.
-if (!function_exists('user_can_view_finances') || !user_can_view_finances($user)) {
-    app_fail(403, 'role', 'Accès réservé aux administrateurs.');
+// Même contrôle d'accès que le site (mon-asso-facture-save.php, require_billing_access) :
+// admins, fondateur, super-admin et coordinateurs.
+@require_once __DIR__ . '/../platform-flags.php';
+if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+if (!function_exists('user_can_access_billing') || !user_can_access_billing($user)) {
+    app_fail(403, 'role', 'Accès réservé aux administrateurs et coordinateurs.');
 }
 
 if (!function_exists('ak_asso_invoice_create')) {
@@ -49,8 +52,8 @@ foreach ((array) ($input['lines'] ?? []) as $l) {
     if ($des === '') continue;
     $lines[] = [
         'designation'   => mb_substr($des, 0, 500),
-        'quantity'      => $num($l['quantity'] ?? 1),
-        'unit_price_ht' => $num($l['unit_price_ht'] ?? 0),
+        'quantity'      => round($num($l['quantity'] ?? 1), 2),        // 2 décimales, comme en base
+        'unit_price_ht' => round($num($l['unit_price_ht'] ?? 0), 2),   // au centime
         'vat_rate'      => (isset($l['vat_rate']) && $l['vat_rate'] !== '' && $l['vat_rate'] !== null) ? $num($l['vat_rate']) : null,
     ];
 }
@@ -59,8 +62,11 @@ if (!$lines) app_fail(422, 'invalid', 'Ajoutez au moins une ligne.');
 // Valeur transmise par l'app, sinon 'pending' : on ne relit jamais une clé absente
 $_status = (string) ($input['status'] ?? 'pending');
 $status = in_array($_status, ['draft', 'pending'], true) ? $_status : 'pending';
-$due_days = (int) ($input['due_days'] ?? 30);
-if ($due_days < 0 || $due_days > 365) $due_days = 30;
+// Sans délai transmis (ou hors bornes) : « Délai de paiement par défaut » des paramètres de
+// facturation de l'association (ak_asso_invoice_create), comme sur le site.
+$due_days = (isset($input['due_days']) && $input['due_days'] !== '' && $input['due_days'] !== null)
+    ? (int) $input['due_days'] : null;
+if ($due_days !== null && ($due_days < 0 || $due_days > 365)) $due_days = null;
 
 try {
     $res = ak_asso_invoice_create($pdo, $org_id, $uid, [

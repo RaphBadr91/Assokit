@@ -18,6 +18,7 @@ require_login();
 $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
+if (!ak_ai_user_has_access($user)) { header('Location: /projets'); exit; }
 
 $can_administer_quotas = ak_ai_quota_can_administer($pdo, $user);
 
@@ -33,9 +34,11 @@ try {
     if ($tables_ready) {
         $count_month = ak_ai_count_this_month($pdo, $org_id);
         $count_total = ak_ai_count_total($pdo, $org_id);
+        // Dernières créations : toutes pour admin / coordinateur, les siennes sinon
+        $mine = ak_ai_can_manage_all($user) ? '' : ' AND user_id = :u';
         $st = $pdo->prepare("SELECT id, tool_type, title, created_at FROM asso_ai_generations
-                             WHERE org_id = :o AND status = 'success' ORDER BY created_at DESC LIMIT 5");
-        $st->execute([':o' => $org_id]);
+                             WHERE org_id = :o AND status = 'success'" . $mine . " ORDER BY created_at DESC LIMIT 5");
+        $st->execute([':o' => $org_id] + ($mine ? [':u' => (int)$user['id']] : []));
         $recent = $st->fetchAll(PDO::FETCH_ASSOC);
     }
 } catch (Throwable $e) {
@@ -169,7 +172,9 @@ render_sidebar('ia');
     </div>
 
     <div class="ia-quicknav">
+      <?php if (ak_ai_can_manage_all($user)): // diffusion réservée aux admins / coordinateurs ?>
       <a href="/mon-asso-ia-diffusion" class="primary"><span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('send',15) ?></span> Diffusion email</a>
+      <?php endif; ?>
       <a href="/mon-asso-ia-historique"><span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('folder',15) ?></span> Historique</a>
       <?php if ($can_administer_quotas): ?>
         <a href="/mon-asso-ia-admin-quotas" style="background:#FEF3C7;color:#92400E;border-color:#FDE68A;"><span style="display:inline-flex; vertical-align:-3px;"><?= ak_icon('shield',15) ?></span> Voir les quotas</a>

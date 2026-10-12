@@ -45,7 +45,7 @@ Upload **`cron-demo-reset.php`** (ce ZIP) → écrase l'ancienne version dans `p
 
 Va sur :
 ```
-https://assokit.fr/cron-demo-reset.php?token=AssokitDemoReset2026Secret
+https://assokit.fr/cron-demo-reset?token=<CRON_TOKEN_DEMO défini dans config.php>
 ```
 
 Tu devrais voir le log s'afficher en temps réel :
@@ -96,7 +96,7 @@ Ajoute une tâche :
 
 Tu peux aussi mettre cette commande comme cron :
 ```
-curl -s "https://assokit.fr/cron-demo-reset.php?token=AssokitDemoReset2026Secret" > /dev/null
+curl -s "https://assokit.fr/cron-demo-reset?token=<CRON_TOKEN_DEMO>" > /dev/null
 ```
 
 ---
@@ -127,7 +127,7 @@ Ou via cPanel → ouvre le fichier `cron-demo-reset.log` directement.
 
 ## ⚠️ Sécurité importante
 
-Le token actuel est `AssokitDemoReset2026Secret`. **Garde-le secret** :
+Le jeton est la constante `CRON_TOKEN_DEMO` de `config.php` (aléatoire, 24 caractères minimum ; l'ancien jeton d'exemple est refusé). **Garde-le secret** :
 - Ne le mets PAS sur Github
 - Ne le mets PAS dans un repo public
 - N'envoie PAS l'URL avec le token à des inconnus
@@ -147,7 +147,7 @@ Le test manuel (Étape 4) te dit exactement ce qui plante. Les erreurs typiques 
 → Le SQL a un problème. Le log te dit quelle ligne, dans quel fichier.
 
 ### "Forbidden"
-→ Le token est mauvais. Vérifie que tu utilises bien `AssokitDemoReset2026Secret`.
+→ Le jeton est mauvais, ou trop court / c'est l'ancien jeton d'exemple : définis un nouveau `CRON_TOKEN_DEMO` aléatoire dans `config.php`.
 
 ### Le cron ne se déclenche pas à minuit
 → Vérifie dans cPanel → Cron Jobs que la tâche est bien créée.

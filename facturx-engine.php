@@ -40,9 +40,11 @@ if (!function_exists('facturx_build_data')) {
  */
 function facturx_build_data(PDO $pdo, int $org_id, int $invoice_id): ?array {
     $st = $pdo->prepare(
-        "SELECT i.*, c.display_name client_name, c.email client_email,
-                c.address_street c_street, c.address_zip c_zip, c.address_city c_city, c.vat_number c_vat,
+        "SELECT i.*, c.display_name client_name, c.email client_email, c.legal_name c_legal,
+                c.address_street c_street, c.address_zip c_zip, c.address_city c_city,
+                c.address_country c_country, c.siren c_siren, c.siret c_siret, c.vat_number c_vat,
                 o.name org_name, o.legal_name org_legal, o.siret o_siret, o.siren o_siren, o.vat_number o_vat,
+                o.vat_subject o_vat_subject,
                 o.billing_address_street o_street, o.billing_address_zip o_zip,
                 o.billing_address_city o_city, o.billing_address_country o_country
          FROM asso_invoices i
@@ -52,6 +54,44 @@ function facturx_build_data(PDO $pdo, int $org_id, int $invoice_id): ?array {
     $st->execute([':id'=>$invoice_id, ':o'=>$org_id]);
     $inv = $st->fetch(PDO::FETCH_ASSOC);
     if (!$inv) return null;
+
+    // Avoir : facture d'origine (référencée dans le XML)
+    if (($inv['invoice_type'] ?? 'invoice') === 'credit_note' && !empty($inv['parent_invoice_id'])) {
+        try {
+            $ps = $pdo->prepare("SELECT invoice_number, issued_at FROM asso_invoices WHERE id = ? AND org_id = ? LIMIT 1");
+            $ps->execute([(int)$inv['parent_invoice_id'], $org_id]);
+            if ($p = $ps->fetch(PDO::FETCH_ASSOC)) {
+                $inv['parent_invoice_number'] = $p['invoice_number'];
+                $inv['parent_issued_at'] = $p['issued_at'];
+            }
+        } catch (Throwable $e) {}
+    }
+
+    // Identités figées à l'émission (snapshots), comme le XML embarqué dans le PDF
+    // (facturx-helpers.php) et le PDF lui-même : une facture émise ne change pas quand la
+    // fiche de l'association ou du client est modifiée. Fiche actuelle seulement pour un
+    // champ absent du snapshot (anciennes factures).
+    $em = json_decode((string)($inv['emitter_snapshot'] ?? ''), true);
+    $cl = json_decode((string)($inv['client_snapshot'] ?? ''), true);
+    $em = is_array($em) ? $em : [];
+    $cl = is_array($cl) ? $cl : [];
+    $pick = function (array $snap, string $key, $live) {
+        $v = $snap[$key] ?? null;
+        return ($v !== null && trim((string)$v) !== '') ? $v : $live;
+    };
+    foreach (['org_name' => 'name', 'org_legal' => 'legal_name', 'o_siret' => 'siret', 'o_siren' => 'siren',
+              'o_vat' => 'vat_number', 'o_street' => 'billing_address_street', 'o_zip' => 'billing_address_zip',
+              'o_city' => 'billing_address_city', 'o_country' => 'billing_address_country'] as $k => $sk) {
+        $inv[$k] = $pick($em, $sk, $inv[$k] ?? null);
+    }
+    if (array_key_exists('vat_subject', $em) && $em['vat_subject'] !== null && $em['vat_subject'] !== '') {
+        $inv['o_vat_subject'] = $em['vat_subject'];
+    }
+    foreach (['client_name' => 'display_name', 'c_legal' => 'legal_name', 'c_street' => 'address_street',
+              'c_zip' => 'address_zip', 'c_city' => 'address_city', 'c_country' => 'address_country',
+              'c_siren' => 'siren', 'c_siret' => 'siret', 'c_vat' => 'vat_number'] as $k => $sk) {
+        $inv[$k] = $pick($cl, $sk, $inv[$k] ?? null);
+    }
 
     // Lignes
     $lines = [];
@@ -92,16 +132,43 @@ function facturx_build_data(PDO $pdo, int $org_id, int $invoice_id): ?array {
 if (!function_exists('facturx_cii_xml')) {
 /** Construit le XML CII (profil EN 16931) depuis facturx_build_data(). */
 function facturx_cii_xml(array $data): string {
+    require_once __DIR__ . '/facturx-helpers.php';   // ak_fx_siren(), ak_fx_country() : mêmes règles que le XML du PDF
     $inv = $data['inv']; $lines = $data['lines']; $tax = $data['tax'];
     $cur = 'EUR';
+    // Avoir : type 381, montants positifs (le signe est porté par le type de document,
+    // les montants de l'avoir sont enregistrés négatifs en base) et facture d'origine (BT-25)
+    $isCredit = ($inv['invoice_type'] ?? 'invoice') === 'credit_note';
+    if ($isCredit) {
+        foreach ($lines as &$l) {
+            foreach (['unit_price_ht_cents', 'amount_ht_cents', 'amount_ttc_cents'] as $k) {
+                if (isset($l[$k])) $l[$k] = abs((int)$l[$k]);
+            }
+        }
+        unset($l);
+        foreach ($tax as &$t) { $t['basis_cents'] = abs((int)$t['basis_cents']); $t['tax_cents'] = abs((int)$t['tax_cents']); }
+        unset($t);
+    }
     $sellerName = $inv['org_legal'] ?: $inv['org_name'] ?: 'Vendeur';
-    $buyerName  = $inv['client_name'] ?: 'Client';
-    $country    = $inv['o_country'] ?: 'FR';
+    $buyerName  = ($inv['c_legal'] ?? '') ?: ($inv['client_name'] ?: 'Client');
+    $country    = ak_fx_country($inv['o_country'] ?? null);        // code ISO 3166-1 (« France » → FR)
+    $buyerCountry = ak_fx_country($inv['c_country'] ?? null);
+    // Identifiant légal (BT-30 / BT-47) : SIREN, schéma 0002 (un SIRET à 14 chiffres y était
+    // déclaré tel quel, ce que rejettent les contrôles)
+    $sellerSiren = ak_fx_siren($inv['o_siren'] ?? null, $inv['o_siret'] ?? null);
+    $buyerSiren  = ak_fx_siren($inv['c_siren'] ?? null, $inv['c_siret'] ?? null);
+    // Régime TVA du vendeur : n° de TVA et motif d'exonération des lignes à 0 %
+    $vatSubject = !empty($inv['o_vat_subject']);
+    $sellerVat  = $vatSubject ? strtoupper(preg_replace('/\s+/', '', (string)($inv['o_vat'] ?? ''))) : '';
+    $exemptReason = $vatSubject
+        ? 'Exonération de TVA, article 261 du CGI'
+        : 'TVA non applicable, art. 293 B du CGI';
+    $exemptCode = $vatSubject ? '' : 'VATEX-FR-FRANCHISE';
 
     $x  = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
     $x .= '<rsm:CrossIndustryInvoice'
         . ' xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"'
         . ' xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100"'
+        . ' xmlns:qdt="urn:un:unece:uncefact:data:standard:QualifiedDataType:100"'
         . ' xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100">'."\n";
 
     // Contexte
@@ -112,7 +179,7 @@ function facturx_cii_xml(array $data): string {
     // Document
     $x .= '  <rsm:ExchangedDocument>'
         . '<ram:ID>'.fx_esc($inv['invoice_number']).'</ram:ID>'
-        . '<ram:TypeCode>380</ram:TypeCode>'
+        . '<ram:TypeCode>'.($isCredit ? '381' : '380').'</ram:TypeCode>'
         . '<ram:IssueDateTime><udt:DateTimeString format="102">'.fx_date102($inv['issued_at']).'</udt:DateTimeString></ram:IssueDateTime>'
         . '</rsm:ExchangedDocument>'."\n";
 
@@ -141,8 +208,8 @@ function facturx_cii_xml(array $data): string {
     // Vendeur
     $x .= '      <ram:SellerTradeParty>'
         . '<ram:Name>'.fx_esc($sellerName).'</ram:Name>';
-    if (!empty($inv['o_siret'])) {
-        $x .= '<ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">'.fx_esc(preg_replace('/\s/','',$inv['o_siret'])).'</ram:ID></ram:SpecifiedLegalOrganization>';
+    if ($sellerSiren) {
+        $x .= '<ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">'.fx_esc($sellerSiren).'</ram:ID></ram:SpecifiedLegalOrganization>';
     }
     $x .= '<ram:PostalTradeAddress>'
         . '<ram:PostcodeCode>'.fx_esc($inv['o_zip'] ?? '').'</ram:PostcodeCode>'
@@ -150,18 +217,21 @@ function facturx_cii_xml(array $data): string {
         . '<ram:CityName>'.fx_esc($inv['o_city'] ?? '').'</ram:CityName>'
         . '<ram:CountryID>'.fx_esc($country).'</ram:CountryID>'
         . '</ram:PostalTradeAddress>';
-    if (!empty($inv['o_vat'])) {
-        $x .= '<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">'.fx_esc($inv['o_vat']).'</ram:ID></ram:SpecifiedTaxRegistration>';
+    if ($sellerVat !== '') {
+        $x .= '<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">'.fx_esc($sellerVat).'</ram:ID></ram:SpecifiedTaxRegistration>';
     }
     $x .= '</ram:SellerTradeParty>'."\n";
     // Acheteur
     $x .= '      <ram:BuyerTradeParty>'
-        . '<ram:Name>'.fx_esc($buyerName).'</ram:Name>'
-        . '<ram:PostalTradeAddress>'
+        . '<ram:Name>'.fx_esc($buyerName).'</ram:Name>';
+    if ($buyerSiren) {
+        $x .= '<ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">'.fx_esc($buyerSiren).'</ram:ID></ram:SpecifiedLegalOrganization>';
+    }
+    $x .= '<ram:PostalTradeAddress>'
         . '<ram:PostcodeCode>'.fx_esc($inv['c_zip'] ?? '').'</ram:PostcodeCode>'
         . '<ram:LineOne>'.fx_esc($inv['c_street'] ?? '').'</ram:LineOne>'
         . '<ram:CityName>'.fx_esc($inv['c_city'] ?? '').'</ram:CityName>'
-        . '<ram:CountryID>FR</ram:CountryID>'
+        . '<ram:CountryID>'.fx_esc($buyerCountry).'</ram:CountryID>'
         . '</ram:PostalTradeAddress>';
     if (!empty($inv['c_vat'])) {
         $x .= '<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">'.fx_esc($inv['c_vat']).'</ram:ID></ram:SpecifiedTaxRegistration>';
@@ -180,9 +250,10 @@ function facturx_cii_xml(array $data): string {
         $x .= '      <ram:ApplicableTradeTax>'
             . '<ram:CalculatedAmount>'.fx_num($t['tax_cents']).'</ram:CalculatedAmount>'
             . '<ram:TypeCode>VAT</ram:TypeCode>'
-            . ($cat === 'E' ? '<ram:ExemptionReason>Non assujetti a la TVA</ram:ExemptionReason>' : '')
+            . ($cat === 'E' ? '<ram:ExemptionReason>'.fx_esc($exemptReason).'</ram:ExemptionReason>' : '')
             . '<ram:BasisAmount>'.fx_num($t['basis_cents']).'</ram:BasisAmount>'
             . '<ram:CategoryCode>'.$cat.'</ram:CategoryCode>'
+            . ($cat === 'E' && $exemptCode !== '' ? '<ram:ExemptionReasonCode>'.$exemptCode.'</ram:ExemptionReasonCode>' : '')
             . '<ram:RateApplicablePercent>'.fx_pct($t['rate']).'</ram:RateApplicablePercent>'
             . '</ram:ApplicableTradeTax>'."\n";
     }
@@ -201,6 +272,11 @@ function facturx_cii_xml(array $data): string {
         . '<ram:GrandTotalAmount>'.fx_num($grand).'</ram:GrandTotalAmount>'
         . '<ram:DuePayableAmount>'.fx_num($grand).'</ram:DuePayableAmount>'
         . '</ram:SpecifiedTradeSettlementHeaderMonetarySummation>'."\n";
+    if ($isCredit && !empty($inv['parent_invoice_number'])) {
+        $x .= '      <ram:InvoiceReferencedDocument><ram:IssuerAssignedID>'.fx_esc($inv['parent_invoice_number']).'</ram:IssuerAssignedID>'
+            . (!empty($inv['parent_issued_at']) ? '<ram:FormattedIssueDateTime><qdt:DateTimeString format="102">'.fx_date102($inv['parent_issued_at']).'</qdt:DateTimeString></ram:FormattedIssueDateTime>' : '')
+            . '</ram:InvoiceReferencedDocument>'."\n";
+    }
     $x .= '    </ram:ApplicableHeaderTradeSettlement>'."\n";
 
     $x .= '  </rsm:SupplyChainTradeTransaction>'."\n";

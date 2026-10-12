@@ -6,9 +6,15 @@
  *    Heure : 0 0 * * *  (minuit chaque nuit)
  *    Cmd   : php -f /home/pura7044/public_html/cron-demo-reset.php
  * 
- * Ou en URL secrète :
- *    https://assokit.fr/cron-demo-reset.php?token=<CRON_TOKEN_DEMO défini dans config.php>
- * 
+ * Ou en URL secrète (en-tête X-Cron-Token accepté aussi) :
+ *    https://assokit.fr/cron-demo-reset?token=<CRON_TOKEN_DEMO défini dans config.php,
+ *                                              à défaut CRON_TOKEN>
+ *    Sans « .php » : l'URL est réécrite en interne, alors qu'avec « .php » le
+ *    .htaccess répond par une redirection 301 qu'un « curl -s » ne suit pas.
+ *    Jeton aléatoire d'au moins 24 caractères ; l'ancien jeton d'exemple du
+ *    README est public et toujours refusé. Au plus un reset par URL toutes les
+ *    10 minutes.
+ *
  * ⚠️ IMPORTANT : ce script attend les 6 fichiers SQL dans /demo-sql/ :
  *    01-demo-seed-v2.sql        — Fondations (4 orgs, équipes, sélecteur)
  *    02-demo-data-massive.sql   — Adhérents, projets, factures, devis
@@ -21,8 +27,17 @@
 // =============================================================
 // CONFIGURATION
 // =============================================================
-$CRON_TOKEN = defined('CRON_TOKEN_DEMO') ? CRON_TOKEN_DEMO : (defined('CRON_TOKEN') ? CRON_TOKEN : '');
+// config.php d'abord : c'est lui qui définit CRON_TOKEN_DEMO / CRON_TOKEN.
+// Lus avant, ils valaient '' et le mode URL refusait même le bon jeton.
+require_once __DIR__ . '/config.php';
+$CRON_TOKEN = defined('CRON_TOKEN_DEMO') ? (string) CRON_TOKEN_DEMO : (defined('CRON_TOKEN') ? (string) CRON_TOKEN : '');
+// Jeton d'exemple publié dans README.md (dépôt GitHub public, historique git)
+// et jetons trop courts : jamais acceptés par URL, même s'ils sont restés dans
+// config.php. Le cron en ligne de commande n'est pas concerné.
+$CRON_TOKEN_WEAK = $CRON_TOKEN !== ''
+    && (hash_equals('AssokitDemoReset2026Secret', $CRON_TOKEN) || strlen($CRON_TOKEN) < 24);
 $LOG_FILE = __DIR__ . '/cron-demo-reset.log';
+$URL_COOLDOWN = 600; // secondes minimum entre deux resets lancés par URL
 
 // Liste ORDONNÉE des fichiers SQL à exécuter (l'ordre est critique !)
 $SQL_FILES = [
@@ -42,13 +57,69 @@ sort($SQL_FILES);
 // =============================================================
 $is_cli = php_sapi_name() === 'cli';
 $token = $_GET['token'] ?? ($_SERVER['HTTP_X_CRON_TOKEN'] ?? '');
+if (!is_string($token)) $token = '';
 
-if (!$is_cli && ($CRON_TOKEN === '' || !hash_equals($CRON_TOKEN, (string)$token))) {
+if (!$is_cli && ($CRON_TOKEN === '' || $CRON_TOKEN_WEAK || !hash_equals($CRON_TOKEN, $token))) {
+    if ($CRON_TOKEN_WEAK && $token !== '' && hash_equals($CRON_TOKEN, $token)) {
+        // Seul le titulaire du jeton configuré (ou celui qui l'a lu dans le
+        // README) arrive ici : on lui dit quoi corriger, dans les logs serveur.
+        error_log('cron-demo-reset : jeton refusé par URL (jeton d\'exemple public ou moins de 24 caractères). '
+            . 'Définir un nouveau CRON_TOKEN_DEMO aléatoire dans config.php.');
+    }
     http_response_code(403);
     die('Forbidden');
 }
 
-require_once __DIR__ . '/config.php';
+if (!$is_cli) {
+    // Même avec le bon jeton, pas de resets en rafale par URL : chacun recharge
+    // plusieurs milliers de lignes sur la base partagée avec les clients.
+    clearstatcache(true, $LOG_FILE);
+    $last_run = @filemtime($LOG_FILE);
+    $age = $last_run === false ? null : time() - $last_run;
+    if ($age !== null && $age >= 0 && $age < $URL_COOLDOWN) {
+        http_response_code(429);
+        header('Retry-After: ' . max(1, $URL_COOLDOWN - $age));
+        header('Content-Type: text/plain; charset=UTF-8');
+        die("Un reset de la démo a eu lieu il y a moins de " . intdiv($URL_COOLDOWN, 60) . " minutes.\n");
+    }
+}
+
+if (!$is_cli) {
+    // Appel par URL : le reset dure plusieurs dizaines de secondes. Un client
+    // qui raccroche (curl --max-time, onglet fermé) ne doit pas l'interrompre
+    // à mi-chemin, ce qui laisserait la démo à moitié rechargée.
+    ignore_user_abort(true);
+    @set_time_limit(0);
+    header('Content-Type: text/plain; charset=UTF-8');
+}
+
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    http_response_code(500);
+    die("PDO indisponible (config.php).\n");
+}
+
+// Un seul reset à la fois : le cron de minuit et un appel par URL lancés
+// ensemble rechargeraient les mêmes données en parallèle. Nom préfixé de la
+// base, comme dans cron-lots.php (GET_LOCK porte sur tout le serveur MySQL).
+$lock_name = null;
+try {
+    $lock_name = mb_substr((string) $pdo->query('SELECT DATABASE()')->fetchColumn() . ':demo_reset', 0, 64);
+    $st_lock = $pdo->prepare('SELECT GET_LOCK(?, 0)');
+    $st_lock->execute([$lock_name]);
+    if ((int) $st_lock->fetchColumn() !== 1) {
+        if (!$is_cli) http_response_code(409);
+        die("Un reset de la démo est déjà en cours.\n");
+    }
+} catch (Throwable $e) {
+    $lock_name = null; // verrou indisponible : on ne bloque pas le reset pour autant
+}
+// Libéré explicitement (connexion persistante possible), y compris sur die().
+if ($lock_name !== null) {
+    register_shutdown_function(function () use ($pdo, $lock_name): void {
+        try { $pdo->prepare('DO RELEASE_LOCK(?)')->execute([$lock_name]); } catch (Throwable $e) {}
+    });
+}
+
 $pdo->exec("SET SESSION sql_mode=''"); // AssoKit: seed permissif
 
 // =============================================================
@@ -58,8 +129,8 @@ function log_msg(string $msg): void {
     global $LOG_FILE;
     $line = '[' . date('Y-m-d H:i:s') . '] ' . $msg . "\n";
     file_put_contents($LOG_FILE, $line, FILE_APPEND);
-    if (php_sapi_name() === 'cli') echo $line;
-    else echo $line . '<br>';
+    echo $line;   // en URL, la réponse est en text/plain
+    if (php_sapi_name() !== 'cli') @flush();
 }
 
 log_msg('===== RESET DEMO START =====');

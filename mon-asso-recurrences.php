@@ -150,10 +150,12 @@ render_sidebar('recurrences');
         </div>
       </div>
       <div class="rec-actions">
-        <a class="rec-btn rec-btn-ghost" href="/mon-asso-factures">← Factures</a>
+        <a class="rec-btn rec-btn-ghost" href="/mon-asso-factures-client">← Factures</a>
         <a class="rec-btn rec-btn-primary" href="/mon-asso-recurrence-new">+ Nouvelle récurrence</a>
       </div>
     </div>
+
+    <?= ak_recurrence_flash_html() ?>
 
     <?php if ($page_error): ?>
       <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;margin-bottom:18px;color:#991B1B;font-size:14px;">
@@ -246,7 +248,7 @@ render_sidebar('recurrences');
                       <input type="hidden" name="action" value="pause">
                       <button class="rec-btn rec-btn-sm rec-btn-warn" type="submit">⏸ Pause</button>
                     </form>
-                    <form method="post" action="/mon-asso-recurrence-run-now" style="display:inline;" onsubmit="return confirm('Générer une facture maintenant à partir de cette récurrence ?');">
+                    <form method="post" action="/mon-asso-recurrence-run-now" style="display:inline;" onsubmit="return confirm(<?= h(json_encode('Générer dès maintenant la facture prévue le ' . date('d/m/Y', strtotime($r['next_run_date'])) . ' ? Elle ne sera pas générée une seconde fois à cette date.', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>);">
                       <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                       <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                       <button class="rec-btn rec-btn-sm rec-btn-success" type="submit">▶ Générer</button>

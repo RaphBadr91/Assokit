@@ -4,7 +4,8 @@
  * Reproduit fidèlement mon-asso-facture-send.php (envoi email) et la confirmation
  * de paiement (mon-asso-notification-respond.php). Renvoie du JSON.
  *
- * Actions : send (email au client + relance), mark_paid (encaissement constaté).
+ * Actions : send (email au client + relance), mark_paid (encaissement constaté),
+ *           credit_note (avoir annulant une facture émise, comme « Créer un avoir » du site).
  * Rôle requis : accès finances (parité mon-asso-facture-send.php).
  * NE MODIFIE PAS le site.
  */
@@ -14,8 +15,12 @@ require __DIR__ . '/_app-write-boot.php';
 @require_once __DIR__ . '/../asso-invoice-email-helpers.php';
 @require_once __DIR__ . '/../rate-limit-helper.php';
 
-if (!function_exists('user_can_view_finances') || !user_can_view_finances($user)) {
-    app_fail(403, 'role', 'Accès réservé aux administrateurs.');
+// Même contrôle d'accès que le site (mon-asso-facture-send.php, require_billing_access) :
+// admins, fondateur, super-admin et coordinateurs.
+@require_once __DIR__ . '/../platform-flags.php';
+if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+if (!function_exists('user_can_access_billing') || !user_can_access_billing($user)) {
+    app_fail(403, 'role', 'Accès réservé aux administrateurs et coordinateurs.');
 }
 
 $invoice_id = (int) ($input['invoice_id'] ?? 0);
@@ -23,12 +28,13 @@ $action     = (string) ($input['action'] ?? '');
 if ($invoice_id <= 0) app_fail(422, 'invalid', 'Facture manquante.');
 
 // Appartenance à l'org
-$st = $pdo->prepare("SELECT i.id, i.status, i.invoice_number, i.amount_ttc_cents, i.sent_at, c.email AS client_email
-                     FROM asso_invoices i LEFT JOIN asso_clients c ON c.id = i.client_id
+$st = $pdo->prepare("SELECT i.*, c.email AS client_email
+                     FROM asso_invoices i LEFT JOIN asso_clients c ON c.id = i.client_id AND c.org_id = i.org_id
                      WHERE i.id = ? AND i.org_id = ? LIMIT 1");
 $st->execute([$invoice_id, $org_id]);
 $inv = $st->fetch(PDO::FETCH_ASSOC);
 if (!$inv) app_fail(404, 'not_found', 'Facture introuvable.');
+$is_credit = ($inv['invoice_type'] ?? 'invoice') === 'credit_note';
 
 /* ── Envoi de la facture par email ─────────────────────────────────── */
 if ($action === 'send') {
@@ -37,16 +43,21 @@ if ($action === 'send') {
     if ((string) $inv['status'] === 'draft') {
         app_fail(409, 'draft', 'Finalisez la facture avant de l\'envoyer (elle est encore en brouillon).');
     }
+    if (in_array((string) $inv['status'], ['cancelled', 'refunded'], true) && !$is_credit) {
+        app_fail(409, 'closed', 'Cette facture est annulée : elle n\'est plus envoyée au client.');
+    }
     if (empty($inv['client_email'])) {
         app_fail(422, 'no_email', 'Ce client n\'a pas d\'adresse email : ajoutez-la puis réessayez.');
     }
-    // Parité mon-asso-facture-edit.php : 1er envoi = modèle « initial », renvoi = « manual ».
-    // (Le helper ne met à jour sent_at que sur 'initial' : une relance ne doit pas écraser la date d'envoi.)
-    $type = empty($inv['sent_at']) ? 'initial' : 'manual';
+    // Parité mon-asso-facture-edit.php : 1er envoi = modèle « initial », renvoi = « manual » ;
+    // facture payée : copie (« initial ») ; avoir : modèle dédié (choisi par le helper).
+    // (Le helper ne renseigne sent_at qu'au premier envoi : un renvoi ne doit pas écraser la date d'envoi.)
+    $type = (empty($inv['sent_at']) || (string) $inv['status'] === 'paid') ? 'initial' : 'manual';
     try {
         $res = ak_asso_invoice_send_email($pdo, $invoice_id, $type, $uid);
         // Essai gratuit : plafond d'envoi atteint (contrôlé par le helper d'envoi, ak_trial_send_block)
         if (!empty($res['trial_limit'])) app_fail(429, 'trial_limit', $res['message']);
+        if (!empty($res['code']) && in_array($res['code'], ['draft', 'closed', 'paid'], true)) app_fail(409, $res['code'], $res['message']);
         if (empty($res['success'])) app_fail(502, 'send_failed', $res['message'] ?? 'Envoi impossible.');
         echo json_encode(['ok' => true, 'id' => $invoice_id, 'message' => $res['message'] ?? 'Facture envoyée.'], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
@@ -58,37 +69,44 @@ if ($action === 'send') {
 
 /* ── Encaissement constaté (facture payée) ─────────────────────────── */
 if ($action === 'mark_paid') {
-    if (!in_array((string) $inv['status'], ['pending', 'overdue'], true)) {
-        $lbl = ['paid' => 'déjà payée', 'draft' => 'encore en brouillon', 'cancelled' => 'annulée', 'refunded' => 'remboursée'];
-        app_fail(409, 'state', 'Cette facture est ' . ($lbl[$inv['status']] ?? 'dans un état non encaissable') . '.');
-    }
-    $paid_at = (string) ($input['paid_at'] ?? '');
-    if ($paid_at !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $paid_at)) $paid_at = '';
-    // Exercice plausible : la date entre dans la piste d'audit et les KPI annuels
-    if ($paid_at !== '') {
-        $ts = strtotime($paid_at . ' 00:00:00');
-        if ($ts === false || $ts > strtotime('tomorrow') || $ts < strtotime('-5 years')) $paid_at = '';
-    }
-    $paid_at_full = ($paid_at ?: date('Y-m-d')) . ' ' . date('H:i:s');
+    if (!function_exists('ak_asso_invoice_mark_paid')) app_fail(500, 'unavailable', 'Fonction indisponible.');
+    // Mêmes écritures que le site (« Marquer comme payée », mon-asso-facture-save.php) :
+    // statut + date, qui a confirmé, moyen et référence, historique des règlements.
+    // payment_method / reference : facultatifs (l'app actuelle ne les envoie pas).
     try {
-        // Mêmes écritures que la confirmation côté site (mon-asso-notification-respond.php) :
-        // statut + date, traçabilité de qui a confirmé, et ligne dans l'historique des règlements.
-        $pdo->prepare("UPDATE asso_invoices SET status = 'paid', paid_at = ?, confirmed_paid_by_org_at = NOW(), confirmed_paid_by_user_id = ?, updated_at = NOW() WHERE id = ? AND org_id = ?")
-            ->execute([$paid_at_full, $uid, $invoice_id, $org_id]);
-        try {
-            $pdo->prepare("INSERT INTO asso_invoice_payments (invoice_id, org_id, amount_cents, paid_at, payment_method, source, recorded_by_user_id)
-                           VALUES (?,?,?,?,'declared','admin',?)")
-                ->execute([$invoice_id, $org_id, (int) $inv['amount_ttc_cents'], $paid_at_full, $uid]);
-        } catch (Throwable $e) { error_log('[app-invoice-action payments] ' . $e->getMessage()); }
-        echo json_encode([
-            'ok' => true, 'id' => $invoice_id,
-            'message' => 'Facture ' . $inv['invoice_number'] . ' marquée payée ('
-                . number_format(((int) $inv['amount_ttc_cents']) / 100, 2, ',', ' ') . ' €).',
-        ], JSON_UNESCAPED_UNICODE);
+        $res = ak_asso_invoice_mark_paid($pdo, $org_id, $invoice_id, $uid, [
+            'paid_at'   => (string) ($input['paid_at'] ?? ''),
+            'method'    => (string) ($input['payment_method'] ?? ''),
+            'reference' => (string) ($input['reference'] ?? ''),
+        ]);
     } catch (Throwable $e) {
         error_log('[app-invoice-action mark_paid] ' . $e->getMessage());
         app_fail(500, 'server', 'Impossible d\'enregistrer l\'encaissement.');
     }
+    if (!$res['ok']) {
+        if ($res['code'] === 'not_found') app_fail(404, 'not_found', 'Facture introuvable.');
+        app_fail(409, 'state', 'Cette facture est ' . ($res['state_label'] ?? 'dans un état non encaissable') . '.');
+    }
+    echo json_encode(['ok' => true, 'id' => $invoice_id, 'message' => $res['message']], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+/* ── Avoir : annulation d'une facture émise ────────────────────────── */
+if ($action === 'credit_note') {
+    if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_inv_credit', 10, 60, (string) $uid);
+    if (!function_exists('ak_asso_credit_note_create')) app_fail(500, 'unavailable', 'Fonction indisponible.');
+    try {
+        $res = ak_asso_credit_note_create($pdo, $org_id, $invoice_id, $uid, (string) ($input['reason'] ?? ''));
+    } catch (Throwable $e) {
+        error_log('[app-invoice-action credit_note] ' . $e->getMessage());
+        app_fail(500, 'server', 'L\'avoir n\'a pas pu être créé.');
+    }
+    if (!$res['ok']) {
+        if ($res['code'] === 'not_found') app_fail(404, 'not_found', 'Facture introuvable.');
+        app_fail($res['code'] === 'unavailable' ? 503 : 409, $res['code'], $res['message']);
+    }
+    echo json_encode(['ok' => true, 'id' => $invoice_id, 'credit_note_id' => (int) $res['id'],
+                      'credit_note_number' => (string) $res['invoice_number'], 'message' => $res['message']], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

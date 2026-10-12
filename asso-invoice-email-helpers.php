@@ -29,6 +29,28 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
     $inv = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$inv) throw new RuntimeException('Facture introuvable');
 
+    // Brouillon : pas encore émis, rien ne part au client (envoi du site, de l'appli, des récurrences).
+    // Facture annulée, remboursée ou payée : plus de relance (envoi d'une copie seulement).
+    // Avoir : modèle dédié, ni échéance ni coordonnées bancaires.
+    $inv_status = (string)($inv['status'] ?? '');
+    $is_credit = ($inv['invoice_type'] ?? 'invoice') === 'credit_note';
+    if ($inv_status === 'draft') {
+        return ['success' => false, 'log_id' => 0, 'code' => 'draft',
+                'message' => 'Finalisez la facture avant de l’envoyer : elle est encore en brouillon.'];
+    }
+    if ($is_credit) {
+        $email_type = 'credit_note';   // avoir : envoi possible quel que soit son statut
+    } elseif ($email_type === 'credit_note') {
+        $email_type = 'initial';
+    }
+    if (!$is_credit && in_array($inv_status, ['cancelled', 'refunded'], true)) {
+        return ['success' => false, 'log_id' => 0, 'code' => 'closed',
+                'message' => 'La facture ' . $inv['invoice_number'] . ' est ' . ($inv_status === 'refunded' ? 'remboursée' : 'annulée') . ' : elle n’est plus envoyée au client.'];
+    } elseif ($inv_status === 'paid' && $email_type !== 'initial') {
+        return ['success' => false, 'log_id' => 0, 'code' => 'paid',
+                'message' => 'La facture ' . $inv['invoice_number'] . ' est payée : aucune relance n’est envoyée.'];
+    }
+
     $recipient = $inv['client_email'];
     if (empty($recipient)) throw new RuntimeException('Email client vide');
 
@@ -53,10 +75,17 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
 
     // Variables à substituer
     $public_url = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr') . '/facture/' . $inv['public_uuid'];
+    $parent_number = '';
+    if ($is_credit && !empty($inv['parent_invoice_id'])) {
+        $ps = $pdo->prepare("SELECT invoice_number FROM asso_invoices WHERE id = :id AND org_id = :org LIMIT 1");
+        $ps->execute([':id' => (int)$inv['parent_invoice_id'], ':org' => (int)$inv['org_id']]);
+        $parent_number = (string)$ps->fetchColumn();
+    }
     $vars = [
+        '{FACTURE_ORIGINE}' => $parent_number !== '' ? $parent_number : '—',
         '{NOM_CLIENT}'    => $inv['client_name'] ?? 'Madame, Monsieur',
         '{NUMERO}'        => $inv['invoice_number'],
-        '{MONTANT_TTC}'   => number_format($inv['amount_ttc_cents'] / 100, 2, ',', ' ') . ' €',
+        '{MONTANT_TTC}'   => number_format(($is_credit ? abs((int)$inv['amount_ttc_cents']) : (int)$inv['amount_ttc_cents']) / 100, 2, ',', ' ') . ' €',
         '{DATE_EMISSION}' => date('d/m/Y', strtotime($inv['issued_at'])),
         '{DATE_ECHEANCE}' => date('d/m/Y', strtotime($inv['due_at'])),
         '{NOM_ASSO}'      => $inv['org_name'] ?? 'Votre association',
@@ -81,7 +110,12 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
         ];
     }
 
-    // Log
+    // Log (type « credit_note » seulement si la colonne l'admet : ENUM possible en production)
+    $log_type = $email_type;
+    if ($email_type === 'credit_note') {
+        if (!function_exists('ak_db_pick')) require_once __DIR__ . '/trial-helpers.php';
+        $log_type = ak_db_pick($pdo, 'asso_invoice_emails_log', 'email_type', ['credit_note', 'initial']) ?? 'initial';
+    }
     $log_stmt = $pdo->prepare("
         INSERT INTO asso_invoice_emails_log
         (invoice_id, org_id, recipient_email, cc_email, email_type, subject, status, sent_by_user_id)
@@ -92,7 +126,7 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
         ':org' => $inv['org_id'],
         ':em'  => $recipient,
         ':cc'  => $cc,
-        ':type' => $email_type,
+        ':type' => $log_type,
         ':subj' => mb_substr($subject, 0, 255),
         ':uid' => $sent_by_user_id,
     ]);
@@ -105,8 +139,9 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
         $pdo->prepare("UPDATE asso_invoice_emails_log SET status='sent', sent_at=NOW() WHERE id = :id")
             ->execute([':id' => $log_id]);
 
-        // Si email initial : marquer la facture comme envoyée
-        if ($email_type === 'initial') {
+        // Premier envoi (facture ou avoir) : marquer la pièce comme envoyée. Un renvoi (copie
+        // d'une facture payée, relance) garde la date et l'adresse du premier envoi.
+        if (($email_type === 'initial' || $email_type === 'credit_note') && empty($inv['sent_at'])) {
             $pdo->prepare("UPDATE asso_invoices SET sent_at = NOW(), sent_to_email = :em WHERE id = :id")
                 ->execute([':em' => $recipient, ':id' => $invoice_id]);
         }
@@ -192,11 +227,12 @@ function ak_asso_get_email_template(array $settings, string $type): array
         'dunning2'  => ['email_relance2_subject', 'email_relance2_body'],
         'dunning3'  => ['email_relance3_subject', 'email_relance3_body'],
         'manual'    => ['email_relance1_subject', 'email_relance1_body'],
+        'credit_note' => [null, null],   // pas de modèle personnalisable : texte par défaut
     ];
 
     $cols = $col_map[$type] ?? $col_map['initial'];
-    $custom_subject = $settings[$cols[0]] ?? null;
-    $custom_body    = $settings[$cols[1]] ?? null;
+    $custom_subject = $cols[0] !== null ? ($settings[$cols[0]] ?? null) : null;
+    $custom_body    = $cols[1] !== null ? ($settings[$cols[1]] ?? null) : null;
 
     // Templates par défaut
     $defaults = [
@@ -231,6 +267,13 @@ function ak_asso_get_email_template(array $settings, string $type): array
                 . "Votre facture {NUMERO} d'un montant de {MONTANT_TTC} est impayée depuis plus de 45 jours.\n\n"
                 . "Sans règlement de votre part dans les 8 jours, nous nous réservons le droit d'engager toute procédure utile au recouvrement de cette créance.\n\n"
                 . "Lien direct : {LIEN_PUBLIC}\n\n"
+                . "Cordialement,\n{NOM_ASSO}",
+        ],
+        'credit_note' => [
+            'subject' => '{NOM_ASSO} — Avoir {NUMERO}',
+            'body' => "Bonjour {NOM_CLIENT},\n\n"
+                . "Nous vous adressons ci-joint l'avoir {NUMERO} d'un montant de {MONTANT_TTC}, qui annule la facture {FACTURE_ORIGINE}.\n\n"
+                . "Vous pouvez également le consulter en ligne :\n{LIEN_PUBLIC}\n\n"
                 . "Cordialement,\n{NOM_ASSO}",
         ],
         'manual' => [

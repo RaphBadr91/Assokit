@@ -194,11 +194,15 @@ if (!function_exists('ak_cop_intents')) {
             'params'=> ['year' => ['type'=>'int','min'=>2015,'max'=>2100,'default'=>(int)date('Y')]],
             'action'=> ['route' => '/mon-asso-factures', 'label' => 'Voir les factures'],
             'handler' => function (PDO $pdo, int $org, array $p): array {
+                // Mêmes factures que le chiffre d'affaires de l'écran Facturation
+                // (ak_stats_global_kpis) : émises, payées ou non. Brouillons et
+                // factures annulées n'en font pas partie.
                 $st = $pdo->prepare("SELECT COUNT(*) nb, COALESCE(SUM(amount_ttc_cents),0) tot,
                         COALESCE(SUM(CASE WHEN status='paid' THEN amount_ttc_cents ELSE 0 END),0) enc,
                         COALESCE(SUM(CASE WHEN status IN ('pending','overdue') THEN amount_ttc_cents ELSE 0 END),0) du,
                         COALESCE(AVG(amount_ttc_cents),0) moy
-                        FROM asso_invoices WHERE org_id = :o AND YEAR(issued_at) = :y");
+                        FROM asso_invoices WHERE org_id = :o AND YEAR(issued_at) = :y
+                          AND status IN ('paid','pending','overdue')");
                 $st->bindValue(':o',$org,PDO::PARAM_INT); $st->bindValue(':y',(int)$p['year'],PDO::PARAM_INT); $st->execute();
                 $r = $st->fetch(PDO::FETCH_ASSOC) ?: [];
                 return ['kind'=>'table','title'=>"Bilan facturation {$p['year']}",
@@ -420,10 +424,27 @@ if (!function_exists('ak_cop_answer')) {
     function ak_cop_answer(PDO $pdo, int $orgId, int $userId, string $question): array {
         $intents = ak_cop_intents();
 
+        // Budgets des projets : réservés à user_can_view_finances(), comme la carte Budget
+        // de projet.php et du tableau de bord. Pour un coordinateur, l'intention n'est ni
+        // proposée au routeur ni exécutable (un plan qui la citerait retombe sur « none »).
+        require_once __DIR__ . '/finance-permissions.php';
+        $asker = function_exists('current_user') ? current_user() : null;
+        if (!$asker || (int)($asker['id'] ?? 0) !== $userId) {
+            try {
+                $st = $pdo->prepare("SELECT * FROM users WHERE id = ? AND org_id = ? LIMIT 1");
+                $st->execute([$userId, $orgId]);
+                $asker = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+            } catch (Throwable $e) {
+                $asker = null;
+            }
+        }
+        if (!user_can_view_finances($asker)) unset($intents['projects_over_budget']);
+
         // Passe 1
         $planRaw = ak_ai_call_api(ak_cop_planner_system($intents), mb_substr($question, 0, 500));
         if (!($planRaw['ok'] ?? false)) {
-            return ['ok'=>false, 'answer'=>"Le service IA est momentanément indisponible. Réessayez.", 'table'=>null, 'action'=>null];
+            $msg = (string)($planRaw['error'] ?? '') ?: "Le service IA est momentanément indisponible. Réessayez.";
+            return ['ok'=>false, 'error'=>'ai_unavailable', 'message'=>$msg, 'answer'=>$msg, 'table'=>null, 'action'=>null];
         }
         $plan = ak_cop_parse_plan((string)$planRaw['text'], $intents);
 

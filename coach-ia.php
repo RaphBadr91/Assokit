@@ -19,6 +19,10 @@ if ($report_id > 0) {
 }
 $history = coach_load_history($pdo, $org_id, 10);
 
+// Échec de la dernière génération (posé par action-coach-ia.php)
+$flash_coach = (string)($_SESSION['flash_coach'] ?? '');
+unset($_SESSION['flash_coach']);
+
 $hl = $report ? (json_decode($report['highlights_json'] ?? '[]', true) ?: []) : [];
 $wn = $report ? (json_decode($report['warnings_json'] ?? '[]', true) ?: []) : [];
 $rc = $report ? (json_decode($report['recos_json'] ?? '[]', true) ?: []) : [];
@@ -39,6 +43,10 @@ render_head('Coach Assokit');
         <button type="submit" class="ci-btn-primary" onclick="this.disabled=true;this.textContent='⏳ Génération…';this.form.submit();">✨ Générer maintenant</button>
       </form>
     </div>
+
+    <?php if ($flash_coach !== ''): ?>
+      <div class="ci-alert" role="alert">⚠️ <?= h($flash_coach) ?></div>
+    <?php endif; ?>
 
     <?php if (!$report): ?>
       <div class="ci-empty">
@@ -105,6 +113,7 @@ render_head('Coach Assokit');
 .ci-btn-primary { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: linear-gradient(140deg,#10B981,#059669); color: #fff; border: 0; border-radius: 13px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 12px 26px -8px rgba(5,150,105,.6), inset 0 1px 0 rgba(255,255,255,.35); transition: transform .12s ease; }
 .ci-btn-primary:hover:not(:disabled) { transform: translateY(-1px); }
 .ci-btn-primary:disabled { opacity: 0.6; cursor: wait; }
+.ci-alert { background: rgba(220,38,38,.08); border: 1px solid rgba(220,38,38,.25); color: #991B1B; border-radius: 13px; padding: 13px 16px; margin: 0 0 18px; font-size: 14px; line-height: 1.5; }
 .ci-empty { text-align: center; padding: 60px 20px; background: var(--glass); backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5); border: 1px solid var(--glass-border); border-radius: var(--radius-lg,18px); box-shadow: var(--shadow-card); }
 .ci-empty h2 { font-size: 20px; margin: 12px 0 6px; color: var(--ink); }
 .ci-empty p { max-width: 420px; margin: 0 auto; color: var(--ink-3); font-size: 14px; line-height: 1.55; }

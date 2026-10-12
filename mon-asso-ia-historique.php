@@ -14,6 +14,7 @@ require_login();
 $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
+if (!ak_ai_user_has_access($user)) { header('Location: /projets'); exit; }
 
 $f_folder = $_GET['folder'] ?? '';
 $f_tool   = $_GET['tool']   ?? '';
@@ -22,6 +23,12 @@ $f_fav    = !empty($_GET['fav']);
 
 $where = ['org_id = :o', "status = 'success'"];
 $params = [':o' => $org_id];
+// Membres et référents : seulement leurs propres générations
+$see_all = ak_ai_can_manage_all($user);
+if (!$see_all) {
+    $where[] = 'user_id = :u';
+    $params[':u'] = (int)$user['id'];
+}
 
 $folders_cat = ak_ai_folders_catalog();
 $tools_cat   = ak_ai_tools_catalog();
@@ -51,7 +58,8 @@ try {
     $st->execute($params);
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
-    $err = $e->getMessage();
+    error_log('[mon-asso-ia-historique] ' . $e->getMessage());
+    $err = 'L’historique n’a pas pu être chargé. Réessayez dans un instant.';
 }
 
 render_head('Historique Communication IA');
@@ -159,7 +167,9 @@ render_sidebar('ia');
             </div>
             <div class="iah-actions">
               <a class="iah-btn-sm" href="/mon-asso-ia-tool?type=<?= h($r['tool_type']) ?>&gen=<?= (int)$r['id'] ?>">Voir</a>
+              <?php if ($see_all): // la diffusion est réservée aux admins / coordinateurs ?>
               <a class="iah-btn-sm" href="/mon-asso-ia-diffusion?gen=<?= (int)$r['id'] ?>" title="Diffuser par email">📨</a>
+              <?php endif; ?>
               <a class="iah-btn-sm" href="/mon-asso-ia-download?id=<?= (int)$r['id'] ?>&fmt=md" target="_blank">⬇</a>
               <form method="post" action="/mon-asso-ia-action" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">

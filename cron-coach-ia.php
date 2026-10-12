@@ -51,9 +51,13 @@ $stmt = $pdo->prepare("SELECT o.id, o.name, o.legal_form AS type
       AND NOT EXISTS (SELECT 1 FROM coach_reports c
                        WHERE c.org_id = o.id AND c.week_start = ?
                          AND c.sent_email_at IS NOT NULL)
-    ORDER BY o.id
+    -- Les rapports jamais écrits d'abord ; les envois à reprendre (e-mail
+    -- refusé au passage précédent) ensuite : une adresse en échec permanent
+    -- ne doit pas occuper le lot et retarder les associations suivantes.
+    ORDER BY EXISTS (SELECT 1 FROM coach_reports c2
+                      WHERE c2.org_id = o.id AND c2.week_start = ?), o.id
     LIMIT " . ($place = (int) ak_lot_place()));
-$stmt->execute([$week_start]);
+$stmt->execute([$week_start, $week_start]);
 $orgs = $stmt->fetchAll();
 echo "→ " . count($orgs) . " organisation(s) à traiter pour la semaine du $week_start\n";
 
@@ -125,25 +129,41 @@ foreach ($orgs as $org) {
         $subject = "🤖 Ton coach Assokit · " . date('d/m', strtotime($ctx['week_start'])) . "→" . date('d/m', strtotime($ctx['week_end']));
         $text = "Coach Assokit semaine du " . $ctx['week_start'] . "\n\n" . $parsed['summary'] . "\n\nhttps://assokit.fr/coach-ia";
 
+        // Même canal que les autres e-mails transactionnels (Resend, journalisé
+        // dans email_log). Le rapport n'est marqué envoyé que si au moins un
+        // envoi a réellement réussi : sinon le passage suivant le reprend.
         $sent_any = false;
+        $nb_sent = 0;
         foreach ($admins as $a) {
             if (!filter_var($a['email'], FILTER_VALIDATE_EMAIL)) continue;
+            $ok = false;
             try {
                 if (ak_demo_mail_blocked($a['email'])) {
-                    $sent_any = true;   // démo : envoi simulé
+                    $ok = true;   // démo : envoi simulé
+                } elseif (function_exists('send_transactional_email')) {
+                    $r = send_transactional_email($a['email'], $subject, $html, ['tag' => 'coach_ia']);
+                    $ok = !empty($r['success']);
+                    if (!$ok) echo "  ✗ Envoi à {$a['email']} refusé : " . ($r['error'] ?? 'erreur inconnue') . "\n";
                 } elseif (function_exists('send_email_resend')) {
-                    send_email_resend($a['email'], $subject, $html, $text);
-                    $sent_any = true;
+                    $r = send_email_resend($a['email'], $subject, $html, $text);
+                    $ok = $r !== false && $r !== null
+                        && !(is_array($r) && ((isset($r['success']) && !$r['success']) || (isset($r['ok']) && !$r['ok']) || !empty($r['error'])));
                 } else {
                     $headers = "MIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\nFrom: AssoKit <noreply@assokit.fr>\r\n";
-                    if (@mail($a['email'], $subject, $html, $headers)) $sent_any = true;
+                    $ok = @mail($a['email'], $subject, $html, $headers);
                 }
-            } catch (Throwable $e) {}
+            } catch (Throwable $e) {
+                echo "  ✗ Envoi à {$a['email']} : " . $e->getMessage() . "\n";
+            }
+            if ($ok) { $sent_any = true; $nb_sent++; }
         }
         if ($sent_any) {
             $pdo->prepare("UPDATE coach_reports SET sent_email_at = NOW() WHERE id = ?")->execute([$report_id]);
             $stats['mail']++;
-            echo "  ✓ Email envoyé à " . count($admins) . " admin(s)\n";
+            echo "  ✓ Email envoyé à $nb_sent admin(s)\n";
+        } else {
+            echo "  ✗ Aucun e-mail parti : nouvel essai au prochain passage\n";
+            $stats['errors']++;
         }
 
     } catch (Throwable $e) {

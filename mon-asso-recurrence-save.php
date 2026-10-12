@@ -52,7 +52,11 @@ $status          = (string)($_POST['status'] ?? 'active');
 if (!in_array($frequency, ['daily','weekly','monthly','quarterly','yearly'], true)) $frequency = 'monthly';
 if (!in_array($vat_mode,  ['none','5.5','10','20'], true)) $vat_mode = 'none';
 if (!in_array($status,    ['active','paused','ended','cancelled'], true)) $status = 'active';
-if ($title === '') { $_SESSION['flash_error'] = 'Le titre est obligatoire.'; header('Location: /mon-asso-recurrences'); exit; }
+if ($title === '') {
+    ak_recurrence_flash('error', 'Le titre est obligatoire.');
+    header('Location: ' . ($is_edit ? "/mon-asso-recurrence-edit?id={$rec_id}" : '/mon-asso-recurrence-new'));
+    exit;
+}
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) $start_date = date('Y-m-d');
 
 // Lignes
@@ -71,7 +75,7 @@ foreach ($raw_lines as $l) {
     ];
 }
 if (empty($lines)) {
-    $_SESSION['flash_error'] = 'Au moins une ligne avec une description est requise.';
+    ak_recurrence_flash('error', 'Au moins une ligne avec une description est requise.');
     header('Location: ' . ($is_edit ? "/mon-asso-recurrence-edit?id={$rec_id}" : '/mon-asso-recurrence-new'));
     exit;
 }
@@ -113,7 +117,8 @@ try {
             ':st' => $status, ':vat' => $vat_mode, ':notes' => $notes, ':tpl' => $template_data,
             ':id' => $rec_id, ':o' => $org_id,
         ]);
-        $_SESSION['flash_success'] = 'Récurrence mise à jour.';
+        ak_recurrence_flash('success', 'Récurrence mise à jour.'
+            . ($status === 'active' ? ' Prochaine facture le ' . date('d/m/Y', strtotime($next_run)) . '.' : ''));
         header('Location: /mon-asso-recurrence-edit?id=' . $rec_id);
         exit;
     } else {
@@ -136,12 +141,28 @@ try {
             ':cb' => $user_id ?: null,
         ]);
         $new_id = (int)$pdo->lastInsertId();
-        $_SESSION['flash_success'] = 'Récurrence créée avec succès. Première facture prévue le ' . date('d/m/Y', strtotime($next_run)) . '.';
+        // « Rendre récurrente » depuis une facture : lien vers la facture d'origine (de cette
+        // association), si la colonne existe. Les lignes facturées restent celles du formulaire.
+        $source_invoice_id = (int)($_POST['source_invoice_id'] ?? 0);
+        if ($source_invoice_id > 0) {
+            try {
+                $ck = $pdo->prepare("SELECT id FROM asso_invoices WHERE id = ? AND org_id = ? LIMIT 1");
+                $ck->execute([$source_invoice_id, $org_id]);
+                if ($ck->fetchColumn()) {
+                    require_once __DIR__ . '/trial-helpers.php';
+                    ak_db_update($pdo, 'asso_invoice_recurrences', $new_id, ['source_invoice_id' => $source_invoice_id]);
+                }
+            } catch (Throwable $e) {
+                error_log('[mon-asso-recurrence-save] source_invoice_id : ' . $e->getMessage());
+            }
+        }
+        ak_recurrence_flash('success', 'Récurrence créée. Première facture prévue le ' . date('d/m/Y', strtotime($next_run)) . '.');
         header('Location: /mon-asso-recurrence-edit?id=' . $new_id);
         exit;
     }
 } catch (Throwable $e) {
-    $_SESSION['flash_error'] = 'Erreur : ' . $e->getMessage();
+    error_log('[mon-asso-recurrence-save] ' . $e->getMessage());
+    ak_recurrence_flash('error', 'La récurrence n’a pas pu être enregistrée. Vérifiez les champs puis réessayez.');
     header('Location: ' . ($is_edit ? "/mon-asso-recurrence-edit?id={$rec_id}" : '/mon-asso-recurrence-new'));
     exit;
 }

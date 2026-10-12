@@ -33,19 +33,26 @@ try {
     $pdo->prepare("UPDATE asso_invoices SET recurrence_id = NULL WHERE recurrence_id = :id AND org_id = :o")
         ->execute([':id' => $rec_id, ':o' => $org_id]);
 
-    // Supprimer les runs (historique)
-    $pdo->prepare("DELETE FROM asso_invoice_recurrence_runs WHERE recurrence_id = :id")
-        ->execute([':id' => $rec_id]);
+    // Supprimer l'historique des générations : table absente tant que la migration
+    // 2026-10-11-L05-facturation.sql n'est pas passée, ce qui ne doit pas bloquer
+    // la suppression (MariaDB : l'échec d'une requête n'annule pas la transaction).
+    try {
+        $pdo->prepare("DELETE FROM asso_invoice_recurrence_runs WHERE recurrence_id = :id")
+            ->execute([':id' => $rec_id]);
+    } catch (Throwable $e) {
+        error_log('[mon-asso-recurrence-delete] historique : ' . $e->getMessage());
+    }
 
     // Supprimer la récurrence
     $pdo->prepare("DELETE FROM asso_invoice_recurrences WHERE id = :id AND org_id = :o")
         ->execute([':id' => $rec_id, ':o' => $org_id]);
 
     $pdo->commit();
-    $_SESSION['flash_success'] = 'Récurrence supprimée. Les factures déjà générées sont conservées.';
+    ak_recurrence_flash('success', 'Récurrence « ' . $rec['title'] . ' » supprimée. Les factures déjà générées sont conservées.');
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
-    $_SESSION['flash_error'] = 'Erreur : ' . $e->getMessage();
+    error_log('[mon-asso-recurrence-delete] ' . $e->getMessage());
+    ak_recurrence_flash('error', 'La récurrence n’a pas pu être supprimée. Réessayez dans un instant.');
 }
 header('Location: /mon-asso-recurrences');
 exit;

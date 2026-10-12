@@ -32,6 +32,13 @@ $org_id = (int)$user['org_id'];
 $action = $_POST['action'] ?? 'add';
 $project_id = (int)($_POST['project_id'] ?? 0);
 
+// Suiveur (financeur externe) : lecture seule de ses projets, aucune dépense (cf. projet.php,
+// qui ne lui montre pas l'onglet Factures).
+if (($user['role'] ?? '') === 'follower') {
+    http_response_code(403);
+    die('Action non autorisée.');
+}
+
 if ($project_id <= 0) {
     header('Location: /projets');
     exit;
@@ -78,6 +85,17 @@ function log_invoice_activity($project_id, $user_id, $action_type, $action_label
 // ACTION : AJOUTER UNE FACTURE
 // =========================================================
 if ($action === 'add') {
+    // Hors admin / coordinateur / habilité finances : seule l'équipe du projet (référent ou
+    // membre) peut y déclarer une dépense, qui reste « en attente » de validation.
+    if (!$can_validate && !$is_referent && !can('manage_finances')) {
+        $pm = $pdo->prepare("SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? LIMIT 1");
+        $pm->execute([$project_id, (int)$user['id']]);
+        if (!$pm->fetchColumn()) {
+            http_response_code(403);
+            die('Seule l’équipe du projet peut y ajouter une facture.');
+        }
+    }
+
     $supplier = trim($_POST['supplier_name'] ?? '');
     $category = trim($_POST['category'] ?? '');
     $description = trim($_POST['description'] ?? '');

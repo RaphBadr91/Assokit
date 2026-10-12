@@ -7,16 +7,35 @@
  *   - today_collect_context() : rassemble la photo du jour de l'asso
  *   - today_build_prompt()    : construit le prompt selon le profil
  *   - today_call_claude()     : appelle l'API Claude
- *   - today_get_or_generate() : lit cache ou génère si besoin
+ *   - today_get_for_display() : ce que le tableau de bord affiche, SANS appeler l'IA
+ *   - today_get_or_generate() : lit cache ou génère si besoin (today-ai-refresh)
  *   - today_fallback_suggestions() : suggestions statiques si API KO
+ *   - today_render_items()    : HTML des cartes (partiel + réponse AJAX)
+ *
+ * Le tableau de bord n'attend jamais l'IA : il affiche le cache du jour, ou
+ * les suggestions de secours, puis la génération IA part en arrière-plan
+ * (POST /today-ai-refresh auto=1). Un échec est gardé 30 min avant de réessayer.
  * ============================================================
  */
+
+// Écritures adaptées au schéma réel (today_suggestions n'est défini nulle part
+// dans le dépôt : on n'écrit que les colonnes qui existent en prod)
+if (is_file(__DIR__ . '/trial-helpers.php')) require_once __DIR__ . '/trial-helpers.php';
 
 if (!defined('TODAY_AI_MAX_REFRESH_PER_DAY')) {
     define('TODAY_AI_MAX_REFRESH_PER_DAY', 3);
 }
 if (!defined('TODAY_AI_TIMEOUT_SECONDS')) {
-    define('TODAY_AI_TIMEOUT_SECONDS', 15);
+    // Appel fait en arrière-plan (jamais pendant l'affichage du tableau de bord) :
+    // on laisse au modèle le temps de répondre (Sonnet dépasse parfois 15 s).
+    define('TODAY_AI_TIMEOUT_SECONDS', 30);
+}
+if (!defined('TODAY_AI_ERROR_RETRY_SECONDS')) {
+    // Après un échec, on sert le repli statique sans rappeler l'IA pendant 30 min
+    define('TODAY_AI_ERROR_RETRY_SECONDS', 1800);
+}
+if (!defined('TODAY_AI_API_URL')) {
+    define('TODAY_AI_API_URL', defined('ANTHROPIC_API_URL') ? ANTHROPIC_API_URL : 'https://api.anthropic.com/v1/messages');
 }
 if (!defined('TODAY_AI_MODEL')) {
     // Même modèle que le reste de l'appli (config.php) : l'ancien identifiant
@@ -86,7 +105,14 @@ function today_collect_context(PDO $pdo, array $user, string $profile): array
         'clients'     => ['total' => 0],
         'is_first_login' => false,
         'days_since_last_login' => 0,
+        // Budgets des projets : mêmes profils que la carte Budget de projet.php
+        'can_view_finances' => false,
+        // Pages Communication : même règle que can('access_marketing') (sinon 403)
+        'can_communication' => ($user['role'] ?? '') === 'admin' || !empty($user['is_super_admin'])
+                               || !empty($user['can_access_marketing']),
     ];
+    require_once __DIR__ . '/finance-permissions.php';
+    $ctx['can_view_finances'] = function_exists('user_can_view_finances') && user_can_view_finances($user);
 
     // Nom de l'org
     try {
@@ -184,49 +210,93 @@ function today_collect_context(PDO $pdo, array $user, string $profile): array
             $stmt->execute([$org_id]);
         }
         $ctx['projects'] = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if (!$ctx['can_view_finances']) {
+            // Coordinateur, référent : pas de budget dans le prompt (l'IA le citerait)
+            foreach ($ctx['projects'] as &$p) unset($p['budget_planned'], $p['budget_used']);
+            unset($p);
+        }
     } catch (Throwable $e) {
         error_log('Today AI context projects: ' . $e->getMessage());
     }
 
-    // === EVENEMENTS (agenda) ===
+    // === ÉVÉNEMENTS (30 prochains jours) ===
+    // Deux sources : l'Agenda (table events, celle du copilote, du coach et de l'appli)
+    // et les événements publiés depuis Communication (communication_events, seuls à avoir des RSVP).
+    // 'link' : page de l'événement que CET utilisateur peut ouvrir.
+    $events = [];
     try {
+        // Mêmes événements que son /agenda : un événement « projet seulement » reste
+        // caché à qui n'est ni membre ni référent du projet (ak_event_visibility_sql ;
+        // filtre vide pour l'admin et le coordinateur).
+        require_once __DIR__ . '/includes-attendance.php';
+        [$vis_sql, $vis_params] = function_exists('ak_event_visibility_sql')
+            ? ak_event_visibility_sql($pdo, $user, 'e') : ['', []];
         $stmt = $pdo->prepare("
-            SELECT e.id, e.title, e.start_date, e.location, e.rsvp_enabled,
+            SELECT e.id, e.title, e.starts_at AS start_date, e.location,
+                   DATEDIFF(e.starts_at, NOW()) AS days_until
+            FROM events e
+            WHERE e.org_id = ? AND e.deleted_at IS NULL" . $vis_sql . "
+              AND e.starts_at >= NOW() AND e.starts_at <= DATE_ADD(NOW(), INTERVAL 30 DAY)
+            ORDER BY e.starts_at ASC
+            LIMIT 5
+        ");
+        $stmt->execute(array_merge([$org_id], $vis_params));
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $ev) {
+            $events[] = $ev + ['source' => 'agenda', 'link' => '/agenda', 'rsvp_enabled' => 0, 'nb_yes' => 0, 'nb_total_rsvp' => 0];
+        }
+    } catch (Throwable $e) {
+        error_log('Today AI context agenda: ' . $e->getMessage());
+    }
+    try {
+        // Sans accès à Communication (403), seuls les événements ayant une page
+        // publique (où l'on répond au RSVP) ont un lien à proposer.
+        $stmt = $pdo->prepare("
+            SELECT e.id, e.title, e.start_date, e.location, e.rsvp_enabled, e.is_public, e.public_slug,
                    (SELECT COUNT(*) FROM communication_event_rsvps WHERE event_id = e.id AND response = 'yes') AS nb_yes,
                    (SELECT COUNT(*) FROM communication_event_rsvps WHERE event_id = e.id) AS nb_total_rsvp,
                    DATEDIFF(e.start_date, NOW()) AS days_until
             FROM communication_events e
             WHERE e.org_id = ? AND e.status = 'published'
-              AND e.start_date >= NOW() AND e.start_date <= DATE_ADD(NOW(), INTERVAL 30 DAY)
+              AND e.start_date >= NOW() AND e.start_date <= DATE_ADD(NOW(), INTERVAL 30 DAY)"
+            . ($ctx['can_communication'] ? '' : " AND e.is_public = 1 AND e.public_slug IS NOT NULL AND e.public_slug <> ''") . "
             ORDER BY e.start_date ASC
             LIMIT 5
         ");
         $stmt->execute([$org_id]);
-        $ctx['events'] = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-        // Pour member : a-t-il répondu ?
-        if ($profile === 'member') {
-            foreach ($ctx['events'] as $k => $ev) {
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $ev) {
+            $ev['source'] = 'communication';
+            $slug = preg_replace('/[^A-Za-z0-9_-]/', '', (string)($ev['public_slug'] ?? ''));
+            $ev['link'] = $ctx['can_communication'] ? '/communication?tab=evenements' : '/evenement-public/' . $slug;
+            // Page publique : c'est là que l'on répond (le lien Communication sert à gérer)
+            $ev['rsvp_link'] = (!empty($ev['is_public']) && $slug !== '') ? '/evenement-public/' . $slug : null;
+            unset($ev['public_slug'], $ev['is_public']);
+            // Pour member : a-t-il répondu ?
+            if ($profile === 'member' && !empty($ev['rsvp_enabled'])) {
                 $s2 = $pdo->prepare("SELECT response FROM communication_event_rsvps WHERE event_id = ? AND user_id = ? LIMIT 1");
                 $s2->execute([(int)$ev['id'], $user_id]);
-                $ctx['events'][$k]['my_response'] = $s2->fetchColumn() ?: null;
+                $ev['my_response'] = $s2->fetchColumn() ?: null;
             }
+            $events[] = $ev;
         }
     } catch (Throwable $e) {
         error_log('Today AI context events: ' . $e->getMessage());
     }
+    usort($events, fn($a, $b) => strcmp((string)$a['start_date'], (string)$b['start_date']));
+    $ctx['events'] = array_slice($events, 0, 6);
 
-    // === ADHERENTS (admin uniquement) ===
+    // === ADHERENTS (admin / coordinateur) ===
+    // L'utilisateur courant n'est pas compté parmi les « nouveaux à accueillir »
+    // (sinon l'admin d'une association neuve s'accueille lui-même).
     if ($profile === 'admin' || $profile === 'coordinator') {
         try {
             $stmt = $pdo->prepare("
                 SELECT COUNT(*) AS total,
-                       SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS new_7d,
+                       SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND id <> ? THEN 1 ELSE 0 END) AS new_7d,
                        SUM(CASE WHEN adhesion_valid_until IS NOT NULL AND adhesion_valid_until < NOW() THEN 1 ELSE 0 END) AS expired_cotisations
                 FROM users
                 WHERE org_id = ? AND (deleted_at IS NULL) AND is_active = 1
             ");
-            $stmt->execute([$org_id]);
+            $stmt->execute([$user_id, $org_id]);
             $r = $stmt->fetch(PDO::FETCH_ASSOC);
             $ctx['members'] = [
                 'total' => (int)($r['total'] ?? 0),
@@ -238,10 +308,10 @@ function today_collect_context(PDO $pdo, array $user, string $profile): array
             $stmt = $pdo->prepare("
                 SELECT first_name, last_name FROM users
                 WHERE org_id = ? AND deleted_at IS NULL AND is_active = 1
-                  AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                  AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND id <> ?
                 ORDER BY created_at DESC LIMIT 3
             ");
-            $stmt->execute([$org_id]);
+            $stmt->execute([$org_id, $user_id]);
             $ctx['members']['recent_names'] = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         } catch (Throwable $e) {
             error_log('Today AI context members: ' . $e->getMessage());
@@ -324,10 +394,10 @@ function today_collect_context(PDO $pdo, array $user, string $profile): array
         } catch (Throwable $e) {}
 
         try {
-            // Événements à venir sans aucun RSVP (besoin de relance)
+            // Événements à venir avec RSVP ouvert mais sans aucune réponse (besoin de relance)
             $stmt = $pdo->prepare("
                 SELECT COUNT(*) FROM communication_events e
-                WHERE e.org_id = ? AND e.status = 'published'
+                WHERE e.org_id = ? AND e.status = 'published' AND e.rsvp_enabled = 1
                   AND e.start_date >= NOW() AND e.start_date <= DATE_ADD(NOW(), INTERVAL 14 DAY)
                   AND (SELECT COUNT(*) FROM communication_event_rsvps WHERE event_id = e.id) = 0
             ");
@@ -336,63 +406,86 @@ function today_collect_context(PDO $pdo, array $user, string $profile): array
         } catch (Throwable $e) {}
 
         try {
-            // Messages dernières 24h dans les canaux (besoin de modération éventuelle)
+            // Messages des dernières 24 h dans les canaux de la messagerie (modération éventuelle)
             $stmt = $pdo->prepare("
-                SELECT COUNT(*) FROM messages
-                WHERE org_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                SELECT COUNT(*) FROM channel_messages cm
+                JOIN channels c ON c.id = cm.channel_id
+                WHERE c.org_id = ? AND cm.deleted_at IS NULL
+                  AND cm.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
             ");
-            @$stmt->execute([$org_id]);
+            $stmt->execute([$org_id]);
             $ctx['coord_stats']['recent_messages_24h'] = (int)($stmt->fetchColumn() ?: 0);
-        } catch (Throwable $e) {}
+        } catch (Throwable $e) {
+            error_log('Today AI context messages 24h: ' . $e->getMessage());
+        }
     }
 
     // === MESSAGES non lus (tous profils) ===
+    // Même règle que la messagerie (messages.php) : canaux publics / annonces de l'asso
+    // et canaux privés dont il est membre ; non lu = après son repère channel_reads,
+    // hors ses propres messages.
     try {
-        // On essaie d'abord la table messages si elle existe
         $stmt = $pdo->prepare("
-            SELECT COUNT(*) FROM messages m
-            WHERE m.org_id = ? AND (m.recipient_user_id = ? OR m.recipient_user_id IS NULL)
-              AND m.created_at > COALESCE((SELECT last_read_at FROM message_read_status WHERE user_id = ? AND channel_id = m.channel_id), '1970-01-01')
-              AND m.sender_user_id != ?
+            SELECT COUNT(*) FROM channel_messages cm
+            JOIN channels c ON c.id = cm.channel_id
+            WHERE c.org_id = ? AND c.is_archived = 0
+              AND (c.type IN ('public', 'announce')
+                   OR EXISTS (SELECT 1 FROM channel_members mb WHERE mb.channel_id = c.id AND mb.user_id = ?))
+              AND cm.deleted_at IS NULL AND cm.user_id <> ?
+              AND cm.id > COALESCE((SELECT MAX(r.last_read_message_id) FROM channel_reads r
+                                    WHERE r.channel_id = c.id AND r.user_id = ?), 0)
         ");
-        @$stmt->execute([$org_id, $user_id, $user_id, $user_id]);
+        $stmt->execute([$org_id, $user_id, $user_id, $user_id]);
         $ctx['messages']['unread'] = (int)($stmt->fetchColumn() ?: 0);
     } catch (Throwable $e) {
+        error_log('Today AI context unread: ' . $e->getMessage());
         $ctx['messages']['unread'] = 0;
     }
 
-    // Tickets support (admin only)
+    // Support Assokit (admin) : les tickets sont les demandes de l'association AU support
+    // Assokit. Seules les réponses du support non lues appellent une action (même
+    // requête que le badge « Support » du menu).
     if ($profile === 'admin') {
         try {
             $stmt = $pdo->prepare("
-                SELECT COUNT(*) FROM support_tickets
-                WHERE org_id = ? AND status IN ('open','in_progress')
+                SELECT COUNT(DISTINCT t.id)
+                FROM support_tickets t
+                JOIN support_messages m ON m.ticket_id = t.id
+                WHERE t.org_id = ?
+                  AND m.author_side = 'support'
+                  AND m.read_by_org = 0
+                  AND m.is_internal_note = 0
             ");
             $stmt->execute([$org_id]);
-            $ctx['messages']['open_tickets'] = (int)($stmt->fetchColumn() ?: 0);
+            $ctx['messages']['support_unread'] = (int)($stmt->fetchColumn() ?: 0);
         } catch (Throwable $e) {
-            $ctx['messages']['open_tickets'] = 0;
+            $ctx['messages']['support_unread'] = 0;
         }
     }
 
     // === FACTURES (admin only) ===
     if ($profile === 'admin') {
         try {
-            // Factures clients de l'asso impayées
+            // Factures clients de l'association (asso_invoices, montants en centimes) en retard :
+            // marquées « en retard », ou en attente avec une échéance dépassée.
+            // (La table invoices est celle des factures d'abonnement Assokit.)
             $stmt = $pdo->prepare("
-                SELECT COUNT(*) AS nb, COALESCE(SUM(total_ttc), 0) AS amount
-                FROM invoices
-                WHERE org_id = ? AND status IN ('sent','overdue')
-                  AND due_date < NOW()
+                SELECT COUNT(*) AS nb, COALESCE(SUM(amount_ttc_cents), 0) / 100 AS amount,
+                       COALESCE(SUM(status = 'pending'), 0) AS nb_pending_late
+                FROM asso_invoices
+                WHERE org_id = ?
+                  AND (status = 'overdue' OR (status = 'pending' AND due_at < CURDATE()))
             ");
-            @$stmt->execute([$org_id]);
+            $stmt->execute([$org_id]);
             $r = $stmt->fetch(PDO::FETCH_ASSOC);
             $ctx['invoices'] = [
                 'overdue_count' => (int)($r['nb'] ?? 0),
                 'overdue_amount' => (float)($r['amount'] ?? 0),
+                'pending_late' => (int)($r['nb_pending_late'] ?? 0),
             ];
         } catch (Throwable $e) {
-            $ctx['invoices'] = ['overdue_count' => 0, 'overdue_amount' => 0];
+            error_log('Today AI context invoices: ' . $e->getMessage());
+            $ctx['invoices'] = ['overdue_count' => 0, 'overdue_amount' => 0, 'pending_late' => 0];
         }
 
         // Abonnement Assokit : formule et essai lus comme partout ailleurs (ak_org_plan_state,
@@ -465,7 +558,8 @@ function today_build_prompt(array $ctx): string
     if (!empty($ctx['projects'])) {
         $prompt .= "📁 PROJETS :\n";
         foreach ($ctx['projects'] as $p) {
-            $line = "- \"{$p['name']}\" ({$p['folder_name']}) : {$p['progress_percent']}%";
+            // id : permet à l'IA de lier directement /projet/ID
+            $line = "- \"{$p['name']}\" [id " . (int)$p['id'] . "] ({$p['folder_name']}) : {$p['progress_percent']}%";
             if ($p['status'] === 'warning') $line .= ", STATUT WARNING";
             if (!empty($p['days_since_update']) && $p['days_since_update'] > 7) {
                 $line .= ", pas de MAJ depuis {$p['days_since_update']} jours";
@@ -477,8 +571,9 @@ function today_build_prompt(array $ctx): string
                 $days = (int) ((strtotime($p['end_date']) - time()) / 86400);
                 if ($days >= 0 && $days <= 14) $line .= ", deadline J+{$days}";
             }
-            if (!empty($p['budget_planned']) && $p['budget_planned'] > 0) {
-                $pct = round(($p['budget_used'] / $p['budget_planned']) * 100);
+            // Budget : profils finances seulement (budget_* retirés du contexte sinon)
+            if (!empty($ctx['can_view_finances']) && !empty($p['budget_planned']) && $p['budget_planned'] > 0) {
+                $pct = round(((float)($p['budget_used'] ?? 0) / $p['budget_planned']) * 100);
                 if ($pct >= 80) $line .= ", budget consommé à {$pct}%";
             }
             $prompt .= $line . "\n";
@@ -493,22 +588,45 @@ function today_build_prompt(array $ctx): string
             $date_str = date('d/m/Y', strtotime($e['start_date']));
             $line = "- \"{$e['title']}\" le $date_str (J+{$e['days_until']})";
             if (!empty($e['location'])) $line .= " à {$e['location']}";
-            if ($e['rsvp_enabled']) {
+            $ev_link = (string)($e['link'] ?? '/agenda');
+            if (($e['source'] ?? '') === 'agenda') {
+                $line .= " [Agenda, lien $ev_link]";
+            } elseif (strpos($ev_link, '/communication') === 0) {
+                $line .= " [Communication, lien $ev_link"
+                       . (!empty($e['rsvp_link']) ? ", page publique d'inscription {$e['rsvp_link']}" : '') . "]";
+            } else {
+                $line .= " [page de l'événement, lien $ev_link]";
+            }
+            if (!empty($e['rsvp_enabled'])) {
                 $line .= ", {$e['nb_yes']} RSVP positifs";
                 if (!empty($e['nb_total_rsvp'])) $line .= " / {$e['nb_total_rsvp']} réponses";
-            }
-            if ($profile === 'member' && !empty($e['my_response'])) {
-                $line .= ", MA RÉPONSE : {$e['my_response']}";
-            } elseif ($profile === 'member') {
-                $line .= ", JE N'AI PAS ENCORE RÉPONDU";
+                // RSVP : seulement pour les événements où la réponse est ouverte
+                if ($profile === 'member' && !empty($e['my_response'])) {
+                    $line .= ", MA RÉPONSE : {$e['my_response']}";
+                } elseif ($profile === 'member') {
+                    $line .= ", JE N'AI PAS ENCORE RÉPONDU";
+                }
             }
             $prompt .= $line . "\n";
         }
         $prompt .= "\n";
     }
 
-    // === ADHERENTS (admin) ===
-    if ($profile === 'admin' && !empty($ctx['members'])) {
+    // === PILOTAGE (coordinateur) ===
+    if ($profile === 'coordinator' && !empty($ctx['coord_stats'])) {
+        $cs = $ctx['coord_stats'];
+        $prompt .= "🎯 PILOTAGE OPÉRATIONNEL :\n";
+        $prompt .= "- Projets actifs sans référent : " . (int)$cs['projects_no_referent'] . "\n";
+        $prompt .= "- Projets en alerte (statut à surveiller) : " . (int)$cs['projects_warning'] . "\n";
+        $prompt .= "- Projets sans mise à jour depuis 7 jours ou plus : " . (int)$cs['projects_stale'] . "\n";
+        $prompt .= "- Projets démarrés depuis 30 jours ou plus et avancés à moins de 25 % : " . (int)$cs['projects_low_progress'] . "\n";
+        $prompt .= "- Personnes pouvant être référentes (référents, coordinateurs, admins) : " . (int)$cs['available_referents'] . "\n";
+        $prompt .= "- Événements des 14 prochains jours avec RSVP ouvert mais sans aucune réponse : " . (int)$cs['events_no_rsvp'] . "\n";
+        $prompt .= "- Messages postés dans les canaux ces dernières 24 h : " . (int)$cs['recent_messages_24h'] . "\n\n";
+    }
+
+    // === ADHERENTS (admin / coordinateur) ===
+    if (in_array($profile, ['admin', 'coordinator'], true) && !empty($ctx['members'])) {
         $prompt .= "👥 ADHÉRENTS :\n";
         $prompt .= "- Total : {$ctx['members']['total']} membres\n";
         if ($ctx['members']['new_7d'] > 0) {
@@ -526,21 +644,21 @@ function today_build_prompt(array $ctx): string
     }
 
     // === MESSAGES ===
-    if (!empty($ctx['messages']['unread']) || !empty($ctx['messages']['open_tickets'])) {
+    if (!empty($ctx['messages']['unread']) || !empty($ctx['messages']['support_unread'])) {
         $prompt .= "💬 COMMUNICATION :\n";
         if (!empty($ctx['messages']['unread'])) {
-            $prompt .= "- {$ctx['messages']['unread']} messages non lus\n";
+            $prompt .= "- {$ctx['messages']['unread']} message(s) non lu(s) dans les canaux de la messagerie interne (lien /messages)\n";
         }
-        if (!empty($ctx['messages']['open_tickets'])) {
-            $prompt .= "- {$ctx['messages']['open_tickets']} tickets support ouverts\n";
+        if (!empty($ctx['messages']['support_unread'])) {
+            $prompt .= "- {$ctx['messages']['support_unread']} réponse(s) du support Assokit non lue(s) : ce sont les demandes que l'association a envoyées à Assokit, pas des demandes d'adhérents (lien /support)\n";
         }
         $prompt .= "\n";
     }
 
     // === FACTURES (admin) ===
     if ($profile === 'admin' && !empty($ctx['invoices']) && $ctx['invoices']['overdue_count'] > 0) {
-        $prompt .= "💰 FACTURES :\n";
-        $prompt .= "- {$ctx['invoices']['overdue_count']} facture(s) impayée(s) en retard — " . number_format($ctx['invoices']['overdue_amount'], 2, ',', ' ') . "€\n\n";
+        $prompt .= "💰 FACTURES CLIENTS :\n";
+        $prompt .= "- {$ctx['invoices']['overdue_count']} facture(s) client(s) impayée(s) en retard — " . number_format($ctx['invoices']['overdue_amount'], 2, ',', ' ') . " € (lien /mon-asso-factures-client)\n\n";
     }
 
     // === ABONNEMENT ASSOKIT (admin) ===
@@ -581,15 +699,21 @@ function today_build_prompt(array $ctx): string
 
     if ($profile === 'admin') {
         $prompt .= "Propose 3 à 5 actions prioritaires pour cet ADMINISTRATEUR D'ASSOCIATION. Priorise :\n";
-        $prompt .= "- Factures impayées et abonnement Assokit à renouveler (urgent)\n";
+        $prompt .= "- Factures clients impayées et abonnement Assokit à renouveler (urgent)\n";
         $prompt .= "- Relances adhérents (RSVP, cotisations expirées)\n";
         $prompt .= "- Projets en retard ou bloqués (coordination équipe)\n";
-        $prompt .= "- Communication (tickets support, messages, accueil nouveaux)\n";
+        $prompt .= "- Communication (messages non lus, réponses du support Assokit à lire, accueil des nouveaux)\n";
+    } elseif ($profile === 'coordinator') {
+        $prompt .= "Propose 3 à 5 actions prioritaires pour ce COORDINATEUR (pilote opérationnel de l'équipe). Priorise :\n";
+        $prompt .= "- Projets sans référent à assigner\n";
+        $prompt .= "- Projets en alerte ou sans mise à jour : relancer les référents\n";
+        $prompt .= "- Événements à préparer, relance des RSVP sans réponse\n";
+        $prompt .= "- Accueil des nouveaux adhérents, cotisations à renouveler, animation des canaux\n";
     } elseif ($profile === 'referent') {
         $prompt .= "Propose 3 à 5 actions prioritaires pour ce RÉFÉRENT DE PROJET. Priorise :\n";
         $prompt .= "- Mise à jour de l'avancement des projets inactifs\n";
         $prompt .= "- Clôture des projets à 100%\n";
-        $prompt .= "- Suivi budget et deadlines proches\n";
+        $prompt .= !empty($ctx['can_view_finances']) ? "- Suivi budget et deadlines proches\n" : "- Deadlines proches et étapes à valider\n";
         $prompt .= "- Coordination équipe\n";
     } else {
         $prompt .= "Propose 2 à 3 actions prioritaires pour cet ADHÉRENT. Priorise :\n";
@@ -603,7 +727,24 @@ function today_build_prompt(array $ctx): string
     $prompt .= "- un \"icon\" (emoji pertinent)\n";
     $prompt .= "- un \"title\" court et actionnable (max 80 car)\n";
     $prompt .= "- une \"description\" précise avec chiffres si pertinent (max 120 car)\n";
-    $prompt .= "- un \"link\" URL relative (/projet/X, /adherents, /communication, /factures, etc.)\n";
+    // Liens : uniquement des pages qui existent (une URL inventée mène à une 404)
+    $links = ['/projets', '/projet/ID (ID = identifiant d\'un projet)', '/agenda', '/messages'];
+    // Communication : seulement avec son droit (403 sinon) ; pages publiques des événements listés
+    if (!empty($ctx['can_communication'])) {
+        array_push($links, '/communication', '/communication?tab=evenements');
+    }
+    foreach ($ctx['events'] ?? [] as $e) {
+        foreach ([$e['link'] ?? null, $e['rsvp_link'] ?? null] as $l) {
+            if ($l && !in_array($l, $links, true)) $links[] = $l;
+        }
+    }
+    if ($profile === 'admin' || $profile === 'coordinator') {
+        array_push($links, '/adherents', '/nouveau-adherent', '/relances', '/cotisations');
+    }
+    if ($profile === 'admin') {
+        array_push($links, '/mon-asso-factures-client', '/support', '/mon-asso-plan', '/mon-asso-stats');
+    }
+    $prompt .= "- un \"link\" URL relative, choisie UNIQUEMENT dans cette liste : " . implode(', ', $links) . "\n";
     $prompt .= "- un \"link_label\" bouton court (max 25 car)\n";
     $prompt .= "- une \"priority\" : \"urgent\" | \"important\" | \"info\"\n\n";
     $prompt .= "RÉPONDS UNIQUEMENT AVEC UN JSON VALIDE, aucun autre texte avant ou après.\n";
@@ -622,6 +763,7 @@ function today_call_claude(string $prompt): array
     if (!defined('CLAUDE_API_KEY') || CLAUDE_API_KEY === '') {
         return ['ok' => false, 'error' => 'CLAUDE_API_KEY non configurée', 'suggestions' => []];
     }
+    if (function_exists('set_time_limit')) @set_time_limit(TODAY_AI_TIMEOUT_SECONDS + 30);
 
     $payload = [
         'model' => TODAY_AI_MODEL,
@@ -631,12 +773,14 @@ function today_call_claude(string $prompt): array
         ],
     ];
 
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
+    $ch = curl_init(TODAY_AI_API_URL);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => json_encode($payload),
         CURLOPT_TIMEOUT => TODAY_AI_TIMEOUT_SECONDS,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_NOSIGNAL => true,
         CURLOPT_HTTPHEADER => [
             'x-api-key: ' . CLAUDE_API_KEY,
             'anthropic-version: 2023-06-01',
@@ -680,120 +824,345 @@ function today_call_claude(string $prompt): array
 }
 
 /**
+ * L'IA des suggestions est-elle configurée ? (sinon : repli statique, sans appel)
+ */
+function today_ai_enabled(): bool
+{
+    return defined('CLAUDE_API_KEY') && CLAUDE_API_KEY !== '';
+}
+
+/**
+ * Ligne de cache du jour (la plus récente si plusieurs). SELECT * : les colonnes
+ * de today_suggestions ne sont pas garanties en prod (aucune définition versionnée).
+ */
+function today_cache_row(PDO $pdo, int $user_id, string $day): ?array
+{
+    try {
+        $stmt = $pdo->prepare("
+            SELECT * FROM today_suggestions
+            WHERE user_id = ? AND generation_date = ?
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmt->execute([$user_id, $day]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    } catch (Throwable $e) {
+        error_log('Today AI cache: ' . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Une ligne en erreur (repli statique) est-elle encore « fraîche » ?
+ * Pendant TODAY_AI_ERROR_RETRY_SECONDS on la sert sans rappeler l'IA.
+ */
+function today_error_is_recent(array $row): bool
+{
+    $ts = strtotime((string)($row['last_generated_at'] ?? ''));
+    return $ts !== false && $ts > time() - TODAY_AI_ERROR_RETRY_SECONDS;
+}
+
+/**
+ * Écrit la ligne du jour en n'utilisant que les colonnes présentes en base.
+ * $raw : expressions SQL écrites par le code (jamais une saisie).
+ */
+function today_save_row(PDO $pdo, ?array $cached, array $user, string $profile, array $data, array $raw = []): void
+{
+    $table = 'today_suggestions';
+    if (function_exists('ak_db_accepts') && ak_db_columns($pdo, $table) && !ak_db_accepts($pdo, $table, 'profile', $profile)) {
+        unset($data['profile']); // ENUM sans ce profil : on n'empêche pas l'enregistrement pour autant
+    } else {
+        $data['profile'] = $profile;
+    }
+    try {
+        if (!function_exists('ak_db_insert')) {
+            throw new RuntimeException('trial-helpers.php absent');
+        }
+        if ($cached && !empty($cached['id'])) {
+            ak_db_update($pdo, $table, (int)$cached['id'], $data, $raw);
+            return;
+        }
+        try {
+            ak_db_insert($pdo, $table, $data + [
+                'user_id' => (int)$user['id'],
+                'org_id' => (int)$user['org_id'],
+                'generation_date' => date('Y-m-d'),
+            ], $raw);
+        } catch (PDOException $e) {
+            // Clé unique (utilisateur, jour) : une autre requête vient d'écrire la ligne
+            $row = today_cache_row($pdo, (int)$user['id'], date('Y-m-d'));
+            if (!$row) throw $e;
+            ak_db_update($pdo, $table, (int)$row['id'], $data, $raw);
+        }
+    } catch (Throwable $e) {
+        error_log('Today AI save: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Ce qu'affiche le tableau de bord, SANS jamais appeler l'IA (la page ne l'attend pas) :
+ *   - suggestions IA du jour en cache ;
+ *   - repli statique en cache s'il a moins de 30 min (échec récent) ;
+ *   - sinon le repli statique calculé maintenant, avec 'pending' => true :
+ *     le partiel lance alors la génération IA en arrière-plan.
+ */
+function today_get_for_display(PDO $pdo, array $user): array
+{
+    if (($user['role'] ?? '') === 'follower') {
+        return ['suggestions' => [], 'from_cache' => false, 'refresh_count' => 0, 'can_refresh' => false];
+    }
+    $cached = today_cache_row($pdo, (int)$user['id'], date('Y-m-d'));
+    $count = (int)($cached['refresh_count'] ?? 0);
+
+    if ($cached && (empty($cached['has_error']) || today_error_is_recent($cached))) {
+        $suggestions = json_decode((string)($cached['suggestions_json'] ?? ''), true);
+        if (is_array($suggestions) && $suggestions) {
+            return [
+                'suggestions' => $suggestions,
+                'from_cache' => true,
+                'refresh_count' => $count,
+                'can_refresh' => $count < TODAY_AI_MAX_REFRESH_PER_DAY,
+                'has_error' => !empty($cached['has_error']),
+            ];
+        }
+    }
+
+    $profile = today_get_user_profile($pdo, $user);
+    $ctx = today_collect_context($pdo, $user, $profile);
+    return [
+        'suggestions' => today_fallback_suggestions($ctx),
+        'from_cache' => false,
+        'refresh_count' => $count,
+        'can_refresh' => $count < TODAY_AI_MAX_REFRESH_PER_DAY,
+        'has_error' => true,
+        'pending' => today_ai_enabled(),
+    ];
+}
+
+/**
  * Lit le cache ou génère les suggestions du jour.
  * Si force = true, régénère même si cache présent (pour refresh manuel).
+ * À appeler hors de l'affichage (today-ai-refresh.php, session déjà libérée).
  */
 function today_get_or_generate(PDO $pdo, array $user, bool $force = false): array
 {
+    if (($user['role'] ?? '') === 'follower') {
+        return ['suggestions' => [], 'from_cache' => false, 'refresh_count' => 0, 'can_refresh' => false];
+    }
     $user_id = (int)$user['id'];
-    $org_id = (int)$user['org_id'];
     $today = date('Y-m-d');
 
     // Lire cache du jour
-    $stmt = $pdo->prepare("
-        SELECT suggestions_json, refresh_count, has_error
-        FROM today_suggestions
-        WHERE user_id = ? AND generation_date = ?
-    ");
-    $stmt->execute([$user_id, $today]);
-    $cached = $stmt->fetch(PDO::FETCH_ASSOC);
+    $cached = today_cache_row($pdo, $user_id, $today);
+    $count = (int)($cached['refresh_count'] ?? 0);
+    $cached_suggestions = $cached ? (json_decode((string)($cached['suggestions_json'] ?? ''), true) ?: []) : [];
 
-    if ($cached && !$force && !$cached['has_error']) {
-        $suggestions = json_decode($cached['suggestions_json'], true) ?: [];
+    // Cache servi tel quel : réponse IA du jour, ou échec récent (pas de nouvel appel avant 30 min)
+    if ($cached && !$force && $cached_suggestions
+        && (empty($cached['has_error']) || today_error_is_recent($cached))) {
         return [
-            'suggestions' => $suggestions,
+            'suggestions' => $cached_suggestions,
             'from_cache' => true,
-            'refresh_count' => (int)$cached['refresh_count'],
-            'can_refresh' => (int)$cached['refresh_count'] < TODAY_AI_MAX_REFRESH_PER_DAY,
+            'refresh_count' => $count,
+            'can_refresh' => $count < TODAY_AI_MAX_REFRESH_PER_DAY,
+            'has_error' => !empty($cached['has_error']),
         ];
     }
 
     // Rate-limit refresh
-    if ($cached && $force && (int)$cached['refresh_count'] >= TODAY_AI_MAX_REFRESH_PER_DAY) {
-        $suggestions = json_decode($cached['suggestions_json'], true) ?: [];
+    if ($cached && $force && $count >= TODAY_AI_MAX_REFRESH_PER_DAY) {
         return [
-            'suggestions' => $suggestions,
+            'suggestions' => $cached_suggestions,
             'from_cache' => true,
-            'refresh_count' => (int)$cached['refresh_count'],
+            'refresh_count' => $count,
             'can_refresh' => false,
             'rate_limited' => true,
+            'has_error' => !empty($cached['has_error']),
         ];
     }
 
-    // Générer
+    // Une seule génération à la fois par utilisateur (second onglet, retour sur le
+    // tableau de bord pendant « Personnalisation en cours… », double clic sur ↻) :
+    // la requête suivante attend la première puis sert son résultat, sans nouvel appel.
+    $lock = today_ai_lock($pdo, $user_id);
+    if ($lock === null) {
+        // Génération encore en cours ailleurs : cache ou repli, aucun appel IA
+        $profile = today_get_user_profile($pdo, $user);
+        return [
+            'suggestions' => $cached_suggestions ?: today_fallback_suggestions(today_collect_context($pdo, $user, $profile)),
+            'from_cache' => (bool)$cached_suggestions,
+            'refresh_count' => $count,
+            'can_refresh' => $count < TODAY_AI_MAX_REFRESH_PER_DAY,
+            'has_error' => true,
+        ];
+    }
+    try {
+        $row_sig = fn(?array $r): string => $r
+            ? implode('|', [$r['id'] ?? '', $r['last_generated_at'] ?? '', $r['refresh_count'] ?? '', $r['has_error'] ?? ''])
+            : '';
+        $fresh = today_cache_row($pdo, $user_id, $today);
+        if ($row_sig($fresh) !== $row_sig($cached)) {
+            // Ligne écrite pendant l'attente : c'est le résultat qu'on venait chercher
+            $cached = $fresh;
+            $count = (int)($cached['refresh_count'] ?? 0);
+            $cached_suggestions = json_decode((string)($cached['suggestions_json'] ?? ''), true) ?: [];
+            if ($cached_suggestions && (empty($cached['has_error']) || today_error_is_recent($cached))) {
+                return [
+                    'suggestions' => $cached_suggestions,
+                    'from_cache' => true,
+                    'refresh_count' => $count,
+                    'can_refresh' => $count < TODAY_AI_MAX_REFRESH_PER_DAY,
+                    'has_error' => !empty($cached['has_error']),
+                ];
+            }
+        }
+        return today_generate_and_save($pdo, $user, $force, $cached, $count, $cached_suggestions);
+    } finally {
+        today_ai_unlock($pdo, $lock);
+    }
+}
+
+/**
+ * Verrou MySQL par utilisateur autour de la génération IA (GET_LOCK, comme cron-lots.php :
+ * nom préfixé de la base, le verrou porte sur tout le serveur). Attend au plus la durée
+ * d'un appel. Retourne le nom du verrou, '' si GET_LOCK est indisponible (on génère sans,
+ * comme avant), ou null si une autre génération le tient encore.
+ */
+function today_ai_lock(PDO $pdo, int $user_id): ?string
+{
+    try {
+        $base = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
+        $name = mb_substr($base, 0, 40) . ':today_ai:' . $user_id;
+        $st = $pdo->prepare('SELECT GET_LOCK(?, ?)');
+        $st->execute([$name, TODAY_AI_TIMEOUT_SECONDS + 10]);
+        $got = $st->fetchColumn();
+        $st->closeCursor();
+        if ($got === null || $got === false) return '';
+        if ((int)$got !== 1) return null;
+        // Libéré aussi en fin de script (arrêt brutal, connexion persistante possible)
+        register_shutdown_function(function () use ($pdo, $name): void {
+            try { $pdo->prepare('DO RELEASE_LOCK(?)')->execute([$name]); } catch (Throwable $e) {}
+        });
+        return $name;
+    } catch (Throwable $e) {
+        error_log('Today AI lock: ' . $e->getMessage());
+        return '';
+    }
+}
+
+function today_ai_unlock(PDO $pdo, string $name): void
+{
+    if ($name === '') return;
+    try { $pdo->prepare('DO RELEASE_LOCK(?)')->execute([$name]); } catch (Throwable $e) {}
+}
+
+/**
+ * Appel IA + enregistrement de la ligne du jour (verrou de l'utilisateur déjà pris).
+ */
+function today_generate_and_save(PDO $pdo, array $user, bool $force, ?array $cached, int $count, array $cached_suggestions): array
+{
     $profile = today_get_user_profile($pdo, $user);
     $ctx = today_collect_context($pdo, $user, $profile);
     $prompt = today_build_prompt($ctx);
     $result = today_call_claude($prompt);
 
-    if (!$result['ok']) {
-        // Fallback : suggestions statiques
-        $fallback = today_fallback_suggestions($ctx);
+    // Un rafraîchissement manuel compte dans la limite du jour, même s'il échoue
+    // (sinon chaque clic relance un appel payant ou une attente de 30 s).
+    // COALESCE : refresh_count NULL (colonne sans défaut) bloquait la limite (NULL + 1 = NULL).
+    $new_count = $count + ($force ? 1 : 0);
+    if ($cached) {
+        $count_raw = $force ? ['refresh_count' => 'COALESCE(refresh_count, 0) + 1', 'last_refreshed_at' => 'NOW()'] : [];
+    } else {
+        $count_raw = ['refresh_count' => $force ? '1' : '0'] + ($force ? ['last_refreshed_at' => 'NOW()'] : []);
+    }
 
-        // Stocker l'erreur (mais utiliser le fallback)
-        try {
-            if ($cached) {
-                $stmt = $pdo->prepare("
-                    UPDATE today_suggestions
-                    SET suggestions_json = ?, has_error = 1, error_message = ?,
-                        last_generated_at = NOW(), profile = ?
-                    WHERE id = (SELECT id FROM (SELECT id FROM today_suggestions WHERE user_id = ? AND generation_date = ?) AS t)
-                ");
-                @$stmt->execute([json_encode($fallback), mb_substr($result['error'], 0, 500), $profile, $user_id, $today]);
-            } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO today_suggestions
-                        (user_id, org_id, profile, generation_date, suggestions_json, has_error, error_message)
-                    VALUES (?, ?, ?, ?, ?, 1, ?)
-                ");
-                $stmt->execute([$user_id, $org_id, $profile, $today, json_encode($fallback), mb_substr($result['error'], 0, 500)]);
-            }
-        } catch (Throwable $e) {}
+    if (!$result['ok']) {
+        error_log('Today AI: ' . mb_substr((string)$result['error'], 0, 300));
+
+        // Rafraîchissement raté alors que les suggestions IA du jour sont en cache :
+        // on les garde (la ligne n'est pas écrasée par le repli statique).
+        if ($force && $cached && empty($cached['has_error']) && $cached_suggestions) {
+            if ($count_raw) today_save_row($pdo, $cached, $user, $profile, [], $count_raw);
+            return [
+                'suggestions' => $cached_suggestions,
+                'from_cache' => true,
+                'refresh_count' => $new_count,
+                'can_refresh' => $new_count < TODAY_AI_MAX_REFRESH_PER_DAY,
+                'has_error' => true,
+                'kept_previous' => true,
+            ];
+        }
+
+        // Sinon : repli statique, mémorisé avec l'heure de l'échec (pas de nouvel essai avant 30 min)
+        $fallback = today_fallback_suggestions($ctx);
+        today_save_row($pdo, $cached, $user, $profile, [
+            'suggestions_json' => json_encode($fallback),
+            'has_error' => 1,
+            'error_message' => mb_substr((string)$result['error'], 0, 500),
+        ], ['last_generated_at' => 'NOW()'] + $count_raw);
 
         return [
             'suggestions' => $fallback,
             'from_cache' => false,
-            'refresh_count' => $cached ? (int)$cached['refresh_count'] : 0,
-            'can_refresh' => true,
+            'refresh_count' => $new_count,
+            'can_refresh' => $new_count < TODAY_AI_MAX_REFRESH_PER_DAY,
             'has_error' => true,
         ];
     }
 
     // Succès : sauvegarder
-    $json = json_encode($result['suggestions']);
-    try {
-        if ($cached) {
-            $stmt = $pdo->prepare("
-                UPDATE today_suggestions
-                SET suggestions_json = ?, tokens_input = ?, tokens_output = ?,
-                    refresh_count = refresh_count + ?, last_refreshed_at = ?,
-                    has_error = 0, error_message = NULL, profile = ?
-                WHERE user_id = ? AND generation_date = ?
-            ");
-            $stmt->execute([
-                $json, $result['tokens_in'], $result['tokens_out'],
-                $force ? 1 : 0, $force ? date('Y-m-d H:i:s') : null,
-                $profile, $user_id, $today,
-            ]);
-        } else {
-            $stmt = $pdo->prepare("
-                INSERT INTO today_suggestions
-                    (user_id, org_id, profile, generation_date, suggestions_json,
-                     tokens_input, tokens_output, refresh_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-            ");
-            $stmt->execute([$user_id, $org_id, $profile, $today, $json, $result['tokens_in'], $result['tokens_out']]);
-        }
-    } catch (Throwable $e) {
-        error_log('Today AI save: ' . $e->getMessage());
-    }
+    today_save_row($pdo, $cached, $user, $profile, [
+        'suggestions_json' => json_encode($result['suggestions']),
+        'tokens_input' => (int)($result['tokens_in'] ?? 0),
+        'tokens_output' => (int)($result['tokens_out'] ?? 0),
+        'has_error' => 0,
+        'error_message' => null,
+    ], ['last_generated_at' => 'NOW()'] + $count_raw);
 
     return [
         'suggestions' => $result['suggestions'],
         'from_cache' => false,
-        'refresh_count' => ($cached ? (int)$cached['refresh_count'] : 0) + ($force ? 1 : 0),
-        'can_refresh' => (($cached ? (int)$cached['refresh_count'] : 0) + ($force ? 1 : 0)) < TODAY_AI_MAX_REFRESH_PER_DAY,
+        'refresh_count' => $new_count,
+        'can_refresh' => $new_count < TODAY_AI_MAX_REFRESH_PER_DAY,
     ];
+}
+
+/**
+ * HTML des cartes de suggestions (contenu de #today-list) : partagé par le partiel
+ * du tableau de bord et par today-ai-refresh (remplacement sans rechargement).
+ */
+function today_render_items(array $suggestions): string
+{
+    $colors_by_priority = [
+        'urgent'    => ['bg' => '#FEF2F2', 'border' => '#FCA5A5', 'text' => '#991B1B'],
+        'important' => ['bg' => '#FFFBEB', 'border' => '#FCD34D', 'text' => '#92400E'],
+        'info'      => ['bg' => '#F0FDF4', 'border' => '#86EFAC', 'text' => '#166534'],
+    ];
+    $e = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $html = '';
+    foreach ($suggestions as $sugg) {
+        if (!is_array($sugg)) continue;
+        $priority = (string)($sugg['priority'] ?? 'info');
+        $colors = $colors_by_priority[$priority] ?? $colors_by_priority['info'];
+        $link = (string)($sugg['link'] ?? '#');
+        // Lien produit par l'IA : chemin interne uniquement (jamais javascript:, ni autre site)
+        if (!preg_match('#^/(?![/\\\\])[A-Za-z0-9/_\-?=&.%\#]*$#', $link)) $link = '#';
+        $icon = $sugg['icon'] ?? '✨';
+        $label = !empty($sugg['link_label'])
+            ? '<span style="font-size:11.5px; color:var(--acc-dark); font-weight:500; white-space:nowrap;">' . $e($sugg['link_label']) . '</span>'
+            : '';
+        $html .= '<a href="' . $e($link) . '" class="today-item" style="text-decoration:none; color:inherit;">'
+            . '<div class="today-icon" style="background:' . $colors['bg'] . '; color:' . $colors['text'] . '; font-size:18px; line-height:1;">' . $e($icon) . '</div>'
+            . '<div class="today-body">'
+            . '<div class="today-title">' . $e($sugg['title'] ?? '') . '</div>'
+            . '<div class="today-meta">' . $e($sugg['description'] ?? '') . '</div>'
+            . '</div>'
+            . '<div style="display:flex; align-items:center; gap:8px;">' . $label
+            . '<svg class="today-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>'
+            . '</div>'
+            . '</a>';
+    }
+    return $html;
 }
 
 /**
@@ -858,7 +1227,8 @@ function today_fallback_suggestions(array $ctx): array
                 'icon' => '👥',
                 'title' => 'Invite tes premiers adhérents',
                 'description' => 'Construis ta communauté. Ajoute des membres pour collaborer ensemble.',
-                'link' => '/nouveau-utilisateur',
+                // Formulaire d'ajout d'adhérent (envoie l'e-mail de création du mot de passe)
+                'link' => '/nouveau-adherent',
                 'link_label' => '+ Inviter un membre',
                 'priority' => 'important',
             ];
@@ -869,9 +1239,9 @@ function today_fallback_suggestions(array $ctx): array
             $out[] = [
                 'icon' => '🧾',
                 'title' => 'Configure ta facturation',
-                'description' => 'Crée ton premier client pour émettre des factures conformes (loi 1901 / TPE).',
+                'description' => 'Émets ta première facture conforme (loi 1901 / TPE) : le client se crée dans le formulaire.',
                 'link' => '/mon-asso-facture-new',
-                'link_label' => 'Créer un client',
+                'link_label' => 'Créer une facture',
                 'priority' => 'info',
             ];
         }
@@ -888,36 +1258,37 @@ function today_fallback_suggestions(array $ctx): array
             $amount_str = number_format($amount, 0, ',', ' ') . ' €';
             $out[] = [
                 'icon' => '⚠️',
-                'title' => $overdue . ' facture' . ($overdue > 1 ? 's' : '') . ' en retard',
+                'title' => $overdue . ' facture' . ($overdue > 1 ? 's' : '') . ' client' . ($overdue > 1 ? 's' : '') . ' en retard',
                 'description' => 'Total impayé : ' . $amount_str . ' · à relancer',
-                'link' => '/mon-asso-factures?status=overdue',
+                // Factures clients de toutes les années ; filtre « En retard » quand elles le sont toutes
+                'link' => '/mon-asso-factures-client?' . (empty($ctx['invoices']['pending_late']) ? 'status=overdue&' : '') . 'year=0',
                 'link_label' => 'Voir les factures',
                 'priority' => 'urgent',
             ];
         }
 
-        // Cotisations expirées
+        // Cotisations expirées → page Relances (liste « Cotisations à renouveler »)
         $expired = (int)($ctx['members']['expired_cotisations'] ?? 0);
         if ($expired > 0) {
             $out[] = [
                 'icon' => '⏳',
                 'title' => $expired . ' cotisation' . ($expired > 1 ? 's' : '') . ' à renouveler',
                 'description' => 'Adhérent' . ($expired > 1 ? 's' : '') . ' à relancer pour renouveler leur adhésion',
-                'link' => '/adherents?filter=expired',
-                'link_label' => 'Voir les adhérents',
+                'link' => '/relances',
+                'link_label' => 'Relancer',
                 'priority' => 'important',
             ];
         }
 
-        // Tickets support ouverts
-        $tickets = (int)($ctx['messages']['open_tickets'] ?? 0);
-        if ($tickets > 0) {
+        // Support Assokit : les tickets sont les demandes de l'association à Assokit
+        $support = (int)($ctx['messages']['support_unread'] ?? 0);
+        if ($support > 0) {
             $out[] = [
-                'icon' => '💬',
-                'title' => $tickets . ' ticket' . ($tickets > 1 ? 's' : '') . ' support ouvert' . ($tickets > 1 ? 's' : ''),
-                'description' => 'Des adhérents ont besoin d\'aide. Réponds rapidement.',
-                'link' => '/admin-tickets',
-                'link_label' => 'Voir les tickets',
+                'icon' => '🛟',
+                'title' => $support . ' réponse' . ($support > 1 ? 's' : '') . ' du support Assokit à lire',
+                'description' => 'Le support Assokit vous a répondu sur ' . ($support > 1 ? 'vos demandes' : 'votre demande') . '.',
+                'link' => '/support',
+                'link_label' => 'Lire la réponse',
                 'priority' => 'important',
             ];
         }
@@ -938,7 +1309,7 @@ function today_fallback_suggestions(array $ctx): array
                 'icon' => '🎯',
                 'title' => $no_ref . ' projet' . ($no_ref > 1 ? 's' : '') . ' sans référent',
                 'description' => 'À assigner pour démarrer · ton rôle de coordinateur',
-                'link' => '/projets?filter=no_referent',
+                'link' => '/projets',
                 'link_label' => 'Assigner des référents',
                 'priority' => 'urgent',
             ];
@@ -951,7 +1322,8 @@ function today_fallback_suggestions(array $ctx): array
                 'icon' => '⚠️',
                 'title' => $warning . ' projet' . ($warning > 1 ? 's à surveiller' : ' à surveiller'),
                 'description' => 'Vérifie avec les référents si tout va bien',
-                'link' => '/projets?filter=warning',
+                // Clé du filtre « À surveiller » de la page Projets
+                'link' => '/projets?filter=warn',
                 'link_label' => 'Voir les projets',
                 'priority' => 'important',
             ];
@@ -964,7 +1336,7 @@ function today_fallback_suggestions(array $ctx): array
                 'icon' => '📞',
                 'title' => 'Relance ' . $stale . ' référent' . ($stale > 1 ? 's' : ''),
                 'description' => $stale . ' projet' . ($stale > 1 ? 's' : '') . ' sans MAJ depuis 7+ jours · besoin de nouvelles',
-                'link' => '/projets?filter=stale',
+                'link' => '/projets',
                 'link_label' => 'Voir les projets',
                 'priority' => 'important',
             ];
@@ -990,8 +1362,9 @@ function today_fallback_suggestions(array $ctx): array
                 'icon' => '📣',
                 'title' => $no_rsvp . ' événement' . ($no_rsvp > 1 ? 's sans RSVP' : ' sans RSVP'),
                 'description' => 'Relance la communauté pour booster la participation',
-                'link' => '/communication?tab=evenements',
-                'link_label' => 'Communiquer',
+                // Sans le droit Communication (403), relance par la messagerie
+                'link' => !empty($ctx['can_communication']) ? '/communication?tab=evenements' : '/messages',
+                'link_label' => !empty($ctx['can_communication']) ? 'Communiquer' : 'Relancer',
                 'priority' => 'info',
             ];
         }
@@ -1003,7 +1376,7 @@ function today_fallback_suggestions(array $ctx): array
                 'icon' => '⏳',
                 'title' => $expired . ' cotisation' . ($expired > 1 ? 's à renouveler' : ' à renouveler'),
                 'description' => 'Relance les adhérents pour maintenir leur adhésion',
-                'link' => '/adherents?filter=expired',
+                'link' => '/relances',
                 'link_label' => 'Relancer',
                 'priority' => 'important',
             ];
@@ -1016,7 +1389,7 @@ function today_fallback_suggestions(array $ctx): array
                 'icon' => '🌊',
                 'title' => 'Activité forte sur les canaux',
                 'description' => $msg_24h . ' messages dernières 24h · jette un œil à l\'animation',
-                'link' => '/communication',
+                'link' => '/messages',
                 'link_label' => 'Voir les canaux',
                 'priority' => 'info',
             ];
@@ -1028,14 +1401,14 @@ function today_fallback_suggestions(array $ctx): array
             $names = $ctx['members']['recent_names'] ?? [];
             $desc = 'Inscrit(s) cette semaine · à accueillir personnellement';
             if (!empty($names) && count($names) <= 3) {
-                $name_list = array_map(fn($n) => $n['first_name'] . ' ' . substr($n['last_name'], 0, 1) . '.', $names);
+                $name_list = array_map(fn($n) => $n['first_name'] . ' ' . mb_substr((string)$n['last_name'], 0, 1) . '.', $names);
                 $desc = implode(', ', $name_list) . ' · ton rôle de coordinateur';
             }
             $out[] = [
                 'icon' => '👋',
                 'title' => $nb . ' nouveau' . ($nb > 1 ? 'x' : '') . ' adhérent' . ($nb > 1 ? 's à accueillir' : ' à accueillir'),
                 'description' => $desc,
-                'link' => '/adherents?filter=new',
+                'link' => '/adherents',
                 'link_label' => 'Accueillir',
                 'priority' => 'info',
             ];
@@ -1047,8 +1420,8 @@ function today_fallback_suggestions(array $ctx): array
                 'icon' => '🌱',
                 'title' => 'Anime la dynamique de l\'équipe',
                 'description' => 'Tout est calme · profite-en pour planifier le prochain événement ou former les référents',
-                'link' => '/communication',
-                'link_label' => 'Communiquer',
+                'link' => !empty($ctx['can_communication']) ? '/communication' : '/agenda',
+                'link_label' => !empty($ctx['can_communication']) ? 'Communiquer' : 'Voir l\'agenda',
                 'priority' => 'info',
             ];
         }
@@ -1078,7 +1451,7 @@ function today_fallback_suggestions(array $ctx): array
                     'icon' => '⚠️',
                     'title' => $count . ' projets à surveiller',
                     'description' => 'Plusieurs projets nécessitent ton attention',
-                    'link' => '/projets',
+                    'link' => '/projets?filter=warn',
                     'link_label' => 'Voir mes projets',
                     'priority' => 'important',
                 ];
@@ -1121,24 +1494,41 @@ function today_fallback_suggestions(array $ctx): array
     if (!empty($ctx['events'])) {
         $e = $ctx['events'][0];
         $days = (int)($e['days_until'] ?? 0);
+        // Événement de l'Agenda ou événement publié depuis Communication (seul à avoir des RSVP).
+        // Lien calculé par today_collect_context() selon les droits de l'utilisateur.
+        $from_agenda = ($e['source'] ?? '') === 'agenda';
+        $ev_link = (string)($e['link'] ?? '/agenda');
+        $ev_title = $e['title'] . ($days === 0 ? " · aujourd'hui !" : ' · J-' . $days);
         if ($days >= 0 && $days <= 7) {
-            // Pour membre : check si pas répondu
-            if ($profile === 'member' && empty($e['my_response'])) {
-                $out[] = [
-                    'icon' => '📅',
-                    'title' => $e['title'] . ($days === 0 ? " · aujourd'hui !" : ' · J-' . $days),
-                    'description' => 'Donne ta réponse pour ce prochain événement',
-                    'link' => '/communication?tab=evenements',
-                    'link_label' => 'Répondre',
-                    'priority' => 'important',
-                ];
+            if ($profile === 'member') {
+                // Membre : répondre (page publique de l'événement) si le RSVP est ouvert et
+                // qu'il n'a pas répondu, sinon simple rappel
+                if (!empty($e['rsvp_enabled']) && empty($e['my_response']) && !empty($e['rsvp_link'])) {
+                    $out[] = [
+                        'icon' => '📅',
+                        'title' => $ev_title,
+                        'description' => 'Donne ta réponse pour ce prochain événement',
+                        'link' => $e['rsvp_link'],
+                        'link_label' => 'Répondre',
+                        'priority' => 'important',
+                    ];
+                } elseif ($from_agenda) {
+                    $out[] = [
+                        'icon' => '📅',
+                        'title' => $ev_title,
+                        'description' => !empty($e['location']) ? 'À ' . $e['location'] . ' · prochain rendez-vous de ton association' : 'Prochain rendez-vous de ton association',
+                        'link' => $ev_link,
+                        'link_label' => 'Voir l\'agenda',
+                        'priority' => 'info',
+                    ];
+                }
             } elseif ($profile === 'admin' || $profile === 'referent' || $profile === 'coordinator') {
                 $rsvp_yes = (int)($e['nb_yes'] ?? 0);
                 $out[] = [
                     'icon' => '📅',
-                    'title' => $e['title'] . ($days === 0 ? " · aujourd'hui !" : ' · J-' . $days),
+                    'title' => $ev_title,
                     'description' => $rsvp_yes > 0 ? $rsvp_yes . ' personne' . ($rsvp_yes > 1 ? 's confirmées' : ' confirmée') : 'Prochain événement à préparer',
-                    'link' => '/communication?tab=evenements',
+                    'link' => $ev_link,
                     'link_label' => 'Voir l\'événement',
                     'priority' => $days <= 1 ? 'urgent' : 'info',
                 ];
@@ -1154,7 +1544,7 @@ function today_fallback_suggestions(array $ctx): array
         $names = $ctx['members']['recent_names'] ?? [];
         $desc = 'Inscrit(s) cette semaine · à accueillir';
         if (!empty($names) && count($names) <= 3) {
-            $name_list = array_map(fn($n) => $n['first_name'] . ' ' . substr($n['last_name'], 0, 1) . '.', $names);
+            $name_list = array_map(fn($n) => $n['first_name'] . ' ' . mb_substr((string)$n['last_name'], 0, 1) . '.', $names);
             $desc = implode(', ', $name_list) . ' · à accueillir';
         }
         $out[] = [
@@ -1176,7 +1566,7 @@ function today_fallback_suggestions(array $ctx): array
             'icon' => '💬',
             'title' => $unread . ' message' . ($unread > 1 ? 's' : '') . ' non lu' . ($unread > 1 ? 's' : ''),
             'description' => 'Ton équipe a posté du nouveau · va y jeter un œil',
-            'link' => '/communication',
+            'link' => '/messages',
             'link_label' => 'Voir les messages',
             'priority' => 'info',
         ];
@@ -1291,8 +1681,8 @@ function today_fallback_suggestions(array $ctx): array
                 'icon' => '🌿',
                 'title' => $hello,
                 'description' => 'Aucune action urgente · profite de la journée',
-                'link' => '/communication',
-                'link_label' => 'Espace communauté',
+                'link' => '/agenda',
+                'link_label' => 'Voir l\'agenda',
                 'priority' => 'info',
             ];
         }

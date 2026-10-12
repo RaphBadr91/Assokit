@@ -16,19 +16,16 @@
 
 @require_once __DIR__ . '/today-ai-helper.php';
 
-// Récupération des suggestions
-$today_data = today_get_or_generate($pdo, $user);
+// Récupération des suggestions : cache du jour ou repli statique, sans jamais
+// attendre l'IA pendant l'affichage. Si l'IA doit encore produire les suggestions
+// du jour ($today_pending), elle est appelée en arrière-plan juste après l'affichage.
+$today_data = today_get_for_display($pdo, $user);
 $suggestions = $today_data['suggestions'] ?? [];
 $can_refresh = $today_data['can_refresh'] ?? true;
 $refresh_count = $today_data['refresh_count'] ?? 0;
 $has_error = $today_data['has_error'] ?? false;
-
-// Mapping des priorités vers des classes CSS
-$priority_colors = [
-    'urgent'    => ['bg' => '#FEF2F2', 'border' => '#FCA5A5', 'text' => '#991B1B'],
-    'important' => ['bg' => '#FFFBEB', 'border' => '#FCD34D', 'text' => '#92400E'],
-    'info'      => ['bg' => '#F0FDF4', 'border' => '#86EFAC', 'text' => '#166534'],
-];
+$today_pending = !empty($today_data['pending']);
+$today_csrf = function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_token'] ?? '');
 ?>
 
 <section class="today today-copilot">
@@ -41,12 +38,13 @@ $priority_colors = [
       <div class="today-copilot-txt">
         <b>Assokit, votre copilote</b>
         <?php $n = count($suggestions); ?>
-        <small><?php if ($n > 0): ?><?= $n ?> chose<?= $n > 1 ? 's' : '' ?> mérite<?= $n > 1 ? 'nt' : '' ?> votre attention aujourd'hui<?php else: ?>Tout est sous contrôle aujourd'hui<?php endif; ?></small>
+        <small id="today-count"><?php if ($n > 0): ?><?= $n ?> chose<?= $n > 1 ? 's' : '' ?> mérite<?= $n > 1 ? 'nt' : '' ?> votre attention aujourd'hui<?php else: ?>Tout est sous contrôle aujourd'hui<?php endif; ?></small>
       </div>
     </div>
     <div style="display:flex; align-items:center; gap:12px; position:relative;">
-      <?php if (!empty($suggestions) && !$has_error): ?>
-        <span class="today-copilot-pill">✦ Suggestions personnalisées</span>
+      <span class="today-copilot-pill" id="today-pill"<?= (!empty($suggestions) && !$has_error) ? '' : ' style="display:none;"' ?>>✦ Suggestions personnalisées</span>
+      <?php if ($today_pending): ?>
+        <span class="today-copilot-pending" id="today-pending">Personnalisation en cours…</span>
       <?php endif; ?>
       <div class="today-date"><?= h($today_fr) ?></div>
       <?php if (!empty($suggestions)): ?>
@@ -65,6 +63,8 @@ $priority_colors = [
     </div>
   </div>
 
+  <div class="today-notice" id="today-notice" role="status" style="display:none;"></div>
+
   <?php if (empty($suggestions)): ?>
 
     <div style="padding:20px; text-align:center; color:var(--ink-3); font-size:13.5px;">
@@ -74,34 +74,7 @@ $priority_colors = [
   <?php else: ?>
 
     <div class="today-list" id="today-list">
-      <?php foreach ($suggestions as $sugg): ?>
-        <?php
-          $priority = $sugg['priority'] ?? 'info';
-          $colors = $priority_colors[$priority] ?? $priority_colors['info'];
-          $link = (string)($sugg['link'] ?? '#');
-          // Lien produit par l'IA : chemin interne uniquement (jamais javascript:, ni autre site)
-          if (!preg_match('#^/(?![/\\\\])[A-Za-z0-9/_\-?=&.%\#]*$#', $link)) $link = '#';
-          $icon = $sugg['icon'] ?? '✨';
-        ?>
-        <a href="<?= h($link) ?>" class="today-item" style="text-decoration:none; color:inherit;">
-          <div class="today-icon" style="background:<?= $colors['bg'] ?>; color:<?= $colors['text'] ?>; font-size:18px; line-height:1;">
-            <?= h($icon) ?>
-          </div>
-          <div class="today-body">
-            <div class="today-title"><?= h($sugg['title'] ?? '') ?></div>
-            <div class="today-meta"><?= h($sugg['description'] ?? '') ?></div>
-          </div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <?php if (!empty($sugg['link_label'])): ?>
-              <span style="font-size:11.5px; color:var(--acc-dark); font-weight:500; white-space:nowrap;"><?= h($sugg['link_label']) ?></span>
-            <?php endif; ?>
-            <svg class="today-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="5" y1="12" x2="19" y2="12"/>
-              <polyline points="12 5 19 12 12 19"/>
-            </svg>
-          </div>
-        </a>
-      <?php endforeach; ?>
+      <?= today_render_items($suggestions) ?>
     </div>
 
     <?php if ($refresh_count > 0): ?>
@@ -117,6 +90,48 @@ $priority_colors = [
 <script>
 (function(){
   let todayRefreshing = false;
+  const TODAY_CSRF = <?= json_encode((string)$today_csrf) ?>;
+
+  function todayMessage(msg) {
+    const box = document.getElementById('today-notice');
+    if (!box) { if (msg) alert(msg); return; }
+    box.textContent = msg || '';
+    box.style.display = msg ? '' : 'none';
+  }
+
+  function todayPost(extra) {
+    const fd = new FormData();
+    fd.append('csrf_token', TODAY_CSRF);
+    if (extra) Object.keys(extra).forEach(k => fd.append(k, extra[k]));
+    return fetch('/today-ai-refresh', { method: 'POST', credentials: 'same-origin', body: fd })
+      .then(r => r.json());
+  }
+
+  // Remplace les cartes sans recharger la page (suggestions IA arrivées en arrière-plan)
+  function todayShow(j) {
+    const list = document.getElementById('today-list');
+    if (!list) { location.reload(); return; }
+    list.innerHTML = j.html;
+    const n = (j.suggestions || []).length;
+    const count = document.getElementById('today-count');
+    if (count) count.textContent = n > 0
+      ? n + ' chose' + (n > 1 ? 's' : '') + ' mérite' + (n > 1 ? 'nt' : '') + ' votre attention aujourd\'hui'
+      : 'Tout est sous contrôle aujourd\'hui';
+    const pill = document.getElementById('today-pill');
+    if (pill) pill.style.display = '';
+  }
+
+  <?php if ($today_pending): ?>
+  // Suggestions IA du jour : générées après l'affichage, la page n'attend pas l'IA
+  todayPost({ auto: '1' }).then(j => {
+    const pending = document.getElementById('today-pending');
+    if (pending) pending.style.display = 'none';
+    if (j && j.ok && !j.has_error && j.html) todayShow(j);
+  }).catch(() => {
+    const pending = document.getElementById('today-pending');
+    if (pending) pending.style.display = 'none';
+  });
+  <?php endif; ?>
 
   window.todayRefresh = async function() {
     if (todayRefreshing) return;
@@ -127,32 +142,39 @@ $priority_colors = [
     todayRefreshing = true;
     icon.style.animation = 'todaySpin 0.8s linear infinite';
     btn.disabled = true;
+    todayMessage('');
+
+    const stop = function(keepDisabled) {
+      icon.style.animation = '';
+      btn.disabled = !!keepDisabled;
+      if (keepDisabled) { btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed'; btn.title = 'Vous avez atteint la limite de 3 rafraîchissements par jour'; }
+      todayRefreshing = false;
+    };
 
     try {
-      const fd = new FormData();
-      fd.append('csrf_token', '<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>');
-      const r = await fetch('/today-ai-refresh', {
-        method: 'POST',
-        credentials: 'same-origin',
-        body: fd,
-      });
-      const j = await r.json();
+      const j = await todayPost();
 
-      if (j.ok) {
-        // Recharger pour afficher les nouvelles suggestions
-        // (plus simple et plus sûr que regen le HTML côté JS)
+      if (j.ok && j.rate_limited) {
+        todayMessage('Vous avez atteint la limite de 3 rafraîchissements aujourd’hui.');
+        stop(true);
+      } else if (j.ok && j.has_error) {
+        // IA indisponible : rien n'est remplacé
+        todayMessage(j.kept_previous
+          ? 'IA indisponible pour le moment : vos suggestions précédentes sont conservées. Réessayez plus tard.'
+          : 'IA indisponible pour le moment. Réessayez plus tard.');
+        stop(j.can_refresh === false);
+      } else if (j.ok) {
+        // Recharger pour afficher les nouvelles suggestions (et le compteur de rafraîchissements)
         location.reload();
       } else {
-        alert('Impossible de rafraîchir : ' + (j.error || 'erreur inconnue'));
-        icon.style.animation = '';
-        btn.disabled = false;
-        todayRefreshing = false;
+        todayMessage(j.error === 'csrf_invalid'
+          ? 'Votre session a expiré : rechargez la page puis réessayez.'
+          : 'Impossible de rafraîchir les suggestions pour le moment. Réessayez plus tard.');
+        stop(false);
       }
     } catch(e) {
-      alert('Erreur réseau');
-      icon.style.animation = '';
-      btn.disabled = false;
-      todayRefreshing = false;
+      todayMessage('Connexion impossible. Vérifiez votre réseau puis réessayez.');
+      stop(false);
     }
   };
 })();
@@ -200,6 +222,13 @@ $priority_colors = [
 @keyframes todaySheen { 0%,70%{transform:translateX(-120%)} 85%,100%{transform:translateX(120%)} }
 .today-copilot-txt b { font-size: 15.5px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink, #0B1A13); display: block; }
 .today-copilot-txt small { display: block; color: var(--ink-3, #7C8983); font-size: 11.5px; font-weight: 500; margin-top: 1px; }
+.today-copilot-pending {
+  font-size: 11.5px; font-weight: 500; color: var(--ink-3, #7C8983); white-space: nowrap;
+}
+.today.today-copilot .today-notice {
+  position: relative; z-index: 1; margin: 0 0 10px; padding: 9px 12px; border-radius: 10px;
+  background: #FFFBEB; border: 1px solid #FCD34D; color: #92400E; font-size: 12.5px;
+}
 .today-copilot-pill {
   font-size: 11.5px; font-weight: 600; color: var(--ai, #6366F1);
   background: var(--ai-light, rgba(99,102,241,0.10)); padding: 6px 12px; border-radius: 999px;

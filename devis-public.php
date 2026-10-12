@@ -182,8 +182,12 @@ canvas#sign-canvas { width: 100%; border: 2px dashed #D1D5DB; border-radius: 8px
                     <div class="totals-row"><span>Total HT</span><span><?= $h(ak_asso_fmt_cents((int)$quote['amount_ht_cents'])) ?></span></div>
                     <?php if ((int)$quote['amount_vat_cents'] > 0): ?>
                         <div class="totals-row"><span>TVA</span><span><?= $h(ak_asso_fmt_cents((int)$quote['amount_vat_cents'])) ?></span></div>
-                    <?php else: ?>
-                        <div class="totals-row" style="color:#6B7280;font-size:12px;"><span>TVA non applicable</span><span>0,00 €</span></div>
+                    <?php else:
+                        // Libellé selon le régime TVA de l'émetteur, comme sur le PDF du devis
+                        $pub_em = json_decode((string)($quote['emitter_snapshot'] ?? ''), true);
+                        $pub_vat = ak_asso_vat_mentions(is_array($pub_em) ? $pub_em : [], 0);
+                    ?>
+                        <div class="totals-row" style="color:#6B7280;font-size:12px;"><span><?= $h($pub_vat['zero_label']) ?></span><span>0,00 €</span></div>
                     <?php endif; ?>
                     <div class="totals-row ttc"><span>⭐ TOTAL TTC</span><span><?= $h(ak_asso_fmt_cents((int)$quote['amount_ttc_cents'])) ?></span></div>
                 </div>

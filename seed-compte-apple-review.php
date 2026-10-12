@@ -38,7 +38,11 @@ if (!is_file($sqlFile)) {
     exit(1);
 }
 
-/** Même découpage que migrations/run.php : on retire les lignes de commentaire. */
+/**
+ * Découpage simple : on retire les lignes de commentaire et on coupe sur
+ * « ; ». Suffit pour 08-compte-apple-review.sql, qui n'a aucun « ; » dans
+ * ses chaînes (migrations/run.php, lui, sait les ignorer).
+ */
 function ak_split_sql(string $sql): array
 {
     $clean = [];

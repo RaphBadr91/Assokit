@@ -17,6 +17,7 @@ $user = current_user();
 $org_id  = (int)($user['org_id'] ?? 0);
 $user_id = (int)($user['id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
+if (!ak_ai_user_has_access($user)) { header('Location: /projets'); exit; }
 
 $type = (string)($_GET['type'] ?? '');
 $catalog = ak_ai_tools_catalog();
@@ -35,7 +36,7 @@ $prefill_output = '';
 $prefill_gen_id = 0;
 $gen_id = (int)($_GET['gen'] ?? 0);
 if ($gen_id > 0) {
-    $prev = ak_ai_load_generation($pdo, $gen_id, $org_id);
+    $prev = ak_ai_load_generation($pdo, $gen_id, $org_id, $user);
     if ($prev) {
         $prefill = json_decode($prev['input_data'] ?? '{}', true) ?: [];
         $prefill_output = (string)($prev['output_text'] ?? '');
@@ -283,7 +284,9 @@ render_sidebar('ia');
             <a id="dlMd"   class="iat-btn iat-btn-ghost" href="#" target="_blank">⬇ MD</a>
             <a id="dlTxt"  class="iat-btn iat-btn-ghost" href="#" target="_blank">⬇ TXT</a>
             <a id="dlHtml" class="iat-btn iat-btn-ghost" href="#" target="_blank">⬇ HTML</a>
+            <?php if (ak_ai_can_manage_all($user)): // diffusion réservée aux admins / coordinateurs ?>
             <a id="diffuse" class="iat-btn iat-btn-diffuse" href="#">📨 Diffuser par email</a>
+            <?php endif; ?>
           </div>
         </div>
       </div>
@@ -311,7 +314,7 @@ function setActionLinks(genId) {
   DL_MD.href   = '/mon-asso-ia-download?id=' + genId + '&fmt=md';
   DL_TXT.href  = '/mon-asso-ia-download?id=' + genId + '&fmt=txt';
   DL_HTML.href = '/mon-asso-ia-download?id=' + genId + '&fmt=html';
-  DIFFUSE.href = '/mon-asso-ia-diffusion?gen=' + genId;
+  if (DIFFUSE) DIFFUSE.href = '/mon-asso-ia-diffusion?gen=' + genId;
 }
 setActionLinks(lastGenId);
 
@@ -366,10 +369,18 @@ FORM.addEventListener('submit', async (e) => {
   try {
     const fd = new FormData(FORM);
     fd.append('tool', '<?= h($type) ?>');
-    fd.append('csrf_token', getCsrfToken());
+    // Jeton injecté côté serveur : getCsrfToken() n'existe que dans une IIFE d'assokit-app.js
+    fd.append('csrf_token', <?= json_encode(function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_token'] ?? '')) ?>);
     const r = await fetch('/mon-asso-ia-generate', { method: 'POST', body: fd });
-    const data = await r.json();
+    let data = null;
+    try { data = await r.json(); } catch (_) { data = null; }
     RES_LOAD.style.display = 'none';
+
+    if (!data) {
+      RES_ERR.textContent = '⚠️ Le service est momentanément indisponible. Réessayez dans un instant.';
+      RES_ERR.style.display = 'block';
+      return;
+    }
 
     if (data.quota) updateQuotaBadge(data.quota);
 
@@ -380,12 +391,16 @@ FORM.addEventListener('submit', async (e) => {
       RES_BOX.style.display = '';
       setActionLinks(lastGenId);
     } else {
-      RES_ERR.textContent = '⚠️ ' + (data.error || 'Erreur inconnue');
+      // message : texte prévu pour l'utilisateur (limite de débit, accès…) ;
+      // error : texte français de l'endpoint, ou code technique à traduire.
+      const codes = { csrf: 'Votre session a expiré : rechargez la page puis réessayez.', too_many_requests: 'Trop de demandes en peu de temps. Patientez une minute.' };
+      RES_ERR.textContent = '⚠️ ' + (data.message || codes[data.error] || data.error || 'La génération a échoué. Réessayez.');
       RES_ERR.style.display = 'block';
     }
   } catch (err) {
+    console.error(err);
     RES_LOAD.style.display = 'none';
-    RES_ERR.textContent = '⚠️ Erreur réseau : ' + err.message;
+    RES_ERR.textContent = '⚠️ Connexion impossible. Vérifiez votre réseau puis réessayez.';
     RES_ERR.style.display = 'block';
   } finally {
     if (!submitBtn.disabled || !submitBtn.innerHTML.includes('épuisé')) {

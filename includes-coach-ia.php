@@ -3,6 +3,23 @@
  * Helpers Coach Assokit hebdomadaire
  */
 
+require_once __DIR__ . '/trial-helpers.php';   // ak_db_columns() : colonnes réellement présentes
+
+/**
+ * Association ou TPE. Le type choisi à l'inscription (organizations.org_type,
+ * migration 2026-10-09) prime ; sans lui, on le déduit de la forme juridique.
+ */
+function coach_org_type(array $org): string {
+    $declared = (string)($org['org_type'] ?? '');
+    if ($declared === 'asso' || $declared === 'tpe') return $declared;
+    $form = (string)($org['legal_form'] ?? '');
+    if ($form === '' || stripos($form, 'association') !== false) return 'asso';
+    if (preg_match('/\b(SAS|SASU|SARL|EURL|SA|SNC|SCI|SCS|SCA|EI|EIRL)\b|micro|auto-entrepr|entreprise|libérale|commerçant|artisan/iu', $form)) {
+        return 'tpe';
+    }
+    return 'asso';
+}
+
 function coach_build_context(PDO $pdo, int $org_id): array {
     $ctx = ['org_id' => $org_id];
 
@@ -11,39 +28,55 @@ function coach_build_context(PDO $pdo, int $org_id): array {
     $week_end   = date('Y-m-d', strtotime('sunday last week'));
     $ctx['week_start'] = $week_start;
     $ctx['week_end']   = $week_end;
+    $week_end_full = $week_end . ' 23:59:59';
 
-    // Org
+    // Org : seules les colonnes présentes sont lues (organizations.type n'a
+    // jamais existé, org_type n'arrive qu'avec la migration 2026-10-09).
+    $ctx['org'] = ['name' => 'Association', 'type' => 'asso'];
     try {
-        $stmt = $pdo->prepare("SELECT id, name, type FROM organizations WHERE id = ?");
+        $cols = ak_db_columns($pdo, 'organizations');
+        $sel = ['id', 'name'];
+        foreach (['org_type', 'legal_form'] as $c) {
+            if (isset($cols[$c])) $sel[] = $c;
+        }
+        $stmt = $pdo->prepare("SELECT " . implode(', ', $sel) . " FROM organizations WHERE id = ?");
         $stmt->execute([$org_id]);
-        $ctx['org'] = $stmt->fetch() ?: ['name' => 'Association', 'type' => 'asso'];
-    } catch (Throwable $e) { $ctx['org'] = ['name' => 'Association', 'type' => 'asso']; }
+        if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $ctx['org'] = [
+                'id'   => (int)$row['id'],
+                'name' => trim((string)$row['name']) !== '' ? (string)$row['name'] : 'Association',
+                'type' => coach_org_type($row),
+            ];
+        }
+    } catch (Throwable $e) { error_log('[coach] org ' . $org_id . ' : ' . $e->getMessage()); }
 
-    // Projets
+    // Projets — mêmes définitions que le copilote : « actif » = non archivé,
+    // en cours ou à surveiller ; l'échéance d'un projet est sa date de fin
+    // (end_date : la table n'a pas de colonne deadline).
     try {
         $stmt = $pdo->prepare("SELECT
             COUNT(*) total,
-            SUM(CASE WHEN p.archived_at IS NULL THEN 1 ELSE 0 END) actifs,
-            SUM(CASE WHEN p.created_at >= ? THEN 1 ELSE 0 END) nouveaux,
-            SUM(CASE WHEN p.archived_at IS NULL AND p.deadline IS NOT NULL AND p.deadline < CURDATE() AND (p.status IS NULL OR p.status != 'done') THEN 1 ELSE 0 END) retard,
-            SUM(CASE WHEN p.archived_at IS NULL AND p.deadline BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 14 DAY) THEN 1 ELSE 0 END) deadlines_14j
+            SUM(CASE WHEN p.archived_at IS NULL AND p.status IN ('active','warning') THEN 1 ELSE 0 END) actifs,
+            SUM(CASE WHEN p.created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) nouveaux,
+            SUM(CASE WHEN p.archived_at IS NULL AND p.status IN ('active','warning') AND p.end_date IS NOT NULL AND p.end_date < CURDATE() THEN 1 ELSE 0 END) retard,
+            SUM(CASE WHEN p.archived_at IS NULL AND p.status IN ('active','warning') AND p.end_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 14 DAY) THEN 1 ELSE 0 END) deadlines_14j
             FROM projects p
             JOIN folders f ON f.id = p.folder_id
             WHERE f.org_id = ?");
-        $stmt->execute([$week_start, $org_id]);
+        $stmt->execute([$week_start, $week_end_full, $org_id]);
         $ctx['projects'] = $stmt->fetch() ?: [];
-    } catch (Throwable $e) { $ctx['projects'] = []; }
+    } catch (Throwable $e) { error_log('[coach] projets ' . $org_id . ' : ' . $e->getMessage()); $ctx['projects'] = []; }
 
-    // Top 3 projets en retard
+    // Top 5 projets en retard
     try {
-        $stmt = $pdo->prepare("SELECT p.id, p.name, p.deadline, DATEDIFF(CURDATE(), p.deadline) jours_retard
+        $stmt = $pdo->prepare("SELECT p.id, p.name, p.end_date AS deadline, DATEDIFF(CURDATE(), p.end_date) jours_retard
             FROM projects p JOIN folders f ON f.id = p.folder_id
-            WHERE f.org_id = ? AND p.archived_at IS NULL AND p.deadline IS NOT NULL AND p.deadline < CURDATE()
-              AND (p.status IS NULL OR p.status != 'done')
-            ORDER BY p.deadline ASC LIMIT 5");
+            WHERE f.org_id = ? AND p.archived_at IS NULL AND p.status IN ('active','warning')
+              AND p.end_date IS NOT NULL AND p.end_date < CURDATE()
+            ORDER BY p.end_date ASC LIMIT 5");
         $stmt->execute([$org_id]);
         $ctx['projects_late'] = $stmt->fetchAll();
-    } catch (Throwable $e) { $ctx['projects_late'] = []; }
+    } catch (Throwable $e) { error_log('[coach] retards ' . $org_id . ' : ' . $e->getMessage()); $ctx['projects_late'] = []; }
 
     // Activité (messages, fichiers ajoutés)
     try {
@@ -54,22 +87,24 @@ function coach_build_context(PDO $pdo, int $org_id): array {
         $ctx['msgs_week'] = (int)$stmt->fetchColumn();
     } catch (Throwable $e) { $ctx['msgs_week'] = 0; }
 
-    // Adhérents
+    // Adhérents (comptes actifs, comme le copilote)
     try {
         $stmt = $pdo->prepare("SELECT
-            SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) total,
-            SUM(CASE WHEN deleted_at IS NULL AND created_at >= ? THEN 1 ELSE 0 END) nouveaux
+            SUM(CASE WHEN deleted_at IS NULL AND is_active = 1 THEN 1 ELSE 0 END) total,
+            SUM(CASE WHEN deleted_at IS NULL AND is_active = 1 AND created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) nouveaux
             FROM users WHERE org_id = ?");
-        $stmt->execute([$week_start, $org_id]);
+        $stmt->execute([$week_start, $week_end_full, $org_id]);
         $ctx['adherents'] = $stmt->fetch() ?: [];
     } catch (Throwable $e) { $ctx['adherents'] = []; }
 
-    // Cotisations actives
+    // Cotisations actives : même définition que /cotisations (le module
+    // n'écrit que is_active ; la colonne status n'est jamais renseignée).
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM cotisation_campaigns WHERE org_id = ? AND status = 'active'");
+        $arch = isset(ak_db_columns($pdo, 'cotisation_campaigns')['archived_at']) ? ' AND archived_at IS NULL' : '';
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM cotisation_campaigns WHERE org_id = ? AND is_active = 1" . $arch);
         $stmt->execute([$org_id]);
         $ctx['cotis_actives'] = (int)$stmt->fetchColumn();
-    } catch (Throwable $e) { $ctx['cotis_actives'] = 0; }
+    } catch (Throwable $e) { error_log('[coach] cotisations ' . $org_id . ' : ' . $e->getMessage()); $ctx['cotis_actives'] = 0; }
 
     // Subventions urgentes
     try {
@@ -197,25 +232,38 @@ function coach_parse_response(string $raw): ?array {
 }
 
 function coach_save_report(PDO $pdo, int $org_id, array $ctx, array $parsed, string $raw, ?int $user_id = null): int {
+    $hl = json_encode($parsed['highlights'], JSON_UNESCAPED_UNICODE);
+    $wn = json_encode($parsed['warnings'], JSON_UNESCAPED_UNICODE);
+    $rc = json_encode($parsed['recos'], JSON_UNESCAPED_UNICODE);
+
+    // Une ligne par semaine : on remplace celle qui existe. Ne pas compter
+    // sur la seule clé unique (org_id, week_start) : sans elle, « Générer
+    // maintenant » empilait des doublons et la page montrait l'ancien rapport.
+    $find = $pdo->prepare("SELECT id FROM coach_reports WHERE org_id = ? AND week_start = ? ORDER BY id ASC LIMIT 1");
+    $find->execute([$org_id, $ctx['week_start']]);
+    $id = (int)$find->fetchColumn();
+    if ($id > 0) {
+        $pdo->prepare("UPDATE coach_reports SET summary_md = ?, highlights_json = ?, warnings_json = ?, recos_json = ?,
+            raw_response = ?, generated_at = NOW(), generated_by = ? WHERE id = ?")
+            ->execute([$parsed['summary'], $hl, $wn, $rc, $raw, $user_id, $id]);
+        return $id;
+    }
+
     $stmt = $pdo->prepare("INSERT INTO coach_reports
-        (org_id, week_start, week_end, summary_md, highlights_json, warnings_json, recos_json, raw_response, generated_by)
-        VALUES (?,?,?,?,?,?,?,?,?)
+        (org_id, week_start, week_end, summary_md, highlights_json, warnings_json, recos_json, raw_response, generated_at, generated_by)
+        VALUES (?,?,?,?,?,?,?,?,NOW(),?)
         ON DUPLICATE KEY UPDATE
         summary_md=VALUES(summary_md), highlights_json=VALUES(highlights_json),
         warnings_json=VALUES(warnings_json), recos_json=VALUES(recos_json),
         raw_response=VALUES(raw_response), generated_at=NOW(), generated_by=VALUES(generated_by)");
     $stmt->execute([
         $org_id, $ctx['week_start'], $ctx['week_end'],
-        $parsed['summary'],
-        json_encode($parsed['highlights'], JSON_UNESCAPED_UNICODE),
-        json_encode($parsed['warnings'], JSON_UNESCAPED_UNICODE),
-        json_encode($parsed['recos'], JSON_UNESCAPED_UNICODE),
+        $parsed['summary'], $hl, $wn, $rc,
         $raw, $user_id
     ]);
     // Récupérer ID
-    $stmt = $pdo->prepare("SELECT id FROM coach_reports WHERE org_id = ? AND week_start = ?");
-    $stmt->execute([$org_id, $ctx['week_start']]);
-    return (int)$stmt->fetchColumn();
+    $find->execute([$org_id, $ctx['week_start']]);
+    return (int)$find->fetchColumn();
 }
 
 function coach_load_latest(PDO $pdo, int $org_id): ?array {

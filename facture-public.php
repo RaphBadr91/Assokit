@@ -30,16 +30,34 @@ if (!$inv) {
     die('Facture introuvable.');
 }
 
+// Brouillon : pas encore émis, donc pas consultable par le client. Seul un compte
+// facturation de l'association peut en voir l'aperçu (« Voir page publique »).
+$status = (string)($inv['status'] ?? '');
+$is_preview = false;
+if ($status === 'draft') {
+    require_once __DIR__ . '/finance-permissions.php';
+    require_once __DIR__ . '/platform-flags.php';
+    $viewer = !empty($_SESSION['user_id']) && function_exists('current_user') ? current_user() : null;
+    $is_preview = $viewer && (int)($viewer['org_id'] ?? 0) === (int)$inv['org_id']
+        && user_can_access_billing(ak_platform_flags($viewer));
+    if (!$is_preview) {
+        http_response_code(404);
+        die('Facture introuvable.');
+    }
+}
+
 // Récup paramètres
 $stmt = $pdo->prepare("SELECT * FROM org_invoice_settings WHERE org_id = :id LIMIT 1");
 $stmt->execute([':id' => $inv['org_id']]);
 $settings = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-// Tracker la consultation
-try {
-    $pdo->prepare("UPDATE asso_invoices SET last_viewed_at = NOW(), view_count = view_count + 1 WHERE id = :id")
-        ->execute([':id' => $inv['id']]);
-} catch (Throwable $e) {}
+// Tracker la consultation (pas l'aperçu d'un brouillon par l'association)
+if (!$is_preview) {
+    try {
+        $pdo->prepare("UPDATE asso_invoices SET last_viewed_at = NOW(), view_count = view_count + 1 WHERE id = :id")
+            ->execute([':id' => $inv['id']]);
+    } catch (Throwable $e) {}
+}
 
 // Flash
 if (empty($_SESSION['csrf_token_public'])) {
@@ -50,14 +68,32 @@ $flash = $_SESSION['flash_public'] ?? null;
 unset($_SESSION['flash_public']);
 
 $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-$is_paid = !empty($inv['paid_at']) || !empty($inv['client_marked_paid_at']);
+// États affichés : le paiement n'est « payé » qu'une fois confirmé par l'association ;
+// une déclaration du client reste « en attente de confirmation ».
+// Avoir : ni échéance ni règlement attendu du client. Facture annulée par un avoir : référence de l'avoir.
+$is_credit   = ak_asso_is_credit_note($inv);
+$related     = null;
+try {
+    if ($is_credit && !empty($inv['parent_invoice_id'])) {
+        $st = $pdo->prepare("SELECT invoice_number FROM asso_invoices WHERE id = ? AND org_id = ? LIMIT 1");
+        $st->execute([(int)$inv['parent_invoice_id'], (int)$inv['org_id']]);
+        $related = $st->fetchColumn() ?: null;
+    } elseif (!$is_credit && in_array($status, ['cancelled', 'paid'], true)) {
+        $related = ak_asso_invoice_credit_note_of($pdo, (int)$inv['org_id'], (int)$inv['id'])['invoice_number'] ?? null;
+    }
+} catch (Throwable $e) {}
+$doc_word    = $is_credit ? 'Avoir' : 'Facture';
+$is_closed   = $is_credit || in_array($status, ['cancelled', 'refunded'], true);
+$is_paid     = !$is_closed && ($status === 'paid' || !empty($inv['paid_at']));
+$is_declared = !$is_closed && !$is_paid && !empty($inv['client_marked_paid_at']);
+$can_declare = !$is_preview && !$is_closed && !$is_paid && !$is_declared;
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Facture <?= $h($inv['invoice_number']) ?> — <?= $h($inv['org_name']) ?></title>
+<title><?= $doc_word ?> <?= $h($inv['invoice_number']) ?> — <?= $h($inv['org_name']) ?></title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -104,6 +140,7 @@ body {
 .status-paid    { background: #D1FAE5; color: #065F46; }
 .status-pending { background: #FEF3C7; color: #92400E; }
 .status-overdue { background: #FEE2E2; color: #991B1B; }
+.status-closed  { background: #F1F5F9; color: #475569; }
 .body { padding: 28px; }
 .section { margin-bottom: 24px; }
 .section h2 {
@@ -250,16 +287,26 @@ table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
     <div class="card">
         <div class="header">
-            <h1>Facture <?= $h($inv['invoice_number']) ?></h1>
+            <h1><?= $doc_word ?> <?= $h($inv['invoice_number']) ?></h1>
             <div class="number">N° <?= $h($inv['invoice_number']) ?></div>
-            <div class="org">Émise par <strong><?= $h($inv['org_name']) ?></strong></div>
+            <div class="org">Émis<?= $is_credit ? '' : 'e' ?> par <strong><?= $h($inv['org_name']) ?></strong></div>
         </div>
 
         <?php
-        $is_overdue = !$is_paid && strtotime($inv['due_at']) < time();
-        if ($is_paid):
+        $is_overdue = $status === 'overdue' || ($status === 'pending' && !empty($inv['due_at']) && strtotime($inv['due_at']) < time());
+        if ($is_preview):
         ?>
+            <div class="status-banner status-closed">👁 Aperçu d’un brouillon — cette page n’est pas encore accessible à votre client.</div>
+        <?php elseif ($is_credit): ?>
+            <div class="status-banner status-closed">↩ Avoir<?= $related ? ' annulant la facture ' . $h($related) : '' ?> — aucun règlement n’est attendu de votre part.</div>
+        <?php elseif ($is_closed): ?>
+            <div class="status-banner status-closed"><?= $status === 'refunded' ? '↩ Facture remboursée' : '✖ Facture annulée' . ($related ? ' par l’avoir ' . $h($related) : '') ?> — aucun règlement n’est attendu.</div>
+        <?php elseif ($is_paid && $related): ?>
+            <div class="status-banner status-closed">↩ Facture annulée par l’avoir <?= $h($related) ?> : son montant vous est remboursé.</div>
+        <?php elseif ($is_paid): ?>
             <div class="status-banner status-paid">✅ Cette facture a été payée — Merci !</div>
+        <?php elseif ($is_declared): ?>
+            <div class="status-banner status-pending">⏳ Paiement déclaré le <?= $h(date('d/m/Y', strtotime($inv['client_marked_paid_at']))) ?> — en attente de confirmation par <?= $h($inv['org_name']) ?></div>
         <?php elseif ($is_overdue): ?>
             <div class="status-banner status-overdue">⚠ Facture en retard de paiement</div>
         <?php else: ?>
@@ -277,10 +324,12 @@ table td.num { text-align: right; font-variant-numeric: tabular-nums; }
             <div class="section grid-2">
                 <div>
                     <h2>📅 Dates</h2>
-                    <div class="label">Émise le</div>
+                    <div class="label">Émis<?= $is_credit ? '' : 'e' ?> le</div>
                     <div class="value"><?= $h(date('d/m/Y', strtotime($inv['issued_at']))) ?></div>
+                    <?php if (!$is_credit): ?>
                     <div class="label" style="margin-top:8px;">Échéance</div>
                     <div class="value"><?= $h(date('d/m/Y', strtotime($inv['due_at']))) ?></div>
+                    <?php endif; ?>
                 </div>
                 <div>
                     <h2>👤 Adressée à</h2>
@@ -327,17 +376,23 @@ table td.num { text-align: right; font-variant-numeric: tabular-nums; }
                 </table>
                 <div class="totals">
                     <div class="totals-row"><span>Total HT</span><span><?= $h(ak_asso_fmt_cents((int)$inv['amount_ht_cents'])) ?></span></div>
-                    <?php if ((int)$inv['amount_vat_cents'] > 0): ?>
+                    <?php if ((int)$inv['amount_vat_cents'] !== 0): ?>
                         <div class="totals-row"><span>TVA</span><span><?= $h(ak_asso_fmt_cents((int)$inv['amount_vat_cents'])) ?></span></div>
-                    <?php else: ?>
-                        <div class="totals-row" style="color:#6B7280;font-size:12px;"><span>TVA non applicable (art. 293 B)</span><span>0,00 €</span></div>
+                    <?php else:
+                        // Mention selon le régime TVA de l'émetteur (snapshot figé à l'émission) :
+                        // 293 B uniquement pour un émetteur non assujetti, comme sur le PDF.
+                        $pub_em = json_decode((string)($inv['emitter_snapshot'] ?? ''), true);
+                        $pub_vat = ak_asso_vat_mentions(is_array($pub_em) ? $pub_em : [], 0, $lines);
+                        $pub_lbl = empty($pub_em['vat_subject']) ? 'TVA non applicable (art. 293 B)' : $pub_vat['zero_label'];
+                    ?>
+                        <div class="totals-row" style="color:#6B7280;font-size:12px;"><span><?= $h($pub_lbl) ?></span><span>0,00 €</span></div>
                     <?php endif; ?>
                     <div class="totals-row ttc"><span>⭐ TOTAL TTC</span><span><?= $h(ak_asso_fmt_cents((int)$inv['amount_ttc_cents'])) ?></span></div>
                 </div>
             </div>
             <?php endif; ?>
 
-            <?php if (!empty($settings['bank_iban'])): ?>
+            <?php if (!empty($settings['bank_iban']) && !$is_closed): ?>
             <div class="section">
                 <h2>💳 Coordonnées bancaires</h2>
                 <div style="background:#F0FDF4; padding:14px; border-radius:8px; border:1px solid #86EFAC;">
@@ -357,7 +412,7 @@ table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
         </div>
 
-        <?php if (!$is_paid): ?>
+        <?php if ($can_declare): ?>
         <div class="actions">
             <?php if (!empty($inv['pdf_path'])): ?>
                 <a href="<?= $h($inv['pdf_path']) ?>" target="_blank" class="btn btn-secondary">📥 Télécharger le PDF</a>
@@ -381,7 +436,7 @@ table td.num { text-align: right; font-variant-numeric: tabular-nums; }
     </div>
 </div>
 
-<?php if (!$is_paid): ?>
+<?php if ($can_declare): ?>
 <div id="modal-paid" class="modal-bg">
     <div class="modal">
         <h3>✅ Confirmer le paiement</h3>

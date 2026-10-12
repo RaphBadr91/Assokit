@@ -33,6 +33,8 @@ $clients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 ak_asso_invoice_settings($pdo, $org_id);
 $slug = ak_asso_ensure_slug($pdo, $org_id);
+$default_due_days = ak_asso_default_due_days($pdo, $org_id);   // Paramètres de facturation
+$form_nonce = ak_asso_form_nonce_issue('invoice_new');          // anti double-création
 
 render_head('Nouvelle facture');
 render_sidebar('factures');
@@ -58,6 +60,7 @@ render_sidebar('factures');
     <form method="POST" action="/mon-asso-facture-save" id="invoice-form">
         <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
         <input type="hidden" name="action" value="create">
+        <input type="hidden" name="form_nonce" value="<?= h($form_nonce) ?>">
 
         <!-- ────── CLIENT ────── -->
         <div class="card" style="padding:22px; margin-bottom:16px;">
@@ -190,7 +193,7 @@ render_sidebar('factures');
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Échéance (jours)</label>
-                    <input type="number" name="due_days" value="30" min="0" max="365" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px; font-size:14px;">
+                    <input type="number" name="due_days" value="<?= (int)$default_due_days ?>" min="0" max="365" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px; font-size:14px;">
                 </div>
                 <div style="grid-column:1/-1;">
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Description (optionnelle)</label>
@@ -239,19 +242,21 @@ function addLine(prefill = {}) {
     recalc();
 }
 
+<?= ak_asso_invoice_form_js() ?>
+
+// Totaux en centimes, arrondis ligne par ligne comme la facture enregistrée
 function recalc() {
     let totHT = 0, totVAT = 0;
     document.querySelectorAll('.invoice-line').forEach(line => {
         const q = parseFloat(line.querySelector('[name*="[quantity]"]').value) || 0;
         const p = parseFloat(line.querySelector('[name*="[unit_price_ht]"]').value) || 0;
         const r = parseFloat(line.querySelector('[name*="[vat_rate]"]').value) || 0;
-        const ht = q * p;
-        const vat = r > 0 ? ht * r / 100 : 0;
-        line.querySelector('.line-total').textContent = ht.toFixed(2).replace('.', ',') + ' €';
-        totHT += ht;
-        totVAT += vat;
+        const c = akLineCents(q, p, r);
+        line.querySelector('.line-total').textContent = (c.ht / 100).toFixed(2).replace('.', ',') + ' €';
+        totHT += c.ht;
+        totVAT += c.vat;
     });
-    const fmt = n => n.toFixed(2).replace('.', ',') + ' €';
+    const fmt = cents => (cents / 100).toFixed(2).replace('.', ',') + ' €';
     document.getElementById('total-ht').textContent = fmt(totHT);
     document.getElementById('total-vat').textContent = fmt(totVAT);
     document.getElementById('total-ttc').textContent = fmt(totHT + totVAT);
@@ -341,6 +346,7 @@ function hideAddressList() {
 
 // Initial : 1 ligne
 addLine();
+akGuardSubmit(document.getElementById('invoice-form'), 'Création…');
 </script>
 
 <?php render_foot(); ?>

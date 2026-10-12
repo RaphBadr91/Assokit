@@ -21,7 +21,7 @@ require_once __DIR__ . '/finance-permissions.php';
 require_billing_access('factures', 'l\'envoi de factures');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('Location: /mon-asso-factures'); exit;
+    header('Location: /mon-asso-factures-client'); exit;
 }
 
 $csrf_post = $_POST['csrf_token'] ?? '';
@@ -33,7 +33,7 @@ if (empty($csrf_sess) || !hash_equals($csrf_sess, $csrf_post)) {
 $invoice_id = (int)($_POST['invoice_id'] ?? 0);
 $email_type = $_POST['email_type'] ?? 'initial';
 if ($invoice_id <= 0) {
-    header('Location: /mon-asso-factures'); exit;
+    header('Location: /mon-asso-factures-client'); exit;
 }
 
 // Vérif appartenance

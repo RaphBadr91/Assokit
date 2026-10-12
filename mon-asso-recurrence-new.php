@@ -23,6 +23,8 @@ require_billing_access('recurrences', 'la création de récurrences');
 
 $page_error = null;
 $clients = [];
+$source_invoice_id = 0;
+$mixed_vat = false;
 $prefill = ['title' => '', 'client_id' => '', 'vat_mode' => 'none', 'lines' => [['label' => '', 'quantity' => 1, 'unit_price' => '']], 'notes' => ''];
 
 try {
@@ -31,36 +33,44 @@ try {
     $stCli->execute([':o' => $org_id]);
     $clients = $stCli->fetchAll(PDO::FETCH_ASSOC);
 
-    // Préremplissage depuis facture existante
+    // Préremplissage depuis une facture existante (« Rendre récurrente ») : client, lignes
+    // (prix ramenés en TTC, le formulaire se saisit TTC) et taux de TVA. La note de la
+    // facture n'est pas reprise : elle serait imprimée sur chaque facture générée.
     $from_invoice_id = (int)($_GET['from_invoice'] ?? 0);
     if ($from_invoice_id > 0) {
         $stInv = $pdo->prepare("
             SELECT i.*, c.display_name AS client_name
             FROM asso_invoices i
-            LEFT JOIN asso_clients c ON c.id = i.client_id
+            LEFT JOIN asso_clients c ON c.id = i.client_id AND c.org_id = i.org_id
             WHERE i.id = :id AND i.org_id = :o LIMIT 1
         ");
         $stInv->execute([':id' => $from_invoice_id, ':o' => $org_id]);
         $inv = $stInv->fetch(PDO::FETCH_ASSOC);
-        if ($inv) {
-            $prefill['title']     = 'Récurrence - ' . ($inv['client_name'] ?? $inv['display_name'] ?? $inv['invoice_number'] ?? 'facture');
+        if ($inv && ($inv['invoice_type'] ?? 'invoice') === 'credit_note') {
+            $page_error = 'Un avoir ne peut pas servir de modèle à une récurrence : partez de la facture d’origine.';
+        } elseif ($inv) {
+            $source_invoice_id    = (int)$inv['id'];
+            $prefill['title']     = 'Récurrence - ' . (trim((string)($inv['client_name'] ?? '')) !== '' ? $inv['client_name'] : $inv['invoice_number']);
             $prefill['client_id'] = $inv['client_id'] ?? '';
-            $prefill['vat_mode']  = $inv['vat_mode'] ?? 'none';
-            $prefill['notes']     = $inv['notes'] ?? '';
-            // Charge les lignes (essaie position puis line_order pour robustesse)
-            try {
-                $stLines = $pdo->prepare("SELECT label, quantity, unit_price_cents_ttc FROM asso_invoice_lines WHERE invoice_id = :i ORDER BY line_order ASC, id ASC");
-                $stLines->execute([':i' => $from_invoice_id]);
-                $rows = $stLines->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Throwable $e1) {
-                $rows = [];
-            }
+
+            $stLines = $pdo->prepare("SELECT designation, quantity, unit_price_ht_cents, vat_rate FROM asso_invoice_lines WHERE invoice_id = :i ORDER BY line_order ASC, id ASC");
+            $stLines->execute([':i' => $from_invoice_id]);
+            $rows = $stLines->fetchAll(PDO::FETCH_ASSOC);
             if ($rows) {
+                // Même conversion HT → TTC que l'édition d'une récurrence
+                $tpl = ak_recurrence_decode_template(json_encode(['lines' => array_map(fn($l) => [
+                    'designation'         => (string)$l['designation'],
+                    'quantity'            => (float)$l['quantity'],
+                    'unit_price_ht_cents' => (int)$l['unit_price_ht_cents'],
+                    'vat_rate'            => $l['vat_rate'] === null ? null : (float)$l['vat_rate'],
+                ], $rows)]));
                 $prefill['lines'] = array_map(fn($l) => [
                     'label'      => $l['label'],
-                    'quantity'   => (float)$l['quantity'],
-                    'unit_price' => number_format(((int)$l['unit_price_cents_ttc']) / 100, 2, '.', ''),
-                ], $rows);
+                    'quantity'   => $l['quantity'],
+                    'unit_price' => number_format($l['unit_price_cents_ttc'] / 100, 2, '.', ''),
+                ], $tpl['lines']);
+                if ($tpl['vat_mode'] !== null) $prefill['vat_mode'] = $tpl['vat_mode'];
+                $mixed_vat = $tpl['mixed_vat'];
             }
         }
     }
@@ -116,14 +126,25 @@ render_sidebar('recurrences');
     <h1>+ Nouvelle récurrence</h1>
     <div class="sub">Une facture sera générée automatiquement selon la fréquence choisie.</div>
 
+    <?= ak_recurrence_flash_html() ?>
+
     <?php if ($page_error): ?>
       <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;margin-bottom:18px;color:#991B1B;font-size:14px;">
         ⚠️ <?= h($page_error) ?>
       </div>
     <?php endif; ?>
 
+    <?php if ($mixed_vat): ?>
+      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px;margin-bottom:18px;color:#92400E;font-size:14px;">
+        Les lignes de la facture d’origine ont des taux de TVA différents ; une récurrence applique un seul taux à toutes ses lignes. Vérifiez la TVA et les prix TTC ci-dessous.
+      </div>
+    <?php endif; ?>
+
     <form method="post" action="/mon-asso-recurrence-save" id="recForm">
       <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
+      <?php if ($source_invoice_id > 0): ?>
+      <input type="hidden" name="source_invoice_id" value="<?= (int)$source_invoice_id ?>">
+      <?php endif; ?>
 
       <div class="rcard">
         <h2>Informations générales</h2>
@@ -254,6 +275,7 @@ render_sidebar('recurrences');
         <div class="rfield" style="margin-top:14px;">
           <label>Notes / Conditions de paiement</label>
           <textarea name="notes" rows="3" placeholder="Conditions de paiement, mentions légales…"><?= h($prefill['notes']) ?></textarea>
+          <div class="hint">Imprimées sur chaque facture générée (visibles par le client).</div>
         </div>
       </div>
 

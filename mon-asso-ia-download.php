@@ -15,18 +15,27 @@ require_login();
 $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
+if (!ak_ai_user_has_access($user)) { http_response_code(403); echo 'Accès refusé.'; exit; }
 
 $id  = (int)($_GET['id'] ?? 0);
 $fmt = (string)($_GET['fmt'] ?? 'md');
 if (!in_array($fmt, ['md', 'txt', 'html'], true)) $fmt = 'md';
 
-$gen = ak_ai_load_generation($pdo, $id, $org_id);
+$gen = ak_ai_load_generation($pdo, $id, $org_id, $user);
 if (!$gen) { http_response_code(404); echo 'Génération introuvable.'; exit; }
 
 $tool = ak_ai_tool($gen['tool_type']);
-$slug = preg_replace('/[^a-zA-Z0-9_-]+/', '-', $gen['title'] ?: $tool['label']);
-$slug = trim($slug, '-') ?: 'generation';
-$slug = mb_substr($slug, 0, 80);
+// Nom de fichier ASCII lisible : accents translittérés (« Fête d'été » → « Fete-d-ete »),
+// et non remplacés octet par octet par des tirets.
+$title_raw = str_replace('€', ' EUR ', (string)($gen['title'] ?: $tool['label']));
+require_once __DIR__ . '/report-charts-helper.php';
+if (function_exists('ak_report_filename_slug')) {
+    $slug = ak_report_filename_slug($title_raw, 'generation');
+} else {
+    $t = function_exists('iconv') ? @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $title_raw) : false;
+    $slug = trim(preg_replace('/[^a-zA-Z0-9_-]+/', '-', is_string($t) && $t !== '' ? $t : $title_raw), '-') ?: 'generation';
+}
+$slug = trim(substr($slug, 0, 80), '-_') ?: 'generation';
 $date = date('Y-m-d', strtotime($gen['created_at']));
 $base_filename = $date . '_' . $gen['tool_type'] . '_' . $slug;
 

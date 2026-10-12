@@ -11,6 +11,9 @@
  *   $action_url: string (URL de post)
  *   $can_edit  : bool (peut éditer ou juste lire)
  *   $flash     : ?array (message de feedback)
+ * OPTIONNELLE :
+ *   $return_url: string (page où revenir après enregistrement ; sinon celle
+ *                choisie par l'endpoint selon le profil)
  * ============================================================
  */
 ?>
@@ -74,6 +77,9 @@
 <form method="POST" action="<?= h($action_url) ?>" id="form-org-billing" <?= !$can_edit ? 'onsubmit="return false;"' : '' ?>>
 <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
 <input type="hidden" name="org_id" value="<?= (int)$org_id ?>">
+<?php if (!empty($return_url)): ?>
+<input type="hidden" name="return_url" value="<?= h($return_url) ?>">
+<?php endif; ?>
 
 <!-- ============================================= -->
 <!-- SECTION 1 — IDENTITÉ JURIDIQUE -->

@@ -8,11 +8,12 @@
  * Reset automatique : le compteur regarde la date du jour, donc se
  * remet à zéro à minuit naturellement (pas besoin de CRON).
  *
- * Permissions :
+ * Permissions (rôles réels d'Assokit) :
  *   - Fondateur / super-admin : illimité
  *   - Admin : 10 générations/jour/outil
- *   - Adhérent / member : 4 générations/jour/outil, pas d'images
- *   - Follower : 2 générations/jour/outil, pas d'images
+ *   - Coordinateur : 8 générations/jour/outil
+ *   - Référent / membre : 4 générations/jour/outil, pas d'images
+ *   - Suiveur (financeur externe) : aucun accès à la Communication IA
  *
  * Convention image : tout outil dont tool_type commence par "image-"
  * est traité comme outil image (bloqué pour les rôles non-admin).
@@ -27,18 +28,14 @@ if (!defined('AK_AI_QUOTA_LOADED')) define('AK_AI_QUOTA_LOADED', 1);
  */
 if (!function_exists('ak_ai_quota_defaults')) {
     function ak_ai_quota_defaults(): array {
+        // Uniquement les rôles qui existent dans Assokit (role_label() de config.php).
         return [
-            // Admins de l'asso
-            'admin'       => ['daily_limit' => 10, 'allow_images' => true,  'label' => 'Admin'],
-            'manager'     => ['daily_limit' => 10, 'allow_images' => true,  'label' => 'Manager'],
+            'admin'       => ['daily_limit' => 10, 'allow_images' => true,  'label' => 'Administrateur'],
             'coordinator' => ['daily_limit' => 8,  'allow_images' => true,  'label' => 'Coordinateur'],
-            'editor'      => ['daily_limit' => 8,  'allow_images' => true,  'label' => 'Éditeur'],
-            // Adhérents
-            'member'      => ['daily_limit' => 4,  'allow_images' => false, 'label' => 'Adhérent'],
-            'adherent'    => ['daily_limit' => 4,  'allow_images' => false, 'label' => 'Adhérent'],
-            // Followers
-            'follower'    => ['daily_limit' => 2,  'allow_images' => false, 'label' => 'Follower'],
-            'viewer'      => ['daily_limit' => 2,  'allow_images' => false, 'label' => 'Lecteur'],
+            'referent'    => ['daily_limit' => 4,  'allow_images' => false, 'label' => 'Référent'],
+            'member'      => ['daily_limit' => 4,  'allow_images' => false, 'label' => 'Membre'],
+            // Financeur externe : ne voit que les projets qu'il suit (hub IA fermé)
+            'follower'    => ['daily_limit' => 0,  'allow_images' => false, 'label' => 'Suiveur'],
             // Fallback inconnu : valeurs prudentes
             '*'           => ['daily_limit' => 4,  'allow_images' => false, 'label' => 'Autre'],
         ];

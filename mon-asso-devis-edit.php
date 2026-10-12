@@ -24,10 +24,24 @@ if (!$is_admin) { http_response_code(403); die('Accès refusé.'); }
 $quote_id = (int)($_GET['id'] ?? 0);
 if ($quote_id <= 0) { header('Location: /mon-asso-devis'); exit; }
 
-$stmt = $pdo->prepare("SELECT q.*, c.id AS cli_id, c.* FROM asso_quotes q LEFT JOIN asso_clients c ON c.id = q.client_id WHERE q.id = :id AND q.org_id = :org LIMIT 1");
+// Devis puis client lus séparément : avec « q.*, c.* », les colonnes homonymes du client
+// (internal_notes, created_at, id…) écrasaient celles du devis (notes internes perdues).
+$stmt = $pdo->prepare("SELECT * FROM asso_quotes WHERE id = :id AND org_id = :org LIMIT 1");
 $stmt->execute([':id' => $quote_id, ':org' => $org_id]);
 $quote = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$quote) { http_response_code(404); die('Devis introuvable.'); }
+
+$client = [];
+if (!empty($quote['client_id'])) {
+    $stmt = $pdo->prepare("SELECT * FROM asso_clients WHERE id = :id AND org_id = :org LIMIT 1");
+    $stmt->execute([':id' => (int)$quote['client_id'], ':org' => $org_id]);
+    $client = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+}
+if (!$client) {
+    // Fiche client absente : coordonnées figées à l'émission
+    $snap = json_decode((string)($quote['client_snapshot'] ?? ''), true);
+    $client = is_array($snap) ? $snap : [];
+}
 
 $stmt = $pdo->prepare("SELECT * FROM asso_quote_lines WHERE quote_id = :id ORDER BY line_order");
 $stmt->execute([':id' => $quote_id]);
@@ -96,7 +110,7 @@ render_sidebar('devis');
                 <h3 style="margin:0 0 4px 0; font-size:15px; color:#581C87;">📧 Envoi du devis</h3>
                 <div style="font-size:13px; color:#7E22CE;">
                     <?php if (empty($quote['sent_at'])): ?>
-                        Pas encore envoyé à <strong><?= h($quote['email'] ?? '?') ?></strong>
+                        Pas encore envoyé à <strong><?= h(($client['email'] ?? '') !== '' ? $client['email'] : '?') ?></strong>
                     <?php else: ?>
                         Envoyé le <strong><?= h(date('d/m/Y H:i', strtotime($quote['sent_at']))) ?></strong>
                     <?php endif; ?>
@@ -146,7 +160,7 @@ render_sidebar('devis');
     </div>
     <?php endif; ?>
 
-    <form method="POST" action="/mon-asso-devis-save">
+    <form method="POST" action="/mon-asso-devis-save" id="quote-edit-form">
         <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
         <input type="hidden" name="action" value="edit">
         <input type="hidden" name="quote_id" value="<?= (int)$quote_id ?>">
@@ -159,41 +173,42 @@ render_sidebar('devis');
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
                 <div><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Type</label>
                     <select name="client_type" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
-                        <option value="company" <?= ($quote['client_type'] ?? 'company') === 'company' ? 'selected' : '' ?>>Entreprise / Asso</option>
-                        <option value="individual" <?= ($quote['client_type'] ?? '') === 'individual' ? 'selected' : '' ?>>Particulier</option>
+                        <option value="company" <?= ($client['client_type'] ?? 'company') === 'company' ? 'selected' : '' ?>>Entreprise / Asso</option>
+                        <option value="individual" <?= ($client['client_type'] ?? '') === 'individual' ? 'selected' : '' ?>>Particulier</option>
                     </select>
                 </div>
                 <div><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Nom *</label>
-                    <input type="text" name="display_name" value="<?= h($quote['display_name'] ?? '') ?>" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="text" name="display_name" value="<?= h($client['display_name'] ?? '') ?>" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Email *</label>
-                    <input type="email" name="email" value="<?= h($quote['email'] ?? '') ?>" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="email" name="email" value="<?= h($client['email'] ?? '') ?>" required style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <div style="font-size:11px; color:#9CA3AF; margin-top:4px;">Un autre e-mail rattache le devis à un autre client. Pour corriger l’e-mail de ce client, modifiez sa fiche.</div>
                 </div>
                 <div><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Téléphone</label>
-                    <input type="text" name="phone" value="<?= h($quote['phone'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="text" name="phone" value="<?= h($client['phone'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div style="grid-column:1/-1;"><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Raison sociale</label>
-                    <input type="text" name="legal_name" value="<?= h($quote['legal_name'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="text" name="legal_name" value="<?= h($client['legal_name'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Prénom contact</label>
-                    <input type="text" name="contact_first_name" value="<?= h($quote['contact_first_name'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="text" name="contact_first_name" value="<?= h($client['contact_first_name'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Nom contact</label>
-                    <input type="text" name="contact_last_name" value="<?= h($quote['contact_last_name'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="text" name="contact_last_name" value="<?= h($client['contact_last_name'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div style="grid-column:1/-1; position:relative;"><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Adresse <span style="color:#10B981;">— autocomplétion FR active</span></label>
-                    <input type="text" name="address_street" id="address_street" value="<?= h($quote['address_street'] ?? '') ?>" placeholder="N° + rue" autocomplete="off" oninput="searchAddress(this.value)" onblur="setTimeout(hideAddressList, 200)" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px; margin-bottom:6px;">
+                    <input type="text" name="address_street" id="address_street" value="<?= h($client['address_street'] ?? '') ?>" placeholder="N° + rue" autocomplete="off" oninput="searchAddress(this.value)" onblur="setTimeout(hideAddressList, 200)" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px; margin-bottom:6px;">
                     <div id="address-suggestions" style="display:none; position:absolute; top:80px; left:0; right:0; background:white; border:1px solid #E5E7EB; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.1); z-index:1000; max-height:300px; overflow-y:auto;"></div>
-                    <input type="text" name="address_complement" value="<?= h($quote['address_complement'] ?? '') ?>" placeholder="Complément" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="text" name="address_complement" value="<?= h($client['address_complement'] ?? '') ?>" placeholder="Complément" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">CP</label>
-                    <input type="text" name="address_zip" id="address_zip" value="<?= h($quote['address_zip'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="text" name="address_zip" id="address_zip" value="<?= h($client['address_zip'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Ville</label>
-                    <input type="text" name="address_city" id="address_city" value="<?= h($quote['address_city'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="text" name="address_city" id="address_city" value="<?= h($client['address_city'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
                 <div style="grid-column:1/-1;"><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">SIREN</label>
-                    <input type="text" name="siren" value="<?= h($quote['siren'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
+                    <input type="text" name="siren" value="<?= h($client['siren'] ?? '') ?>" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px;">
                 </div>
             </div>
         </div>
@@ -242,7 +257,12 @@ render_sidebar('devis');
         <?php if (!$is_locked): ?>
         <div style="display:flex; gap:10px; justify-content:flex-end; padding:18px; background:white; border:1px solid #E5E7EB; border-radius:12px; position:sticky; bottom:12px;">
             <a href="/mon-asso-devis" class="btn btn-ghost">Annuler</a>
+            <?php if ($quote['status'] === 'draft'): ?>
+            <!-- Un brouillon reste brouillon : il passe « Envoyé » à l'envoi au client (bloc ci-dessus) -->
+            <button type="submit" class="btn btn-primary" style="padding:10px 20px; background:#7E22CE; border-color:#7E22CE;">💾 Enregistrer le brouillon</button>
+            <?php else: ?>
             <button type="submit" class="btn btn-primary" style="padding:10px 20px; background:#7E22CE; border-color:#7E22CE;">💾 Enregistrer + régénérer PDF</button>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 
@@ -251,39 +271,42 @@ render_sidebar('devis');
 </div>
 
 <script>
+<?= ak_asso_invoice_form_js() ?>
+
 const VAT_OPTIONS = [
     {value: '', label: 'Pas de TVA'},
     {value: '5.5', label: 'TVA 5,5%'},
     {value: '10', label: 'TVA 10%'},
     {value: '20', label: 'TVA 20%'},
 ];
+// vat_rate : DECIMAL renvoyé en chaîne (« 20.00 ») converti en nombre pour retrouver l'option « 20 »
 const EXISTING_LINES = <?= json_encode(array_map(function($l){
-    return ['designation' => $l['designation'], 'quantity' => (float)$l['quantity'], 'unit_price_ht' => round($l['unit_price_ht_cents'] / 100, 2), 'vat_rate' => $l['vat_rate']];
+    return ['designation' => $l['designation'], 'quantity' => (float)$l['quantity'], 'unit_price_ht' => round($l['unit_price_ht_cents'] / 100, 2), 'vat_rate' => $l['vat_rate'] === null ? null : (float)$l['vat_rate']];
 }, $lines)) ?>;
 let lineIdx = 0;
 
 function addLine(prefill = {}) {
     const idx = lineIdx++;
     const vatVal = prefill.vat_rate !== null && prefill.vat_rate !== undefined ? prefill.vat_rate : '';
-    const vatOpts = VAT_OPTIONS.map(o => `<option value="${o.value}" ${String(o.value) === String(vatVal) ? 'selected' : ''}>${o.label}</option>`).join('');
+    const vatOpts = VAT_OPTIONS.map(o => `<option value="${o.value}" ${akVatSelected(o.value, vatVal) ? 'selected' : ''}>${o.label}</option>`).join('');
     const html = `<div class="invoice-line" data-idx="${idx}" style="display:grid; grid-template-columns: 1fr 70px 100px 120px 100px 30px; gap:8px; padding:10px 0; border-bottom:1px solid #F3F4F6;"><input type="text" name="lines[${idx}][designation]" placeholder="Désignation" required value="${(prefill.designation || '').replace(/"/g,'&quot;')}" style="padding:8px 10px; border:1px solid #E5E7EB; border-radius:6px; font-size:13px;"><input type="number" name="lines[${idx}][quantity]" step="0.01" min="0" value="${prefill.quantity || '1'}" oninput="recalc()" style="padding:8px 10px; border:1px solid #E5E7EB; border-radius:6px; font-size:13px; text-align:right;"><input type="number" name="lines[${idx}][unit_price_ht]" step="0.01" min="0" placeholder="PU HT" value="${prefill.unit_price_ht || ''}" oninput="recalc()" required style="padding:8px 10px; border:1px solid #E5E7EB; border-radius:6px; font-size:13px; text-align:right;"><select name="lines[${idx}][vat_rate]" onchange="recalc()" style="padding:8px 10px; border:1px solid #E5E7EB; border-radius:6px; font-size:13px;">${vatOpts}</select><div class="line-total" style="padding:8px 10px; background:#F9FAFB; border-radius:6px; font-size:13px; text-align:right; font-weight:600; font-variant-numeric:tabular-nums;">0,00 €</div><button type="button" onclick="this.closest('.invoice-line').remove(); recalc();" style="background:transparent; border:none; color:#DC2626; cursor:pointer; font-size:18px;">×</button></div>`;
     document.getElementById('lines-container').insertAdjacentHTML('beforeend', html);
     recalc();
 }
 
+// Totaux en centimes, arrondis ligne par ligne comme le devis enregistré
 function recalc() {
     let totHT = 0, totVAT = 0;
     document.querySelectorAll('.invoice-line').forEach(line => {
         const q = parseFloat(line.querySelector('[name*="[quantity]"]').value) || 0;
         const p = parseFloat(line.querySelector('[name*="[unit_price_ht]"]').value) || 0;
         const r = parseFloat(line.querySelector('[name*="[vat_rate]"]').value) || 0;
-        const ht = q * p;
-        const vat = r > 0 ? ht * r / 100 : 0;
-        line.querySelector('.line-total').textContent = ht.toFixed(2).replace('.', ',') + ' €';
-        totHT += ht;
-        totVAT += vat;
+        const c = akLineCents(q, p, r);
+        line.querySelector('.line-total').textContent = (c.ht / 100).toFixed(2).replace('.', ',') + ' €';
+        totHT += c.ht;
+        totVAT += c.vat;
     });
-    const fmt = n => n.toFixed(2).replace('.', ',') + ' €';
+    const fmt = cents => (cents / 100).toFixed(2).replace('.', ',') + ' €';
     document.getElementById('total-ht').textContent = fmt(totHT);
     document.getElementById('total-vat').textContent = fmt(totVAT);
     document.getElementById('total-ttc').textContent = fmt(totHT + totVAT);
@@ -323,6 +346,7 @@ function copyLink() {
 
 EXISTING_LINES.forEach(l => addLine(l));
 if (EXISTING_LINES.length === 0) addLine();
+akGuardSubmit(document.getElementById('quote-edit-form'), 'Enregistrement…');
 </script>
 
 <?php render_foot(); ?>

@@ -100,9 +100,10 @@ $csrf = h($_SESSION['csrf_token'] ?? '');
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},
       body: JSON.stringify({ question:q, csrf_token:CSRF })
-    }).then(function(r){return r.json();}).then(function(d){
+    }).then(function(r){return r.json().catch(function(){ return null; });}).then(function(d){
       var html = '';
-      if(d && d.ok===false){ html = esc(d.error==='forbidden'?'Accès non autorisé.':'Service momentanément indisponible.'); }
+      // Erreur (ok=false, ou ancien format sans ok) : on affiche le message prévu
+      if(!d || d.ok===false || d.error){ html = esc(d && d.message ? d.message : (d && d.error==='forbidden' ? 'Accès non autorisé.' : 'Service momentanément indisponible.')); }
       else {
         html = '<div>'+esc(d.answer||'')+'</div>';
         if(d.table){ html += renderTable(d.table); }

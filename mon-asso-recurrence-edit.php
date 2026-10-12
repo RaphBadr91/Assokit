@@ -23,8 +23,17 @@ $rec_id = (int)($_GET['id'] ?? 0);
 $rec = ak_recurrence_load($pdo, $rec_id, $org_id);
 if (!$rec) { header('Location: /mon-asso-recurrences'); exit; }
 
-$tpl = ak_recurrence_decode_template($rec['template_data']);
+$tpl = ak_recurrence_decode_template($rec['template_data'] ?? null, $rec['vat_mode'] ?? null);
+$source = null;
+if (!empty($rec['source_invoice_id'])) {
+    $source = ak_recurrence_load_source_invoice($pdo, (int)$rec['source_invoice_id'], $org_id);
+    if ($source && !$tpl['lines']) {
+        // Récurrence sans lignes propres : elle facture celles de la facture d'origine
+        $tpl = ak_recurrence_decode_template(json_encode(['lines' => ak_recurrence_load_source_lines($pdo, (int)$source['id'])]));
+    }
+}
 $lines = $tpl['lines'] ?: [['label' => '', 'quantity' => 1, 'unit_price_cents_ttc' => 0]];
+$vat_mode = in_array((string)($rec['vat_mode'] ?? ''), ['none', '5.5', '10', '20'], true) ? (string)$rec['vat_mode'] : ($tpl['vat_mode'] ?? 'none');
 
 $clients = [];
 $runs = [];
@@ -34,20 +43,25 @@ try {
     $stCli = $pdo->prepare("SELECT id, display_name, email FROM asso_clients WHERE org_id = :o ORDER BY display_name ASC");
     $stCli->execute([':o' => $org_id]);
     $clients = $stCli->fetchAll(PDO::FETCH_ASSOC);
-
-    $stRuns = $pdo->prepare("
-        SELECT r.id, r.invoice_id, r.run_date, r.status, r.error_message, i.invoice_number
-        FROM asso_invoice_recurrence_runs r
-        LEFT JOIN asso_invoices i ON i.id = r.invoice_id
-        WHERE r.recurrence_id = :id
-        ORDER BY r.created_at DESC
-        LIMIT 20
-    ");
-    $stRuns->execute([':id' => $rec_id]);
-    $runs = $stRuns->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     $page_error = $e->getMessage();
     error_log('[mon-asso-recurrence-edit] ' . $page_error);
+}
+
+try {
+    $stRuns = $pdo->prepare("
+        SELECT r.id, r.invoice_id, r.run_date, r.status, r.error_message, i.invoice_number
+        FROM asso_invoice_recurrence_runs r
+        LEFT JOIN asso_invoices i ON i.id = r.invoice_id AND i.org_id = :o
+        WHERE r.recurrence_id = :id
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT 20
+    ");
+    $stRuns->execute([':id' => $rec_id, ':o' => $org_id]);
+    $runs = $stRuns->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    // Historique indisponible (table pas encore créée) : la page reste utilisable
+    error_log('[mon-asso-recurrence-edit] ' . $e->getMessage());
 }
 
 render_head('Modifier récurrence');
@@ -103,11 +117,22 @@ render_sidebar('recurrences');
       <strong><?= h(ak_recurrence_status_label($rec['status'])['label']) ?></strong>
       · <?= h(ak_recurrence_frequency_label($rec['frequency'], (int)$rec['interval_count'])) ?>
       · <?= (int)$rec['occurrences_count'] ?> facture(s) générée(s)
+      <?php if ($source): ?>
+        · créée à partir de la facture <a href="/mon-asso-facture-edit?id=<?= (int)$source['id'] ?>" style="color:#059669;"><?= h($source['invoice_number']) ?></a>
+      <?php endif; ?>
     </div>
+
+    <?= ak_recurrence_flash_html() ?>
 
     <?php if ($page_error): ?>
       <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;margin-bottom:18px;color:#991B1B;font-size:14px;">
         ⚠️ <?= h($page_error) ?>
+      </div>
+    <?php endif; ?>
+
+    <?php if ($tpl['mixed_vat']): ?>
+      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px;margin-bottom:18px;color:#92400E;font-size:14px;">
+        Les lignes de cette récurrence ont des taux de TVA différents. À l’enregistrement, le taux choisi ci-dessous s’appliquera à toutes les lignes : vérifiez la TVA et les prix TTC.
       </div>
     <?php endif; ?>
 
@@ -138,7 +163,7 @@ render_sidebar('recurrences');
             <div class="rvat">
               <?php foreach (['none' => 'Pas de TVA', '5.5' => '5,5%', '10' => '10%', '20' => '20%'] as $val => $lbl): ?>
                 <label>
-                  <input type="radio" name="vat_mode" value="<?= h($val) ?>" <?= $rec['vat_mode']===$val?'checked':'' ?>>
+                  <input type="radio" name="vat_mode" value="<?= h($val) ?>" <?= $vat_mode === $val ? 'checked' : '' ?>>
                   <span><?= h($lbl) ?></span>
                 </label>
               <?php endforeach; ?>
@@ -238,8 +263,9 @@ render_sidebar('recurrences');
           </label>
         </div>
         <div class="rfield" style="margin-top:14px;">
-          <label>Notes</label>
+          <label>Notes / Conditions de paiement</label>
           <textarea name="notes" rows="3"><?= h($rec['notes'] ?? '') ?></textarea>
+          <div class="hint">Imprimées sur chaque facture générée (visibles par le client).</div>
         </div>
       </div>
 
@@ -252,7 +278,7 @@ render_sidebar('recurrences');
           <?php foreach ($runs as $r): ?>
             <tr>
               <td><?= h(date('d/m/Y', strtotime($r['run_date']))) ?></td>
-              <td><span class="pill <?= $r['status']==='success'?'pill-ok':'pill-err' ?>"><?= h($r['status']) ?></span></td>
+              <td><span class="pill <?= $r['status']==='success'?'pill-ok':'pill-err' ?>"><?= $r['status'] === 'success' ? 'Générée' : 'Échec' ?></span></td>
               <td><?= $r['invoice_number'] ? '<a href="/mon-asso-facture-edit?id=' . (int)$r['invoice_id'] . '" style="color:#059669;">' . h($r['invoice_number']) . '</a>' : '—' ?></td>
               <td style="color:#991B1B;font-size:12px;"><?= h($r['error_message'] ?? '') ?></td>
             </tr>

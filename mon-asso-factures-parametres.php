@@ -93,7 +93,7 @@ render_sidebar('factures');
 
 <div class="main">
     <nav class="crumbs">
-        <a href="/mon-asso-factures">Mes factures</a>
+        <a href="/mon-asso-factures-client">Mes factures</a>
         <span class="sep">›</span>
         <span class="current">Paramètres</span>
     </nav>
@@ -104,7 +104,7 @@ render_sidebar('factures');
             <div class="page-sub">IBAN, délais et templates d'emails</div>
         </div>
         <div>
-            <a href="/mon-asso-factures" class="btn btn-ghost">← Retour</a>
+            <a href="/mon-asso-factures-client" class="btn btn-ghost">← Retour</a>
         </div>
     </div>
 
@@ -180,7 +180,7 @@ render_sidebar('factures');
 
         <!-- Actions -->
         <div style="display:flex; gap:10px; justify-content:flex-end; padding:18px; background:white; border:1px solid #E5E7EB; border-radius:12px; position:sticky; bottom:12px;">
-            <a href="/mon-asso-factures" class="btn btn-ghost">Annuler</a>
+            <a href="/mon-asso-factures-client" class="btn btn-ghost">Annuler</a>
             <button type="submit" class="btn btn-primary" style="padding:10px 20px;">💾 Enregistrer</button>
         </div>
     </form>

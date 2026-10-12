@@ -56,6 +56,8 @@ unset($_SESSION['flash_orgbill']);
 $action_url = '/super-admin/associations/facturation/save';
 $cancel_url = '/dashboard';
 $is_founder_view = false; // Vue admin asso classique
+// Après enregistrement : retour sur cette page (le cockpit Super Admin la refuserait)
+$return_url = '/mon-asso/facturation';
 
 render_head('Infos de facturation');
 render_sidebar('factures');

@@ -3,7 +3,7 @@
  * facturation-hub.php
  * --------------------------------------------------------------
  * En-tête + barre d'onglets partagée pour le module Facturation.
- * Regroupe Factures / Devis / Clients / Statistiques en une seule
+ * Regroupe Factures / Devis / Clients / Statistiques / Récurrences / Paramètres en une seule
  * "page" à onglets (Liquid Glass 2.0).
  *
  * Usage (dans chaque page, juste après l'ouverture de .main) :
@@ -59,10 +59,20 @@ if (!function_exists('render_facturation_hub')) {
             $nb_clients = (int)$st->fetchColumn();
         } catch (Throwable $e) {}
 
+        // Récurrences actives
+        $nb_recurrences = null;
+        try {
+            $st = $pdo->prepare("SELECT COUNT(*) FROM asso_invoice_recurrences WHERE org_id = :o AND status = 'active'");
+            $st->execute([':o' => $org_id]);
+            $nb_recurrences = (int)$st->fetchColumn();
+        } catch (Throwable $e) {}
+
         $ca_cents      = (int)$k['revenue_paid_cents'] + (int)$k['revenue_pending_cents'];
         $paid_cents    = (int)$k['revenue_paid_cents'];
         $pending_cents = (int)$k['revenue_pending_cents'];
-        $nb_waiting    = (int)$k['nb_pending'] + (int)$k['nb_overdue'];
+        // nb_pending compte déjà les factures en retard (statuts pending + overdue) :
+        // nb_overdue n'en est que le détail, il ne s'ajoute pas.
+        $nb_waiting    = (int)$k['nb_pending'];
         $paid_pct      = $ca_cents > 0 ? round($paid_cents / $ca_cents * 100) : 0;
         $year          = (int)$k['year'];
 
@@ -76,6 +86,12 @@ if (!function_exists('render_facturation_hub')) {
                 '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 5"/>'],
             'stats'    => ['/mon-asso-stats',    'Statistiques',  null,
                 '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>'],
+            // Factures récurrentes et paramètres (IBAN imprimé sur les factures, modèles
+            // d'e-mails, délai de paiement) : pages qui n'étaient reliées à aucun menu.
+            'recurrences' => ['/mon-asso-recurrences', 'Récurrences', $nb_recurrences,
+                '<path d="M21 12a9 9 0 0 1-15.5 6.2M3 12A9 9 0 0 1 18.5 5.8"/><path d="M21 4v5h-5M3 20v-5h5"/>'],
+            'parametres'  => ['/mon-asso-factures-parametres', 'Paramètres', null,
+                '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'],
         ];
 
         $actions_html = (string)($opts['actions'] ?? '');

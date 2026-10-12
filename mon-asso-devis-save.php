@@ -29,6 +29,7 @@ if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_PO
 }
 
 $action = $_POST['action'] ?? 'create';
+$form_page = ($action === 'edit' && !empty($_POST['quote_id'])) ? '/mon-asso-devis-edit?id=' . (int)$_POST['quote_id'] : '/mon-asso-devis-new';
 
 $lines_post = $_POST['lines'] ?? [];
 $lines = [];
@@ -37,15 +38,15 @@ foreach ($lines_post as $line) {
     if ($designation === '') continue;
     $lines[] = [
         'designation' => mb_substr($designation, 0, 500),
-        'quantity' => (float) str_replace(',', '.', $line['quantity'] ?? '1'),
-        'unit_price_ht' => (float) str_replace(',', '.', $line['unit_price_ht'] ?? '0'),
+        'quantity' => round((float) str_replace(',', '.', $line['quantity'] ?? '1'), 2),        // 2 décimales, comme en base
+        'unit_price_ht' => round((float) str_replace(',', '.', $line['unit_price_ht'] ?? '0'), 2),   // au centime
         'vat_rate' => isset($line['vat_rate']) && $line['vat_rate'] !== '' ? (float)$line['vat_rate'] : null,
     ];
 }
 
 if (empty($lines)) {
     $_SESSION['flash_asso_devis'] = ['type' => 'error', 'message' => 'Au moins une ligne est requise.'];
-    header('Location: /mon-asso-devis-new'); exit;
+    header('Location: ' . $form_page); exit;
 }
 
 $client_data = [
@@ -66,12 +67,11 @@ $client_data = [
 
 if (empty($client_data['display_name']) || empty($client_data['email'])) {
     $_SESSION['flash_asso_devis'] = ['type' => 'error', 'message' => 'Nom et email obligatoires.'];
-    header('Location: /mon-asso-devis-new'); exit;
+    header('Location: ' . $form_page); exit;
 }
 
 $issued_at = !empty($_POST['issued_at']) ? $_POST['issued_at'] . ' ' . date('H:i:s') : date('Y-m-d H:i:s');
 $validity_days = (int)($_POST['validity_days'] ?? 30);
-$status = !empty($_POST['save_draft']) ? 'draft' : 'sent';
 
 try {
     if ($action === 'edit' && !empty($_POST['quote_id'])) {
@@ -86,16 +86,9 @@ try {
             throw new RuntimeException('Ce devis est ' . ($quote['status'] === 'signed' ? 'signé' : 'converti') . ' et ne peut plus être modifié.');
         }
 
-        $client_id = (int)($client_data['id'] ?? 0);
-        if ($client_id) {
-            // Le client doit appartenir à cette association (sinon : fiche d'une autre asso exposée / facturée)
-            $ck = $pdo->prepare("SELECT id FROM asso_clients WHERE id = ? AND org_id = ? LIMIT 1");
-            $ck->execute([$client_id, $org_id]);
-            if (!$ck->fetchColumn()) $client_id = 0;
-        }
-        if (!$client_id) {
-            $client_id = ak_asso_find_or_create_client($pdo, $org_id, array_merge($client_data, ['created_by_user_id' => (int)$user['id']]));
-        }
+        // Coordonnées du client saisies sur le devis : enregistrées sur sa fiche (client de
+        // cette association uniquement), puis reprises dans le snapshot et le PDF ci-dessous.
+        $client_id = ak_asso_client_from_form($pdo, $org_id, $client_data, (int)$user['id']);
 
         $total_ht = 0; $total_vat = 0; $total_ttc = 0;
         foreach ($lines as $line) {
@@ -106,6 +99,14 @@ try {
         }
 
         $expires_at = date('Y-m-d 23:59:59', strtotime($issued_at . ' +' . $validity_days . ' days'));
+
+        // Le statut ne change pas à l'enregistrement : un brouillon reste brouillon (c'est l'envoi,
+        // mon-asso-devis-send.php, qui le passe en « Envoyé »). Un devis expiré dont la validité
+        // est prolongée redevient « Envoyé » (ou brouillon s'il n'est jamais parti).
+        $status = (string)$quote['status'];
+        if ($status === 'expired' && strtotime($expires_at) > time()) {
+            $status = !empty($quote['sent_at']) ? 'sent' : 'draft';
+        }
 
         // Le PDF lit client_snapshot : on le rafraîchit à chaque édition (cf. facture-save).
         $client_snap = null;
@@ -142,23 +143,47 @@ try {
 
         $pdf_path = ak_asso_quote_render_pdf($pdo, $quote_id);
 
-        $_SESSION['flash_asso_devis'] = ['type' => 'success', 'message' => 'Devis ' . $quote['quote_number'] . ' modifié.', 'pdf_link' => $pdf_path];
+        $_SESSION['flash_asso_devis'] = ['type' => 'success', 'message' => $status === 'draft'
+            ? 'Brouillon ' . $quote['quote_number'] . ' enregistré. Envoyez-le au client quand il est prêt.'
+            : 'Devis ' . $quote['quote_number'] . ' modifié.', 'pdf_link' => $pdf_path];
         header('Location: /mon-asso-devis-edit?id=' . $quote_id); exit;
 
     } else {
+        // Double clic / formulaire renvoyé : le devis existe déjà, on n'en crée pas un second
+        $form_nonce = (string)($_POST['form_nonce'] ?? '');
+        if ($done_id = ak_asso_form_nonce_used('quote_new', $form_nonce)) {
+            $_SESSION['flash_asso_devis'] = ['type' => 'success', 'message' => 'Ce devis a déjà été créé : le second envoi du formulaire a été ignoré.'];
+            header('Location: /mon-asso-devis-edit?id=' . $done_id); exit;
+        }
+
+        // Un devis créé n'est pas encore envoyé : il reste en brouillon jusqu'à l'envoi réel
+        // (mon-asso-devis-send.php le passe alors en « Envoyé », avec date et destinataire).
+        // Client choisi ou de même e-mail : sa fiche prend les coordonnées saisies.
+        $client_data['id'] = ak_asso_client_from_form($pdo, $org_id, $client_data, (int)$user['id']);
         $result = ak_asso_quote_create($pdo, $org_id, (int)$user['id'], [
             'client' => $client_data, 'lines' => $lines,
             'issued_at' => $issued_at, 'validity_days' => $validity_days,
-            'status' => $status,
+            'status' => 'draft',
             'description' => trim((string)($_POST['description'] ?? '')) ?: null,
             'terms' => trim((string)($_POST['terms'] ?? '')) ?: null,
             'internal_notes' => trim((string)($_POST['internal_notes'] ?? '')) ?: null,
         ]);
-        $_SESSION['flash_asso_devis'] = ['type' => 'success', 'message' => 'Devis ' . $result['quote_number'] . ' créé.', 'pdf_link' => $result['pdf_path']];
-        header('Location: /mon-asso-devis'); exit;
+        ak_asso_form_nonce_consume('quote_new', $form_nonce, (int)$result['id']);
+
+        if (!empty($_POST['save_draft'])) {
+            $_SESSION['flash_asso_devis'] = ['type' => 'success', 'message' => 'Devis ' . $result['quote_number'] . ' enregistré en brouillon.', 'pdf_link' => $result['pdf_path']];
+            header('Location: /mon-asso-devis'); exit;
+        }
+        // « Créer le devis » : on ouvre le devis, prêt à être envoyé au client
+        $_SESSION['flash_asso_devis'] = [
+            'type' => 'success',
+            'message' => 'Devis ' . $result['quote_number'] . ' créé. Vérifiez-le, puis cliquez sur « Envoyer le devis par email » pour l’adresser au client.',
+            'pdf_link' => $result['pdf_path'],
+        ];
+        header('Location: /mon-asso-devis-edit?id=' . (int)$result['id']); exit;
     }
 } catch (Throwable $e) {
     error_log('[ASSO QUOTE SAVE] ' . $e->getMessage());
     $_SESSION['flash_asso_devis'] = ['type' => 'error', 'message' => 'Erreur : ' . $e->getMessage()];
-    header('Location: /mon-asso-devis-new'); exit;
+    header('Location: ' . $form_page); exit;
 }

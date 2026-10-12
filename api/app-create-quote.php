@@ -48,16 +48,18 @@ foreach ((array) ($input['lines'] ?? []) as $l) {
     if ($des === '') continue;
     $lines[] = [
         'designation'   => mb_substr($des, 0, 500),
-        'quantity'      => $num($l['quantity'] ?? 1),
-        'unit_price_ht' => $num($l['unit_price_ht'] ?? 0),
+        'quantity'      => round($num($l['quantity'] ?? 1), 2),        // 2 décimales, comme en base
+        'unit_price_ht' => round($num($l['unit_price_ht'] ?? 0), 2),   // au centime
         'vat_rate'      => (isset($l['vat_rate']) && $l['vat_rate'] !== '' && $l['vat_rate'] !== null) ? $num($l['vat_rate']) : null,
     ];
 }
 if (!$lines) app_fail(422, 'invalid', 'Ajoutez au moins une ligne.');
 
-// Valeur transmise par l'app, sinon 'draft' : on ne relit jamais une clé absente
+// Comme sur le site (mon-asso-devis-save.php) : un devis créé reste en brouillon jusqu'à son
+// envoi réel (action « send » d'app-quote-action.php, qui le passe en « Envoyé » avec la date).
+// « sent » demandé par l'app sans envoi donnait un devis « Envoyé » que le client n'a jamais reçu.
 $_status = (string) ($input['status'] ?? 'draft');
-$status = in_array($_status, ['draft', 'sent'], true) ? $_status : 'draft';
+$status = 'draft';
 try {
     // Validité saisie dans l'app (le helper la lit ; 30 j par défaut, borné 0-365)
     $validity_days = (int) ($input['validity_days'] ?? 30);
@@ -73,7 +75,9 @@ try {
         'ok'      => true,
         'id'      => (int) ($res['id'] ?? 0),
         'number'  => (string) ($res['quote_number'] ?? ''),
-        'message' => 'Devis ' . ($res['quote_number'] ?? '') . ' créé.',
+        'status'  => $status,
+        'message' => 'Devis ' . ($res['quote_number'] ?? '') . ' créé'
+                   . ($_status === 'sent' ? ' en brouillon : envoyez-le au client depuis sa fiche.' : '.'),
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[app-create-quote] ' . $e->getMessage());

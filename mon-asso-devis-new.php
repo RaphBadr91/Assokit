@@ -32,6 +32,7 @@ $clients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 ak_asso_invoice_settings($pdo, $org_id);
 $slug = ak_asso_ensure_slug($pdo, $org_id);
+$form_nonce = ak_asso_form_nonce_issue('quote_new');   // anti double-création
 
 render_head('Nouveau devis');
 render_sidebar('devis');
@@ -55,6 +56,7 @@ render_sidebar('devis');
     <form method="POST" action="/mon-asso-devis-save" id="quote-form">
         <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
         <input type="hidden" name="action" value="create">
+        <input type="hidden" name="form_nonce" value="<?= h($form_nonce) ?>">
 
         <!-- CLIENT -->
         <div class="card" style="padding:22px; margin-bottom:16px;">
@@ -199,7 +201,7 @@ render_sidebar('devis');
         <div style="display:flex; gap:10px; justify-content:flex-end; padding:18px; background:white; border:1px solid #E5E7EB; border-radius:12px; position:sticky; bottom:12px;">
             <a href="/mon-asso-devis" class="btn btn-ghost">Annuler</a>
             <button type="submit" name="save_draft" value="1" class="btn btn-ghost" style="padding:10px 20px;">💾 Brouillon</button>
-            <button type="submit" class="btn btn-primary" style="padding:10px 20px; background:#7E22CE; border-color:#7E22CE;">📤 Créer le devis</button>
+            <button type="submit" class="btn btn-primary" style="padding:10px 20px; background:#7E22CE; border-color:#7E22CE;" title="Le devis est créé en brouillon ; vous l’envoyez ensuite au client depuis sa page">Créer le devis →</button>
         </div>
     </form>
 </div>
@@ -231,19 +233,21 @@ function addLine(prefill = {}) {
     recalc();
 }
 
+<?= ak_asso_invoice_form_js() ?>
+
+// Totaux en centimes, arrondis ligne par ligne comme le devis enregistré
 function recalc() {
     let totHT = 0, totVAT = 0;
     document.querySelectorAll('.invoice-line').forEach(line => {
         const q = parseFloat(line.querySelector('[name*="[quantity]"]').value) || 0;
         const p = parseFloat(line.querySelector('[name*="[unit_price_ht]"]').value) || 0;
         const r = parseFloat(line.querySelector('[name*="[vat_rate]"]').value) || 0;
-        const ht = q * p;
-        const vat = r > 0 ? ht * r / 100 : 0;
-        line.querySelector('.line-total').textContent = ht.toFixed(2).replace('.', ',') + ' €';
-        totHT += ht;
-        totVAT += vat;
+        const c = akLineCents(q, p, r);
+        line.querySelector('.line-total').textContent = (c.ht / 100).toFixed(2).replace('.', ',') + ' €';
+        totHT += c.ht;
+        totVAT += c.vat;
     });
-    const fmt = n => n.toFixed(2).replace('.', ',') + ' €';
+    const fmt = cents => (cents / 100).toFixed(2).replace('.', ',') + ' €';
     document.getElementById('total-ht').textContent = fmt(totHT);
     document.getElementById('total-vat').textContent = fmt(totVAT);
     document.getElementById('total-ttc').textContent = fmt(totHT + totVAT);
@@ -302,6 +306,7 @@ function selectAddress(street, zip, city) {
 function hideAddressList() { document.getElementById('address-suggestions').style.display = 'none'; }
 
 addLine();
+akGuardSubmit(document.getElementById('quote-form'), 'Création…');
 </script>
 
 <?php render_foot(); ?>

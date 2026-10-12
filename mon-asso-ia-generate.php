@@ -22,9 +22,9 @@ require_login();
 $user = current_user();
 $org_id  = (int)($user['org_id'] ?? 0);
 $user_id = (int)($user['id'] ?? 0);
-if ($org_id <= 0 || $user_id <= 0) {
+if ($org_id <= 0 || $user_id <= 0 || !ak_ai_user_has_access($user)) {
     http_response_code(403);
-    echo json_encode(['ok' => false, 'error' => 'Non autorisé']);
+    echo json_encode(['ok' => false, 'error' => 'Non autorisé', 'message' => 'La Communication IA est réservée aux membres de l’association.'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -148,5 +148,5 @@ try {
     }
 } catch (Throwable $e) {
     error_log('[mon-asso-ia-generate] ' . $e->getMessage());
-    echo json_encode(['ok' => false, 'error' => 'Erreur serveur : ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => false, 'error' => 'La génération a échoué à cause d’une erreur technique. Réessayez dans un instant.'], JSON_UNESCAPED_UNICODE);
 }

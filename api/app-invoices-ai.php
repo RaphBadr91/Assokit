@@ -24,16 +24,21 @@ try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
 
-    // Même gate admin que app-stats-ai.php (parité mon-asso-stats.php) + limite d'appels IA.
-    $role = (string) ($user['role'] ?? '');
-    if (!in_array($role, ['admin', 'founder', 'super_admin'], true) && empty($user['is_founder'])) {
-        echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
+    // Même droit que l'écran Factures qui porte ce bouton (app-invoices.php) et que les
+    // statistiques de facturation du site (mon-asso-stats.php) : admins, fondateur,
+    // super-admin et coordinateurs. + limite d'appels IA.
+    @require_once __DIR__ . '/../finance-permissions.php';
+    @require_once __DIR__ . '/../platform-flags.php';
+    if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+    if (!function_exists('user_can_access_billing') || !user_can_access_billing($user)) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux administrateurs et coordinateurs.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
     @require_once __DIR__ . '/../rate-limit-helper.php';
     if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_ai', 10, 60, (string) ($_SESSION['user_id'] ?? ''));
 
-    // Stats de facturation
+    // Stats de facturation : factures émises uniquement (payées, en attente, en retard),
+    // brouillons et annulées exclus, comme le hub Facturation et l'écran Factures.
     $stmt = $pdo->prepare("
         SELECT
           COUNT(*) AS nb,
@@ -43,7 +48,7 @@ try {
           COALESCE(SUM(CASE WHEN status='overdue' OR (status='pending' AND due_at < NOW()) THEN amount_ttc_cents ELSE 0 END),0) AS overdue,
           SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END) AS nb_paid,
           SUM(CASE WHEN status='overdue' OR (status='pending' AND due_at < NOW()) THEN 1 ELSE 0 END) AS nb_overdue
-        FROM asso_invoices WHERE org_id = ?
+        FROM asso_invoices WHERE org_id = ? AND status IN ('paid','pending','overdue')
     ");
     $stmt->execute([$org_id]);
     $s = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];

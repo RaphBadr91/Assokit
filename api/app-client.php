@@ -34,30 +34,27 @@ function fd($v) {
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-    $is_admin = (($user['role'] ?? '') === 'admin')
-        || !empty($user['is_super_admin']) || !empty($user['is_founder'])
-        || (($user['role'] ?? '') === 'super_admin');
+    // Parité site (mon-asso-client-detail.php, require_billing_access) : fiche client et
+    // facturation ouvertes aux admins, fondateur, super-admin et coordinateurs.
+    @require_once __DIR__ . '/../finance-permissions.php';
+    @require_once __DIR__ . '/../platform-flags.php';
+    if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+    $is_admin = function_exists('user_can_access_billing') && user_can_access_billing($user);
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
 
-    $stmt = $pdo->prepare("SELECT * FROM asso_clients WHERE id = ? AND org_id = ? AND (deleted_at IS NULL OR deleted_at = '') LIMIT 1");
-    $stmt->execute([$id, $org_id]);
-    $c = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$c) { http_response_code(404); echo json_encode(['ok' => false, 'error' => 'not_found']); exit; }
-
-    $name = trim((string) ($c['display_name'] ?? '')) ?: (string) ($c['email'] ?? 'Client');
-    $ini = strtoupper(function_exists('mb_substr') ? mb_substr($name, 0, 2) : substr($name, 0, 2));
-
-    // Membre non-admin : accès au nom uniquement, aucune coordonnée ni facturation.
+    // Sans droit Facturation : rien du fichier client (le site refuse la fiche), pas même
+    // le nom ; réponse identique que le client existe ou non. Même forme qu'avant pour l'app.
     if (!$is_admin) {
         echo json_encode([
             'ok' => true,
+            'allowed' => false,
             'admin' => false,
             'client' => [
-                'id'       => (int) $c['id'],
-                'name'     => $name,
-                'initials' => $ini !== '' ? $ini : '?',
-                'type'     => (string) ($c['client_type'] ?? 'company'),
+                'id'       => $id,
+                'name'     => 'Client',
+                'initials' => '?',
+                'type'     => 'company',
                 'email'    => '', 'phone' => '', 'city' => '', 'address' => '',
                 'siren'    => '', 'vat_number' => '',
             ],
@@ -66,6 +63,14 @@ try {
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
+
+    $stmt = $pdo->prepare("SELECT * FROM asso_clients WHERE id = ? AND org_id = ? AND (deleted_at IS NULL OR deleted_at = '') LIMIT 1");
+    $stmt->execute([$id, $org_id]);
+    $c = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$c) { http_response_code(404); echo json_encode(['ok' => false, 'error' => 'not_found']); exit; }
+
+    $name = trim((string) ($c['display_name'] ?? '')) ?: (string) ($c['email'] ?? 'Client');
+    $ini = strtoupper(function_exists('mb_substr') ? mb_substr($name, 0, 2) : substr($name, 0, 2));
 
     // Adresse composee
     $addr = array_filter([
@@ -87,7 +92,7 @@ try {
                 $status = 'overdue';
             }
             $cents = (int) ($r['amount_ttc_cents'] ?? 0);
-            $total += $cents; $nb++;
+            if (in_array($status, ['paid', 'pending', 'overdue'], true)) { $total += $cents; $nb++; }
             if ($status === 'paid') $paid += $cents;
             elseif ($status === 'overdue') $overdue += $cents;
             elseif ($status === 'pending') $pending += $cents;
@@ -104,8 +109,23 @@ try {
         }
     } catch (Throwable $e) {}
 
+    // Indicateurs : même calcul que la fiche client du site (toutes les factures émises,
+    // brouillons et annulées exclus), et non sur les 100 dernières de la liste.
+    @require_once __DIR__ . '/../asso-invoice-helpers.php';
+    if (function_exists('ak_asso_client_stats')) {
+        try {
+            $cs = ak_asso_client_stats($pdo, $id, $org_id);
+            $nb      = (int) $cs['nb_invoices'];
+            $total   = (int) $cs['total_ttc_cents'];
+            $paid    = (int) $cs['paid_ttc_cents'];
+            $pending = (int) $cs['pending_ttc_cents'];
+            $overdue = (int) $cs['overdue_ttc_cents'];
+        } catch (Throwable $e) {}
+    }
+
     echo json_encode([
         'ok' => true,
+        'allowed' => true,
         'admin' => true,
         'client' => [
             'id'         => (int) $c['id'],

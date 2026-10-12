@@ -38,9 +38,14 @@ switch ($action) {
 try {
     $pdo->prepare("UPDATE asso_invoice_recurrences SET status = :s, updated_at = NOW() WHERE id = :id AND org_id = :o")
         ->execute([':s' => $new_status, ':id' => $rec_id, ':o' => $org_id]);
-    $_SESSION['flash_success'] = 'Statut mis à jour.';
+    ak_recurrence_flash('success', [
+        'paused' => 'Récurrence « ' . $rec['title'] . ' » mise en pause : aucune facture ne sera générée avant sa reprise.',
+        'active' => 'Récurrence « ' . $rec['title'] . ' » reprise.',
+        'cancelled' => 'Récurrence « ' . $rec['title'] . ' » annulée.',
+    ][$new_status] ?? 'Statut mis à jour.');
 } catch (Throwable $e) {
-    $_SESSION['flash_error'] = 'Erreur : ' . $e->getMessage();
+    error_log('[mon-asso-recurrence-toggle] ' . $e->getMessage());
+    ak_recurrence_flash('error', 'Le statut n’a pas pu être modifié. Réessayez dans un instant.');
 }
 header('Location: /mon-asso-recurrences');
 exit;

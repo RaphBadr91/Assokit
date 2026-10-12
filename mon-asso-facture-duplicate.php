@@ -11,35 +11,35 @@ $user = current_user();
 if (empty($user['org_id'])) { http_response_code(403); die('Aucune asso.'); }
 $org_id = (int)$user['org_id'];
 
-$is_admin = false;
-try {
-    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
-    $stmt->execute([':id' => (int)$user['id']]);
-    $is_admin = in_array($stmt->fetchColumn(), ['admin', 'coordinator'], true);
-} catch (Throwable $e) {}
-if (!$is_admin) { http_response_code(403); die('Accès refusé.'); }
+// Même règle d'accès que la fiche facture qui porte le bouton « Dupliquer »
+require_once __DIR__ . '/finance-permissions.php';
+if (!user_can_access_billing($user)) { http_response_code(403); die('Accès refusé.'); }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: /mon-asso-factures'); exit; }
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: /mon-asso-factures-client'); exit; }
 if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
     http_response_code(419); exit('CSRF.');
 }
 
 $invoice_id = (int)($_POST['invoice_id'] ?? 0);
-if ($invoice_id <= 0) { header('Location: /mon-asso-factures'); exit; }
+if ($invoice_id <= 0) { header('Location: /mon-asso-factures-client'); exit; }
 
+$src = null;
 try {
     $stmt = $pdo->prepare("SELECT * FROM asso_invoices WHERE id = :id AND org_id = :org LIMIT 1");
     $stmt->execute([':id' => $invoice_id, ':org' => $org_id]);
     $src = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$src) throw new RuntimeException('Facture introuvable.');
+    // Un avoir ne se duplique pas (il annule une facture précise) : dupliquez la facture d'origine
+    if (ak_asso_is_credit_note($src)) throw new RuntimeException('un avoir ne peut pas être dupliqué ; dupliquez la facture d’origine.');
 
     $stmt = $pdo->prepare("SELECT * FROM asso_invoice_lines WHERE invoice_id = :id ORDER BY line_order");
     $stmt->execute([':id' => $invoice_id]);
     $src_lines = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmt = $pdo->prepare("SELECT * FROM asso_clients WHERE id = :id LIMIT 1");
-    $stmt->execute([':id' => $src['client_id']]);
+    $stmt = $pdo->prepare("SELECT * FROM asso_clients WHERE id = :id AND org_id = :org LIMIT 1");
+    $stmt->execute([':id' => $src['client_id'], ':org' => $org_id]);
     $client = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$client) throw new RuntimeException('le client de cette facture n’existe plus.');
 
     $lines = [];
     foreach ($src_lines as $l) {
@@ -54,7 +54,10 @@ try {
     $new_invoice = ak_asso_invoice_create($pdo, $org_id, (int)$user['id'], [
         'client' => array_merge($client, ['id' => $client['id']]),
         'lines' => $lines,
-        'description' => $src['description'] ? '[Copie] ' . $src['description'] : '[Copie de ' . $src['invoice_number'] . ']',
+        // La note (imprimée sur la facture) est reprise telle quelle ; l'origine de la copie
+        // reste une note interne, jamais visible du client.
+        'description' => trim((string)($src['description'] ?? '')) ?: null,
+        'internal_notes' => 'Copie de la facture ' . $src['invoice_number'],
         'status' => 'draft',
     ]);
 
@@ -70,6 +73,7 @@ try {
 } catch (Throwable $e) {
     error_log('[FACT DUP] ' . $e->getMessage());
     $_SESSION['flash_asso_factures'] = ['type' => 'error', 'message' => 'Erreur duplication : ' . $e->getMessage()];
-    header('Location: /mon-asso-factures');
+    // Retour sur la facture d'origine, qui affiche le message
+    header('Location: ' . ($src ? '/mon-asso-facture-edit?id=' . $invoice_id : '/mon-asso-factures-client'));
     exit;
 }

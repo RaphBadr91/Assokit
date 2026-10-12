@@ -15,6 +15,7 @@
  * L'envoi manuel reste disponible dans /relances. L'auto est opt-in.
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/relances-engine.php';
 
 // CLI true si SAPI cli OU exécution hors contexte web (binaire CGI lancé en cron :
@@ -28,9 +29,13 @@ if (!ak_lot_demarrer($pdo, 'relances')) exit(0);
 
 $orgs = [];
 try {
-    $orgs = $pdo->query("SELECT org_id, auto_invoices, auto_memberships, max_stage
-                         FROM org_relance_prefs
-                         WHERE auto_invoices = 1 OR auto_memberships = 1")->fetchAll(PDO::FETCH_ASSOC);
+    // Associations supprimées, suspendues ou résiliées : aucun envoi automatique
+    // (ni aux clients, ni aux adhérents), même si l'auto-relance était activée.
+    $orgs = $pdo->query("SELECT p.org_id, p.auto_invoices, p.auto_memberships, p.max_stage
+                         FROM org_relance_prefs p
+                         JOIN organizations o ON o.id = p.org_id
+                         WHERE (p.auto_invoices = 1 OR p.auto_memberships = 1)
+                           AND " . ak_asso_org_active_sql('o'))->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) { fwrite(STDERR, $e->getMessage()."\n"); }
 echo "→ " . count($orgs) . " org(s) en auto-relance\n";
 
@@ -56,8 +61,14 @@ foreach ($aVoir as $org_id) {
 
     if (!empty($o['auto_invoices'])) {
         try {
+            // Factures dont l'admin a coupé les relances (« Stop » sur le tableau de bord).
+            $stopped = [];
+            $sd = $pdo->prepare("SELECT id FROM asso_invoices WHERE org_id = ? AND dunning_enabled = 0 AND status IN ('pending','overdue')");
+            $sd->execute([$org_id]);
+            foreach ($sd->fetchAll(PDO::FETCH_COLUMN) as $sid) $stopped[(int)$sid] = true;
+
             foreach (ak_rel_invoice_targets($pdo, $org_id) as $t) {
-                if (!$t['due_now'] || $t['stage'] > $maxStage) continue;
+                if (!$t['due_now'] || $t['stage'] > $maxStage || isset($stopped[(int)$t['id']])) continue;
                 $res = ak_asso_invoice_send_email($pdo, (int)$t['id'], 'dunning'.$t['stage'], null);
                 if (!empty($res['success'])) { $total_inv++; echo "  ✓ org #$org_id facture {$t['number']} (stade {$t['stage']})\n"; }
                 else { $fail++; echo "  ✗ org #$org_id facture {$t['number']} : {$res['message']}\n"; }

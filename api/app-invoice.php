@@ -37,18 +37,21 @@ try {
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
 
-    // Parité site (mon-asso-factures.php) : réservé aux finances.
+    // Parité site (mon-asso-facture-edit.php, require_billing_access) : admins, fondateur,
+    // super-admin et coordinateurs (finance-permissions.php).
     @require_once __DIR__ . '/../finance-permissions.php';
-    if (!function_exists('user_can_view_finances') || !user_can_view_finances($user)) {
+    @require_once __DIR__ . '/../platform-flags.php';
+    if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+    if (!function_exists('user_can_access_billing') || !user_can_access_billing($user)) {
         http_response_code(403);
-        echo json_encode(['ok' => false, 'error' => 'role', 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['ok' => false, 'error' => 'role', 'message' => 'Réservé aux administrateurs et coordinateurs.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
     $stmt = $pdo->prepare("
         SELECT i.*, c.display_name AS client_name, c.email AS client_email
         FROM asso_invoices i
-        LEFT JOIN asso_clients c ON i.client_id = c.id
+        LEFT JOIN asso_clients c ON i.client_id = c.id AND c.org_id = i.org_id
         WHERE i.id = ? AND i.org_id = ? LIMIT 1
     ");
     $stmt->execute([$id, $org_id]);
@@ -60,6 +63,22 @@ try {
         $status = 'overdue';
     }
     $meta = $INV_META[$status] ?? ['label' => ucfirst($status), 'kind' => 'wait'];
+
+    // Avoirs (clés ajoutées, les clés existantes sont inchangées) : un avoir s'affiche
+    // « Avoir » ; une facture annulée par avoir indique son numéro.
+    @require_once __DIR__ . '/../asso-invoice-helpers.php';
+    $is_credit = ($inv['invoice_type'] ?? 'invoice') === 'credit_note';
+    $parent_number = null; $credit_note = null;
+    if ($is_credit) {
+        $meta = ['label' => 'Avoir', 'kind' => 'off'];
+        if (!empty($inv['parent_invoice_id'])) {
+            $ps = $pdo->prepare("SELECT invoice_number FROM asso_invoices WHERE id = ? AND org_id = ? LIMIT 1");
+            $ps->execute([(int) $inv['parent_invoice_id'], $org_id]);
+            $parent_number = $ps->fetchColumn() ?: null;
+        }
+    } elseif (function_exists('ak_asso_invoice_credit_note_of') && (string) $inv['status'] !== 'draft') {
+        $credit_note = ak_asso_invoice_credit_note_of($pdo, $org_id, (int) $inv['id']);
+    }
 
     // Nom du client : live sinon snapshot
     $client_name = trim((string) ($inv['client_name'] ?? ''));
@@ -112,6 +131,13 @@ try {
             'amount_ttc'   => ((int) ($inv['amount_ttc_cents'] ?? 0)) / 100,
             'description'  => (string) ($inv['description'] ?? ''),
             'public_uuid'  => (string) ($inv['public_uuid'] ?? ''),
+            'invoice_type' => $is_credit ? 'credit_note' : 'invoice',
+            'parent_invoice_id'     => $is_credit ? (int) ($inv['parent_invoice_id'] ?? 0) : null,
+            'parent_invoice_number' => $parent_number,
+            'credit_note_id'        => $credit_note ? (int) $credit_note['id'] : null,
+            'credit_note_number'    => $credit_note ? (string) $credit_note['invoice_number'] : null,
+            // Action « credit_note » de app-invoice-action.php disponible (facture émise, sans avoir)
+            'can_credit_note'       => !$is_credit && !$credit_note && in_array((string) $inv['status'], ['pending', 'overdue', 'paid'], true),
         ],
         'lines' => $lines,
     ], JSON_UNESCAPED_UNICODE);

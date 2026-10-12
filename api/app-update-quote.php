@@ -65,16 +65,17 @@ foreach ((array) ($input['lines'] ?? []) as $l) {
     if ($des === '') continue;
     $lines[] = [
         'designation'   => mb_substr($des, 0, 500),
-        'quantity'      => $num($l['quantity'] ?? 1),
-        'unit_price_ht' => $num($l['unit_price_ht'] ?? 0),
+        'quantity'      => round($num($l['quantity'] ?? 1), 2),        // 2 décimales, comme en base
+        'unit_price_ht' => round($num($l['unit_price_ht'] ?? 0), 2),   // au centime
         'vat_rate'      => (isset($l['vat_rate']) && $l['vat_rate'] !== '' && $l['vat_rate'] !== null) ? $num($l['vat_rate']) : null,
     ];
 }
 if (!$lines) app_fail(422, 'invalid', 'Ajoutez au moins une ligne.');
 
-// Valeur transmise par l'app, sinon 'sent' : on ne relit jamais une clé absente
-$_status = (string) ($input['status'] ?? 'sent');
-$status = in_array($_status, ['draft', 'sent'], true) ? $_status : 'sent';
+// Valeur transmise par l'app (« Brouillon » / « Envoyé ») ; sans valeur, le statut ne change
+// pas (comme sur le site : enregistrer ne vaut pas envoi)
+$_status = (string) ($input['status'] ?? '');
+$status = in_array($_status, ['draft', 'sent'], true) ? $_status : (string) $q['status'];
 $validity_days = (int) ($input['validity_days'] ?? 30);
 if ($validity_days < 0 || $validity_days > 365) $validity_days = 30;
 

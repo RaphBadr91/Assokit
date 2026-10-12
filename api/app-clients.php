@@ -20,20 +20,22 @@ if (empty($_SESSION['user_id'])) {
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-    // Seuls les admins (ou fondateur/super-admin) accèdent aux coordonnées du fichier client.
-    $is_admin = (($user['role'] ?? '') === 'admin')
-        || !empty($user['is_super_admin']) || !empty($user['is_founder'])
-        || (($user['role'] ?? '') === 'super_admin');
-    // Parité site (mon-asso-clients.php) : le fichier client est réservé aux administrateurs.
+    // Parité site (mon-asso-clients.php) : le fichier client suit le droit Facturation
+    // (admin, fondateur, super-admin et coordinateur : finance-permissions.php).
+    @require_once __DIR__ . '/../finance-permissions.php';
+    @require_once __DIR__ . '/../platform-flags.php';
+    if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+    $is_admin = function_exists('user_can_access_billing') && user_can_access_billing($user);
     if (!$is_admin) {
-        echo json_encode(['ok' => true, 'allowed' => false, 'admin' => false, 'clients' => [], 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['ok' => true, 'allowed' => false, 'admin' => false, 'clients' => [], 'message' => 'Réservé aux administrateurs et coordinateurs.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
+    // La ville est dans address_city (asso_clients n'a pas de colonne city).
     $stmt = $pdo->prepare("
-        SELECT c.id, c.display_name, c.email, c.city, c.client_type,
+        SELECT c.id, c.display_name, c.email, c.address_city AS city, c.client_type,
                (SELECT COALESCE(SUM(amount_ttc_cents),0) FROM asso_invoices
-                  WHERE client_id = c.id AND status = 'paid') AS total_paid_cents
+                  WHERE client_id = c.id AND org_id = c.org_id AND status = 'paid') AS total_paid_cents
         FROM asso_clients c
         WHERE c.org_id = ? AND (c.deleted_at IS NULL OR c.deleted_at = '')
         ORDER BY c.display_name ASC
@@ -58,7 +60,7 @@ try {
         ];
     }
 
-    echo json_encode(['ok' => true, 'admin' => $is_admin, 'clients' => $clients], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'allowed' => true, 'admin' => $is_admin, 'clients' => $clients], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-clients] ' . $e->getMessage());
     http_response_code(500);

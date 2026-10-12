@@ -18,6 +18,18 @@ require_login();
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
+
+// Dépenses de TOUS les projets (fournisseurs, montants, totaux) : rôles finances uniquement,
+// comme l'onglet Factures de la fiche projet. Admin / Fondateur / Super Admin, Coordinateur
+// (qui valide et reclasse ces dépenses) et membres habilités aux finances. Jamais un suiveur
+// (financeur externe) ni un membre ou bénévole sans habilitation.
+require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/platform-flags.php';
+$fin_ok = user_can_access_billing(ak_platform_flags($user))
+    || (($user['role'] ?? '') !== 'follower' && can('manage_finances'));
+if (!$fin_ok) {
+    require_finance_access('factures', 'les dépenses des projets');   // page de refus, puis arrêt
+}
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 $can_reclass = in_array($user['role'] ?? '', ['admin','coordinator'], true);
 $pca_comptes = ak_pca_comptes();

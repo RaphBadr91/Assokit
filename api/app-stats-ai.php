@@ -55,7 +55,8 @@ try {
         . "- CA encaissé : " . e2((int) ($k['revenue_paid_cents'] ?? 0)) . "\n"
         . "- En attente : " . e2((int) ($k['revenue_pending_cents'] ?? 0)) . "\n"
         . "- Impayés/retard : " . e2((int) ($k['revenue_overdue_cents'] ?? 0)) . " (" . (int) ($k['nb_overdue'] ?? 0) . " factures)\n"
-        . "- Factures : " . (int) ($k['total_invoices'] ?? 0) . " (dont " . (int) ($k['nb_paid'] ?? 0) . " payées)\n"
+        // Factures émises (payées + en attente), comme le chiffre d'affaires : sans brouillons ni annulées
+        . "- Factures émises : " . ((int) ($k['nb_paid'] ?? 0) + (int) ($k['nb_pending'] ?? 0)) . " (dont " . (int) ($k['nb_paid'] ?? 0) . " payées)\n"
         . "- Délai moyen de paiement : " . round((float) ($k['avg_payment_days'] ?? 0)) . " jours\n"
         . "- Devis : " . (int) ($k['total_quotes'] ?? 0) . ", taux de conversion : " . round((float) ($k['conversion_rate'] ?? 0), 1) . "%\n"
         . "- Tendance encaissé (6 mois) : " . trim($trend) . "\n"

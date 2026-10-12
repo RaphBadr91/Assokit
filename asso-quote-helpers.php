@@ -153,7 +153,7 @@ function ak_asso_quote_create(PDO $pdo, int $org_id, int $created_by_user_id, ar
         $stmt->execute([
             ':q' => $quote_id, ':ord' => $i,
             ':des' => mb_substr((string)($line['designation'] ?? ''), 0, 500),
-            ':qty' => (float)($line['quantity'] ?? 1),
+            ':qty' => round((float)($line['quantity'] ?? 1), 2),
             ':pu' => (int) round((float)($line['unit_price_ht'] ?? 0) * 100),
             ':vat' => isset($line['vat_rate']) && $line['vat_rate'] !== '' ? (float)$line['vat_rate'] : null,
             ':tht' => $c['total_ht_cents'], ':tvat' => $c['total_vat_cents'], ':tttc' => $c['total_ttc_cents'],

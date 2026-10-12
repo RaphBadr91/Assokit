@@ -4,10 +4,18 @@
  * Template PDF du devis (avec mention "DEVIS" et signature si signé)
  */
 
-$emName = $pdf_emitter['legal_name_effective'] ?? $pdf_emitter['name'] ?? 'Association';
+if (!function_exists('ak_asso_emitter_identity')) require_once __DIR__ . '/asso-invoice-helpers.php';
+$pdf_emitter = is_array($pdf_emitter ?? null) ? $pdf_emitter : [];
+$pdf_client  = is_array($pdf_client ?? null) ? $pdf_client : [];
+// Même identité légale et mêmes mentions TVA que la facture (asso-invoice-helpers.php)
+$emId = ak_asso_emitter_identity($pdf_emitter);
+$emName = $emId['name'];
 $emForm = $pdf_emitter['legal_form'] ?? '';
 $emRna = $pdf_emitter['rna_number'] ?? '';
-$emSiren = $pdf_emitter['siren'] ?? '';
+$emSiren = $emId['siren'];
+$emSiret = $emId['siret'];
+$emVat   = $emId['vat_number'];
+$vatMentions = ak_asso_vat_mentions($pdf_emitter, (int)$pdf_quote['amount_vat_cents'], $pdf_lines ?? []);
 $emStreet = $pdf_emitter['billing_address_street'] ?? '';
 $emCompl = $pdf_emitter['billing_address_complement'] ?? '';
 $emZip = $pdf_emitter['billing_address_zip'] ?? '';
@@ -105,7 +113,8 @@ table.lines tbody td.num { text-align: right; font-variant-numeric: tabular-nums
                 <?php if ($emCompl): ?><?= $htF($emCompl) ?><br><?php endif; ?>
                 <?php if ($emZip || $emCity): ?><?= $htF(trim($emZip . ' ' . $emCity)) ?><br><?php endif; ?>
                 <?php if ($emRna): ?>RNA : <?= $htF($emRna) ?><br><?php endif; ?>
-                <?php if ($emSiren): ?>SIREN : <?= $htF($emSiren) ?><br><?php endif; ?>
+                <?php if ($emSiren): ?>SIREN : <?= $htF($emSiren) ?><?php if ($emSiret): ?> · SIRET : <?= $htF($emSiret) ?><?php endif; ?><br><?php endif; ?>
+                <?php if ($emVat): ?>N° TVA intracommunautaire : <?= $htF($emVat) ?><br><?php endif; ?>
                 <?php if ($emEmail): ?><?= $htF($emEmail) ?><?php endif; ?>
                 <?php if ($emPhone): ?> · <?= $htF($emPhone) ?><?php endif; ?>
             </div>
@@ -172,10 +181,14 @@ table.lines tbody td.num { text-align: right; font-variant-numeric: tabular-nums
     <?php if ((int)$pdf_quote['amount_vat_cents'] > 0): ?>
         <tr><td class="lbl">TVA</td><td class="val"><?= $htF(ak_asso_fmt_cents((int)$pdf_quote['amount_vat_cents'])) ?></td></tr>
     <?php else: ?>
-        <tr><td class="lbl">TVA non applicable</td><td class="val">0,00 €</td></tr>
+        <tr><td class="lbl"><?= $htF($vatMentions['zero_label']) ?></td><td class="val">0,00 €</td></tr>
     <?php endif; ?>
     <tr class="ttc"><td class="lbl">TOTAL TTC</td><td class="val"><?= $htF(ak_asso_fmt_cents((int)$pdf_quote['amount_ttc_cents'])) ?></td></tr>
 </table>
+
+<?php if (!empty($vatMentions['notice'])): ?>
+<div style="margin-top:10px; font-size:8.5pt; color:#4B5563;"><?= $htF($vatMentions['notice']) ?></div>
+<?php endif; ?>
 
 <?php if (!empty($pdf_quote['terms'])): ?>
 <div class="terms-box">
