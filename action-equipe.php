@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 if (!check_csrf($_POST['csrf_token'] ?? '')) {
-    $_SESSION['flash'] = ['type' => 'error', 'message' => 'Session expirée, rechargez la page.'];
+    $_SESSION['flash_projets'] = ['type' => 'error', 'message' => 'Session expirée, rechargez la page.'];
     header('Location: /projets');
     exit;
 }
@@ -39,7 +39,7 @@ if ($project_id <= 0) {
 
 // Charger le projet
 $stmt = $pdo->prepare("
-    SELECT p.id, p.name, p.referent_id, f.org_id 
+    SELECT p.id, p.name, p.referent_id, p.archived_at, f.org_id, f.archived_at AS folder_archived_at
     FROM projects p 
     JOIN folders f ON p.folder_id = f.id 
     WHERE p.id = ?
@@ -48,18 +48,25 @@ $stmt->execute([$project_id]);
 $project = $stmt->fetch();
 
 if (!$project || (int)$project['org_id'] !== $org_id) {
-    $_SESSION['flash'] = ['type' => 'error', 'message' => 'Projet introuvable.'];
+    $_SESSION['flash_projets'] = ['type' => 'error', 'message' => 'Projet introuvable.'];
     header('Location: /projets');
     exit;
 }
 
-// Permissions
+// Permissions : les mêmes que /modifier-projet, qui affiche ce formulaire
+// (admin, référent du projet, coordinateurs).
 $is_admin = ($current['role'] === 'admin');
+$is_coord = ($current['role'] === 'coordinator');
 $is_referent = ((int)$project['referent_id'] === (int)$current['id']);
 
-if (!$is_admin && !$is_referent) {
-    $_SESSION['flash'] = ['type' => 'error', 'message' => 'Permission refusée.'];
-    header('Location: /projet/' . $project_id);
+if (!$is_admin && !$is_referent && !$is_coord) {
+    header('Location: /projet/' . $project_id . '?error=permission');
+    exit;
+}
+
+// Projet archivé : lecture seule jusqu'à sa restauration depuis /archives
+if (!empty($project['archived_at']) || !empty($project['folder_archived_at'])) {
+    header('Location: /projet/' . $project_id . '?error=archived');
     exit;
 }
 
@@ -92,9 +99,14 @@ if (!empty($selected)) {
 // =============================================================
 // DÉTECTER LES NOUVEAUX MEMBRES (avant le DELETE)
 // =============================================================
-$stmt = $pdo->prepare("SELECT user_id FROM project_members WHERE project_id = ?");
+$stmt = $pdo->prepare("SELECT user_id, role_in_project FROM project_members WHERE project_id = ?");
 $stmt->execute([$project_id]);
-$current_member_ids = array_map('intval', array_column($stmt->fetchAll(), 'user_id'));
+$current_rows = $stmt->fetchAll();
+$current_member_ids = array_map('intval', array_column($current_rows, 'user_id'));
+// Rôle dans le projet déjà saisi (« Animateur », « Bénévole »…) : conservé
+// pour les membres qui restent dans l'équipe.
+$current_roles = [];
+foreach ($current_rows as $r) $current_roles[(int)$r['user_id']] = $r['role_in_project'];
 
 // Les "nouveaux" sont ceux dans $valid_ids mais pas dans $current_member_ids
 $new_member_ids = array_values(array_diff($valid_ids, $current_member_ids));
@@ -116,7 +128,9 @@ try {
             VALUES (?, ?, ?, NOW())
         ");
         foreach ($valid_ids as $uid) {
-            $role_proj = ($uid === (int)$project['referent_id']) ? 'referent' : 'member';
+            $role_proj = ($current_roles[$uid] ?? '') !== ''
+                ? $current_roles[$uid]
+                : (($uid === (int)$project['referent_id']) ? 'referent' : 'member');
             $stmt->execute([$project_id, $uid, $role_proj]);
         }
     }
@@ -182,10 +196,11 @@ try {
     ];
     
 } catch (Throwable $e) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    error_log('[action-equipe] projet ' . $project_id . ' : ' . $e->getMessage());
     $_SESSION['flash'] = [
         'type' => 'error',
-        'message' => 'Erreur technique : ' . $e->getMessage()
+        'message' => '⚠️ L\'équipe n\'a pas pu être enregistrée. Réessayez dans un instant.'
     ];
 }
 

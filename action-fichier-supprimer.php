@@ -39,7 +39,7 @@ $user = current_user();
 // Charger le fichier + projet pour vérifs
 $stmt = $pdo->prepare("
     SELECT pf.id, pf.uploaded_by, pf.filepath, pf.filename,
-           p.referent_id, f.org_id
+           p.referent_id, p.archived_at, f.org_id, f.archived_at AS folder_archived_at
     FROM project_files pf
     JOIN projects p ON pf.project_id = p.id
     JOIN folders f ON p.folder_id = f.id
@@ -51,6 +51,13 @@ $file = $stmt->fetch();
 if (!$file || (int)$file['org_id'] !== (int)$user['org_id']) {
     http_response_code(403);
     die('Fichier introuvable ou accès refusé.');
+}
+
+// Projet archivé : lecture seule (les fichiers sont gardés pour une
+// éventuelle restauration depuis /archives)
+if (!empty($file['archived_at']) || !empty($file['folder_archived_at'])) {
+    header('Location: /projet/' . $project_id . '/fichiers?error=archived');
+    exit;
 }
 
 // Permissions : admin OU référent du projet OU uploader

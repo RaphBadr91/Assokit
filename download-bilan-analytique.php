@@ -8,6 +8,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/app-context.php'; // pas d'incitation à l'achat dans l'app (Apple 3.1.1)
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/pca-mapping.php';
+require_once __DIR__ . '/report-charts-helper.php'; // ak_report_filename_slug()
 
 if (!function_exists('ak_render_bilan_html')) {
     function ak_render_bilan_html(array $ctx, array $dossier, bool $validated_only): string {
@@ -139,7 +140,6 @@ if (PHP_SAPI !== 'cli') {
     ]);
     $mpdf->SetTitle('Bilan analytique - ' . $ctx['name']);
     $mpdf->WriteHTML($html);
-    $slug = trim(preg_replace('/[^A-Za-z0-9_-]+/', '-', (string)$ctx['name']), '-');
-    if ($slug === '') $slug = 'projet';
+    $slug = ak_report_filename_slug((string)$ctx['name']);
     $mpdf->Output('bilan-analytique-' . $slug . '.pdf', \Mpdf\Output\Destination::DOWNLOAD);
 }

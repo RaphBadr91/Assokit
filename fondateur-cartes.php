@@ -31,6 +31,10 @@ if (!$has_access) {
     die('Accès réservé aux fondateurs.');
 }
 
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
+
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
 /** Champs modifiables. L'ordre sert aussi à construire l'UPDATE. */

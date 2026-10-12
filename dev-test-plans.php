@@ -5,13 +5,8 @@
  * Permet de basculer rapidement TON org entre les 3 plans
  * pour visualiser les blocages.
  *
- * Critères d'accès (assouplis) :
- *  - is_founder = 1
- *  - OU is_super_admin = 1
- *  - OU role = 'super_admin' (pour les rôles enum)
- *  - OU org_id = 1 (Latitude91 = org fondatrice)
- *
- * Si rien ne passe : affiche un diagnostic clair (pas de mort silencieuse).
+ * Accès : fondateur uniquement (is_founder = 1).
+ * Tout autre compte reçoit la page 404 standard (aucun détail interne).
  * --------------------------------------------------------------
  */
 require_once __DIR__ . '/config.php';
@@ -23,78 +18,14 @@ $user = ak_platform_flags(current_user());
 $org_id = (int)($user['org_id'] ?? 0);
 
 // === Accès : fondateur uniquement (page de test) ===
-$is_founder       = !empty($user['is_founder']);
-$is_super_admin   = !empty($user['is_super_admin']);
-$is_super_admin_role = ($user['role'] ?? '') === 'super_admin';
-$is_first_org     = $org_id === 1;
+$has_access = !empty($user['is_founder']);
 
-$has_access = $is_founder;
-
-// === Si pas d'accès : diagnostic clair ===
+// === Si pas d'accès : page introuvable, sans aucun détail ===
+// (l'ancien « diagnostic » montrait à tout membre connecté ses identifiants internes et
+// la requête SQL pour se donner les droits fondateur)
 if (!$has_access) {
-    render_head('Accès refusé');
-    render_sidebar('');
-    ?>
-    <main class="main">
-      <div class="main-head">
-        <h1 style="margin:0;">🔒 Accès refusé</h1>
-      </div>
-
-      <div style="background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;padding:18px 22px;border-radius:12px;margin-bottom:22px;line-height:1.6;">
-        Cette page est réservée aux fondateurs de RBPS.
-      </div>
-
-      <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px;">
-        <h3 style="margin:0 0 14px;font-size:16px;">🔍 Diagnostic de tes droits actuels</h3>
-        <table style="width:100%;border-collapse:collapse;font-size:14px;">
-          <tr>
-            <td style="padding:8px 0;color:#64748B;">Email :</td>
-            <td style="padding:8px 0;font-weight:600;"><?= h($user['email'] ?? '?') ?></td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#64748B;">User ID :</td>
-            <td style="padding:8px 0;font-weight:600;"><?= (int)($user['id'] ?? 0) ?></td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#64748B;">Org ID :</td>
-            <td style="padding:8px 0;font-weight:600;">
-              <?= $org_id ?> <?= $is_first_org ? '✅' : '❌ (devrait être 1 pour Latitude91)' ?>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#64748B;">Rôle :</td>
-            <td style="padding:8px 0;font-weight:600;"><?= h($user['role'] ?? '?') ?></td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#64748B;">is_founder :</td>
-            <td style="padding:8px 0;font-weight:600;">
-              <?= $is_founder ? '✅ 1' : '❌ 0 (devrait être 1)' ?>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#64748B;">is_super_admin :</td>
-            <td style="padding:8px 0;font-weight:600;">
-              <?= $is_super_admin ? '✅ 1' : '❌ 0' ?>
-            </td>
-          </tr>
-        </table>
-
-        <hr style="border:none;border-top:1px solid #E2E8F0;margin:20px 0;">
-
-        <h3 style="margin:0 0 12px;font-size:15px;">🛠️ Comment activer l'accès</h3>
-        <p style="margin:0 0 12px;font-size:14px;color:#475569;line-height:1.6;">
-          Va dans <strong>phpMyAdmin → table <code>users</code></strong> et exécute :
-        </p>
-        <pre style="background:#0F172A;color:#A7F3D0;padding:14px 16px;border-radius:8px;font-size:12.5px;overflow-x:auto;line-height:1.5;">UPDATE users
-SET is_founder = 1, is_super_admin = 1
-WHERE email = '<?= h($user['email'] ?? '') ?>';</pre>
-        <p style="margin:14px 0 0;font-size:13px;color:#64748B;">
-          Puis <strong>déconnecte-toi et reconnecte-toi</strong> pour rafraîchir la session.
-        </p>
-      </div>
-    </main>
-    <?php
-    render_foot();
+    http_response_code(404);
+    require __DIR__ . '/404.php';
     exit;
 }
 

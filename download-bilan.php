@@ -50,8 +50,19 @@ if (!$doc) {
     http_response_code(404);
     die('Document introuvable ou accès refusé.');
 }
+// Suiveur (financeur externe) : pas d'onglet Assistant IA, même sur les projets qu'il suit
+// (projet.php) — les documents IA ne lui sont donc jamais servis, quel que soit l'id.
+if (is_follower()) {
+    http_response_code(403);
+    die('Accès refusé.');
+}
 
 $project_id = (int)$doc['project_id'];
+
+// Budget (prévu, engagé, reste) : même règle que la carte Budget de la fiche projet.
+require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/platform-flags.php';
+$show_budget = user_can_view_finances(ak_platform_flags($user));
 
 // ============================================================
 // DONNÉES
@@ -75,7 +86,8 @@ function ak_pdf_load_budget(PDO $pdo, int $project_id, array $project): array {
     $used_db = (float)($project['budget_used'] ?? 0);
     $invoiced = 0;
     try {
-        $stmt = $pdo->prepare("SELECT COALESCE(SUM(amount_total), 0) AS total FROM project_invoices WHERE project_id = ?");
+        // Factures validées, comme le recalcul de projects.budget_used (action-facture.php)
+        $stmt = $pdo->prepare("SELECT COALESCE(SUM(amount_ttc), 0) AS total FROM project_invoices WHERE project_id = ? AND status = 'validated'");
         $stmt->execute([$project_id]);
         $row = $stmt->fetch();
         if ($row) $invoiced = (float)$row['total'];
@@ -145,7 +157,9 @@ $total_steps = count($steps);
 $done_steps = 0;
 foreach ($steps as $s) if ($s['is_completed']) $done_steps++;
 $progress_pct = $total_steps > 0 ? (int)round(($done_steps / $total_steps) * 100) : (int)$doc['progress_percent'];
-$budget = ak_pdf_load_budget($pdo, $project_id, $doc);
+$budget = $show_budget
+    ? ak_pdf_load_budget($pdo, $project_id, $doc)
+    : ['planned' => 0, 'used' => 0, 'pct' => 0, 'remaining' => 0];
 $activity_6m = ak_pdf_load_activity_6m($pdo, $project_id);
 $activity_total = array_sum(array_column($activity_6m, 'total'));
 
@@ -349,7 +363,9 @@ $facts[] = ['Rédigé par', $author_full];
 $budget_color = $budget['pct'] >= 95 ? AKP_ALERT : ($budget['pct'] >= 80 ? AKP_WARN : AKP_ACCENT);
 $kpis = [
     ['Avancement', $progress_pct . ' %', $total_steps ? $done_steps . ' étape' . ($done_steps > 1 ? 's' : '') . ' sur ' . $total_steps : 'Aucune étape définie', ak_pdf_svg_progress($progress_pct, AKP_ACCENT)],
-    ['Budget engagé', $budget['planned'] > 0 ? $budget['pct'] . ' %' : '—', $budget['planned'] > 0 ? ak_pdf_eur($budget['used']) . ' sur ' . ak_pdf_eur($budget['planned']) : 'Budget non renseigné', $budget['planned'] > 0 ? ak_pdf_svg_progress((int)$budget['pct'], $budget_color) : ''],
+    $show_budget
+        ? ['Budget engagé', $budget['planned'] > 0 ? $budget['pct'] . ' %' : '—', $budget['planned'] > 0 ? ak_pdf_eur($budget['used']) . ' sur ' . ak_pdf_eur($budget['planned']) : 'Budget non renseigné', $budget['planned'] > 0 ? ak_pdf_svg_progress((int)$budget['pct'], $budget_color) : '']
+        : ['Budget', '—', 'Réservé aux administrateurs', ''],
     ['Participants', (int)$doc['participants_count'] > 0 ? (string)(int)$doc['participants_count'] : '—', 'personnes accompagnées', ''],
     ['Activité', (string)$activity_total, 'actions sur 6 mois', ''],
 ];
@@ -507,7 +523,9 @@ td.kpi-gap { width: 2%; }
   <tr>
     <td style="width:48%; padding-right:6mm;">
       <div class="blk-title">Budget</div>
-      <?php if ($budget['planned'] > 0): ?>
+      <?php if (!$show_budget): ?>
+      <div class="bud-note">Le détail du budget est réservé aux administrateurs de l’association.</div>
+      <?php elseif ($budget['planned'] > 0): ?>
       <table class="bud" style="width:100%">
         <tr><td>Budget prévu</td><td class="r"><?= $h(ak_pdf_eur($budget['planned'])) ?></td></tr>
         <tr><td>Dépenses engagées</td><td class="r"><?= $h(ak_pdf_eur($budget['used'])) ?></td></tr>

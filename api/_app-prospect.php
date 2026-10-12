@@ -22,6 +22,10 @@ if (!defined('AK_PROSPECT_FROM'))            define('AK_PROSPECT_FROM', 'contact
 if (!defined('AK_PROSPECT_FROM_NAME'))       define('AK_PROSPECT_FROM_NAME', 'Raphael · Assokit');
 if (!defined('AK_PROSPECT_REPLY_TO'))        define('AK_PROSPECT_REPLY_TO', 'contact@assokit.fr');
 
+// Durée de l'essai réellement ouvert à l'inscription (AK_TRIAL_DAYS) : l'offre des e-mails
+// la reprend, pour ne jamais promettre autre chose que ce que signup.php accorde.
+require_once __DIR__ . '/../trial-helpers.php';
+
 /** Séquence : étape => délai (jours) avant la relance suivante. 5 contacts max, ~2-3 semaines d'écart. */
 if (!function_exists('ak_prospect_sequence')) {
     function ak_prospect_sequence(): array {
@@ -129,8 +133,14 @@ if (!function_exists('ak_prospect_html_template')) {
         $unsub = htmlspecialchars((string) ($d['unsub'] ?? 'https://assokit.fr'));
         $type  = ($d['type'] ?? 'asso') === 'tpe' ? 'tpe' : 'asso';
         $offer = !array_key_exists('offer', $d) || !empty($d['offer']);
-        $cta   = htmlspecialchars((string) ($d['cta'] ?? ($offer ? 'Activer mon mois gratuit' : 'Découvrir Assokit')));
-        $pre   = htmlspecialchars(($offer ? '1 mois offert, sans engagement — ' : '') . mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags((string) ($d['body'] ?? '')))), 0, 90));
+        $trialDays = (int) AK_TRIAL_DAYS;
+        $cta   = htmlspecialchars((string) ($d['cta'] ?? ($offer ? 'Démarrer mon essai gratuit' : 'Découvrir Assokit')));
+        // Texte d'aperçu (boîte de réception) : sans le balisage **gras** du corps
+        $preBody = strip_tags(str_replace('**', '', (string) ($d['body'] ?? '')));
+        $pre   = htmlspecialchars(($offer ? "Essai PRO gratuit $trialDays jours, sans engagement — " : '') . mb_substr(trim(preg_replace('/\s+/', ' ', $preBody)), 0, 90));
+        // Pastille d'en-tête : la saison associative en cours (sept. → août), jamais une année figée
+        $seasonStart = (int) date('n') >= 8 ? (int) date('Y') : (int) date('Y') - 1;
+        $badge = (string) ($d['badge'] ?? ($type === 'tpe' ? '' : 'Saison ' . $seasonStart . '-' . ($seasonStart + 1)));
 
         $benefits = $type === 'tpe'
             ? ['Devis &amp; factures créés en 2 minutes', 'Trésorerie suivie, relances automatiques', 'Application mobile incluse']
@@ -145,7 +155,7 @@ if (!function_exists('ak_prospect_html_template')) {
                 . '</tr>';
         }
 
-        // ---- Offre 1 mois (accent doré de la charte) ----
+        // ---- Offre : l'essai réellement ouvert à l'inscription (accent doré de la charte) ----
         $offerBlock = '';
         if ($offer) {
             $offerBlock = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 24px;"><tr>'
@@ -153,8 +163,8 @@ if (!function_exists('ak_prospect_html_template')) {
                 . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
                 . '<td valign="middle" style="width:40px;font-size:26px;line-height:1;">&#127873;</td>'
                 . '<td valign="middle" style="font-family:' . $FONT . ';">'
-                . '<div style="font-size:16px;font-weight:800;color:#0F172A;">1 mois gratuit, offert pour la rentrée</div>'
-                . '<div style="font-size:12.5px;color:#92400E;margin-top:2px;font-weight:600;">Sans engagement &#183; sans carte bancaire &#183; résiliable en 1 clic</div>'
+                . '<div style="font-size:16px;font-weight:800;color:#0F172A;">Essai PRO gratuit ' . $trialDays . ' jours</div>'
+                . '<div style="font-size:12.5px;color:#92400E;margin-top:2px;font-weight:600;">Toutes les fonctionnalités &#183; sans carte bancaire &#183; sans engagement</div>'
                 . '</td></tr></table></td></tr></table>';
         }
 
@@ -169,7 +179,7 @@ if (!function_exists('ak_prospect_html_template')) {
             . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
             . '<td valign="middle" style="width:40px;"><img src="' . $logo . '" width="34" height="34" alt="Assokit" style="display:block;width:34px;height:34px;border-radius:9px;"></td>'
             . '<td valign="middle" style="padding-left:11px;font-family:' . $FONT . ';font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-.2px;">Assokit</td>'
-            . '<td align="right" valign="middle"><span style="display:inline-block;font-family:' . $FONT . ';font-size:10.5px;font-weight:700;color:#ffffff;background:rgba(255,255,255,.16);padding:5px 12px;border-radius:999px;letter-spacing:.5px;text-transform:uppercase;">Rentrée 2026</span></td>'
+            . '<td align="right" valign="middle">' . ($badge !== '' ? '<span style="display:inline-block;font-family:' . $FONT . ';font-size:10.5px;font-weight:700;color:#ffffff;background:rgba(255,255,255,.16);padding:5px 12px;border-radius:999px;letter-spacing:.5px;text-transform:uppercase;">' . htmlspecialchars($badge) . '</span>' : '&nbsp;') . '</td>'
             . '</tr></table></td></tr>'
             . '<tr><td style="height:3px;background:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>'
             // ---- Corps ----

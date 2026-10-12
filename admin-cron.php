@@ -17,8 +17,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 require_once __DIR__ . '/cron-includes.php';
 
-// ----- Si non connecté → redirige vers login
-if (!cron_is_super_admin()) {
+// ----- Si non connecté → redirige vers login. Le cookie cockpit ne vaut que pour le
+// compte connecté au site (session Assokit, 2FA comprise).
+$akSessionUser = function_exists('current_user') ? current_user() : null;
+if (!$akSessionUser || !cron_is_super_admin() || cron_verify_cockpit_cookie() !== (int)$akSessionUser['id']) {
     header('Location: /admin-cron-login');
     exit;
 }

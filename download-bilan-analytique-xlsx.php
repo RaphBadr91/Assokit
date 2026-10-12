@@ -6,6 +6,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/app-context.php'; // pas d'incitation à l'achat dans l'app (Apple 3.1.1)
 require_once __DIR__ . '/pca-mapping.php';
+require_once __DIR__ . '/report-charts-helper.php'; // ak_report_filename_slug()
 
 if (!function_exists('ak_xlsx_col')) {
     function ak_xlsx_col(int $i): string { $s=''; $i++; while($i>0){ $m=($i-1)%26; $s=chr(65+$m).$s; $i=intdiv($i-1,26);} return $s; }
@@ -144,7 +145,7 @@ if (PHP_SAPI !== 'cli') {
     $sheet = ak_xlsx_build_bilan($ctx, $dossier, $validated_only);
     $tmp = tempnam(sys_get_temp_dir(), 'akxlsx');
     ak_xlsx_write($sheet, $tmp);
-    $slug = trim(preg_replace('/[^A-Za-z0-9_-]+/', '-', (string)$ctx['name']), '-'); if ($slug==='') $slug='projet';
+    $slug = ak_report_filename_slug((string)$ctx['name']);
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     header('Content-Disposition: attachment; filename="bilan-analytique-' . $slug . '.xlsx"');
     header('Content-Length: ' . filesize($tmp));

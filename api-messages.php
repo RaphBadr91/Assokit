@@ -45,6 +45,12 @@ if (!$stmt->fetch()) {
     echo json_encode(['ok' => false, 'error' => 'forbidden']);
     exit;
 }
+// Suiveur (financeur externe) : seulement les projets qu'il suit, comme projet.php
+if (!follower_can_access_project($project_id)) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'forbidden']);
+    exit;
+}
 
 // Récupérer les messages depuis $since
 try {
@@ -75,10 +81,17 @@ try {
             'initials'   => mb_strtoupper(mb_substr($m['first_name'], 0, 1) . mb_substr($m['last_name'], 0, 1)),
             'content'    => $m['content'],
             'created_at' => $m['created_at'],
-            'time_label' => format_time_p_safe($m['created_at']),
+            'time_label' => format_time_p_safe((string)($m['created_at'] ?? '')),
             'is_self'    => ((int)$m['author_id'] === (int)$current['id']),
         ];
         $last_id = max($last_id, (int)$m['id']);
+    }
+
+    // Onglet Messages ouvert : les nouveaux messages affichés sont lus
+    // (badge « non lus » de /projets à jour, comme à l'ouverture de l'onglet).
+    if (!empty($result_messages)) {
+        require_once __DIR__ . '/projet-email-helpers.php';
+        ak_project_mark_seen($pdo, (int)$current['id'], $project_id, $last_id);
     }
 
     echo json_encode([

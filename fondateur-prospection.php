@@ -126,9 +126,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 foreach ($cells as $i => $c) { if (filter_var(strtolower($c), FILTER_VALIDATE_EMAIL)) { $emailIdx = $i; break; } }
                 if ($emailIdx < 0) { $skipped++; continue; }   // ligne d'en-tête ou sans email → ignorée
                 $email = strtolower($cells[$emailIdx]);
-                // Les autres cellules non vides (dans l'ordre) → nom, association, ville
+                // Les autres cellules dans l'ordre, VIDES COMPRISES → nom, association, ville.
+                // Sauter les vides décalait tout : « email;;Asso;Ville » (l'exemple affiché)
+                // donnait nom = l'association et association = la ville.
                 $rest = [];
-                foreach ($cells as $i => $c) { if ($i !== $emailIdx && $c !== '') $rest[] = $c; }
+                foreach ($cells as $i => $c) { if ($i !== $emailIdx) $rest[] = $c; }
                 $ins->execute([($rest[0] ?? '') ?: null, ($rest[1] ?? '') ?: null, $type, $email, ($rest[2] ?? '') ?: null]);
                 if ($ins->rowCount() > 0) $added++; else $skipped++;
             }
@@ -139,19 +141,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $p = $st->fetch(PDO::FETCH_ASSOC);
             if (!$p) { $msg = 'Prospect introuvable.'; $tone = 'err'; }
             elseif (in_array($p['status'], ['unsubscribed', 'replied', 'booked'], true)) { $msg = 'Ce contact ne doit plus être relancé (désinscrit / a répondu).'; $tone = 'err'; }
+            elseif ((int) $p['step'] > $LAST_STEP) { $msg = 'Séquence terminée : les ' . ($LAST_STEP + 1) . ' e-mails ont déjà été envoyés à ce contact.'; $tone = 'err'; }
             elseif (!function_exists('send_transactional_email')) { $msg = 'Service d\'envoi indisponible (Resend non configuré).'; $tone = 'err'; }
             else {
                 $step = (int) $p['step'];
                 $mail = ak_prospect_build_email($p, $step, $seq);
-                send_transactional_email((string) $p['email'], $mail['subject'], $mail['html'], [
+                $res = send_transactional_email((string) $p['email'], $mail['subject'], $mail['html'], [
                     'tag' => 'prospect_web_' . $step,
                     'from_email' => AK_PROSPECT_FROM, 'from_name' => AK_PROSPECT_FROM_NAME,
                     'reply_to' => AK_PROSPECT_REPLY_TO,
                 ]);
+                // Envoi refusé (clé absente, quota…) : rien n'est noté, la séquence ne bouge pas
+                if (is_array($res) && empty($res['success'])) {
+                    throw new RuntimeException('l\'e-mail n\'est pas parti (' . htmlspecialchars((string) ($res['error'] ?? 'envoi refusé')) . ').');
+                }
                 ak_prospect_event($pdo, $id, 'sent', $step, $mail['subject']);
                 $nextStep = $step + 1;
                 if ($nextStep > $LAST_STEP) {
-                    $pdo->prepare("UPDATE asso_prospects SET status='contacted', step=?, last_sent_at=NOW(), next_send_at=NULL WHERE id=?")->execute([$step, $id]);
+                    // Fin de séquence : step = LAST_STEP + 1, le cron ne la reprend plus
+                    $pdo->prepare("UPDATE asso_prospects SET status='contacted', step=?, last_sent_at=NOW(), next_send_at=NULL WHERE id=?")->execute([$nextStep, $id]);
                 } else {
                     $delay = (int) ($seq[$step]['delay'] ?? 18);
                     $pdo->prepare("UPDATE asso_prospects SET status='contacted', step=?, last_sent_at=NOW(), next_send_at=DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id=?")->execute([$nextStep, $delay, $id]);
@@ -161,8 +169,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'relance') {
             $id = (int) ($_POST['id'] ?? 0);
             $date = trim((string) ($_POST['date'] ?? ''));
-            $dt = $date !== '' ? date('Y-m-d 09:00:00', strtotime($date)) : null;
-            $pdo->prepare("UPDATE asso_prospects SET next_send_at = ?, status = IF(status IN ('new'),'queued',status) WHERE id = ?")->execute([$dt, $id]);
+            $ts = $date !== '' ? strtotime($date) : false;
+            $dt = $ts ? date('Y-m-d 09:00:00', $ts) : null;
+            if ($date !== '' && !$dt) { throw new RuntimeException('date de relance invalide.'); }
+            // « Nouveau » passe en file seulement avec une date. Sans date, une ligne encore
+            // à la 1re étape revient à « Nouveau » : en file sans échéance, le cron ne la
+            // prenait jamais et « Tout mettre en séquence auto » ne la voyait plus.
+            $pdo->prepare("UPDATE asso_prospects SET next_send_at = ?,
+                status = IF(? IS NOT NULL AND status = 'new', 'queued', IF(? IS NULL AND status = 'queued' AND step = 0, 'new', status))
+                WHERE id = ?")->execute([$dt, $dt, $dt, $id]);
             $msg = $dt ? 'Relance planifiée le ' . date('d/m/Y', strtotime($dt)) . '.' : 'Relance annulée.';
         } elseif ($action === 'status') {
             $id = (int) ($_POST['id'] ?? 0);
@@ -387,8 +402,10 @@ if ($toEnrich > 0): ?>
       <tr><td colspan="9"><div class="pr-empty">Aucun prospect ici. Importez des contacts ci-dessus, ou promouvez des associations depuis l'annuaire de l'app.</div></td></tr>
     <?php else: foreach ($rows as $p):
         $id = (int) $p['id']; $sm = $STATUS_META[$p['status']] ?? $STATUS_META['new'];
-        $e = $ev[$id] ?? []; $stp = (int) $p['step']; $lbl = $seq[$stp]['label'] ?? '—';
-        $canSend = !in_array($p['status'], ['unsubscribed','replied','booked'], true);
+        $e = $ev[$id] ?? []; $stp = (int) $p['step'];
+        $seqDone = $stp > $LAST_STEP;   // tous les e-mails de la séquence sont partis
+        $lbl = $seqDone ? 'Séquence terminée' : ($seq[$stp]['label'] ?? '—');
+        $canSend = !$seqDone && !in_array($p['status'], ['unsubscribed','replied','booked'], true);
     ?>
       <tr>
         <td>
@@ -408,7 +425,7 @@ if ($toEnrich > 0): ?>
           <?php endif; ?>
         </td>
         <td><span class="pr-badge" style="color:<?= $sm[1] ?>;background:<?= $sm[2] ?>;"><?= $sm[0] ?></span></td>
-        <td style="font-size:12px;color:var(--sa-ink-2);white-space:nowrap;" title="<?= pr_h($lbl) ?>"><?= $stp + 1 ?>/<?= $LAST_STEP + 1 ?></td>
+        <td style="font-size:12px;color:var(--sa-ink-2);white-space:nowrap;" title="<?= pr_h($lbl) ?>"><?= $seqDone ? ($LAST_STEP + 1) . '/' . ($LAST_STEP + 1) . ' ✓' : ($stp + 1) . '/' . ($LAST_STEP + 1) ?></td>
         <td class="pr-dates">
           <div><span class="l">Ajout</span><?= pr_ds($p['created_at']) ?></div>
           <div><span class="l">Envoi</span><?= pr_ds($p['last_sent_at']) ?></div>

@@ -29,6 +29,10 @@ if (!$is_founder) {
     exit('Accès réservé aux Fondateurs.');
 }
 
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
+
 // Méthode POST obligatoire
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: /fondateur-cockpit/societe');
@@ -66,7 +70,11 @@ function clean_url($val)
 {
     $val = trim((string)$val);
     if ($val === '') return null;
-    if (!filter_var($val, FILTER_VALIDATE_URL)) return null;
+    // « www.exemple.fr » ou « exemple.fr/cgv » : on complète avec https://
+    if (!preg_match('#^[a-z][a-z0-9+.-]*://#i', $val) && preg_match('#^[a-z0-9-]+(\.[a-z0-9-]+)+(/\S*)?$#i', $val)) {
+        $val = 'https://' . $val;
+    }
+    if (!filter_var($val, FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $val)) return null;
     return mb_substr($val, 0, 500);
 }
 
@@ -94,9 +102,9 @@ function clean_int_or_null($val)
 // Capital en cents (entrée en euros)
 $capital_cents = null;
 if (isset($_POST['capital_euros']) && $_POST['capital_euros'] !== '') {
-    $euros = (float)str_replace(',', '.', $_POST['capital_euros']);
-    if ($euros >= 0) {
-        $capital_cents = (int)round($euros * 100);
+    $euros_raw = str_replace([',', ' ', "\u{00A0}"], ['.', '', ''], (string)$_POST['capital_euros']);
+    if (is_numeric($euros_raw) && (float)$euros_raw >= 0) {
+        $capital_cents = (int)round((float)$euros_raw * 100);
     }
 }
 
@@ -112,7 +120,7 @@ $data = [
     'ape_code'           => clean_string($_POST['ape_code'] ?? '', 10),
     'vat_subject'        => !empty($_POST['vat_subject']) ? 1 : 0,
     'vat_number'         => clean_string($_POST['vat_number'] ?? '', 30),
-    'vat_rate'           => (isset($_POST['vat_rate']) && $_POST['vat_rate'] !== '') ? (float)$_POST['vat_rate'] : null,
+    'vat_rate'           => (isset($_POST['vat_rate']) && $_POST['vat_rate'] !== '') ? (float)str_replace(',', '.', (string)$_POST['vat_rate']) : null,
     'address_street'     => clean_string($_POST['address_street'] ?? '', 255),
     'address_complement' => clean_string($_POST['address_complement'] ?? '', 255),
     'address_zip'        => clean_string($_POST['address_zip'] ?? '', 20),
@@ -135,6 +143,48 @@ $data = [
     'cgv_url'            => clean_url($_POST['cgv_url'] ?? ''),
     'privacy_url'        => clean_url($_POST['privacy_url'] ?? ''),
 ];
+
+// ============================================================
+// VALIDATION : une saisie invalide n'efface jamais la valeur enregistrée
+// ============================================================
+// Les fonctions clean_*() rendent NULL pour une valeur invalide : écrite telle quelle, elle
+// remplaçait l'adresse de facturation (par ex. « facture@assokit », accepté par le navigateur)
+// par un vide, avec un message de succès. On refuse l'enregistrement et on rend la saisie.
+$checks = [
+    'email_billing'   => 'E-mail facturation',
+    'email_support'   => 'E-mail support',
+    'email_legal'     => 'E-mail juridique',
+    'website'         => 'Site web',
+    'cgv_url'         => 'Lien des CGV',
+    'privacy_url'     => 'Lien de la politique de confidentialité',
+    'address_country' => 'Pays',
+    'primary_color'   => 'Couleur principale',
+    'secondary_color' => 'Couleur secondaire',
+];
+$invalid = [];
+foreach ($checks as $col => $label) {
+    if (trim((string)($_POST[$col] ?? '')) !== '' && $data[$col] === null) $invalid[] = $label;
+}
+$capital_raw = trim((string)($_POST['capital_euros'] ?? ''));
+if ($capital_raw !== '' && $capital_cents === null) $invalid[] = 'Capital social';
+$vat_raw = trim((string)($_POST['vat_rate'] ?? ''));
+if ($vat_raw !== '' && (!is_numeric(str_replace(',', '.', $vat_raw)) || (float)str_replace(',', '.', $vat_raw) < 0 || (float)str_replace(',', '.', $vat_raw) > 100)) {
+    $invalid[] = 'Taux de TVA';
+}
+if ($invalid) {
+    $old = [];
+    foreach ($_POST as $k => $v) {
+        if ($k !== 'csrf_token' && is_string($v)) $old[$k] = mb_substr($v, 0, 1000);
+    }
+    $_SESSION['societe_form_old'] = $old;
+    $_SESSION['flash_societe'] = [
+        'type' => 'error',
+        'message' => 'Rien n’a été enregistré : ' . (count($invalid) > 1 ? 'ces champs sont invalides' : 'ce champ est invalide')
+                   . ' — ' . implode(', ', $invalid) . '. Corrigez la saisie (adresse e-mail complète, lien commençant par https://…) puis enregistrez à nouveau.',
+    ];
+    header('Location: /fondateur-cockpit/societe');
+    exit;
+}
 
 // ============================================================
 // UPLOAD LOGO (optionnel)
@@ -233,6 +283,7 @@ try {
         }
     }
 
+    unset($_SESSION['societe_form_old']);
     $_SESSION['flash_societe'] = [
         'type' => 'success',
         'message' => 'Paramètres société enregistrés avec succès. Ils seront automatiquement utilisés dans les factures, emails et mentions légales.'

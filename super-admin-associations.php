@@ -251,13 +251,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
             }
             $stmt = $pdo->prepare("UPDATE organizations SET status = 'cancelled' WHERE id = ?");
             $stmt->execute([$target_id]);
-            sa_log_action((int) $user['id'], 'cancel_org', $target_id, null, $ended_trial ? ['trial_ended' => true] : []);
-            $success = 'Association résiliée.' . ($ended_trial ? ' Son essai est terminé (plan Démarrage).' : '');
+            // Client payant par carte : l'abonnement Stripe s'arrête aussi, sinon la carte reste prélevée
+            $stripe = sa_stripe_cancel_for_org($pdo, $target_id);
+            $log = $ended_trial ? ['trial_ended' => true] : [];
+            if ($stripe['cancelled']) $log['stripe_cancelled'] = $stripe['cancelled'];
+            if ($stripe['failed'])    $log['stripe_failed'] = array_keys($stripe['failed']);
+            sa_log_action((int) $user['id'], 'cancel_org', $target_id, null, $log);
+            $success = 'Association résiliée.' . ($ended_trial ? ' Son essai est terminé (plan Démarrage).' : '')
+                     . sa_stripe_cancelled_note($stripe['cancelled']);
+            if ($stripe['failed']) $error = sa_stripe_still_billing_message($stripe['failed']);
             $view_id = $target_id;
+        }
+        // ---- STRIPE : abonnement resté actif sur une association résiliée ou supprimée ----
+        elseif ($action === 'stripe_cancel' || $action === 'stripe_mark_cancelled') {
+            $view_id = $target_id;
+            if (!$can_plan) {
+                $error = 'Vous n’avez pas le droit de gérer l’abonnement d’une association.';
+            } elseif (($org['status'] ?? '') !== 'cancelled' && empty($org['deleted_at'])) {
+                $error = 'Cette association n’est pas résiliée : son abonnement Stripe continue normalement.';
+            } else {
+                $only_mark = $action === 'stripe_mark_cancelled';
+                $stripe = sa_stripe_cancel_for_org($pdo, $target_id, $only_mark);
+                if ($stripe['cancelled']) {
+                    sa_log_action((int) $user['id'], $only_mark ? 'stripe_marked_cancelled' : 'stripe_cancel', $target_id, null, ['stripe' => $stripe['cancelled']]);
+                    $success = $only_mark
+                        ? 'Abonnement Stripe ' . implode(', ', $stripe['cancelled']) . ' noté comme annulé dans Stripe.'
+                        : ltrim(sa_stripe_cancelled_note($stripe['cancelled']));
+                }
+                if ($stripe['failed']) $error = sa_stripe_still_billing_message($stripe['failed']);
+                elseif (!$stripe['cancelled']) $success = 'Aucun abonnement Stripe actif sur cette association.';
+            }
         }
         // ---- DELETE (soft-delete) ----
         elseif ($action === 'delete_org') {
-            if ((int) $target_id === 1) {
+            if (empty($ctx['can_delete_anything'])) {
+                $error = '🏗️ Seul un Fondateur peut supprimer une association.';
+            } elseif ((int) $target_id === 1) {
                 $error = '🛡️ Cette organisation est protégée et ne peut pas être supprimée.';
             } else {
                 $reason = trim($_POST['delete_reason'] ?? '');
@@ -271,8 +300,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                     $stmt->execute([(int) $user['id'], $target_id]);
                     $freed = $stmt->rowCount();
                     $pdo->commit();
-                    sa_log_action((int) $user['id'], 'delete_org', $target_id, null, ['reason' => $reason, 'users_freed' => $freed]);
-                    $success = '🗑️ Association supprimée (masquée). ' . $freed . ' compte(s) désactivé(s), e-mail(s) libéré(s). Récupérable en base si besoin.';
+                    // Client payant par carte : l'abonnement Stripe s'arrête aussi, sinon la carte reste prélevée
+                    $stripe = sa_stripe_cancel_for_org($pdo, $target_id);
+                    $log = ['reason' => $reason, 'users_freed' => $freed];
+                    if ($stripe['cancelled']) $log['stripe_cancelled'] = $stripe['cancelled'];
+                    if ($stripe['failed'])    $log['stripe_failed'] = array_keys($stripe['failed']);
+                    sa_log_action((int) $user['id'], 'delete_org', $target_id, null, $log);
+                    $success = '🗑️ Association supprimée (masquée). ' . $freed . ' compte(s) désactivé(s), e-mail(s) libéré(s). Récupérable en base si besoin.'
+                             . sa_stripe_cancelled_note($stripe['cancelled']);
+                    if ($stripe['failed']) $error = sa_stripe_still_billing_message($stripe['failed']);
                 } catch (Throwable $e) {
                     if ($pdo->inTransaction()) $pdo->rollBack();
                     $error = 'Erreur lors de la suppression : ' . $e->getMessage();
@@ -392,6 +428,9 @@ if ($view_id > 0) {
     // l'abonnement Stripe de l'ancienne formule tourne encore
     $stripe_left_free = null;
     $stripe_left = ak_stripe_left_on_free($pdo, $view_id, $stripe_left_free);
+    // Association résiliée ou supprimée dont l'abonnement Stripe n'a pas pu être annulé : à régler
+    $org_closed = ($org['status'] ?? '') === 'cancelled' || !empty($org['deleted_at']);
+    $stripe_still = $org_closed ? sa_stripe_live_subs($pdo, $view_id) : [];
     $pay_modes = ['stripe' => 'Stripe (carte)', 'manual' => 'Manuel', 'wire_transfer' => 'Virement', 'free_grant' => 'Offert'];
 
     sa_render_head($org['name']);
@@ -792,7 +831,7 @@ if ($view_id > 0) {
 
                 <?php if ($org['status'] !== 'cancelled'): ?>
                     <form method="POST" action="/super-admin/associations"
-                          onsubmit="return confirm('RÉSILIER définitivement cette asso ? Les données restent mais accès coupé.');">
+                          onsubmit="return confirm('RÉSILIER définitivement cette asso ? Les données restent mais accès coupé. Un abonnement Stripe est annulé aussitôt.');">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
                         <input type="hidden" name="action" value="cancel">
                         <input type="hidden" name="org_id" value="<?= (int) $org['id'] ?>">
@@ -847,7 +886,28 @@ if ($view_id > 0) {
                     <?php endif; ?>
                 </div>
 
-                <?php if ($stripe_left): ?>
+                <?php if ($stripe_still): ?>
+                    <div class="sa-alert sa-alert-error" style="margin:12px 0 0; font-size:12.5px; display:block;">
+                        ⚠️ <?= h(sa_stripe_still_billing_message(array_fill_keys(array_values($stripe_still), ''))) ?>
+                        <?php if ($can_plan): ?>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                            <form method="POST" action="/super-admin/associations">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
+                                <input type="hidden" name="action" value="stripe_cancel">
+                                <input type="hidden" name="org_id" value="<?= (int) $org['id'] ?>">
+                                <button type="submit" class="sa-btn sa-btn-danger sa-btn-sm">Annuler dans Stripe</button>
+                            </form>
+                            <form method="POST" action="/super-admin/associations"
+                                  onsubmit="return confirm('Confirmez-vous avoir annulé cet abonnement dans le tableau de bord Stripe ?');">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
+                                <input type="hidden" name="action" value="stripe_mark_cancelled">
+                                <input type="hidden" name="org_id" value="<?= (int) $org['id'] ?>">
+                                <button type="submit" class="sa-btn sa-btn-ghost sa-btn-sm">Déjà annulé dans Stripe</button>
+                            </form>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                <?php elseif ($stripe_left): ?>
                     <div class="sa-alert sa-alert-error" style="margin:12px 0 0; font-size:12.5px;">⚠️ <?= h(sa_stripe_left_message($stripe_left, (bool) $stripe_left_free)) ?></div>
                 <?php endif; ?>
 
@@ -939,6 +999,7 @@ sa_render_sidebar('associations');
     </div>
 </div>
 
+<?php if ($error): ?><div class="sa-alert sa-alert-error">⚠️ <?= h($error) ?></div><?php endif; ?>
 <?php if ($success): ?><div class="sa-alert sa-alert-success">✅ <?= h($success) ?></div><?php endif; ?>
 
 <!-- Onglets validation -->
@@ -1044,7 +1105,7 @@ sa_render_sidebar('associations');
                             <a href="/super-admin/associations?id=<?= (int) $o['id'] ?>" class="sa-btn sa-btn-ghost sa-btn-sm">
                                 Gérer →
                             </a>
-                            <?php if ((int) $o['id'] !== 1): ?>
+                            <?php if ((int) $o['id'] !== 1 && !empty($ctx['can_delete_anything'])): ?>
                             <form method="POST" action="/super-admin/associations" style="display:inline"
                                   onsubmit="return confirm('Supprimer &laquo; <?= htmlspecialchars(addslashes($o['name'])) ?> &raquo; ? Elle sera masquee du tableau (donnees conservees en base).');">
                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">

@@ -40,6 +40,10 @@ if (!$has_access) {
     exit;
 }
 
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
+
 $flash = $_SESSION['flash_fondateur_subs'] ?? null;
 unset($_SESSION['flash_fondateur_subs']);
 
@@ -251,7 +255,9 @@ render_sidebar('fondateur-subscriptions');
       <h1 style="margin:0 0 4px;">📊 Abonnements actifs</h1>
       <p style="color:#64748b;margin:0;">Gérer les plans des <?= (int)$total_rows ?> organisation<?= $total_rows > 1 ? 's' : '' ?><?= $total_rows > count($rows) ? ' (les ' . count($rows) . ' plus récentes affichées)' : '' ?> · un essai PRO est gratuit (0 €) jusqu’à sa conversion</p>
     </div>
+    <?php if (($user['role'] ?? '') === 'founder' || !empty($user['is_founder'])): ?>
     <a href="/fondateur-plans" class="btn">⚙️ Gérer les plans</a>
+    <?php endif; ?>
   </div>
 
   <?php if ($flash): ?>

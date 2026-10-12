@@ -57,13 +57,17 @@ $budget = max(0, AK_PROSPECT_DAILY_CAP - $sentToday);
 $log(($DRY ? '[DRY-RUN] ' : '') . "Plafond du jour : $sentToday/" . AK_PROSPECT_DAILY_CAP . " → budget restant $budget");
 if ($budget <= 0) { $log('Plafond atteint, rien à envoyer.'); ak_lot_terminer($pdo); exit(0); }
 
-// Sélectionne les prospects dus (jamais désinscrits/répondus/RDV)
+// Sélectionne les prospects dus (jamais désinscrits/répondus/RDV).
+// Seulement ceux qui ont une échéance : la mise en file et la relance en posent
+// toujours une, la fin de séquence et la relance annulée la retirent. Sans ce
+// filtre, les séquences terminées (échéance NULL, triée en premier) recevaient
+// le dernier e-mail à chaque passage.
 $due = [];
 try {
     $st = $pdo->prepare("SELECT * FROM asso_prospects
         WHERE status IN ('queued','contacted','engaged')
           AND step <= ?
-          AND (next_send_at IS NULL OR next_send_at <= NOW())
+          AND next_send_at IS NOT NULL AND next_send_at <= NOW()
         ORDER BY next_send_at ASC LIMIT ?");
     $st->bindValue(1, $LAST_STEP, PDO::PARAM_INT);
     $st->bindValue(2, $budget, PDO::PARAM_INT);
@@ -73,6 +77,15 @@ try {
 
 $log(count($due) . ' prospect(s) à traiter.');
 
+// Un envoi refusé ne fait pas avancer la séquence, mais on repousse l'échéance :
+// sinon la ligne restait la plus ancienne due et, à chaque passage, les échecs
+// répétés reprenaient tout le budget du jour devant les prospects envoyables.
+// Une panne générale (clé manquante, service indisponible) est ainsi retentée
+// six heures plus tard.
+$postpone = function (int $pid) use ($pdo) {
+    try { $pdo->prepare("UPDATE asso_prospects SET next_send_at = DATE_ADD(NOW(), INTERVAL 6 HOUR) WHERE id = ?")->execute([$pid]); } catch (Throwable $e) {}
+};
+
 $done = 0;
 foreach ($due as $p) {
     $pid = (int) $p['id'];
@@ -80,23 +93,32 @@ foreach ($due as $p) {
     $mail = ak_prospect_build_email($p, $step, $seq);
 
     if ($DRY) {
+        // Simulation : journal seulement, aucune écriture. Faire avancer la séquence ici
+        // marquait le prospect « Contacté » sans e-mail, et ces étapes ne partaient plus
+        // jamais une fois l'envoi activé.
         $log("[DRY] would send step $step to {$p['email']} — « {$mail['subject']} »");
-    } else {
-        if (!function_exists('send_transactional_email')) { $log('send_transactional_email indisponible, arrêt.'); break; }
-        try {
-            send_transactional_email((string) $p['email'], $mail['subject'], $mail['html'], [
-                'tag' => 'prospect_seq_' . $step,
-                'from_email' => AK_PROSPECT_FROM, 'from_name' => AK_PROSPECT_FROM_NAME,
-                'reply_to' => AK_PROSPECT_REPLY_TO,
-            ]);
-            ak_prospect_event($pdo, $pid, 'sent', $step, $mail['subject']);
-        } catch (Throwable $e) { $log("send fail {$p['email']}: " . $e->getMessage()); continue; }
+        $done++;
+        continue;
     }
 
-    // Planifie l'étape suivante (ou clôt la séquence)
+    if (!function_exists('send_transactional_email')) { $log('send_transactional_email indisponible, arrêt.'); break; }
+    try {
+        $res = send_transactional_email((string) $p['email'], $mail['subject'], $mail['html'], [
+            'tag' => 'prospect_seq_' . $step,
+            'from_email' => AK_PROSPECT_FROM, 'from_name' => AK_PROSPECT_FROM_NAME,
+            'reply_to' => AK_PROSPECT_REPLY_TO,
+        ]);
+        // Un refus du service d'envoi ne lève pas d'exception : sans ce contrôle, l'étape
+        // était comptée comme envoyée et la séquence avançait sans e-mail.
+        if (is_array($res) && empty($res['success'])) { $log("send fail {$p['email']}: " . ($res['error'] ?? 'refusé')); $postpone($pid); continue; }
+        ak_prospect_event($pdo, $pid, 'sent', $step, $mail['subject']);
+    } catch (Throwable $e) { $log("send fail {$p['email']}: " . $e->getMessage()); $postpone($pid); continue; }
+
+    // Planifie l'étape suivante (ou clôt la séquence : step = LAST_STEP + 1, plus jamais
+    // sélectionnée)
     $nextStep = $step + 1;
     if ($nextStep > $LAST_STEP) {
-        try { $pdo->prepare("UPDATE asso_prospects SET status='contacted', step=?, last_sent_at=NOW(), next_send_at=NULL WHERE id=?")->execute([$step, $pid]); } catch (Throwable $e) {}
+        try { $pdo->prepare("UPDATE asso_prospects SET status='contacted', step=?, last_sent_at=NOW(), next_send_at=NULL WHERE id=?")->execute([$nextStep, $pid]); } catch (Throwable $e) {}
     } else {
         $delay = (int) ($seq[$step]['delay'] ?? 18);
         try { $pdo->prepare("UPDATE asso_prospects SET status='contacted', step=?, last_sent_at=NOW(), next_send_at=DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id=?")->execute([$nextStep, $delay, $pid]); } catch (Throwable $e) {}
@@ -105,5 +127,5 @@ foreach ($due as $p) {
 }
 
 $log(($DRY ? '[DRY-RUN] ' : '') . "Terminé : $done traité(s).");
-ak_lot_terminer($pdo, $done >= $budget);
+ak_lot_terminer($pdo, !$DRY && $done >= $budget);
 exit(0);

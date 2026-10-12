@@ -28,17 +28,31 @@ $new_folder = trim((string) ($input['new_folder'] ?? ''));
 
 try {
     if ($folder_id > 0) {
-        $st = $pdo->prepare("SELECT id FROM folders WHERE id = ? AND org_id = ? LIMIT 1");
+        // Dossier archivé exclu : un projet rangé dedans serait invisible (liste du site et de l'appli)
+        $st = $pdo->prepare("SELECT id FROM folders WHERE id = ? AND org_id = ? AND archived_at IS NULL LIMIT 1");
         $st->execute([$folder_id, $org_id]);
         if (!$st->fetchColumn()) app_fail(422, 'invalid', 'Dossier invalide.');
     } elseif ($new_folder !== '') {
-        // Reutilise un dossier de meme nom si existant (evite doublon)
-        $st = $pdo->prepare("SELECT id FROM folders WHERE org_id = ? AND LOWER(name) = LOWER(?) LIMIT 1");
+        // Reutilise un dossier de meme nom si existant (evite doublon). Un dossier archivé
+        // n'est jamais réutilisé (projet invisible, purgé avec lui) ni doublé : comme sur le
+        // site, son nom reste pris tant qu'il n'est pas restauré ou purgé.
+        $st = $pdo->prepare("SELECT id, archived_at FROM folders WHERE org_id = ? AND LOWER(name) = LOWER(?) ORDER BY (archived_at IS NULL) DESC, id ASC LIMIT 1");
         $st->execute([$org_id, $new_folder]);
-        $existing = (int) $st->fetchColumn();
+        $found = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($found && !empty($found['archived_at'])) {
+            app_fail(422, 'invalid', 'Ce nom est celui d\'un dossier archivé : un administrateur peut le restaurer depuis Archives, ou choisissez un autre nom.');
+        }
+        $existing = (int) ($found['id'] ?? 0);
         if ($existing > 0) {
             $folder_id = $existing;
         } else {
+            // Même règle que le site (nouveau-dossier.php) : admin ou droit « peut créer des dossiers »
+            $can_create_folders = ($user['role'] ?? '') === 'admin'
+                || (($user['role'] ?? '') !== 'follower'
+                    && !empty($user['can_create_folders'] ?? ($live['can_create_folders'] ?? null)));
+            if (!$can_create_folders) {
+                app_fail(403, 'role', 'Vous n\'avez pas le droit de créer un dossier : choisissez un dossier existant.');
+            }
             $st = $pdo->prepare("INSERT INTO folders (org_id, name, color_theme, created_by, created_at) VALUES (?, ?, 'blue', ?, NOW())");
             $st->execute([$org_id, mb_substr($new_folder, 0, 100), $uid]);
             $folder_id = (int) $pdo->lastInsertId();
@@ -47,10 +61,12 @@ try {
         app_fail(422, 'invalid', 'Choisissez ou créez un dossier.');
     }
 
-    // Referent optionnel
+    // Referent optionnel : les rôles proposés par le formulaire (et par le site,
+    // /nouveau-projet et /modifier-projet) — un Membre ou un Suiveur référent
+    // aurait des droits d'édition que son rôle ne donne pas.
     $referent_id = (int) ($input['referent_id'] ?? 0);
     if ($referent_id > 0) {
-        $st = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ? LIMIT 1");
+        $st = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ? AND is_active = 1 AND (deleted_at IS NULL OR deleted_at = '') AND role IN ('admin', 'coordinator', 'referent') LIMIT 1");
         $st->execute([$referent_id, $org_id]);
         if (!$st->fetchColumn()) $referent_id = 0;
     }
@@ -58,7 +74,11 @@ try {
     $description = trim((string) ($input['description'] ?? '')) ?: null;
     $objective   = trim((string) ($input['objective'] ?? '')) ?: null;
     $location    = trim((string) ($input['location'] ?? '')) ?: null;
-    $budget      = (float) str_replace(',', '.', (string) ($input['budget_planned'] ?? '0'));
+    // Budget : seulement pour qui voit les finances (même règle que le site,
+    // nouveau-projet.php) ; « 1 500,50 » et les espaces insécables sont compris.
+    require_once __DIR__ . '/../finance-permissions.php';
+    require_once __DIR__ . '/../projet-email-helpers.php';
+    $budget      = user_can_view_finances($user) ? ak_parse_amount($input['budget_planned'] ?? '') : 0.0;
     $start_date  = trim((string) ($input['start_date'] ?? '')) ?: null;
     $end_date    = trim((string) ($input['end_date'] ?? '')) ?: null;
 

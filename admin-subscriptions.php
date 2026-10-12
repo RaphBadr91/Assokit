@@ -22,11 +22,19 @@ if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 $user_id = (int)($_SESSION['user_id'] ?? 0);
 if (!$user_id) { header('Location: /connexion'); exit; }
 
-$user = $pdo->prepare("SELECT id, email, role, org_id FROM users WHERE id = :id LIMIT 1");
+$user = $pdo->prepare("SELECT id, email, role, org_id, is_founder, is_super_admin FROM users WHERE id = :id LIMIT 1");
 $user->execute([':id' => $user_id]);
 $user = $user->fetch(PDO::FETCH_ASSOC);
 
-if (!$user || !in_array($user['role'], ['founder', 'super_admin'], true)) {
+// Même contrôle que /fondateur-subscriptions : le rôle seul refusait les comptes
+// Fondateur / Super Admin repérés par leurs drapeaux (role = 'admin', is_founder = 1).
+$has_access = $user && (
+    in_array($user['role'] ?? '', ['founder', 'super_admin'], true)
+    || !empty($user['is_founder'])
+    || !empty($user['is_super_admin'])
+);
+
+if (!$has_access) {
     http_response_code(403);
     render_head('Accès refusé');
     render_sidebar('admin-subscriptions');
@@ -34,6 +42,10 @@ if (!$user || !in_array($user['role'], ['founder', 'super_admin'], true)) {
     render_foot();
     exit;
 }
+
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
 
 $flash = $_SESSION['flash_admin_subs'] ?? null;
 unset($_SESSION['flash_admin_subs']);
@@ -197,7 +209,9 @@ render_sidebar('admin-subscriptions');
       <h1 style="margin:0 0 4px;">📊 Abonnements actifs</h1>
       <p style="color:#64748b;margin:0;">Gérer les plans des <?= count($rows) ?> organisation<?= count($rows) > 1 ? 's' : '' ?></p>
     </div>
+    <?php if (($user['role'] ?? '') === 'founder' || !empty($user['is_founder'])): ?>
     <a href="/fondateur-plans" class="btn">⚙️ Gérer les plans</a>
+    <?php endif; ?>
   </div>
 
   <?php if ($flash): ?>

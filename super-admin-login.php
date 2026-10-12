@@ -9,23 +9,32 @@
  * Vérifications :
  *   - Rate limiting : 5 échecs IP / 10 min → blocage 15 min
  *   - Email existe + actif + non supprimé
+ *   - Email = celui du compte connecté au site (le cookie n'ouvre le cockpit
+ *     qu'à ce compte : un autre e-mail renvoyait ici en boucle)
  *   - password_verify() sur password_hash
  *   - is_super_admin=1 OU is_founder=1
+ * Toutes les pages du cockpit l'exigent (sa_auth_gate) ; ?return= ramène
+ * ensuite à la page demandée.
  * ============================================================
  */
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/sa-auth-helpers.php';
 
-// Si déjà connecté SA → redirige vers /fondateur-cockpit
-if (sa_auth_is_active()) {
-    header('Location: /fondateur-cockpit');
+// Page à rouvrir après la confirmation (chemin interne uniquement)
+$return_to = sa_auth_safe_return($_GET['return'] ?? ($_POST['return'] ?? ''));
+$after_login = $return_to !== '' ? $return_to : '/fondateur-cockpit';
+
+// Doit être connecté au site Assokit d'abord
+$site_user = function_exists('current_user') ? current_user() : null;
+if (!$site_user) {
+    header('Location: /connexion?next=' . rawurlencode('/super-admin-login' . ($return_to !== '' ? '?return=' . rawurlencode($return_to) : '')));
     exit;
 }
 
-// Doit être connecté au site Assokit d'abord
-if (!function_exists('current_user') || !current_user()) {
-    header('Location: /connexion?return=/super-admin-login');
+// Déjà confirmé pour CE compte → directement à la page demandée
+if (sa_auth_verify_cookie() === (int)$site_user['id']) {
+    header('Location: ' . $after_login);
     exit;
 }
 
@@ -36,7 +45,7 @@ if (empty($_SESSION['sa_login_csrf'])) {
 $csrf = $_SESSION['sa_login_csrf'];
 
 $error = null;
-$email_prefill = '';
+$email_prefill = (string)($site_user['email'] ?? '');
 $just_logged_out = !empty($_GET['logged_out']);
 $just_expired   = !empty($_GET['expired']);
 
@@ -79,12 +88,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ((int)$user['is_super_admin'] !== 1 && (int)$user['is_founder'] !== 1) {
                 sa_auth_log_attempt($pdo, $email, (int)$user['id'], 'fail_privilege', 'Pas de flag SA/Fondateur');
                 $error = 'Accès réservé aux Super Admins et Fondateurs.';
+            } elseif ((int)$user['id'] !== (int)$site_user['id']) {
+                sa_auth_log_attempt($pdo, $email, (int)$user['id'], 'fail_privilege', 'Compte différent de la session du site');
+                $error = 'Saisissez l’e-mail du compte connecté au site (' . (string)($site_user['email'] ?? '') . ').';
             } else {
                 // ✅ SUCCÈS
                 sa_auth_log_attempt($pdo, $email, (int)$user['id'], 'success');
                 sa_auth_issue_cookie((int)$user['id']);
                 unset($_SESSION['sa_login_csrf']);
-                header('Location: /fondateur-cockpit');
+                header('Location: ' . $after_login);
                 exit;
             }
         }
@@ -223,7 +235,7 @@ h1 {
 </head>
 <body>
 
-<div class="bar">🏗️ Cockpit Fondateur · Double authentification requise</div>
+<div class="bar">🏗️ Cockpit Fondateur · Confirmation d’identité requise</div>
 
 <div class="login-card">
   <div class="logo-row">
@@ -234,22 +246,23 @@ h1 {
   <span class="badge">🛡 Accès Fondateur</span>
 
   <h1>Confirmation d'identité</h1>
-  <p class="lede">Pour accéder au cockpit privilégié, identifiez-vous à nouveau. Session active pendant <strong>30 minutes</strong>.</p>
+  <p class="lede">Pour accéder au cockpit privilégié, confirmez votre mot de passe. La session reste ouverte tant que vous l’utilisez, et se ferme après <strong>30 minutes</strong> sans activité.</p>
 
   <?php if ($just_logged_out): ?>
     <div class="info">✓ Vous avez été déconnecté du cockpit.</div>
   <?php endif; ?>
 
   <?php if ($just_expired): ?>
-    <div class="info">⏱ Votre session a expiré après 30 minutes d'inactivité.</div>
+    <div class="info">⏱ Votre session du cockpit a expiré après 30 minutes sans activité.</div>
   <?php endif; ?>
 
   <?php if ($error): ?>
     <div class="error"><?= h_sa($error) ?></div>
   <?php endif; ?>
 
-  <form method="POST" action="/super-admin-login" autocomplete="off">
+  <form method="POST" action="/super-admin-login<?= $return_to !== '' ? '?return=' . h_sa(rawurlencode($return_to)) : '' ?>" autocomplete="off">
     <input type="hidden" name="csrf_token" value="<?= h_sa($csrf) ?>">
+    <input type="hidden" name="return" value="<?= h_sa($return_to) ?>">
 
     <div class="field">
       <label for="email" class="label">Email</label>

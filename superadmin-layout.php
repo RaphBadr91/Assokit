@@ -23,6 +23,8 @@ if (!defined('SA_LAYOUT_LOADED')) {
     define('SA_LAYOUT_LOADED', true);
 }
 
+require_once __DIR__ . '/sa-auth-helpers.php';   // sa_auth_gate() : confirmation d'identité du cockpit
+
 /**
  * Garde-fou : n'importe quelle page /super-admin/* doit appeler ca
  * avant le rendu. Rejette si l'utilisateur n'est pas super admin.
@@ -52,6 +54,9 @@ function sa_require_super_admin(): array {
         http_response_code(403);
         die('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px;background:#0A0A0B;color:#fff;text-align:center"><h1>403 — Acces interdit</h1><p>Cette page est reservee au super administrateur de la plateforme Assokit.</p><a href="/connexion" style="color:#C4B5FD">Se connecter</a></body></html>');
     }
+    // Confirmation d'identité (/super-admin-login) exigée sur tout le cockpit, pas seulement
+    // sur le journal d'accès : 30 minutes sans activité, puis nouvelle confirmation.
+    sa_auth_gate();
     return $user;
 }
 
@@ -675,8 +680,9 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
         $nb_pending = (int) $pdo->query("SELECT COUNT(*) FROM organizations WHERE validation_status = 'pending_founder' AND deleted_at IS NULL")->fetchColumn();
     } catch (Throwable $e) {}
 
+    // Notifications : tout super-admin en reçoit (tickets de support…) et peut ouvrir la page
     $nb_notifs = 0;
-    if ($is_founder) {
+    if (!empty($user['id'])) {
         try {
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM platform_notifications WHERE recipient_user_id = ? AND is_read = 0");
             $stmt->execute([(int) $user['id']]);
@@ -732,14 +738,14 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
         <span class="sa-link-icon">📊</span> Dashboard
       </a>
 
-      <?php if ($is_founder): ?>
-        <a href="/super-admin/notifications" class="sa-link <?= $active === 'notifications' ? 'active' : '' ?>">
-          <span class="sa-link-icon">🔔</span> Notifications
-          <?php if ($nb_notifs > 0): ?>
-            <span class="sa-link-badge" style="background:rgba(239,68,68,0.25);color:#FCA5A5"><?= $nb_notifs ?></span>
-          <?php endif; ?>
-        </a>
+      <a href="/super-admin/notifications" class="sa-link <?= $active === 'notifications' ? 'active' : '' ?>">
+        <span class="sa-link-icon">🔔</span> Notifications
+        <?php if ($nb_notifs > 0): ?>
+          <span class="sa-link-badge" style="background:rgba(239,68,68,0.25);color:#FCA5A5"><?= $nb_notifs ?></span>
+        <?php endif; ?>
+      </a>
 
+      <?php if ($is_founder): ?>
         <a href="/super-admin/stats" class="sa-link <?= $active === 'stats' ? 'active' : '' ?>">
           <span class="sa-link-icon">📈</span> Stats approfondies
         </a>
@@ -816,6 +822,10 @@ function sa_render_sidebar(string $active = 'dashboard'): void {
             <?php endif; ?>
         </div>
         <div class="sa-user-email"><?= h($user['email']) ?></div>
+        <?php if (function_exists('sa_auth_is_active') && sa_auth_is_active()): ?>
+          <a href="/super-admin-logout" class="sa-user-email" style="display:block; color:var(--sa-ink-4); text-decoration:underline;"
+             title="La session du cockpit se ferme d’elle-même après 30 minutes sans activité">🔒 Verrouiller le cockpit</a>
+        <?php endif; ?>
       </div>
       <a href="/deconnexion.php" class="sa-user-logout" title="Deconnexion">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>

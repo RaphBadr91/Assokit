@@ -62,6 +62,9 @@ function sa_get_permissions_context(): array {
         $is_sa = !empty($user['is_super_admin']);
     }
 
+    // role='founder' vaut is_founder=1 (même règle que ak_platform_flags, platform-flags.php)
+    if (($user['role'] ?? '') === 'founder') $is_founder = true;
+
     // Un fondateur est forcement super admin
     if ($is_founder) $is_sa = true;
 
@@ -81,6 +84,7 @@ function sa_get_permissions_context(): array {
         'can_view_emails_logs'        => $is_founder,  // Journal emails/SMS detaille
         'can_delete_anything'         => $is_founder,
         'can_impersonate'             => $is_founder,  // Incarnation (futur)
+        'can_manage_billing_config'   => $is_founder,  // Clés Stripe, plans et prix, tarifs & TVA
 
         // ===== Droits partages (SA + Fondateur) =====
         'can_view_orgs'               => $is_sa,

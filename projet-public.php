@@ -8,6 +8,11 @@
  *   - Vérifie le token (existe, non révoqué, non expiré)
  *   - Affiche : KPI, étapes, photos publiques, description
  *   - Cache messages, factures, données privées
+ *
+ * GET /projet-public/TOKEN?photo=ID : une photo de la galerie (images du
+ *   projet), servie ici après le même contrôle du lien. Les fichiers de
+ *   projet ne sont jamais accessibles en direct (uploads/.htaccess bloque
+ *   uploads/projet_* : justificatifs, factures).
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
@@ -51,9 +56,42 @@ if (!empty($ctx['expires_at']) && strtotime($ctx['expires_at']) < time()) {
 
 $project_id = (int)$ctx['project_id'];
 
+// Photos publiables : images du projet en PNG/JPEG/GIF/WebP (extension du
+// fichier enregistré ; le type envoyé par le navigateur ne suffit pas).
+$PUBLIC_IMG = ['png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'gif' => 'image/gif', 'webp' => 'image/webp'];
+
+if (isset($_GET['photo'])) {
+    $photo_id = (int)$_GET['photo'];
+    $st = $pdo->prepare("SELECT filepath, filename FROM project_files WHERE id = ? AND project_id = ? AND mime_type LIKE 'image/%' LIMIT 1");
+    $st->execute([$photo_id, $project_id]);
+    $file = $st->fetch();
+    $full = $file ? realpath(__DIR__ . '/' . ltrim((string)$file['filepath'], '/')) : false;
+    $base = realpath(__DIR__ . '/uploads');
+    $ext = $full ? strtolower(pathinfo($full, PATHINFO_EXTENSION)) : '';
+    if ($full === false || $base === false || strpos($full, $base . DIRECTORY_SEPARATOR) !== 0 || !is_file($full) || !isset($PUBLIC_IMG[$ext])) {
+        http_response_code(404);
+        exit('Photo introuvable.');
+    }
+    // Le contenu doit être l'image annoncée par l'extension
+    $real = null;
+    try { $fi = new finfo(FILEINFO_MIME_TYPE); $real = $fi->file($full) ?: null; } catch (Throwable $e) {}
+    if ($real !== $PUBLIC_IMG[$ext]) {
+        http_response_code(404);
+        exit('Photo introuvable.');
+    }
+    $name = preg_replace('/[^\w.\- ]+/u', '_', (string)($file['filename'] ?: basename($full)));
+    header('Content-Type: ' . $PUBLIC_IMG[$ext]);
+    header('Content-Disposition: inline; filename="' . $name . '"');
+    header('Content-Length: ' . filesize($full));
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: private, max-age=600');
+    readfile($full);
+    exit;
+}
+
 // Incrémenter compteur de vue (silent fail)
 try {
-    $pdo->prepare("UPDATE project_share_tokens SET view_count = view_count + 1, last_viewed_at = NOW() WHERE id = ?")
+    $pdo->prepare("UPDATE project_share_tokens SET view_count = COALESCE(view_count, 0) + 1, last_viewed_at = NOW() WHERE id = ?")
         ->execute([(int)$ctx['token_id']]);
 } catch (Throwable $e) {}
 
@@ -66,15 +104,21 @@ $done_steps = 0;
 foreach ($steps as $s) if ($s['is_completed']) $done_steps++;
 $progress_pct = $total_steps > 0 ? round(($done_steps / $total_steps) * 100) : (int)$ctx['progress_percent'];
 
-// Charger photos (uniquement images, derniers 12)
+// Charger photos (uniquement images, 12 dernières), affichées via ?photo=ID
 $photos = [];
 try {
-    $stmt = $pdo->prepare("SELECT file_name, file_path, mime_type FROM project_files
+    $stmt = $pdo->prepare("SELECT id, filename, filepath, mime_type FROM project_files
                            WHERE project_id = ? AND mime_type LIKE 'image/%'
-                           ORDER BY created_at DESC LIMIT 12");
+                           ORDER BY created_at DESC, id DESC LIMIT 40");
     $stmt->execute([$project_id]);
-    $photos = $stmt->fetchAll();
-} catch (Throwable $e) {}
+    foreach ($stmt->fetchAll() as $f) {
+        if (!isset($PUBLIC_IMG[strtolower(pathinfo((string)$f['filepath'], PATHINFO_EXTENSION))])) continue;
+        $photos[] = $f;
+        if (count($photos) >= 12) break;
+    }
+} catch (Throwable $e) {
+    error_log('[projet-public] photos du projet ' . $project_id . ' : ' . $e->getMessage());
+}
 
 // Logo
 $logo_url = '';
@@ -233,9 +277,9 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
     <h2><span class="ic">📸</span> Photos</h2>
     <div class="pp-photos">
       <?php foreach ($photos as $p):
-        $url = $h($p['file_path']);
+        $url = $h('/projet-public/' . $token . '?photo=' . (int)$p['id']);
       ?>
-        <div class="pp-photo"><img src="<?= $url ?>" alt="" loading="lazy"></div>
+        <div class="pp-photo"><img src="<?= $url ?>" alt="<?= $h(pathinfo((string)$p['filename'], PATHINFO_FILENAME)) ?>" loading="lazy"></div>
       <?php endforeach; ?>
     </div>
   </section>

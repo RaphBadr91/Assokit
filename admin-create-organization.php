@@ -18,6 +18,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+@require_once __DIR__ . '/stripe-helpers.php';   // ak_format_price_cents() (la page plantait sans)
 
 require_login();
 $user = ak_platform_flags(current_user());
@@ -28,6 +29,10 @@ if (!$has_access) {
     http_response_code(403);
     die('Accès réservé aux fondateurs.');
 }
+
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
 
 $flash_msg = null;
 $flash_type = 'success';

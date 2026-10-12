@@ -8,7 +8,8 @@
  * ============================================================
  */
 
-// Durée de la session SA après double auth : 30 minutes
+// Durée de la session SA après double auth : 30 minutes SANS activité (chaque page du cockpit
+// la prolonge, sa_auth_gate)
 if (!defined('SA_SESSION_DURATION')) {
     define('SA_SESSION_DURATION', 30 * 60);
 }
@@ -34,12 +35,14 @@ function sa_auth_issue_cookie(int $userId): void
     $signature = hash_hmac('sha256', $payload, sa_auth_secret());
     $cookie = $payload . '.' . $signature;
 
+    // Lax (et non Strict) : un lien reçu par e-mail (ticket, notification) arrive avec le cookie au
+    // lieu de redemander le mot de passe ; les formulaires restent protégés par leur jeton CSRF.
     setcookie('ak_sa_session', $cookie, [
         'expires'  => $expires,
         'path'     => '/',
         'secure'   => !empty($_SERVER['HTTPS']),
         'httponly' => true,
-        'samesite' => 'Strict',
+        'samesite' => 'Lax',
     ]);
     $_COOKIE['ak_sa_session'] = $cookie;
 }
@@ -79,7 +82,7 @@ function sa_auth_clear_cookie(): void
             'path'     => '/',
             'secure'   => !empty($_SERVER['HTTPS']),
             'httponly' => true,
-            'samesite' => 'Strict',
+            'samesite' => 'Lax',
         ]);
     }
     unset($_COOKIE['ak_sa_session']);
@@ -116,8 +119,7 @@ function sa_auth_require(): array
     // 2. Doit avoir un cookie SA valide
     $cookieUserId = sa_auth_verify_cookie();
     if (!$cookieUserId || $cookieUserId !== (int)$u['id']) {
-        header('Location: /super-admin-login');
-        exit;
+        sa_auth_to_login();
     }
 
     // 3. Flags privilégiés vérifiés en BDD (live)
@@ -141,10 +143,78 @@ function sa_auth_require(): array
         exit('Erreur serveur.');
     }
 
-    // 4. Log de l'accès (silencieux si erreur)
+    // 4. Session prolongée (30 min d'inactivité) + log de l'accès (silencieux si erreur)
+    if (!headers_sent()) sa_auth_issue_cookie((int)$u['id']);
     sa_auth_log_access((int)$u['id']);
 
     return $row;
+}
+
+/**
+ * Double authentification sur TOUTES les pages du cockpit (super-admin*, fondateur-*), après le
+ * contrôle des droits de la page (sa_require_super_admin() l'appelle ; les pages fondateur-* qui ont
+ * leur propre contrôle l'appellent juste après). Sans cookie valide pour le compte connecté (absent,
+ * expiré, autre compte) : retour à /super-admin-login, puis à la page demandée. Cookie valide : la
+ * session est prolongée de SA_SESSION_DURATION et l'accès est journalisé (Journal d'accès).
+ * Sans effet en ligne de commande.
+ */
+function sa_auth_gate(): void
+{
+    if (PHP_SAPI === 'cli') return;
+    $u = function_exists('current_user') ? current_user() : null;
+    if (!$u || empty($u['id'])) {
+        header('Location: /connexion');
+        exit;
+    }
+    $cookieUserId = sa_auth_verify_cookie();
+    if (!$cookieUserId || $cookieUserId !== (int)$u['id']) {
+        sa_auth_to_login();
+    }
+    if (!headers_sent()) sa_auth_issue_cookie((int)$u['id']);
+    sa_auth_log_access((int)$u['id']);
+}
+
+/**
+ * Chemin interne sûr pour revenir après la confirmation d'identité, sinon ''.
+ * Jamais une autre adresse, ni la page de connexion du cockpit elle-même.
+ */
+function sa_auth_safe_return($path): string
+{
+    $path = is_string($path) ? trim($path) : '';
+    if ($path === '' || strlen($path) > 1000 || $path[0] !== '/') return '';
+    if (preg_match('#^/[/\\\\]#', $path) || preg_match('/[\x00-\x1F\x7F\\\\]/', $path)) return '';
+    if (preg_match('#^/super-admin-log(in|out)#i', $path)) return '';
+    return $path;
+}
+
+/** Redirige vers /super-admin-login (401 JSON pour un appel en arrière-plan) et arrête la requête. */
+function sa_auth_to_login(): void
+{
+    $xhr = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
+        || stripos((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json') === 0;
+    if ($xhr) {
+        if (!headers_sent()) {
+            http_response_code(401);
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        echo json_encode(['ok' => false, 'error' => 'sa_reauth',
+                          'message' => 'Session du cockpit expirée : confirmez votre identité sur /super-admin-login.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    // Retour : la page demandée (GET), ou la page du formulaire envoyé (POST, même site)
+    $back = '';
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+        $back = sa_auth_safe_return($_SERVER['REQUEST_URI'] ?? '');
+    } else {
+        $ref = (string)($_SERVER['HTTP_REFERER'] ?? '');
+        $ref_host = (string)parse_url($ref, PHP_URL_HOST) . (parse_url($ref, PHP_URL_PORT) ? ':' . parse_url($ref, PHP_URL_PORT) : '');
+        if ($ref !== '' && strcasecmp($ref_host, (string)($_SERVER['HTTP_HOST'] ?? '')) === 0) {
+            $q = parse_url($ref, PHP_URL_QUERY);
+            $back = sa_auth_safe_return((string)parse_url($ref, PHP_URL_PATH) . ($q ? '?' . $q : ''));
+        }
+    }
+    header('Location: /super-admin-login' . ($back !== '' ? '?return=' . rawurlencode($back) : ''));
+    exit;
 }
 
 // ============================================================

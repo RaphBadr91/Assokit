@@ -7,6 +7,8 @@ require_once __DIR__ . '/includes-pricing.php';
 require_once __DIR__ . '/sa-plan-state-helpers.php';
 require_login();
 $user = sa_require_super_admin();
+// Tarifs, plans et Stripe : Fondateur uniquement (section Pilotage Fondateur)
+sa_require_capability('can_manage_billing_config');
 
 $plans = $pdo->query("SELECT * FROM asso_plans WHERE is_visible = 1 ORDER BY display_order ASC")->fetchAll();
 $orgs  = $pdo->query("SELECT id, name, legal_form, vat_subject, siret, plan FROM organizations ORDER BY name LIMIT 200")->fetchAll();

@@ -19,6 +19,8 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/trial-helpers.php';
+require_once __DIR__ . '/superadmin-layout.php'; // sa_log_action()
+require_once __DIR__ . '/sa-permissions.php';    // sa_notify_all_founders()
 @require_once __DIR__ . '/stripe-helpers.php';
 
 // Fallback si stripe-helpers.php n'est pas encore déployé
@@ -37,6 +39,13 @@ if (!$has_access) {
     http_response_code(403);
     die('Accès réservé aux fondateurs.');
 }
+
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
+// Super Admin non fondateur : le compte est créé et utilisable, mais reste « en attente
+// de validation Fondateur » (onglet et badge du cockpit, notification aux fondateurs).
+$is_founder = !empty($user['is_founder']);
 
 $flash_msg = null;
 $flash_type = 'success';
@@ -90,34 +99,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('Cet email est déjà utilisé pour un autre compte');
         }
 
-        // Génération slug et mot de passe
-        $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '-', $org_name));
-        $slug = trim($slug, '-');
-        if (strlen($slug) < 3) $slug = 'asso-' . substr(md5(microtime()), 0, 6);
-
-        // Vérifier unicité slug
-        $cs = $pdo->prepare("SELECT COUNT(*) FROM organizations WHERE slug = :s");
-        $cs->execute([':s' => $slug]);
-        if ((int)$cs->fetchColumn() > 0) {
-            $slug .= '-' . substr(md5(microtime()), 0, 4);
-        }
+        // Slug : même génération que l'inscription en ligne (accents translittérés,
+        // unicité, jamais « demo-… », que les crons traitent comme une démonstration)
+        $slug = ak_signup_slug($pdo, $org_name);
 
         $password_plain = $custom_password ?: bin2hex(random_bytes(6)); // 12 chars hex
         $password_hash = password_hash($password_plain, PASSWORD_BCRYPT);
 
         $pdo->beginTransaction();
 
-        // 1. Créer organization
-        $ins_org = $pdo->prepare("
-            INSERT INTO organizations (name, slug, billing_email, created_at)
-            VALUES (:n, :s, :be, NOW())
-        ");
-        $ins_org->execute([
-            ':n' => $org_name,
-            ':s' => $slug,
-            ':be' => $billing_email,
-        ]);
-        $new_org_id = (int)$pdo->lastInsertId();
+        // 1. Créer organization (auteur + statut de validation : fondateur = validée,
+        //    Super Admin non fondateur = en attente de validation Fondateur)
+        $org_data = [
+            'name' => $org_name,
+            'slug' => $slug,
+            'billing_email' => $billing_email,
+            'created_by_user_id' => (int)$user['id'],
+        ];
+        $validation_status = ak_db_pick($pdo, 'organizations', 'validation_status', [$is_founder ? 'validated' : 'pending_founder']);
+        if ($validation_status !== null) $org_data['validation_status'] = $validation_status;
+        $new_org_id = ak_db_insert($pdo, 'organizations', $org_data, ['created_at' => 'NOW()']);
 
         // 2. Créer user (admin de l'org)
         $ins_user = $pdo->prepare("
@@ -204,6 +205,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // Historique du cockpit (filtre « Création asso ») : toute création est journalisée
+        sa_log_action((int)$user['id'], 'create_org', $new_org_id, $new_user_id, [
+            'org_name' => $org_name,
+            'plan' => $chosen_slug,
+            'status' => $sub_status,
+            'payment_mode' => $payment_mode,
+            'days' => $period_days,
+            'admin_email' => $billing_email,
+        ]);
+
+        // Création par un Super Admin non fondateur : les fondateurs valident (in-app + e-mail)
+        if (!$is_founder) {
+            $creator = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: (string)($user['email'] ?? 'Un Super Admin');
+            sa_notify_all_founders(
+                'new_org_pending',
+                'Nouvelle association à valider',
+                $creator . ' a créé « ' . $org_name . ' » (en attente de validation).',
+                '/super-admin/associations?id=' . $new_org_id,
+                $new_org_id
+            );
+            try {
+                @require_once __DIR__ . '/resend-helper.php';
+                if (function_exists('send_transactional_email')) {
+                    $founders = $pdo->query("SELECT email, first_name FROM users WHERE is_founder = 1 AND is_active = 1")->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($founders as $f) {
+                        $content = '<p>Bonjour ' . htmlspecialchars((string)$f['first_name']) . ',</p>'
+                            . '<p><strong>' . htmlspecialchars($creator) . '</strong> (Super Admin) vient de créer le compte <strong>' . htmlspecialchars($org_name) . '</strong>'
+                            . ($chosen_plan ? ' (plan ' . htmlspecialchars(ak_plan_label($chosen_plan['slug'], $chosen_plan['name'])) . ', jusqu’au ' . date('d/m/Y', strtotime($period_end)) . ')' : '') . '.</p>'
+                            . '<p>Il est en attente de votre validation.</p>';
+                        $html = function_exists('email_wrap')
+                            ? email_wrap('Validation requise', $content, 'Examiner ce compte', 'https://assokit.fr/super-admin/associations?id=' . $new_org_id)
+                            : $content;
+                        send_transactional_email((string)$f['email'], '🏗️ Nouvelle association à valider — ' . $org_name, $html, ['tag' => 'org_pending_validation']);
+                    }
+                }
+            } catch (Throwable $e) {
+                error_log('[fondateur-create-organization] notification fondateurs: ' . get_class($e));
+            }
+        }
+
         // 5. Email de bienvenue (best-effort)
         $email_sent = false;
         if ($send_welcome_email) {
@@ -242,6 +283,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'plan_id' => $plan_id,
             'period_end' => $period_end,
             'email_sent' => $email_sent,
+            'email_requested' => $send_welcome_email,
+            'is_pending' => !$is_founder,
             'is_trial' => $is_trial_plan,
             'plan_label' => $chosen_plan ? ak_plan_label($chosen_plan['slug'], $chosen_plan['name']) : '',
         ];
@@ -269,7 +312,7 @@ render_sidebar('fondateur-create-organization');
   <div class="main-head" style="margin-bottom:24px;">
     <div>
       <h1 style="margin:0 0 4px;">🌱 Créer un compte client</h1>
-      <p style="color:#64748B;margin:0;">Création directe avec activation immédiate du plan</p>
+      <p style="color:#64748B;margin:0;">Création directe avec activation immédiate du plan<?= $is_founder ? '' : ' · soumise à la validation d’un Fondateur' ?></p>
     </div>
   </div>
 
@@ -321,10 +364,18 @@ render_sidebar('fondateur-create-organization');
         ⚠️ <strong>Note importante :</strong> Le mot de passe affiché ci-dessus ne sera <strong>plus jamais accessible</strong>. Copiez-le maintenant et transmettez-le au client par un canal sécurisé.
         <?php if ($created_credentials['email_sent']): ?>
           <br><br>✅ Un email de bienvenue avec ces informations a été envoyé à <code><?= htmlspecialchars($created_credentials['email']) ?></code>.
+        <?php elseif ($created_credentials['email_requested']): ?>
+          <br><br>❌ <strong>L’envoi de l’email de bienvenue a échoué.</strong> Transmettez les identifiants au client manuellement.
         <?php else: ?>
           <br><br>📧 L'email de bienvenue n'a pas été envoyé (option non cochée). Pensez à transmettre les identifiants manuellement.
         <?php endif; ?>
       </div>
+
+      <?php if ($created_credentials['is_pending']): ?>
+      <div style="background:#EDE9FE;border:1px solid #C4B5FD;border-radius:10px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:#4C1D95;">
+        🏗️ <strong>En attente de validation Fondateur.</strong> Le compte est utilisable dès maintenant ; les fondateurs ont été notifiés pour le valider.
+      </div>
+      <?php endif; ?>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <a href="/fondateur-create-organization" style="background:#059669;color:white;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">+ Créer un autre compte</a>

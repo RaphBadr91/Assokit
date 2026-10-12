@@ -60,13 +60,26 @@ $user = current_user();
 
 // Vérifier appartenance org
 $stmt = $pdo->prepare("
-    SELECT p.id FROM projects p
+    SELECT p.id, p.archived_at, f.archived_at AS folder_archived_at FROM projects p
     JOIN folders f ON p.folder_id = f.id
     WHERE p.id = ? AND f.org_id = ?
 ");
 $stmt->execute([$project_id, $user['org_id']]);
-if (!$stmt->fetch()) {
+$msg_project = $stmt->fetch();
+if (!$msg_project) {
     respond_error('forbidden', 403, $is_ajax);
+}
+// Suiveur (financeur externe) : seulement les projets qu'il suit, comme projet.php
+if (!follower_can_access_project($project_id)) {
+    respond_error('forbidden', 403, $is_ajax);
+}
+// Projet archivé : lecture seule, plus de nouveaux messages
+if (!empty($msg_project['archived_at']) || !empty($msg_project['folder_archived_at'])) {
+    if (!$is_ajax) {
+        header('Location: /projet/' . $project_id . '/messages?error=archived');
+        exit;
+    }
+    respond_error('Ce projet est archivé : il est en lecture seule.', 409, true);
 }
 
 // =============================================================
@@ -119,11 +132,13 @@ if (file_exists(__DIR__ . '/notification-helpers.php')) {
             $proj = $stmt->fetch();
             $author_name = trim($user['first_name'] . ' ' . $user['last_name']);
             
-            // Liste des membres à notifier (équipe + référent)
+            // Liste des membres à notifier (équipe + référent), comptes de
+            // l'association uniquement
             $stmt = $pdo->prepare("
                 SELECT DISTINCT u.id 
                 FROM users u
                 WHERE u.is_active = 1
+                  AND u.org_id = :org
                   AND u.id != :author
                   AND (
                       u.id IN (SELECT user_id FROM project_members WHERE project_id = :pid1)
@@ -131,6 +146,7 @@ if (file_exists(__DIR__ . '/notification-helpers.php')) {
                   )
             ");
             $stmt->execute([
+                ':org' => (int)$user['org_id'],
                 ':author' => $user['id'],
                 ':pid1' => $project_id,
                 ':ref' => (int)($proj['referent_id'] ?? 0),

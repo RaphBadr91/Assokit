@@ -4,7 +4,7 @@
  * ------------------------------------------------------------------
  * Remplace l'accès direct à /uploads/projet_<id>/... (devinable, non contrôlé).
  * Sert un fichier UNIQUEMENT après login + vérification d'appartenance à l'org
- * (via project -> folder -> org_id). Accès par ID de ligne (pas par chemin) :
+ * (via project -> folder -> org_id), jamais à un suiveur. Accès par ID de ligne (pas par chemin) :
  * aucun risque de path traversal.
  *
  *   /fichier-projet?type=invoice&id=<project_invoices.id>
@@ -46,6 +46,9 @@ if (!$row || empty($row['path'])) { http_response_code(404); exit('Fichier intro
 // Contrôle d'accès : l'utilisateur doit pouvoir voir cette org (gère aussi
 // fondateur/super-admin en consultation d'une autre org).
 if (!user_can_view_org((int)$row['org'])) { http_response_code(403); exit('Accès refusé.'); }
+// Suiveur (financeur externe) : aucun onglet Fichiers ni Factures, même sur les projets
+// qu'il suit (projet.php) — il ne télécharge donc aucun fichier de projet, quel que soit l'id.
+if (is_follower()) { http_response_code(403); exit('Accès refusé.'); }
 // Factures de projet : réservées aux rôles finances (comme l'onglet Factures)
 if ($type === 'invoice') {
     require_once __DIR__ . '/finance-permissions.php';

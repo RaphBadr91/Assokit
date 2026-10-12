@@ -58,6 +58,7 @@ if ($project_id <= 0) {
 if ($is_mairie_viewer) {
     $stmt = $pdo->prepare("
         SELECT p.*, f.name AS folder_name, f.color_theme, f.org_id AS folder_org_id,
+               f.archived_at AS folder_archived_at,
                u.id AS ref_id, u.first_name AS ref_first, u.last_name AS ref_last,
                u.avatar_color AS ref_color
         FROM projects p
@@ -76,7 +77,8 @@ if ($is_mairie_viewer) {
     }
 } else {
     $stmt = $pdo->prepare("
-        SELECT p.*, f.name AS folder_name, f.color_theme,
+        SELECT p.*, f.name AS folder_name, f.color_theme, f.org_id AS folder_org_id,
+               f.archived_at AS folder_archived_at,
                u.id AS ref_id, u.first_name AS ref_first, u.last_name AS ref_last,
                u.avatar_color AS ref_color
         FROM projects p
@@ -94,6 +96,21 @@ if (!$project) {
     echo '<main class="main"><div class="empty-state" style="margin-top: 60px;">Ce projet n\'existe pas ou ne fait pas partie de votre organisation.</div></main>';
     render_foot();
     exit;
+}
+
+// Lecture seule :
+//  - agent de collectivité ou équipe plateforme qui consulte le projet d'une
+//    autre organisation (toutes les écritures leur sont refusées : contrôle
+//    de l'organisation dans chaque action) ;
+//  - projet archivé, seul ou avec son dossier : en attente de purge,
+//    restaurable depuis /archives, plus aucune modification.
+$readonly_external = $is_mairie_viewer && (int)($current['org_id'] ?? 0) !== (int)$project['folder_org_id'];
+$is_archived = !empty($project['archived_at']) || !empty($project['folder_archived_at']);
+$is_readonly = $readonly_external || $is_archived;
+if ($readonly_external) {
+    // Assistant IA : conversations et documents internes à l'association
+    $valid_tabs = array_values(array_diff($valid_tabs, ['ia']));
+    if (!in_array($active_tab, $valid_tabs, true)) $active_tab = 'overview';
 }
 
 // Étapes
@@ -116,8 +133,8 @@ $computed_progress = $total_steps > 0 ? (int)round(($done_steps / $total_steps) 
 $is_admin = ($current['role'] === 'admin');
 $is_coord = ($current['role'] === 'coordinator');
 $is_referent = ($project['referent_id'] == $current['id']);
-// Édition des étapes : admin, coord, référent (comme avant)
-$can_edit_steps = $is_admin || $is_coord || $is_referent;
+// Édition des étapes : admin, coord, référent (comme avant), hors lecture seule
+$can_edit_steps = !$is_readonly && ($is_admin || $is_coord || $is_referent);
 // Dernière modification de la fiche projet (qui, quand) : lue dans
 // project_activity_log, que action-projet.php remplit champ par champ.
 $last_edit = null;
@@ -137,36 +154,21 @@ try {
 
 // Édition du projet lui-même : admin, référent et coordinateur
 // (l'archivage reste réservé à l'admin, le budget à qui voit les finances).
-$can_edit_project = $is_admin || $is_referent || $is_coord;
+$can_edit_project = !$is_readonly && ($is_admin || $is_referent || $is_coord);
 // Partage public : admin + référent + coordinateur
-$can_share_public = $is_admin || $is_referent || $is_coord;
+$can_share_public = !$is_readonly && ($is_admin || $is_referent || $is_coord);
+// Exports (bilan analytique, justificatifs, Excel) : la même règle que les
+// trois scripts de téléchargement (admin, coordinateur, fondateur).
+require_once __DIR__ . '/platform-flags.php';
+$can_export = user_can_access_billing(ak_platform_flags($current));
 
-// [NEW] Charger les membres potentiellement mentionnables (équipe + référent + admins de l'org)
-// pour le dropdown d'autocomplete @
-$mention_targets = [];
-try {
-    $stmt = $pdo->prepare("
-        SELECT DISTINCT u.id, u.first_name, u.last_name, u.role, u.avatar_color
-        FROM users u
-        WHERE u.is_active = 1
-          AND u.org_id = :org_id
-          AND (u.deleted_at IS NULL OR u.deleted_at = '')
-          AND (
-              u.id IN (SELECT user_id FROM project_members WHERE project_id = :pid1)
-              OR u.id = :referent_id
-              OR u.role = 'admin'
-          )
-        ORDER BY u.first_name ASC, u.last_name ASC
-    ");
-    $stmt->execute([
-        ':org_id' => (int)$current['org_id'],
-        ':pid1' => $project_id,
-        ':referent_id' => (int)($project['referent_id'] ?? 0),
-    ]);
-    $mention_targets = $stmt->fetchAll();
-} catch (Throwable $e) {
-    $mention_targets = [];
-}
+// Membres mentionnables (équipe, référent, admins et coordinateurs de
+// l'association ; un suiveur seulement s'il est dans l'équipe) pour le
+// dropdown d'autocomplete @ : la même liste que celle des notifications
+// (ak_extract_mentions, projet-email-helpers.php). Un suiveur ne voit que
+// l'équipe du projet.
+require_once __DIR__ . '/projet-email-helpers.php';
+$mention_targets = ak_mention_candidates($pdo, $project_id, is_follower());
 
 // Helper pour surligner les @mentions dans un message
 function ak_highlight_mentions(string $content): string {
@@ -194,6 +196,12 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$project_id]);
 $messages = $stmt->fetchAll();
+
+// Onglet Messages ouvert : tout est lu, le badge « messages non lus » de
+// /projets revient à zéro (rien n'est écrit pour une consultation extérieure).
+if ($active_tab === 'messages' && !$readonly_external && !empty($messages)) {
+    ak_project_mark_seen($pdo, (int)$current['id'], $project_id);
+}
 
 // Fichiers
 $stmt = $pdo->prepare("
@@ -364,7 +372,7 @@ function ak_proj_health_score(int $progress, array $activity_14d, array $project
 }
 
 /** Détecte ce qui manque pour un bilan complet (nudges incitatifs) */
-function ak_proj_missing_for_bilan(array $project, array $files, array $invoices, array $messages, array $steps): array {
+function ak_proj_missing_for_bilan(array $project, array $files, array $invoices, array $messages, array $steps, bool $can_view_finances = false): array {
     $missing = [];
     if (empty(trim($project['description'] ?? ''))) {
         $missing[] = ['icon' => '📝', 'label' => 'Description du projet', 'why' => 'Contexte essentiel pour le bilan', 'link' => '/modifier-projet/' . (int)$project['id']];
@@ -377,7 +385,8 @@ function ak_proj_missing_for_bilan(array $project, array $files, array $invoices
     } elseif (count($files) < 5) {
         $missing[] = ['icon' => '📸', 'label' => 'Peu de fichiers (' . count($files) . ')', 'why' => 'Plus de photos = bilan plus vivant', 'link' => '/projet/' . (int)$project['id'] . '/fichiers'];
     }
-    if (count($invoices) === 0 && function_exists('can') && can('manage_finances')) {
+    // Lien vers l'onglet Factures : seulement pour qui peut l'ouvrir
+    if (count($invoices) === 0 && $can_view_finances) {
         $missing[] = ['icon' => '💰', 'label' => 'Aucune facture', 'why' => 'Pour l\'analyse financière du bilan', 'link' => '/projet/' . (int)$project['id'] . '/factures'];
     }
     if (count($messages) < 3) {
@@ -482,7 +491,9 @@ function ak_proj_team_pulse(PDO $pdo, int $project_id): array {
                        (SELECT COUNT(*) FROM project_files f WHERE f.project_id = ? AND f.uploaded_by = pm.user_id AND f.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS file_count
                 FROM project_members pm
                 JOIN users u ON u.id = pm.user_id
-                WHERE pm.project_id = ?
+                JOIN projects pj ON pj.id = pm.project_id
+                JOIN folders fo ON fo.id = pj.folder_id
+                WHERE pm.project_id = ? AND u.org_id = fo.org_id
                 LIMIT 8";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$project_id, $project_id, $project_id, $project_id]);
@@ -548,7 +559,7 @@ function ak_proj_sparkline(array $values_14d, string $color = '#10B981', int $w 
 // Calculs cockpit
 $proj_activity = ak_proj_activity_14d($pdo, (int)$project['id']);
 $proj_health = ak_proj_health_score($computed_progress, $proj_activity, $project, $files, $invoices);
-$proj_missing = ak_proj_missing_for_bilan($project, $files, $invoices, $messages, $steps);
+$proj_missing = ak_proj_missing_for_bilan($project, $files, $invoices, $messages, $steps, $can_view_finances);
 $proj_nba = ak_proj_next_best_action($project, $steps, $messages, $files, $computed_progress, $proj_activity);
 $proj_team = ak_proj_team_pulse($pdo, (int)$project['id']);
 
@@ -590,11 +601,22 @@ render_sidebar('projets');
       'permission' => 'Seuls l\'administrateur, les coordinateurs et le référent du projet peuvent modifier ce projet.',
       'csrf' => 'Session expirée, réessayez.',
       'forbidden' => 'Vous n\'avez pas accès à ce projet.',
+      'duplicate' => 'La duplication du projet a échoué. Réessayez dans un instant.',
+      'archive_permission' => 'Seul l\'administrateur peut archiver un projet.',
+      'archived' => 'Ce projet est archivé : il est en lecture seule et ne peut plus être modifié.',
     ];
     $err_msg = $err_labels[$_GET['error']] ?? $_GET['error'];
   ?>
     <div class="alert alert-error">⚠️ <?= h($err_msg) ?></div>
   <?php endif; ?>
+
+  <?php // Message d'une action (équipe, étapes…) : en tête de page, sauf sur
+        // l'onglet Fichiers qui l'affiche au-dessus de la liste des fichiers.
+  if (!empty($_SESSION['flash']) && $active_tab !== 'fichiers'):
+      $top_flash = $_SESSION['flash']; unset($_SESSION['flash']);
+      if (!empty($top_flash['message'])): ?>
+    <div class="alert alert-<?= ($top_flash['type'] ?? '') === 'error' ? 'error' : 'success' ?>"><?= h($top_flash['message']) ?></div>
+  <?php endif; endif; ?>
 
   <div class="proj-header">
     <div class="proj-header-icon <?= folder_icon_class($project['color_theme']) ?>">
@@ -623,15 +645,14 @@ render_sidebar('projets');
         </div>
       <?php endif; ?>
     </div>
-    <?php if ($can_edit_project || $is_admin): ?>
+    <?php // $can_edit_project inclut l'admin ; false en lecture seule (collectivité, plateforme, archivé)
+    if ($can_edit_project): ?>
     <div class="head-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
-      <?php if ($can_edit_project): ?>
       <a href="/modifier-projet/<?= (int)$project['id'] ?>" class="btn btn-ghost">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         Modifier
       </a>
-      <?php endif; ?>
-      <?php if ($is_admin && empty($project['archived_at'])): ?>
+      <?php if ($is_admin): ?>
       <a href="/supprimer-projet/<?= (int)$project['id'] ?>"
          style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; font-size:13px; color:#991B1B; background:transparent; border:1px solid #FCA5A5; border-radius:8px; text-decoration:none; font-weight:500; transition:all 0.15s; font-family:inherit;"
          onmouseover="this.style.background='#FEF2F2'; this.style.borderColor='#DC2626'"
@@ -644,6 +665,34 @@ render_sidebar('projets');
     </div>
     <?php endif; ?>
   </div>
+
+  <?php if ($is_archived):
+    // Projet archivé : consultable, plus modifiable, purgé après
+    // ARCHIVE_RETENTION_DAYS jours sauf restauration depuis /archives.
+    require_once __DIR__ . '/archive-helper.php';
+    $arch_at = (string)(!empty($project['archived_at']) ? $project['archived_at'] : $project['folder_archived_at']);
+    $arch_ts = strtotime($arch_at) ?: 0;
+    $purge_ts = $arch_ts ? $arch_ts + ARCHIVE_RETENTION_DAYS * 86400 : 0;
+  ?>
+  <div class="alert proj-readonly" role="status">
+    <span aria-hidden="true">🗄️</span>
+    <div>
+      <strong><?= (empty($project['archived_at']) || !empty($project['archived_via_folder'])) ? 'Projet archivé avec son dossier « ' . h($project['folder_name']) . ' »' : 'Projet archivé' ?><?= $arch_ts ? ' le ' . h(format_date_p($arch_at)) : '' ?></strong> — lecture seule : plus aucune modification n’est possible.
+      <?php if ($purge_ts): ?>Sans restauration, il sera supprimé définitivement le <?= h(format_date_p(date('Y-m-d', $purge_ts))) ?>.<?php endif; ?>
+      <?php if ($is_admin && !$readonly_external): ?>
+        <a href="/archives" style="font-weight:600; color:inherit;">Le restaurer depuis les Archives</a>
+      <?php else: ?>
+        Seul un administrateur de l’association peut le restaurer.
+      <?php endif; ?>
+    </div>
+  </div>
+  <?php elseif ($readonly_external): ?>
+  <div class="alert proj-readonly" role="status">
+    <span aria-hidden="true">👁</span>
+    <div><strong>Lecture seule</strong> — vue <?= is_parent_org_user($current) ? 'collectivité' : 'plateforme' ?> : vous consultez ce projet de l’association sans pouvoir le modifier.</div>
+  </div>
+  <?php endif; ?>
+  <?php if ($is_readonly): ?><style>.proj-readonly{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E}</style><?php endif; ?>
 
   <?php // ============================================================ ?>
   <?php // 🤖 PACK GO — Cockpit IA + Bouton Bilan + Nudges               ?>
@@ -708,7 +757,7 @@ render_sidebar('projets');
 
       <div class="ck-actions-bar">
       <!-- Bouton Générer le bilan -->
-      <?php if ($can_edit_project || $is_admin): ?>
+      <?php if ($can_edit_project): ?>
       <div class="ck-bilan">
         <button type="button" class="ck-bilan-btn" id="ck-bilan-toggle">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -747,7 +796,7 @@ render_sidebar('projets');
       </div>
       <?php endif; ?>
 
-      <?php if ($can_edit_project || $is_admin): ?>
+      <?php if ($can_export): ?>
       <div class="ck-exports">
         <button type="button" class="ck-exports-btn" aria-haspopup="true" onclick="var m=this.parentNode.querySelector('.ck-exports-menu'); m.hidden=!m.hidden;">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -808,7 +857,8 @@ render_sidebar('projets');
 
     </div>
 
-    <!-- NEXT BEST ACTION -->
+    <!-- NEXT BEST ACTION (rien à proposer en lecture seule) -->
+    <?php if (!$is_readonly): ?>
     <a href="<?= htmlspecialchars($proj_nba['link'], ENT_QUOTES) ?>" class="ck-nba <?= $tone_class ?>">
       <div class="ck-nba-emoji"><?= h($proj_nba['icon']) ?></div>
       <div class="ck-nba-body">
@@ -828,6 +878,7 @@ render_sidebar('projets');
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </div>
     </a>
+    <?php endif; ?>
 
   </section>
 
@@ -1297,17 +1348,20 @@ render_sidebar('projets');
       Fichiers
       <?php if (count($files) > 0): ?><span class="tab-badge"><?= count($files) ?></span><?php endif; ?>
     </a>
-    <?php if (can('manage_finances')): ?>
+    <?php // Même règle que l'ouverture de l'onglet ($valid_tabs) : finances
+          if ($can_view_finances): ?>
     <a href="/projet/<?= $project_id ?>/factures" class="tab <?= $active_tab === 'factures' ? 'active' : '' ?>">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11H3v8h6v-8z"/><path d="M21 3H9v16h12V3z"/><line x1="13" y1="7" x2="17" y2="7"/><line x1="13" y1="11" x2="17" y2="11"/></svg>
       Factures
       <?php if (count($invoices) > 0): ?><span class="tab-badge"><?= count($invoices) ?></span><?php endif; ?>
     </a>
     <?php endif; ?>
+    <?php if (in_array('ia', $valid_tabs, true)): ?>
     <a href="/projet/<?= $project_id ?>/ia" class="tab tab-ai <?= $active_tab === 'ia' ? 'active' : '' ?>">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
       Assistant IA
     </a>
+    <?php endif; ?>
     <?php if ($is_admin): ?>
     <a href="/projet/<?= $project_id ?>/historique" class="tab <?= $active_tab === 'historique' ? 'active' : '' ?>" style="margin-left: auto;" title="Historique des modifications (visible par les administrateurs uniquement)">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -1361,7 +1415,8 @@ render_sidebar('projets');
             <?php endif; ?>
           </div>
 
-          <!-- NUDGES INCITATIFS POUR BILAN -->
+          <!-- NUDGES INCITATIFS POUR BILAN (rien à compléter en lecture seule) -->
+          <?php if (!$is_readonly): ?>
           <div class="ck-card ck-nudges-card" id="ck-nudges">
             <div class="ck-card-head">
               <div class="ck-card-title"><?= ak_icon('clipboard',16) ?>Pour un bilan complet</div>
@@ -1389,6 +1444,7 @@ render_sidebar('projets');
               </div>
             <?php endif; ?>
           </div>
+          <?php endif; ?>
         </div>
 
         <!-- DESCRIPTION -->
@@ -1478,6 +1534,7 @@ render_sidebar('projets');
                     <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
                     <input type="hidden" name="step_id" value="<?= (int)$step['id'] ?>">
                     <input type="hidden" name="project_id" value="<?= (int)$project['id'] ?>">
+                    <input type="hidden" name="target" value="<?= $step_done ? 0 : 1 ?>">
                     <button type="submit" class="step-check <?= $step_done ? 'done' : '' ?>" title="<?= $step_done ? 'Dévalider l’étape' : 'Valider l’étape' ?>">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                     </button>
@@ -1513,6 +1570,7 @@ render_sidebar('projets');
                       <input type="hidden" name="step_id" value="<?= (int)$step['id'] ?>">
                       <input type="hidden" name="project_id" value="<?= (int)$project['id'] ?>">
                       <input type="hidden" name="action" value="<?= $step_done ? 'note' : 'toggle' ?>">
+                      <?php if (!$step_done): ?><input type="hidden" name="target" value="1"><?php endif; ?>
                       <label for="<?= h($note_form) ?>-txt">Qu'est-ce qui a été fait ? <span>facultatif — visible par toute l'équipe du projet</span></label>
                       <textarea id="<?= h($note_form) ?>-txt" name="completion_note" rows="3" maxlength="2000"
                                 placeholder="Ex : salle réservée pour 3 séances, 12 participants confirmés, supports envoyés par e-mail."><?= h($step_note) ?></textarea>
@@ -1554,6 +1612,26 @@ render_sidebar('projets');
               document.querySelectorAll('form[data-step-note]').forEach(function (form) {
                 form.addEventListener('submit', function (e) {
                   if (ouvrir(form.getAttribute('data-step-note'))) e.preventDefault();
+                });
+              });
+              // Un seul envoi par clic : le bouton se désactive dès que le
+              // formulaire part (le double clic ne renvoie rien).
+              document.querySelectorAll('.step-list form[action="/action-etape"]').forEach(function (form) {
+                form.addEventListener('submit', function (e) {
+                  if (e.defaultPrevented) return;
+                  if (form.dataset.sent) { e.preventDefault(); return; }
+                  form.dataset.sent = '1';
+                  form.querySelectorAll('button[type="submit"]').forEach(function (btn) {
+                    setTimeout(function () { btn.disabled = true; }, 0);
+                  });
+                });
+              });
+              // Retour arrière (page restaurée depuis le cache) : boutons réactivés
+              window.addEventListener('pageshow', function (e) {
+                if (!e.persisted) return;
+                document.querySelectorAll('.step-list form[data-sent]').forEach(function (form) {
+                  delete form.dataset.sent;
+                  form.querySelectorAll('button[type="submit"]').forEach(function (btn) { btn.disabled = false; });
                 });
               });
               document.querySelectorAll('[data-open-note]').forEach(function (b) {
@@ -1952,7 +2030,7 @@ render_sidebar('projets');
       
       <div class="chat-list" id="chatList">
         <?php if (empty($messages)): ?>
-          <div class="empty-state" id="chatEmpty">Aucun message pour l'instant. Démarrez la conversation d'équipe ci-dessous.</div>
+          <div class="empty-state" id="chatEmpty"><?= $is_readonly ? 'Aucun message dans ce projet.' : 'Aucun message pour l\'instant. Démarrez la conversation d\'équipe ci-dessous.' ?></div>
         <?php else: foreach ($messages as $m):
           $color = in_array($m['avatar_color'], ['blue','purple','amber','pink','teal'], true) ? 'av-' . $m['avatar_color'] : 'av-blue';
           $is_self = ($m['user_id'] == $current['id']);
@@ -1969,6 +2047,11 @@ render_sidebar('projets');
         </div>
         <?php endforeach; endif; ?>
       </div>
+      <?php if ($is_readonly): ?>
+      <div class="chat-readonly" style="padding:12px 14px; border:1px dashed var(--border); border-radius:10px; font-size:13px; color:var(--ink-3); text-align:center;">
+        <?= $is_archived ? '🗄️ Projet archivé : la conversation est en lecture seule.' : '👁 Lecture seule : vous ne pouvez pas écrire dans la conversation de l’équipe.' ?>
+      </div>
+      <?php else: ?>
       <form method="POST" action="/action-message" class="chat-form">
         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
         <input type="hidden" name="project_id" value="<?= $project_id ?>">
@@ -1979,6 +2062,7 @@ render_sidebar('projets');
           Envoyer
         </button>
       </form>
+      <?php endif; ?>
       
       <!-- Dropdown autocomplete @mentions (position fixed, calculé en JS) -->
       <div id="mentionDropdown" style="display:none; position:fixed; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 -4px 24px rgba(0,0,0,0.12); max-height:280px; overflow-y:auto; z-index:9999; min-width:280px;">
@@ -1998,25 +2082,78 @@ render_sidebar('projets');
             'role' => $u['role'],
             'color' => $u['avatar_color'] ?? 'blue',
             'initials' => mb_strtoupper(mb_substr($u['first_name'], 0, 1) . mb_substr($u['last_name'], 0, 1)),
-            'tag' => mb_strtolower($u['first_name']),
+            'tag' => ak_mention_tag((string)$u['first_name'], (string)$u['last_name']),
         ];
       }, $mention_targets), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
     </div>
 
-  <?php elseif ($active_tab === 'fichiers'): ?>
+  <?php elseif ($active_tab === 'fichiers'):
+    // Limite par fichier : 10 Mo, ou moins si l'hébergement est réglé plus bas
+    // (upload_max_filesize) — action-fichier.php applique la même règle.
+    $file_max_bytes = 10 * 1024 * 1024;
+    $ini_up = trim((string)ini_get('upload_max_filesize'));
+    if ($ini_up !== '') {
+        $ini_up_bytes = (float)$ini_up * (['g' => 1073741824, 'm' => 1048576, 'k' => 1024][strtolower(substr($ini_up, -1))] ?? 1);
+        if ($ini_up_bytes > 0 && $ini_up_bytes < $file_max_bytes) $file_max_bytes = (int)$ini_up_bytes;
+    }
+    $file_max_label = str_replace('.', ',', (string)round($file_max_bytes / 1048576, 1)) . ' Mo';
+  ?>
     <!-- ===== FICHIERS ===== -->
-    <form method="POST" action="/action-fichier" enctype="multipart/form-data" class="drop-zone" onclick="document.getElementById('fileInput').click();" style="margin-bottom: 20px;">
+    <?php if (!$is_readonly): // dépôt : jamais en lecture seule ?>
+    <form method="POST" action="/action-fichier?project_id=<?= (int)$project_id ?>" enctype="multipart/form-data" class="drop-zone" id="fileDropZone" onclick="document.getElementById('fileInput').click();" style="margin-bottom: 20px;">
       <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
       <input type="hidden" name="project_id" value="<?= $project_id ?>">
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <div class="drop-zone-title">Ajouter des fichiers au projet</div>
-      <div class="drop-zone-sub">PDF, images, documents Word/Excel · jusqu'à 10 Mo par fichier · sélection multiple ⌘+clic</div>
+      <div class="drop-zone-sub">PDF, images, documents Word/Excel · jusqu'à <?= h($file_max_label) ?> par fichier · glisser-déposer ou sélection multiple ⌘+clic</div>
       <div class="drop-zone-ai">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         <span>L'IA utilisera ces fichiers pour rédiger vos bilans</span>
       </div>
-      <input type="file" id="fileInput" name="files[]" multiple style="display:none;" onchange="this.form.submit();" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,.ppt,.pptx,.odt,.ods">
+      <input type="file" id="fileInput" name="files[]" multiple style="display:none;" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,.ppt,.pptx,.odt,.ods">
     </form>
+    <script>
+    (function () {
+      var zone = document.getElementById('fileDropZone');
+      var input = document.getElementById('fileInput');
+      if (!zone || !input) return;
+      var MAX = <?= (int)$file_max_bytes ?>, MAX_TXT = <?= json_encode($file_max_label, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+      // Envoi : on écarte d'avance les fichiers trop gros (le serveur les
+      // refuserait), et on dit lesquels.
+      function envoyer(files) {
+        if (!files || !files.length) return;
+        var trop = [];
+        for (var i = 0; i < files.length; i++) if (files[i].size > MAX) trop.push(files[i].name);
+        if (trop.length) {
+          alert('Fichier' + (trop.length > 1 ? 's' : '') + ' trop volumineux (' + MAX_TXT + ' maximum par fichier) :\n' + trop.join('\n'));
+          if (trop.length === files.length) { input.value = ''; return; }
+          if (typeof DataTransfer === 'function') {
+            var dt = new DataTransfer();
+            for (var j = 0; j < files.length; j++) if (files[j].size <= MAX) dt.items.add(files[j]);
+            try { input.files = dt.files; } catch (e) {}
+          }
+        } else if (input.files !== files) {
+          try { input.files = files; } catch (e) { return; }
+        }
+        zone.submit();
+      }
+      input.addEventListener('change', function () { envoyer(input.files); });
+      // Glisser-déposer sur la zone : sans ces gestionnaires, le navigateur
+      // ouvrait le fichier au lieu de l'envoyer.
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        zone.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); zone.classList.add('is-dragover'); });
+      });
+      ['dragleave', 'dragend'].forEach(function (ev) {
+        zone.addEventListener(ev, function () { zone.classList.remove('is-dragover'); });
+      });
+      zone.addEventListener('drop', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        zone.classList.remove('is-dragover');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) envoyer(e.dataTransfer.files);
+      });
+    })();
+    </script>
+    <?php endif; ?>
 
     <?php if (!empty($_SESSION['flash']) && $active_tab === 'fichiers'): 
         $f = $_SESSION['flash']; unset($_SESSION['flash']);
@@ -2040,8 +2177,8 @@ render_sidebar('projets');
       <div class="files-grid">
         <?php foreach ($files as $f): 
             $ic = file_icon_class($f['mime_type'], $f['filename']);
-            // Permission de suppression : admin OU référent OU uploader
-            $can_delete_file = $is_admin || $is_referent || ((int)$f['uploaded_by'] === (int)$current['id']);
+            // Permission de suppression : admin OU référent OU uploader (jamais en lecture seule)
+            $can_delete_file = !$is_readonly && ($is_admin || $is_referent || ((int)$f['uploaded_by'] === (int)$current['id']));
         ?>
         <div class="file-card" style="position:relative;">
           <a href="/fichier-projet?type=file&amp;id=<?= (int)$f['id'] ?>" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:12px; flex:1; text-decoration:none; color:inherit;">
@@ -2076,8 +2213,9 @@ render_sidebar('projets');
   <?php elseif ($active_tab === 'factures'): ?>
     <!-- ===== FACTURES DU PROJET ===== -->
     <?php
-      $can_validate = $is_admin || $is_coord;
-      $can_add = true; // tous les membres de l'org peuvent ajouter une facture
+      // Lecture seule (collectivité, plateforme, projet archivé) : consultation uniquement
+      $can_validate = !$is_readonly && ($is_admin || $is_coord);
+      $can_add = !$is_readonly; // tous les membres de l'org peuvent ajouter une facture
     ?>
 
     <!-- Messages de confirmation -->
@@ -2373,7 +2511,7 @@ render_sidebar('projets');
                 </button>
               </form>
             <?php endif; ?>
-            <?php if ($is_admin): ?>
+            <?php if ($is_admin && !$is_readonly): ?>
               <form method="POST" action="/action-facture" style="margin:0;" onsubmit="return confirm('Supprimer définitivement cette facture ?');">
                 <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
                 <input type="hidden" name="project_id" value="<?= $project_id ?>">
@@ -2427,6 +2565,11 @@ render_sidebar('projets');
       </div>
     </div>
 
+    <?php if ($is_readonly): ?>
+    <div class="chat-readonly" style="padding:12px 14px; margin-bottom:24px; border:1px dashed var(--border); border-radius:10px; font-size:13px; color:var(--ink-3); text-align:center;">
+      🗄️ Projet archivé : l’assistant IA ne génère plus de documents. Les documents déjà générés restent consultables.
+    </div>
+    <?php else: ?>
     <div class="section-head">
       <h2>Aide à la rédaction</h2>
       <div class="section-head-meta">Un clic pour générer un document</div>
@@ -2464,6 +2607,7 @@ render_sidebar('projets');
         </button>
       </div>
     </form>
+    <?php endif; ?>
 
     <?php if (!empty($generated_docs)): ?>
     <div class="section-head">
@@ -2497,6 +2641,7 @@ render_sidebar('projets');
     </div>
     <?php endif; ?>
 
+    <?php if (!$is_readonly): ?>
     <div class="section-head">
       <h2>Parler avec l'IA</h2>
       <div class="section-head-meta">Posez-lui des questions sur ce projet</div>
@@ -2551,6 +2696,7 @@ render_sidebar('projets');
       </form>
     </div>
     <p class="ai-disclaimer">L'IA peut faire des erreurs. Vérifiez les informations importantes. Ses réponses ne remplacent pas un avis professionnel.</p>
+    <?php endif; ?>
 
   <?php elseif ($active_tab === 'historique' && $is_admin): ?>
     <!-- ===== HISTORIQUE DU PROJET (admin uniquement) ===== -->
@@ -3453,8 +3599,9 @@ if (aiInput) aiInput.addEventListener('input', function () { autoExpand(this); }
             body: formData
         })
         .then(function(r) { 
-            if (!r.ok) throw new Error('HTTP ' + r.status); 
-            return r.json(); 
+            // Refus du serveur (projet archivé, session expirée…) : le motif est
+            // dans la réponse JSON ; sans JSON lisible, envoi classique (catch).
+            return r.json().catch(function () { throw new Error('HTTP ' + r.status); });
         })
         .then(function(data) {
             if (data.ok && data.message) {
@@ -3470,7 +3617,13 @@ if (aiInput) aiInput.addEventListener('input', function () { autoExpand(this); }
                     }, 3000);
                 }
             } else {
-                alert('Erreur lors de l\'envoi : ' + (data.error || 'inconnue'));
+                var motifs = {
+                    csrf: 'session expirée, rechargez la page',
+                    forbidden: 'accès refusé à ce projet',
+                    invalid_content: 'message vide ou trop long (5 000 caractères maximum)',
+                    insert_failed: 'le message n\u2019a pas pu être enregistré, réessayez'
+                };
+                alert('Erreur lors de l\'envoi : ' + (motifs[data.error] || data.error || 'inconnue'));
             }
         })
         .catch(function(err) {
@@ -3906,7 +4059,7 @@ function copyDoc(id) {
 .file-name{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;color:var(--ink)!important;max-width:100%}
 .file-meta{color:var(--ink-3)!important}
 .drop-zone{background:var(--glass)!important;backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border:2px dashed var(--glass-border)!important;border-radius:var(--radius-lg,18px)!important}
-.drop-zone:hover{border-color:var(--acc)!important;background:var(--acc-light,rgba(5,150,105,.08))!important}
+.drop-zone:hover,.drop-zone.is-dragover{border-color:var(--acc)!important;background:var(--acc-light,rgba(5,150,105,.08))!important}
 .drop-zone-title{color:var(--ink)!important;font-weight:650}
 /* Formulaire facture : champs adaptés au thème */
 .form-input-lg,.form-select-lg{background:var(--bg)!important;color:var(--ink)!important;border-color:var(--border)!important;border-radius:12px!important}

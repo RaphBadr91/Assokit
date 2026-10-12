@@ -13,7 +13,8 @@
  *   - Activer/Désactiver la TVA (pour quand RBPS sera assujettie)
  *
  * Sécurité :
- *   - Réservé aux fondateurs (is_founder=1 OU is_super_admin=1 OU org_id=1)
+ *   - Réservé au Fondateur (is_founder=1 ou role='founder'), comme toute la section
+ *     Pilotage Fondateur : un super-admin n'écrit pas les clés de paiement de la plateforme
  *   - Les clés secrètes sont masquées dans l'affichage
  *   - HTTPS obligatoire (vérification au chargement)
  * --------------------------------------------------------------
@@ -26,12 +27,16 @@ require_once __DIR__ . '/includes-layout.php';
 require_login();
 $user = ak_platform_flags(current_user());
 
-// Restriction fondateur
-$has_access = !empty($user['is_founder']) || !empty($user['is_super_admin']);
+// Restriction fondateur (ak_platform_flags relit is_founder en base et gère role='founder')
+$has_access = !empty($user['is_founder']);
 if (!$has_access) {
     http_response_code(403);
     die('Accès réservé aux fondateurs.');
 }
+
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
 
 // Vérification HTTPS (sécurité absolue pour les clés API)
 $is_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (int)($_SERVER['SERVER_PORT'] ?? 80) === 443;

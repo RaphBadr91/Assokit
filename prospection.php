@@ -1011,7 +1011,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
 // ── Lecture ─────────────────────────────────────────────────────────────────
 $filtre = (string) ($_GET['f'] ?? 'tous');
-$q      = trim((string) ($_GET['q'] ?? ''));
+$q      = is_string($_GET['q'] ?? null) ? trim($_GET['q']) : '';   // q[]=… (anciens liens) → pas de recherche
 $lotVu  = (int) ($_GET['import'] ?? 0);   // n'afficher qu'un import
 $fType  = prosp_type((string) ($_GET['type'] ?? ''));
 $fDept  = mb_substr(strtoupper(preg_replace('/[^0-9A-Za-z]/', '', (string) ($_GET['dept'] ?? ''))), 0, 3);
@@ -1181,8 +1181,9 @@ try {
     if ($rows) {
         try {
             foreach ($pdo->query("SELECT id, label FROM asso_qr_codes WHERE org_id = " . (int) $org_id)
-                         ->fetchAll(PDO::FETCH_ASSOC) as $q) {
-                $qr_labels[(int) $q['id']] = (string) $q['label'];
+                         ->fetchAll(PDO::FETCH_ASSOC) as $qrRow) {
+                // $q est la recherche, reprise par les onglets, les actions et l'export
+                $qr_labels[(int) $qrRow['id']] = (string) $qrRow['label'];
             }
         } catch (Throwable $e) { /* migration QR pas encore passée */ }
     }

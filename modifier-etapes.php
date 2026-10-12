@@ -27,7 +27,8 @@ if ($project_id <= 0) {
 
 // Charger projet
 $stmt = $pdo->prepare("
-    SELECT p.id, p.name, p.referent_id, p.progress_percent, f.org_id, f.name AS folder_name
+    SELECT p.id, p.name, p.referent_id, p.progress_percent, p.archived_at, f.org_id, f.name AS folder_name,
+           f.archived_at AS folder_archived_at
     FROM projects p
     JOIN folders f ON p.folder_id = f.id
     WHERE p.id = ?
@@ -40,12 +41,20 @@ if (!$project || (int)$project['org_id'] !== $org_id) {
     exit;
 }
 
-// Permissions
+// Permissions : admin, coordinateur ou référent du projet — les mêmes que pour
+// modifier la fiche (action-projet.php) et que le lien « Modifier » de la fiche.
 $is_admin = ($current['role'] === 'admin');
+$is_coord = ($current['role'] === 'coordinator');
 $is_referent = ((int)$project['referent_id'] === (int)$current['id']);
 
-if (!$is_admin && !$is_referent) {
+if (!$is_admin && !$is_coord && !$is_referent) {
     header('Location: /projet/' . $project_id . '?error=permission');
+    exit;
+}
+
+// Projet archivé : lecture seule jusqu'à sa restauration depuis /archives
+if (!empty($project['archived_at']) || !empty($project['folder_archived_at'])) {
+    header('Location: /projet/' . $project_id . '?error=archived');
     exit;
 }
 
@@ -62,20 +71,28 @@ $stmt = $pdo->prepare("
 $stmt->execute([$project_id]);
 $steps = $stmt->fetchAll();
 
-// Charger l'équipe du projet (membres + référent) pour le dropdown d'assignation
+// Charger l'équipe du projet (membres + référent) pour le dropdown d'assignation,
+// plus les personnes déjà assignées à une étape : sinon, modifier une étape
+// dont l'assigné a quitté l'équipe lui retirerait l'assignation sans le dire.
 $stmt = $pdo->prepare("
-    SELECT DISTINCT u.id, u.first_name, u.last_name, u.role
+    SELECT DISTINCT u.id, u.first_name, u.last_name, u.role,
+           (u.id IN (SELECT user_id FROM project_members WHERE project_id = ?)) AS in_team
     FROM users u
     WHERE u.is_active = 1
       AND u.org_id = ?
       AND (
           u.id IN (SELECT user_id FROM project_members WHERE project_id = ?)
           OR u.id = ?
+          OR u.id IN (SELECT assigned_to_user_id FROM project_steps WHERE project_id = ? AND assigned_to_user_id IS NOT NULL)
       )
     ORDER BY u.first_name ASC, u.last_name ASC
 ");
-$stmt->execute([$org_id, $project_id, (int)$project['referent_id']]);
+$stmt->execute([$project_id, $org_id, $project_id, (int)$project['referent_id'], $project_id]);
 $team_members = $stmt->fetchAll();
+// Un suiveur (financeur) n'est assignable que s'il est dans l'équipe du
+// projet (même règle que action-etape.php) ; hors équipe, il ne reste
+// affiché que sur l'étape qui lui est déjà assignée.
+$step_assignable = fn(array $m): bool => ($m['role'] ?? '') !== 'follower' || !empty($m['in_team']);
 
 // Flash
 $flash = $_SESSION['flash'] ?? null;
@@ -146,7 +163,7 @@ render_sidebar('projets');
         <select name="assigned_to" 
                 style="flex:1; padding:10px 12px; background:var(--bg-2); border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:14px; color:var(--ink);">
           <option value="">— Assigner à... (optionnel) —</option>
-          <?php foreach ($team_members as $m): ?>
+          <?php foreach ($team_members as $m): if (!$step_assignable($m)) continue; ?>
             <option value="<?= (int)$m['id'] ?>"><?= h($m['first_name'] . ' ' . $m['last_name']) ?></option>
           <?php endforeach; ?>
         </select>
@@ -232,8 +249,10 @@ render_sidebar('projets');
                 
                 <select name="assigned_to" style="width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--border-strong); border-radius:6px; font-family:inherit; font-size:12px; color:var(--ink); margin-bottom:8px;">
                   <option value="">— Non assignée —</option>
-                  <?php foreach ($team_members as $m): ?>
-                    <option value="<?= (int)$m['id'] ?>" <?= ((int)($step['assigned_to_user_id'] ?? 0) === (int)$m['id']) ? 'selected' : '' ?>>
+                  <?php foreach ($team_members as $m):
+                      $is_current = ((int)($step['assigned_to_user_id'] ?? 0) === (int)$m['id']);
+                      if (!$is_current && !$step_assignable($m)) continue; ?>
+                    <option value="<?= (int)$m['id'] ?>" <?= $is_current ? 'selected' : '' ?>>
                       👤 <?= h($m['first_name'] . ' ' . $m['last_name']) ?>
                     </option>
                   <?php endforeach; ?>

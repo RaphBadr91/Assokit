@@ -31,21 +31,30 @@ $project_id = (int)($_POST['project_id'] ?? 0);
 $action = $_POST['action'] ?? '';
 
 // Vérifier accès projet (org match) + permission admin/édition
-$stmt = $pdo->prepare("SELECT p.id FROM projects p JOIN folders f ON f.id = p.folder_id WHERE p.id = ? AND f.org_id = ?");
+$stmt = $pdo->prepare("SELECT p.id, p.archived_at, f.archived_at AS folder_archived_at FROM projects p JOIN folders f ON f.id = p.folder_id WHERE p.id = ? AND f.org_id = ?");
 $stmt->execute([$project_id, $user['org_id']]);
-if (!$stmt->fetch()) {
+$share_project = $stmt->fetch();
+if (!$share_project) {
     echo json_encode(['ok' => false, 'error' => 'Projet introuvable']);
     exit;
 }
+// Projet archivé : pas de nouveau lien public (l'archivage a coupé l'ancien) ;
+// révoquer reste possible.
+if ($action === 'create' && (!empty($share_project['archived_at']) || !empty($share_project['folder_archived_at']))) {
+    echo json_encode(['ok' => false, 'error' => 'Ce projet est archivé : il ne peut pas être partagé.']);
+    exit;
+}
 
-$is_admin = ($user['role'] === 'admin');
+// Même règle que le bouton « Partager publiquement » de la fiche projet ($can_share_public,
+// projet.php) : admin, référent DU projet ou coordinateur — rien d'autre.
+$is_admin = (($user['role'] ?? '') === 'admin');
+$is_coord = (($user['role'] ?? '') === 'coordinator');
 // Charge le projet pour vérifier référent
 $stmt = $pdo->prepare("SELECT referent_id FROM projects WHERE id = ?");
 $stmt->execute([$project_id]);
 $proj = $stmt->fetch();
 $is_referent = $proj && (int)$proj['referent_id'] === (int)$user['id'];
-$can_edit = function_exists('can') && (can('edit_projects') || can('manage_projects'));
-if (!$is_admin && !$is_referent && !$can_edit) {
+if (!$is_admin && !$is_referent && !$is_coord) {
     echo json_encode(['ok' => false, 'error' => 'Permission refusée — admin, référent ou coordinateur uniquement']);
     exit;
 }

@@ -8,6 +8,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/app-context.php'; // pas d'incitation à l'achat dans l'app (Apple 3.1.1)
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/pca-mapping.php';
+require_once __DIR__ . '/report-charts-helper.php'; // ak_report_filename_slug()
 
 if (!function_exists('ak_build_justificatifs')) {
     function ak_build_justificatifs(\Mpdf\Mpdf $mpdf, array $ctx, array $dossier, bool $validated_only): void {
@@ -123,7 +124,6 @@ if (PHP_SAPI !== 'cli') {
     ]);
     $mpdf->SetTitle('Justificatifs - ' . $ctx['name']);
     ak_build_justificatifs($mpdf, $ctx, $dossier, $validated_only);
-    $slug = trim(preg_replace('/[^A-Za-z0-9_-]+/', '-', (string)$ctx['name']), '-');
-    if ($slug === '') $slug = 'projet';
+    $slug = ak_report_filename_slug((string)$ctx['name']);
     $mpdf->Output('justificatifs-' . $slug . '.pdf', \Mpdf\Output\Destination::DOWNLOAD);
 }

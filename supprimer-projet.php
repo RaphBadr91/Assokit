@@ -80,7 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
             ");
             $stmt->execute([$user_id, $project_id]);
 
-            // Log
+            // Log : code historique 'archive_folder', que /archives sait
+            // afficher ; c'est target_type 'project' qui en fait un projet.
             $details = [
                 'status_at_archive' => $project['status'],
                 'progress_at_archive' => (int)$project['progress_percent'],

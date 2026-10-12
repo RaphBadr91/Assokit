@@ -84,6 +84,17 @@ $groups = [
     ],
 ];
 
+// Collectivités & Mairies : carte montrée seulement à qui peut ouvrir la page (même contrôle
+// qu'elle : ak_require_mairie_manager), jamais un lien vers un refus.
+require_once __DIR__ . '/includes-permissions.php';
+if (is_file(__DIR__ . '/includes-mairie-channels.php')) require_once __DIR__ . '/includes-mairie-channels.php';
+if (!(function_exists('ak_can_manage_mairies') ? ak_can_manage_mairies($user) : is_platform_admin($user))) {
+    foreach ($groups as &$g) {
+        $g['items'] = array_values(array_filter($g['items'], fn($it) => $it['url'] !== '/super-admin-mairies'));
+    }
+    unset($g);
+}
+
 sa_render_head('Pilotage Fondateur');
 sa_render_sidebar('fondateur-pilotage');
 ?>

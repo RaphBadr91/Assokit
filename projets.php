@@ -19,6 +19,8 @@ $user = current_user();
 $org_id = (int)$user['org_id'];
 $can_create = can('create_projects');
 $is_admin = ($user['role'] === 'admin');
+// Création de dossier : admin ou droit « Peut créer des dossiers » (même règle que nouveau-dossier.php)
+$can_create_folder = $is_admin || (!empty($user['can_create_folders']) && $user['role'] !== 'follower');
 
 // [PACK 6.5 - SECURITY] Helper de check finances (pour cacher les budgets aux non-admins)
 require_once __DIR__ . '/finance-permissions.php';
@@ -33,9 +35,25 @@ $flash = null;
 if (!empty($_SESSION['flash_projets'])) {
     $flash = $_SESSION['flash_projets'];
     unset($_SESSION['flash_projets']);
+} elseif (($_GET['error'] ?? '') === 'forbidden') {
+    // Renvoi de /projet/<id> (lien d'une notification, d'un e-mail…) vers un projet non ouvert à ce compte
+    $flash = ['type' => 'error', 'message' => 'Vous n\'avez pas accès à ce projet.'];
+}
+
+// Suiveur : compteurs, avancement, avatars et activité des dossiers calculés
+// sur les seuls projets qu'il suit (jamais sur le reste de l'association).
+$follower_in_sql = '';
+$follower_in_params = [];
+if ($is_follower_user) {
+    $follower_in_params = array_map('intval', $follower_project_ids);
+    $follower_in_sql = empty($follower_in_params)
+        ? ' AND 1 = 0'
+        : ' AND p.id IN (' . implode(',', array_fill(0, count($follower_in_params), '?')) . ')';
 }
 
 // ====== Chargement des dossiers (exclut les archivés) + épingles utilisateur ======
+// done_this_year : terminés dans l'année (date de fin, sinon dernière mise à
+// jour du projet) — pour l'en-tête « X terminés cette année ».
 $user_id = (int)$user['id'];
 $stmt = $pdo->prepare("
     SELECT
@@ -43,18 +61,20 @@ $stmt = $pdo->prepare("
         COUNT(p.id) AS total_projects,
         SUM(CASE WHEN p.status IN ('active','warning') AND p.archived_at IS NULL THEN 1 ELSE 0 END) AS active_count,
         SUM(CASE WHEN p.status = 'done' AND p.archived_at IS NULL THEN 1 ELSE 0 END) AS done_count,
+        SUM(CASE WHEN p.status = 'done' AND p.archived_at IS NULL
+                  AND YEAR(COALESCE(p.end_date, p.updated_at, p.created_at)) = YEAR(CURDATE()) THEN 1 ELSE 0 END) AS done_this_year,
         COALESCE(AVG(CASE WHEN p.status IN ('active','warning') AND p.archived_at IS NULL THEN p.progress_percent END), 0) AS avg_progress,
         COALESCE(SUM(CASE WHEN p.archived_at IS NULL THEN p.participants_count ELSE 0 END), 0) AS total_participants,
         COALESCE(SUM(CASE WHEN p.archived_at IS NULL THEN p.budget_planned ELSE 0 END), 0) AS total_budget,
         CASE WHEN upf.user_id IS NOT NULL THEN 1 ELSE 0 END AS is_pinned
     FROM folders f
-    LEFT JOIN projects p ON p.folder_id = f.id
+    LEFT JOIN projects p ON p.folder_id = f.id" . $follower_in_sql . "
     LEFT JOIN user_pinned_folders upf ON upf.folder_id = f.id AND upf.user_id = ?
     WHERE f.org_id = ? AND f.archived_at IS NULL
     GROUP BY f.id, f.name, f.color_theme, f.icon, upf.user_id
     ORDER BY is_pinned DESC, f.id ASC
 ");
-$stmt->execute([$user_id, $org_id]);
+$stmt->execute(array_merge($follower_in_params, [$user_id, $org_id]));
 $folders = $stmt->fetchAll();
 
 // ====== Chargement des projets par dossier (exclut archivés) + compteurs non-lus ======
@@ -68,8 +88,9 @@ $project_sql = "
             FROM project_messages m
             WHERE m.project_id = p.id
               AND m.author_id != :uid
+              AND m.message_type = 'text'
               AND m.id > COALESCE((
-                SELECT last_read_message_id FROM user_project_reads
+                SELECT MAX(last_read_message_id) FROM user_project_reads
                 WHERE user_id = :uid2 AND project_id = p.id
               ), 0)
         ), 0) AS unread_count
@@ -125,12 +146,12 @@ try {
         FROM project_members pm
         JOIN projects p ON p.id = pm.project_id
         JOIN folders f ON f.id = p.folder_id
-        JOIN users u ON u.id = pm.user_id
-        WHERE f.org_id = ? AND f.archived_at IS NULL AND p.archived_at IS NULL
+        JOIN users u ON u.id = pm.user_id AND u.org_id = f.org_id
+        WHERE f.org_id = ? AND f.archived_at IS NULL AND p.archived_at IS NULL" . $follower_in_sql . "
         GROUP BY p.folder_id, u.id, u.first_name, u.last_name
         ORDER BY p.folder_id ASC, u.last_name ASC, u.first_name ASC
     ");
-    $mstmt->execute([$org_id]);
+    $mstmt->execute(array_merge([$org_id], $follower_in_params));
     foreach ($mstmt->fetchAll() as $mrow) {
         $fid = (int) $mrow['folder_id'];
         $ini = trim(mb_strtoupper(mb_substr((string) $mrow['first_name'], 0, 1) . mb_substr((string) $mrow['last_name'], 0, 1)));
@@ -151,17 +172,18 @@ try {
  * Retourne : [folder_id => [day_offset => count]] où day_offset = 0..13 (0 = aujourd'hui)
  */
 function ak_load_folder_activity_14d(PDO $pdo, int $org_id, ?array $follower_ids): array {
+    // Suiveur : seulement l'activité des projets qu'il suit, filtrée dans
+    // chacune des trois branches de l'UNION (ids passés une fois par branche).
     $project_filter = '';
-    $params = [$org_id, $org_id, $org_id];
-
+    $ids = [];
     if ($follower_ids !== null) {
         if (empty($follower_ids)) {
             return []; // follower sans projets : pas d'activité
         }
-        $ph = implode(',', array_fill(0, count($follower_ids), '?'));
-        $project_filter = " AND a.project_id IN ($ph)";
-        // On rajoute les ids 3 fois (une par UNION) — simplifié : on filtre après
+        $ids = array_map('intval', array_values($follower_ids));
+        $project_filter = ' AND p.id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
     }
+    $params = array_merge([$org_id], $ids, [$org_id], $ids, [$org_id], $ids);
 
     // Requête unifiée : on récupère toutes les activités des 14 derniers jours
     $sql = "
@@ -175,7 +197,7 @@ function ak_load_folder_activity_14d(PDO $pdo, int $org_id, ?array $follower_ids
             WHERE f.org_id = ?
               AND f.archived_at IS NULL
               AND p.archived_at IS NULL
-              AND pm.created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+              AND pm.created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)" . $project_filter . "
 
             UNION ALL
 
@@ -189,7 +211,7 @@ function ak_load_folder_activity_14d(PDO $pdo, int $org_id, ?array $follower_ids
               AND f.archived_at IS NULL
               AND p.archived_at IS NULL
               AND ps.completed_at IS NOT NULL
-              AND ps.completed_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+              AND ps.completed_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)" . $project_filter . "
 
             UNION ALL
 
@@ -202,7 +224,7 @@ function ak_load_folder_activity_14d(PDO $pdo, int $org_id, ?array $follower_ids
             WHERE f.org_id = ?
               AND f.archived_at IS NULL
               AND p.archived_at IS NULL
-              AND pf.created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+              AND pf.created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)" . $project_filter . "
         ) a
         WHERE a.day_offset BETWEEN 0 AND 13
         GROUP BY folder_id, day_offset
@@ -227,7 +249,6 @@ function ak_load_folder_activity_14d(PDO $pdo, int $org_id, ?array $follower_ids
         $activity[$fid][$day] = (int)$r['cnt'];
     }
 
-    // Filtrage follower (si applicable) : déjà fait par projet via la jointure
     return $activity;
 }
 
@@ -354,8 +375,10 @@ function ak_folder_ai_badge(array $folder, array $activity_days): array {
 /**
  * Génère 1 à 3 insights IA contextuels (style ChatGPT bubble).
  */
-function ak_generate_ai_insights(array $folders, array $folder_activity, array $all_projects, array $pulse): array {
+function ak_generate_ai_insights(array $folders, array $folder_activity, array $all_projects, array $pulse, bool $for_follower = false): array {
     $insights = [];
+    // Suiveur : les chiffres ne portent que sur les projets qu'il suit
+    $scope = $for_follower ? 'des projets que tu suis' : 'de ton asso';
 
     // Insight 1 : dossier avec plus grosse accélération
     $best_folder = null;
@@ -403,14 +426,16 @@ function ak_generate_ai_insights(array $folders, array $folder_activity, array $
         $insights[] = [
             'icon' => '📈',
             'title' => 'Bonne dynamique globale',
-            'body' => 'L\'activité de ton asso est en hausse de <strong>+' . $pulse['trend_pct'] . '%</strong> sur les 7 derniers jours. C\'est l\'élan qui fait la différence.',
+            'body' => 'L\'activité ' . $scope . ' est en hausse de <strong>+' . $pulse['trend_pct'] . '%</strong> sur les 7 derniers jours. C\'est l\'élan qui fait la différence.',
             'tone' => 'success',
         ];
     } elseif ($pulse['trend_pct'] <= -20 && $pulse['act_previous'] > 0) {
         $insights[] = [
             'icon' => '💡',
             'title' => 'Une petite relance ?',
-            'body' => 'L\'activité a baissé de <strong>' . abs($pulse['trend_pct']) . '%</strong> cette semaine. Et si tu créais une étape ou envoyais un message à ton équipe ?',
+            'body' => $for_follower
+                ? 'L\'activité ' . $scope . ' a baissé de <strong>' . abs($pulse['trend_pct']) . '%</strong> cette semaine.'
+                : 'L\'activité a baissé de <strong>' . abs($pulse['trend_pct']) . '%</strong> cette semaine. Et si tu créais une étape ou envoyais un message à ton équipe ?',
             'tone' => 'warn',
         ];
     } elseif ($pulse['act_recent'] === 0) {
@@ -444,7 +469,7 @@ function ak_generate_ai_insights(array $folders, array $folder_activity, array $
     return array_slice($insights, 0, 3);
 }
 
-$ai_insights = ak_generate_ai_insights($folders, $folder_activity, $all_projects, $pulse);
+$ai_insights = ak_generate_ai_insights($folders, $folder_activity, $all_projects, $pulse, $is_follower_user);
 
 /**
  * Génère un sparkline SVG inline depuis un tableau de 14 valeurs (jour 13 → jour 0).
@@ -920,7 +945,7 @@ render_sidebar('projets');
           <?php endif; ?>
         </div>
       <?php else: ?>
-        <?php $__done_all = (int) array_sum(array_column($folders, 'done_count')); ?>
+        <?php $__done_all = (int) array_sum(array_column($folders, 'done_this_year')); ?>
         <div class="page-sub">
           <span class="pj-dot"></span>
           <?= count($folders) ?> dossier<?= count($folders) > 1 ? 's' : '' ?> · <?= (int)$total_active ?> projet<?= $total_active > 1 ? 's' : '' ?> en cours<?php if ($__done_all > 0): ?> · <?= $__done_all ?> terminé<?= $__done_all > 1 ? 's' : '' ?> cette année<?php endif; ?>
@@ -932,18 +957,20 @@ render_sidebar('projets');
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
         <input id="pjSearch" type="search" placeholder="Rechercher un dossier…" style="border:0;background:transparent;outline:none;font:inherit;color:var(--ink);min-width:0;flex:1;">
       </label>
-    <?php if ($user['role'] === 'admin' || $can_create): ?>
+    <?php if ($user['role'] === 'admin' || $can_create || $can_create_folder): ?>
       <?php if ($can_create): ?>
         <a href="/nouveau-projet" class="btn btn-primary">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Nouveau projet
         </a>
       <?php endif; ?>
-      <?php if ($is_admin): ?>
+      <?php if ($can_create_folder): ?>
         <a href="/nouveau-dossier" class="btn btn-ghost">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
           Nouveau dossier
         </a>
+      <?php endif; ?>
+      <?php if ($is_admin): ?>
         <a href="/archives" class="btn btn-ghost" title="Voir les dossiers et projets archivés">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
           Archives
@@ -1008,11 +1035,11 @@ render_sidebar('projets');
     $r = 26; $cx = 32; $cy = 32; $circ = 2 * M_PI * $r;
     $offset = $circ - ($score / 100) * $circ;
   ?>
-  <section class="pulse-bar" aria-label="Pulse de l'association">
+  <section class="pulse-bar" aria-label="<?= $is_follower_user ? 'Pulse des projets suivis' : 'Pulse de l\'association' ?>">
     <div class="pulse-head">
       <div class="pulse-title">
         <span class="pulse-title-dot"></span>
-        Pulse de votre association — 7 derniers jours
+        <?= $is_follower_user ? 'Pulse des projets que vous suivez' : 'Pulse de votre association' ?> — 7 derniers jours
       </div>
       <span class="pulse-ai-tag">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2z"/></svg>
@@ -1123,7 +1150,7 @@ render_sidebar('projets');
         <div style="font-size: 13px; color: var(--ink-3);">L'association vous associera aux projets qu'elle souhaite partager avec vous.</div>
       <?php else: ?>
         Aucun dossier n'a encore été créé.
-        <?php if ($is_admin): ?>
+        <?php if ($can_create_folder): ?>
           <br><br>
           <a href="/nouveau-dossier" class="btn btn-primary" style="margin-top:10px;">+ Créer votre premier dossier</a>
         <?php endif; ?>
@@ -1217,7 +1244,8 @@ render_sidebar('projets');
             <div class="ak-card-h">
               <b><?= h($f['name']) ?><?php if ($is_pinned): ?> <span title="Dossier épinglé" style="font-size:12px">📌</span><?php endif; ?></b>
               <small>
-                <?= (int)$f['active_count'] + (int)$f['done_count'] ?> projet<?= ((int)$f['active_count'] + (int)$f['done_count']) > 1 ? 's' : '' ?><?php if ($f['done_count'] > 0): ?> · <?= (int)$f['done_count'] ?> terminé<?= $f['done_count'] > 1 ? 's' : '' ?><?php endif; ?><?php if ($can_view_finances): ?> · <?= h(format_budget($f['total_budget'])) ?><?php endif; ?>
+                <?php // Tous les projets listés dans le dossier (brouillons compris) ?>
+                <?= count($projects) ?> projet<?= count($projects) > 1 ? 's' : '' ?><?php if ($f['done_count'] > 0): ?> · <?= (int)$f['done_count'] ?> terminé<?= $f['done_count'] > 1 ? 's' : '' ?><?php endif; ?><?php if ($can_view_finances): ?> · <?= h(format_budget($f['total_budget'])) ?><?php endif; ?>
               </small>
             </div>
             <span class="ak-status" style="background:<?= h($bc) ?>1a;color:<?= h($bc) ?>" title="<?= $f_total_act ?> action<?= $f_total_act > 1 ? 's' : '' ?> sur 14 jours"><?= h($f_badge['emoji']) ?> <?= h($f_badge['label']) ?></span>
@@ -1349,7 +1377,7 @@ render_sidebar('projets');
     </div>
     <?php endforeach; ?>
 
-    <?php if ($is_admin): ?>
+    <?php if ($can_create_folder): ?>
     <a href="/nouveau-dossier" class="ak-ghost" id="pjGhost">
       <span class="plus"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
       <b>Nouveau dossier</b>

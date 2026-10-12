@@ -33,6 +33,10 @@ if (!$is_founder) {
     exit('Accès réservé aux Fondateurs.');
 }
 
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
+
 // Charger les settings actuels
 $c = ak_company() ?: [];
 
@@ -45,6 +49,18 @@ $csrf = $_SESSION['csrf_token'];
 // Flash message depuis save
 $flash = $_SESSION['flash_societe'] ?? null;
 unset($_SESSION['flash_societe']);
+
+// Enregistrement refusé (champ invalide) : on réaffiche la saisie, pas les valeurs en base
+$old = $_SESSION['societe_form_old'] ?? null;
+unset($_SESSION['societe_form_old']);
+if (is_array($old) && $flash && ($flash['type'] ?? '') === 'error') {
+    foreach ($old as $k => $v) {
+        if (is_string($k) && is_string($v) && $k !== 'capital_euros') $c[$k] = $v;
+    }
+    $cap = str_replace([',', ' '], ['.', ''], (string)($old['capital_euros'] ?? ''));
+    $c['capital_cents'] = is_numeric($cap) ? (int)round((float)$cap * 100) : null;
+    $c['vat_subject'] = !empty($old['vat_subject']) ? 1 : 0;
+}
 
 $updated_by_name = null;
 if (!empty($c['updated_by_user_id'])) {

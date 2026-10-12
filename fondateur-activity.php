@@ -41,6 +41,10 @@ if (!$is_founder) {
     exit;
 }
 
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
+
 // =============================================================
 // Garantir l'existence des tables (auto-création au 1er chargement)
 // =============================================================

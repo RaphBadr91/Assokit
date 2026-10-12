@@ -36,20 +36,23 @@ if (!function_exists('sa_plan_state_from_row')) {
 
 if (!function_exists('sa_org_plan_states')) {
     /**
-     * État du plan de plusieurs associations : [org_id => tableau de ak_org_plan_state()].
+     * État du plan de plusieurs associations : [org_id => tableau de ak_org_plan_state()], plus
+     * « payment_mode » (mode de paiement de la ligne courante, null si inconnu).
      * Une association introuvable est absente du résultat.
      */
     function sa_org_plan_states(PDO $pdo, array $org_ids): array {
         $ids = array_values(array_unique(array_filter(array_map('intval', $org_ids), fn($i) => $i > 0)));
         $out = [];
         if (!$ids) return $out;
+        // Mode de paiement de la ligne courante (« Offert » ne rapporte rien : sa_plan_state_mrr_cents)
+        $pay = isset(ak_db_columns($pdo, 'asso_subscriptions')['payment_mode']) ? 's.payment_mode' : 'NULL';
         try {
             foreach (array_chunk($ids, 500) as $chunk) {
                 $in = implode(',', $chunk); // entiers uniquement
                 // Ligne courante : même ordre que ak_get_current_plan / ak_org_plan_state (ak_sub_order)
                 $rows = $pdo->query("
                     SELECT o.id AS org_id, o.status AS org_status, o.plan AS org_plan, o.trial_ends_at,
-                           " . ak_sub_state_cols($pdo) . "
+                           " . ak_sub_state_cols($pdo) . ", $pay AS payment_mode
                     FROM organizations o
                     LEFT JOIN asso_subscriptions s ON s.id = (
                         SELECT s2.id FROM asso_subscriptions s2 JOIN asso_plans p2 ON p2.id = s2.plan_id
@@ -58,7 +61,9 @@ if (!function_exists('sa_org_plan_states')) {
                     LEFT JOIN asso_plans p ON p.id = s.plan_id
                     WHERE o.id IN ($in)
                 ")->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($rows as $r) $out[(int)$r['org_id']] = sa_plan_state_from_row($r);
+                foreach ($rows as $r) {
+                    $out[(int)$r['org_id']] = sa_plan_state_from_row($r) + ['payment_mode' => $r['payment_mode'] ?? null];
+                }
             }
         } catch (Throwable $e) {
             error_log('[sa_org_plan_states] ' . get_class($e) . ' ' . $e->getMessage());
@@ -66,6 +71,20 @@ if (!function_exists('sa_org_plan_states')) {
             foreach ($ids as $id) $out[$id] = ak_org_plan_state($pdo, $id);
         }
         return $out;
+    }
+}
+
+if (!function_exists('sa_plan_state_mrr_cents')) {
+    /**
+     * Ce qu'une association rapporte chaque mois (centimes HT), pour le MRR du cockpit : abonnement
+     * courant actif, association cliente (ni essai, ni fin d'essai, ni suspendue, ni résiliée),
+     * et jamais un plan « Offert » (payment_mode = free_grant), qui ne rapporte rien.
+     * $st : un élément de sa_org_plan_states().
+     */
+    function sa_plan_state_mrr_cents(array $st): int {
+        if ($st['badge_tone'] !== 'active' || $st['sub_status'] !== 'active') return 0;
+        if (($st['payment_mode'] ?? null) === 'free_grant') return 0;
+        return max(0, (int)$st['price_cents']);
     }
 }
 
@@ -175,5 +194,97 @@ if (!function_exists('sa_plans_list')) {
             error_log('[sa_plans_list] ' . get_class($e));
         }
         return $out;
+    }
+}
+
+if (!function_exists('sa_stripe_live_subs')) {
+    /**
+     * Abonnements Stripe encore vivants d'une association : lignes asso_subscriptions payées par
+     * carte (payment_mode = stripe), avec un identifiant Stripe, pas annulées.
+     * @return array<int, string> [id de ligne => identifiant de l'abonnement Stripe]
+     */
+    function sa_stripe_live_subs(PDO $pdo, int $org_id): array {
+        $cols = ak_db_columns($pdo, 'asso_subscriptions');
+        if (!isset($cols['stripe_subscription_id'], $cols['payment_mode'])) return [];
+        try {
+            $st = $pdo->prepare("SELECT id, stripe_subscription_id FROM asso_subscriptions
+                                 WHERE org_id = ? AND payment_mode = 'stripe'
+                                   AND TRIM(COALESCE(stripe_subscription_id, '')) <> ''
+                                   AND COALESCE(status, '') <> 'cancelled'
+                                 ORDER BY id");
+            $st->execute([$org_id]);
+            $out = [];
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $out[(int)$r['id']] = trim((string)$r['stripe_subscription_id']);
+            return $out;
+        } catch (Throwable $e) {
+            error_log('[sa_stripe_live_subs] ' . get_class($e) . ' ' . $e->getMessage());
+            return [];
+        }
+    }
+}
+
+if (!function_exists('sa_stripe_cancel_for_org')) {
+    /**
+     * Association résiliée ou supprimée depuis le cockpit (ou l'appli) : ses abonnements Stripe ne
+     * doivent plus prélever le client. Chacun est annulé tout de suite dans Stripe
+     * (DELETE /v1/subscriptions/{id} ; un abonnement qui n'existe plus chez Stripe compte comme
+     * annulé), puis sa ligne passe en « cancelled » avec cancelled_at.
+     * Stripe non configuré ou refus : la ligne n'est PAS touchée. Elle reste « vivante » pour que
+     * la fiche continue d'avertir le Fondateur (sa_stripe_live_subs) jusqu'à l'annulation.
+     * $only_mark : ne pas appeler Stripe, seulement noter l'annulation faite à la main dans Stripe.
+     * @return array{cancelled: string[], failed: array<string, string>} identifiants annulés / en échec => raison
+     */
+    function sa_stripe_cancel_for_org(PDO $pdo, int $org_id, bool $only_mark = false): array {
+        $out = ['cancelled' => [], 'failed' => []];
+        $subs = sa_stripe_live_subs($pdo, $org_id);
+        if (!$subs) return $out;
+        if (!$only_mark && !function_exists('ak_stripe_api_call') && is_file(__DIR__ . '/stripe-helpers.php')) {
+            require_once __DIR__ . '/stripe-helpers.php';
+        }
+        foreach ($subs as $row_id => $sid) {
+            if (!$only_mark) {
+                if (!function_exists('ak_stripe_api_call')) { $out['failed'][$sid] = 'Stripe n’est pas configuré sur ce serveur'; continue; }
+                $r = ak_stripe_api_call($pdo, 'DELETE', '/subscriptions/' . rawurlencode($sid));
+                $gone = empty($r['ok']) && (int)($r['http_code'] ?? 0) === 404;
+                if (empty($r['ok']) && !$gone) {
+                    $out['failed'][$sid] = trim((string)($r['error'] ?? '')) !== '' ? (string)$r['error'] : 'refus de Stripe';
+                    continue;
+                }
+            }
+            try {
+                ak_db_update($pdo, 'asso_subscriptions', (int)$row_id, ['status' => 'cancelled'],
+                             ['cancelled_at' => 'NOW()', 'updated_at' => 'NOW()']);
+                $out['cancelled'][] = $sid;
+            } catch (Throwable $e) {
+                error_log('[sa_stripe_cancel_for_org] org #' . $org_id . ' : ' . get_class($e) . ' ' . $e->getMessage());
+                // Annulé chez Stripe : le webhook customer.subscription.deleted mettra la ligne à jour.
+                // Simple note sans appel à Stripe : rien n'a changé.
+                if ($only_mark) $out['failed'][$sid] = 'erreur technique, rien n’a été noté';
+                else $out['cancelled'][] = $sid;
+            }
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('sa_stripe_cancelled_note')) {
+    /** Fin du message de succès quand un ou des abonnements Stripe ont été annulés (« » sinon). */
+    function sa_stripe_cancelled_note(array $sids): string {
+        if (!$sids) return '';
+        return count($sids) > 1
+            ? ' Abonnements Stripe ' . implode(', ', $sids) . ' annulés : la carte du client n’est plus prélevée.'
+            : ' Abonnement Stripe ' . $sids[0] . ' annulé : la carte du client n’est plus prélevée.';
+    }
+}
+
+if (!function_exists('sa_stripe_still_billing_message')) {
+    /** Avertissement : abonnement(s) Stripe toujours actif(s) sur une association résiliée ou supprimée. */
+    function sa_stripe_still_billing_message(array $failed): string {
+        $parts = [];
+        foreach ($failed as $sid => $why) $parts[] = $sid . ($why !== '' ? ' (' . $why . ')' : '');
+        return (count($parts) > 1 ? 'Abonnements Stripe ' . implode(', ', $parts) . ' toujours actifs' : 'Abonnement Stripe ' . $parts[0] . ' toujours actif')
+             . ' : l’association n’a plus accès à Assokit, mais Stripe continuera de prélever la carte du client tant que '
+             . (count($parts) > 1 ? 'ces abonnements ne sont pas annulés' : 'cet abonnement n’est pas annulé')
+             . ' dans le tableau de bord Stripe (Abonnements).';
     }
 }

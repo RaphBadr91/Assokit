@@ -30,6 +30,10 @@ if (!$is_sa && !$is_founder) {
     die('Accès réservé aux Super Admins et Fondateurs.');
 }
 
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
+
 $org_id = (int)($_GET['id'] ?? 0);
 if ($org_id <= 0) {
     header('Location: /super-admin/associations');
@@ -67,7 +71,9 @@ unset($_SESSION['flash_orgbill']);
 $action_url = '/super-admin/associations/facturation/save';
 $cancel_url = '/super-admin/associations?id=' . $org_id;
 $is_founder_view = $is_founder; // Affiche la section Fondateur
-$can_edit = true;
+// Même règle que l'enregistrement (super-admin-association-facturation-save.php) : Fondateur ou admin
+// de l'association. Un super-admin consulte en lecture seule au lieu de tomber sur un refus à l'envoi.
+$can_edit = can_edit_org_billing($pdo, (int)$user['id'], $org_id);
 
 render_head('Facturation — ' . $org['name']);
 render_sidebar('factures');

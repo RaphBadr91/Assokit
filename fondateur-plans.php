@@ -22,12 +22,9 @@ $user = $pdo->prepare("SELECT id, email, role, org_id, is_founder, is_super_admi
 $user->execute([':id' => $user_id]);
 $user = $user->fetch(PDO::FETCH_ASSOC);
 
-// [FIX] Contrôle élargi : accepte role='founder'/'super_admin' OU is_founder=1 OU is_super_admin=1
-$has_access = $user && (
-    in_array($user['role'] ?? '', ['founder', 'super_admin'], true)
-    || !empty($user['is_founder'])
-    || !empty($user['is_super_admin'])
-);
+// Fondateur uniquement (role='founder' OU is_founder=1), comme le hub Pilotage Fondateur :
+// les plans et leurs prix sont facturés aux associations, un super-admin ne les modifie pas.
+$has_access = $user && (($user['role'] ?? '') === 'founder' || !empty($user['is_founder']));
 
 if (!$has_access) {
     http_response_code(403);
@@ -38,8 +35,16 @@ if (!$has_access) {
     exit;
 }
 
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
+
 $flash = $_SESSION['flash_fondateur_plans'] ?? null;
 unset($_SESSION['flash_fondateur_plans']);
+
+// Le « label spécial » n'est proposé que si la colonne existe dans cette base
+$plan_cols = ak_db_columns($pdo, 'asso_plans');
+$plan_has_price_label = !$plan_cols || isset($plan_cols['price_label']);
 
 // === Actions POST : create / update / delete ===
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -77,27 +82,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($data['slug'] === '' || $data['name'] === '') throw new Exception('Slug et nom obligatoires');
 
+            // N'écrit que les colonnes qui existent (schéma de prod non versionné : une seule
+            // colonne absente, comme price_label, bloquait tout enregistrement de plan).
+            // Même règle que l'API de l'appli (api/app-founder-plans.php).
             if ($action === 'create') {
-                $cols = array_keys($data);
-                $placeholders = ':' . implode(', :', $cols);
-                $sql = "INSERT INTO asso_plans (" . implode(', ', $cols) . ") VALUES ({$placeholders})";
-                $st = $pdo->prepare($sql);
-                $params = [];
-                foreach ($data as $k => $v) $params[':' . $k] = $v;
-                $st->execute($params);
+                ak_db_insert($pdo, 'asso_plans', $data);
                 $_SESSION['flash_fondateur_plans'] = ['type' => 'success', 'msg' => "Plan '{$data['name']}' créé avec succès"];
             } else {
                 $plan_id = (int)$_POST['plan_id'];
                 if ($plan_id <= 0) throw new Exception('ID invalide');
-                $set = [];
-                $params = [':id' => $plan_id];
-                foreach ($data as $k => $v) {
-                    $set[] = "{$k} = :{$k}";
-                    $params[':' . $k] = $v;
-                }
-                $sql = "UPDATE asso_plans SET " . implode(', ', $set) . " WHERE id = :id";
-                $st = $pdo->prepare($sql);
-                $st->execute($params);
+                ak_db_update($pdo, 'asso_plans', $plan_id, $data);
                 $_SESSION['flash_fondateur_plans'] = ['type' => 'success', 'msg' => "Plan '{$data['name']}' mis à jour"];
             }
         } elseif ($action === 'delete') {
@@ -295,10 +289,12 @@ render_sidebar('fondateur-plans');
             <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;">Prix mensuel HT (€)</label>
             <input type="number" step="0.01" min="0" name="price_eur" value="<?= $editing ? number_format($editing['price_cents'] / 100, 2, '.', '') : '0' ?>" style="width:100%;padding:10px;border:1px solid #E2E8F0;border-radius:8px;">
           </div>
+          <?php if ($plan_has_price_label): ?>
           <div>
             <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;">Label spécial</label>
             <input type="text" name="price_label" placeholder="Gratuit, Sur devis…" value="<?= htmlspecialchars($editing['price_label'] ?? '') ?>" style="width:100%;padding:10px;border:1px solid #E2E8F0;border-radius:8px;">
           </div>
+          <?php endif; ?>
           <div style="display:flex;align-items:end;padding-bottom:8px;">
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
               <input type="checkbox" name="is_custom_quote" <?= !empty($editing['is_custom_quote']) ? 'checked' : '' ?>>

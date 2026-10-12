@@ -10,11 +10,17 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/projet-email-helpers.php';
+require_once __DIR__ . '/trial-helpers.php';
 
 require_login();
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
+// Budget : saisi seulement par qui pourra ensuite le voir et le corriger
+// (fiche et /modifier-projet le cachent aux autres, finance-permissions.php).
+$can_see_budget = user_can_view_finances($user);
 
 // Permission
 if (!($user['role'] === 'admin' || $user['can_create_projects'])) {
@@ -74,8 +80,26 @@ try {
     }
 } catch (Throwable $e) {}
 
+// Longueurs maximales : celles de /modifier-projet et /modifier-etapes (200),
+// ou moins si la colonne en base est plus courte (sinon « Erreur technique »).
+$col_max = function (string $table, string $col, int $default) use ($pdo): int {
+    $cols = ak_db_columns($pdo, $table);
+    if (isset($cols[$col]) && preg_match('/^(?:var)?char\((\d+)\)/', $cols[$col]['type'], $m)) {
+        return min($default, (int)$m[1]);
+    }
+    return $default;
+};
+$name_max = $col_max('projects', 'name', 200);
+$step_max = $col_max('project_steps', 'title', 200);
+
 // ====== Traitement du formulaire ======
 $errors = [];
+$selected_members = [];
+// Envoi unique : chaque formulaire affiché porte un jeton. Le renvoi d'un
+// formulaire déjà traité (double clic, retour arrière puis renvoi) mène au
+// projet créé la première fois au lieu d'en créer un second.
+$form_token = (string)($_POST['form_token'] ?? '');
+if (!preg_match('/^[a-f0-9]{32}$/', $form_token)) $form_token = bin2hex(random_bytes(16));
 $data = [
     'name' => '', 'folder_id' => (int)($_GET['folder'] ?? 0), 'location' => '',
     'description' => '', 'objective' => '',
@@ -89,6 +113,9 @@ $steps_input = ['', '', '', ''];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!check_csrf($_POST['csrf_token'] ?? '')) {
         $errors[] = 'Session expirée, rechargez la page.';
+    } elseif (!empty($_SESSION['nouveau_projet_crees'][$form_token])) {
+        header('Location: /projet/' . (int)$_SESSION['nouveau_projet_crees'][$form_token]);
+        exit;
     } else {
         // Récupération des champs
         foreach ($data as $k => $v) {
@@ -109,14 +136,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
         }
         
-        // [NEW] Récupérer les membres sélectionnés pour l'équipe
-        $selected_members = array_map('intval', $_POST['team_members'] ?? []);
-        $selected_members = array_filter($selected_members, fn($id) => $id > 0);
+        // [NEW] Récupérer les membres sélectionnés pour l'équipe : uniquement des
+        // comptes actifs de l'association (un id d'une autre association est ignoré,
+        // comme dans action-equipe.php et l'appli)
+        $selected_members = array_values(array_unique(array_filter(
+            array_map('intval', (array)($_POST['team_members'] ?? [])),
+            fn($id) => $id > 0
+        )));
+        if ($selected_members) {
+            $in = implode(',', array_fill(0, count($selected_members), '?'));
+            $chk = $pdo->prepare("SELECT id FROM users WHERE org_id = ? AND is_active = 1 AND (deleted_at IS NULL OR deleted_at = '') AND id IN ($in)");
+            $chk->execute(array_merge([$org_id], $selected_members));
+            $selected_members = array_map('intval', $chk->fetchAll(PDO::FETCH_COLUMN));
+        }
 
         // Validations
         if ($data['name'] === '') $errors[] = 'Le nom du projet est obligatoire.';
+        elseif (mb_strlen($data['name']) > $name_max) $errors[] = 'Le nom du projet est trop long (' . mb_strlen($data['name']) . ' caractères, ' . $name_max . ' au maximum).';
         if ((int)$data['folder_id'] <= 0) $errors[] = 'Merci de choisir un dossier.';
         if (count($steps_input) < 4) $errors[] = 'Un projet doit avoir au moins 4 étapes (vous en avez ' . count($steps_input) . ').';
+        foreach ($steps_input as $i => $st) {
+            if (mb_strlen($st['title']) > $step_max) {
+                $errors[] = 'Le nom de l\'étape ' . ($i + 1) . ' est trop long (' . $step_max . ' caractères au maximum).';
+            }
+        }
 
         // Vérifier que le dossier appartient à l'org
         if (!$errors) {
@@ -125,10 +168,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$check->fetch()) $errors[] = 'Dossier invalide.';
         }
 
-        // Vérifier le référent
+        // Vérifier le référent : un des rôles proposés dans la liste
         $referent_id = (int)$data['referent_id'];
         if ($referent_id > 0 && !$errors) {
-            $check = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ?");
+            $check = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ? AND is_active = 1 AND (deleted_at IS NULL OR deleted_at = '') AND role IN ('admin', 'coordinator', 'referent')");
             $check->execute([$referent_id, $org_id]);
             if (!$check->fetch()) $errors[] = 'Référent invalide.';
         }
@@ -157,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':description' => $data['description'] ?: null,
                     ':objective' => $data['objective'] ?: null,
                     ':referent_id' => $referent_id ?: null,
-                    ':budget_planned' => (float)str_replace(',', '.', $data['budget_planned']),
+                    ':budget_planned' => $can_see_budget ? ak_parse_amount($data['budget_planned']) : 0,
                     ':participants_count' => (int)$data['participants_count'],
                     ':participants_female' => (int)$data['participants_female'],
                     ':participants_male' => (int)$data['participants_male'],
@@ -173,12 +216,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 $assigned_emails_to_send = []; // [step_id => user_id]
                 foreach ($steps_input as $i => $step_data) {
-                    // Validation : l'assigné doit appartenir à l'org
+                    // Validation : l'assigné doit être un compte actif de l'org ;
+                    // un suiveur (financeur) seulement s'il est coché dans
+                    // l'équipe, sinon il recevrait une étape d'un projet qu'il
+                    // ne suit pas (même règle que action-etape.php)
                     $assigned_to = $step_data['assigned_to'];
                     if ($assigned_to) {
-                        $check = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ? AND is_active = 1");
+                        $check = $pdo->prepare("SELECT role FROM users WHERE id = ? AND org_id = ? AND is_active = 1 AND (deleted_at IS NULL OR deleted_at = '')");
                         $check->execute([$assigned_to, $org_id]);
-                        if (!$check->fetch()) {
+                        $assigned_role = $check->fetchColumn();
+                        if ($assigned_role === false
+                            || ($assigned_role === 'follower' && !in_array((int)$assigned_to, $selected_members, true))) {
                             $assigned_to = null; // ignorer assignation invalide
                         }
                     }
@@ -210,7 +258,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $pdo->commit();
-                
+
+                // Jeton consommé : un renvoi du même formulaire revient sur ce projet
+                $_SESSION['nouveau_projet_crees'][$form_token] = $new_id;
+                $_SESSION['nouveau_projet_crees'] = array_slice($_SESSION['nouveau_projet_crees'], -20, null, true);
+
                 // ===== ENVOYER LES EMAILS APRÈS COMMIT =====
                 // 1. Aux membres ajoutés à l'équipe (sauf soi-même)
                 if (file_exists(__DIR__ . '/projet-email-helpers.php')) {
@@ -284,8 +336,9 @@ render_sidebar('projets');
     </div>
   <?php endif; ?>
 
-  <form method="POST" action="/nouveau-projet" novalidate>
+  <form method="POST" action="/nouveau-projet" novalidate id="new-project-form">
     <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+    <input type="hidden" name="form_token" value="<?= h($form_token) ?>">
     <input type="hidden" name="template_id" id="template_id" value="">
 
     <?php if (!empty($templates)): 
@@ -551,7 +604,7 @@ render_sidebar('projets');
 
       <div class="form-row">
         <label class="form-label" for="name">Nom du projet <span class="required">*</span></label>
-        <input type="text" name="name" id="name" class="form-input-lg" required
+        <input type="text" name="name" id="name" class="form-input-lg" required maxlength="<?= (int)$name_max ?>"
                value="<?= h($data['name']) ?>" placeholder="Ex : Lycée Mendès France">
       </div>
 
@@ -605,7 +658,7 @@ render_sidebar('projets');
           ?>
             <label style="cursor:pointer; display:flex; align-items:center; gap:10px; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; transition:border-color 0.15s;"
                    onmouseover="this.style.borderColor='var(--ink-3)';" onmouseout="this.style.borderColor='var(--border)';">
-              <input type="checkbox" name="team_members[]" value="<?= (int)$m['id'] ?>" style="margin:0; cursor:pointer;">
+              <input type="checkbox" name="team_members[]" value="<?= (int)$m['id'] ?>" <?= in_array((int)$m['id'], $selected_members, true) ? 'checked' : '' ?> style="margin:0; cursor:pointer;">
               <div style="flex:1; min-width:0;">
                 <div style="font-size:13px; font-weight:500; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                   <?= h($m['first_name'] . ' ' . $m['last_name']) ?><?= $is_self ? ' (vous)' : '' ?>
@@ -639,7 +692,7 @@ render_sidebar('projets');
 
     <!-- BLOC 3 : Participants & budget -->
     <div class="form-section">
-      <h2 class="form-section-title">Participants et budget</h2>
+      <h2 class="form-section-title"><?= $can_see_budget ? 'Participants et budget' : 'Participants' ?></h2>
       <p class="form-section-desc">Pour les bilans, rapports et subventions.</p>
 
       <div class="form-cols">
@@ -648,14 +701,16 @@ render_sidebar('projets');
           <input type="number" name="participants_count" id="participants_count" class="form-input-lg" min="0"
                  value="<?= h($data['participants_count']) ?>" placeholder="Ex : 15">
         </div>
+        <?php if ($can_see_budget): ?>
         <div class="form-row">
           <label class="form-label" for="budget_planned">Budget prévu</label>
           <div class="num-suffix-wrap">
             <input type="text" name="budget_planned" id="budget_planned" class="form-input-lg"
-                   value="<?= h($data['budget_planned']) ?>" placeholder="Ex : 5000" inputmode="decimal">
+                   value="<?= h($data['budget_planned']) ?>" placeholder="Ex : 5 000" inputmode="decimal">
             <span class="suffix">€</span>
           </div>
         </div>
+        <?php endif; ?>
       </div>
 
       <div class="form-cols">
@@ -701,13 +756,16 @@ render_sidebar('projets');
         ?>
           <div class="step-builder-item" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
             <span class="step-builder-num"><?= $i + 1 ?></span>
-            <input type="text" name="step_title[]" class="step-builder-input"
+            <input type="text" name="step_title[]" class="step-builder-input" maxlength="<?= (int)$step_max ?>"
                    value="<?= h($s_title) ?>" placeholder="Nom de l'étape" style="flex:2; min-width:200px;">
             
             <select name="step_assigned[]" class="step-builder-select" style="flex:1; min-width:180px; padding:8px 10px; background:var(--bg); border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:13px; color:var(--ink);">
               <option value="">— Non assignée —</option>
-              <?php foreach ($potential_members as $m): ?>
-                <option value="<?= (int)$m['id'] ?>" <?= ((int)$s_assigned === (int)$m['id']) ? 'selected' : '' ?>>
+              <?php foreach ($potential_members as $m):
+                  // Suiveur : proposé seulement une fois coché dans l'équipe
+                  $is_follower_opt = ($m['role'] ?? '') === 'follower';
+                  $opt_off = $is_follower_opt && !in_array((int)$m['id'], $selected_members, true); ?>
+                <option value="<?= (int)$m['id'] ?>"<?= $is_follower_opt ? ' data-follower="1"' : '' ?><?= $opt_off ? ' disabled hidden' : '' ?> <?= (!$opt_off && (int)$s_assigned === (int)$m['id']) ? 'selected' : '' ?>>
                   👤 <?= h($m['first_name'] . ' ' . $m['last_name']) ?>
                 </option>
               <?php endforeach; ?>
@@ -731,7 +789,7 @@ render_sidebar('projets');
       <div class="form-actions-left"><span class="required">*</span> Champs obligatoires</div>
       <div class="form-actions-right">
         <a href="/projets" class="btn btn-ghost">Annuler</a>
-        <button type="submit" class="btn btn-primary">Créer le projet</button>
+        <button type="submit" class="btn btn-primary" id="create-project-btn">Créer le projet</button>
       </div>
     </div>
   </form>
@@ -741,18 +799,37 @@ render_sidebar('projets');
 <script>
 // Liste des membres pour le dropdown d'assignation (générée par PHP)
 var TEAM_MEMBERS = <?= json_encode(array_map(function($m) {
-    return ['id' => (int)$m['id'], 'name' => $m['first_name'] . ' ' . $m['last_name']];
+    return ['id' => (int)$m['id'], 'name' => $m['first_name'] . ' ' . $m['last_name'], 'follower' => ($m['role'] ?? '') === 'follower'];
 }, $potential_members), JSON_UNESCAPED_UNICODE) ?>;
 
 function buildAssignedSelect() {
     var html = '<select name="step_assigned[]" class="step-builder-select" style="flex:1; min-width:180px; padding:8px 10px; background:var(--bg); border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:13px; color:var(--ink);">';
     html += '<option value="">— Non assignée —</option>';
     TEAM_MEMBERS.forEach(function(m) {
-        html += '<option value="' + m.id + '">👤 ' + m.name.replace(/[<>"]/g, '') + '</option>';
+        html += '<option value="' + m.id + '"' + (m.follower ? ' data-follower="1"' : '') + '>👤 ' + m.name.replace(/[<>"]/g, '') + '</option>';
     });
     html += '</select>';
     return html;
 }
+
+// Un suiveur (financeur) ne voit que les projets qu'il suit : il n'est
+// proposé dans « Assigner à… » qu'une fois coché dans l'équipe ; décoché,
+// les étapes qui lui étaient assignées repassent à « Non assignée ».
+function syncFollowerOptions() {
+  var ticked = {};
+  document.querySelectorAll('input[name="team_members[]"]').forEach(function(cb) {
+    if (cb.checked) ticked[cb.value] = true;
+  });
+  document.querySelectorAll('#steps-builder option[data-follower]').forEach(function(o) {
+    var ok = !!ticked[o.value];
+    o.disabled = !ok;
+    o.hidden = !ok;
+    if (!ok && o.selected) o.parentNode.value = '';
+  });
+}
+document.addEventListener('change', function(e) {
+  if (e.target && e.target.name === 'team_members[]') syncFollowerOptions();
+});
 
 function addStep() {
   var container = document.getElementById('steps-builder');
@@ -761,19 +838,20 @@ function addStep() {
   div.className = 'step-builder-item';
   div.style.cssText = 'display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;';
   div.innerHTML = '<span class="step-builder-num">' + count + '</span>' +
-    '<input type="text" name="step_title[]" class="step-builder-input" placeholder="Nom de l\'étape" autofocus style="flex:2; min-width:200px;">' +
+    '<input type="text" name="step_title[]" class="step-builder-input" maxlength="<?= (int)$step_max ?>" placeholder="Nom de l\'étape" autofocus style="flex:2; min-width:200px;">' +
     buildAssignedSelect() +
     '<button type="button" class="step-builder-remove" onclick="removeStep(this)" title="Retirer">' +
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
     '</button>';
   container.appendChild(div);
+  syncFollowerOptions();
   div.querySelector('input').focus();
 }
 
 function removeStep(btn) {
   var container = document.getElementById('steps-builder');
-  if (container.querySelectorAll('.step-builder-item').length <= 1) {
-    alert('Le projet doit avoir au moins une étape.');
+  if (container.querySelectorAll('.step-builder-item').length <= 4) {
+    alert('Un projet doit avoir au moins 4 étapes.');
     return;
   }
   btn.closest('.step-builder-item').remove();
@@ -782,6 +860,23 @@ function removeStep(btn) {
     el.textContent = i + 1;
   });
 }
+
+// Un seul envoi : le bouton se désactive dès le premier clic
+(function() {
+  var form = document.getElementById('new-project-form');
+  var btn = document.getElementById('create-project-btn');
+  if (!form || !btn) return;
+  form.addEventListener('submit', function(e) {
+    if (btn.disabled) { e.preventDefault(); return; }
+    btn.disabled = true;
+    btn.textContent = 'Création en cours…';
+  });
+  // Retour arrière vers une page gardée en cache : le bouton redevient utilisable
+  window.addEventListener('pageshow', function() {
+    btn.disabled = false;
+    btn.textContent = 'Créer le projet';
+  });
+})();
 </script>
 
 <?php render_foot(); ?>

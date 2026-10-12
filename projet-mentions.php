@@ -96,32 +96,9 @@ $can_edit_steps = $is_admin || $is_coord || $is_referent;
 // Édition du projet lui-même : admin + référent UNIQUEMENT
 $can_edit_project = $is_admin || $is_referent;
 
-// [NEW] Charger les membres potentiellement mentionnables (équipe + référent + admins de l'org)
-// pour le dropdown d'autocomplete @
-$mention_targets = [];
-try {
-    $stmt = $pdo->prepare("
-        SELECT DISTINCT u.id, u.first_name, u.last_name, u.role, u.avatar_color
-        FROM users u
-        WHERE u.is_active = 1
-          AND u.org_id = :org_id
-          AND (u.deleted_at IS NULL OR u.deleted_at = '')
-          AND (
-              u.id IN (SELECT user_id FROM project_members WHERE project_id = :pid1)
-              OR u.id = :referent_id
-              OR u.role = 'admin'
-          )
-        ORDER BY u.first_name ASC, u.last_name ASC
-    ");
-    $stmt->execute([
-        ':org_id' => (int)$current['org_id'],
-        ':pid1' => $project_id,
-        ':referent_id' => (int)($project['referent_id'] ?? 0),
-    ]);
-    $mention_targets = $stmt->fetchAll();
-} catch (Throwable $e) {
-    $mention_targets = [];
-}
+// Membres mentionnables : même liste que les notifications (projet-email-helpers.php)
+require_once __DIR__ . '/projet-email-helpers.php';
+$mention_targets = ak_mention_candidates($pdo, $project_id, is_follower());
 
 // Helper pour surligner les @mentions dans un message
 function ak_highlight_mentions(string $content): string {
@@ -543,7 +520,7 @@ render_sidebar('projets');
             'role' => $u['role'],
             'color' => $u['avatar_color'] ?? 'blue',
             'initials' => mb_strtoupper(mb_substr($u['first_name'], 0, 1) . mb_substr($u['last_name'], 0, 1)),
-            'tag' => mb_strtolower($u['first_name']),
+            'tag' => ak_mention_tag((string)$u['first_name'], (string)$u['last_name']),
         ];
       }, $mention_targets), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
     </div>

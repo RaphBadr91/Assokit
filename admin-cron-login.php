@@ -7,7 +7,9 @@
  * URL : /admin-cron-login
  *
  * Vérifie :
+ *   - Session Assokit ouverte (connexion du site, code 2FA compris)
  *   - Rate limiting : max 3 échecs sur 5 min par IP
+ *   - Email = celui du compte connecté au site
  *   - Email existe + actif + non supprimé
  *   - password_verify() sur password_hash
  *   - is_super_admin=1 OU is_founder=1
@@ -24,8 +26,18 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 require_once __DIR__ . '/cron-includes.php';
 
-// Si déjà connecté au cockpit → redirige
-if (cron_is_super_admin()) {
+// Le cockpit n'est pas une porte d'entrée à part : il faut d'abord être connecté au
+// site (mot de passe + code 2FA si activée), comme pour /super-admin-login. Le mot de
+// passe seul ne suffisait pas ailleurs, il ne doit pas suffire ici.
+$session_user = function_exists('current_user') ? current_user() : null;
+if (!$session_user) {
+    header('Location: /connexion?next=' . rawurlencode('/admin-cron-login'));
+    exit;
+}
+$session_email = strtolower(trim((string)($session_user['email'] ?? '')));
+
+// Si déjà connecté au cockpit avec ce même compte → redirige
+if (cron_is_super_admin() && cron_verify_cockpit_cookie() === (int)$session_user['id']) {
     header('Location: /admin-cron');
     exit;
 }
@@ -37,7 +49,7 @@ if (empty($_SESSION['cockpit_csrf'])) {
 $csrf = $_SESSION['cockpit_csrf'];
 
 $error = null;
-$email_prefill = '';
+$email_prefill = $session_email;
 
 function log_attempt(PDO $pdo, string $email, ?int $userId, string $status, ?string $errorDetail = null): void
 {
@@ -87,6 +99,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Trop de tentatives. Réessayez dans 5 minutes.';
         } elseif (empty($email) || empty($password)) {
             $error = 'Email et mot de passe requis.';
+        } elseif ($session_email === '' || $email !== $session_email) {
+            // Un autre compte que celui connecté au site : il n'a pas passé la 2FA ici.
+            log_attempt($pdo, $email, (int)$session_user['id'], 'fail_privilege', 'Email différent du compte connecté au site');
+            $error = 'Utilisez le compte avec lequel vous êtes connecté au site.';
         } else {
             // ---- Recherche user en BDD
             $stmt = $pdo->prepare("
@@ -254,7 +270,7 @@ h1 {
   <span class="badge">🔒 Accès privilégié</span>
 
   <h1>Accès au cockpit CRON</h1>
-  <p class="lede">Identifiez-vous avec votre compte Fondateur ou Super Admin pour accéder à la supervision des automatisations.</p>
+  <p class="lede">Confirmez le mot de passe de votre compte Fondateur ou Super Admin (celui connecté au site) pour accéder à la supervision des automatisations.</p>
 
   <?php if ($error): ?>
     <div class="error"><?= ak_cron_login_h($error) ?></div>

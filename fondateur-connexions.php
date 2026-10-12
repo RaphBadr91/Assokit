@@ -29,6 +29,7 @@ require_once __DIR__ . '/activity-tracker.php';
 // Accès : Fondateur uniquement (même contrôle que /fondateur-activity)
 // ------------------------------------------------------------------
 $est_fondateur = false;
+$vrai_fondateur = false;   // le hub Pilotage Fondateur n'ouvre qu'au Fondateur, pas au super-admin
 if (!empty($_SESSION['user_id'])) {
     try {
         $stmt = $pdo->prepare("SELECT is_founder, is_super_admin, role FROM users WHERE id = ? AND is_active = 1 LIMIT 1");
@@ -39,6 +40,7 @@ if (!empty($_SESSION['user_id'])) {
                 || ($u['role'] ?? '') === 'super_admin'
                 || ($u['role'] ?? '') === 'founder')) {
             $est_fondateur = true;
+            $vrai_fondateur = (int) ($u['is_founder'] ?? 0) === 1 || ($u['role'] ?? '') === 'founder';
         }
     } catch (Throwable $e) {
         error_log('fondateur-connexions accès : ' . $e->getMessage());
@@ -49,6 +51,10 @@ if (!$est_fondateur) {
     http_response_code(403);
     exit('<h1>403 — Accès réservé au Fondateur</h1><p><a href="/dashboard">← Tableau de bord</a></p>');
 }
+
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
 
 activity_ensure_table($pdo);
 
@@ -398,7 +404,11 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <a class="btn" href="/fondateur-activity">Journal brut</a>
+      <?php if ($vrai_fondateur): ?>
       <a class="btn" href="/fondateur-pilotage">← Pilotage</a>
+      <?php else: ?>
+      <a class="btn" href="/super-admin">← Cockpit</a>
+      <?php endif; ?>
     </div>
   </div>
 

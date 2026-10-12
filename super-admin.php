@@ -50,11 +50,9 @@ try { $nb_founders = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE is_foun
 // MRR — source de vérité : l'abonnement COURANT de chaque association (asso_subscriptions
 // + asso_plans, lu par ak_org_plan_state), et non la table legacy `subscriptions`.
 // Ne compte que les associations clientes : abonnement actif, ni essai (en cours ou terminé),
-// ni suspendue, ni résiliée. Un essai PRO vaut 0 € de revenu.
+// ni suspendue, ni résiliée. Un essai PRO et un plan « Offert » (free_grant) valent 0 € de revenu.
 $mrr = 0.00;
-foreach ($org_states as $ps) {
-    if ($ps['badge_tone'] === 'active' && $ps['sub_status'] === 'active') $mrr += $ps['price_cents'] / 100;
-}
+foreach ($org_states as $ps) $mrr += sa_plan_state_mrr_cents($ps) / 100;
 
 // Impayes
 $nb_unpaid = 0;
@@ -99,11 +97,14 @@ foreach ($org_states as $oid => $ps) {
 usort($expiring, fn($a, $b) => strcmp((string) $a['trial_ends_at'], (string) $b['trial_ends_at']));
 usort($trials_ended, fn($a, $b) => strcmp((string) $b['trial_ends_at'], (string) $a['trial_ends_at']));
 
-// Notifs non lues (Fondateur)
-$nb_unread_notifs = 0;
-if ($ctx['is_founder']) {
-    $nb_unread_notifs = sa_count_unread_notifications((int) $user['id']);
-}
+// Notifs non lues (tout super-admin en reçoit : tickets de support…)
+$nb_unread_notifs = sa_count_unread_notifications((int) $user['id']);
+
+// Collectivités & Mairies : même contrôle que la page (ak_require_mairie_manager : Fondateur ou
+// compte plateforme) — la carte ne mène plus à un refus
+require_once __DIR__ . '/includes-permissions.php';
+if (is_file(__DIR__ . '/includes-mairie-channels.php')) require_once __DIR__ . '/includes-mairie-channels.php';
+$can_mairies = function_exists('ak_can_manage_mairies') ? ak_can_manage_mairies($user) : is_platform_admin($user);
 
 // =====================================================================
 // STATS AVANCEES (Fondateur uniquement)
@@ -177,8 +178,10 @@ try {
         SELECT COUNT(*) FROM organizations
         WHERE created_at <= :end AND (deleted_at IS NULL OR deleted_at > :end)
     ");
-    // Reconstitution MRR historique sur asso_subscriptions (source Stripe), essais exclus
-    // (plan d'essai, ligne en essai, association en essai), pour rester coherent avec la carte MRR.
+    // Reconstitution MRR historique sur asso_subscriptions (source Stripe), essais et plans
+    // « Offert » exclus (plan d'essai, ligne en essai, association en essai, payment_mode free_grant),
+    // pour rester coherent avec la carte MRR.
+    $sub_cols = ak_db_columns($pdo, 'asso_subscriptions');
     $q_mrr = $pdo->prepare("
         SELECT COALESCE(SUM(p.price_cents), 0) / 100
         FROM asso_subscriptions s
@@ -188,7 +191,8 @@ try {
           AND (s.cancelled_at IS NULL OR s.cancelled_at > :end)
           AND COALESCE(s.status, '') NOT IN ('cancelled', 'trial')
           AND COALESCE(p.is_trial, 0) = 0
-          AND COALESCE(o.status, '') <> 'trial'
+          AND COALESCE(o.status, '') <> 'trial'"
+          . (isset($sub_cols['payment_mode']) ? " AND COALESCE(s.payment_mode, '') <> 'free_grant'" : "") . "
     ");
     for ($i = 11; $i >= 0; $i--) {
         $end = date('Y-m-t 23:59:59', strtotime("first day of -$i month"));
@@ -416,7 +420,7 @@ foreach ($trials_ended as $e) {
       </div>
     </div>
     <div class="fc-cmd-actions">
-      <?php if ($ctx['is_founder'] && $nb_unread_notifs > 0): ?>
+      <?php if ($nb_unread_notifs > 0): ?>
         <a href="/super-admin/notifications" class="fc-btn fc-btn-ghost">
           <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
           Notifications <span class="bdg"><?= (int) $nb_unread_notifs ?></span>
@@ -464,7 +468,9 @@ foreach ($trials_ended as $e) {
     <div class="panel">
       <div class="fc-phead">
         <div class="fc-ptitle"><span class="ic" style="background:var(--fc-gold-soft)">📈</span> Croissance plateforme — 12 mois</div>
+        <?php if (!empty($ctx['can_view_platform_stats'])): ?>
         <a href="/super-admin/stats" class="fc-plink">Stats approfondies →</a>
+        <?php endif; ?>
       </div>
       <div class="fc-chart-legend">
         <span class="fc-lg"><i style="background:linear-gradient(90deg,#FCD34D,#F59E0B)"></i> MRR (€)</span>
@@ -567,10 +573,12 @@ foreach ($trials_ended as $e) {
       <div class="fc-act-ic">💳</div><div class="fc-act-t">Gérer les paiements</div>
       <div class="fc-act-d">Factures, paiements, impayés</div>
     </a>
+    <?php if ($can_mairies): ?>
     <a href="/super-admin-mairies" class="fc-act gold">
       <span class="fc-act-tag">🏛️ MULTI-ASSO</span><div class="fc-act-ic">🏛️</div>
       <div class="fc-act-t">Collectivités &amp; Mairies</div><div class="fc-act-d">Mairies, CAF, départements…</div>
     </a>
+    <?php endif; ?>
     <a href="/admin-cron-login" class="fc-act violet">
       <span class="fc-act-tag">🔒 RÉAUTH 15 MIN</span><div class="fc-act-ic">🛡️</div>
       <div class="fc-act-t">Cockpit CRON</div><div class="fc-act-d">Relances, essais, renouvellements</div>

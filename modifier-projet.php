@@ -5,7 +5,8 @@
  * ============================================================
  * Accessible à :
  *   - L'administrateur
- *   - Le référent du projet uniquement
+ *   - Le référent du projet
+ *   - Les coordinateurs (fiche et équipe ; ni archivage ni duplication)
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
@@ -23,7 +24,7 @@ if ($project_id <= 0) {
 
 // Charger le projet
 $stmt = $pdo->prepare("
-    SELECT p.*, f.org_id, f.name AS folder_name, f.color_theme AS folder_color
+    SELECT p.*, f.org_id, f.name AS folder_name, f.color_theme AS folder_color, f.archived_at AS folder_archived_at
     FROM projects p
     JOIN folders f ON p.folder_id = f.id
     WHERE p.id = ?
@@ -49,22 +50,34 @@ if (!$is_admin && !$is_referent && !$is_coord) {
     exit;
 }
 
+// Projet archivé : lecture seule jusqu'à sa restauration depuis /archives
+if (!empty($project['archived_at']) || !empty($project['folder_archived_at'])) {
+    header('Location: /projet/' . $project_id . '?error=archived');
+    exit;
+}
+
 // [FIX BUG 2] Charger les dossiers de l'org (pour le sélecteur) - exclure archivés
 $folders_stmt = $pdo->prepare("SELECT id, name, color_theme FROM folders WHERE org_id = ? AND archived_at IS NULL ORDER BY name");
 $folders_stmt->execute([$org_id]);
 $folders = $folders_stmt->fetchAll();
 
-// [FIX BUG 3] Charger les utilisateurs qui peuvent être référent - exclure supprimés
+// [FIX BUG 3] Charger les utilisateurs qui peuvent être référent - exclure supprimés.
+// Le référent actuel est toujours proposé, quel que soit son rôle (Membre choisi
+// depuis l'appli, rôle changé, compte désactivé) : sinon « Aucun référent » serait
+// présélectionné et l'enregistrement de la fiche le retirerait sans prévenir.
 $refs_stmt = $pdo->prepare("
-    SELECT id, first_name, last_name, role, avatar_color
+    SELECT id, first_name, last_name, role, avatar_color, is_active, deleted_at
     FROM users
     WHERE org_id = ?
-      AND is_active = 1
-      AND (deleted_at IS NULL OR deleted_at = '')
-      AND role IN ('admin', 'coordinator', 'referent')
+      AND (
+          (is_active = 1
+           AND (deleted_at IS NULL OR deleted_at = '')
+           AND role IN ('admin', 'coordinator', 'referent'))
+          OR id = ?
+      )
     ORDER BY first_name
 ");
-$refs_stmt->execute([$org_id]);
+$refs_stmt->execute([$org_id, (int)$project['referent_id']]);
 $potential_referents = $refs_stmt->fetchAll();
 
 // [NEW] Charger TOUS les membres actifs de l'asso (pour l'équipe projet)
@@ -86,9 +99,28 @@ $team_stmt = $pdo->prepare("
 $team_stmt->execute([$project_id]);
 $current_team_ids = array_map('intval', array_column($team_stmt->fetchAll(), 'user_id'));
 
-// Récupération erreurs/flash
+// Objectif : 2000 caractères, ou moins si la colonne en base est plus courte
+require_once __DIR__ . '/trial-helpers.php';
+$objective_max = 2000;
+$projects_cols = ak_db_columns($pdo, 'projects');
+if (isset($projects_cols['objective']) && preg_match('/^(?:var)?char\((\d+)\)/', $projects_cols['objective']['type'], $m)) {
+    $objective_max = min($objective_max, (int)$m[1]);
+}
+
+// Avancement : calculé à partir des étapes dès qu'il y en a (comme la fiche
+// projet et l'appli) ; le curseur ne sert qu'aux projets sans étape.
+$steps_stmt = $pdo->prepare("SELECT COUNT(*) AS total, COALESCE(SUM(is_completed), 0) AS done FROM project_steps WHERE project_id = ?");
+$steps_stmt->execute([$project_id]);
+$steps_count = $steps_stmt->fetch();
+$steps_total = (int)$steps_count['total'];
+$steps_done = (int)$steps_count['done'];
+$steps_progress = $steps_total > 0 ? (int)round(($steps_done / $steps_total) * 100) : null;
+
+// Récupération erreurs/flash (action-equipe.php revient ici avec un message)
 $errors = $_SESSION['form_errors'] ?? [];
 unset($_SESSION['form_errors']);
+$flash = $_SESSION['flash'] ?? null;
+unset($_SESSION['flash']);
 
 render_head('Modifier : ' . $project['name']);
 render_sidebar('projets');
@@ -127,6 +159,10 @@ $avatar_colors = [
     </div>
   </div>
 
+  <?php if ($flash && !empty($flash['message'])): ?>
+    <div class="alert alert-<?= ($flash['type'] ?? '') === 'error' ? 'error' : 'success' ?>"><?= h($flash['message']) ?></div>
+  <?php endif; ?>
+
   <?php if ($errors): ?>
     <div class="alert alert-error">
       <strong>Corrigez les erreurs suivantes :</strong>
@@ -153,7 +189,14 @@ $avatar_colors = [
       <div class="form-row">
         <label class="form-label">Description</label>
         <textarea name="description" class="form-textarea-lg" rows="4" maxlength="5000"><?= h($project['description']) ?></textarea>
-        <div class="form-hint">Décrivez les objectifs, le public visé, les résultats attendus…</div>
+        <div class="form-hint">Décrivez le public visé, le déroulé, les résultats attendus…</div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label" for="objective">Objectif principal</label>
+        <textarea name="objective" id="objective" class="form-textarea-lg" rows="3" maxlength="<?= (int)$objective_max ?>"
+                  placeholder="Ex : Apprendre aux élèves le script et le tournage"><?= h($project['objective'] ?? '') ?></textarea>
+        <div class="form-hint">Ce que le projet doit permettre d'atteindre : il sert à mesurer sa réussite et nourrit les bilans.</div>
       </div>
 
       <div class="form-cols">
@@ -186,17 +229,30 @@ $avatar_colors = [
             <option value="active" <?= $project['status'] === 'active' ? 'selected' : '' ?>>✅ En cours</option>
             <option value="warning" <?= $project['status'] === 'warning' ? 'selected' : '' ?>>⚠️ À surveiller</option>
             <option value="done" <?= $project['status'] === 'done' ? 'selected' : '' ?>>🎉 Terminé</option>
-            <option value="archived" <?= $project['status'] === 'archived' ? 'selected' : '' ?>>📦 Archivé</option>
+            <?php if ($project['status'] === 'archived'): /* ancien statut, avant l'archivage par /supprimer-projet */ ?>
+            <option value="archived" selected>📦 Archivé (ancien statut)</option>
+            <?php endif; ?>
           </select>
           <div class="form-hint">⚠️ "À surveiller" marque le projet comme prioritaire dans les listes.</div>
         </div>
 
         <div class="form-row">
           <label class="form-label">Progression (%)</label>
-          <div style="display: flex; gap: 10px; align-items: center;">
-            <input type="range" name="progress_percent" id="progress_slider" min="0" max="100" value="<?= (int)$project['progress_percent'] ?>" style="flex: 1;" oninput="document.getElementById('progress_val').textContent = this.value + '%';">
-            <span id="progress_val" style="min-width: 50px; font-weight: 500; font-variant-numeric: tabular-nums;"><?= (int)$project['progress_percent'] ?>%</span>
-          </div>
+          <?php if ($steps_progress !== null): ?>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <div style="flex: 1; height: 6px; background: var(--border); border-radius: 999px; overflow: hidden;">
+                <div style="width: <?= $steps_progress ?>%; height: 100%; background: var(--acc);"></div>
+              </div>
+              <span style="min-width: 50px; font-weight: 500; font-variant-numeric: tabular-nums;"><?= $steps_progress ?>%</span>
+            </div>
+            <div class="form-hint">Calculée automatiquement à partir des étapes (<?= $steps_done ?>/<?= $steps_total ?> validée<?= $steps_done > 1 ? 's' : '' ?>).</div>
+          <?php else: ?>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <input type="range" name="progress_percent" id="progress_slider" min="0" max="100" value="<?= (int)$project['progress_percent'] ?>" style="flex: 1;" oninput="document.getElementById('progress_val').textContent = this.value + '%';">
+              <span id="progress_val" style="min-width: 50px; font-weight: 500; font-variant-numeric: tabular-nums;"><?= (int)$project['progress_percent'] ?>%</span>
+            </div>
+            <div class="form-hint">Ce projet n'a pas d'étape : l'avancement se règle à la main.</div>
+          <?php endif; ?>
         </div>
       </div>
 
@@ -222,7 +278,7 @@ $avatar_colors = [
           <option value="">— Aucun référent —</option>
           <?php foreach ($potential_referents as $r): ?>
             <option value="<?= (int)$r['id'] ?>" <?= $r['id'] == $project['referent_id'] ? 'selected' : '' ?>>
-              <?= h($r['first_name'] . ' ' . $r['last_name']) ?> · <?= h(role_label($r['role'])) ?>
+              <?= h($r['first_name'] . ' ' . $r['last_name']) ?> · <?= h(role_label($r['role'])) ?><?= (empty($r['is_active']) || !empty($r['deleted_at'])) ? ' (compte désactivé)' : '' ?>
             </option>
           <?php endforeach; ?>
         </select>
@@ -233,6 +289,17 @@ $avatar_colors = [
         <label class="form-label">Nombre de participants</label>
         <input type="number" name="participants_count" class="form-input-lg" min="0" value="<?= (int)$project['participants_count'] ?>">
         <div class="form-hint">Public touché par le projet (estimation).</div>
+      </div>
+
+      <div class="form-cols">
+        <div class="form-row">
+          <label class="form-label" for="participants_female">Dont femmes</label>
+          <input type="number" name="participants_female" id="participants_female" class="form-input-lg" min="0" value="<?= (int)($project['participants_female'] ?? 0) ?>">
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="participants_male">Dont hommes</label>
+          <input type="number" name="participants_male" id="participants_male" class="form-input-lg" min="0" value="<?= (int)($project['participants_male'] ?? 0) ?>">
+        </div>
       </div>
     </div>
 
@@ -279,7 +346,7 @@ $avatar_colors = [
       <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:8px; max-height:320px; overflow-y:auto; padding:12px; background:var(--bg-2); border:1px solid var(--border); border-radius:10px; margin-bottom:14px;">
         <?php foreach ($potential_members as $m):
             $is_in_team = in_array((int)$m['id'], $current_team_ids, true);
-            $is_referent = ((int)$m['id'] === (int)$project['referent_id']);
+            $is_ref_member = ((int)$m['id'] === (int)$project['referent_id']);
             $role_label_str = [
                 'admin' => '🛡️ Admin',
                 'coordinator' => '🧭 Coord',
@@ -291,12 +358,12 @@ $avatar_colors = [
           <label style="cursor:pointer; display:flex; align-items:center; gap:10px; padding:8px 10px; background:var(--bg); border:1px solid <?= $is_in_team ? 'var(--acc, #10B981)' : 'var(--border)' ?>; border-radius:8px; transition:border-color 0.15s;">
             <input type="checkbox" name="team_members[]" value="<?= (int)$m['id'] ?>"
                    <?= $is_in_team ? 'checked' : '' ?>
-                   <?= $is_referent ? 'disabled checked title="Le référent fait toujours partie de l\'équipe"' : '' ?>
+                   <?= $is_ref_member ? 'disabled checked title="Le référent fait toujours partie de l\'équipe"' : '' ?>
                    style="margin:0; cursor:pointer;">
             <div style="flex:1; min-width:0;">
               <div style="font-size:13px; font-weight:500; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                 <?= h($m['first_name'] . ' ' . $m['last_name']) ?>
-                <?= $is_referent ? ' 🎯' : '' ?>
+                <?= $is_ref_member ? ' 🎯' : '' ?>
               </div>
               <div style="font-size:11px; color:var(--ink-3); margin-top:1px;"><?= h($role_label_str) ?></div>
             </div>
@@ -327,9 +394,9 @@ $avatar_colors = [
         </button>
       </form>
 
-      <?php if ($project['status'] !== 'archived'): ?>
+      <?php if (empty($project['archived_at'])): ?>
       <form method="POST" action="/action-projet" style="margin: 0;"
-            onsubmit="return confirm('Archiver ce projet ? Il sera masqué des listes actives mais les données sont conservées.');">
+            onsubmit="return confirm('Archiver ce projet ? Il sera retiré des listes et son lien public sera coupé. Restauration possible pendant 30 jours dans Archives.');">
         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
         <input type="hidden" name="action" value="archive">
         <input type="hidden" name="project_id" value="<?= (int)$project_id ?>">

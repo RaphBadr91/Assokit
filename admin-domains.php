@@ -23,6 +23,10 @@ if (!$has_access) {
     die('Accès réservé aux fondateurs.');
 }
 
+// Confirmation d'identité du cockpit (/super-admin-login), prolongée à chaque page
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
+
 // Stats globales (si tables existent)
 $stats = ['subdomains' => 0, 'custom_domains' => 0, 'pending' => 0];
 try {

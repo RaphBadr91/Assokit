@@ -88,11 +88,12 @@ try {
         $st = $pdo->prepare("
             SELECT DISTINCT u.id, u.first_name, u.last_name, u.role, u.avatar_color
             FROM users u
-            WHERE u.id IN (SELECT user_id FROM project_members WHERE project_id = :pid)
-               OR u.id = :ref
+            WHERE u.org_id = :org
+              AND (u.id IN (SELECT user_id FROM project_members WHERE project_id = :pid)
+                   OR u.id = :ref)
             ORDER BY u.last_name ASC, u.first_name ASC
         ");
-        $st->execute([':pid' => $id, ':ref' => (int) ($p['referent_id'] ?? 0)]);
+        $st->execute([':org' => (int) $p['folder_org_id'], ':pid' => $id, ':ref' => (int) ($p['referent_id'] ?? 0)]);
         foreach (($st->fetchAll(PDO::FETCH_ASSOC) ?: []) as $m) {
             $fn = trim((string) ($m['first_name'] ?? ''));
             $ln = trim((string) ($m['last_name'] ?? ''));
@@ -105,9 +106,17 @@ try {
         }
     } catch (Throwable $e) {}
 
-    $budget_planned = (float) ($p['budget_planned'] ?? 0);
-    $budget_used    = (float) ($p['budget_used'] ?? 0);
-    $budget_pct     = $budget_planned > 0 ? min(100, (int) round(($budget_used / $budget_planned) * 100)) : 0;
+    // Budget : même règle que la carte Budget du site (projet.php). Sans droit finances,
+    // les clés restent présentes mais valent null (l'appli masque la carte).
+    require_once __DIR__ . '/../finance-permissions.php';
+    require_once __DIR__ . '/../platform-flags.php';
+    $can_view_finances = user_can_view_finances(ak_platform_flags($user));
+    $budget_planned = $budget_used = $budget_pct = null;
+    if ($can_view_finances) {
+        $budget_planned = (float) ($p['budget_planned'] ?? 0);
+        $budget_used    = (float) ($p['budget_used'] ?? 0);
+        $budget_pct     = $budget_planned > 0 ? min(100, (int) round(($budget_used / $budget_planned) * 100)) : 0;
+    }
 
     $ref_first = trim((string) ($p['ref_first'] ?? ''));
     $ref_last  = trim((string) ($p['ref_last'] ?? ''));
@@ -129,6 +138,7 @@ try {
             'budget_used'    => $budget_used,
             'budget_planned' => $budget_planned,
             'budget_pct'     => $budget_pct,
+            'can_view_finances' => $can_view_finances,
             'referent'       => $referent,
             'steps_done'     => $done,
             'steps_total'    => $total_steps,

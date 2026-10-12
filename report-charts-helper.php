@@ -15,15 +15,20 @@ function ak_report_collect_stats(PDO $pdo, int $org_id): array {
     $s = ['members'=>0,'projects_by_status'=>[],'projects_total'=>0,'budget_planned'=>0.0,'budget_used'=>0.0,
           'participants'=>0,'grants_by_status'=>[],'grants_total'=>0,'grant_requested'=>0.0,'grant_granted'=>0.0,
           'events_total'=>0,'events_by_type'=>[]];
-    try { $s['members'] = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE org_id=$org_id AND deleted_at IS NULL")->fetchColumn(); } catch (Throwable $e) {}
+    // Adhérents actifs : comptes actifs de l'association, sans les suiveurs
+    // (financeurs externes) ni les comptes désactivés ou supprimés.
+    try { $s['members'] = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE org_id=$org_id AND is_active=1 AND (deleted_at IS NULL OR deleted_at='') AND COALESCE(role,'')<>'follower'")->fetchColumn(); } catch (Throwable $e) {}
+    // Projets et budgets : sans les projets ni les dossiers archivés (en attente de purge)
     try {
-        foreach ($pdo->query("SELECT p.status st, COUNT(*) c, COALESCE(SUM(p.budget_planned),0) bp, COALESCE(SUM(p.budget_used),0) bu, COALESCE(SUM(p.participants_count),0) pc FROM projects p JOIN folders f ON p.folder_id=f.id WHERE f.org_id=$org_id GROUP BY p.status") as $r) {
+        foreach ($pdo->query("SELECT p.status st, COUNT(*) c, COALESCE(SUM(p.budget_planned),0) bp, COALESCE(SUM(p.budget_used),0) bu, COALESCE(SUM(p.participants_count),0) pc FROM projects p JOIN folders f ON p.folder_id=f.id WHERE f.org_id=$org_id AND p.archived_at IS NULL AND f.archived_at IS NULL GROUP BY p.status") as $r) {
             $s['projects_by_status'][$r['st']] = (int)$r['c']; $s['projects_total'] += (int)$r['c'];
             $s['budget_planned'] += (float)$r['bp']; $s['budget_used'] += (float)$r['bu']; $s['participants'] += (int)$r['pc'];
         }
     } catch (Throwable $e) {}
+    // Subventions : hors dossiers archivés ; « obtenues » = accordées ou bilan
+    // rendu, comme les chiffres de la page Subventions (gr_org_stats).
     try {
-        foreach ($pdo->query("SELECT COALESCE(status,'?') st, COUNT(*) c, COALESCE(SUM(amount_requested),0) req, COALESCE(SUM(amount_granted),0) acc FROM grants WHERE org_id=$org_id GROUP BY status") as $r) {
+        foreach ($pdo->query("SELECT COALESCE(status,'?') st, COUNT(*) c, COALESCE(SUM(amount_requested),0) req, COALESCE(SUM(CASE WHEN status IN ('granted','reported') THEN amount_granted ELSE 0 END),0) acc FROM grants WHERE org_id=$org_id AND archived_at IS NULL GROUP BY status") as $r) {
             $s['grants_by_status'][$r['st']] = (int)$r['c']; $s['grants_total'] += (int)$r['c'];
             $s['grant_requested'] += (float)$r['req']; $s['grant_granted'] += (float)$r['acc'];
         }
@@ -114,10 +119,10 @@ function ak_report_dashboard(PDO $pdo, int $org_id): string {
     ];
     $kpi_html = ak_kpi_cards($kpis);
 
-    $grant_labels = ['granted'=>'Obtenues','in_review'=>'En cours','submitted'=>'Soumises','rejected'=>'Refusées','draft'=>'Brouillon'];
-    $grant_colors = ['granted'=>'#10B981','in_review'=>'#3B82F6','submitted'=>'#F59E0B','rejected'=>'#94A3B8','draft'=>'#D1D5DB'];
+    $grant_labels = ['granted'=>'Obtenues','reported'=>'Bilan rendu','in_review'=>'En cours','submitted'=>'Soumises','rejected'=>'Refusées','draft'=>'Brouillon','archived'=>'Archivées'];
+    $grant_colors = ['granted'=>'#10B981','reported'=>'#8B5CF6','in_review'=>'#3B82F6','submitted'=>'#F59E0B','rejected'=>'#94A3B8','draft'=>'#D1D5DB','archived'=>'#CBD5E1'];
     $grant_segments = [];
-    foreach ($s['grants_by_status'] as $st => $c) { $grant_segments[] = ['label'=>$grant_labels[$st] ?? $st,'value'=>$c,'color'=>$grant_colors[$st] ?? '#CBD5E1']; }
+    foreach ($s['grants_by_status'] as $st => $c) { $grant_segments[] = ['label'=>$grant_labels[$st] ?? 'Autres','value'=>$c,'color'=>$grant_colors[$st] ?? '#CBD5E1']; }
     $donut = ak_svg_donut($grant_segments, 118);
     $legend = ak_legend($grant_segments);
 
@@ -148,9 +153,45 @@ function ak_report_dashboard(PDO $pdo, int $org_id): string {
         . '<td style="width:40%;vertical-align:top;padding-left:14pt;border-left:0.5pt solid #E5E7EB;"><div style="font-size:9pt;font-weight:700;color:#3F3F46;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8pt;">En un coup d\'œil</div>'
         . '<div style="font-size:9pt;color:#3F3F46;line-height:1.7;"><strong style="color:#0A0A0B;">'.number_format((float)$s['participants'],0,',',' ').'</strong> participants cumulés<br>'
         . '<strong style="color:#0A0A0B;">'.ak_fmt_eur($s['grant_requested']).'</strong> de subventions demandées<br>'
-        . 'Taux de réussite : <strong style="color:#0A0A0B;">'.($s['grants_total'] ? round(($s['grants_by_status']['granted'] ?? 0)/$s['grants_total']*100) : 0).'%</strong></div></td>'
+        . 'Taux de réussite : <strong style="color:#0A0A0B;">'.($s['grants_total'] ? round((($s['grants_by_status']['granted'] ?? 0) + ($s['grants_by_status']['reported'] ?? 0))/$s['grants_total']*100) : 0).'%</strong></div></td>'
         . '</tr></table>';
 
     return '<div class="rep-dashboard">'.$section_title.$kpi_html.$two_cols.$budget_block.'</div>';
+}
+}
+
+if (!function_exists('ak_report_filename_slug')) {
+/**
+ * Partie « nom » d'un fichier exporté, en ASCII lisible : les accents sont translittérés
+ * et non supprimés (« Préparation DELF B1 — Cohorte 2026 » → « Preparation-DELF-B1-Cohorte-2026 »).
+ * Transliterator (intl) si présent ; sinon table des lettres françaises, puis iconv en dernier
+ * recours seulement (sans setlocale, iconv rend « ? » au lieu de la lettre).
+ */
+function ak_report_filename_slug(string $name, string $fallback = 'projet'): string {
+    $ascii = null;
+    if (class_exists('Transliterator')) {
+        $tr = Transliterator::create('Any-Latin; Latin-ASCII');
+        $r = $tr ? $tr->transliterate($name) : false;
+        if (is_string($r)) $ascii = $r;
+    }
+    if ($ascii === null) {
+        $ascii = strtr($name, [
+            'à'=>'a','â'=>'a','ä'=>'a','á'=>'a','ã'=>'a','å'=>'a','æ'=>'ae','ç'=>'c',
+            'é'=>'e','è'=>'e','ê'=>'e','ë'=>'e','í'=>'i','ì'=>'i','î'=>'i','ï'=>'i','ñ'=>'n',
+            'ó'=>'o','ò'=>'o','ô'=>'o','ö'=>'o','õ'=>'o','œ'=>'oe','ú'=>'u','ù'=>'u','û'=>'u','ü'=>'u',
+            'ý'=>'y','ÿ'=>'y','ß'=>'ss',
+            'À'=>'A','Â'=>'A','Ä'=>'A','Á'=>'A','Ã'=>'A','Å'=>'A','Æ'=>'AE','Ç'=>'C',
+            'É'=>'E','È'=>'E','Ê'=>'E','Ë'=>'E','Í'=>'I','Ì'=>'I','Î'=>'I','Ï'=>'I','Ñ'=>'N',
+            'Ó'=>'O','Ò'=>'O','Ô'=>'O','Ö'=>'O','Õ'=>'O','Œ'=>'OE','Ú'=>'U','Ù'=>'U','Û'=>'U','Ü'=>'U',
+            'Ý'=>'Y','Ÿ'=>'Y','—'=>'-','–'=>'-',
+        ]);
+        if (function_exists('iconv')) {
+            $r = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $ascii);
+            if (is_string($r)) $ascii = $r;
+        }
+    }
+    $slug = preg_replace('/[^A-Za-z0-9_-]+/', '-', $ascii);
+    $slug = trim(preg_replace('/-{2,}/', '-', (string)$slug), '-_');
+    return $slug !== '' ? $slug : $fallback;
 }
 }

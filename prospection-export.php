@@ -122,7 +122,7 @@ if ($quoi === 'historique') {
 // La liste, filtrée comme à l'écran
 // ------------------------------------------------------------------
 $filtre = (string) ($_GET['f'] ?? 'tous');
-$q      = trim((string) ($_GET['q'] ?? ''));
+$q      = is_string($_GET['q'] ?? null) ? trim($_GET['q']) : '';
 
 $where  = ['p.org_id = ?', 'p.deleted_at IS NULL'];
 $params = [$org_id];

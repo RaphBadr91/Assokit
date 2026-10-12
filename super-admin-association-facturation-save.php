@@ -33,28 +33,37 @@ if ($org_id <= 0) {
     exit('ID organisation invalide.');
 }
 
-// Vérif droits
-$can_edit = can_edit_org_billing($pdo, (int)$user['id'], $org_id);
-if (!$can_edit) {
-    http_response_code(403);
-    exit('Vous n\'avez pas les droits pour modifier cette association.');
-}
-
-// Vérif Fondateur pour les champs privés
+// Fondateur / super-admin (cockpit) ou admin de l'association (/mon-asso/facturation)
 $is_founder = false;
+$is_platform = false;
 try {
-    $stmt = $pdo->prepare("SELECT is_founder FROM users WHERE id = :id");
+    $stmt = $pdo->prepare("SELECT is_founder, is_super_admin, role FROM users WHERE id = :id");
     $stmt->execute([':id' => (int)$user['id']]);
     $row = $stmt->fetch();
     $is_founder = $row && (int)$row['is_founder'] === 1;
+    $is_platform = $row && ($is_founder || (int)$row['is_super_admin'] === 1 || in_array($row['role'] ?? '', ['founder', 'super_admin'], true));
 } catch (Throwable $e) {}
 
 // ----- URL de retour (selon d'où vient le post)
 $return_url = $_POST['return_url'] ?? null;
 if (!is_string($return_url) || !preg_match('#^/(?![/\\\\])#', $return_url)) $return_url = null;   // chemin interne uniquement
 if (empty($return_url)) {
-    // Par défaut : même page
-    $return_url = '/super-admin/associations/facturation?id=' . $org_id;
+    // Par défaut : la page d'où vient le formulaire (le cockpit refuse l'admin d'une association)
+    $return_url = $is_platform ? '/super-admin/associations/facturation?id=' . $org_id : '/mon-asso/facturation';
+}
+
+// Compte plateforme (formulaire du cockpit) : confirmation d'identité du cockpit, comme la page
+if ($is_platform) {
+    require_once __DIR__ . '/sa-auth-helpers.php';
+    sa_auth_gate();
+}
+
+// Vérif droits (la page affiche alors le formulaire en lecture seule)
+$can_edit = can_edit_org_billing($pdo, (int)$user['id'], $org_id);
+if (!$can_edit) {
+    $_SESSION['flash_orgbill'] = ['type' => 'error', 'message' => 'Seul le Fondateur ou l’admin de cette association peut modifier ses infos de facturation. Rien n’a été enregistré.'];
+    header('Location: ' . $return_url);
+    exit;
 }
 
 // ============================================================

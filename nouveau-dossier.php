@@ -4,7 +4,7 @@
  * ASSOKIT — Nouveau dossier
  * ============================================================
  * Formulaire de création d'un dossier (regroupe des projets).
- * Accessible uniquement aux admins.
+ * Accessible aux admins et aux adhérents ayant le droit « Peut créer des dossiers ».
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
@@ -15,12 +15,27 @@ require_login();
 $user = current_user();
 $org_id = (int)$user['org_id'];
 
-// Permission : admin uniquement
-if ($user['role'] !== 'admin') {
+// Permission : admin, ou adhérent à qui l'admin a donné le droit « Peut créer des dossiers »
+// (modifier-adherent.php) — même règle que le raccourci du tableau de bord et que l'appli.
+$can_create_folders = ($user['role'] ?? '') === 'admin';
+if (!$can_create_folders && ($user['role'] ?? '') !== 'follower') {
+    if (array_key_exists('can_create_folders', $user)) {
+        $can_create_folders = !empty($user['can_create_folders']);
+    } else {
+        try {
+            $st = $pdo->prepare("SELECT can_create_folders FROM users WHERE id = ? AND org_id = ? LIMIT 1");
+            $st->execute([(int)$user['id'], $org_id]);
+            $can_create_folders = !empty($st->fetchColumn());
+        } catch (Throwable $e) {
+            $can_create_folders = false;
+        }
+    }
+}
+if (!$can_create_folders) {
     http_response_code(403);
     render_head('Accès refusé');
     render_sidebar('projets');
-    echo '<div class="main"><div class="empty-state" style="margin-top:60px;">Seul un administrateur peut créer un dossier.</div></div>';
+    echo '<div class="main"><div class="empty-state" style="margin-top:60px;">Seul un administrateur, ou un adhérent autorisé par lui, peut créer un dossier.</div></div>';
     render_foot();
     exit;
 }
@@ -74,6 +89,7 @@ $available_icons = [
 ];
 
 $error = null;
+$error_link = null;
 $form = [
     'name'        => '',
     'color_theme' => 'blue',
@@ -92,15 +108,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
         $form['icon'] = 'folder';
     }
 
-    if ($form['name'] === '' || strlen($form['name']) < 2) {
+    // Longueur en caractères (comme le maxlength du champ), pas en octets :
+    // « Égalité » compte 7 caractères, pas 8.
+    if ($form['name'] === '' || mb_strlen($form['name']) < 2) {
         $error = 'Le nom du dossier doit contenir au moins 2 caractères.';
-    } elseif (strlen($form['name']) > 100) {
+    } elseif (mb_strlen($form['name']) > 100) {
         $error = 'Le nom du dossier est trop long (max 100 caractères).';
     } else {
-        // Verifier doublon dans l'org
-        $stmt = $pdo->prepare("SELECT id FROM folders WHERE org_id = ? AND LOWER(name) = LOWER(?)");
+        // Verifier doublon dans l'org. Un dossier archivé garde son nom tant
+        // qu'il n'est pas purgé (le restaurer créerait sinon deux homonymes) :
+        // on le dit, plutôt qu'un « existe déjà » introuvable dans la liste.
+        $stmt = $pdo->prepare("SELECT id, archived_at FROM folders WHERE org_id = ? AND LOWER(name) = LOWER(?) ORDER BY (archived_at IS NULL) DESC LIMIT 1");
         $stmt->execute([$org_id, $form['name']]);
-        if ($stmt->fetch()) {
+        $same = $stmt->fetch();
+        if ($same && !empty($same['archived_at'])) {
+            if (($user['role'] ?? '') === 'admin') {
+                $error = 'Ce nom est celui d\'un dossier archivé : restaurez-le depuis les archives, ou choisissez un autre nom.';
+                $error_link = ['href' => '/archives', 'label' => 'Voir les archives'];
+            } else {
+                $error = 'Ce nom est celui d\'un dossier archivé : un administrateur peut le restaurer depuis les archives, ou choisissez un autre nom.';
+            }
+        } elseif ($same) {
             $error = 'Un dossier avec ce nom existe déjà dans votre association.';
         } else {
             try {
@@ -144,7 +172,7 @@ render_sidebar('projets');
   <?php if ($error): ?>
     <div class="alert alert-error">
       <span>⚠️</span>
-      <div><?= h($error) ?></div>
+      <div><?= h($error) ?><?php if ($error_link): ?> <a href="<?= h($error_link['href']) ?>" style="color:inherit; text-decoration:underline; font-weight:600;"><?= h($error_link['label']) ?></a><?php endif; ?></div>
     </div>
   <?php endif; ?>
 

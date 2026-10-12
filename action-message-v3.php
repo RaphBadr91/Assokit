@@ -60,13 +60,26 @@ $user = current_user();
 
 // Vérifier appartenance org
 $stmt = $pdo->prepare("
-    SELECT p.id FROM projects p
+    SELECT p.id, p.archived_at, f.archived_at AS folder_archived_at FROM projects p
     JOIN folders f ON p.folder_id = f.id
     WHERE p.id = ? AND f.org_id = ?
 ");
 $stmt->execute([$project_id, $user['org_id']]);
-if (!$stmt->fetch()) {
+$msg_project = $stmt->fetch();
+if (!$msg_project) {
     respond_error('forbidden', 403, $is_ajax);
+}
+// Suiveur (financeur externe) : seulement les projets qu'il suit, comme projet.php
+if (!follower_can_access_project($project_id)) {
+    respond_error('forbidden', 403, $is_ajax);
+}
+// Projet archivé : lecture seule, plus de nouveaux messages
+if (!empty($msg_project['archived_at']) || !empty($msg_project['folder_archived_at'])) {
+    if (!$is_ajax) {
+        header('Location: /projet/' . $project_id . '/messages?error=archived');
+        exit;
+    }
+    respond_error('Ce projet est archivé : il est en lecture seule.', 409, true);
 }
 
 // =============================================================
