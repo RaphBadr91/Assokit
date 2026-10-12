@@ -107,9 +107,10 @@ function ak_block_billing_page(string $to = '/dashboard'): void
  * Fondateur qui agit). En cas d'erreur de lecture, on laisse passer :
  * une panne de base ne doit pas fermer le site à tout le monde.
  *
- * ak_session_guard() est appelée par includes-layout.php (pages et API) et
- * par require_login() ; connexion.php et connexion-2fa.php appliquent les
- * mêmes règles à l'ouverture de la session.
+ * ak_session_guard() est appelée par includes-layout.php (pages et API), par
+ * activity-tracker.php (actions qui ne chargent pas le layout) et par
+ * require_login() du config.php de production ; connexion.php et
+ * connexion-2fa.php appliquent les mêmes règles à l'ouverture de la session.
  * ------------------------------------------------------------------
  */
 if (!function_exists('ak_session_guard')) {
@@ -124,6 +125,9 @@ define('AK_GUARD_OPEN', [
     'api/app-csrf.php', 'api/app-account.php', 'api/app-change-password.php',
 ]);
 
+/** Pages publiques à jeton (émargement, convocation d'AG) : jamais concernées par l'état de la session du navigateur. */
+define('AK_GUARD_PUBLIC', ['emarger.php', 'ag-public.php']);
+
 /** Ouverts en plus quand l'association est suspendue : régulariser, joindre le support, gérer son compte. */
 define('AK_GUARD_SUSPENDED_OPEN', [
     'parametres.php', 'action-parametres.php', 'securite-2fa.php', 'rgpd-export.php', 'rgpd-supprimer-compte.php',
@@ -131,7 +135,19 @@ define('AK_GUARD_SUSPENDED_OPEN', [
     'mon-asso-paiement-success.php', 'mon-asso-annuler-abonnement.php', 'mon-asso-factures.php',
     'facture-abonnement-pdf.php', 'stripe-create-payment-intent.php',
     'support.php', 'support-nouveau.php', 'support-ticket.php', 'support-tickets.php',
-    'api/app-update-account.php', 'api/app-delete-account.php', 'api/app-subscription-invoices.php',
+    'api/app-update-account.php', 'api/app-delete-account.php', 'api/app-subscription-invoices.php', 'api/app-tickets.php',
+]);
+
+/**
+ * Ouverts à un agent de collectivité sans association, en plus des pages mairie-*, action-mairie*
+ * et d'AK_GUARD_OPEN : fiche projet (lecture), notifications, son compte personnel (mot de
+ * passe, double authentification, export et suppression RGPD) et l'accueil de l'appli
+ * (api/app-dashboard.php y renvoie le profil « mairie » et le lien de l'espace sur le site).
+ */
+define('AK_GUARD_MAIRIE_OPEN', [
+    'projet.php', 'notifications.php',
+    'parametres.php', 'securite-2fa.php', 'rgpd-export.php', 'rgpd-supprimer-compte.php',
+    'api/app-dashboard.php', 'api/app-notifications.php', 'api/app-update-account.php', 'api/app-delete-account.php',
 ]);
 
 /**
@@ -200,13 +216,16 @@ function ak_session_access_message(string $state): string
 {
     switch ($state) {
         case 'account_closed':
-            return 'Votre compte a été désactivé par l’administrateur de votre association. Contactez-le pour le réactiver.';
+            // Aussi pour un agent retiré par sa collectivité ou par Assokit : formulation neutre
+            return 'Votre compte a été désactivé par un administrateur. Contactez l’administrateur de votre association ou de votre collectivité pour le réactiver.';
         case 'org_closed':
             return 'L’accès de votre association à Assokit est fermé. Pour toute question, écrivez à ' . AK_SUPPORT_EMAIL . '.';
         case 'org_suspended':
             return 'L’accès de votre association à Assokit est suspendu. Vos données sont conservées. Pour le rétablir, contactez ' . AK_SUPPORT_EMAIL . '.';
         case 'must_change_password':
             return 'Votre mot de passe est provisoire : choisissez-en un nouveau (Paramètres › Mot de passe) pour continuer.';
+        case 'mairie_space':
+            return 'Cette fonctionnalité est réservée aux associations. Votre compte donne accès à l’espace collectivité (associations suivies, messagerie, emailing), sur le site.';
     }
     return '';
 }
@@ -314,16 +333,17 @@ function ak_login_remember_target(): void
 
 /**
  * À appeler en tête de chaque page et de chaque API, après config.php : par
- * includes-layout.php et par require_login(). Ne fait rien en ligne de commande
- * ni pour un état normal.
+ * includes-layout.php, activity-tracker.php et require_login(). Ne fait rien en
+ * ligne de commande ni pour un état normal.
  */
 function ak_session_guard(): void
 {
-    static $done = false; // includes-layout.php puis require_login() : une seule vérification
+    static $done = false; // layout, activity-tracker puis require_login() : une seule vérification
     if ($done || PHP_SAPI === 'cli' || session_status() !== PHP_SESSION_ACTIVE) return;
     global $pdo;
     if (!($pdo instanceof PDO)) return;
     $done = true;
+    if (in_array(ak_guard_script(), AK_GUARD_PUBLIC, true)) return;
 
     // Incarnation par le Fondateur : fin automatique après 1 h et journal des pages vues. Rien
     // d'autre n'est vérifié (c'est le Fondateur qui agit, cf. ak_session_access).
@@ -353,6 +373,43 @@ function ak_session_guard(): void
     if ($state === 'org_suspended' && !in_array($script, AK_GUARD_SUSPENDED_OPEN, true)) {
         ak_guard_stop($api, 403, 'org_suspended', $state, '/connexion');
     }
+}
+
+/**
+ * Agent de collectivité (parent_org_id) sans association : seul l'espace mairie lui est ouvert.
+ * Sans association, les pages association (/dashboard, /projets, /nouveau-dossier, /adherents…)
+ * travaillaient dans un espace « org 0 » commun à toutes les collectivités : un dossier créé par
+ * un agent d'Évry apparaissait chez l'agent du Département. Page → /mairie-dashboard ; API →
+ * 403 'mairie_space'. La session compte autant que la base : un agent retiré depuis sa connexion
+ * (parent_org_id vidé) est encore renvoyé vers l'espace mairie, qui lui refuse l'accès.
+ * Fondateur, super-admin et membres d'une association ne sont pas concernés. Appelée par
+ * includes-layout.php, après ak_session_guard() ; en cas d'erreur de lecture, on laisse passer.
+ */
+function ak_mairie_space_guard(): void
+{
+    static $done = false;
+    if ($done || PHP_SAPI === 'cli' || session_status() !== PHP_SESSION_ACTIVE) return;
+    $done = true;
+    if (in_array(ak_guard_script(), AK_GUARD_PUBLIC, true)) return;
+    $uid = (int)($_SESSION['user_id'] ?? 0);
+    if ($uid <= 0 || (int)($_SESSION['org_id'] ?? 0) > 0) return;
+    global $pdo;
+    if (!($pdo instanceof PDO)) return;
+    try {
+        $st = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
+        $st->execute([$uid]);
+        $u = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Throwable $e) {
+        error_log('[ak_mairie_space_guard] ' . $e->getMessage());
+        return;
+    }
+    if (!$u || ak_user_is_platform($u) || (int)($u['org_id'] ?? 0) > 0) return;
+    if (empty($_SESSION['parent_org_id']) && empty($u['parent_org_id'])) return;
+
+    $script = ak_guard_script();
+    if (preg_match('#^(mairie-|action-mairie|super-admin-mairie)#', $script)
+        || in_array($script, AK_GUARD_OPEN, true) || in_array($script, AK_GUARD_MAIRIE_OPEN, true)) return;
+    ak_guard_stop(ak_guard_is_api($script), 403, 'mairie_space', 'mairie_space', '/mairie-dashboard');
 }
 
 }

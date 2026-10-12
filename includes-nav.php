@@ -39,7 +39,7 @@ function ak_nav_familles(array $ctx): array
     $role        = (string)($ctx['role'] ?? '');
     $estAdmin    = ($role === 'admin');
     $estCoord    = in_array($role, ['admin', 'coordinator'], true);
-    // Facturation, Relances et Tags : même règle que les pages (user_can_access_billing :
+    // Facturation et Relances : même règle que les pages (user_can_access_billing :
     // admin, coordinateur, trésorier qui a « Gérer les finances », jamais un suiveur)
     $billing     = array_key_exists('peut_facturation', $ctx)
                  ? !empty($ctx['peut_facturation'])
@@ -78,7 +78,7 @@ function ak_nav_familles(array $ctx): array
             'icone' => $i('projets', 16),
             'entrees' => [
                 ['projets',       '/projets',       $membre ? 'Projets' : 'Projets suivis', true, ['projets'], $membre ? ($ctx['proj_count'] ?? null) : null],
-                ['tags',          '/mon-asso-tags', 'Tags',                                 $billing,  ['tags']],
+                ['tags',          '/mon-asso-tags', 'Tags',                                 $estCoord, ['tags']],   // admin et coordinateur, comme mon-asso-tags.php
                 ['notes-de-frais','/notes-de-frais','Notes de frais',                       $membre,   ['notes-de-frais']],
             ],
         ],
@@ -95,7 +95,7 @@ function ak_nav_familles(array $ctx): array
                 ['export-fec',   '/export-fec',               'Export FEC',           $finances, ['export-fec']],
                 ['facturx',      '/facturx',                  'E-facture (Factur-X)', $finances, ['facturx']],
                 ['financements', '/financements',             'Radar subventions',    ($finances && $estAdmin) || $role === 'coordinator', ['financements']],
-                ['subventions',  '/subventions',              'Mes candidatures',     $finances && $estAdmin, ['subventions']],
+                ['subventions',  '/subventions',              'Mes candidatures',     ($finances && $estAdmin) || $role === 'coordinator', ['subventions']],
             ],
         ],
         [

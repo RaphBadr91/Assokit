@@ -23,6 +23,16 @@ $org_name = trim((string) ($input['org_name'] ?? ''));
 if ($org_name === '') app_fail(422, 'invalid', 'Le nom de l’organisation est obligatoire.');
 $org_name = mb_substr($org_name, 0, 190);
 
+// SIREN / SIRET : chiffres seuls, comme action-parametres.php (« 123 456 789 » est accepté)
+$digits = static function ($key) use ($input) {
+    $v = $input[$key] ?? '';
+    return preg_replace('/\D/', '', is_scalar($v) ? (string) $v : '') ?: null;
+};
+$siren = $digits('siren');
+$siret = $digits('siret');
+if ($siren !== null && strlen($siren) !== 9) app_fail(422, 'invalid', 'SIREN invalide : 9 chiffres attendus.');
+if ($siret !== null && strlen($siret) !== 14) app_fail(422, 'invalid', 'SIRET invalide : 14 chiffres attendus.');
+
 // Hors format hexadécimal, on retombe sur les couleurs par défaut du site.
 $color_pri = trim((string) ($input['branding_primary_color'] ?? '#10B981'));
 $color_sec = trim((string) ($input['branding_secondary_color'] ?? '#6366F1'));
@@ -39,7 +49,7 @@ try {
             branding_primary_color = ?, branding_secondary_color = ?, billing_updated_at = NOW()
         WHERE id = ?
     ")->execute([
-        $org_name, $s('legal_name'), $s('legal_form'), $s('siren'), $s('siret'), $s('rna_number'),
+        $org_name, $s('legal_name'), $s('legal_form'), $siren, $siret, $s('rna_number'),
         $s('billing_address_street'), $s('billing_address_complement'), $s('billing_address_zip'),
         $s('billing_address_city'), $s('billing_address_country'),
         !empty($input['vat_subject']) ? 1 : 0, $s('vat_number'), $s('billing_email'), $s('billing_phone'),

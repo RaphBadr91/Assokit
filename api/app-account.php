@@ -3,25 +3,11 @@
  * api/app-account.php — Infos du compte + org pour l'ecran Parametres natif. JSON.
  * NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
+// Compte relu en base : désactivé, supprimé ou introuvable → session fermée, 401 'auth'
+// (plus de repli sur $_SESSION['user_id'] / $_SESSION['org_id']). Expose $user, $uid, $org_id.
+require_once __DIR__ . '/_app-read-boot.php';
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $uid = (int) ($user['id'] ?? ($_SESSION['user_id'] ?? 0));
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-
     $st = $pdo->prepare("SELECT first_name, last_name, email, phone, city, role, is_founder, is_platform_admin FROM users WHERE id = ? LIMIT 1");
     $st->execute([$uid]);
     $u = $st->fetch(PDO::FETCH_ASSOC) ?: [];

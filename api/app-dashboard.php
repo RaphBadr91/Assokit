@@ -4,23 +4,10 @@
  * Reponse JSON, authentifiee par la session (cookie partage avec la WebView).
  * NE MODIFIE PAS le site : fichier dedie a l'application.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
-ob_end_clean(); // jette toute sortie parasite eventuelle
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
+require_once __DIR__ . '/_app-read-boot.php';   // compte actif garanti : $user, $uid, $org_id
+require_once __DIR__ . '/../includes-attendance.php';   // ak_event_visibility_sql()
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
     $first_name = trim((string) ($user['first_name'] ?? ''));
 
     // Fondateur : détection robuste (relit la base) — app-only, aucun impact site.
@@ -60,7 +47,9 @@ try {
             }
         } catch (Throwable $e) {}
     }
-    if ($mairie) { $can_fin = false; $can_bill = false; }
+    // Agent mairie : aucune donnée d'association. Sans association, les requêtes ci-dessous liraient
+    // l'espace « org 0 », commun à toutes les collectivités (fermé aux agents : ak_mairie_space_guard)
+    if ($mairie) { $can_fin = false; $can_bill = false; $org_id = -1; }
 
     // Suiveur (financeur externe) : uniquement ses projets suivis, comme /projets et /agenda.
     $fpids = function_exists('get_follower_project_ids') ? get_follower_project_ids()
@@ -132,12 +121,16 @@ try {
         $b = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['used' => 0, 'planned' => 0];
     }
 
+    // Événements : ceux que l'agenda montre à ce compte (api/app-events.php, /agenda) — suiveur
+    // limité à ses projets, « Équipe du projet uniquement » réservé à l'équipe du projet.
+    [$ev_vis_sql, $ev_vis_params] = ak_event_visibility_sql($pdo, $user, 'events');
+
     // Evenements a venir
     $events = 0;
     try {
         // Colonne réelle : starts_at (start_date n'existe pas → le KPI restait à 0)
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL" . $fol_sql('project_id'));
-        $stmt->execute([$org_id]);
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL" . $ev_vis_sql);
+        $stmt->execute(array_merge([$org_id], $ev_vis_params));
         $events = (int) $stmt->fetchColumn();
     } catch (Throwable $e) {}
 
@@ -171,12 +164,16 @@ try {
     } catch (Throwable $e) {}   // colonne absente tant que la migration n'est pas passée
 
     // KPIs facturation (utiles pour TPE, calcules pour les deux) : rôles facturation uniquement
-    $ca_paid_cents = 0; $impayes_cents = 0; $factures_count = 0; $devis_encours = 0;
+    // impayes = factures échues non payées (carte « Impayés à recouvrer ») ; a_encaisser = toutes
+    // les factures en attente ou en retard, échues ou non (totals.unpaid de app-invoices.php,
+    // « En attente » du hub Facturation du site).
+    $ca_paid_cents = 0; $impayes_cents = 0; $a_encaisser_cents = 0; $factures_count = 0; $devis_encours = 0;
     if ($can_bill) try {
         $stmt = $pdo->prepare("
             SELECT
               COALESCE(SUM(CASE WHEN status = 'paid' AND YEAR(issued_at) = YEAR(CURDATE()) THEN amount_ttc_cents ELSE 0 END), 0) AS paid,
               COALESCE(SUM(CASE WHEN status IN ('pending','overdue') AND due_at < NOW() THEN amount_ttc_cents ELSE 0 END), 0) AS due,
+              COALESCE(SUM(CASE WHEN status IN ('pending','overdue') THEN amount_ttc_cents ELSE 0 END), 0) AS unpaid,
               COUNT(*) AS total
             FROM asso_invoices WHERE org_id = ?
         ");
@@ -184,6 +181,7 @@ try {
         $fi = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
         $ca_paid_cents  = (int) ($fi['paid'] ?? 0);
         $impayes_cents  = (int) ($fi['due'] ?? 0);
+        $a_encaisser_cents = (int) ($fi['unpaid'] ?? 0);
         $factures_count = (int) ($fi['total'] ?? 0);
     } catch (Throwable $e) {}
     if ($can_bill) try {
@@ -217,10 +215,10 @@ try {
             SELECT id, title, location, starts_at, is_all_day
             FROM events
             WHERE org_id = ? AND deleted_at IS NULL
-              AND starts_at >= NOW() AND starts_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY)" . $fol_sql('project_id') . "
+              AND starts_at >= NOW() AND starts_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY)" . $ev_vis_sql . "
             ORDER BY starts_at ASC LIMIT 4
         ");
-        $stmt->execute([$org_id]);
+        $stmt->execute(array_merge([$org_id], $ev_vis_params));
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) {
             $today[] = [
                 'kind'  => 'event',
@@ -254,12 +252,14 @@ try {
             ];
         }
     } catch (Throwable $e) {}
-    // Subventions : admin et coordinateur (Radar subventions, /subventions), pas les autres rôles
+    // Subventions : admin et coordinateur (Radar subventions, /subventions), pas les autres rôles.
+    // Seul un dossier encore à déposer a une date limite de dépôt (même règle que gr_days_to_apply()
+    // et /subventions) : un dossier déposé n'apparaît plus en « À déposer avant le … ».
     if ($can_grants) try {
         $stmt = $pdo->prepare("
             SELECT id, name, deadline_apply FROM grants
             WHERE org_id = ? AND archived_at IS NULL
-              AND status IN ('draft','submitted')
+              AND status = 'draft' AND submitted_at IS NULL
               AND deadline_apply IS NOT NULL AND deadline_apply >= CURDATE()
               AND deadline_apply <= DATE_ADD(CURDATE(), INTERVAL 21 DAY)
             ORDER BY deadline_apply ASC LIMIT 2
@@ -283,9 +283,9 @@ try {
         $stmt = $pdo->prepare("
             SELECT COUNT(*) FROM events
             WHERE org_id = ? AND deleted_at IS NULL
-              AND starts_at >= NOW() AND starts_at < DATE_ADD(CURDATE(), INTERVAL 7 DAY)" . $fol_sql('project_id') . "
+              AND starts_at >= NOW() AND starts_at < DATE_ADD(CURDATE(), INTERVAL 7 DAY)" . $ev_vis_sql . "
         ");
-        $stmt->execute([$org_id]);
+        $stmt->execute(array_merge([$org_id], $ev_vis_params));
         $week_due = (int) $stmt->fetchColumn();
     } catch (Throwable $e) {}
     $late_invoices = 0;
@@ -405,6 +405,7 @@ try {
             'factures'         => $can_bill ? $factures_count : null,
             'ca_paid'          => $can_bill ? $ca_paid_cents / 100 : null,
             'impayes'          => $can_bill ? $impayes_cents / 100 : null,
+            'a_encaisser'      => $can_bill ? $a_encaisser_cents / 100 : null,
         ],
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {

@@ -24,6 +24,16 @@ RewriteEngine On
 RewriteRule ^(vendor|demo-sql|demo-formation|migrations)(/|$) - [F,L,NC]
 RewriteRule ^composer\.(json|lock)$ - [F,L,NC]
 
+# Envois groupés (nouvelle diffusion, diffusion d'un événement, reprise d'une diffusion,
+# diffusion IA) : cadencés au rythme permis par Resend (environ 2 e-mails par seconde),
+# 300 destinataires prennent plusieurs minutes. LiteSpeed ne doit pas couper le script si
+# le navigateur se déconnecte ou au bout de son délai de connexion. Sans effet hors
+# LiteSpeed. Si un envoi est coupé malgré tout, le suivi reste exact et « Reprendre
+# l’envoi » le termine sans doublon.
+<IfModule LiteSpeed>
+RewriteRule ^(communication-diffuser-nouveau|communication-evenement|communication-diffusion|mon-asso-ia-diffusion-send)(\.php)?/?$ - [E=noabort:1,E=noconntimeout:1]
+</IfModule>
+
 # ============================================================
 # 0. DOMAINE CANONIQUE : www -> non-www (en un seul saut, force aussi HTTPS)
 # ============================================================
@@ -225,7 +235,8 @@ RewriteRule ^pour-organismes/?$ pour-organismes.php [L,QSA]
 RewriteRule ^tarifs/?$ tarifs.php [L,QSA]
 RewriteRule ^a-propos/?$ a-propos.php [L,QSA]
 RewriteRule ^contact/?$ contact.php [L,QSA]
-RewriteRule ^contact-send/?$ contact-send.php [L,QSA]
+# Ancien point d'envoi du formulaire de contact, retiré : /contact poste sur lui-même
+RewriteRule ^contact-send(\.php)?/?$ /contact [R=301,L]
 RewriteRule ^mentions-legales/?$ mentions-legales.php [L,QSA]
 RewriteRule ^cgu/?$ cgu.php [L,QSA]
 RewriteRule ^confidentialite/?$ confidentialite.php [L,QSA]
@@ -237,6 +248,8 @@ RewriteRule ^login/?$              /connexion                  [R=301,L]
 RewriteRule ^inscription/?$        /tarifs                     [R=301,L]
 RewriteRule ^cgv/?$                /cgu                        [R=301,L]
 RewriteRule ^rgpd/?$               /confidentialite            [R=301,L]
+# Boutons « Régler ma facture » des e-mails de relance et de renouvellement déjà envoyés
+RewriteRule ^facturation/?$        /mon-asso-plan              [R=301,L]
 
 # Redirections 301 .php → URL propre (SEO + cohérence)
 # Existait déjà en lignes 214-215 du htaccess actuel pour le dashboard.
@@ -430,9 +443,9 @@ RewriteRule ^modifier-adherent/(\d+)/?$      modifier-adherent.php?id=$1 [L,QSA]
 RewriteCond %{REQUEST_METHOD} !=POST
 RewriteCond %{REQUEST_URI} !^/api/
 RewriteCond %{REQUEST_URI} !^/(vendor|demo-sql|demo-formation|migrations)/ [NC]
-# Crons appelés par URL (cron_xxx.php?token=…) : jamais de 301, car un
+# Crons appelés par URL (cron_xxx.php ou cron-xxx.php?token=…) : jamais de 301, car un
 # « curl » sans -L s'arrêterait sur la redirection et le job ne tournerait pas.
-RewriteCond %{REQUEST_URI} !^/cron_[a-z0-9_]+\.php$ [NC]
+RewriteCond %{REQUEST_URI} !^/cron[-_][a-z0-9_-]+\.php$ [NC]
 RewriteCond %{THE_REQUEST} \s/+(.+?)\.php[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
 
@@ -541,6 +554,9 @@ RewriteRule ^admin-cron-logout/?$            admin-cron-logout.php [L,QSA]
 # pas d'ecrire un cran au-dessus de public_html. Un document commercial
 # n'a pas a etre telechargeable par qui devine son nom.
 RedirectMatch 404 /private_campagnes
+# Justificatifs des notes de frais : meme repli (le dossier pose aussi son
+# propre .htaccess « Require all denied »).
+RedirectMatch 404 /private_notes_frais
 
 <Files "support-helper.php">
     Require all denied

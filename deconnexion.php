@@ -16,15 +16,6 @@ if (!empty($_SESSION['impersonation_target_user_id'])) {
     stop_impersonation(false);
 }
 
-// === Tracking activité (Fondateur audit) ===
-// IMPORTANT : à appeler AVANT de détruire la session
-if (file_exists(__DIR__ . '/activity-tracker.php')) {
-    require_once __DIR__ . '/activity-tracker.php';
-    if (function_exists('activity_log_logout')) {
-        activity_log_logout();
-    }
-}
-
 // === Notifications push de l'app ===
 // Déconnexion depuis l'app : le téléphone ne doit plus recevoir les notifications du compte.
 // L'app peut préciser son jeton (?push_token=…) ; sans lui (anciennes versions de l'app),
@@ -41,6 +32,16 @@ if ($__uid > 0 && empty($_SESSION['impersonation_target_user_id']) && ($__push_t
         }
     } catch (Throwable $e) {
         // Table absente (aucun appareil enregistré) : rien à retirer
+    }
+}
+
+// === Tracking activité (Fondateur audit) ===
+// IMPORTANT : à appeler AVANT de détruire la session. Après les jetons push : ce fichier vérifie
+// aussi l'accès de la session (ak_session_guard) et ferme tout de suite celle d'un compte désactivé.
+if (file_exists(__DIR__ . '/activity-tracker.php')) {
+    require_once __DIR__ . '/activity-tracker.php';
+    if (function_exists('activity_log_logout')) {
+        activity_log_logout();
     }
 }
 

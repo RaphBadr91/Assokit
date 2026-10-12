@@ -58,7 +58,7 @@ try {
         UPDATE users SET
             email = CONCAT('deleted_', id, '@anonyme.assokit.local'),
             first_name = 'Compte', last_name = 'supprimé',
-            phone = NULL, city = NULL, is_active = 0,
+            phone = NULL, city = NULL, ics_token = NULL, is_active = 0,
             deleted_at = NOW(), deleted_by_user_id = id
         WHERE id = ? AND deleted_at IS NULL
     ")->execute([$uid]);

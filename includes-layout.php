@@ -86,6 +86,16 @@ if (file_exists(__DIR__ . '/activity-tracker.php')) {
     require_once __DIR__ . '/activity-tracker.php';
 }
 
+// Accès de la session (app-context.php), relu en base à chaque page et à chaque API : compte
+// désactivé ou supprimé, association résiliée → session fermée (401 'auth' pour une API) ;
+// association suspendue, mot de passe provisoire → page d'explication ou de changement.
+// Une seule vérification par requête, rien en ligne de commande.
+if (function_exists('ak_session_guard')) ak_session_guard();
+
+// Agent de collectivité sans association : seulement l'espace mairie (pages association
+// fermées, sinon elles travaillaient dans un espace « org 0 » commun à toutes les collectivités)
+if (function_exists('ak_mairie_space_guard')) ak_mairie_space_guard();
+
 // === Bandeau MODE DÉMO ===
 if (file_exists(__DIR__ . '/demo-banner.php')) {
     require_once __DIR__ . '/demo-banner.php';
@@ -159,6 +169,7 @@ function render_head($page_title) {
 <link rel="stylesheet" href="/assets/assokit-app.css?v=<?= @filemtime(__DIR__ . '/assets/assokit-app.css') ?>">
 </head>
 <body>
+<?php if (!empty($_SESSION['impersonation_target_user_id'])) { require_once __DIR__ . '/impersonation-helpers.php'; render_impersonation_banner(); } ?>
 <?php if (function_exists('render_demo_banner')) render_demo_banner(); ?>
 <?php if (function_exists('render_trial_banner')) render_trial_banner(); ?>
     <?php
@@ -174,6 +185,8 @@ function render_head($page_title) {
  */
 function render_trial_banner() {
     global $pdo;
+    // Page qui le demande (paiement qui vient d'aboutir : mon-asso-paiement-success.php)
+    if (!empty($GLOBALS['ak_hide_trial_banner'])) return;
     // Le bandeau porte un bouton « S'abonner » : interdit dans l'app (Apple 3.1.1).
     if (ak_billing_hidden()) return;
     if (!function_exists('current_user')) return;
@@ -252,7 +265,7 @@ function render_sidebar($active = 'accueil') {
     $user = current_user();
 
     // === MODE MAIRIE : sidebar dédiée ===
-    if (!empty($_SESSION['parent_org_id']) || !empty($user['parent_org_id'])) {
+    if (ak_layout_parent_org_id($user) > 0) {
         render_sidebar_mairie($active);
         return;
     }
@@ -416,13 +429,15 @@ function render_sidebar($active = 'accueil') {
           'active'         => $active,
           'role'           => $user['role'] ?? '',
           'is_follower'    => is_follower(),
-          'peut_finances'  => can('manage_finances'),
-          // Facturation, Relances, Tags : la règle des pages (user_can_access_billing)
+          // Suiveur (financeur externe) : jamais les écrans finances ni marketing, même si une
+          // capacité est restée cochée sur son compte (comme user_can_access_billing)
+          'peut_finances'  => can('manage_finances') && !is_follower(),
+          // Facturation et Relances : la règle des pages (user_can_access_billing)
           'peut_facturation' => (function () use ($user) {
               if (!function_exists('user_can_access_billing')) require_once __DIR__ . '/finance-permissions.php';
               return user_can_access_billing(ak_platform_flags($user));
           })(),
-          'peut_marketing' => can('access_marketing'),
+          'peut_marketing' => can('access_marketing') && !is_follower(),
           'peut_admin'     => can('admin'),
           'proj_count'     => $proj_count,
           'user_count'     => $user_count,
@@ -450,10 +465,23 @@ function render_sidebar($active = 'accueil') {
     </div>
   </aside>
 
-  <div>
+  <!-- min-width:0 : sans lui, la colonne de la grille .app prend la largeur d'un tableau et la page déborde sur téléphone -->
+  <div style="min-width:0">
     <?php
 }
 
+
+/**
+ * Collectivité de rattachement à afficher : la valeur en base (current_user) d'abord, pour
+ * qu'un compte détaché de sa collectivité depuis sa connexion retrouve aussitôt la barre de son
+ * association (les liens mairie lui répondraient 403). L'incarnation remplace l'utilisateur et
+ * la clé de session ensemble : les deux sources concordent. La session ne sert qu'à défaut
+ * de colonne dans current_user().
+ */
+function ak_layout_parent_org_id($user): int {
+    if (is_array($user) && array_key_exists('parent_org_id', $user)) return (int)$user['parent_org_id'];
+    return (int)($_SESSION['parent_org_id'] ?? 0);
+}
 
 /**
  * Sidebar dédiée pour les agents mairie / collectivité
@@ -461,7 +489,7 @@ function render_sidebar($active = 'accueil') {
 function render_sidebar_mairie($active = 'mairie-dashboard') {
     global $pdo;
     $user = current_user();
-    $parent_org_id = (int)($_SESSION['parent_org_id'] ?? $user['parent_org_id'] ?? 0);
+    $parent_org_id = ak_layout_parent_org_id($user);
 
     $parent_org = null;
     if ($parent_org_id > 0) {
@@ -554,7 +582,8 @@ function render_sidebar_mairie($active = 'mairie-dashboard') {
 
   </aside>
 
-  <div>
+  <!-- min-width:0 : même raison que dans render_sidebar() (colonne de la grille .app) -->
+  <div style="min-width:0">
     <?php
 }
 
@@ -652,8 +681,9 @@ body:has(.main [style*="position:sticky"][style*="bottom"]), body:has(.main [sty
   function renderTable(t){if(!t||!t.columns)return '';var h='<div style="font-weight:700;margin-bottom:2px;">'+esc(t.title||'')+'</div><table><tr>'+t.columns.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+'</tr>';(t.rows||[]).forEach(function(r){h+='<tr>'+r.map(function(c){return '<td>'+esc(c)+'</td>';}).join('')+'</tr>';});return h+'</table>';}
   function ask(q){if(!q||!q.trim())return;tbl(esc(q),'me');input.value='';send.disabled=true;var w=tbl('<span style="color:#64748B;">…</span>','bot');
     fetch('/mon-asso-copilote-ask.php',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify({question:q,csrf_token:CSRF})})
-    .then(function(r){return r.json();}).then(function(d){var html='';
-      if(d&&d.ok===false){html=esc(d.error==='forbidden'?'Accès non autorisé.':'Service momentanément indisponible.');}
+    .then(function(r){return r.json().catch(function(){return null;});}).then(function(d){var html='';
+      // Toute erreur (limite de questions, session expirée, IA indisponible) porte son texte dans d.message
+      if(!d||d.ok===false||d.error){html=esc(d&&d.message?d.message:(d&&d.error==='forbidden'?'Accès non autorisé.':'Service momentanément indisponible.'));}
       else{html='<div>'+esc(d.answer||'')+'</div>';if(d.table)html+=renderTable(d.table);if(d.action&&d.action.route)html+='<a class="akcop-act" href="'+esc(d.action.route)+'">'+esc(d.action.label||'Ouvrir')+' →</a>';}
       w.innerHTML=html;}).catch(function(){w.innerHTML=esc('Erreur réseau. Réessayez.');}).finally(function(){send.disabled=false;input.focus();});
   }

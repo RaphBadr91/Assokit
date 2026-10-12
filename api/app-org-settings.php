@@ -4,23 +4,9 @@
  * Lecture seule ; l'écriture passe par app-update-org.php.
  * Réservé aux administrateurs, comme l'onglet du site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
+require_once __DIR__ . '/_app-read-boot.php';   // compte actif garanti : $user, $uid, $org_id
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
     $is_admin = (($user['role'] ?? '') === 'admin') || !empty($user['is_super_admin']);
 
     if (!$is_admin) {

@@ -10,6 +10,8 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/app-context.php';   // ak_session_guard() : compte désactivé, association résiliée ou suspendue, mot de passe provisoire
+ak_session_guard();
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/asso-invoice-email-helpers.php';
 require_once __DIR__ . '/finance-permissions.php';
@@ -74,37 +76,19 @@ try {
     ]);
 
     if ($response === 'paid') {
-        // Marquer facture comme payée
-        $pdo->prepare("
-            UPDATE asso_invoices
-            SET paid_at = NOW(), status = 'paid',
-                confirmed_paid_by_org_at = NOW(),
-                confirmed_paid_by_user_id = :uid
-            WHERE id = :id
-        ")->execute([
-            ':uid' => (int)$user['id'],
-            ':id' => $notif['invoice_id'],
-        ]);
-
-        // Insérer paiement
-        try {
-            $pdo->prepare("
-                INSERT INTO asso_invoice_payments
-                (invoice_id, org_id, amount_cents, paid_at, payment_method, source, recorded_by_user_id)
-                VALUES (:inv, :org, :amt, NOW(), 'declared', 'admin', :uid)
-            ")->execute([
-                ':inv' => $notif['invoice_id'],
-                ':org' => $org_id,
-                ':amt' => $notif['amount_ttc_cents'],
-                ':uid' => (int)$user['id'],
-            ]);
-        } catch (Throwable $e) {} // table peut ne pas exister si Sous-pack 2 pas installé
-
+        // Mêmes écritures que le site et l'appli (ak_asso_invoice_mark_paid) : facture relue sous
+        // verrou, encaissable seulement en attente ou en retard, ligne dans l'historique des règlements.
+        $res = ak_asso_invoice_mark_paid($pdo, $org_id, (int)$notif['invoice_id'], (int)$user['id']);
+        if (!$res['ok'] && $res['code'] !== 'state') {
+            $pdo->rollBack();
+            $_SESSION['flash_asso_factures'] = ['type' => 'error', 'message' => $res['message']];
+            header('Location: /dashboard'); exit;
+        }
+        // Facture déjà réglée, annulée… : la notification est close, rien n'est encaissé une seconde fois
         $pdo->commit();
-        $_SESSION['flash_asso_factures'] = [
-            'type' => 'success',
-            'message' => '✅ Facture ' . $notif['invoice_number'] . ' marquée comme payée.'
-        ];
+        $_SESSION['flash_asso_factures'] = $res['ok']
+            ? ['type' => 'success', 'message' => '✅ Facture ' . $notif['invoice_number'] . ' marquée comme payée.']
+            : ['type' => 'error', 'message' => $res['message'] . ' Aucun règlement n’a été ajouté.'];
 
     } elseif ($response === 'no_more') {
         // Désactiver toute relance future pour cette facture

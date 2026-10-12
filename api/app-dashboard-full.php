@@ -8,19 +8,9 @@
  *
  * NE MODIFIE PAS le site : fichier dédié à l'application.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
+require_once __DIR__ . '/_app-read-boot.php';   // compte actif garanti : $user, $uid, $org_id
+require_once __DIR__ . '/../includes-attendance.php';   // ak_event_visibility_sql()
+require_once __DIR__ . '/../includes-grants.php';       // gr_days_between()
 
 /** Le site compose ses libellés en HTML (<strong>…</strong>) : l'app veut du texte. */
 function adf_plain(string $html): string
@@ -29,9 +19,6 @@ function adf_plain(string $html): string
 }
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-    $uid    = (int) ($user['id'] ?? 0);
     $role   = (string) ($user['role'] ?? 'member');
     $is_admin = ($role === 'admin') || !empty($user['is_super_admin']);
     $is_coord = $is_admin || ($role === 'coordinator');
@@ -71,10 +58,13 @@ try {
         $new_users = (int) $stmt->fetchColumn();
     }
 
+    // Événements à venir : ceux que l'agenda montre à ce compte (api/app-events.php, /agenda) —
+    // « Équipe du projet uniquement » réservé à l'équipe du projet, suiveur limité à ses projets.
     $upcoming_events = 0;
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL" . $fol_sql('project_id'));
-        $stmt->execute([$org_id]);
+        [$ev_vis_sql, $ev_vis_params] = ak_event_visibility_sql($pdo, $user, 'events');
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL" . $ev_vis_sql);
+        $stmt->execute(array_merge([$org_id], $ev_vis_params));
         $upcoming_events = (int) $stmt->fetchColumn();
     } catch (Throwable $e) {}
 
@@ -253,10 +243,11 @@ try {
     }
     if ($is_admin) {
         try {
+            // Dépôt : seul un dossier pas encore déposé a une échéance (gr_days_to_apply(), /subventions)
             $st = $pdo->prepare("
                 SELECT id, name, funder, deadline_apply, deadline_report, status FROM grants
                 WHERE org_id = ? AND archived_at IS NULL
-                  AND ((status IN ('draft','submitted','in_review') AND deadline_apply IS NOT NULL
+                  AND ((status = 'draft' AND submitted_at IS NULL AND deadline_apply IS NOT NULL
                         AND DATEDIFF(deadline_apply, CURDATE()) BETWEEN -7 AND 14)
                     OR (status = 'granted' AND deadline_report IS NOT NULL AND reported_at IS NULL
                         AND DATEDIFF(deadline_report, CURDATE()) BETWEEN -7 AND 30))
@@ -266,7 +257,8 @@ try {
             foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $g) {
                 $is_report = ($g['status'] === 'granted' && !empty($g['deadline_report']));
                 $due = $is_report ? $g['deadline_report'] : $g['deadline_apply'];
-                $days = (int) floor((strtotime((string) $due) - strtotime('today')) / 86400);
+                // Écart en jours calendaires, juste aussi au passage à l'heure d'été
+                $days = (int) (gr_days_between(date('Y-m-d'), (string) $due) ?? 0);
                 $grants_urgent[] = [
                     'id' => (int) $g['id'], 'name' => (string) $g['name'],
                     'funder' => (string) ($g['funder'] ?? ''),

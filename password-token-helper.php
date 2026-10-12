@@ -185,7 +185,8 @@ function send_reset_password_email(string $email, string $first_name, string $to
 }
 
 /**
- * Adresse de connexion modifiée (Paramètres > Compte, ou l'app) :
+ * Adresse de connexion modifiée (Paramètres > Compte, l'app, ou l'administrateur de l'association
+ * pour un autre compte : $by_admin, qui adapte le texte des deux e-mails) :
  *   - l'ANCIENNE adresse est prévenue : si ce n'est pas le titulaire qui a fait le changement
  *     (session restée ouverte sur un poste partagé), il le sait tout de suite ;
  *   - la nouvelle adresse reçoit un lien de confirmation, et email_verified_at repasse à NULL
@@ -195,7 +196,7 @@ function send_reset_password_email(string $email, string $first_name, string $to
  *     à un autre compte).
  * Best effort : un envoi raté ne bloque jamais la modification, il est seulement journalisé.
  */
-function ak_account_email_changed(PDO $pdo, int $user_id, string $old_email, string $new_email, string $first_name): void
+function ak_account_email_changed(PDO $pdo, int $user_id, string $old_email, string $new_email, string $first_name, bool $by_admin = false): void
 {
     try {
         $pdo->prepare("INSERT INTO assokit_activity_log (user_id, user_email, event_type, event_action, ip)
@@ -220,15 +221,23 @@ function ak_account_email_changed(PDO $pdo, int $user_id, string $old_email, str
     $hello = '<p>Bonjour ' . htmlspecialchars($first_name) . ',</p>';
     $notice = '<h1 style="font-size:22px;margin:0 0 14px;font-weight:500;letter-spacing:-0.01em;color:#1C1917">Votre adresse de connexion a changé</h1>'
             . $hello
-            . '<p>L\'adresse e-mail de connexion de votre compte Assokit vient d\'être remplacée par <strong>' . htmlspecialchars($new_email) . '</strong>, le ' . date('d/m/Y à H:i') . '.</p>'
+            . ($by_admin
+                ? '<p>L\'administrateur de votre association a remplacé l\'adresse e-mail de connexion de votre compte Assokit par <strong>' . htmlspecialchars($new_email) . '</strong>, le ' . date('d/m/Y à H:i') . '.</p>'
+                : '<p>L\'adresse e-mail de connexion de votre compte Assokit vient d\'être remplacée par <strong>' . htmlspecialchars($new_email) . '</strong>, le ' . date('d/m/Y à H:i') . '.</p>')
             . '<p>À partir de maintenant, c\'est cette nouvelle adresse qui sert à vous connecter et à recevoir les liens de mot de passe.</p>'
             . '<div style="background:#FEF2F2;border-left:3px solid #DC2626;padding:12px 16px;border-radius:6px;margin:16px 0;font-size:13px;color:#991B1B;line-height:1.6;">'
-            . '<strong>Ce n\'est pas vous ?</strong> Prévenez tout de suite l\'administrateur de votre association, ou écrivez à contact@assokit.fr : quelqu\'un a utilisé votre session pour prendre la main sur votre compte.'
+            . ($by_admin
+                ? '<strong>Vous n\'étiez pas au courant ?</strong> Contactez l\'administrateur de votre association, ou écrivez à contact@assokit.fr.'
+                : '<strong>Ce n\'est pas vous ?</strong> Prévenez tout de suite l\'administrateur de votre association, ou écrivez à contact@assokit.fr : quelqu\'un a utilisé votre session pour prendre la main sur votre compte.')
             . '</div>';
     $verify = '<h1 style="font-size:22px;margin:0 0 14px;font-weight:500;letter-spacing:-0.01em;color:#1C1917">Confirmez votre nouvelle adresse</h1>'
             . $hello
-            . '<p>Cette adresse est désormais celle de votre compte Assokit. Confirmez-la en cliquant sur le bouton ci-dessous.</p>'
-            . '<p style="font-size:12px; color:#78716C; margin-top:18px;">Si vous n\'êtes pas à l\'origine de ce changement, ignorez ce message et prévenez l\'administrateur de votre association.</p>';
+            . ($by_admin
+                ? '<p>L\'administrateur de votre association a indiqué cette adresse pour votre compte Assokit : c\'est désormais elle qui sert à vous connecter. Confirmez-la en cliquant sur le bouton ci-dessous.</p>'
+                : '<p>Cette adresse est désormais celle de votre compte Assokit. Confirmez-la en cliquant sur le bouton ci-dessous.</p>')
+            . ($by_admin
+                ? '<p style="font-size:12px; color:#78716C; margin-top:18px;">Ce message ne vous concerne pas ? Ignorez-le et écrivez à contact@assokit.fr : l\'adresse a sans doute été saisie par erreur.</p>'
+                : '<p style="font-size:12px; color:#78716C; margin-top:18px;">Si vous n\'êtes pas à l\'origine de ce changement, ignorez ce message et prévenez l\'administrateur de votre association.</p>');
     $verify_url = function_exists('ak_email_verify_url') ? ak_email_verify_url($user_id) : 'https://assokit.fr/connexion';
 
     try {

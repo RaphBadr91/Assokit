@@ -12,6 +12,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/app-context.php'; // ak_login_next()
 
+ak_session_guard(); // compte désactivé ou association résiliée : session fermée (page ouverte sinon)
 require_login();
 $user = current_user();
 // Page à rejoindre une fois le mot de passe changé (lien reçu par e-mail, cockpit…)
@@ -26,6 +27,10 @@ $error = null;
 $success = false;
 $is_forced = !empty($user['must_change_password']);
 $continue_to = null; // après un changement obligatoire : page où reprendre, après la confirmation
+// Accueil du compte : cockpit, espace collectivité (un agent n'a pas d'espace association,
+// /dashboard serait vide) ou association
+$home = (!empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin') ? '/super-admin'
+      : (!empty($user['parent_org_id']) ? '/mairie-dashboard' : '/dashboard');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!check_csrf($_POST['csrf_token'] ?? '')) {
@@ -61,15 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // accueil : cockpit, mairie ou association). La confirmation s'affiche ici, avant de
             // partir : aucune page d'arrivée ne lisait l'ancien « ?password_changed=1 ».
             if ($is_forced) {
-                if ($next !== '') {
-                    $continue_to = $next;
-                } elseif (!empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin') {
-                    $continue_to = '/super-admin';
-                } elseif (!empty($user['parent_org_id'])) {
-                    $continue_to = '/mairie-dashboard';
-                } else {
-                    $continue_to = '/dashboard';
-                }
+                $continue_to = $next !== '' ? $next : $home;
             }
         }
     }
@@ -162,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </form>
 
   <?php if (!$is_forced): ?>
-    <div class="footer-link"><a href="/dashboard">← Retour au dashboard</a></div>
+    <div class="footer-link"><a href="<?= h($home) ?>">← Retour au dashboard</a></div>
   <?php else: ?>
     <div class="footer-link"><a href="/deconnexion">Se déconnecter</a></div>
   <?php endif; ?>

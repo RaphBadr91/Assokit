@@ -307,14 +307,23 @@ try {
     } catch (Throwable $e2) { $activity_feed = []; }
 }
 
-// 4) Événements à venir
+// Helper : restriction des événements visibles par ce compte, la même que /agenda
+// (includes-attendance.php). Renvoie [fragment « AND … » sur la table events, paramètres].
+function ak_dash_event_visibility(PDO $pdo, array $viewer): array {
+    require_once __DIR__ . '/includes-attendance.php';
+    return function_exists('ak_event_visibility_sql') ? ak_event_visibility_sql($pdo, $viewer, 'events') : ['', []];
+}
+
+// 4) Événements à venir : ceux que /agenda montre à ce compte (un événement « Équipe du projet
+// uniquement » n'est compté que pour l'équipe du projet)
 $upcoming_events_count = 0;
 try {
+    [$ev_vis_sql, $ev_vis_params] = ak_dash_event_visibility($pdo, $user);
     $stmt = $pdo->prepare("
         SELECT COUNT(*) FROM events
-        WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL
+        WHERE org_id = ? AND starts_at >= CURDATE() AND deleted_at IS NULL{$ev_vis_sql}
     ");
-    $stmt->execute([$org_id]);
+    $stmt->execute(array_merge([$org_id], $ev_vis_params));
     $upcoming_events_count = (int)$stmt->fetchColumn();
 } catch (Throwable $e) {}
 
@@ -561,14 +570,15 @@ function ak_dash_upcoming_deadlines(PDO $pdo, int $org_id, ?array $follower_ids,
         return $b === '' ? $GPAL[0] : $GPAL[abs(crc32($b)) % count($GPAL)];
     };
 
-    // Source 1 : table events (si elle existe)
+    // Source 1 : table events (si elle existe), avec la visibilité de /agenda
     try {
+        [$vis_sql, $vis_params] = ak_dash_event_visibility($pdo, $viewer ?: (current_user() ?? []));
         $sql = "SELECT id, title, starts_at, ends_at, is_all_day, color_theme, sync_origin FROM events
-                WHERE org_id = ? AND deleted_at IS NULL
+                WHERE org_id = ? AND deleted_at IS NULL{$vis_sql}
                   AND starts_at >= NOW() AND starts_at <= DATE_ADD(NOW(), INTERVAL 7 DAY)
                 ORDER BY starts_at ASC LIMIT 20";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$org_id]);
+        $stmt->execute(array_merge([$org_id], $vis_params));
         $seen_keys = [];
         $event_rows = $stmt->fetchAll();
         // Groupe events identiques sur jours consécutifs (titre + heure égaux)
@@ -711,11 +721,12 @@ function ak_dash_upcoming_deadlines(PDO $pdo, int $org_id, ?array $follower_ids,
         }
     } catch (Throwable $e) {}
 
-    // Source 5 : Subventions deadline 7j (dépôt ou bilan) — admin et coordinateur
+    // Source 5 : Subventions deadline 7j (dépôt ou bilan) — admin et coordinateur. Dépôt : seul
+    // un dossier pas encore déposé a une échéance (gr_days_to_apply(), /subventions)
     if ($v_grants) try {
         $sql = "SELECT id, name, deadline_apply, deadline_report, status FROM grants
                 WHERE org_id = ? AND archived_at IS NULL
-                  AND ((status IN ('draft','submitted','in_review') AND deadline_apply IS NOT NULL AND deadline_apply BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY))
+                  AND ((status = 'draft' AND submitted_at IS NULL AND deadline_apply IS NOT NULL AND deadline_apply BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY))
                     OR (status = 'granted' AND deadline_report IS NOT NULL AND reported_at IS NULL AND deadline_report BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)))
                 ORDER BY COALESCE(deadline_apply, deadline_report) ASC LIMIT 5";
         $stmt = $pdo->prepare($sql);
@@ -831,7 +842,7 @@ if ($_is_admin_dash) {
             DATEDIFF(g.deadline_apply, CURDATE()) jours_apply,
             DATEDIFF(g.deadline_report, CURDATE()) jours_report
             FROM grants g WHERE g.org_id = ? AND g.archived_at IS NULL
-              AND ((g.status IN ('draft','submitted','in_review') AND g.deadline_apply IS NOT NULL AND DATEDIFF(g.deadline_apply, CURDATE()) BETWEEN -7 AND 14)
+              AND ((g.status = 'draft' AND g.submitted_at IS NULL AND g.deadline_apply IS NOT NULL AND DATEDIFF(g.deadline_apply, CURDATE()) BETWEEN -7 AND 14)
                 OR (g.status = 'granted' AND g.deadline_report IS NOT NULL AND g.reported_at IS NULL AND DATEDIFF(g.deadline_report, CURDATE()) BETWEEN -7 AND 30))
             ORDER BY COALESCE(g.deadline_apply, g.deadline_report) ASC LIMIT 3");
         $st->execute([$org_id]);
@@ -1462,7 +1473,8 @@ render_sidebar('accueil');
     </a>
     <?php endif; ?>
     
-    <?php if (function_exists('can') && can('manage_events')): ?>
+    <?php require_once __DIR__ . '/includes-attendance.php'; // ak_event_can_create() : tout compte sauf suiveur, comme /agenda
+    if (ak_event_can_create($user)): ?>
     <a href="/agenda" class="dash-action">
       <div class="dash-action-icon" style="background: linear-gradient(135deg, #FEE2E2, #FECACA); color: #991B1B;">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="9" y1="16" x2="15" y2="16"/></svg>

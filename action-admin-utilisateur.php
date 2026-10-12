@@ -9,6 +9,7 @@
  *   - deactivate : désactiver (l'utilisateur ne peut plus se connecter)
  *   - reactivate : réactiver un compte désactivé
  *   - reset_password : générer un nouveau mot de passe temporaire
+ *   - reset_2fa : réinitialiser la double authentification (téléphone perdu)
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
@@ -23,6 +24,12 @@ $org_id = (int)$current['org_id'];
 
 if ($current['role'] !== 'admin') {
     header('Location: /dashboard?error=not_admin');
+    exit;
+}
+// Sans association (agent de collectivité, rôle admin, org_id vide) : aucun compte à gérer. Un
+// compte créé ici tombait dans l'espace « org 0 », commun à toutes les collectivités.
+if ($org_id <= 0) {
+    header('Location: /dashboard');
     exit;
 }
 
@@ -88,6 +95,24 @@ function plan_user_limit_error($pdo, $org_id) {
     return empty($chk['ok']) ? ($chk['reason'] ?: 'Limite d\'utilisateurs de votre plan atteinte.') : null;
 }
 
+// Helper : limite d'adhérents du plan (un compte actif compte comme adhérent), même règle que
+// nouveau-adherent.php, l'import, la corbeille et modifier-adherent.php.
+function plan_adherent_limit_error($pdo, $org_id) {
+    if (!function_exists('ak_can_add_adherent')) return null;
+    $chk = ak_can_add_adherent($pdo, (int)$org_id);
+    return empty($chk['ok']) ? ($chk['reason'] ?: 'Limite d’adhérents de votre plan atteinte.') : null;
+}
+
+// Helper : rendre inutilisables les liens d'invitation et « mot de passe oublié » déjà envoyés
+function revoke_password_tokens($pdo, $user_id) {
+    try {
+        $pdo->prepare("UPDATE user_password_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL")
+            ->execute([(int)$user_id]);
+    } catch (Throwable $e) {
+        error_log('[action-admin-utilisateur] jetons : ' . $e->getMessage());
+    }
+}
+
 // Helper : générer un mot de passe temporaire lisible
 function generate_temp_password() {
     // Lisible mais imprévisible (CSPRNG) : mot + 2 groupes de 4 caractères sans ambiguïté
@@ -97,8 +122,15 @@ function generate_temp_password() {
     return $words[random_int(0, count($words) - 1)] . '-' . $g() . '-' . $g();
 }
 
-// Helper : parser les capacités depuis $_POST
-function parse_capabilities($post) {
+// Helper : parser les capacités depuis $_POST.
+// Suiveur (financeur externe) : aucune capacité. Le formulaire masque la section pour ce rôle,
+// mais les cases cochées avant le changement de rôle partaient quand même et ouvraient
+// Comptabilité, Export FEC, Prévisions… (can('manage_finances')) au financeur.
+function parse_capabilities($post, $role = '') {
+    if ($role === 'follower') {
+        return array_fill_keys(['can_create_projects', 'can_manage_members', 'can_manage_finances',
+            'can_access_marketing', 'can_manage_events', 'can_moderate_messages'], 0);
+    }
     return [
         'can_create_projects' => isset($post['can_create_projects']) ? 1 : 0,
         'can_manage_members' => isset($post['can_manage_members']) ? 1 : 0,
@@ -172,7 +204,7 @@ if ($action === 'create') {
     }
 
     // Capacités
-    $caps = parse_capabilities($_POST);
+    $caps = parse_capabilities($_POST, $role);
 
     // Mot de passe temporaire
     $temp_password = $_POST['initial_password'] ?? '';
@@ -182,8 +214,8 @@ if ($action === 'create') {
     $password_hash = password_hash($temp_password, PASSWORD_BCRYPT, ['cost' => 10]);
     $must_change = isset($_POST['must_change_password']) ? 1 : 0;
 
-    // Token ICS
-    $ics_token = sha1($email . '-' . mt_rand() . '-' . time());
+    // Token ICS (lien d'abonnement à l'agenda) : aléatoire, imprévisible, 40 caractères hexadécimaux
+    $ics_token = bin2hex(random_bytes(20));
 
     // Insertion
     $stmt = $pdo->prepare("
@@ -254,6 +286,15 @@ if ($action === 'update') {
     // Si l'admin se modifie lui-même, on force role = admin (sécurité)
     if ($is_self) $role = 'admin';
 
+    // Sa propre adresse de connexion se change dans Paramètres › Compte, mot de passe demandé :
+    // sinon une session restée ouverte change l'adresse ici, puis « Mot de passe oublié » sur la
+    // nouvelle adresse prend le compte.
+    if ($is_self && strcasecmp($email, (string)$target['email']) !== 0) {
+        $_SESSION['form_errors'] = ['Pour changer votre propre adresse de connexion, passez par Paramètres › Compte (mot de passe demandé).'];
+        header('Location: /admin-modifier-utilisateur/' . $target_id);
+        exit;
+    }
+
     // Validation
     $errors = [];
     if ($first_name === '') $errors[] = 'Prénom obligatoire';
@@ -277,7 +318,7 @@ if ($action === 'update') {
         exit;
     }
 
-    $caps = parse_capabilities($_POST);
+    $caps = parse_capabilities($_POST, $role);
 
     $stmt = $pdo->prepare("
         UPDATE users SET
@@ -298,6 +339,15 @@ if ($action === 'update') {
         $notes_admin ?: null,
         $target_id, $org_id,
     ]);
+
+    // Adresse de connexion d'un autre compte modifiée : l'ancienne adresse est prévenue, la nouvelle
+    // doit être confirmée, et les liens d'invitation ou de mot de passe déjà envoyés à l'ancienne
+    // adresse ne servent plus (ils donneraient la main sur le compte à qui lit cette boîte).
+    if (!$is_self && strcasecmp($email, (string)$target['email']) !== 0) {
+        revoke_password_tokens($pdo, $target_id);
+        require_once __DIR__ . '/password-token-helper.php';
+        ak_account_email_changed($pdo, $target_id, (string)$target['email'], $email, $first_name, true);
+    }
 
     log_admin_action($current['id'], $target_id, 'update_user', [
         'changed_fields' => 'multiple',
@@ -325,6 +375,9 @@ if ($action === 'deactivate') {
 
     $pdo->prepare("UPDATE users SET is_active = 0 WHERE id = ? AND org_id = ?")
         ->execute([$target_id, $org_id]);
+    // Liens d'invitation ou « mot de passe oublié » déjà envoyés : consommés. Deuxième barrière
+    // (validate_password_token refuse déjà un compte désactivé), qui tient après une réactivation.
+    revoke_password_tokens($pdo, $target_id);
 
     log_admin_action($current['id'], $target_id, 'deactivate_user', ['email' => $target['email']]);
 
@@ -342,8 +395,9 @@ if ($action === 'reactivate') {
         header('Location: /admin?error=notfound');
         exit;
     }
-    // Un compte réactivé compte à nouveau dans la limite d'utilisateurs du plan
-    if (empty($target['is_active']) && ($limit_err = plan_user_limit_error($pdo, $org_id))) {
+    // Un compte réactivé compte à nouveau dans les limites d'utilisateurs et d'adhérents du plan
+    if (empty($target['is_active'])
+        && ($limit_err = plan_user_limit_error($pdo, $org_id) ?? plan_adherent_limit_error($pdo, $org_id))) {
         $_SESSION['form_errors'] = [rtrim($limit_err, '. ') . '. Passez à un plan supérieur pour réactiver ce compte.'];
         header('Location: /admin-modifier-utilisateur/' . $target_id);
         exit;
@@ -368,6 +422,12 @@ if ($action === 'reset_password') {
         header('Location: /admin?error=notfound');
         exit;
     }
+    // Son propre mot de passe se change dans Paramètres › Sécurité, avec le mot de passe actuel :
+    // une session restée ouverte ne doit pas pouvoir en poser un nouveau d'ici.
+    if ($target_id === (int)$current['id']) {
+        header('Location: /parametres?tab=securite');
+        exit;
+    }
 
     // Nouveau mot de passe temporaire
     $temp_password = generate_temp_password();
@@ -380,6 +440,36 @@ if ($action === 'reset_password') {
 
     $_SESSION['admin_temp_password'] = $temp_password;
     header('Location: /admin?password_reset=1');
+    exit;
+}
+
+// =========================================================
+// ACTION : RÉINITIALISER LA DOUBLE AUTHENTIFICATION
+// =========================================================
+// Téléphone perdu sans code de secours : l'administrateur de l'association retire la 2FA du
+// compte ; à la prochaine connexion, le mot de passe suffit et l'utilisateur peut la réactiver.
+if ($action === 'reset_2fa') {
+    $target_id = (int)($_POST['user_id'] ?? 0);
+    $target = get_target_user($pdo, $target_id, $org_id);
+    if (!$target) {
+        header('Location: /admin?error=notfound');
+        exit;
+    }
+    // Sa propre 2FA se gère dans Paramètres › Sécurité (mot de passe demandé)
+    if ($target_id === (int)$current['id']) {
+        header('Location: /parametres?tab=securite');
+        exit;
+    }
+
+    require_once __DIR__ . '/totp-helper.php';
+    if (!ak_totp_reset($pdo, $target_id, $org_id)) {
+        header('Location: /admin?error=totp_off');
+        exit;
+    }
+
+    log_admin_action($current['id'], $target_id, 'reset_2fa', ['email' => $target['email']]);
+
+    header('Location: /admin?totp_reset=1');
     exit;
 }
 

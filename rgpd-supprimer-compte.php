@@ -42,7 +42,8 @@ if ($hash === '' || !password_verify((string)($_POST['current_password'] ?? ''),
     redir('Mot de passe incorrect : votre compte n’a pas été supprimé.');
 }
 
-// Anonymisation + soft-delete (préserve l'intégrité référentielle)
+// Anonymisation + soft-delete (préserve l'intégrité référentielle) ; le lien d'abonnement à
+// l'agenda (ics_token) est effacé avec le reste
 try {
     $st = $pdo->prepare("
         UPDATE users SET
@@ -51,6 +52,7 @@ try {
             last_name          = 'supprimé',
             phone              = NULL,
             city               = NULL,
+            ics_token          = NULL,
             is_active          = 0,
             deleted_at         = NOW(),
             deleted_by_user_id = id

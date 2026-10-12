@@ -160,10 +160,13 @@ render_sidebar('admin');
       <code style="background: #fff; padding: 3px 8px; border-radius: 4px; margin-left: 8px;"><?= h($_SESSION['admin_temp_password'] ?? '(déjà affiché)') ?><?php unset($_SESSION['admin_temp_password']); ?></code>
       (l'utilisateur devra le changer à sa prochaine connexion)
     </div>
+  <?php elseif (isset($_GET['totp_reset'])): ?>
+    <div class="alert alert-success">✅ Double authentification réinitialisée : le mot de passe suffira à la prochaine connexion.</div>
   <?php elseif (isset($_GET['error'])):
     $err_labels = [
       'csrf'     => 'Votre session a expiré : l’action n’a pas été enregistrée. Merci de réessayer.',
       'notfound' => 'Utilisateur introuvable : il a peut-être été supprimé (voir la corbeille des adhérents).',
+      'totp_off' => 'La double authentification n’était pas activée sur ce compte : rien à réinitialiser.',
     ];
     $err_key = is_string($_GET['error'] ?? null) ? $_GET['error'] : '';
   ?>

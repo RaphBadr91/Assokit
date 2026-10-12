@@ -3,12 +3,11 @@
 -- ============================================================
 -- Aucune modification de structure : uniquement des données.
 --
--- 1. En mode simulation (AK_PROSPECT_SENDING_ENABLED à false), le cron
---    cron-prospect-send.php faisait quand même avancer la séquence : des
---    prospects sont marqués « Contacté » alors qu'aucun e-mail n'est parti
---    (aucun événement « sent »). On les remet en file à la 1re étape, comme
---    après « Tout mettre en séquence auto » : ils partiront quand l'envoi
---    sera activé, dans la limite du plafond quotidien.
+-- 1. (Volontairement absent) En mode simulation, l'ancien cron faisait
+--    avancer la séquence sans envoyer. Les remettre en file automatiquement
+--    risquerait d'écrire à des prospects contactés autrement (téléphone,
+--    statut changé à la main) : le code corrigé n'avance plus en simulation,
+--    les fiches concernées se corrigent depuis la page Prospection.
 -- 2. Une séquence terminée gardait step = 4 (dernier e-mail) : elle est
 --    maintenant notée step = 5 (fin), comme le fait le code corrigé.
 -- 3. « Relance » sans date sur un prospect « Nouveau » le mettait en file
@@ -21,11 +20,6 @@
 -- il n'y a alors rien à réparer.
 --   /usr/local/bin/php migrations/run.php 2026-10-11-L12-cockpit.sql
 -- ============================================================
-
-UPDATE asso_prospects p
-   SET p.status = 'queued', p.step = 0, p.next_send_at = NOW(), p.last_sent_at = NULL
- WHERE p.status IN ('contacted', 'engaged')
-   AND NOT EXISTS (SELECT 1 FROM asso_prospect_events e WHERE e.prospect_id = p.id AND e.type = 'sent');
 
 UPDATE asso_prospects p
    SET p.step = 5

@@ -517,3 +517,9 @@ function activity_meta_sure(array $champs): array
 }
 
 }
+
+// Accès de la session : les actions (action-*.php…) chargent ce fichier sans passer par
+// includes-layout.php. Compte désactivé ou supprimé, association résiliée ou suspendue, mot de
+// passe provisoire : même règle que sur les pages (ak_session_guard, une fois par requête).
+require_once __DIR__ . '/app-context.php';
+if (function_exists('ak_session_guard')) ak_session_guard();

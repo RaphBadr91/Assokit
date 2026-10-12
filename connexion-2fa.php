@@ -17,7 +17,8 @@ if (!$pid || (time() - (int)$ptime) > 300) {
     exit;
 }
 
-$st = $pdo->prepare("SELECT * FROM users WHERE id = ? AND is_active = 1 LIMIT 1");
+// Compte désactivé ou mis à la corbeille entre le mot de passe et le code : pas de session
+$st = $pdo->prepare("SELECT * FROM users WHERE id = ? AND is_active = 1 AND deleted_at IS NULL LIMIT 1");
 $st->execute([(int)$pid]);
 $user = $st->fetch();
 if (!$user || empty($user['totp_enabled'])) {
