@@ -23,10 +23,16 @@ require_login();
 $user = current_user();
 $org_id = (int)$user['org_id'];
 
-if (!in_array($user['role'], ['admin', 'coordinator'], true)) {
+// Admin, coordinateur, ou droit « Gérer les adhérents » donné par l'admin (jamais un suiveur).
+// Rôles qu'il ne peut pas attribuer : admin pour un coordinateur ; admin et coordinateur pour
+// un titulaire du seul droit.
+$role_me = (string)($user['role'] ?? '');
+if (!in_array($role_me, ['admin', 'coordinator'], true)
+    && ($role_me === 'follower' || !function_exists('can') || !can('manage_members'))) {
     http_response_code(403);
     die('Accès refusé — rôle insuffisant.');
 }
+$roles_reserved = $role_me === 'admin' ? [] : ($role_me === 'coordinator' ? ['admin'] : ['admin', 'coordinator']);
 
 // === [PACK 6.2] BLOCAGE STRICT : limite d'adhérents selon le plan ===
 $plan_limit_reached = false;
@@ -50,7 +56,15 @@ $form = [
     'send_email' => '1',
 ];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? '')) {
+$is_post = $_SERVER['REQUEST_METHOD'] === 'POST';
+if ($is_post && !check_csrf($_POST['csrf_token'] ?? '')) {
+    // Jeton expiré (session renouvelée) : la saisie est réaffichée avec un message, rien n'est créé
+    foreach (['first_name', 'last_name', 'email', 'phone', 'city'] as $k) $form[$k] = trim((string)($_POST[$k] ?? ''));
+    $form['role'] = in_array($_POST['role'] ?? '', ['coordinator', 'referent', 'member', 'follower', 'admin'], true)
+                    && !in_array($_POST['role'], $roles_reserved, true) ? (string)$_POST['role'] : 'member';
+    $form['send_email'] = isset($_POST['send_email']) ? '1' : '0';
+    $error = 'Votre session a expiré : l’adhérent n’a pas été créé. Vérifiez la saisie puis cliquez à nouveau sur « Créer l’adhérent ».';
+} elseif ($is_post) {
 
     // === [PACK 6.2] Re-check plan au POST (sécurité) ===
     if ($plan_limit_reached) {
@@ -69,7 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     if (!in_array($form['role'], $valid_roles, true)) $form['role'] = 'member';
 
     // Un non-admin (ex. coordinator) ne peut pas creer un compte admin
-    if (($user['role'] ?? '') !== 'admin' && $form['role'] === 'admin') {
+    // (ni un simple gestionnaire un coordinateur)
+    if (in_array($form['role'], $roles_reserved, true)) {
         $form['role'] = 'member';
     }
 
@@ -81,14 +96,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
         // Essai gratuit : 300 adhérents ajoutés par 24 h (comme l'import CSV)
         $error = $trial_block;
     } else {
-        // Verifier doublon (y compris soft-deleted pour eviter collision)
-        $stmt = $pdo->prepare("SELECT id, deleted_at FROM users WHERE email = ? LIMIT 1");
+        // Verifier doublon (y compris soft-deleted pour eviter collision ; un compte actif d'abord)
+        $stmt = $pdo->prepare("SELECT id, org_id, deleted_at FROM users WHERE email = ? ORDER BY deleted_at IS NULL DESC LIMIT 1");
         $stmt->execute([$form['email']]);
         $existing = $stmt->fetch();
 
         if ($existing && $existing['deleted_at'] === null) {
             $error = 'Un utilisateur avec cet email existe déjà sur la plateforme.';
         } else {
+            $revived = false;
             try {
                 // Mot de passe temporaire "placeholder" qui ne marchera jamais pour se connecter
                 // L'adherent devra IMPERATIVEMENT utiliser le lien magique
@@ -104,23 +120,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
                     default       => [0, 0, 0, 0, 0, 0],
                 };
 
-                $stmt = $pdo->prepare("
-                    INSERT INTO users
-                        (org_id, role, email, password_hash, first_name, last_name,
-                         phone, city, avatar_color, adhesion_date,
-                         must_change_password, is_active,
-                         can_create_projects, can_manage_members, can_manage_finances,
-                         can_access_marketing, can_manage_events, can_moderate_messages,
-                         created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 1, 1, ?, ?, ?, ?, ?, ?, NOW())
-                ");
-                $stmt->execute([
-                    $org_id, $form['role'], $form['email'], $placeholder_hash,
-                    $form['first_name'], $form['last_name'],
-                    $form['phone'] ?: null, $form['city'] ?: null, $avatar_color,
-                    ...$perms,
-                ]);
-                $new_id = (int) $pdo->lastInsertId();
+                $pdo->beginTransaction();
+                if ($existing && (int)$existing['org_id'] === $org_id) {
+                    // Ancien adhérent de cette association, supprimé (corbeille ou au-delà) : sa fiche
+                    // est réinscrite (l'adresse e-mail est unique, une seconde fiche serait refusée).
+                    // Nouveau mot de passe à créer via le lien, comme pour un nouvel adhérent.
+                    $stmt = $pdo->prepare("
+                        UPDATE users SET
+                            role = ?, password_hash = ?, first_name = ?, last_name = ?,
+                            phone = ?, city = ?, adhesion_date = CURDATE(), adhesion_valid_until = NULL,
+                            must_change_password = 1, is_active = 1,
+                            can_create_projects = ?, can_manage_members = ?, can_manage_finances = ?,
+                            can_access_marketing = ?, can_manage_events = ?, can_moderate_messages = ?,
+                            deleted_at = NULL, deleted_by_user_id = NULL
+                        WHERE id = ? AND org_id = ? AND deleted_at IS NOT NULL
+                    ");
+                    $stmt->execute([
+                        $form['role'], $placeholder_hash, $form['first_name'], $form['last_name'],
+                        $form['phone'] ?: null, $form['city'] ?: null,
+                        ...$perms,
+                        (int)$existing['id'], $org_id,
+                    ]);
+                    $new_id = (int)$existing['id'];
+                    $revived = true;
+                } else {
+                    if ($existing) {
+                        // Compte supprimé dans une autre association : son adresse est libérée (renommée,
+                        // comme à la fermeture d'une association) pour ce nouvel adhérent.
+                        $pdo->prepare("UPDATE users SET email = CONCAT('deleted_', id, '__', email) WHERE id = ? AND deleted_at IS NOT NULL")
+                            ->execute([(int)$existing['id']]);
+                    }
+                    $stmt = $pdo->prepare("
+                        INSERT INTO users
+                            (org_id, role, email, password_hash, first_name, last_name,
+                             phone, city, avatar_color, adhesion_date,
+                             must_change_password, is_active,
+                             can_create_projects, can_manage_members, can_manage_finances,
+                             can_access_marketing, can_manage_events, can_moderate_messages,
+                             created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 1, 1, ?, ?, ?, ?, ?, ?, NOW())
+                    ");
+                    $stmt->execute([
+                        $org_id, $form['role'], $form['email'], $placeholder_hash,
+                        $form['first_name'], $form['last_name'],
+                        $form['phone'] ?: null, $form['city'] ?: null, $avatar_color,
+                        ...$perms,
+                    ]);
+                    $new_id = (int) $pdo->lastInsertId();
+                }
+                $pdo->commit();
 
                 // Generer le token + envoyer l'email
                 $email_ok = false;
@@ -145,13 +193,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
                     }
                 }
 
-                $msg = $form['first_name'] . ' ' . $form['last_name'] . ' a été ajouté(e) avec succès.';
+                $msg = $form['first_name'] . ' ' . $form['last_name']
+                     . ($revived ? ' a été réinscrit(e) : son ancienne fiche, supprimée, a été réactivée.' : ' a été ajouté(e) avec succès.');
                 if ($form['send_email'] === '1') {
                     $msg .= $email_ok
                         ? ' Un email a été envoyé avec un lien de création de mot de passe (valide 7 jours).'
-                        : ' ⚠️ L\'email n\'a pas pu être envoyé (vérifier la configuration Resend).';
+                        : ' ⚠️ L’email n’a pas pu être envoyé : renvoyez-le depuis sa fiche avec « Envoyer l’invitation ».';
                 } else {
-                    $msg .= ' Pensez à lui envoyer le lien de création de mot de passe depuis sa fiche.';
+                    $msg .= ' Pensez à lui envoyer le lien de création de mot de passe depuis sa fiche (bouton « Envoyer l’invitation »).';
                 }
 
                 $_SESSION['flash_adherents'] = [
@@ -162,7 +211,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
                 exit;
 
             } catch (Throwable $e) {
-                $error = 'Erreur technique : ' . $e->getMessage();
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                error_log('[NOUVEAU-ADHERENT] ' . $e->getMessage());
+                $error = 'Une erreur technique est survenue : l’adhérent n’a pas été créé. Merci de réessayer.';
             }
         }
     }
@@ -218,7 +269,7 @@ render_sidebar('adherents');
 
   <form method="POST" action="/nouveau-adherent"
         style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:24px; max-width:720px;">
-    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
+    <input type="hidden" name="csrf_token" value="<?= h(function_exists('csrf_token') ? csrf_token() : (empty($_SESSION['csrf_token']) ? ($_SESSION['csrf_token'] = bin2hex(random_bytes(32))) : $_SESSION['csrf_token'])) ?>">
 
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:16px;">
       <div>
@@ -266,7 +317,9 @@ render_sidebar('adherents');
               style="width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:14px; color:var(--ink);">
         <option value="member" <?= $form['role'] === 'member' ? 'selected' : '' ?>>👤 Membre — Adhérent standard</option>
         <option value="referent" <?= $form['role'] === 'referent' ? 'selected' : '' ?>>🎯 Référent — Responsable de projet</option>
-        <option value="coordinator" <?= $form['role'] === 'coordinator' ? 'selected' : '' ?>>🧭 Coordinateur — Encadrement</option>
+        <?php if (!in_array('coordinator', $roles_reserved, true)): ?>
+          <option value="coordinator" <?= $form['role'] === 'coordinator' ? 'selected' : '' ?>>🧭 Coordinateur — Encadrement</option>
+        <?php endif; ?>
         <?php if ($user['role'] === 'admin'): ?>
           <option value="admin" <?= $form['role'] === 'admin' ? 'selected' : '' ?>>🛡️ Administrateur — Accès total</option>
         <?php endif; ?>

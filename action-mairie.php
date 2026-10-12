@@ -10,7 +10,7 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
 require_once __DIR__ . '/includes-mairie-channels.php';
 require_login();
-require_platform_admin();
+ak_require_mairie_manager();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: /super-admin-mairies');
@@ -28,7 +28,7 @@ try {
     switch ($action) {
         case 'create':
             $name = trim($_POST['name'] ?? '');
-            $type = $_POST['type'] ?? 'mairie';
+            $type = in_array($_POST['type'] ?? '', array_keys(ak_parent_org_types()), true) ? $_POST['type'] : 'mairie';
             $contact_email = trim($_POST['contact_email'] ?? '');
             if ($name === '' || $contact_email === '') {
                 throw new RuntimeException('Nom et email contact sont obligatoires');
@@ -169,29 +169,22 @@ try {
             $ln = trim($_POST['last_name'] ?? '');
             $email = trim($_POST['email'] ?? '');
             $role = in_array($_POST['parent_org_role'] ?? '', ['admin','agent'], true) ? $_POST['parent_org_role'] : 'admin';
-            if ($fn === '' || $ln === '' || $email === '') throw new RuntimeException('Prénom, nom et email obligatoires');
-            // Vérifier email unique
-            $exists = $pdo->prepare("SELECT id FROM users WHERE email=?");
-            $exists->execute([$email]);
-            if ($exists->fetchColumn()) throw new RuntimeException("Email déjà utilisé sur la plateforme");
-            // Génère un mot de passe temporaire à transmettre
-            $temp_password = bin2hex(random_bytes(4)); // ex: a1b2c3d4
-            $hash = password_hash($temp_password, PASSWORD_DEFAULT);
-            $pdo->prepare("INSERT INTO users (first_name, last_name, email, password_hash, role, parent_org_id, parent_org_role, is_active, created_at) VALUES (?, ?, ?, ?, 'admin', ?, ?, 1, NOW())")
-                ->execute([$fn, $ln, $email, $hash, $mid, $role]);
-            $new_id = (int)$pdo->lastInsertId();
-            // Ajoute le nouvel agent à tous les channels mairie existants
-            try { add_mairie_agent_to_channels($pdo, $new_id, $mid); } catch (Throwable $e) { error_log('[mairie-channel] add_user: ' . $e->getMessage()); }
-            $_SESSION['flash_success'] = "Agent « $fn $ln » créé (#$new_id). Mot de passe temporaire à transmettre : $temp_password";
+            if (!get_parent_org($mid)) throw new RuntimeException('Mairie invalide');
+            // Email validé, mot de passe temporaire à changer à la 1re connexion, invitation par e-mail
+            $agent = ak_mairie_agent_create($pdo, $mid, $fn, $ln, $email, $role, (int)$current['id']);
+            $_SESSION['flash_success'] = "Agent « $fn $ln » " . ($agent['reactivated'] ? 'réactivé' : 'créé') . " (#{$agent['id']}). "
+                . ($agent['invite_sent']
+                    ? "Une invitation lui a été envoyée par email pour créer son mot de passe. Mot de passe temporaire (à changer à la première connexion) : {$agent['temp_password']}"
+                    : "L'email d'invitation n'a pas pu être envoyé : mot de passe temporaire à transmettre (à changer à la première connexion) : {$agent['temp_password']}");
             header('Location: /super-admin-mairie-detail?id=' . $mid); exit;
 
         case 'remove_user':
             $mid = (int)($_POST['mairie_id'] ?? 0);
             $uid = (int)($_POST['user_id'] ?? 0);
-            // Soft : on retire juste le rattachement (le user existe toujours mais désactivé)
-            $pdo->prepare("UPDATE users SET parent_org_id=NULL, parent_org_role=NULL WHERE id=? AND parent_org_id=?")
-                ->execute([$uid, $mid]);
-            $_SESSION['flash_success'] = "Agent retiré de la mairie.";
+            // Compte désactivé (plus de connexion), sorti des canaux, ré-invitable plus tard
+            $agent = ak_mairie_agent_remove($pdo, $uid, $mid, (int)$current['id']);
+            if (!$agent) throw new RuntimeException('Agent introuvable dans cette mairie');
+            $_SESSION['flash_success'] = "Agent « " . trim($agent['first_name'] . ' ' . $agent['last_name']) . " » retiré de la mairie.";
             header('Location: /super-admin-mairie-detail?id=' . $mid); exit;
 
         default:

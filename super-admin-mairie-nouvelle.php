@@ -6,8 +6,9 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
+require_once __DIR__ . '/includes-mairie-channels.php';
 require_login();
-require_platform_admin();
+ak_require_mairie_manager();
 
 // Génère le token CSRF s'il n'existe pas (sécurité)
 if (empty($_SESSION['csrf_token'])) {
@@ -18,7 +19,18 @@ render_head('Nouvelle mairie');
 render_sidebar('super-admin');
 ?>
 
-<div style="max-width:900px;margin:0 auto;padding:24px;">
+<style>
+/* contain: la colonne de la mise en page ne s'élargit plus à la largeur d'un tableau (page coupée sur téléphone) */
+.samn-page { contain: inline-size; }
+.samn-form input, .samn-form select, .samn-form textarea { box-sizing:border-box; }
+@media (max-width:640px) {
+  .samn-page { padding:14px !important; }
+  .samn-form { padding:18px !important; }
+  .samn-row { grid-template-columns:1fr !important; }
+}
+</style>
+
+<div class="samn-page" style="max-width:900px;margin:0 auto;padding:24px;">
 
   <?php if (!empty($_SESSION['flash_error'])): ?>
     <div style="background:#FEE2E2;border:1px solid #DC2626;color:#991B1B;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:600;">
@@ -34,12 +46,12 @@ render_sidebar('super-admin');
   <h1 style="font-size:24px;margin:0 0 6px;font-weight:700;color:#0A0A0B;">🏛 Créer une mairie / collectivité</h1>
   <p style="color:#71717A;margin:0 0 24px;font-size:13.5px;">Cette mairie deviendra Super Admin sur les asso de son portefeuille.</p>
 
-  <form method="POST" action="/action-mairie.php" style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:28px;">
+  <form method="POST" action="/action-mairie.php" class="samn-form" style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:28px;">
     <input type="hidden" name="action" value="create">
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
 
     <h3 style="font-size:15px;margin:0 0 14px;color:#0A0A0B;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">📋 Identité</h3>
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:8px;">
+    <div class="samn-row" style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:8px;">
       <div>
         <label style="display:block;font-size:12px;font-weight:600;color:#3F3F46;margin-bottom:4px;">Nom officiel *</label>
         <input name="name" required placeholder="Mairie d'Évry-Courcouronnes" style="width:100%;padding:10px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
@@ -67,7 +79,7 @@ render_sidebar('super-admin');
       <label style="display:block;font-size:12px;font-weight:600;color:#3F3F46;margin-bottom:4px;">Rue</label>
       <input name="address_street" placeholder="Place des Droits de l'Homme" style="width:100%;padding:10px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px;margin-bottom:8px;">
+    <div class="samn-row" style="display:grid;grid-template-columns:1fr 2fr;gap:14px;margin-bottom:8px;">
       <div>
         <label style="display:block;font-size:12px;font-weight:600;color:#3F3F46;margin-bottom:4px;">Code postal</label>
         <input name="address_zip" maxlength="10" placeholder="91000" style="width:100%;padding:10px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
@@ -77,7 +89,7 @@ render_sidebar('super-admin');
         <input name="address_city" placeholder="Évry-Courcouronnes" style="width:100%;padding:10px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;">
+    <div class="samn-row" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;">
       <div>
         <label style="display:block;font-size:12px;font-weight:600;color:#3F3F46;margin-bottom:4px;">Département</label>
         <input name="department" placeholder="Essonne (91)" style="width:100%;padding:10px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
@@ -89,7 +101,7 @@ render_sidebar('super-admin');
     </div>
 
     <h3 style="font-size:15px;margin:0 0 14px;color:#0A0A0B;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">👤 Contact principal</h3>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:8px;">
+    <div class="samn-row" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:8px;">
       <div>
         <label style="display:block;font-size:12px;font-weight:600;color:#3F3F46;margin-bottom:4px;">Prénom</label>
         <input name="contact_first_name" style="width:100%;padding:10px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
@@ -99,7 +111,7 @@ render_sidebar('super-admin');
         <input name="contact_last_name" style="width:100%;padding:10px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:24px;">
+    <div class="samn-row" style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:24px;">
       <div>
         <label style="display:block;font-size:12px;font-weight:600;color:#3F3F46;margin-bottom:4px;">Email *</label>
         <input type="email" name="contact_email" required style="width:100%;padding:10px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
@@ -111,11 +123,11 @@ render_sidebar('super-admin');
     </div>
 
     <h3 style="font-size:15px;margin:0 0 14px;color:#0A0A0B;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">🎯 Quota & Statut</h3>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+    <div class="samn-row" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
       <div>
         <label style="display:block;font-size:12px;font-weight:600;color:#3F3F46;margin-bottom:4px;">Quota d'asso (validé) *</label>
         <input type="number" name="validated_quota" value="100" min="0" max="100000" required style="width:100%;padding:10px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
-        <small style="color:#71717A;font-size:11px;">Nombre max d'asso que cette mairie peut gérer.</small>
+        <small style="color:#71717A;font-size:11px;">Nombre max d'asso que cette mairie peut gérer (0 = illimité).</small>
       </div>
       <div>
         <label style="display:block;font-size:12px;font-weight:600;color:#3F3F46;margin-bottom:4px;">Statut</label>
@@ -136,3 +148,5 @@ render_sidebar('super-admin');
     </div>
   </form>
 </div>
+
+<?php render_foot(); ?>

@@ -169,7 +169,7 @@ function format_days_left(int $days): array
 
         <?php if ((int)$f['days_left'] > 0): ?>
         <form method="POST" action="/archives-restaurer" style="margin:0;"
-              onsubmit="return confirm('Restaurer le dossier « <?= h($f['name']) ?> » ? Cela réactivera aussi ses <?= (int)$f['nb_projects'] ?> projet(s) archivés avec lui.');">
+              onsubmit="return confirm(<?= h(json_encode('Restaurer le dossier « ' . $f['name'] . ' » ? Cela réactivera aussi ses ' . (int)$f['nb_projects'] . ' projet(s) archivés avec lui.', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>);">
           <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
           <input type="hidden" name="type" value="folder">
           <input type="hidden" name="id" value="<?= (int)$f['id'] ?>">

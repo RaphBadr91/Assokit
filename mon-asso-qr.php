@@ -68,6 +68,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $msg = "Code QR « $label » créé. Téléchargez-le et imprimez-le.";
             }
 
+        } elseif ($action === 'update' && $id > 0 && trim((string) ($_POST['label'] ?? '')) === '') {
+            // Nom obligatoire, comme à la création : rien n'est modifié
+            $msg = "Donnez un nom à ce code — « Forum des associations », « Stand du samedi »… C'est ce qui vous permettra de savoir d'où viennent les contacts. Aucune modification n'a été enregistrée.";
+
         } elseif ($action === 'update' && $id > 0) {
             $mode = in_array($_POST['mode'] ?? '', ['contact', 'collecte', 'both'], true)
                     ? (string) $_POST['mode'] : 'both';
@@ -125,7 +129,8 @@ try {
     $st->execute([$org_id]);
     $org = $st->fetch(PDO::FETCH_ASSOC) ?: null;
 } catch (Throwable $e) {}
-$vcard = $org ? ak_org_vcard($org, 'https://assokit.fr') : '';
+// Pas d'URL : la fiche est celle de l'association, pas d'Assokit (aucun site web de l'asso en base)
+$vcard = $org ? ak_org_vcard($org) : '';
 $org_incomplet = !$org || (empty($org['billing_phone']) && empty($org['billing_email']));
 
 $total_scans = array_sum(array_column($codes, 'scan_count'));
@@ -324,7 +329,7 @@ render_sidebar('mon-asso-qr');
         <input type="hidden" name="id" value="<?= (int) $c['id'] ?>">
         <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
         <label class="f">Nom du code</label>
-        <input class="qz-in" name="label" value="<?= h($c['label']) ?>" maxlength="120">
+        <input class="qz-in" name="label" value="<?= h($c['label']) ?>" maxlength="120" required>
         <label class="f">Rôle de ce code</label>
         <div class="qz-role">
           <label><input type="radio" name="mode" value="both"<?= ($c['mode'] ?? 'both') === 'both' ? ' checked' : '' ?>> Les deux</label>
@@ -341,7 +346,7 @@ render_sidebar('mon-asso-qr');
         <div class="qz-acts">
           <button class="qz-btn" type="submit" name="action" value="update">Enregistrer</button>
           <button class="qz-btn sec" type="submit" name="action" value="toggle"
-                  onclick="return confirm('<?= $on ? 'Désactiver ce code ? Les personnes qui le scanneront verront « ce code QR n\'est plus actif ».' : 'Réactiver ce code ?' ?>')">
+                  onclick="return confirm(<?= h(json_encode($on ? 'Désactiver ce code ? Les personnes qui le scanneront verront « ce code QR n’est plus actif ».' : 'Réactiver ce code ?', JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>)">
             <?= $on ? 'Désactiver' : 'Réactiver' ?>
           </button>
           <button class="qz-btn dgr" type="submit" name="action" value="delete"

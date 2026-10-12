@@ -17,9 +17,48 @@ if (empty($_SESSION['user_id'])) {
     exit;
 }
 
+// Compte désactivé ou supprimé depuis l'ouverture de la session : même règle que
+// _app-write-boot.php (session fermée, 401 'auth' → l'appli revient à la connexion).
 try {
     $user = function_exists('current_user') ? current_user() : null;
+    $st = $pdo->prepare("SELECT is_active, deleted_at FROM users WHERE id = ? LIMIT 1");
+    $st->execute([(int) $_SESSION['user_id']]);
+    $live = $st->fetch(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    error_log('[api/app-cotisations] ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'server']);
+    exit;
+}
+$gone = !$live || (int) ($live['is_active'] ?? 1) !== 1
+    || (!empty($live['deleted_at']) && strpos((string) $live['deleted_at'], '0000-00-00') !== 0);
+if ($gone || !$user) {
+    if ($gone) {
+        $_SESSION = [];
+        if (session_status() === PHP_SESSION_ACTIVE) @session_destroy();
+    }
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'error' => 'auth']);
+    exit;
+}
+
+try {
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+
+    // Parité cotisations.php : campagnes, encaissements et payeurs réservés à la gestion
+    // (admin, coordinateur, fondateur, super-admin). Les autres rôles, suiveur externe compris,
+    // reçoivent une liste vide : l'écran et le sélecteur de l'appli restent fonctionnels.
+    if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+    $role = (string) ($user['role'] ?? '');
+    if (!in_array($role, ['admin', 'coordinator'], true) && empty($user['is_founder']) && empty($user['is_super_admin'])) {
+        echo json_encode([
+            'ok' => true, 'allowed' => false,
+            'stats' => ['total' => 0, 'pending' => 0, 'payers' => 0, 'year' => (int) date('Y'), 'active' => 0, 'nb' => 0],
+            'campaigns' => [],
+            'message' => 'Réservé aux administrateurs et coordinateurs.',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     $stmt = $pdo->prepare("
         SELECT c.id, c.name, c.year, c.is_active, c.closes_at,

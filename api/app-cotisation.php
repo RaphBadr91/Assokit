@@ -24,12 +24,45 @@ function ckd($v) {
     $ts = strtotime($v); return $ts ? date('d/m/Y', $ts) : '';
 }
 
+// Compte désactivé ou supprimé depuis l'ouverture de la session : même règle que
+// _app-write-boot.php (session fermée, 401 'auth' → l'appli revient à la connexion).
 try {
     $user = function_exists('current_user') ? current_user() : null;
+    $st = $pdo->prepare("SELECT is_active, deleted_at FROM users WHERE id = ? LIMIT 1");
+    $st->execute([(int) $_SESSION['user_id']]);
+    $live = $st->fetch(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    error_log('[api/app-cotisation] ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'server']);
+    exit;
+}
+$gone = !$live || (int) ($live['is_active'] ?? 1) !== 1
+    || (!empty($live['deleted_at']) && strpos((string) $live['deleted_at'], '0000-00-00') !== 0);
+if ($gone || !$user) {
+    if ($gone) {
+        $_SESSION = [];
+        if (session_status() === PHP_SESSION_ACTIVE) @session_destroy();
+    }
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'error' => 'auth']);
+    exit;
+}
+
+try {
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    // current_user() ne charge pas toujours is_founder / is_super_admin : relus en base.
+    if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
     $role = (string) ($user['role'] ?? '');
     // Parité cotisation-detail.php : gestion réservée admin/coordinateur
     $can_manage = in_array($role, ['admin', 'coordinator'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
+    // Liste des payeurs (noms, e-mails, montants, références) : refusée aux autres rôles,
+    // suiveur externe compris, comme le site (403 « Accès réservé… »).
+    if (!$can_manage) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'allowed' => false, 'error' => 'forbidden', 'message' => 'Réservé aux administrateurs et coordinateurs.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
@@ -82,6 +115,8 @@ try {
             'description' => (string) ($c['description'] ?? ''),
             'closes_at'   => ckd($c['closes_at'] ?? null),
             'currency'    => (string) ($c['currency'] ?? 'EUR'),
+            // Un paiement encaissé prolonge-t-il l'adhésion du payeur ? (règle du site)
+            'renews_membership' => function_exists('ck_campaign_renews_membership') ? ck_campaign_renews_membership($c) : null,
         ],
         'stats' => [
             'amount_paid'    => (float) $stats['amount_paid'],

@@ -9,6 +9,7 @@ activity_log_request();
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
 require_once __DIR__ . '/resend-helper.php';
+if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
 require_parent_org_user();
 
@@ -21,6 +22,11 @@ if (!check_csrf($_POST['csrf_token'] ?? '')) {
 
 $current = current_user();
 $parent_org = current_parent_org();
+if (!$parent_org) {
+    // Compte plateforme sans collectivité : la gestion se fait depuis le cockpit
+    header('Location: ' . (is_platform_admin() ? '/super-admin-mairies' : '/dashboard'));
+    exit;
+}
 $parent_org_id = (int)$parent_org['id'];
 $user_id = (int)$current['id'];
 
@@ -38,7 +44,7 @@ if (mb_strlen($subject) > 255) $subject = mb_substr($subject, 0, 255);
 if (mb_strlen($content) > 20000) $content = mb_substr($content, 0, 20000);
 
 try {
-    // === Déterminer les destinataires (admins des asso liées) ===
+    // === Déterminer les destinataires (admins actifs des asso liées) ===
     if ($audience === 'selected') {
         $org_ids = array_filter(array_map('intval', (array)$org_ids));
         if (!$org_ids) {
@@ -54,6 +60,7 @@ try {
             WHERE u.org_id IN ($placeholders)
               AND o.parent_org_id = ?
               AND u.role = 'admin'
+              AND u.is_active = 1
               AND u.deleted_at IS NULL
               AND u.email IS NOT NULL AND u.email != ''
         ");
@@ -66,6 +73,7 @@ try {
             INNER JOIN organizations o ON o.id = u.org_id
             WHERE o.parent_org_id = ?
               AND u.role = 'admin'
+              AND u.is_active = 1
               AND u.deleted_at IS NULL
               AND u.email IS NOT NULL AND u.email != ''
         ");

@@ -27,6 +27,21 @@ $stmt = $pdo->prepare("SELECT c.*,
 $stmt->execute([$org_id]);
 $campaigns = $stmt->fetchAll();
 
+// Campagnes archivées (bouton « Archiver » de la fiche campagne) : rubrique repliée, désarchivables.
+$archived_campaigns = [];
+try {
+    $stmt = $pdo->prepare("SELECT c.id, c.name, c.year, c.currency, c.archived_at,
+        (SELECT COALESCE(SUM(amount),0) FROM cotisation_payments p WHERE p.campaign_id = c.id AND p.status='paid') AS total_paid
+        FROM cotisation_campaigns c
+        WHERE c.org_id = ? AND c.archived_at IS NOT NULL
+        ORDER BY c.archived_at DESC");
+    $stmt->execute([$org_id]);
+    $archived_campaigns = $stmt->fetchAll();
+} catch (Throwable $e) {}
+
+$flash = $_SESSION['flash_cotisation'] ?? null;
+unset($_SESSION['flash_cotisation']);
+
 // Stats globales année en cours
 $current_year = (int)date('Y');
 $year_stats = ['paid' => 0, 'pending' => 0, 'count_payers' => 0];
@@ -62,6 +77,13 @@ render_head('Cotisations');
       <?php endif; ?>
     </div>
 
+    <?php if ($flash): ?>
+    <div class="alert <?= ($flash['type'] ?? '') === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom:16px;">
+      <span><?= ($flash['type'] ?? '') === 'success' ? ak_icon('check-circle', 16) : ak_icon('alert-tri', 16) ?></span>
+      <div><?= h($flash['message'] ?? '') ?></div>
+    </div>
+    <?php endif; ?>
+
     <!-- KPI globaux année -->
     <div class="ck-kpis">
       <div class="ck-kpi"><div class="ck-kpi-lbl">Encaissé <?= $current_year ?></div><div class="ck-kpi-val ck-green"><?= number_format($year_stats['paid'], 0, ',', ' ') ?> €</div></div>
@@ -95,7 +117,7 @@ render_head('Cotisations');
           <?php if ($c['count_pending'] > 0): ?>
             <span class="ck-amber">·  <strong><?= (int)$c['count_pending'] ?></strong> en attente</span>
           <?php endif; ?>
-          <span class="ck-camp-total"><?= number_format((float)$c['total_paid'], 0, ',', ' ') ?> €</span>
+          <span class="ck-camp-total"><?= h(ck_money($c['total_paid'], $c['currency'] ?? 'EUR', 0)) ?></span>
         </div>
         <?php if ($c['closes_at']): ?>
         <div class="ck-camp-deadline">Clôture : <?= date('d/m/Y', strtotime($c['closes_at'])) ?></div>
@@ -103,6 +125,21 @@ render_head('Cotisations');
       </a>
       <?php endforeach; ?>
     </div>
+    <?php endif; ?>
+
+    <?php if ($archived_campaigns): ?>
+    <details class="ck-archived">
+      <summary>🗄 Campagnes archivées (<?= count($archived_campaigns) ?>)</summary>
+      <ul>
+        <?php foreach ($archived_campaigns as $c): ?>
+        <li>
+          <a href="/cotisation/<?= (int)$c['id'] ?>"><?= h($c['name']) ?></a>
+          <?php if ($c['year']): ?><span class="ck-camp-year"><?= (int)$c['year'] ?></span><?php endif; ?>
+          <span class="ck-arch-meta">archivée le <?= date('d/m/Y', strtotime($c['archived_at'])) ?> · <?= h(ck_money($c['total_paid'], $c['currency'] ?? 'EUR', 0)) ?> encaissés</span>
+        </li>
+        <?php endforeach; ?>
+      </ul>
+    </details>
     <?php endif; ?>
   </div>
 </main>
@@ -135,6 +172,13 @@ render_head('Cotisations');
 .ck-camp-stats strong { color: #111827; }
 .ck-camp-total { margin-left: auto; font-weight: 700; color: #10B981; font-size: 14px; }
 .ck-camp-deadline { font-size: 11.5px; color: #6b7280; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f3f4f6; }
+.ck-archived { margin-top: 22px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 16px; }
+.ck-archived summary { cursor: pointer; font-weight: 600; color: #4b5563; font-size: 13.5px; }
+.ck-archived ul { list-style: none; margin: 10px 0 0; padding: 0; }
+.ck-archived li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid #f3f4f6; font-size: 13px; }
+.ck-archived li a { color: #111827; font-weight: 600; text-decoration: none; }
+.ck-archived li a:hover { color: #10B981; }
+.ck-arch-meta { color: #6b7280; font-size: 12px; margin-left: auto; }
 @media (max-width: 540px) { .ck-camp-list { grid-template-columns: 1fr; } }
 </style>
 <?= render_foot() ?>

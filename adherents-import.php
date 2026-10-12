@@ -12,16 +12,76 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/password-token-helper.php';
+@require_once __DIR__ . '/plan-helpers.php';
 require_once __DIR__ . '/trial-limits-helpers.php';
+require_once __DIR__ . '/xlsx-helper.php';
 
 require_login();
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
 
-if (!in_array($user['role'], ['admin', 'coordinator'], true)) {
+// Admin, coordinateur, ou droit « Gérer les adhérents » donné par l'admin (jamais un suiveur).
+// Rôles qu'il ne peut pas attribuer : admin pour un coordinateur ; admin et coordinateur pour
+// un titulaire du seul droit (repli sur « Membre », comme /nouveau-adherent).
+$role_me = (string)($user['role'] ?? '');
+if (!in_array($role_me, ['admin', 'coordinator'], true)
+    && ($role_me === 'follower' || !function_exists('can') || !can('manage_members'))) {
     http_response_code(403);
     die('Accès refusé — rôle insuffisant.');
+}
+$roles_reserved = $role_me === 'admin' ? [] : ($role_me === 'coordinator' ? ['admin'] : ['admin', 'coordinator']);
+
+// Lignes de données au plus par fichier (au-delà, l'aperçu et la session deviennent ingérables).
+const AK_IMPORT_ADH_MAX_ROWS = 5000;
+// Au-delà de ce nombre d'adhérents créés, les e-mails de bienvenue partent après la réponse
+// (un envoi par adhérent : un gros import ne doit pas faire attendre ni expirer la page).
+const AK_IMPORT_ADH_SYNC_EMAILS = 20;
+
+/** En-tête ou valeur ramenée à des lettres sans accent : « E-mail » → « email », « PRÉNOM » → « prenom ». */
+function ak_import_norm(string $s): string {
+    $s = mb_strtolower(trim($s), 'UTF-8');
+    // Table fixe plutôt qu'iconv//TRANSLIT, dont le résultat dépend de la locale du serveur.
+    $s = strtr($s, ['é'=>'e','è'=>'e','ê'=>'e','ë'=>'e','à'=>'a','â'=>'a','ä'=>'a','î'=>'i','ï'=>'i',
+                    'ô'=>'o','ö'=>'o','û'=>'u','ù'=>'u','ü'=>'u','ç'=>'c','œ'=>'oe','æ'=>'ae','ÿ'=>'y']);
+    return (string)preg_replace('/[^a-z0-9]/', '', $s);
+}
+
+/**
+ * Adresses du fichier déjà présentes en base, quelle que soit l'association et la casse.
+ * @return array e-mail en minuscules => 'exists' (compte actif) | 'trash' (supprimé dans cette
+ *               asso) | 'foreign_trash' (supprimé dans une autre asso : l'adresse peut être reprise,
+ *               comme avec « Ajouter un adhérent »)
+ */
+function ak_import_existing_emails(PDO $pdo, array $emails, int $org_id): array {
+    $found = [];
+    $rank = ['foreign_trash' => 1, 'trash' => 2, 'exists' => 3];
+    $emails = array_values(array_unique(array_filter($emails)));
+    foreach (array_chunk($emails, 500) as $chunk) {
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        $st = $pdo->prepare("SELECT LOWER(email) AS e, org_id, deleted_at FROM users WHERE LOWER(email) IN ($ph)");
+        $st->execute($chunk);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $kind = $r['deleted_at'] === null ? 'exists' : ((int)$r['org_id'] === $org_id ? 'trash' : 'foreign_trash');
+            // Un compte actif l'emporte sur une ligne supprimée, la corbeille de cette asso sur celle d'une autre.
+            if (!isset($found[$r['e']]) || $rank[$kind] > $rank[$found[$r['e']]]) $found[$r['e']] = $kind;
+        }
+    }
+    return $found;
+}
+
+/** Places restantes sur le plan : null = illimité. */
+function ak_import_plan_room(PDO $pdo, int $org_id): ?int {
+    if (!function_exists('ak_can_add_adherent')) return null;
+    $chk = ak_can_add_adherent($pdo, $org_id);
+    if ($chk['limit'] === null) return null;
+    return max(0, (int)$chk['limit'] - (int)$chk['current']);
+}
+
+function ak_import_plan_message(int $room, int $wanted): string {
+    return $room > 0
+        ? "Votre plan permet encore $room adhérent" . ($room > 1 ? 's' : '') . " ; ce fichier en ajouterait $wanted. Réduisez le fichier ou passez au plan supérieur."
+        : "Vous avez atteint la limite d'adhérents de votre plan. Passez au plan supérieur pour en importer d'autres.";
 }
 
 $step = 'upload';
@@ -35,99 +95,129 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
     } else {
         $tmp = $_FILES['csvfile']['tmp_name'];
         $size = filesize($tmp);
+        $lines = null;
         if ($size > 2 * 1024 * 1024) {
             $error = 'Fichier trop volumineux (max 2 Mo).';
         } else {
-            $content = file_get_contents($tmp);
-            $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
-            $lines = preg_split('/\r\n|\r|\n/', $content);
-            $lines = array_filter($lines, fn($l) => trim($l) !== '');
+            // Lecteur partagé : BOM, Windows-1252 (CSV d'Excel), séparateur, champs sur plusieurs lignes, .xlsx.
+            try {
+                $lines = ak_tableur_lire($tmp, (string)($_FILES['csvfile']['name'] ?? ''), AK_IMPORT_ADH_MAX_ROWS + 100);
+            } catch (RuntimeException $e) {
+                $error = $e->getMessage();
+            } catch (Throwable $e) {
+                error_log('Import adh: lecture ' . $e->getMessage());
+                $error = 'Fichier illisible. Enregistrez-le au format CSV (séparateur point-virgule) ou Excel (.xlsx).';
+            }
+        }
+
+        if ($lines !== null) {
+            // Les lignes vides (avant l'en-tête, au milieu, à la fin) sont ignorées, sans décaler les suivantes.
+            $lines = array_values(array_filter($lines, fn($r) => trim(implode('', $r)) !== ''));
 
             if (count($lines) < 2) {
                 $error = 'Le fichier est vide ou ne contient qu\'un en-tête.';
+            } elseif (count($lines) - 1 > AK_IMPORT_ADH_MAX_ROWS) {
+                $error = 'Fichier trop long : ' . number_format(AK_IMPORT_ADH_MAX_ROWS, 0, ',', ' ') . ' adhérents au plus par import. Découpez-le en plusieurs fichiers.';
             } else {
-                $first_line = $lines[0];
-                $sep = (substr_count($first_line, ';') >= substr_count($first_line, ',')) ? ';' : ',';
-
-                $headers_raw = str_getcsv($first_line, $sep);
-                $headers = array_map(function($h) {
-                    $h = trim(strtolower($h));
-                    $h = strtr($h, ['é'=>'e','è'=>'e','ê'=>'e','ë'=>'e','à'=>'a','â'=>'a','ï'=>'i','î'=>'i','ô'=>'o','û'=>'u','ù'=>'u']);
-                    return $h;
-                }, $headers_raw);
-
-                $col_idx = [
-                    'first_name' => array_search('prenom', $headers),
-                    'last_name'  => array_search('nom', $headers),
-                    'email'      => array_search('email', $headers),
-                    'phone'      => array_search('telephone', $headers),
-                    'city'       => array_search('ville', $headers),
-                    'role'       => array_search('role', $headers),
+                $headers = array_map(fn($h) => ak_import_norm((string)$h), $lines[0]);
+                $synonyms = [
+                    'first_name' => ['prenom', 'prenoms', 'firstname'],
+                    'last_name'  => ['nom', 'nomdefamille', 'lastname', 'surname'],
+                    'email'      => ['email', 'mail', 'courriel', 'adresseemail', 'adressemail', 'adressecourriel', 'emailaddress'],
+                    'phone'      => ['telephone', 'tel', 'portable', 'mobile', 'telephoneportable', 'telportable', 'phone'],
+                    'city'       => ['ville', 'commune', 'localite', 'city'],
+                    'role'       => ['role'],
                 ];
+                $col_idx = [];
+                foreach ($synonyms as $key => $names) {
+                    $col_idx[$key] = false;
+                    foreach ($names as $n) {
+                        $pos = array_search($n, $headers, true);
+                        if ($pos !== false) { $col_idx[$key] = $pos; break; }
+                    }
+                }
 
                 if ($col_idx['first_name'] === false || $col_idx['last_name'] === false || $col_idx['email'] === false) {
-                    $error = 'Colonnes obligatoires manquantes : le fichier doit contenir "Prénom", "Nom" et "Email".';
+                    $found = array_filter(array_map(fn($h) => trim((string)$h), $lines[0]), fn($h) => $h !== '');
+                    $error = 'Colonnes obligatoires manquantes : le fichier doit contenir « Prénom », « Nom » et « Email »'
+                           . ($found ? ' (colonnes trouvées : ' . mb_substr(implode(', ', $found), 0, 200) . ')' : '') . '.';
                 } else {
-                    $existing_emails = [];
-                    try {
-                        $stmt = $pdo->query("SELECT email FROM users WHERE deleted_at IS NULL");
-                        $existing_emails = array_flip($stmt->fetchAll(PDO::FETCH_COLUMN));
-                    } catch (Throwable $e) {}
+                    $cell = function (array $fields, $idx): string {
+                        if ($idx === false) return '';
+                        // Un champ saisi sur plusieurs lignes (adresse…) est remis sur une seule.
+                        return trim((string)preg_replace('/\s+/u', ' ', (string)($fields[$idx] ?? '')));
+                    };
+                    $role_map = [
+                        'administrateur' => 'admin', 'administratrice' => 'admin', 'admin' => 'admin',
+                        'coordinateur'   => 'coordinator', 'coordinatrice' => 'coordinator', 'coordinator' => 'coordinator',
+                        'referent'       => 'referent', 'referente' => 'referent',
+                        'membre'         => 'member', 'member' => 'member', 'adherent' => 'member', 'adherente' => 'member',
+                        'suiveur'        => 'follower', 'suiveuse' => 'follower', 'follower' => 'follower',
+                    ];
 
-                    for ($i = 1; $i < count($lines); $i++) {
-                        $line = trim($lines[$i]);
-                        if ($line === '') continue;
-                        $fields = str_getcsv($line, $sep);
-
+                    foreach (array_slice($lines, 1) as $fields) {
                         $row = [
-                            'first_name' => trim($fields[$col_idx['first_name']] ?? ''),
-                            'last_name'  => trim($fields[$col_idx['last_name']] ?? ''),
-                            'email'      => trim($fields[$col_idx['email']] ?? ''),
-                            'phone'      => $col_idx['phone'] !== false ? trim($fields[$col_idx['phone']] ?? '') : '',
-                            'city'       => $col_idx['city'] !== false ? trim($fields[$col_idx['city']] ?? '') : '',
-                            'role'       => $col_idx['role'] !== false ? trim($fields[$col_idx['role']] ?? '') : 'member',
+                            'first_name' => $cell($fields, $col_idx['first_name']),
+                            'last_name'  => $cell($fields, $col_idx['last_name']),
+                            'email'      => mb_strtolower($cell($fields, $col_idx['email']), 'UTF-8'),
+                            // Mêmes longueurs que le formulaire d'ajout (nouveau-adherent.php)
+                            'phone'      => mb_substr($cell($fields, $col_idx['phone']), 0, 30),
+                            'city'       => mb_substr($cell($fields, $col_idx['city']), 0, 100),
+                            'role'       => $role_map[ak_import_norm($cell($fields, $col_idx['role']))] ?? 'member',
                         ];
-
-                        $role_lower = strtolower($row['role']);
-                        $role_map = [
-                            'administrateur' => 'admin', 'admin' => 'admin',
-                            'coordinateur'   => 'coordinator', 'coordinator' => 'coordinator',
-                            'referent'       => 'referent', 'référent' => 'referent',
-                            'membre'         => 'member', 'member' => 'member',
-                            'suiveur'        => 'follower', 'follower' => 'follower',
-                        ];
-                        $row['role'] = $role_map[$role_lower] ?? 'member';
                         // Seul un admin peut créer des admins (comme nouveau-adherent.php)
-                        if ($row['role'] === 'admin' && ($user['role'] ?? '') !== 'admin') $row['role'] = 'member';
-
-                        if ($row['first_name'] === '' || $row['last_name'] === '') {
-                            $row['status'] = 'error';
-                            $row['reason'] = 'Prénom ou nom manquant';
-                        } elseif (!filter_var($row['email'], FILTER_VALIDATE_EMAIL)) {
-                            $row['status'] = 'error';
-                            $row['reason'] = 'Email invalide';
-                        } elseif (isset($existing_emails[$row['email']])) {
-                            $row['status'] = 'skip';
-                            $row['reason'] = 'Email déjà existant';
-                        } else {
-                            $row['status'] = 'ok';
-                            $row['reason'] = '';
-                            $existing_emails[$row['email']] = true;
-                        }
-
+                        if (in_array($row['role'], $roles_reserved, true)) $row['role'] = 'member';
                         $parsed_rows[] = $row;
                     }
 
+                    $existing = [];
+                    try {
+                        $existing = ak_import_existing_emails($pdo, array_column($parsed_rows, 'email'), $org_id);
+                    } catch (Throwable $e) {
+                        error_log('Import adh: doublons ' . $e->getMessage());
+                    }
+                    $seen = [];
+                    foreach ($parsed_rows as &$row) {
+                        if ($row['first_name'] === '' || $row['last_name'] === '') {
+                            $row['status'] = 'error';
+                            $row['reason'] = 'Prénom ou nom manquant';
+                        } elseif (mb_strlen($row['first_name']) > 100 || mb_strlen($row['last_name']) > 100) {
+                            $row['status'] = 'error';
+                            $row['reason'] = 'Prénom ou nom trop long (100 caractères au plus)';
+                        } elseif (mb_strlen($row['email']) > 200 || !filter_var($row['email'], FILTER_VALIDATE_EMAIL)) {
+                            $row['status'] = 'error';
+                            $row['reason'] = 'Email invalide';
+                        } elseif (($existing[$row['email']] ?? '') === 'trash') {
+                            $row['status'] = 'skip';
+                            $row['reason'] = 'Adhérent supprimé : restaurez-le depuis la corbeille ou réinscrivez-le avec « Ajouter un adhérent »';
+                        } elseif (($existing[$row['email']] ?? 'foreign_trash') !== 'foreign_trash') {
+                            $row['status'] = 'skip';
+                            $row['reason'] = 'Email déjà existant';
+                        } elseif (isset($seen[$row['email']])) {
+                            $row['status'] = 'skip';
+                            $row['reason'] = 'Doublon dans le fichier';
+                        } else {
+                            $row['status'] = 'ok';
+                            $row['reason'] = '';
+                            $seen[$row['email']] = true;
+                        }
+                    }
+                    unset($row);
+
+                    $nb_ok_rows = count(array_filter($parsed_rows, fn($r) => $r['status'] === 'ok'));
                     // Essai gratuit : 200 adhérents par import, 300 ajoutés par 24 h
                     // (chaque adhérent créé peut recevoir un e-mail de bienvenue).
-                    $trial_block = $parsed_rows
-                        ? ak_trial_members_block($pdo, $org_id, count(array_filter($parsed_rows, fn($r) => $r['status'] === 'ok')), true)
-                        : null;
+                    $trial_block = $parsed_rows ? ak_trial_members_block($pdo, $org_id, $nb_ok_rows, true) : null;
+                    // Limite d'adhérents du plan : même règle que l'ajout un par un.
+                    $room = $nb_ok_rows > 0 ? ak_import_plan_room($pdo, $org_id) : null;
 
                     if (empty($parsed_rows)) {
                         $error = 'Aucune ligne de données trouvée dans le fichier.';
                     } elseif ($trial_block) {
                         $error = $trial_block;
+                        $parsed_rows = [];
+                    } elseif ($room !== null && $nb_ok_rows > $room) {
+                        $error = ak_import_plan_message($room, $nb_ok_rows);
                         $parsed_rows = [];
                     } else {
                         $_SESSION['import_adherents_rows'] = $parsed_rows;
@@ -144,39 +234,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confirm_import' && check_csrf($_POST['csrf_token'] ?? '')) {
     $rows = $_SESSION['import_adherents_rows'] ?? [];
     $send_email = !empty($_SESSION['import_adherents_send_email']);
+    // Les lignes quittent la session AVANT l'import (la session est écrite juste avant la boucle) :
+    // un double clic, un rechargement ou un import interrompu ne recrée pas les mêmes comptes.
+    unset($_SESSION['import_adherents_rows'], $_SESSION['import_adherents_send_email']);
+
+    if (!empty($rows)) {
+        // Recontrôle en base (import parallèle, compte créé entre-temps…), avec la règle de l'aperçu.
+        try {
+            $existing = ak_import_existing_emails($pdo, array_map(fn($r) => mb_strtolower((string)($r['email'] ?? ''), 'UTF-8'), $rows), $org_id);
+        } catch (Throwable $e) {
+            $existing = [];
+            error_log('Import adh: doublons ' . $e->getMessage());
+        }
+        foreach ($rows as &$row) {
+            $row['email'] = mb_strtolower((string)($row['email'] ?? ''), 'UTF-8');
+            $known = $existing[$row['email']] ?? 'foreign_trash';
+            if (($row['status'] ?? '') === 'ok' && $known !== 'foreign_trash') {
+                $row['status'] = 'skip';
+                $row['reason'] = $known === 'trash'
+                    ? 'Adhérent supprimé : restaurez-le depuis la corbeille ou réinscrivez-le avec « Ajouter un adhérent »'
+                    : 'Email déjà existant';
+            }
+        }
+        unset($row);
+    }
+    $nb_ok_rows = count(array_filter($rows, fn($r) => ($r['status'] ?? '') === 'ok'));
 
     // Essai gratuit : on recontrôle au moment d'importer (autre import entre-temps, autre onglet…).
-    $trial_block = $rows
-        ? ak_trial_members_block($pdo, $org_id, count(array_filter($rows, fn($r) => ($r['status'] ?? '') === 'ok')), true)
-        : null;
+    $trial_block = $rows ? ak_trial_members_block($pdo, $org_id, $nb_ok_rows, true) : null;
+    $room = $nb_ok_rows > 0 ? ak_import_plan_room($pdo, $org_id) : null;
 
     if (empty($rows)) {
         $error = 'Session expirée, merci de recommencer.';
     } elseif ($trial_block) {
         $error = $trial_block;
-        unset($_SESSION['import_adherents_rows'], $_SESSION['import_adherents_send_email']);
+    } elseif ($room !== null && $nb_ok_rows > $room) {
+        $error = ak_import_plan_message($room, $nb_ok_rows);
     } else {
+        if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+        @set_time_limit(300);
+        ignore_user_abort(true);
+
         $created = 0;
         $skipped = 0;
         $errors = 0;
         $emails_sent = 0;
         $emails_failed = 0;
+        $failed = [];      // lignes non créées à cause d'une erreur, montrées à l'utilisateur
+        $welcome = [];     // adhérents créés à qui envoyer le lien de création de mot de passe
 
         $org = $pdo->prepare("SELECT name FROM organizations WHERE id = ?");
         $org->execute([$org_id]);
         $org_row = $org->fetch();
         $org_name = $org_row['name'] ?? 'votre association';
 
+        // Un seul hachage pour tout l'import : le secret est jeté aussitôt (personne ne peut
+        // s'en servir) et bcrypt coûte ~0,2 s par appel, ce qui faisait expirer les gros imports.
+        $placeholder_hash = password_hash(bin2hex(random_bytes(32)), PASSWORD_BCRYPT);
+
         foreach ($rows as $row) {
             if ($row['status'] === 'error') { $errors++; continue; }
             if ($row['status'] === 'skip') { $skipped++; continue; }
 
             try {
-                $placeholder_hash = password_hash(bin2hex(random_bytes(32)), PASSWORD_BCRYPT);
                 $colors = ['blue','purple','amber','pink','teal'];
                 $avatar_color = $colors[array_rand($colors)];
 
-                if ($row['role'] === 'admin' && ($user['role'] ?? '') !== 'admin') $row['role'] = 'member';
+                if (in_array($row['role'], $roles_reserved, true)) $row['role'] = 'member';
                 $perms = match($row['role']) {
                     'admin'       => [1, 1, 1, 1, 1, 1],
                     'coordinator' => [1, 1, 0, 1, 1, 1],
@@ -184,6 +308,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
                     default       => [0, 0, 0, 0, 0, 0],
                 };
 
+                // Adresse d'un compte supprimé dans une autre association : libérée (renommée, comme
+                // dans nouveau-adherent.php) pour ce nouvel adhérent, dans la même transaction.
+                $free_email = ($existing[$row['email']] ?? '') === 'foreign_trash';
+                if ($free_email) {
+                    $pdo->beginTransaction();
+                    $pdo->prepare("UPDATE users SET email = CONCAT('deleted_', id, '__', email)
+                                   WHERE LOWER(email) = ? AND deleted_at IS NOT NULL AND org_id <> ?")
+                        ->execute([$row['email'], $org_id]);
+                }
                 $stmt = $pdo->prepare("
                     INSERT INTO users
                         (org_id, role, email, password_hash, first_name, last_name,
@@ -201,38 +334,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
                     ...$perms,
                 ]);
                 $new_id = (int) $pdo->lastInsertId();
+                if ($free_email) $pdo->commit();
                 $created++;
-
-                if ($send_email && function_exists('create_password_token') && function_exists('send_welcome_email')) {
-                    try {
-                        $token = create_password_token($pdo, $new_id, 'set_password');
-                        if (send_welcome_email($row['email'], $row['first_name'], $org_name, $token)) {
-                            $emails_sent++;
-                        } else {
-                            $emails_failed++;
-                        }
-                    } catch (Throwable $e) {
-                        $emails_failed++;
-                    }
-                }
+                $welcome[] = ['id' => $new_id, 'email' => $row['email'], 'first_name' => $row['first_name']];
             } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 $errors++;
+                $failed[] = $row['email'];
                 error_log('Import adh: ' . $e->getMessage());
             }
         }
 
-        unset($_SESSION['import_adherents_rows'], $_SESSION['import_adherents_send_email']);
+        // Envoie le lien de création de mot de passe à chaque adhérent créé.
+        $send_welcome = function (array $list) use ($pdo, $org_name, $org_id): array {
+            $sent = 0; $ko = 0;
+            if (!function_exists('create_password_token') || !function_exists('send_welcome_email')) return [0, count($list)];
+            foreach ($list as $w) {
+                try {
+                    $token = create_password_token($pdo, (int)$w['id'], 'set_password');
+                    if (send_welcome_email($w['email'], $w['first_name'], $org_name, $token)) $sent++;
+                    else $ko++;
+                } catch (Throwable $e) {
+                    $ko++;
+                }
+            }
+            if ($ko > 0) error_log("Import adh: org $org_id, $ko e-mail(s) de bienvenue non envoyé(s) sur " . count($list));
+            return [$sent, $ko];
+        };
+        $send_later = $send_email && count($welcome) > AK_IMPORT_ADH_SYNC_EMAILS;
+        if ($send_email && !$send_later) {
+            [$emails_sent, $emails_failed] = $send_welcome($welcome);
+        }
 
         $msg = "Import terminé : $created créé(s), $skipped ignoré(s), $errors erreur(s).";
-        if ($send_email) {
+        if ($failed) {
+            $msg .= ' Non importé(s) : ' . implode(', ', array_slice($failed, 0, 10))
+                  . (count($failed) > 10 ? ' et ' . (count($failed) - 10) . ' autre(s)' : '') . '.';
+        }
+        if ($send_later) {
+            $msg .= ' 📧 ' . count($welcome) . ' e-mail(s) de bienvenue en cours d’envoi.';
+        } elseif ($send_email && $welcome) {
             $msg .= " 📧 $emails_sent email(s) envoyé(s)" . ($emails_failed > 0 ? ", $emails_failed échec(s)" : "") . ".";
         }
 
+        @session_start();
         $_SESSION['flash_adherents'] = [
-            'type' => 'success',
+            'type' => $failed ? 'error' : 'success',
             'message' => $msg,
         ];
+        session_write_close();
         header('Location: /adherents');
+
+        if ($send_later) {
+            // La réponse part tout de suite ; les e-mails sont envoyés ensuite (comme à l'inscription).
+            if (function_exists('litespeed_finish_request')) litespeed_finish_request();
+            elseif (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+            $send_welcome($welcome);
+        }
         exit;
     }
 }
@@ -257,7 +415,7 @@ render_sidebar('adherents');
       <div class="page-sub">
         <?= $step === 'preview'
             ? 'Prévisualisation — confirmez pour valider l\'import'
-            : 'Uploadez un fichier CSV pour importer plusieurs adhérents en une fois.' ?>
+            : 'Uploadez un fichier CSV ou Excel pour importer plusieurs adhérents en une fois.' ?>
       </div>
     </div>
   </div>
@@ -272,7 +430,7 @@ render_sidebar('adherents');
   <?php if ($step === 'upload'): ?>
 
     <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:16px; font-size:13.5px; line-height:1.6;">
-      <h3 style="margin:0 0 8px; font-size:14px; font-weight:500;">📋 Format du fichier CSV</h3>
+      <h3 style="margin:0 0 8px; font-size:14px; font-weight:500;">📋 Format du fichier (CSV ou Excel .xlsx)</h3>
       <p style="margin:0 0 8px;">Le fichier doit contenir une ligne d'en-tête avec les colonnes suivantes :</p>
       <ul style="margin:0 0 10px; padding-left:20px;">
         <li><strong>Prénom</strong> (obligatoire)</li>
@@ -280,6 +438,9 @@ render_sidebar('adherents');
         <li><strong>Email</strong> (obligatoire)</li>
         <li>Téléphone, Ville, Rôle (optionnels)</li>
       </ul>
+      <p style="margin:0 0 8px; font-size:12.5px; color:var(--ink-3);">
+        Les CSV enregistrés depuis Excel (séparateur point-virgule) sont acceptés tels quels, accents compris. Les lignes vides sont ignorées.
+      </p>
       <p style="margin:0; font-size:12.5px; color:var(--ink-3);">
         💡 Chaque adhérent importé recevra un email avec un lien pour créer son mot de passe (valide 7 jours).
       </p>
@@ -296,8 +457,8 @@ render_sidebar('adherents');
       <input type="hidden" name="action" value="upload">
 
       <div style="margin-bottom:20px;">
-        <label for="csvfile" style="display:block; font-size:13px; font-weight:500; margin-bottom:6px;">Fichier CSV *</label>
-        <input type="file" id="csvfile" name="csvfile" accept=".csv,text/csv" required
+        <label for="csvfile" style="display:block; font-size:13px; font-weight:500; margin-bottom:6px;">Fichier CSV ou Excel *</label>
+        <input type="file" id="csvfile" name="csvfile" accept=".csv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required
                style="width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:14px; color:var(--ink);">
       </div>
 

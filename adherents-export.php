@@ -17,30 +17,36 @@ require_login();
 $user = current_user();
 $org_id = (int)$user['org_id'];
 
-// Seuls admin/coordinator peuvent exporter
-if (!in_array($user['role'], ['admin', 'coordinator'], true)) {
+// Seuls admin/coordinator (ou le droit « Gérer les adhérents » donné par l'admin) peuvent exporter.
+// Jamais un suiveur (financeur externe).
+$role_me = (string)($user['role'] ?? '');
+if (!in_array($role_me, ['admin', 'coordinator'], true)
+    && ($role_me === 'follower' || !function_exists('can') || !can('manage_members'))) {
     http_response_code(403);
     die('Accès refusé — rôle insuffisant.');
 }
 
 // Filtres
-$search = trim($_GET['q'] ?? '');
+$search = trim((string)preg_replace('/\s+/u', ' ', (string)($_GET['q'] ?? '')));
 $filter_role = $_GET['role'] ?? 'all';
 $valid_roles = ['all', 'admin', 'coordinator', 'referent', 'member', 'follower'];
 if (!in_array($filter_role, $valid_roles, true)) $filter_role = 'all';
 
-// Charger adhérents
+// Charger adhérents : la liste affichée sur /adherents, sans ceux de la corbeille
 $sql = "
     SELECT first_name, last_name, email, phone, city, role,
            adhesion_date, adhesion_valid_until, is_active, created_at
     FROM users
-    WHERE org_id = :org_id
+    WHERE org_id = :org_id AND deleted_at IS NULL
 ";
 $params = [':org_id' => $org_id];
 
 if ($search !== '') {
-    $sql .= " AND (first_name LIKE :q OR last_name LIKE :q OR email LIKE :q OR city LIKE :q)";
-    $params[':q'] = '%' . $search . '%';
+    // Même recherche que /adherents (nom complet dans les deux sens compris), un marqueur par usage.
+    $sql .= " AND (first_name LIKE :q1 OR last_name LIKE :q2 OR email LIKE :q3 OR city LIKE :q4
+                   OR CONCAT(first_name, ' ', last_name) LIKE :q5 OR CONCAT(last_name, ' ', first_name) LIKE :q6)";
+    $like = '%' . $search . '%';
+    $params += [':q1' => $like, ':q2' => $like, ':q3' => $like, ':q4' => $like, ':q5' => $like, ':q6' => $like];
 }
 if ($filter_role !== 'all') {
     $sql .= " AND role = :role";

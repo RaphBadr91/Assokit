@@ -75,7 +75,8 @@ if ($wantVcf) {
     // La requête aliase o.name en org_name pour ne pas écraser q.label :
     // on rétablit la clé attendue par le helper, sinon la fiche s'appellerait
     // « Association ».
-    $vcf = ak_org_vcard(array_merge($qr, ['name' => $orgName]), 'https://assokit.fr');
+    // Sans URL : c'est la fiche de l'association, pas celle d'Assokit.
+    $vcf = ak_org_vcard(array_merge($qr, ['name' => $orgName]));
     header('Content-Type: text/vcard; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . ak_vcard_filename($orgName) . '.vcf"');
     header('X-Robots-Tag: noindex, nofollow');
@@ -98,12 +99,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $prenom = trim((string) ($_POST['prenom'] ?? ''));
         $nom    = trim((string) ($_POST['nom'] ?? ''));
         $email  = trim((string) ($_POST['email'] ?? ''));
-        $tel    = trim((string) ($_POST['telephone'] ?? ''));
+        // Téléphone lu seulement si le champ est proposé sur ce code
+        $tel    = !empty($qr['ask_phone']) ? trim((string) ($_POST['telephone'] ?? '')) : '';
         $msg    = trim((string) ($_POST['message'] ?? ''));
         $ok     = !empty($_POST['consent']);
 
         if ($prenom === '' && $nom === '')            $err = 'Indiquez au moins votre nom.';
-        elseif ($email === '' && $tel === '')          $err = 'Laissez un e-mail ou un téléphone pour être recontacté.';
+        elseif ($email === '' && $tel === '')          $err = !empty($qr['ask_phone'])
+                                                           ? 'Laissez un e-mail ou un téléphone pour être recontacté.'
+                                                           : 'Indiquez votre e-mail pour être recontacté.';
         elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) $err = "Cette adresse e-mail n'est pas valide.";
         elseif (!$ok)                                  $err = 'Merci de cocher la case d\'accord.';
         else {
@@ -285,7 +289,7 @@ header('X-Robots-Tag: noindex, nofollow');
         </div>
 
         <label for="email">E-mail</label>
-        <input id="email" name="email" type="email" inputmode="email" autocomplete="email" value="<?= $h($_POST['email'] ?? '') ?>">
+        <input id="email" name="email" type="email" inputmode="email" autocomplete="email" value="<?= $h($_POST['email'] ?? '') ?>"<?= empty($qr['ask_phone']) ? ' required' : '' ?>>
 
         <?php if (!empty($qr['ask_phone'])): ?>
           <label for="telephone">Téléphone</label>

@@ -5,7 +5,8 @@
  * ============================================================
  * Fonctions :
  *   - archive_folder()         : archive un dossier + ses projets
- *   - restore_folder()         : restaure un dossier archive
+ *   - restore_folder()         : restaure un dossier archive (scope org)
+ *   - restore_project()        : restaure un projet archive seul (scope org)
  *   - archive_log()            : log une action dans archive_logs
  *   - get_archive_days_left()  : jours avant purge definitive (max 30)
  * ============================================================
@@ -20,14 +21,19 @@ if (!defined('ARCHIVE_RETENTION_DAYS')) {
  * Si des projets sont actifs, ils sont archives avec un flag special.
  * @return array ['ok'=>bool, 'nb_projects'=>int, 'nb_active'=>int, 'error'=>?string]
  */
-function archive_folder(PDO $pdo, int $folder_id, int $admin_user_id): array
+function archive_folder(PDO $pdo, int $folder_id, int $admin_user_id, ?int $org_id = null): array
 {
     try {
         $pdo->beginTransaction();
 
-        // Verifier dossier existe et non deja archive
-        $stmt = $pdo->prepare("SELECT id, name, org_id, archived_at FROM folders WHERE id = ? LIMIT 1");
-        $stmt->execute([$folder_id]);
+        // Verifier dossier existe et non deja archive (et appartient a l'org si fournie)
+        if ($org_id !== null) {
+            $stmt = $pdo->prepare("SELECT id, name, org_id, archived_at FROM folders WHERE id = ? AND org_id = ? LIMIT 1");
+            $stmt->execute([$folder_id, $org_id]);
+        } else {
+            $stmt = $pdo->prepare("SELECT id, name, org_id, archived_at FROM folders WHERE id = ? LIMIT 1");
+            $stmt->execute([$folder_id]);
+        }
         $folder = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$folder) {
@@ -91,14 +97,15 @@ function archive_folder(PDO $pdo, int $folder_id, int $admin_user_id): array
 /**
  * Restaure un dossier archive (possible dans les 30 jours).
  * Restaure aussi ses projets archives via_folder.
+ * $org_id : association de l'admin — un dossier d'une autre org est « introuvable ».
  */
-function restore_folder(PDO $pdo, int $folder_id, int $admin_user_id): array
+function restore_folder(PDO $pdo, int $folder_id, int $admin_user_id, int $org_id): array
 {
     try {
         $pdo->beginTransaction();
 
-        $stmt = $pdo->prepare("SELECT id, name, org_id, archived_at FROM folders WHERE id = ? LIMIT 1");
-        $stmt->execute([$folder_id]);
+        $stmt = $pdo->prepare("SELECT id, name, org_id, archived_at FROM folders WHERE id = ? AND org_id = ? LIMIT 1");
+        $stmt->execute([$folder_id, $org_id]);
         $folder = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$folder) {
@@ -129,9 +136,9 @@ function restore_folder(PDO $pdo, int $folder_id, int $admin_user_id): array
         $stmt = $pdo->prepare("
             UPDATE folders
             SET archived_at = NULL, archived_by_user_id = NULL, archived_with_active_projects = 0
-            WHERE id = ?
+            WHERE id = ? AND org_id = ?
         ");
-        $stmt->execute([$folder_id]);
+        $stmt->execute([$folder_id, $org_id]);
 
         archive_log($pdo, (int)$folder['org_id'], 'restore_folder', 'folder', $folder_id, $folder['name'], $admin_user_id, []);
 
@@ -146,17 +153,18 @@ function restore_folder(PDO $pdo, int $folder_id, int $admin_user_id): array
 
 /**
  * Restaure un projet archive individuellement.
+ * $org_id : association de l'admin (projects n'a pas d'org_id : on passe par folders).
  */
-function restore_project(PDO $pdo, int $project_id, int $admin_user_id): array
+function restore_project(PDO $pdo, int $project_id, int $admin_user_id, int $org_id): array
 {
     try {
         $stmt = $pdo->prepare("
             SELECT p.id, p.name, p.archived_at, p.folder_id, f.name AS folder_name, f.archived_at AS folder_archived, f.org_id
             FROM projects p
             JOIN folders f ON p.folder_id = f.id
-            WHERE p.id = ? LIMIT 1
+            WHERE p.id = ? AND f.org_id = ? LIMIT 1
         ");
-        $stmt->execute([$project_id]);
+        $stmt->execute([$project_id, $org_id]);
         $proj = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$proj) return ['ok' => false, 'error' => 'project_not_found'];
@@ -169,11 +177,12 @@ function restore_project(PDO $pdo, int $project_id, int $admin_user_id): array
         }
 
         $stmt = $pdo->prepare("
-            UPDATE projects
-            SET archived_at = NULL, archived_by_user_id = NULL, archived_via_folder = 0
-            WHERE id = ?
+            UPDATE projects p
+            JOIN folders f ON f.id = p.folder_id
+            SET p.archived_at = NULL, p.archived_by_user_id = NULL, p.archived_via_folder = 0
+            WHERE p.id = ? AND f.org_id = ?
         ");
-        $stmt->execute([$project_id]);
+        $stmt->execute([$project_id, $org_id]);
 
         archive_log($pdo, (int)$proj['org_id'], 'restore_project', 'project', $project_id, $proj['name'], $admin_user_id, []);
 

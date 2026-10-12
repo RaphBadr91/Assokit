@@ -6,8 +6,9 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
+require_once __DIR__ . '/includes-mairie-channels.php';
 require_login();
-require_platform_admin();
+ak_require_mairie_manager();
 
 $mairie_id = (int)($_GET['id'] ?? 0);
 if ($mairie_id <= 0) { header('Location: /super-admin-mairies'); exit; }
@@ -51,7 +52,26 @@ render_head('Mairie : ' . $mairie['name']);
 render_sidebar('super-admin');
 ?>
 
-<div style="max-width:1200px;margin:0 auto;padding:24px;">
+<style>
+/* contain: la colonne de la mise en page ne s'élargit plus à la largeur d'un tableau (page coupée sur téléphone) */
+.samd-page { contain: inline-size; }
+.samd-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:20px; }
+.samd-stats .samd-quota { grid-column:span 2; }
+.samd-agent-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; align-items:end; }
+.samd-agent-form input, .samd-agent-form select { box-sizing:border-box; }
+.samd-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.samd-table-wrap table { min-width:560px; }
+@media (max-width:640px) {
+  .samd-page { padding:14px !important; }
+  .samd-head { flex-direction:column; }
+  .samd-head-actions { min-width:0 !important; width:100%; }
+  .samd-stats .samd-quota { grid-column:1 / -1; }
+  .samd-identity { grid-template-columns:1fr !important; }
+  .samd-link-form, .samd-org-row { flex-direction:column; align-items:stretch !important; }
+}
+</style>
+
+<div class="samd-page" style="max-width:1200px;margin:0 auto;padding:24px;">
 
   <?php if (!empty($_SESSION['flash_success'])): ?>
     <div style="background:#D1FAE5;border:1px solid #10B981;color:#065F46;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:600;">✅ <?= htmlspecialchars($_SESSION['flash_success']) ?></div>
@@ -68,15 +88,15 @@ render_sidebar('super-admin');
 
   <!-- HEADER MAIRIE -->
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:24px 28px;margin-bottom:20px;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
-      <div style="flex:1;">
+    <div class="samd-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
+      <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px;">
           <span style="font-size:36px;"><?= $type_emoji ?></span>
           <div>
             <h1 style="margin:0;font-size:24px;color:#0A0A0B;font-weight:700;"><?= h($mairie['name']) ?></h1>
             <div style="margin-top:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <span style="background:<?= $status_meta['bg'] ?>;color:<?= $status_meta['txt'] ?>;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;"><?= $status_meta['label'] ?></span>
-              <span style="font-size:13px;color:#71717A;">Type : <strong style="color:#3F3F46;text-transform:capitalize;"><?= h($mairie['type']) ?></strong></span>
+              <span style="font-size:13px;color:#71717A;">Type : <strong style="color:#3F3F46;"><?= h(ak_parent_org_type_label($mairie['type'])) ?></strong></span>
               <?php if ($mairie['siret']): ?><span style="font-size:13px;color:#71717A;">SIRET <?= h($mairie['siret']) ?></span><?php endif; ?>
             </div>
           </div>
@@ -90,7 +110,7 @@ render_sidebar('super-admin');
       </div>
 
       <!-- ACTIONS RAPIDES -->
-      <div style="display:flex;gap:8px;flex-direction:column;min-width:170px;">
+      <div class="samd-head-actions" style="display:flex;gap:8px;flex-direction:column;min-width:170px;">
         <?php if ($mairie['status'] === 'pending'): ?>
           <form method="POST" action="/action-mairie.php" style="margin:0;">
             <input type="hidden" name="action" value="validate">
@@ -131,7 +151,7 @@ render_sidebar('super-admin');
         <input type="hidden" name="mairie_id" value="<?= $mairie_id ?>">
         <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div class="samd-identity" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
           <div style="grid-column:1/-1;">
             <label style="display:block;font-size:12px;font-weight:600;color:#3F3F46;margin-bottom:5px;">Nom de la collectivité *</label>
             <input name="name" required value="<?= h($mairie['name']) ?>" style="width:100%;padding:9px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;box-sizing:border-box;">
@@ -139,7 +159,7 @@ render_sidebar('super-admin');
           <div>
             <label style="display:block;font-size:12px;font-weight:600;color:#3F3F46;margin-bottom:5px;">Type</label>
             <select name="type" style="width:100%;padding:9px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;background:#fff;box-sizing:border-box;">
-              <?php foreach (['mairie'=>'Mairie','departement'=>'Département','region'=>'Région','drac'=>'DRAC','caf'=>'CAF','federation'=>'Fédération','autre'=>'Autre'] as $val=>$lbl): ?>
+              <?php foreach (ak_parent_org_types() as $val=>$lbl): ?>
                 <option value="<?= $val ?>" <?= $mairie['type']===$val?'selected':'' ?>><?= $lbl ?></option>
               <?php endforeach; ?>
             </select>
@@ -194,22 +214,22 @@ render_sidebar('super-admin');
   </details>
 
   <!-- STATS + QUOTA -->
-  <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:14px;margin-bottom:20px;">
+  <div class="samd-stats">
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:18px;">
       <div style="font-size:11px;color:#71717A;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Associations</div>
-      <div style="font-size:30px;font-weight:700;color:#0A0A0B;margin-top:4px;"><?= $nb_orgs ?> <span style="font-size:14px;color:#71717A;font-weight:500;">/ <?= (int)$mairie['validated_quota'] ?></span></div>
+      <div style="font-size:30px;font-weight:700;color:#0A0A0B;margin-top:4px;"><?= $nb_orgs ?> <span style="font-size:14px;color:#71717A;font-weight:500;" title="<?= (int)$mairie['validated_quota'] > 0 ? 'Quota d\'associations' : 'Quota illimité' ?>">/ <?= ak_parent_org_quota_label($mairie['validated_quota']) ?></span></div>
     </div>
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:18px;">
       <div style="font-size:11px;color:#71717A;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Utilisateurs</div>
       <div style="font-size:30px;font-weight:700;color:#0A0A0B;margin-top:4px;"><?= count($users_mairie) ?></div>
     </div>
-    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:18px;">
-      <div style="font-size:11px;color:#71717A;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Modifier le quota</div>
+    <div class="samd-quota" style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:18px;">
+      <div style="font-size:11px;color:#71717A;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Modifier le quota <span style="text-transform:none;letter-spacing:0;font-weight:400;">(0 = illimité)</span></div>
       <form method="POST" action="/action-mairie.php" style="margin-top:6px;display:flex;gap:8px;align-items:center;">
         <input type="hidden" name="action" value="update_quota">
         <input type="hidden" name="mairie_id" value="<?= $mairie_id ?>">
         <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
-        <input type="number" name="validated_quota" value="<?= (int)$mairie['validated_quota'] ?>" min="0" max="100000" style="flex:1;padding:8px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
+        <input type="number" name="validated_quota" value="<?= (int)$mairie['validated_quota'] ?>" min="0" max="100000" style="flex:1;min-width:0;padding:8px 12px;border:1px solid #D4D4D8;border-radius:7px;font-size:14px;">
         <button type="submit" style="background:#0A0A0B;color:#fff;padding:8px 16px;border:none;border-radius:7px;font-weight:600;font-size:13px;cursor:pointer;">Modifier</button>
       </form>
       <?php if ($mairie['validated_quota'] > 0): ?>
@@ -229,7 +249,7 @@ render_sidebar('super-admin');
     <!-- FORM AJOUT AGENT -->
     <details style="margin-bottom:14px;background:#F0FDF4;border:1px solid #D1FAE5;border-radius:8px;padding:12px 14px;">
       <summary style="cursor:pointer;font-weight:600;color:#059669;font-size:13.5px;">+ Ajouter un agent à cette mairie</summary>
-      <form method="POST" action="/action-mairie.php" style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr 2fr 1fr auto;gap:8px;align-items:end;">
+      <form method="POST" action="/action-mairie.php" class="samd-agent-form" style="margin-top:14px;">
         <input type="hidden" name="action" value="add_user">
         <input type="hidden" name="mairie_id" value="<?= $mairie_id ?>">
         <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
@@ -246,6 +266,7 @@ render_sidebar('super-admin');
         Aucun agent. Ajoute un agent ci-dessus pour permettre la connexion à la mairie.
       </div>
     <?php else: ?>
+      <div class="samd-table-wrap">
       <table style="width:100%;border-collapse:collapse;">
         <thead><tr style="border-bottom:1px solid #E5E7EB;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#71717A;">
           <th style="text-align:left;padding:8px 6px;">Nom</th><th style="text-align:left;padding:8px 6px;">Email</th><th style="text-align:left;padding:8px 6px;">Rôle</th><th style="text-align:left;padding:8px 6px;">Créé le</th><th style="text-align:right;padding:8px 6px;">Action</th>
@@ -255,7 +276,7 @@ render_sidebar('super-admin');
           <tr style="border-bottom:0.5pt solid #F4F4F5;">
             <td style="padding:10px 6px;font-size:13.5px;color:#0A0A0B;font-weight:600;"><?= h(trim($u['first_name'] . ' ' . $u['last_name'])) ?></td>
             <td style="padding:10px 6px;font-size:13px;color:#3F3F46;"><?= h($u['email']) ?></td>
-            <td style="padding:10px 6px;"><span style="background:#F4F4F5;padding:2px 8px;border-radius:4px;font-size:11.5px;color:#3F3F46;"><?= h($u['parent_org_role'] ?: '—') ?></span></td>
+            <td style="padding:10px 6px;"><span style="background:#F4F4F5;padding:2px 8px;border-radius:4px;font-size:11.5px;color:#3F3F46;"><?= h(['admin' => 'Admin', 'agent' => 'Agent'][$u['parent_org_role'] ?? ''] ?? '—') ?></span></td>
             <td style="padding:10px 6px;font-size:12px;color:#71717A;"><?= date('d/m/Y', strtotime($u['created_at'])) ?></td>
             <td style="padding:10px 6px;text-align:right;">
               <form method="POST" action="/action-mairie.php" style="margin:0;display:inline;" onsubmit="return confirm('Retirer cet agent de la mairie ? (Le compte sera désactivé)');">
@@ -270,6 +291,7 @@ render_sidebar('super-admin');
         <?php endforeach; ?>
         </tbody>
       </table>
+      </div>
     <?php endif; ?>
   </div>
 
@@ -282,11 +304,11 @@ render_sidebar('super-admin');
     <!-- FORM LIER UNE ASSO -->
     <details style="margin-bottom:14px;background:#F0FDF4;border:1px solid #D1FAE5;border-radius:8px;padding:12px 14px;">
       <summary style="cursor:pointer;font-weight:600;color:#059669;font-size:13.5px;">+ Lier une association existante (<?= count($orgs_available) ?> dispo)</summary>
-      <form method="POST" action="/action-mairie.php" style="margin-top:14px;display:flex;gap:8px;align-items:end;">
+      <form method="POST" action="/action-mairie.php" class="samd-link-form" style="margin-top:14px;display:flex;gap:8px;align-items:end;">
         <input type="hidden" name="action" value="link_org">
         <input type="hidden" name="mairie_id" value="<?= $mairie_id ?>">
         <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
-        <div style="flex:1;">
+        <div style="flex:1;min-width:0;">
           <label style="font-size:11px;color:#3F3F46;font-weight:600;">Choisis une asso non-rattachée</label>
           <select name="org_id" required style="width:100%;padding:8px 10px;border:1px solid #D4D4D8;border-radius:6px;font-size:13px;background:#fff;">
             <option value="">— Sélectionner —</option>
@@ -306,7 +328,7 @@ render_sidebar('super-admin');
     <?php else: ?>
       <div style="display:grid;gap:8px;">
         <?php foreach ($orgs as $o): ?>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border:1px solid #E5E7EB;border-radius:8px;">
+          <div class="samd-org-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border:1px solid #E5E7EB;border-radius:8px;">
             <div>
               <strong style="font-size:14px;color:#0A0A0B;"><?= h($o['name']) ?></strong>
               <?php if ($o['billing_address_city']): ?><span style="color:#71717A;font-size:12.5px;"> · <?= h($o['billing_address_city']) ?></span><?php endif; ?>
@@ -339,3 +361,5 @@ render_sidebar('super-admin');
   </div>
 
 </div>
+
+<?php render_foot(); ?>

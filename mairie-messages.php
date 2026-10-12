@@ -6,17 +6,30 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
+require_once __DIR__ . '/includes-mairie-channels.php';
+if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
 require_parent_org_user();
 
 $current = current_user();
 $parent_org = current_parent_org();
+if (!$parent_org) {
+    // Compte plateforme sans collectivité : la gestion se fait depuis le cockpit
+    header('Location: ' . (is_platform_admin() ? '/super-admin-mairies' : '/dashboard'));
+    exit;
+}
 $parent_org_id = (int)$parent_org['id'];
 $user_id = (int)$current['id'];
 
 // CSRF
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 $csrf = $_SESSION['csrf_token'];
+
+// Retour de /action-mairie-message : affiché ici puis effacé (sinon il ressortait
+// sur la page suivante, Emailing ou tableau de bord)
+$flash_success = $_SESSION['flash_success'] ?? '';
+$flash_error = $_SESSION['flash_error'] ?? '';
+unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
 // === Récupérer la liste des channels mairie ===
 $stmt = $pdo->prepare("
@@ -47,6 +60,11 @@ if ($selected_channel_id > 0) {
         if ((int)$c['id'] === $selected_channel_id) { $selected = $c; break; }
     }
     if ($selected) {
+        // Membres à jour : l'agent lui-même et les admins actuels de l'asso
+        // (un admin nommé après le rattachement rejoint ainsi la conversation)
+        try { sync_mairie_channel_members($pdo, $selected_channel_id, (int)$selected['org_id'], $parent_org_id); }
+        catch (Throwable $e) { error_log('[mairie-messages] sync: ' . $e->getMessage()); }
+
         // Charger les messages
         $stmt = $pdo->prepare("
             SELECT cm.id, cm.user_id, cm.content, cm.created_at, cm.is_edited,
@@ -79,7 +97,8 @@ render_sidebar('messages');
 ?>
 
 <style>
-.msg-page { display: flex; gap: 16px; height: calc(100vh - 80px); padding: 16px; box-sizing: border-box; }
+/* contain: la colonne de la mise en page ne s'élargit plus à la largeur d'un tableau (page coupée sur téléphone) */
+.msg-page { display: flex; gap: 16px; height: calc(100vh - 80px); padding: 16px; box-sizing: border-box; contain: inline-size; }
 .msg-list { width: 340px; background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.04); overflow-y: auto; flex-shrink: 0; border: 1px solid #e9ecef; }
 .msg-list-header { padding: 18px 20px; border-bottom: 1px solid #eef0f3; }
 .msg-list-header h1 { font-size: 1.15rem; margin: 0 0 4px; color: #1a1a1a; }
@@ -125,6 +144,10 @@ render_sidebar('messages');
 .msg-composer button:hover { transform: translateY(-1px); }
 .msg-composer button:active { transform: translateY(0); }
 
+.msg-flash { margin: 12px 16px 0; padding: 10px 14px; border-radius: 10px; font-size: .88rem; font-weight: 600; }
+.msg-flash.success { background: #d1fae5; color: #065f46; }
+.msg-flash.error { background: #fee2e2; color: #991b1b; }
+
 @media (max-width: 900px) {
   .msg-page { flex-direction: column; height: auto; }
   .msg-list { width: 100%; max-height: 320px; }
@@ -165,6 +188,12 @@ render_sidebar('messages');
 
   <!-- CONVERSATION -->
   <section class="msg-conv">
+    <?php if ($flash_error !== ''): ?>
+      <div class="msg-flash error" role="alert">❌ <?= h($flash_error) ?></div>
+    <?php endif; ?>
+    <?php if ($flash_success !== ''): ?>
+      <div class="msg-flash success" role="status">✅ <?= h($flash_success) ?></div>
+    <?php endif; ?>
     <?php if (!$selected): ?>
       <div class="msg-empty">
         <span class="icon">💭</span>

@@ -6,14 +6,22 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
+require_once __DIR__ . '/includes-mairie-channels.php';
+if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
 require_parent_org_user();
 
 $current = current_user();
 $parent_org = current_parent_org();
+if (!$parent_org) {
+    // Compte plateforme sans collectivité : la gestion se fait depuis le cockpit
+    header('Location: ' . (is_platform_admin() ? '/super-admin-mairies' : '/dashboard'));
+    exit;
+}
 $parent_org_id = (int)$parent_org['id'];
 $user_id = (int)$current['id'];
-$is_mairie_admin = (($current['parent_org_role'] ?? '') === 'admin') || is_platform_admin($current);
+// Rôle relu en base (current_user() ne charge pas forcément parent_org_role)
+$is_mairie_admin = ak_mairie_user_role($pdo, $current) === 'admin' || is_platform_admin($current);
 
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 $csrf = $_SESSION['csrf_token'];
@@ -39,17 +47,15 @@ $stmt = $pdo->prepare("
 $stmt->execute([$parent_org_id]);
 $agents = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$TYPE_LABELS = [
-    'mairie' => 'Mairie', 'departement' => 'Département', 'region' => 'Région',
-    'drac' => 'DRAC', 'caf' => 'CAF', 'federation' => 'Fédération', 'autre' => 'Autre',
-];
+$TYPE_LABELS = ak_parent_org_types();
 
 render_head('Paramètres · Mairie');
 render_sidebar('parametres');
 ?>
 
 <style>
-.set-page { padding: 20px 28px 40px; max-width: 1000px; margin: 0 auto; }
+/* contain: la colonne de la mise en page ne s'élargit plus à la largeur d'un tableau (page coupée sur téléphone) */
+.set-page { padding: 20px 28px 40px; max-width: 1000px; margin: 0 auto; contain: inline-size; }
 .set-page h1 { font-size: 1.5rem; margin: 0 0 6px; }
 .set-page .lead { color: #6a6f76; font-size: .95rem; margin: 0 0 24px; }
 
@@ -93,6 +99,8 @@ render_sidebar('parametres');
 .set-status-pill { display:inline-block; padding: 3px 12px; border-radius: 12px; font-size: .76rem; font-weight: 700; }
 .set-status-pill.active { background:#d1fae5; color:#065f46; }
 .set-status-pill.suspended { background:#fee2e2; color:#991b1b; }
+.set-status-pill.pending { background:#fef3c7; color:#92400e; }
+.set-status-pill.rejected { background:#f4f4f5; color:#52525b; }
 
 .set-addagent-row { display: grid; grid-template-columns: 1fr 1fr 1.4fr auto auto; gap: 8px; align-items: end; margin-top: 14px; padding-top: 16px; border-top: 1px dashed #e5e7eb; }
 
@@ -206,7 +214,7 @@ render_sidebar('parametres');
         <div class="lbl">Quota du pack</div>
       </div>
       <div class="set-quota-stat">
-        <div class="num"><span class="set-status-pill <?= h($mairie['status']) ?>"><?= $mairie['status'] === 'active' ? 'Actif' : h($mairie['status']) ?></span></div>
+        <div class="num"><span class="set-status-pill <?= h($mairie['status']) ?>"><?= h(ak_parent_org_status_label($mairie['status'])) ?></span></div>
         <div class="lbl">Statut</div>
       </div>
     </div>
@@ -231,7 +239,7 @@ render_sidebar('parametres');
             <tr>
               <td><strong><?= h($a['first_name'] . ' ' . $a['last_name']) ?></strong><?= (int)$a['id'] === $user_id ? ' <span style="color:#6b7280;font-size:.78rem;">(vous)</span>' : '' ?></td>
               <td><?= h($a['email']) ?></td>
-              <td><span class="set-role-badge <?= h($a['parent_org_role'] ?: 'agent') ?>"><?= h($a['parent_org_role'] ?: 'agent') ?></span></td>
+              <td><span class="set-role-badge <?= ($a['parent_org_role'] ?? '') === 'admin' ? 'admin' : 'agent' ?>"><?= ($a['parent_org_role'] ?? '') === 'admin' ? 'Admin' : 'Agent' ?></span></td>
               <td style="color:#6b7280;"><?= $a['last_login_at'] ? h(date('d/m/Y H:i', strtotime($a['last_login_at']))) : '<span style="color:#d1d5db;">Jamais</span>' ?></td>
               <?php if ($is_mairie_admin): ?>
                 <td style="text-align:right;">

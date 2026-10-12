@@ -111,6 +111,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
 
             $pdo->commit();
 
+            // Plus aucune notification push sur les téléphones de ce compte (comme la suppression
+            // de son propre compte). L'appli, elle, est renvoyée à la connexion par les API (401).
+            try { $pdo->prepare("DELETE FROM asso_push_tokens WHERE user_id = ?")->execute([$id]); } catch (Throwable $e) {}
+
             $msg = $full_name . ' a été supprimé(e). Vous avez 30 jours pour restaurer ce compte si besoin.';
             if ($nb_projects > 0) {
                 $msg .= " ($nb_projects projet" . ($nb_projects > 1 ? 's' : '') . " désassigné" . ($nb_projects > 1 ? 's' : '') . ")";
@@ -124,8 +128,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
             exit;
 
         } catch (Throwable $e) {
-            $pdo->rollBack();
-            $error = 'Erreur technique : ' . $e->getMessage();
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            error_log('[SUPPRIMER-ADHERENT] ' . $e->getMessage());
+            $error = 'Une erreur technique est survenue : l’adhérent n’a pas été supprimé. Merci de réessayer.';
         }
     }
 }

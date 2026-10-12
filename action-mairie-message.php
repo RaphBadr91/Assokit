@@ -8,8 +8,10 @@ require_once __DIR__ . '/activity-tracker.php';  // journal fondateur : qui a fa
 activity_log_request();
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
+require_once __DIR__ . '/includes-mairie-channels.php';
 require_once __DIR__ . '/notification-helpers.php';
 require_once __DIR__ . '/resend-helper.php';
+if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -39,25 +41,24 @@ if (mb_strlen($content) > 5000) {
 }
 
 try {
-    // === Sécurité : vérifier que l'utilisateur est membre du channel ===
+    // === Sécurité : canal mairie uniquement ; l'auteur est un agent de la mairie
+    // du canal (rattachement relu en base : un agent n'a pas d'org_id) ou un
+    // membre du canal appartenant à l'asso du canal ===
     $stmt = $pdo->prepare("
-        SELECT c.id, c.org_id, c.parent_org_id, c.is_mairie_channel, c.is_archived
+        SELECT c.id, c.org_id, c.parent_org_id, c.slug, c.is_mairie_channel, c.is_archived,
+               (SELECT COUNT(*) FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = ?) AS is_member
         FROM channels c
-        INNER JOIN channel_members cm ON cm.channel_id = c.id AND cm.user_id = ?
-        WHERE c.id = ?
+        WHERE c.id = ? AND c.is_mairie_channel = 1
         LIMIT 1
     ");
     $stmt->execute([$user_id, $channel_id]);
     $channel = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$channel) {
-        http_response_code(403);
-        die("Vous n'êtes pas membre de ce channel.");
-    }
-    // Canal mairie uniquement, et l'auteur appartient à l'asso du canal ou à la mairie parente
+    $parent = $channel ? current_parent_org() : null;
+    $is_agent = $parent && (int)$parent['id'] === (int)$channel['parent_org_id'];
     $my_org = (int)($current['org_id'] ?? 0);
-    if ((int)$channel['is_mairie_channel'] !== 1
-        || ($my_org !== (int)$channel['org_id'] && $my_org !== (int)$channel['parent_org_id'])) {
+    $is_asso = $channel && $my_org > 0 && $my_org === (int)$channel['org_id'] && (int)$channel['is_member'] > 0;
+    if (!$channel || (!$is_agent && !$is_asso)) {
         http_response_code(403);
         die("Vous n'êtes pas membre de ce channel.");
     }
@@ -65,6 +66,12 @@ try {
         $_SESSION['flash_error'] = "Ce channel est archivé.";
         header('Location: /mairie-messages'); exit;
     }
+    $slug = (string)$channel['slug'];
+
+    // Membres à jour (agents actifs + admins actuels de l'asso, y compris un admin
+    // nommé après le rattachement) avant d'écrire et de prévenir
+    try { sync_mairie_channel_members($pdo, $channel_id, (int)$channel['org_id'], (int)$channel['parent_org_id']); }
+    catch (Throwable $e) { error_log('[action-mairie-message] sync: ' . $e->getMessage()); }
 
     // === Insérer le message ===
     $pdo->prepare("
@@ -75,23 +82,29 @@ try {
     // === Mettre à jour le timestamp du channel ===
     $pdo->prepare("UPDATE channels SET updated_at = NOW() WHERE id = ?")->execute([$channel_id]);
 
-    $_SESSION['flash_success'] = "Message envoyé.";
+    // Confirmation affichée par /mairie-messages ; /messages (côté asso) ne lit pas
+    // ce flash, qui ressortirait sur une autre page
+    if ($is_agent) $_SESSION['flash_success'] = "Message envoyé.";
 
     // === Notifications aux autres membres du channel ===
     try {
+        // Destinataires : comptes actifs encore légitimes (agents de la mairie du canal,
+        // membres de l'asso du canal) — pas un ancien agent resté dans la liste
         $stmt = $pdo->prepare("
             SELECT u.id, u.first_name, u.last_name, u.email, u.parent_org_id
             FROM channel_members cm
             INNER JOIN users u ON u.id = cm.user_id
             WHERE cm.channel_id = ?
               AND cm.user_id != ?
+              AND u.is_active = 1
               AND u.deleted_at IS NULL
+              AND (u.parent_org_id = ? OR u.org_id = ?)
         ");
-        $stmt->execute([$channel_id, $user_id]);
+        $stmt->execute([$channel_id, $user_id, (int)$channel['parent_org_id'], (int)$channel['org_id']]);
         $recipients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $author_name = trim($current['first_name'] . ' ' . $current['last_name']);
-        $is_author_mairie = is_parent_org_user($current);
+        $is_author_mairie = $is_agent;
         $author_badge = $is_author_mairie ? 'Mairie' : 'Association';
 
         // Récupérer le nom de l'asso et de la mairie pour le contexte
@@ -106,9 +119,12 @@ try {
         $new_message_id = (int)$pdo->lastInsertId();
 
         foreach ($recipients as $r) {
-            $is_recipient_mairie = !empty($r['parent_org_id']);
-            $link_path = $is_recipient_mairie ? '/mairie-messages' : '/messages';
-            $link_url = 'https://assokit.fr' . $link_path . '?channel=' . $channel_id;
+            // Agent : messagerie mairie (?channel=id) ; association : messagerie asso, qui lit le slug (?c=)
+            $is_recipient_mairie = (int)($r['parent_org_id'] ?? 0) === (int)$channel['parent_org_id'];
+            $link_path = $is_recipient_mairie
+                ? '/mairie-messages?channel=' . $channel_id
+                : '/messages?c=' . rawurlencode($slug);
+            $link_url = 'https://assokit.fr' . $link_path;
 
             // 1. Notification in-app
             try {
@@ -118,7 +134,7 @@ try {
                     'mairie_message',
                     "Nouveau message de $author_name ($author_badge)",
                     $message_preview,
-                    $link_path . '?channel=' . $channel_id,
+                    $link_path,
                     null,
                     null,
                     null,
@@ -154,11 +170,11 @@ try {
         error_log('[mairie-msg-notif] ' . $e->getMessage());
     }
 
-    // Redirection selon le contexte : agent mairie → mairie-messages, admin asso → messages
-    if (is_parent_org_user($current)) {
+    // Redirection selon le contexte : agent mairie → mairie-messages, admin asso → messages (slug)
+    if ($is_agent) {
         header('Location: /mairie-messages?channel=' . $channel_id);
     } else {
-        header('Location: /messages?channel=' . $channel_id);
+        header('Location: /messages?c=' . rawurlencode($slug));
     }
     exit;
 

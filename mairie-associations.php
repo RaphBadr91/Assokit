@@ -6,6 +6,8 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
+require_once __DIR__ . '/includes-mairie-channels.php';
+if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
 
 $current = current_user();
@@ -25,6 +27,8 @@ $orgs = get_orgs_for_parent_org($parent_id);
 // Filtres GET
 $search = trim($_GET['q'] ?? '');
 $sort = $_GET['sort'] ?? 'name';
+// Recherche insensible aux accents et aux majuscules (« evry » trouve « Évry »)
+$search_folded = ak_mairie_fold($search);
 
 // Enrichir chaque org avec stats détaillées
 $enriched = [];
@@ -32,12 +36,12 @@ foreach ($orgs as $o) {
     $oid = (int)$o['id'];
     $stats = ['adherents' => 0, 'grants_active' => 0, 'grants_total' => 0, 'projects_active' => 0, 'projects_total' => 0, 'budget' => 0, 'last_login' => null];
     try { $s = $pdo->prepare("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND org_id=?"); $s->execute([$oid]); $stats['adherents'] = (int)$s->fetchColumn(); } catch (Exception $e) {}
-    try { $s = $pdo->prepare("SELECT COUNT(*), SUM(CASE WHEN status IN ('submitted','in_review') THEN 1 ELSE 0 END) FROM grants WHERE org_id=?"); $s->execute([$oid]); $r = $s->fetch(PDO::FETCH_NUM); $stats['grants_total'] = (int)$r[0]; $stats['grants_active'] = (int)$r[1]; } catch (Exception $e) {}
+    try { $s = $pdo->prepare("SELECT COUNT(*), SUM(CASE WHEN status IN ('submitted','in_review') THEN 1 ELSE 0 END) FROM grants WHERE org_id=? AND (archived_at IS NULL OR archived_at = '0000-00-00 00:00:00')"); $s->execute([$oid]); $r = $s->fetch(PDO::FETCH_NUM); $stats['grants_total'] = (int)$r[0]; $stats['grants_active'] = (int)$r[1]; } catch (Exception $e) {}
     try { $s = $pdo->prepare("SELECT COUNT(*), SUM(CASE WHEN p.status IN ('active','warning') THEN 1 ELSE 0 END), COALESCE(SUM(p.budget_planned),0) FROM projects p JOIN folders f ON p.folder_id=f.id WHERE f.org_id=? AND (p.archived_at IS NULL OR p.archived_at = '0000-00-00 00:00:00')"); $s->execute([$oid]); $r = $s->fetch(PDO::FETCH_NUM); $stats['projects_total'] = (int)$r[0]; $stats['projects_active'] = (int)$r[1]; $stats['budget'] = (float)$r[2]; } catch (Exception $e) {}
     try { $s = $pdo->prepare("SELECT MAX(last_login_at) FROM users WHERE org_id=? AND last_login_at IS NOT NULL"); $s->execute([$oid]); $stats['last_login'] = $s->fetchColumn(); } catch (Exception $e) {}
 
     $o['stats'] = $stats;
-    if ($search === '' || stripos($o['name'], $search) !== false || stripos($o['billing_address_city'] ?? '', $search) !== false) {
+    if ($search_folded === '' || str_contains(ak_mairie_fold($o['name']), $search_folded) || str_contains(ak_mairie_fold($o['billing_address_city'] ?? ''), $search_folded)) {
         $enriched[] = $o;
     }
 }
@@ -100,9 +104,9 @@ render_sidebar('mairie-assos');
             </div>
             <div style="display:flex;gap:18px;font-size:12.5px;flex-wrap:wrap;">
               <span>👥 <strong style="color:#0A0A0B;"><?= $s['adherents'] ?></strong> adhérents</span>
-              <span title="Subventions en cours (en préparation, soumises, en examen) sur le total"><strong style="color:#059669;">💰 <?= $s['grants_active'] ?></strong>/<?= $s['grants_total'] ?> subventions en cours</span>
+              <span title="Subventions déposées ou en cours d'instruction, sur le total des dossiers non archivés"><strong style="color:#059669;">💰 <?= $s['grants_active'] ?></strong>/<?= $s['grants_total'] ?> subventions en instruction</span>
               <span title="Projets actifs ou en alerte sur le total"><strong style="color:#0369A1;">📁 <?= $s['projects_active'] ?></strong>/<?= $s['projects_total'] ?> projets actifs</span>
-              <span title="Somme des budgets prévus de tous les projets de l'association">💵 Budget projets : <strong style="color:#0A0A0B;"><?= number_format($s['budget'], 0, ',', ' ') ?> €</strong></span>
+              <span title="Somme des budgets prévus de tous les projets non archivés de l'association (terminés compris)">💵 Budget prévu (tous projets) : <strong style="color:#0A0A0B;"><?= number_format($s['budget'], 0, ',', ' ') ?> €</strong></span>
             </div>
           </div>
           <a href="/mairie-asso?id=<?= (int)$o['id'] ?>" style="background:#0A0A0B;color:#fff;padding:9px 18px;border-radius:7px;text-decoration:none;font-size:13px;font-weight:600;white-space:nowrap;">👁 Détails</a>

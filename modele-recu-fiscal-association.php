@@ -41,7 +41,7 @@ require __DIR__ . '/_landing-premium.php';
       <div class="lp-hero-cta reveal">
         <a href="#modele" class="lp-btn lp-btn-primary">Voir le modèle
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></a>
-        <a href="/signup" class="lp-btn lp-btn-glass">Éditer avec Assokit</a>
+        <a href="/signup" class="lp-btn lp-btn-glass">Essayer Assokit</a>
       </div>
       <div class="lp-trust reveal"><span>✓ Cerfa n° 11580</span><span>✓ Art. 200 &amp; 238 bis CGI</span><span>🇫🇷 Loi 1901</span></div>
     </div>
@@ -78,7 +78,7 @@ require __DIR__ . '/_landing-premium.php';
         <li>la mention des <strong>articles du CGI</strong> applicables (200 et/ou 238 bis)&nbsp;;</li>
         <li>la <strong>signature</strong> d'une personne habilitée de l'association.</li>
       </ul>
-      <p style="margin:0;">Enfin, l'association doit conserver la trace des reçus émis. Un <a href="/logiciel-cotisation-association" style="color:var(--c-emeraude-dark);font-weight:600;">logiciel de gestion</a> facilite grandement l'édition, la numérotation et l'archivage de ces documents.</p>
+      <p style="margin:0;">Enfin, l'association doit conserver la trace des reçus émis. Un <a href="/logiciel-cotisation-association" style="color:var(--c-emeraude-dark);font-weight:600;">logiciel de gestion</a> qui garde la trace des dons et cotisations encaissés facilite grandement ce suivi.</p>
     </div>
   </div>
 </section>
@@ -134,8 +134,8 @@ require __DIR__ . '/_landing-premium.php';
 <section class="pub-section">
   <div class="pub-container">
     <div class="lp-stat reveal" style="background:linear-gradient(135deg,#0f172a,#065f46);">
-      <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Générez et envoyez ces documents automatiquement avec Assokit</h2>
-      <p>Éditez, numérotez et archivez vos reçus fiscaux à partir des dons et cotisations encaissés, et envoyez-les automatiquement à vos donateurs. Essai gratuit, sans carte bancaire.</p>
+      <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Suivez dons et cotisations avec Assokit</h2>
+      <p>Enregistrez les cotisations encaissées, voyez d'un coup d'œil qui est à jour et préparez avec l'IA vos lettres de remerciement aux donateurs. Le modèle ci-dessus reste la base de vos reçus fiscaux. Essai gratuit, sans carte bancaire.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
         <a href="/signup" class="lp-btn lp-btn-primary">Commencer gratuitement</a>
         <a href="/logiciel-cotisation-association" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Gérer cotisations &amp; dons</a>

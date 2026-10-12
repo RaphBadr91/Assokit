@@ -8,8 +8,14 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+@require_once __DIR__ . '/password-token-helper.php';
+@require_once __DIR__ . '/rate-limit-helper.php';
 
 require_login();
+
+// Suiveur (financeur externe) : il ne voit que les projets qu'il suit, pas l'annuaire
+// (même garde que /adherents et le tableau de bord).
+if (is_follower()) { header('Location: /projets'); exit; }
 
 $current = current_user();
 $org_id = (int)$current['org_id'];
@@ -28,7 +34,7 @@ unset($_SESSION['flash_adherent']);
 $stmt = $pdo->prepare("
     SELECT id, email, first_name, last_name, role, phone, city, avatar_color,
            adhesion_date, adhesion_valid_until, is_active, created_at, last_login_at,
-           can_create_projects, deleted_at
+           can_create_projects, must_change_password, deleted_at
     FROM users
     WHERE id = ? AND org_id = ? AND deleted_at IS NULL
     LIMIT 1
@@ -44,15 +50,16 @@ if (!$adherent) {
     exit;
 }
 
-// Projets dont il est référent
+// Projets dont il est référent (hors archives : un projet archivé n'est plus « en cours »)
 $stmt = $pdo->prepare("
     SELECT p.id, p.name, p.progress_percent, p.status, f.name AS folder_name, f.color_theme
     FROM projects p
     JOIN folders f ON p.folder_id = f.id
-    WHERE p.referent_id = ?
+    WHERE p.referent_id = ? AND f.org_id = ?
+      AND p.archived_at IS NULL AND f.archived_at IS NULL
     ORDER BY FIELD(p.status, 'warning', 'active', 'done', 'archived'), p.progress_percent ASC
 ");
-$stmt->execute([$id]);
+$stmt->execute([$id, $org_id]);
 $ref_projects = $stmt->fetchAll();
 
 $color_class = in_array($adherent['avatar_color'], ['blue','purple','amber','pink','teal'], true)
@@ -67,11 +74,61 @@ if (!function_exists('format_date_fr_long')) {
     }
 }
 
-$is_admin_or_coord = ($current['role'] === 'admin' || $current['role'] === 'coordinator');
-$can_edit = $is_admin_or_coord && $adherent['id'] !== $current['id'];
+// Gestionnaires des adhérents : admin, coordinateur, ou droit « Gérer les adhérents » donné par
+// l'admin (même règle que /nouveau-adherent et /modifier-adherent).
+$role_me = (string)($current['role'] ?? '');
+$is_admin_or_coord = in_array($role_me, ['admin', 'coordinator'], true)
+    || (function_exists('can') && can('manage_members'));
+$roles_reserved = $role_me === 'admin' ? [] : ($role_me === 'coordinator' ? ['admin'] : ['admin', 'coordinator']);
+$is_self = (int)$adherent['id'] === (int)$current['id'];
+// Mêmes règles que /modifier-adherent : pas soi-même, pas un compte plateforme,
+// et un coordinateur ne modifie pas un administrateur.
+$plat = function_exists('ak_platform_flags') ? (ak_platform_flags(['id' => (int)$adherent['id']]) ?? []) : [];
+$can_edit = $is_admin_or_coord && !$is_self
+    && empty($plat['is_founder']) && empty($plat['is_super_admin'])
+    && !in_array($adherent['role'], $roles_reserved, true);
+$can_message = $is_admin_or_coord && !$is_self && !empty($adherent['email']);
+// Invitation (lien de création de mot de passe) : compte actif qui n'a pas encore choisi son mot de passe
+$can_invite = $can_edit && (int)$adherent['is_active'] === 1 && !empty($adherent['email'])
+    && (!empty($adherent['must_change_password']) || empty($adherent['last_login_at']))
+    && function_exists('create_password_token') && function_exists('send_welcome_email');
+
+// Coordonnées (e-mail, téléphone, ville) et dernière connexion : gestionnaires (admin,
+// coordinateur, fondateur, super-admin) ou l'intéressé lui-même — même règle que l'export et l'appli.
+$plat_me = function_exists('ak_platform_flags') ? (ak_platform_flags($current) ?? []) : $current;
+$can_see_contacts = $is_admin_or_coord || $is_self
+    || !empty($plat_me['is_founder']) || !empty($plat_me['is_super_admin']);
+
+// Envoi (ou renvoi) de l'invitation : nouveau lien de création de mot de passe, valable 7 jours
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_invite') {
+    if (!check_csrf($_POST['csrf_token'] ?? '')) {
+        $flash = ['type' => 'error', 'message' => 'Votre session a expiré : l’invitation n’a pas été envoyée. Merci de réessayer.'];
+    } elseif (!$can_invite) {
+        $flash = ['type' => 'error', 'message' => 'Invitation impossible pour ce compte (déjà activé, désactivé ou hors de vos droits).'];
+    } elseif (function_exists('ak_rate_limit') && !ak_rate_limit('member_invite', 3, 3600, (string)$adherent['id'])) {
+        $flash = ['type' => 'error', 'message' => 'Plusieurs invitations ont déjà été envoyées à cette personne dans l’heure : patientez avant de réessayer.'];
+    } else {
+        $sent = false;
+        try {
+            $token = create_password_token($pdo, (int)$adherent['id'], 'set_password');
+            $st = $pdo->prepare("SELECT name FROM organizations WHERE id = ?");
+            $st->execute([$org_id]);
+            $org_name = (string)($st->fetchColumn() ?: 'votre association');
+            $sent = send_welcome_email((string)$adherent['email'], (string)$adherent['first_name'], $org_name, $token);
+        } catch (Throwable $e) {
+            error_log('[ADHERENT invite] ' . $e->getMessage());
+        }
+        $flash = $sent
+            ? ['type' => 'success', 'message' => 'Invitation envoyée à ' . $adherent['email'] . ' : le lien de création de mot de passe est valable 7 jours.']
+            : ['type' => 'error', 'message' => 'L’email n’a pas pu être envoyé. Vérifiez l’adresse puis réessayez dans quelques minutes.'];
+    }
+    $_SESSION['flash_adherent'] = $flash;
+    header('Location: /adherent?id=' . (int)$adherent['id']);
+    exit;
+}
 
 // Seul un ADMIN (pas coordinator) peut supprimer, et pas soi-meme
-$can_delete = ($current['role'] === 'admin') && $adherent['id'] !== $current['id'];
+$can_delete = ($current['role'] === 'admin') && !$is_self;
 
 render_head($adherent['first_name'] . ' ' . $adherent['last_name']);
 render_sidebar('adherents');
@@ -111,37 +168,30 @@ render_sidebar('adherents');
         <?php endif; ?>
       </div>
     </div>
-    <?php if ($can_edit || $can_delete): ?>
+    <?php if ($can_edit || $can_message || $can_delete || $can_invite): ?>
     <div class="head-actions" style="display:flex; gap:8px; flex-wrap:wrap; position:relative;">
       <?php if ($can_edit): ?>
       <a href="/modifier-adherent/<?= (int)$adherent['id'] ?>" class="btn btn-ghost">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         Modifier
       </a>
-      <!-- Bouton Message avec menu déroulant -->
-      <div style="position:relative; display:inline-block;" id="msg-menu-wrap">
-        <button type="button" class="btn btn-ghost" onclick="toggleMsgMenu(event)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v14H5.17L4 19.17z"/></svg>
-          Message
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      <?php endif; ?>
+      <?php if ($can_message): ?>
+      <a href="mailto:<?= h($adherent['email']) ?>?subject=<?= rawurlencode('Message de la part de ' . $current['first_name'] . ' ' . $current['last_name']) ?>" class="btn btn-ghost" title="Ouvre votre app mail">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v14H5.17L4 19.17z"/></svg>
+        Envoyer un email
+      </a>
+      <?php endif; ?>
+
+      <?php if ($can_invite): ?>
+      <form method="POST" action="/adherent?id=<?= (int)$adherent['id'] ?>" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="<?= h(function_exists('csrf_token') ? csrf_token() : (empty($_SESSION['csrf_token']) ? ($_SESSION['csrf_token'] = bin2hex(random_bytes(32))) : $_SESSION['csrf_token'])) ?>">
+        <input type="hidden" name="action" value="send_invite">
+        <button type="submit" class="btn btn-ghost" title="Envoie à <?= h($adherent['email']) ?> un lien pour créer son mot de passe (valable 7 jours)">
+          <?= ak_icon('send', 14) ?>
+          Envoyer l’invitation
         </button>
-        <div id="msg-menu" style="display:none; position:absolute; right:0; top:calc(100% + 4px); background:var(--bg); border:1px solid var(--border); border-radius:10px; box-shadow:0 6px 20px rgba(0,0,0,0.08); min-width:200px; max-width:calc(100vw - 32px); z-index:100; overflow:hidden;">
-          <a href="/messages?user=<?= (int)$adherent['id'] ?>" style="display:flex; align-items:center; gap:10px; padding:10px 14px; text-decoration:none; color:var(--ink); font-size:13px; border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
-            <span><?= ak_icon('message',18) ?></span>
-            <div>
-              <div style="font-weight:500;">Message interne</div>
-              <div style="font-size:11px; color:var(--ink-3);">Dans Assokit</div>
-            </div>
-          </a>
-          <a href="mailto:<?= h($adherent['email']) ?>?subject=<?= rawurlencode('Message de la part de ' . $current['first_name'] . ' ' . $current['last_name']) ?>" style="display:flex; align-items:center; gap:10px; padding:10px 14px; text-decoration:none; color:var(--ink); font-size:13px;" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
-            <span><?= ak_icon('mail',18) ?></span>
-            <div>
-              <div style="font-weight:500;">Email direct</div>
-              <div style="font-size:11px; color:var(--ink-3);">Ouvre votre app mail</div>
-            </div>
-          </a>
-        </div>
-      </div>
+      </form>
       <?php endif; ?>
 
       <?php if ($can_delete): ?>
@@ -154,6 +204,14 @@ render_sidebar('adherents');
     <?php endif; ?>
   </div>
 
+  <?php if (!$can_see_contacts): ?>
+  <div class="list" style="margin-bottom: 32px;">
+    <div class="list-row" style="grid-template-columns: auto 1fr; cursor: default; color: var(--ink-3); font-size: 13px;">
+      <span><?= ak_icon('lock', 16) ?></span>
+      <span>Les coordonnées des membres sont réservées aux administrateurs et coordinateurs de l’association.</span>
+    </div>
+  </div>
+  <?php else: ?>
   <!-- Infos de contact -->
   <div class="section-head">
     <h2>Coordonnées</h2>
@@ -177,6 +235,7 @@ render_sidebar('adherents');
     </div>
     <?php endif; ?>
   </div>
+  <?php endif; ?>
 
   <!-- Adhésion -->
   <div class="section-head">
@@ -192,12 +251,14 @@ render_sidebar('adherents');
       <div class="metric-lbl">Valide jusqu'au</div>
       <div class="metric-val" style="font-size: 18px;"><?= h(format_date_fr_long($adherent['adhesion_valid_until'])) ?></div>
     </div>
+    <?php if ($can_see_contacts): ?>
     <div class="metric">
       <div class="metric-lbl">Dernière connexion</div>
       <div class="metric-val" style="font-size: 18px;">
         <?= $adherent['last_login_at'] ? h(format_date_fr_long($adherent['last_login_at'])) : 'Jamais' ?>
       </div>
     </div>
+    <?php endif; ?>
   </div>
 
   <!-- Projets dont il est référent -->
@@ -231,18 +292,5 @@ render_sidebar('adherents');
   <?php endif; ?>
 
 </div>
-
-<script>
-function toggleMsgMenu(e) {
-  e.stopPropagation();
-  var menu = document.getElementById('msg-menu');
-  if (menu) { menu.style.display = menu.style.display === 'none' ? 'block' : 'none'; }
-}
-document.addEventListener('click', function(e) {
-  var wrap = document.getElementById('msg-menu-wrap');
-  var menu = document.getElementById('msg-menu');
-  if (wrap && menu && !wrap.contains(e.target)) { menu.style.display = 'none'; }
-});
-</script>
 
 <?php render_foot(); ?>

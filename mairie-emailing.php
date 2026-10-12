@@ -6,11 +6,18 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
+require_once __DIR__ . '/includes-mairie-channels.php';
+if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
 require_parent_org_user();
 
 $current = current_user();
 $parent_org = current_parent_org();
+if (!$parent_org) {
+    // Compte plateforme sans collectivité : la gestion se fait depuis le cockpit
+    header('Location: ' . (is_platform_admin() ? '/super-admin-mairies' : '/dashboard'));
+    exit;
+}
 $parent_org_id = (int)$parent_org['id'];
 $user_id = (int)$current['id'];
 
@@ -20,7 +27,8 @@ $csrf = $_SESSION['csrf_token'];
 // === Asso liées (pour le sélecteur d'audience) ===
 $stmt = $pdo->prepare("
     SELECT o.id, o.name,
-           (SELECT COUNT(*) FROM users u WHERE u.org_id = o.id AND u.role = 'admin' AND u.deleted_at IS NULL) AS nb_admins
+           (SELECT COUNT(*) FROM users u WHERE u.org_id = o.id AND u.role = 'admin' AND u.is_active = 1 AND u.deleted_at IS NULL
+              AND u.email IS NOT NULL AND u.email != '') AS nb_admins
     FROM organizations o
     WHERE o.parent_org_id = ?
     ORDER BY o.name ASC
@@ -48,7 +56,8 @@ render_sidebar('emailing');
 ?>
 
 <style>
-.eml-page { padding: 20px 28px 40px; max-width: 1200px; margin: 0 auto; }
+/* contain: la colonne de la mise en page ne s'élargit plus à la largeur d'un tableau (page coupée sur téléphone) */
+.eml-page { padding: 20px 28px 40px; max-width: 1200px; margin: 0 auto; contain: inline-size; }
 .eml-page h1 { font-size: 1.5rem; margin: 0 0 6px; }
 .eml-page .lead { color: #6a6f76; font-size: .95rem; margin: 0 0 24px; }
 
@@ -219,7 +228,7 @@ render_sidebar('emailing');
                 <td style="text-align:center;"><?= (int)$c['recipients_count'] ?></td>
                 <td style="text-align:center;color:#065f46;font-weight:600;"><?= (int)$c['sent_count'] ?></td>
                 <td style="text-align:center;color:<?= $c['failed_count'] > 0 ? '#991b1b' : '#9ca3af' ?>;font-weight:<?= $c['failed_count'] > 0 ? '600' : '400' ?>;"><?= (int)$c['failed_count'] ?></td>
-                <td><span class="eml-status-badge <?= h($c['status']) ?>"><?= h($c['status']) ?></span></td>
+                <td><span class="eml-status-badge <?= h($c['status']) ?>"><?= h(ak_mairie_campaign_status_label($c['status'])) ?></span></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
@@ -262,3 +271,4 @@ function confirmSend() {
 }
 </script>
 
+<?php render_foot(); ?>

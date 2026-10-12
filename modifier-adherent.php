@@ -4,12 +4,14 @@
  * ASSOKIT — Modifier un adhérent
  * ============================================================
  * URL : /modifier-adherent/{id}
- * Permet à admin/coordinator de modifier un adhérent existant.
+ * Permet à admin/coordinator (ou à qui a le droit « Gérer les adhérents »)
+ * de modifier un adhérent existant.
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/includes-layout.php';
+@require_once __DIR__ . '/plan-helpers.php';
 
 require_login();
 
@@ -22,18 +24,23 @@ if ($id <= 0) {
     exit;
 }
 
-// Permissions
-if (!in_array($current['role'], ['admin', 'coordinator'], true)) {
+// Permissions : admin, coordinateur, ou droit « Gérer les adhérents » donné par l'admin
+// (jamais un suiveur, financeur externe). Rôles qu'il ne peut ni modifier ni attribuer :
+// admin pour un coordinateur ; admin et coordinateur pour un titulaire du seul droit.
+$role_me = (string)($current['role'] ?? '');
+$is_manager_role = in_array($role_me, ['admin', 'coordinator'], true);
+if (!$is_manager_role && ($role_me === 'follower' || !function_exists('can') || !can('manage_members'))) {
     http_response_code(403);
     die('Accès refusé — rôle insuffisant.');
 }
+$roles_reserved = $role_me === 'admin' ? [] : ($role_me === 'coordinator' ? ['admin'] : ['admin', 'coordinator']);
 
-// Charger l'adherent
+// Charger l'adherent (hors corbeille : un compte supprimé se restaure d'abord depuis la corbeille)
 $stmt = $pdo->prepare("
     SELECT id, email, first_name, last_name, role, phone, city, avatar_color,
            adhesion_date, adhesion_valid_until, is_active, can_create_projects, can_create_folders
     FROM users
-    WHERE id = ? AND org_id = ?
+    WHERE id = ? AND org_id = ? AND deleted_at IS NULL
     LIMIT 1
 ");
 $stmt->execute([$id, $org_id]);
@@ -44,9 +51,9 @@ if (!$adherent) {
     exit;
 }
 
-// Empecher de modifier soi-meme via cette page (rediriger vers profil perso)
+// Empecher de modifier soi-meme via cette page : son propre compte se gère dans Paramètres
 if ((int)$adherent['id'] === (int)$current['id']) {
-    header('Location: /profil');
+    header('Location: /parametres');
     exit;
 }
 
@@ -57,10 +64,12 @@ if (!empty($plat['is_founder']) || !empty($plat['is_super_admin']) || in_array($
     die('Ce compte ne peut pas être modifié depuis cette page.');
 }
 
-// Empecher un coordinator de modifier un admin
-if ($current['role'] === 'coordinator' && $adherent['role'] === 'admin') {
+// Empecher un coordinator de modifier un admin (et un simple gestionnaire, un admin ou un coordinateur)
+if (in_array($adherent['role'], $roles_reserved, true)) {
     http_response_code(403);
-    die('Seul un administrateur peut modifier un autre administrateur.');
+    die($adherent['role'] === 'admin'
+        ? 'Seul un administrateur peut modifier un autre administrateur.'
+        : 'Seul un administrateur ou un coordinateur peut modifier un coordinateur.');
 }
 
 $error = null;
@@ -80,13 +89,17 @@ $form = [
     'adhesion_valid_until' => $adherent['adhesion_valid_until'] ?? '',
 ];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? '')) {
+$is_post = $_SERVER['REQUEST_METHOD'] === 'POST';
+$csrf_ok = $is_post && check_csrf($_POST['csrf_token'] ?? '');
+
+if ($is_post) {
+    // Saisie relue même si le jeton a expiré : elle est réaffichée au lieu d'être perdue
     $form['first_name'] = trim($_POST['first_name'] ?? '');
     $form['last_name']  = trim($_POST['last_name'] ?? '');
     $form['email']      = trim($_POST['email'] ?? '');
     $form['phone']      = trim($_POST['phone'] ?? '');
     $form['city']       = trim($_POST['city'] ?? '');
-    $form['role']       = $_POST['role'] ?? 'member';
+    $form['role']       = (string)($_POST['role'] ?? 'member');
     $form['is_active']  = isset($_POST['is_active']) ? '1' : '0';
     $form['can_create_projects'] = isset($_POST['can_create_projects']) ? '1' : '0';
     $form['can_create_folders'] = isset($_POST['can_create_folders']) ? '1' : '0';
@@ -100,11 +113,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     $valid_roles = ['admin', 'coordinator', 'referent', 'member', 'follower'];
     if (!in_array($form['role'], $valid_roles, true)) $form['role'] = 'member';
 
-    // Un coordinator ne peut pas promouvoir en admin
-    if ($current['role'] === 'coordinator' && $form['role'] === 'admin') {
+    // Un coordinator ne peut pas promouvoir en admin (ni un simple gestionnaire en coordinateur)
+    if (in_array($form['role'], $roles_reserved, true)) {
         $form['role'] = $adherent['role'];
     }
+}
 
+if ($is_post && !$csrf_ok) {
+    $error = 'Votre session a expiré : vos modifications n’ont pas été enregistrées. Vérifiez-les puis cliquez à nouveau sur « Enregistrer ».';
+} elseif ($csrf_ok) {
     // Validation
     if (ak_demo_protected_account($id)) {
         $error = ak_demo_message();
@@ -112,6 +129,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
         $error = 'Le prénom et le nom sont obligatoires.';
     } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
         $error = 'Email invalide.';
+    } elseif (!$adherent['is_active'] && $form['is_active'] === '1' && function_exists('ak_can_add_adherent')
+              && empty(($plan_check = ak_can_add_adherent($pdo, $org_id))['ok'])) {
+        // Réactiver un compte le remet dans le décompte du plan, comme un ajout ou une restauration.
+        $error = 'Impossible de réactiver ce compte : ' . ($plan_check['reason'] ?? 'limite d’adhérents atteinte')
+               . '. Passez au plan supérieur ou désactivez un autre adhérent.';
     } else {
         // Verifier email doublon (sauf si c'est le sien)
         $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1");
@@ -120,25 +142,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
             $error = 'Un autre utilisateur utilise déjà cet email.';
         } else {
             try {
+                // Changement de rôle : droits par défaut du nouveau rôle, même matrice qu'à la
+                // création (nouveau-adherent.php). Un coordinateur rétrogradé « Membre » perd ainsi
+                // Diffusion, Prospection, Événements… ; un membre promu coordinateur les obtient.
+                // Rôle inchangé : les réglages fins faits dans Paramètres › Utilisateurs sont gardés.
+                // « Peut créer des projets » : la case l'emporte si elle a été changée dans ce même envoi.
+                $perm_sql = '';
+                $perm_vals = [];
+                $can_projects = (int)$form['can_create_projects'];
+                if ($form['role'] !== $adherent['role']) {
+                    $perms = match($form['role']) {
+                        'admin'       => [1, 1, 1, 1, 1, 1],
+                        'coordinator' => [1, 1, 0, 1, 1, 1],
+                        'referent'    => [1, 0, 0, 0, 1, 0],
+                        default       => [0, 0, 0, 0, 0, 0],
+                    };
+                    if ($form['can_create_projects'] === ($adherent['can_create_projects'] ? '1' : '0')) {
+                        $can_projects = $perms[0];
+                    }
+                    $perm_sql = ', can_manage_members = ?, can_manage_finances = ?, can_access_marketing = ?,
+                                   can_manage_events = ?, can_moderate_messages = ?';
+                    $perm_vals = array_slice($perms, 1);
+                }
+
                 $stmt = $pdo->prepare("
                     UPDATE users SET
                         first_name = ?, last_name = ?, email = ?,
                         phone = ?, city = ?, role = ?,
                         is_active = ?, can_create_projects = ?, can_create_folders = ?,
                         adhesion_date = ?, adhesion_valid_until = ?
-                    WHERE id = ? AND org_id = ?
+                        $perm_sql
+                    WHERE id = ? AND org_id = ? AND deleted_at IS NULL
                 ");
                 $stmt->execute([
                     $form['first_name'], $form['last_name'], $form['email'],
                     $form['phone'] ?: null, $form['city'] ?: null, $form['role'],
-                    (int)$form['is_active'], (int)$form['can_create_projects'], (int)$form['can_create_folders'],
+                    (int)$form['is_active'], $can_projects, (int)$form['can_create_folders'],
                     $form['adhesion_date'] ?: null, $form['adhesion_valid_until'] ?: null,
+                    ...$perm_vals,
                     $id, $org_id,
                 ]);
 
                 $_SESSION['flash_adherent'] = [
                     'type' => 'success',
-                    'message' => 'Les modifications ont été enregistrées avec succès.',
+                    'message' => 'Les modifications ont été enregistrées avec succès.'
+                        . ($perm_sql !== '' ? ' Les droits ont été remis à ceux du rôle « ' . role_label($form['role']) . ' ».' : ''),
                 ];
                 header('Location: /adherent?id=' . $id);
                 exit;
@@ -183,7 +231,7 @@ render_sidebar('adherents');
 
   <form method="POST" action="/modifier-adherent/<?= (int)$id ?>"
         style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:24px; max-width:760px;">
-    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
+    <input type="hidden" name="csrf_token" value="<?= h(function_exists('csrf_token') ? csrf_token() : (empty($_SESSION['csrf_token']) ? ($_SESSION['csrf_token'] = bin2hex(random_bytes(32))) : $_SESSION['csrf_token'])) ?>">
 
     <!-- Identité -->
     <div style="font-size:11.5px; color:var(--ink-3); font-weight:500; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px;">Identité</div>
@@ -238,12 +286,19 @@ render_sidebar('adherents');
               style="width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:14px; color:var(--ink);">
         <option value="member" <?= $form['role'] === 'member' ? 'selected' : '' ?>>👤 Membre — Adhérent standard</option>
         <option value="referent" <?= $form['role'] === 'referent' ? 'selected' : '' ?>>🎯 Référent — Responsable de projet</option>
-        <option value="coordinator" <?= $form['role'] === 'coordinator' ? 'selected' : '' ?>>🧭 Coordinateur — Encadrement</option>
+        <?php if (!in_array('coordinator', $roles_reserved, true)): ?>
+          <option value="coordinator" <?= $form['role'] === 'coordinator' ? 'selected' : '' ?>>🧭 Coordinateur — Encadrement</option>
+        <?php endif; ?>
         <?php if ($current['role'] === 'admin'): ?>
           <option value="admin" <?= $form['role'] === 'admin' ? 'selected' : '' ?>>🛡️ Administrateur — Accès total</option>
         <?php endif; ?>
         <option value="follower" <?= $form['role'] === 'follower' ? 'selected' : '' ?>>👀 Suiveur — Accès lecture limitée</option>
       </select>
+      <div style="font-size:11.5px; color:var(--ink-4); margin-top:4px; display:flex; align-items:flex-start; gap:5px;">
+        <span style="flex:none; margin-top:1px;"><?= ak_icon('lightbulb',13) ?></span>
+        <span>Changer le rôle redonne les droits par défaut de ce rôle (diffusion, événements, finances…).<?php if ($current['role'] === 'admin'): ?>
+          Réglage fin des droits : <a href="/admin-modifier-utilisateur/<?= (int)$id ?>" style="color:var(--acc);">gestion des utilisateurs</a>.<?php endif; ?></span>
+      </div>
     </div>
     <div style="margin-bottom:16px; padding:12px; background:var(--bg-2); border:1px solid var(--border); border-radius:10px;">
       <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">

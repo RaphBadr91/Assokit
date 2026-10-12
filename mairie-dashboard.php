@@ -6,6 +6,8 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
+require_once __DIR__ . '/includes-mairie-channels.php';
+if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
 
 $current = current_user();
@@ -42,9 +44,9 @@ if (!empty($org_ids)) {
         $s->execute($org_ids); $stats['adherents'] = (int)$s->fetchColumn();
     } catch (Exception $e) {}
 
-    // Subventions actives
+    // Subventions actives (hors dossiers archivés, comme le module Subventions)
     try {
-        $s = $pdo->prepare("SELECT COUNT(*) FROM grants WHERE org_id IN ($in) AND status IN ('submitted','in_review')");
+        $s = $pdo->prepare("SELECT COUNT(*) FROM grants WHERE org_id IN ($in) AND status IN ('submitted','in_review') AND (archived_at IS NULL OR archived_at = '0000-00-00 00:00:00')");
         $s->execute($org_ids); $stats['grants_active'] = (int)$s->fetchColumn();
     } catch (Exception $e) {}
 
@@ -53,7 +55,9 @@ if (!empty($org_ids)) {
         $s = $pdo->prepare("SELECT COUNT(*) FROM projects p INNER JOIN folders f ON p.folder_id = f.id WHERE f.org_id IN ($in) AND p.status IN ('active','warning') AND (p.archived_at IS NULL OR p.archived_at = '0000-00-00 00:00:00')");
         $s->execute($org_ids); $stats['projects_active'] = (int)$s->fetchColumn();
 
-        $s = $pdo->prepare("SELECT COALESCE(SUM(p.budget_planned),0) FROM projects p INNER JOIN folders f ON p.folder_id = f.id WHERE f.org_id IN ($in) AND p.status IN ('active','warning','draft') AND (p.archived_at IS NULL OR p.archived_at = '0000-00-00 00:00:00')");
+        // Budget prévu de tous les projets non archivés (terminés compris) : même
+        // périmètre que la liste des associations et la fiche association
+        $s = $pdo->prepare("SELECT COALESCE(SUM(p.budget_planned),0) FROM projects p INNER JOIN folders f ON p.folder_id = f.id WHERE f.org_id IN ($in) AND (p.archived_at IS NULL OR p.archived_at = '0000-00-00 00:00:00')");
         $s->execute($org_ids); $stats['budget_planned'] = (float)$s->fetchColumn();
     } catch (Exception $e) {}
 }
@@ -103,9 +107,9 @@ if (!empty($org_ids)) {
         $top_projects = $s->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
 
-    // Événements à venir
+    // Événements à venir (hors événements supprimés / annulés dans Google Agenda, comme l'agenda)
     try {
-        $s = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id IN ($in_p) AND starts_at >= NOW()");
+        $s = $pdo->prepare("SELECT COUNT(*) FROM events WHERE org_id IN ($in_p) AND starts_at >= NOW() AND deleted_at IS NULL");
         $s->execute($org_ids);
         $events_upcoming = (int)$s->fetchColumn();
     } catch (Exception $e) {}
@@ -126,6 +130,9 @@ $type_emoji = match($parent_org['type']) {
     'drac' => '🎭', 'caf' => '👨‍👩‍👧', 'federation' => '🤝', default => '🏢'
 };
 $quota_pct = $parent_org['validated_quota'] > 0 ? min(100, round($nb_orgs / $parent_org['validated_quota'] * 100)) : 0;
+$type_label = ak_parent_org_type_label($parent_org['type']);          // « Département »
+$type_noun = ak_parent_org_type_label($parent_org['type'], true);     // « … votre département »
+$quota_label = ak_parent_org_quota_label($parent_org['validated_quota']);
 
 render_head('Dashboard ' . $parent_org['name']);
 render_sidebar('mairie-dashboard');
@@ -137,6 +144,10 @@ render_sidebar('mairie-dashboard');
     <div style="background:#D1FAE5;border:1px solid #10B981;color:#065F46;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:600;">✅ <?= h($_SESSION['flash_success']) ?></div>
     <?php unset($_SESSION['flash_success']); ?>
   <?php endif; ?>
+  <?php if (!empty($_SESSION['flash_error'])): ?>
+    <div style="background:#FEE2E2;border:1px solid #DC2626;color:#991B1B;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:600;">❌ <?= h($_SESSION['flash_error']) ?></div>
+    <?php unset($_SESSION['flash_error']); ?>
+  <?php endif; ?>
 
   <!-- HEADER MAIRIE -->
   <div style="background:linear-gradient(135deg,#0A0A0B 0%,#1F2937 100%);color:#fff;border-radius:16px;padding:clamp(18px,3vw,28px) clamp(20px,3vw,32px);margin-bottom:24px;">
@@ -145,7 +156,7 @@ render_sidebar('mairie-dashboard');
         <div style="display:flex;align-items:center;gap:14px;">
           <span style="font-size:42px;"><?= $type_emoji ?></span>
           <div>
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.15em;opacity:0.7;">Dashboard <?= h($parent_org['type']) ?></div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.15em;opacity:0.7;">Dashboard <?= h($type_label) ?></div>
             <h1 style="margin:2px 0 0;font-size:28px;font-weight:700;letter-spacing:-0.01em;"><?= h($parent_org['name']) ?></h1>
           </div>
         </div>
@@ -157,7 +168,7 @@ render_sidebar('mairie-dashboard');
       </div>
       <div style="text-align:right;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;opacity:0.6;">Quota</div>
-        <div style="font-size:32px;font-weight:700;line-height:1;"><?= $nb_orgs ?> <span style="opacity:0.5;font-size:18px;font-weight:500;">/ <?= (int)$parent_org['validated_quota'] ?></span></div>
+        <div style="font-size:32px;font-weight:700;line-height:1;"><?= $nb_orgs ?> <span style="opacity:0.5;font-size:18px;font-weight:500;"<?= $quota_label === '∞' ? ' title="Quota illimité"' : '' ?>>/ <?= $quota_label ?></span></div>
         <div style="font-size:11px;opacity:0.6;margin-top:2px;">associations</div>
         <?php if ($parent_org['validated_quota'] > 0): ?>
           <div style="margin-top:8px;width:140px;height:5px;background:rgba(255,255,255,0.15);border-radius:3px;overflow:hidden;">
@@ -178,7 +189,7 @@ render_sidebar('mairie-dashboard');
       <div>
         <div style="font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:0.07em;font-weight:600;">🏢 Asso suivies</div>
         <div style="font-size:24px;font-weight:700;margin-top:3px;line-height:1;"><?= $nb_orgs ?></div>
-        <div style="font-size:11px;opacity:0.6;margin-top:2px;">sur quota de <?= (int)$parent_org['validated_quota'] ?></div>
+        <div style="font-size:11px;opacity:0.6;margin-top:2px;"><?= $quota_label === '∞' ? 'quota illimité' : 'sur quota de ' . $quota_label ?></div>
       </div>
       <div>
         <div style="font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:0.07em;font-weight:600;">👥 Adhérents</div>
@@ -208,7 +219,7 @@ render_sidebar('mairie-dashboard');
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;">
       <div style="font-size:10.5px;color:#71717A;text-transform:uppercase;letter-spacing:0.07em;font-weight:600;">🏢 Associations</div>
       <div style="font-size:30px;font-weight:700;color:#0A0A0B;margin-top:6px;line-height:1;"><?= $nb_orgs ?></div>
-      <div style="font-size:11.5px;color:#71717A;margin-top:4px;">rattachées à votre <?= h($parent_org['type']) ?></div>
+      <div style="font-size:11.5px;color:#71717A;margin-top:4px;">rattachées à votre <?= h($type_noun) ?></div>
     </div>
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;">
       <div style="font-size:10.5px;color:#71717A;text-transform:uppercase;letter-spacing:0.07em;font-weight:600;">👥 Adhérents</div>
@@ -218,12 +229,12 @@ render_sidebar('mairie-dashboard');
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;">
       <div style="font-size:10.5px;color:#71717A;text-transform:uppercase;letter-spacing:0.07em;font-weight:600;">💰 Subventions actives</div>
       <div style="font-size:30px;font-weight:700;color:#059669;margin-top:6px;line-height:1;"><?= $stats['grants_active'] ?></div>
-      <div style="font-size:11.5px;color:#71717A;margin-top:4px;">en cours / soumises</div>
+      <div style="font-size:11.5px;color:#71717A;margin-top:4px;">déposées ou en instruction</div>
     </div>
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;">
       <div style="font-size:10.5px;color:#71717A;text-transform:uppercase;letter-spacing:0.07em;font-weight:600;">📁 Projets actifs</div>
       <div style="font-size:30px;font-weight:700;color:#0A0A0B;margin-top:6px;line-height:1;"><?= $stats['projects_active'] ?></div>
-      <div style="font-size:11.5px;color:#71717A;margin-top:4px;" title="Budget cumulé prévu sur tous les projets actifs/alerte/draft"><?= number_format($stats['budget_planned'], 0, ',', ' ') ?> € de budget projets</div>
+      <div style="font-size:11.5px;color:#71717A;margin-top:4px;" title="Somme des budgets prévus de tous les projets non archivés (terminés compris), comme dans la liste et la fiche des associations"><?= number_format($stats['budget_planned'], 0, ',', ' ') ?> € de budget prévu (tous projets)</div>
     </div>
   </div>
 
@@ -301,14 +312,14 @@ render_sidebar('mairie-dashboard');
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:24px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
       <h2 style="margin:0;font-size:18px;color:#0A0A0B;font-weight:700;">🏢 Mes associations (<?= $nb_orgs ?>)</h2>
-      <input type="search" placeholder="🔍 Rechercher..." oninput="filterOrgs(this.value)" style="padding:8px 14px;border:1px solid #D4D4D8;border-radius:7px;font-size:13px;width:100%;max-width:240px;">
+      <input type="search" placeholder="🔍 Rechercher par nom ou ville..." oninput="filterOrgs(this.value)" style="padding:8px 14px;border:1px solid #D4D4D8;border-radius:7px;font-size:13px;width:100%;max-width:240px;">
     </div>
 
     <?php if (empty($orgs)): ?>
       <div style="text-align:center;padding:48px 24px;color:#71717A;font-size:14px;background:#FAFAF9;border-radius:10px;">
         <div style="font-size:42px;margin-bottom:10px;">🏢</div>
         <strong style="color:#0A0A0B;display:block;margin-bottom:4px;">Aucune association rattachée</strong>
-        Le Super Admin Fondateur doit lier des associations à votre <?= h($parent_org['type']) ?>.<br>
+        Le Super Admin Fondateur doit lier des associations à votre <?= h($type_noun) ?>.<br>
         <span style="font-size:12px;color:#6B7280;">Contact : <a href="mailto:contact@assokit.fr" style="color:#059669;">contact@assokit.fr</a></span>
       </div>
     <?php else: ?>
@@ -317,10 +328,10 @@ render_sidebar('mairie-dashboard');
           // Mini stats par asso
           $nb_members = 0; $nb_grants = 0; $last_login = null;
           try { $s = $pdo->prepare("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND org_id=?"); $s->execute([$o['id']]); $nb_members = (int)$s->fetchColumn(); } catch (Exception $e) {}
-          try { $s = $pdo->prepare("SELECT COUNT(*) FROM grants WHERE org_id=? AND status IN ('submitted','in_review')"); $s->execute([$o['id']]); $nb_grants = (int)$s->fetchColumn(); } catch (Exception $e) {}
+          try { $s = $pdo->prepare("SELECT COUNT(*) FROM grants WHERE org_id=? AND status IN ('submitted','in_review') AND (archived_at IS NULL OR archived_at = '0000-00-00 00:00:00')"); $s->execute([$o['id']]); $nb_grants = (int)$s->fetchColumn(); } catch (Exception $e) {}
           try { $s = $pdo->prepare("SELECT MAX(last_login_at) FROM users WHERE org_id=? AND last_login_at IS NOT NULL"); $s->execute([$o['id']]); $last_login = $s->fetchColumn(); } catch (Exception $e) {}
         ?>
-        <div class="org-card" data-name="<?= strtolower(h($o['name'])) ?>" style="background:#FAFAF9;border:1px solid #E5E7EB;border-radius:10px;padding:14px 18px;transition:all 0.15s;">
+        <div class="org-card" data-name="<?= h(ak_mairie_fold($o['name'] . ' ' . ($o['billing_address_city'] ?? ''))) ?>" style="background:#FAFAF9;border:1px solid #E5E7EB;border-radius:10px;padding:14px 18px;transition:all 0.15s;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
             <div style="flex:1;min-width:0;">
               <div style="font-size:15px;font-weight:700;color:#0A0A0B;margin-bottom:4px;"><?= h($o['name']) ?></div>
@@ -330,7 +341,7 @@ render_sidebar('mairie-dashboard');
               </div>
               <div style="margin-top:8px;display:flex;gap:14px;font-size:12px;color:#3F3F46;flex-wrap:wrap;">
                 <span><strong style="color:#0A0A0B;"><?= $nb_members ?></strong> adhérents</span>
-                <span><strong style="color:#059669;"><?= $nb_grants ?></strong> subv. en cours</span>
+                <span title="Subventions déposées ou en cours d'instruction"><strong style="color:#059669;"><?= $nb_grants ?></strong> subv. en instruction</span>
                 <?php if ($last_login): ?>
                   <span style="color:#3F3F46;">⏱ <strong><?= date('d/m/Y H:i', strtotime($last_login)) ?></strong></span>
                 <?php else: ?>
@@ -355,8 +366,14 @@ render_sidebar('mairie-dashboard');
 </div>
 
 <script>
+// Même normalisation que ak_mairie_fold() côté serveur : sans accents ni majuscules
+function foldText(s) {
+  return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u0153/g, 'oe').replace(/\u00e6/g, 'ae')
+    .replace(/[\u2019\u02bc\u2018]/g, "'").replace(/\s+/g, ' ').trim();
+}
 function filterOrgs(query) {
-  query = query.toLowerCase();
+  query = foldText(query);
   document.querySelectorAll('.org-card').forEach(card => {
     card.style.display = card.dataset.name.includes(query) ? '' : 'none';
   });

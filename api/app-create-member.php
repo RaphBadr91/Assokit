@@ -11,10 +11,15 @@ if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_member_cr
 @require_once __DIR__ . '/../plan-helpers.php';
 require_once __DIR__ . '/../trial-limits-helpers.php';
 
-// Meme controle de role que la page web
-if (!in_array($user['role'] ?? '', ['admin', 'coordinator'], true)) {
+// Meme controle de role que la page web : admin, coordinateur, ou droit « Gérer les adhérents »
+// donné par l'admin (jamais un suiveur). Rôles qu'il ne peut pas attribuer : admin pour un
+// coordinateur ; admin et coordinateur pour un titulaire du seul droit.
+$role_me = (string) ($user['role'] ?? '');
+if (!in_array($role_me, ['admin', 'coordinator'], true)
+    && ($role_me === 'follower' || !function_exists('can') || !can('manage_members'))) {
     app_fail(403, 'role', 'Rôle insuffisant pour ajouter un adhérent.');
 }
+$roles_reserved = $role_me === 'admin' ? [] : ($role_me === 'coordinator' ? ['admin'] : ['admin', 'coordinator']);
 
 // Meme blocage de limite de plan
 if (function_exists('ak_can_add_adherent')) {
@@ -34,8 +39,8 @@ $send  = !empty($input['send_email']);
 
 $valid_roles = ['admin', 'coordinator', 'referent', 'member', 'follower'];
 if (!in_array($role, $valid_roles, true)) $role = 'member';
-// Un coordinateur ne peut pas creer d'admin
-if ($role === 'admin' && ($user['role'] ?? '') !== 'admin') $role = 'coordinator';
+// Un coordinateur ne peut pas creer d'admin : repli sur 'member', comme nouveau-adherent.php
+if (in_array($role, $roles_reserved, true)) $role = 'member';
 
 if ($first === '' || $last === '') app_fail(422, 'invalid', 'Le prénom et le nom sont obligatoires.');
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) app_fail(422, 'invalid', 'Email invalide.');
@@ -43,7 +48,7 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) app_fail(422, 'invalid', 'Email 
 // Essai gratuit : 300 adhérents ajoutés par 24 h (même plafond que le site)
 if ($trial_block = ak_trial_members_block($pdo, $org_id, 1)) app_fail(429, 'trial_limit', $trial_block);
 
-$stmt = $pdo->prepare("SELECT id, deleted_at FROM users WHERE email = ? LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, org_id, deleted_at FROM users WHERE email = ? ORDER BY deleted_at IS NULL DESC LIMIT 1");
 $stmt->execute([$email]);
 $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 if ($existing && $existing['deleted_at'] === null) {
@@ -61,22 +66,52 @@ try {
         default       => [0, 0, 0, 0, 0, 0],
     };
 
-    $stmt = $pdo->prepare("
-        INSERT INTO users
-            (org_id, role, email, password_hash, first_name, last_name,
-             phone, city, avatar_color, adhesion_date,
-             must_change_password, is_active,
-             can_create_projects, can_manage_members, can_manage_finances,
-             can_access_marketing, can_manage_events, can_moderate_messages,
-             created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 1, 1, ?, ?, ?, ?, ?, ?, NOW())
-    ");
-    $stmt->execute([
-        $org_id, $role, $email, $placeholder_hash, $first, $last,
-        $phone ?: null, $city ?: null, $avatar_color,
-        ...$perms,
-    ]);
-    $new_id = (int) $pdo->lastInsertId();
+    $revived = false;
+    $pdo->beginTransaction();
+    if ($existing && (int) $existing['org_id'] === $org_id) {
+        // Ancien adhérent de cette association, supprimé : sa fiche est réinscrite, comme sur le
+        // site (l'adresse e-mail est unique, une seconde fiche serait refusée).
+        $stmt = $pdo->prepare("
+            UPDATE users SET
+                role = ?, password_hash = ?, first_name = ?, last_name = ?,
+                phone = ?, city = ?, adhesion_date = CURDATE(), adhesion_valid_until = NULL,
+                must_change_password = 1, is_active = 1,
+                can_create_projects = ?, can_manage_members = ?, can_manage_finances = ?,
+                can_access_marketing = ?, can_manage_events = ?, can_moderate_messages = ?,
+                deleted_at = NULL, deleted_by_user_id = NULL
+            WHERE id = ? AND org_id = ? AND deleted_at IS NOT NULL
+        ");
+        $stmt->execute([
+            $role, $placeholder_hash, $first, $last, $phone ?: null, $city ?: null,
+            ...$perms,
+            (int) $existing['id'], $org_id,
+        ]);
+        $new_id = (int) $existing['id'];
+        $revived = true;
+    } else {
+        if ($existing) {
+            // Compte supprimé dans une autre association : adresse libérée pour ce nouvel adhérent
+            $pdo->prepare("UPDATE users SET email = CONCAT('deleted_', id, '__', email) WHERE id = ? AND deleted_at IS NOT NULL")
+                ->execute([(int) $existing['id']]);
+        }
+        $stmt = $pdo->prepare("
+            INSERT INTO users
+                (org_id, role, email, password_hash, first_name, last_name,
+                 phone, city, avatar_color, adhesion_date,
+                 must_change_password, is_active,
+                 can_create_projects, can_manage_members, can_manage_finances,
+                 can_access_marketing, can_manage_events, can_moderate_messages,
+                 created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 1, 1, ?, ?, ?, ?, ?, ?, NOW())
+        ");
+        $stmt->execute([
+            $org_id, $role, $email, $placeholder_hash, $first, $last,
+            $phone ?: null, $city ?: null, $avatar_color,
+            ...$perms,
+        ]);
+        $new_id = (int) $pdo->lastInsertId();
+    }
+    $pdo->commit();
 
     $email_ok = false;
     if ($send && function_exists('create_password_token') && function_exists('send_welcome_email')) {
@@ -95,10 +130,12 @@ try {
         'ok'       => true,
         'id'       => $new_id,
         'email_ok' => $email_ok,
-        'message'  => $first . ' ' . $last . ' a été ajouté(e).'
-            . ($send ? ($email_ok ? ' Un email de création de mot de passe a été envoyé.' : ' (Email non envoyé.)') : ''),
+        'revived'  => $revived,
+        'message'  => $first . ' ' . $last . ($revived ? ' a été réinscrit(e) : son ancienne fiche, supprimée, a été réactivée.' : ' a été ajouté(e).')
+            . ($send ? ($email_ok ? ' Un email de création de mot de passe a été envoyé.' : ' (Email non envoyé : renvoyez l’invitation depuis sa fiche sur le site.)') : ''),
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
     error_log('[app-create-member] ' . $e->getMessage());
     app_fail(500, 'server', 'Erreur technique lors de la création.');
 }

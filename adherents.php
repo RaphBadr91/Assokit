@@ -13,13 +13,28 @@ require_once __DIR__ . '/includes-layout.php';
 
 require_login();
 
+// Suiveur (financeur externe) : il ne voit que les projets qu'il suit, pas l'annuaire
+// (même garde que le tableau de bord ; l'entrée du menu lui est déjà masquée).
+if (is_follower()) { header('Location: /projets'); exit; }
+
 $user = current_user();
 $org_id = (int)$user['org_id'];
 
+// Gestionnaires des adhérents : admin, coordinateur, ou droit « Gérer les adhérents » donné par
+// l'admin (mêmes règles que l'ajout, la modification, l'import et l'export).
+$can_manage_members = in_array($user['role'] ?? '', ['admin', 'coordinator'], true)
+    || (function_exists('can') && can('manage_members'));
+
+// Coordonnées (e-mail, téléphone, ville) : gestionnaires seulement, comme l'export et l'appli.
+$plat_me = function_exists('ak_platform_flags') ? (ak_platform_flags($user) ?? []) : $user;
+$can_see_contacts = $can_manage_members
+    || !empty($plat_me['is_founder']) || !empty($plat_me['is_super_admin']);
+
 // ====== Filtres depuis l'URL ======
-$search = trim($_GET['q'] ?? '');
+// Espaces multiples ramenés à un seul : « Jean-Luc  Martin » trouve « Jean-Luc Martin ».
+$search = trim((string)preg_replace('/\s+/u', ' ', (string)($_GET['q'] ?? '')));
 $filter_role = $_GET['role'] ?? 'all';
-$valid_roles = ['all', 'admin', 'coordinator', 'referent', 'member'];
+$valid_roles = ['all', 'admin', 'coordinator', 'referent', 'member', 'follower'];
 if (!in_array($filter_role, $valid_roles, true)) {
     $filter_role = 'all';
 }
@@ -32,15 +47,26 @@ unset($_SESSION['flash_adherents']);
 $sql = "
     SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.phone, u.city,
            u.avatar_color, u.adhesion_date, u.adhesion_valid_until, u.is_active,
-           (SELECT COUNT(*) FROM projects WHERE referent_id = u.id AND status IN ('active','warning')) AS active_projects_count
+           (SELECT COUNT(*) FROM projects WHERE referent_id = u.id AND status IN ('active','warning') AND archived_at IS NULL) AS active_projects_count
     FROM users u
     WHERE u.org_id = :org_id AND u.deleted_at IS NULL
 ";
 $params = [':org_id' => $org_id];
 
 if ($search !== '') {
-    $sql .= " AND (u.first_name LIKE :q OR u.last_name LIKE :q OR u.email LIKE :q OR u.city LIKE :q)";
-    $params[':q'] = '%' . $search . '%';
+    // Prénom, nom, nom complet dans les deux sens ; e-mail et ville pour les gestionnaires seulement
+    // (sinon la recherche révélerait les coordonnées masquées). Un marqueur par usage : les
+    // requêtes préparées natives refusent un même marqueur répété.
+    $like = '%' . $search . '%';
+    $conds = ['u.first_name LIKE :q1', 'u.last_name LIKE :q2',
+              "CONCAT(u.first_name, ' ', u.last_name) LIKE :q3", "CONCAT(u.last_name, ' ', u.first_name) LIKE :q4"];
+    $params += [':q1' => $like, ':q2' => $like, ':q3' => $like, ':q4' => $like];
+    if ($can_see_contacts) {
+        $conds[] = 'u.email LIKE :q5';
+        $conds[] = 'u.city LIKE :q6';
+        $params += [':q5' => $like, ':q6' => $like];
+    }
+    $sql .= ' AND (' . implode(' OR ', $conds) . ')';
 }
 if ($filter_role !== 'all') {
     $sql .= " AND u.role = :role";
@@ -60,14 +86,17 @@ $stmt->execute($params);
 $adherents = $stmt->fetchAll();
 
 // ====== Statistiques globales (non supprimés) ======
+// Même règle que le badge du menu, le tableau de bord et l'appli : on compte les comptes
+// actifs ; les comptes désactivés restent dans la liste (badge « Inactif ») et sont annoncés à part.
 $stats = $pdo->prepare("
     SELECT
-        COUNT(*) AS total,
-        SUM(CASE WHEN role = 'admin' THEN 1 ELSE 0 END) AS admins,
-        SUM(CASE WHEN role = 'coordinator' THEN 1 ELSE 0 END) AS coordinators,
-        SUM(CASE WHEN role = 'referent' THEN 1 ELSE 0 END) AS referents,
-        SUM(CASE WHEN role = 'member' THEN 1 ELSE 0 END) AS members,
-        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS new_30d
+        SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS total,
+        SUM(CASE WHEN is_active = 1 THEN 0 ELSE 1 END) AS inactive,
+        SUM(CASE WHEN is_active = 1 AND role = 'admin' THEN 1 ELSE 0 END) AS admins,
+        SUM(CASE WHEN is_active = 1 AND role = 'coordinator' THEN 1 ELSE 0 END) AS coordinators,
+        SUM(CASE WHEN is_active = 1 AND role = 'referent' THEN 1 ELSE 0 END) AS referents,
+        SUM(CASE WHEN is_active = 1 AND role = 'member' THEN 1 ELSE 0 END) AS members,
+        SUM(CASE WHEN is_active = 1 AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS new_30d
     FROM users WHERE org_id = ? AND deleted_at IS NULL
 ");
 $stats->execute([$org_id]);
@@ -81,7 +110,7 @@ if ($user['role'] === 'admin') {
     $nb_trash = (int) $stmt->fetchColumn();
 }
 
-$can_invite = ($user['role'] === 'admin' || $user['role'] === 'coordinator');
+$can_invite = $can_manage_members;
 
 if (!function_exists('format_date_fr')) {
     function format_date_fr($date_str) {
@@ -117,7 +146,7 @@ render_sidebar('adherents');
 .stats-bar .metric-lbl{font-size:12px;color:var(--ink-3);font-weight:600}
 .stats-bar .metric-val{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1;margin-top:10px;color:var(--ink);font-variant-numeric:tabular-nums}
 .stats-bar .metric-sub{font-size:11.5px;color:var(--ink-3);margin-top:8px}
-.stats-bar .metric-sub.up{color:var(--acc,#059669);font-weight:600}
+.stats-bar .metric-sub.up,.stats-bar .metric-sub .up{color:var(--acc,#059669);font-weight:600}
 
 /* Recherche + filtres en verre */
 .toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
@@ -139,6 +168,9 @@ render_sidebar('adherents');
 .adh-role-badge.role-coordinator{background:var(--ai-light,rgba(99,102,241,.12));color:var(--ai-dark,#4338CA)}
 .adh-role-badge.role-referent{background:var(--acc-light,rgba(5,150,105,.12));color:var(--acc-dark,#047857)}
 .adh-role-badge.role-member{background:rgba(47,115,232,.12);color:#2F73E8}
+.adh-role-badge.role-follower{background:rgba(100,116,139,.14);color:#475569}
+.adh-inactive{display:inline-block;margin-left:8px;vertical-align:1px;font-size:10.5px;padding:2px 8px}
+@media (min-width:721px){.list.adh-nocontact .adh-row,.list.adh-nocontact .adh-row-header{grid-template-columns:auto 1fr auto auto}}
 @media (prefers-color-scheme:dark){.adh-role-badge.role-admin{color:#F5B342}.adh-role-badge.role-member{color:#6AA1FF}}
 @media (max-width:900px){.stats-bar{grid-template-columns:1fr 1fr}}
 </style>
@@ -162,7 +194,9 @@ render_sidebar('adherents');
     <div>
       <h1 class="page-title">Vos adhérents</h1>
       <div class="page-sub">
-        <?= (int)$s['total'] ?> membre<?= $s['total'] > 1 ? 's' : '' ?> · <?= (int)$s['new_30d'] ?> nouveau<?= $s['new_30d'] > 1 ? 'x' : '' ?> ce mois
+        <?= (int)$s['total'] ?> adhérent<?= $s['total'] > 1 ? 's' : '' ?> actif<?= $s['total'] > 1 ? 's' : '' ?>
+        <?php if ((int)$s['inactive'] > 0): ?> · <?= (int)$s['inactive'] ?> inactif<?= $s['inactive'] > 1 ? 's' : '' ?><?php endif; ?>
+        · <?= (int)$s['new_30d'] ?> nouveau<?= $s['new_30d'] > 1 ? 'x' : '' ?> ce mois
         <?php if ($nb_trash > 0): ?>
           · <a href="/adherents-corbeille" style="color:var(--ink-3); text-decoration:underline; display:inline-flex; align-items:center; gap:5px;"><?= ak_icon('trash',13) ?> <?= $nb_trash ?> dans la corbeille</a>
         <?php endif; ?>
@@ -189,9 +223,9 @@ render_sidebar('adherents');
   <!-- Statistiques en haut -->
   <section class="stats-bar">
     <div class="metric">
-      <div class="metric-lbl">Total</div>
+      <div class="metric-lbl">Adhérents actifs</div>
       <div class="metric-val"><?= (int)$s['total'] ?></div>
-      <div class="metric-sub up">+<?= (int)$s['new_30d'] ?> ce mois</div>
+      <div class="metric-sub"><span class="up">+<?= (int)$s['new_30d'] ?> ce mois</span><?php if ((int)$s['inactive'] > 0): ?> · <?= (int)$s['inactive'] ?> inactif<?= $s['inactive'] > 1 ? 's' : '' ?><?php endif; ?></div>
     </div>
     <div class="metric">
       <div class="metric-lbl">Coordinateurs</div>
@@ -206,7 +240,7 @@ render_sidebar('adherents');
     <div class="metric">
       <div class="metric-lbl">Membres</div>
       <div class="metric-val"><?= (int)$s['members'] ?></div>
-      <div class="metric-sub">bénévoles actifs</div>
+      <div class="metric-sub">adhérents (rôle Membre)</div>
     </div>
   </section>
 
@@ -214,7 +248,7 @@ render_sidebar('adherents');
   <form method="GET" action="/adherents" class="toolbar">
     <div class="search-wrap">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="search" name="q" class="search-input" placeholder="Rechercher par nom, email, ville…" value="<?= h($search) ?>">
+      <input type="search" name="q" class="search-input" placeholder="<?= $can_see_contacts ? 'Rechercher par nom, email, ville…' : 'Rechercher par nom…' ?>" value="<?= h($search) ?>">
     </div>
     <div class="filter-chips">
       <a href="/adherents<?= $search ? '?q=' . urlencode($search) : '' ?>" class="chip <?= $filter_role === 'all' ? 'active' : '' ?>">Tous</a>
@@ -222,6 +256,7 @@ render_sidebar('adherents');
       <a href="/adherents?role=coordinator<?= $search ? '&q=' . urlencode($search) : '' ?>" class="chip <?= $filter_role === 'coordinator' ? 'active' : '' ?>">Coordinateurs</a>
       <a href="/adherents?role=referent<?= $search ? '&q=' . urlencode($search) : '' ?>" class="chip <?= $filter_role === 'referent' ? 'active' : '' ?>">Référents</a>
       <a href="/adherents?role=member<?= $search ? '&q=' . urlencode($search) : '' ?>" class="chip <?= $filter_role === 'member' ? 'active' : '' ?>">Membres</a>
+      <a href="/adherents?role=follower<?= $search ? '&q=' . urlencode($search) : '' ?>" class="chip <?= $filter_role === 'follower' ? 'active' : '' ?>">Suiveurs</a>
     </div>
   </form>
 
@@ -241,11 +276,11 @@ render_sidebar('adherents');
       </div>
     </div>
   <?php else: ?>
-    <div class="list">
+    <div class="list<?= $can_see_contacts ? '' : ' adh-nocontact' ?>">
       <div class="list-row list-row-header adh-row-header">
         <span></span>
-        <span>Nom / email</span>
-        <span class="adh-city">Ville</span>
+        <span><?= $can_see_contacts ? 'Nom / email' : 'Nom' ?></span>
+        <?php if ($can_see_contacts): ?><span class="adh-city">Ville</span><?php endif; ?>
         <span>Rôle</span>
         <span class="adh-adh-date">Adhésion</span>
       </div>
@@ -256,10 +291,10 @@ render_sidebar('adherents');
       <a href="/adherent?id=<?= (int)$a['id'] ?>" class="list-row adh-row">
         <span class="adh-avatar <?= $color_class ?>"><?= h(user_initials($a['first_name'], $a['last_name'])) ?></span>
         <div class="adh-main">
-          <div class="adh-name"><?= h($a['first_name'] . ' ' . $a['last_name']) ?></div>
-          <div class="adh-email"><?= h($a['email']) ?></div>
+          <div class="adh-name"><?= h($a['first_name'] . ' ' . $a['last_name']) ?><?php if ((int)$a['is_active'] !== 1): ?><span class="adh-role-badge status-rejected adh-inactive">Inactif</span><?php endif; ?></div>
+          <?php if ($can_see_contacts): ?><div class="adh-email"><?= h($a['email']) ?></div><?php endif; ?>
         </div>
-        <span class="adh-city"><?= h($a['city'] ?: '—') ?></span>
+        <?php if ($can_see_contacts): ?><span class="adh-city"><?= h($a['city'] ?: '—') ?></span><?php endif; ?>
         <span class="adh-role-badge role-<?= h($a['role']) ?>"><?= h(role_label($a['role'])) ?></span>
         <span class="adh-adh-date"><?= h(format_date_fr($a['adhesion_date'])) ?></span>
       </a>

@@ -17,7 +17,9 @@ if (empty($_SESSION['user_id'])) {
     exit;
 }
 
-$ROLE_LABELS = ['admin' => 'Admin', 'coordinator' => 'Coordinateur', 'referent' => 'Référent', 'member' => 'Membre'];
+// Mêmes libellés que le site (role_label())
+$ROLE_LABELS = ['admin' => 'Administrateur', 'coordinator' => 'Coordinateur', 'referent' => 'Référent',
+                'member' => 'Membre', 'follower' => 'Suiveur', 'super_admin' => 'Super admin'];
 
 function fdate($v) {
     if (empty($v) || $v === '0000-00-00' || $v === '0000-00-00 00:00:00') return '';
@@ -25,16 +27,50 @@ function fdate($v) {
     return $ts ? date('d/m/Y', $ts) : '';
 }
 
+// Compte désactivé ou supprimé depuis l'ouverture de la session : même règle que
+// _app-write-boot.php (session fermée, 401 'auth' → l'appli revient à la connexion).
 try {
     $user = function_exists('current_user') ? current_user() : null;
+    $st = $pdo->prepare("SELECT is_active, deleted_at FROM users WHERE id = ? LIMIT 1");
+    $st->execute([(int) $_SESSION['user_id']]);
+    $live = $st->fetch(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    error_log('[api/app-member] ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'server']);
+    exit;
+}
+$gone = !$live || (int) ($live['is_active'] ?? 1) !== 1
+    || (!empty($live['deleted_at']) && strpos((string) $live['deleted_at'], '0000-00-00') !== 0);
+if ($gone || !$user) {
+    if ($gone) {
+        $_SESSION = [];
+        if (session_status() === PHP_SESSION_ACTIVE) @session_destroy();
+    }
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'error' => 'auth']);
+    exit;
+}
+
+try {
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-    $is_admin = (($user['role'] ?? '') === 'admin')
-        || !empty($user['is_super_admin']) || !empty($user['is_founder'])
-        || (($user['role'] ?? '') === 'super_admin');
+    if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+    $role_me = (string) ($user['role'] ?? '');
+    // Coordonnées : gestionnaires seulement (admin, coordinateur, droit « Gérer les adhérents »
+    // donné par l'admin, fondateur, super-admin), même règle que la fiche /adherent du site.
+    $is_admin = in_array($role_me, ['admin', 'coordinator', 'super_admin'], true)
+        || ($role_me !== 'follower' && function_exists('can') && can('manage_members'))
+        || !empty($user['is_super_admin']) || !empty($user['is_founder']);
     // Un membre peut toujours consulter sa propre fiche complète.
     $self = ((int) ($user['id'] ?? 0) === (int) ($_GET['id'] ?? 0));
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
+    // Suiveur (financeur externe) : pas d'annuaire, comme sur le site ; seule sa propre fiche.
+    if ($role_me === 'follower' && !$self) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'allowed' => false, 'error' => 'forbidden', 'message' => 'Fiche réservée aux membres de l’association.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     $stmt = $pdo->prepare("
         SELECT id, email, first_name, last_name, role, phone, city, avatar_color,
@@ -59,16 +95,18 @@ try {
     $up_to_date = true;
     $vu = $m['adhesion_valid_until'] ?? null;
     if (!empty($vu) && $vu !== '0000-00-00' && $vu !== '0000-00-00 00:00:00') {
-        $up_to_date = (strtotime($vu) >= time());
+        // Valable jusqu'au soir de la date de fin incluse (même règle que les relances).
+        $up_to_date = (substr((string) $vu, 0, 10) >= date('Y-m-d'));
     }
 
-    // Projets dont il est referent
+    // Projets dont il est referent (hors archives, comme la fiche du site)
     $projects = [];
     try {
         $st = $pdo->prepare("
             SELECT p.id, p.name, p.progress_percent, p.status, f.name AS folder_name
             FROM projects p JOIN folders f ON p.folder_id = f.id
             WHERE p.referent_id = ? AND f.org_id = ?
+              AND p.archived_at IS NULL AND f.archived_at IS NULL
             ORDER BY FIELD(p.status,'warning','active','done','archived'), p.progress_percent ASC
             LIMIT 50
         ");

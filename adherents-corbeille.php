@@ -12,6 +12,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+@require_once __DIR__ . '/plan-helpers.php';
 
 require_login();
 
@@ -22,6 +23,12 @@ $org_id = (int)$user['org_id'];
 if ($user['role'] !== 'admin') {
     http_response_code(403);
     die('Accès refusé — réservé aux administrateurs.');
+}
+
+/** Adresse d'origine d'un adhérent de la corbeille (sans le préfixe posé quand l'adresse a été libérée). */
+function ak_corbeille_email(array $u): string {
+    $email = (string)($u['email'] ?? '');
+    return preg_match('/^deleted_' . (int)($u['id'] ?? 0) . '__(.+)$/', $email, $m) ? $m[1] : $email;
 }
 
 $flash = $_SESSION['flash_corbeille'] ?? null;
@@ -40,19 +47,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'resto
     $stmt->execute([$restore_id, $org_id]);
     $to_restore = $stmt->fetch();
 
+    // Limite d'adhérents du plan : restaurer remet un adhérent dans le compte, comme un ajout.
+    $plan_check = ($to_restore && function_exists('ak_can_add_adherent')) ? ak_can_add_adherent($pdo, $org_id) : ['ok' => true];
+
     if ($to_restore) {
-        // Verifier que l'email n'est pas pris par un autre user
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ? AND deleted_at IS NULL LIMIT 1");
-        $stmt->execute([$to_restore['email'], $restore_id]);
+        // Adresse libérée par une réinscription dans une autre association (« deleted_<id>__adresse ») :
+        // la restauration reprend l'adresse d'origine, si personne d'autre ne l'utilise depuis.
+        $restore_email = ak_corbeille_email($to_restore);
+        // Verifier que l'email n'est pas pris par un autre user (l'adresse est unique, corbeille comprise)
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1");
+        $stmt->execute([$restore_email, $restore_id]);
         if ($stmt->fetch()) {
             $flash = ['type' => 'error', 'message' => 'Impossible de restaurer : un autre utilisateur a déjà cet email.'];
+        } elseif (empty($plan_check['ok'])) {
+            $flash = ['type' => 'error', 'message' => 'Impossible de restaurer : ' . ($plan_check['reason'] ?? 'limite d’adhérents atteinte') . '. Passez au plan supérieur ou supprimez un autre adhérent.'];
         } else {
             $stmt = $pdo->prepare("
                 UPDATE users
-                SET deleted_at = NULL, deleted_by_user_id = NULL, is_active = 1
+                SET deleted_at = NULL, deleted_by_user_id = NULL, is_active = 1, email = ?
                 WHERE id = ? AND org_id = ?
             ");
-            $stmt->execute([$restore_id, $org_id]);
+            $stmt->execute([$restore_email, $restore_id, $org_id]);
 
             $_SESSION['flash_adherents'] = [
                 'type' => 'success',
@@ -129,7 +144,7 @@ render_sidebar('adherents');
             <?= h($a['first_name'] . ' ' . $a['last_name']) ?>
           </div>
           <div style="font-size:12px; color:var(--ink-4);">
-            <?= h($a['email']) ?>
+            <?= h(ak_corbeille_email($a)) ?>
             · Supprimé il y a <?= $days_ago ?> jour<?= $days_ago > 1 ? 's' : '' ?>
             <?php if ($a['del_first']): ?>
               par <?= h($a['del_first'] . ' ' . $a['del_last']) ?>
@@ -150,7 +165,7 @@ render_sidebar('adherents');
           <input type="hidden" name="action" value="restore">
           <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
           <button type="submit" class="btn btn-ghost" style="padding:5px 12px; font-size:12px;"
-                  onclick="return confirm('Restaurer <?= h($a['first_name'] . ' ' . $a['last_name']) ?> ?')">
+                  onclick="return confirm(<?= h(json_encode('Restaurer ' . $a['first_name'] . ' ' . $a['last_name'] . ' ?', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>)">
             ♻️ Restaurer
           </button>
         </form>
@@ -159,7 +174,8 @@ render_sidebar('adherents');
     </div>
 
     <div style="font-size:12px; color:var(--ink-4); text-align:center; margin-top:16px; line-height:1.5;">
-      💡 Les comptes restent dans la corbeille pendant <strong>30 jours</strong>, puis sont définitivement supprimés par un processus automatique (RGPD).
+      💡 Les comptes restent dans la corbeille pendant <strong>30 jours</strong>, puis n’y apparaissent plus et ne peuvent plus être restaurés.
+      Pour réinscrire une personne ensuite, utilisez « Ajouter un adhérent » avec la même adresse e-mail.
     </div>
   <?php endif; ?>
 

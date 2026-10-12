@@ -8,8 +8,11 @@
  * (Tous les jours à 2h du matin)
  *
  * Actions :
- *   1. Envoie les alertes aux admins : J-30, J-14, J-7, J-1
- *   2. Purge DEFINITIVE des dossiers/projets archivés depuis > 30 jours
+ *   1. Envoie les alertes aux admins actifs : J-30, J-14, J-7, J-1
+ *      (dossiers archivés et projets archivés seuls)
+ *   2. Purge DEFINITIVE des dossiers/projets archivés depuis > 30 jours :
+ *      lignes liées (étapes, fichiers, messages, équipe…) et fichiers du
+ *      disque (uploads/projet_<id>/) — sans compter sur des clés étrangères
  *   3. Log dans archive_logs
  * ============================================================
  */
@@ -32,6 +35,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require_once __DIR__ . '/archive-helper.php';
+require_once __DIR__ . '/trial-helpers.php';   // ak_db_columns() : le schéma de prod n'est pas versionné
 @require_once __DIR__ . '/resend-helper.php';
 
 $log_file = __DIR__ . '/logs/cron-archives-' . date('Y-m') . '.log';
@@ -45,106 +49,226 @@ function cron_log(string $msg): void
     if (PHP_SAPI === 'cli') echo $line;
 }
 
+/** Administrateurs actifs d'une association (destinataires des alertes de purge). */
+function purge_org_admins(PDO $pdo, int $org_id): array
+{
+    $st = $pdo->prepare("
+        SELECT email, first_name FROM users
+        WHERE org_id = ? AND role = 'admin' AND is_active = 1 AND deleted_at IS NULL
+          AND email IS NOT NULL AND email <> ''
+        ORDER BY id
+    ");
+    $st->execute([$org_id]);
+    return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Alerte J-x avant la purge d'un dossier ou d'un projet archivé seul, envoyée à chaque
+ * administrateur actif. Une ligne archive_purge_alerts par (cible, jour) évite les doublons.
+ */
+function purge_send_alert(PDO $pdo, string $type, array $t, int $alert_day): void
+{
+    $is_folder = ($type === 'folder');
+    $what = $is_folder ? 'dossier' : 'projet';
+
+    $check = $pdo->prepare("SELECT id FROM archive_purge_alerts WHERE target_type = ? AND target_id = ? AND alert_day = ?");
+    $check->execute([$type, (int)$t['id'], $alert_day]);
+    if ($check->fetchColumn()) {
+        cron_log("  ⏭ Alerte J-{$alert_day} déjà envoyée pour {$what} #{$t['id']}");
+        return;
+    }
+
+    $admins = purge_org_admins($pdo, (int)$t['org_id']);
+    if (!$admins) {
+        cron_log("  ⚠ Pas d'admin actif pour org {$t['org_name']} ({$what} #{$t['id']})");
+        return;
+    }
+
+    $urgency = match(true) {
+        $alert_day <= 1 => '🚨 Dernière chance',
+        $alert_day <= 7 => '⚠️ Urgent',
+        $alert_day <= 14 => '🔔 Bientôt purgé',
+        default => '📅 Information',
+    };
+    $days = $alert_day . ' jour' . ($alert_day > 1 ? 's' : '');
+    $purge_date = date('d/m/Y', strtotime($t['archived_at']) + ARCHIVE_RETENTION_DAYS * 86400);
+    $url_archives = 'https://assokit.fr/archives';
+
+    $sent = [];
+    foreach ($admins as $a) {
+        if (!function_exists('send_transactional_email')) break;
+        $content = '<h1 style="font-size:22px;margin:0 0 14px;font-weight:500;color:#1C1917">' . $urgency . ' : Purge d\'archive dans ' . $days . '</h1>'
+                 . '<p>Bonjour ' . htmlspecialchars($a['first_name'] ?: 'Administrateur') . ',</p>'
+                 . '<p>Le ' . $what . ' <strong>« ' . htmlspecialchars($t['name']) . ' »</strong> de votre association <strong>' . htmlspecialchars($t['org_name']) . '</strong> est archivé depuis le <strong>' . date('d/m/Y', strtotime($t['archived_at'])) . '</strong>.</p>'
+                 . '<div style="background:' . ($alert_day <= 7 ? '#FEF2F2' : '#FFFBEB') . ';border-left:3px solid ' . ($alert_day <= 7 ? '#DC2626' : '#F59E0B') . ';padding:12px 16px;border-radius:6px;margin:16px 0;font-size:13px;line-height:1.6;">'
+                 . '⏰ <strong>Il sera définitivement supprimé dans ' . $days . '</strong>, soit le <strong>' . $purge_date . '</strong>, avec ses fichiers et justificatifs.<br>'
+                 . 'Après cette date, aucune restauration ne sera possible.'
+                 . '</div>'
+                 . '<p>Si vous souhaitez conserver ce ' . $what . ', vous pouvez encore le <strong>restaurer depuis votre espace Archives</strong>.</p>'
+                 . '<p style="font-size:12px;color:#78716C;margin-top:18px;">Vous recevez cet email parce que vous êtes administrateur de ' . htmlspecialchars($t['org_name']) . ' sur Assokit.</p>';
+        $html = function_exists('email_wrap')
+            ? email_wrap($urgency . ' - Purge d\'archive imminente', $content, '📦 Voir mes archives', $url_archives)
+            : $content . '<p><a href="' . $url_archives . '">Voir mes archives</a></p>';
+        try {
+            $result = send_transactional_email(
+                $a['email'],
+                '[' . $t['org_name'] . '] ' . $urgency . ' : Purge du ' . $what . ' "' . $t['name'] . '" dans ' . $alert_day . 'j',
+                $html,
+                ['tag' => 'archive_alert_j' . $alert_day]
+            );
+            if (!empty($result['success'])) $sent[] = $a['email'];
+        } catch (Throwable $e) {
+            cron_log("  ❌ Erreur envoi email: " . $e->getMessage());
+        }
+    }
+
+    try {
+        $ins = $pdo->prepare("INSERT INTO archive_purge_alerts (target_type, target_id, alert_day, admin_email) VALUES (?, ?, ?, ?)");
+        $ins->execute([$type, (int)$t['id'], $alert_day, mb_substr(implode(',', $sent ?: [$admins[0]['email']]), 0, 255)]);
+        cron_log($sent
+            ? "  ✅ Alerte J-{$alert_day} envoyée pour {$what} « {$t['name']} » (" . implode(', ', $sent) . ")"
+            : "  ⚠ Alerte J-{$alert_day} loggée mais email KO pour {$what} #{$t['id']}");
+    } catch (Throwable $e) {
+        cron_log("  ❌ Erreur SQL alert log: " . $e->getMessage());
+    }
+}
+
+/**
+ * Tables filles d'un projet, supprimées avec lui (ordre : petits-enfants d'abord).
+ * Chaque table / colonne absente du schéma réel est simplement ignorée.
+ */
+const PURGE_PROJECT_CHILDREN = [
+    'project_steps', 'project_files', 'project_documents', 'project_invoices', 'project_members',
+    'project_followers', 'project_messages', 'project_updates', 'project_share_tokens',
+    'project_activity_log', 'project_grants', 'ai_generated_docs', 'ai_conversations',
+    'user_project_reads', 'user_notifications',
+];
+/** Données de l'association qui citent le projet : conservées, simplement détachées. */
+const PURGE_PROJECT_DETACH = ['grants', 'events', 'attendance_sessions', 'communication_events'];
+
+function purge_has_col(PDO $pdo, string $table, string $col): bool
+{
+    return isset(ak_db_columns($pdo, $table)[$col]);
+}
+
+/** Fichiers d'un projet référencés en base (pièces, justificatifs, documents). */
+function purge_project_file_paths(PDO $pdo, int $project_id): array
+{
+    $paths = [];
+    foreach ([['project_files', 'filepath'], ['project_invoices', 'file_path'], ['project_invoices', 'filepath'], ['project_documents', 'file_path']] as [$t, $c]) {
+        if (!purge_has_col($pdo, $t, $c) || !purge_has_col($pdo, $t, 'project_id')) continue;
+        $st = $pdo->prepare("SELECT `$c` FROM `$t` WHERE project_id = ? AND `$c` IS NOT NULL AND `$c` <> ''");
+        $st->execute([$project_id]);
+        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $p) $paths[] = (string)$p;
+    }
+    return array_values(array_unique($paths));
+}
+
+/** Supprime un fichier ou un dossier s'il est bien sous uploads/ (jamais en dehors, liens non suivis). */
+function purge_remove_path(string $path): int
+{
+    $uploads = realpath(__DIR__ . '/uploads');
+    if ($uploads === false) return 0;
+    if (!is_link($path)) {
+        $real = realpath($path);
+        if ($real === false || strpos($real, $uploads . DIRECTORY_SEPARATOR) !== 0) return 0;
+        $path = $real;
+    } elseif (strpos(realpath(dirname($path)) ?: '', $uploads) !== 0) {
+        return 0;
+    }
+    if (is_link($path) || is_file($path)) return @unlink($path) ? 1 : 0;
+    if (!is_dir($path)) return 0;
+    $n = 0;
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+    foreach ($it as $f) {
+        if ($f->isDir() && !$f->isLink()) @rmdir($f->getPathname());
+        elseif (@unlink($f->getPathname())) $n++;
+    }
+    @rmdir($path);
+    return $n;
+}
+
+/**
+ * Purge définitive d'un projet : lignes filles + projet dans une transaction, puis,
+ * une fois validée, ses fichiers sur le disque (uploads/projet_<id>/ et fichiers référencés).
+ * Lève une exception (rien n'est supprimé) si la base refuse.
+ * @return int nombre de fichiers effacés
+ */
+function purge_project(PDO $pdo, array $p): int
+{
+    $pid = (int)$p['id'];
+    $paths = purge_project_file_paths($pdo, $pid);
+
+    $pdo->beginTransaction();
+    try {
+        archive_log($pdo, (int)$p['org_id'], 'purge_project', 'project', $pid, (string)$p['name'], 0, ['cron_auto' => true]);
+
+        foreach (PURGE_PROJECT_DETACH as $t) {
+            $cols = ak_db_columns($pdo, $t);
+            if (empty($cols['project_id'])) continue;
+            if (!$cols['project_id']['null']) { cron_log("  ⚠ $t.project_id non nullable : lignes du projet #$pid laissées telles quelles"); continue; }
+            $pdo->prepare("UPDATE `$t` SET project_id = NULL WHERE project_id = ?")->execute([$pid]);
+        }
+        if (purge_has_col($pdo, 'ai_messages', 'conversation_id') && purge_has_col($pdo, 'ai_conversations', 'project_id')) {
+            $pdo->prepare("DELETE FROM ai_messages WHERE conversation_id IN (SELECT id FROM ai_conversations WHERE project_id = ?)")->execute([$pid]);
+        }
+        foreach (PURGE_PROJECT_CHILDREN as $t) {
+            if (!purge_has_col($pdo, $t, 'project_id')) continue;
+            $pdo->prepare("DELETE FROM `$t` WHERE project_id = ?")->execute([$pid]);
+        }
+        $pdo->prepare("DELETE FROM projects WHERE id = ?")->execute([$pid]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+
+    $n = 0;
+    foreach ($paths as $rel) $n += purge_remove_path(__DIR__ . '/' . ltrim($rel, '/'));
+    $dir = __DIR__ . '/uploads/projet_' . $pid;
+    if (is_dir($dir) || is_link($dir)) $n += purge_remove_path($dir);
+    return $n;
+}
+
 cron_log('========== DÉMARRAGE CRON ARCHIVES ==========');
 
 // =====================================================================
 // ÉTAPE 1 : ENVOI DES ALERTES (J-30, J-14, J-7, J-1)
+//   dossiers archivés, et projets archivés seuls (hors archivage de dossier)
 // =====================================================================
 $alert_days = [30, 14, 7, 1];
 
 foreach ($alert_days as $alert_day) {
     cron_log("--- Vérification alertes J-{$alert_day} ---");
 
-    // Dossiers à alerter : archived_at + (RETENTION - alert_day) jours <= maintenant < +1j
     $stmt = $pdo->prepare("
-        SELECT
-            f.id, f.name, f.archived_at, f.org_id,
-            o.name AS org_name,
-            (SELECT u.email FROM users u WHERE u.org_id = f.org_id AND u.role = 'admin' AND u.deleted_at IS NULL ORDER BY u.id LIMIT 1) AS admin_email,
-            (SELECT u.first_name FROM users u WHERE u.org_id = f.org_id AND u.role = 'admin' AND u.deleted_at IS NULL ORDER BY u.id LIMIT 1) AS admin_name,
-            DATEDIFF(DATE_ADD(f.archived_at, INTERVAL ? DAY), NOW()) AS days_left
+        SELECT f.id, f.name, f.archived_at, f.org_id, o.name AS org_name
         FROM folders f
         JOIN organizations o ON f.org_id = o.id
         WHERE f.archived_at IS NOT NULL
           AND DATEDIFF(DATE_ADD(f.archived_at, INTERVAL ? DAY), NOW()) = ?
     ");
-    $stmt->execute([ARCHIVE_RETENTION_DAYS, ARCHIVE_RETENTION_DAYS, $alert_day]);
-    $folders_to_alert = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->execute([ARCHIVE_RETENTION_DAYS, $alert_day]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $f) purge_send_alert($pdo, 'folder', $f, $alert_day);
 
-    foreach ($folders_to_alert as $f) {
-        // Verifier si alerte deja envoyee
-        $check = $pdo->prepare("
-            SELECT id FROM archive_purge_alerts
-            WHERE target_type = 'folder' AND target_id = ? AND alert_day = ?
-        ");
-        $check->execute([(int)$f['id'], $alert_day]);
-        if ($check->fetchColumn()) {
-            cron_log("  ⏭ Alerte J-{$alert_day} déjà envoyée pour dossier #{$f['id']}");
-            continue;
-        }
-
-        if (empty($f['admin_email'])) {
-            cron_log("  ⚠ Pas d'admin email pour org {$f['org_name']} (dossier #{$f['id']})");
-            continue;
-        }
-
-        $urgency = match(true) {
-            $alert_day <= 1 => '🚨 Dernière chance',
-            $alert_day <= 7 => '⚠️ Urgent',
-            $alert_day <= 14 => '🔔 Bientôt purgé',
-            default => '📅 Information',
-        };
-
-        $email_ok = false;
-        if (function_exists('send_transactional_email')) {
-            $url_archives = 'https://assokit.fr/archives';
-            $content = '<h1 style="font-size:22px;margin:0 0 14px;font-weight:500;color:#1C1917">' . $urgency . ' : Purge d\'archive dans ' . $alert_day . ' jour' . ($alert_day > 1 ? 's' : '') . '</h1>'
-                     . '<p>Bonjour ' . htmlspecialchars($f['admin_name'] ?: 'Administrateur') . ',</p>'
-                     . '<p>Le dossier <strong>« ' . htmlspecialchars($f['name']) . ' »</strong> de votre association <strong>' . htmlspecialchars($f['org_name']) . '</strong> est archivé depuis le <strong>' . date('d/m/Y', strtotime($f['archived_at'])) . '</strong>.</p>'
-                     . '<div style="background:' . ($alert_day <= 7 ? '#FEF2F2' : '#FFFBEB') . ';border-left:3px solid ' . ($alert_day <= 7 ? '#DC2626' : '#F59E0B') . ';padding:12px 16px;border-radius:6px;margin:16px 0;font-size:13px;line-height:1.6;">'
-                     . '⏰ <strong>Il sera définitivement supprimé dans ' . $alert_day . ' jour' . ($alert_day > 1 ? 's' : '') . '</strong>, soit le <strong>' . date('d/m/Y', strtotime($f['archived_at']) + ARCHIVE_RETENTION_DAYS * 86400) . '</strong>.<br>'
-                     . 'Après cette date, aucune restauration ne sera possible.'
-                     . '</div>'
-                     . '<p>Si vous souhaitez conserver ce dossier, vous pouvez encore le <strong>restaurer depuis votre espace Archives</strong>.</p>'
-                     . '<p style="font-size:12px;color:#78716C;margin-top:18px;">Vous recevez cet email parce que vous êtes administrateur de ' . htmlspecialchars($f['org_name']) . ' sur Assokit.</p>';
-
-            $html = function_exists('email_wrap')
-                ? email_wrap($urgency . ' - Purge d\'archive imminente', $content, '📦 Voir mes archives', $url_archives)
-                : $content . '<p><a href="' . $url_archives . '">Voir mes archives</a></p>';
-
-            try {
-                $result = send_transactional_email(
-                    $f['admin_email'],
-                    '[' . $f['org_name'] . '] ' . $urgency . ' : Purge du dossier "' . $f['name'] . '" dans ' . $alert_day . 'j',
-                    $html,
-                    ['tag' => 'archive_alert_j' . $alert_day]
-                );
-                $email_ok = !empty($result['success']);
-            } catch (Throwable $e) {
-                cron_log("  ❌ Erreur envoi email: " . $e->getMessage());
-            }
-        }
-
-        // Enregistrer l'alerte comme envoyee
-        try {
-            $ins = $pdo->prepare("
-                INSERT INTO archive_purge_alerts (target_type, target_id, alert_day, admin_email)
-                VALUES ('folder', ?, ?, ?)
-            ");
-            $ins->execute([(int)$f['id'], $alert_day, $f['admin_email']]);
-            cron_log($email_ok ? "  ✅ Alerte J-{$alert_day} envoyée pour dossier « {$f['name']} » ({$f['admin_email']})" : "  ⚠ Alerte J-{$alert_day} loggée mais email KO pour dossier #{$f['id']}");
-        } catch (Throwable $e) {
-            cron_log("  ❌ Erreur SQL alert log: " . $e->getMessage());
-        }
-    }
+    $stmt = $pdo->prepare("
+        SELECT p.id, p.name, p.archived_at, f.org_id, o.name AS org_name
+        FROM projects p
+        JOIN folders f ON p.folder_id = f.id
+        JOIN organizations o ON f.org_id = o.id
+        WHERE p.archived_at IS NOT NULL AND COALESCE(p.archived_via_folder, 0) = 0
+          AND DATEDIFF(DATE_ADD(p.archived_at, INTERVAL ? DAY), NOW()) = ?
+    ");
+    $stmt->execute([ARCHIVE_RETENTION_DAYS, $alert_day]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $p) purge_send_alert($pdo, 'project', $p, $alert_day);
 }
 
 // =====================================================================
 // ÉTAPE 2 : PURGE DÉFINITIVE (> 30 jours archivés)
+//   projet : données liées + fichiers ; dossier : ses projets, puis lui-même
 // =====================================================================
 cron_log('--- Purge définitive (> ' . ARCHIVE_RETENTION_DAYS . ' jours) ---');
 
-// Purger les projets d'abord (respecter les FK)
 $stmt = $pdo->prepare("
     SELECT p.id, p.name, f.org_id
     FROM projects p
@@ -156,22 +280,17 @@ $stmt->execute([ARCHIVE_RETENTION_DAYS]);
 $to_purge_projects = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $nb_purged_projects = 0;
+$nb_files = 0;
 foreach ($to_purge_projects as $p) {
     try {
-        // Log avant suppression
-        archive_log($pdo, (int)$p['org_id'], 'purge_project', 'project', (int)$p['id'], $p['name'], 0, ['cron_auto' => true]);
-
-        // DELETE (cascade sur projets_references, etc. si FK bien configurees)
-        $del = $pdo->prepare("DELETE FROM projects WHERE id = ?");
-        $del->execute([(int)$p['id']]);
+        $nb_files += purge_project($pdo, $p);
         $nb_purged_projects++;
     } catch (Throwable $e) {
         cron_log("  ❌ Échec purge projet #{$p['id']}: " . $e->getMessage());
     }
 }
-cron_log("  ✅ {$nb_purged_projects} projet(s) purgé(s) définitivement");
+cron_log("  ✅ {$nb_purged_projects} projet(s) purgé(s) définitivement ({$nb_files} fichier(s) effacé(s))");
 
-// Puis purger les dossiers
 $stmt = $pdo->prepare("
     SELECT id, name, org_id FROM folders
     WHERE archived_at IS NOT NULL
@@ -183,11 +302,30 @@ $to_purge_folders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $nb_purged_folders = 0;
 foreach ($to_purge_folders as $f) {
     try {
+        // Projets restés dans le dossier (archivés avec lui) : purgés avec lui. Un projet
+        // non archivé dans un dossier archivé serait une anomalie : on ne touche à rien.
+        $st = $pdo->prepare("SELECT id, name, archived_at FROM projects WHERE folder_id = ?");
+        $st->execute([(int)$f['id']]);
+        $inner = $st->fetchAll(PDO::FETCH_ASSOC);
+        if (array_filter($inner, fn($p) => empty($p['archived_at']))) {
+            cron_log("  ⚠ Dossier #{$f['id']} conservé : il contient un projet non archivé");
+            continue;
+        }
+        foreach ($inner as $p) {
+            $nb_files += purge_project($pdo, ['id' => $p['id'], 'name' => $p['name'], 'org_id' => $f['org_id']]);
+            $nb_purged_projects++;
+        }
+
+        $pdo->beginTransaction();
         archive_log($pdo, (int)$f['org_id'], 'purge_folder', 'folder', (int)$f['id'], $f['name'], 0, ['cron_auto' => true]);
-        $del = $pdo->prepare("DELETE FROM folders WHERE id = ?");
-        $del->execute([(int)$f['id']]);
+        if (purge_has_col($pdo, 'user_pinned_folders', 'folder_id')) {
+            $pdo->prepare("DELETE FROM user_pinned_folders WHERE folder_id = ?")->execute([(int)$f['id']]);
+        }
+        $pdo->prepare("DELETE FROM folders WHERE id = ?")->execute([(int)$f['id']]);
+        $pdo->commit();
         $nb_purged_folders++;
     } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
         cron_log("  ❌ Échec purge dossier #{$f['id']}: " . $e->getMessage());
     }
 }

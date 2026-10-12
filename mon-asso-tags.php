@@ -12,6 +12,8 @@ $user = current_user();
 if (empty($user['org_id'])) { http_response_code(403); die('Aucune asso.'); }
 $org_id = (int)$user['org_id'];
 
+// Admin ou coordinateur : les tags classent factures, devis et clients, dont l'accès est réservé
+// à ces rôles (user_can_access_billing) ; l'entrée « Tags » du menu suit la même règle.
 $is_admin = false;
 try {
     $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
@@ -27,6 +29,9 @@ $csrf = $_SESSION['csrf_token'];
 
 $flash = $_SESSION['flash_tags'] ?? null;
 unset($_SESSION['flash_tags']);
+
+// Écran d'attribution : nombre maximal d'éléments listés par type (les plus récents)
+const AK_TAG_ASSIGN_MAX = 500;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
@@ -44,14 +49,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'update') {
             $id = (int)($_POST['id'] ?? 0);
             $name = trim((string)($_POST['name'] ?? ''));
+            if ($name === '') throw new RuntimeException('Nom requis.');
             $color = preg_match('/^#[0-9a-f]{6}$/i', $_POST['color'] ?? '') ? $_POST['color'] : '#6B7280';
             $pdo->prepare("UPDATE asso_tags SET name=:n, slug=:s, color=:c WHERE id=:id AND org_id=:o")
                 ->execute([':n'=>$name, ':s'=>ak_tag_slug($name), ':c'=>$color, ':id'=>$id, ':o'=>$org_id]);
             $_SESSION['flash_tags'] = ['type'=>'success', 'message'=>'Tag modifié.'];
         } elseif ($action === 'delete') {
             $id = (int)($_POST['id'] ?? 0);
+            if (!ak_tag_filter_org($pdo, $org_id, [$id])) throw new RuntimeException('Tag introuvable.');
+            $pdo->prepare("DELETE FROM asso_tag_links WHERE tag_id=:id")->execute([':id'=>$id]);
             $pdo->prepare("DELETE FROM asso_tags WHERE id=:id AND org_id=:o")->execute([':id'=>$id, ':o'=>$org_id]);
             $_SESSION['flash_tags'] = ['type'=>'success', 'message'=>'Tag supprimé.'];
+        } elseif ($action === 'assign') {
+            // Attribution du tag aux clients, factures et devis cochés (liste recalculée ici,
+            // limitée à l'association : un id posté d'une autre association est ignoré).
+            $id = (int)($_POST['id'] ?? 0);
+            if (!ak_tag_filter_org($pdo, $org_id, [$id])) throw new RuntimeException('Tag introuvable.');
+            $n = 0;
+            foreach (['client', 'invoice', 'quote'] as $type) {
+                $shown = array_map(fn($r) => (int)$r['id'], ak_tag_assignable($pdo, $org_id, $type, AK_TAG_ASSIGN_MAX));
+                $checked = (array)($_POST['sel'][$type] ?? []);
+                ak_tag_set_entities_for_tag($pdo, $org_id, $id, $type, $checked, $shown);
+                $n += count(array_intersect(array_map('intval', $checked), $shown));
+            }
+            $_SESSION['flash_tags'] = ['type'=>'success', 'message'=>'Tag attribué à ' . $n . ' élément' . ($n > 1 ? 's' : '') . '.'];
+            header('Location: /mon-asso-tags?tag=' . $id); exit;
         }
     } catch (Throwable $e) {
         $_SESSION['flash_tags'] = ['type'=>'error', 'message'=>'Erreur : ' . $e->getMessage()];
@@ -60,6 +82,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $tags = ak_tag_list($pdo, $org_id);
+
+// Attribution d'un tag (?tag=<id>) : clients, factures et devis de l'association, cochés s'ils l'ont déjà.
+$assign_tag = null;
+$assign_lists = [];
+$assign_linked = [];
+if (!empty($_GET['tag'])) {
+    foreach ($tags as $t) if ((int)$t['id'] === (int)$_GET['tag']) $assign_tag = $t;
+    if ($assign_tag) {
+        foreach (['client', 'invoice', 'quote'] as $type) {
+            $assign_lists[$type] = ak_tag_assignable($pdo, $org_id, $type, AK_TAG_ASSIGN_MAX);
+            $st = $pdo->prepare("SELECT entity_id FROM asso_tag_links WHERE tag_id = ? AND entity_type = ?");
+            $st->execute([(int)$assign_tag['id'], $type]);
+            $assign_linked[$type] = array_flip(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)));
+        }
+    }
+}
 
 // Compter usages
 $tag_usage = [];
@@ -90,6 +128,56 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
     <?php if ($flash): ?>
     <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom:16px;">
         <?= h($flash['message']) ?>
+    </div>
+    <?php endif; ?>
+
+    <?php if ($assign_tag):
+        $tc = h($assign_tag['color']);
+        $type_labels = ['client' => ['Clients', 'Aucun client.', '/mon-asso-clients'], 'invoice' => ['Factures', 'Aucune facture.', ''], 'quote' => ['Devis', 'Aucun devis.', '/mon-asso-devis']];
+    ?>
+    <!-- ATTRIBUTION -->
+    <div class="card" style="padding:22px; margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+            <h3 style="margin:0; font-size:15px;">Attribuer le tag
+                <span style="display:inline-block; padding:3px 10px; border-radius:12px; font-size:13px; font-weight:600; background:<?= $tc ?>22; color:<?= $tc ?>; border:1px solid <?= $tc ?>44;"><?= h($assign_tag['name']) ?></span>
+            </h3>
+            <a href="/mon-asso-tags" class="btn btn-ghost" style="padding:6px 12px; font-size:12.5px;">Fermer</a>
+        </div>
+        <p style="margin:0 0 14px; font-size:12.5px; color:#6B7280;">Coche les clients, factures et devis à classer sous ce tag, puis enregistre. Les listes Clients et Devis peuvent ensuite être filtrées par tag.</p>
+        <form method="POST" action="/mon-asso-tags">
+            <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+            <input type="hidden" name="action" value="assign">
+            <input type="hidden" name="id" value="<?= (int)$assign_tag['id'] ?>">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px;">
+                <?php foreach ($assign_lists as $type => $items): [$lbl, $empty, $list_url] = $type_labels[$type]; ?>
+                <div style="border:1px solid #E5E7EB; border-radius:10px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+                        <strong style="font-size:13px;"><?= $lbl ?></strong>
+                        <span style="font-size:11.5px; color:#6B7280;"><?= count($assign_linked[$type] ?? []) ?> avec ce tag</span>
+                    </div>
+                    <?php if (!$items): ?>
+                        <div style="font-size:12.5px; color:#6B7280;"><?= $empty ?></div>
+                    <?php else: ?>
+                        <input type="search" placeholder="Filtrer…" oninput="akTagFilter(this)" style="width:100%; padding:7px 9px; border:1px solid #E5E7EB; border-radius:7px; font-size:12.5px; margin-bottom:8px; box-sizing:border-box;">
+                        <div class="ak-tag-assign-list" style="max-height:320px; overflow:auto;">
+                            <?php foreach ($items as $it): $eid = (int)$it['id']; ?>
+                            <label style="display:flex; gap:8px; align-items:flex-start; padding:5px 2px; font-size:12.5px; cursor:pointer; border-top:1px solid #F3F4F6;" data-q="<?= h(mb_strtolower($it['label'] . ' ' . ($it['sub'] ?? ''))) ?>">
+                                <input type="checkbox" name="sel[<?= $type ?>][]" value="<?= $eid ?>" <?= isset($assign_linked[$type][$eid]) ? 'checked' : '' ?> style="margin-top:2px;">
+                                <span><span style="font-weight:600; color:#111827;"><?= h($it['label']) ?></span><?php if (!empty($it['sub'])): ?><br><span style="color:#6B7280; font-size:11.5px;"><?= h($it['sub']) ?></span><?php endif; ?></span>
+                            </label>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php if (count($items) >= AK_TAG_ASSIGN_MAX): ?>
+                        <div style="font-size:11.5px; color:#6B7280; margin-top:6px;">Les <?= AK_TAG_ASSIGN_MAX ?> plus récents sont affichés.</div>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+                <button type="submit" class="btn btn-primary">Enregistrer l’attribution</button>
+            </div>
+        </form>
     </div>
     <?php endif; ?>
 
@@ -145,13 +233,14 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
                         </td>
                         <td style="padding:12px 14px; font-size:13px; color:#6B7280;">
                             <?php if ($total > 0): ?>
-                                <?php $parts = []; foreach (['invoice'=>'facture','quote'=>'devis','client'=>'client'] as $k=>$lbl): $n = $usage[$k] ?? 0; if ($n > 0) $parts[] = "$n " . $lbl . ($n > 1 ? 's' : ''); endforeach; echo implode(' · ', $parts); ?>
+                                <?php $parts = []; foreach (['invoice'=>['facture',''],'quote'=>['devis','/mon-asso-devis'],'client'=>['client','/mon-asso-clients']] as $k=>[$lbl, $url]): $n = $usage[$k] ?? 0; if ($n > 0) { $txt = "$n " . $lbl . ($n > 1 && $lbl !== 'devis' ? 's' : ''); $parts[] = $url ? '<a href="' . $url . '?tag=' . (int)$t['id'] . '" style="color:inherit;">' . h($txt) . '</a>' : h($txt); } endforeach; echo implode(' · ', $parts); ?>
                             <?php else: ?>
                                 <span style="color:#6B7280;">Pas encore utilisé</span>
                             <?php endif; ?>
                         </td>
-                        <td style="padding:12px 14px; text-align:right;">
-                            <button type="button" onclick="editTag(<?= (int)$t['id'] ?>, '<?= h($t['name']) ?>', '<?= h($t['color']) ?>')" class="btn btn-ghost" style="padding:5px 10px; font-size:12px; display:inline-flex; align-items:center;"><?= ak_icon('edit',15) ?></button>
+                        <td style="padding:12px 14px; text-align:right; white-space:nowrap;">
+                            <a href="/mon-asso-tags?tag=<?= (int)$t['id'] ?>" class="btn btn-ghost" style="padding:5px 10px; font-size:12px;">Attribuer</a>
+                            <button type="button" onclick="editTag(<?= (int)$t['id'] ?>, <?= h(json_encode((string)$t['name'], JSON_UNESCAPED_UNICODE)) ?>, <?= h(json_encode((string)$t['color'])) ?>)" class="btn btn-ghost" style="padding:5px 10px; font-size:12px; display:inline-flex; align-items:center;"><?= ak_icon('edit',15) ?></button>
                             <form method="POST" action="/mon-asso-tags" style="display:inline;" onsubmit="return confirm('Supprimer ce tag ? Toutes les associations seront perdues.');">
                                 <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
                                 <input type="hidden" name="action" value="delete">
@@ -198,6 +287,12 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
 </div>
 
 <script>
+function akTagFilter(input) {
+    const q = input.value.trim().toLowerCase();
+    input.parentElement.querySelectorAll('.ak-tag-assign-list label').forEach(l => {
+        l.style.display = (!q || (l.dataset.q || '').indexOf(q) !== -1) ? 'flex' : 'none';
+    });
+}
 function editTag(id, name, color) {
     document.getElementById('edit-id').value = id;
     document.getElementById('edit-name').value = name;

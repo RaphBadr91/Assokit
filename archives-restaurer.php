@@ -15,6 +15,7 @@ require_login();
 
 $user = current_user();
 $user_id = (int)$user['id'];
+$org_id = (int)$user['org_id'];
 
 if ($user['role'] !== 'admin') {
     http_response_code(403);
@@ -37,7 +38,7 @@ if ($id <= 0 || !in_array($type, ['folder', 'project'], true)) {
 }
 
 if ($type === 'folder') {
-    $result = restore_folder($pdo, $id, $user_id);
+    $result = restore_folder($pdo, $id, $user_id, $org_id);
     if ($result['ok']) {
         $_SESSION['flash_archives'] = [
             'type' => 'success',
@@ -48,12 +49,12 @@ if ($type === 'folder') {
             'folder_not_found' => 'Dossier introuvable.',
             'not_archived' => 'Ce dossier n\'est pas archivé.',
             'retention_expired' => 'Délai de restauration dépassé (>' . ARCHIVE_RETENTION_DAYS . ' jours).',
-            default => 'Erreur technique : ' . ($result['error'] ?? 'inconnue'),
+            default => 'Erreur technique.',   // le détail reste dans le journal (error_log)
         };
         $_SESSION['flash_archives'] = ['type' => 'error', 'message' => $msg];
     }
 } else {
-    $result = restore_project($pdo, $id, $user_id);
+    $result = restore_project($pdo, $id, $user_id, $org_id);
     if ($result['ok']) {
         $_SESSION['flash_archives'] = [
             'type' => 'success',

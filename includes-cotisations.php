@@ -2,6 +2,7 @@
 /**
  * Helpers Cotisations
  */
+require_once __DIR__ . '/trial-helpers.php';   // ak_db_columns() : réglage renews_membership (migration L02)
 
 /** Charge une campagne et vérifie l'org */
 function ck_load_campaign(PDO $pdo, int $id, int $org_id): ?array {
@@ -42,6 +43,100 @@ function ck_load_payments(PDO $pdo, int $campaign_id, ?string $status = null): a
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetchAll();
+}
+
+/**
+ * Fin d'adhésion couverte par un paiement de cette campagne : 12 mois de date à date
+ * à compter du paiement, ou la fin de la campagne si elle est plus lointaine (saison,
+ * année suivante réglée d'avance). Fin de campagne = clôture, sinon 31/12 de son année.
+ * null si la campagne était déjà terminée à la date du paiement (arriéré d'une année passée).
+ */
+function ck_membership_end(array $campaign, string $paid_date): ?string {
+    $paid_date = substr($paid_date, 0, 10);
+    $ts = strtotime($paid_date . ' +1 year -1 day');
+    if (!$ts) return null;
+    $end = date('Y-m-d', $ts);
+
+    $campaign_end = substr((string)($campaign['closes_at'] ?? ''), 0, 10);
+    if ($campaign_end === '' || $campaign_end === '0000-00-00') {
+        $year = (int)($campaign['year'] ?? 0);
+        $campaign_end = $year >= 2000 ? $year . '-12-31' : '';
+    }
+    if ($campaign_end !== '') {
+        if ($campaign_end < $paid_date) return null;
+        if ($campaign_end > $end) $end = $campaign_end;
+    }
+    return $end;
+}
+
+/** Le réglage « renouvelle l'adhésion » existe-t-il en base (migration 2026-10-11-L02-adherents.sql) ? */
+function ck_has_renews_setting(PDO $pdo): bool {
+    return isset(ak_db_columns($pdo, 'cotisation_campaigns')['renews_membership']);
+}
+
+/**
+ * Un paiement de cette campagne renouvelle-t-il l'adhésion ? Réglage de la campagne (Oui / Non) ;
+ * « Automatique » (NULL) ou réglage absent : d'après son nom (« Adhésions 2026 », « Cotisation
+ * annuelle »…). Une participation aux frais d'ateliers, une billetterie ou un don ne rend pas
+ * la personne « à jour » de son adhésion.
+ */
+function ck_campaign_renews_membership(array $campaign): bool {
+    $v = $campaign['renews_membership'] ?? null;
+    if ($v !== null && $v !== '') return (bool)(int)$v;
+    return (bool)preg_match('/adh[ée]sion|cotisation|membership/iu', (string)($campaign['name'] ?? ''));
+}
+
+/**
+ * Paiement encaissé pour un adhérent, sur une campagne d'adhésion (ck_campaign_renews_membership) :
+ * son adhésion (users.adhesion_valid_until, lue par les relances, l'annuaire et l'appli) est
+ * prolongée selon ck_membership_end(). Ne raccourcit jamais une date déjà plus lointaine, et deux
+ * paiements le même jour ne la prolongent pas deux fois. Une annulation ne la réduit pas (l'admin
+ * la corrige sur la fiche si besoin).
+ *
+ * @return string|null la nouvelle date de fin (Y-m-d) si elle a changé
+ */
+function ck_extend_membership(PDO $pdo, int $org_id, ?int $adherent_id, array $campaign, ?string $paid_at = null): ?string {
+    if (!$adherent_id) return null;
+    if (!ck_campaign_renews_membership($campaign)) return null;
+    $end = ck_membership_end($campaign, $paid_at ?: date('Y-m-d'));
+    if ($end === null) return null;
+    try {
+        $st = $pdo->prepare("UPDATE users SET adhesion_valid_until = ?
+                             WHERE id = ? AND org_id = ?
+                               AND (adhesion_valid_until IS NULL OR adhesion_valid_until < ?)");
+        $st->execute([$end, $adherent_id, $org_id, $end]);
+        return $st->rowCount() > 0 ? $end : null;
+    } catch (Throwable $e) {
+        error_log('[cotisations] prolongation adhésion : ' . $e->getMessage());
+        return null;
+    }
+}
+
+/** Symbole de la devise d'une campagne (EUR → €, GBP → £, USD → $, sinon le code ISO) */
+function ck_currency_symbol(?string $currency): string {
+    $code = strtoupper(trim((string)$currency));
+    if ($code === '') return '€';
+    return ['EUR' => '€', 'USD' => '$', 'GBP' => '£'][$code] ?? $code;
+}
+
+/** Montant dans la devise de la campagne : « 12,50 € », « 12,50 CHF » */
+function ck_money($amount, ?string $currency, int $decimals = 2): string {
+    return number_format((float)$amount, $decimals, ',', ' ') . ' ' . ck_currency_symbol($currency);
+}
+
+/**
+ * Formulaire envoyé deux fois (double clic, retour arrière) : le jeton à usage unique
+ * du formulaire est mémorisé en session ; un second envoi du même jeton est refusé.
+ * true = premier envoi (ou formulaire sans jeton : ancien onglet), false = doublon.
+ */
+function ck_form_nonce_consume(?string $nonce): bool {
+    $nonce = (string)$nonce;
+    if ($nonce === '' || !preg_match('/^[a-f0-9]{16,64}$/', $nonce)) return true;
+    $used = $_SESSION['ck_used_nonces'] ?? [];
+    if (in_array($nonce, $used, true)) return false;
+    $used[] = $nonce;
+    $_SESSION['ck_used_nonces'] = array_slice($used, -30);
+    return true;
 }
 
 /** Charge config paiement org (Stripe/RIB/chèque) */
