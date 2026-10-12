@@ -16,6 +16,7 @@ require_login();
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 
 // Admin uniquement
 if ($user['role'] !== 'admin') {
@@ -243,8 +244,12 @@ function format_days_left(int $days): array
   <?php else: ?>
     <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
       <?php foreach ($recent_logs as $idx => $log):
-        $action_label = match($log['action']) {
+        // Un projet archivé a longtemps été journalisé 'archive_folder' (cible 'project') :
+        // ces lignes, anciennes ou récentes, se lisent « Projet archivé ».
+        $act = ($log['action'] === 'archive_folder' && ($log['target_type'] ?? '') === 'project') ? 'archive_project' : $log['action'];
+        $action_label = match($act) {
             'archive_folder' => ['🗑️', 'Dossier archivé', '#6B7280'],
+            'archive_project' => ['🗑️', 'Projet archivé', '#6B7280'],
             'archive_folder_with_active' => ['⚠️', 'Dossier archivé (avec projets actifs)', '#B45309'],
             'restore_folder' => ['♻️', 'Dossier restauré', '#059669'],
             'restore_project' => ['♻️', 'Projet restauré', '#059669'],
@@ -257,7 +262,7 @@ function format_days_left(int $days): array
         <div style="padding:12px 18px; <?= $idx < count($recent_logs) - 1 ? 'border-bottom:1px solid var(--border);' : '' ?> display:flex; align-items:center; gap:14px;">
           <div style="font-size:18px; line-height:1;"><?= $action_label[0] ?></div>
           <div style="flex:1;">
-            <div style="font-size:13px; color:<?= $action_label[2] ?>; font-weight:500;"><?= $action_label[1] ?></div>
+            <div style="font-size:13px; color:<?= $action_label[2] ?>; font-weight:500;"><?= h($action_label[1]) ?></div>
             <div style="font-size:11.5px; color:var(--ink-3); margin-top:2px;">
               « <?= h($log['target_name']) ?> »
               <?php if (!empty($log['admin_name'])): ?> · par <?= h($log['admin_name']) ?><?php endif; ?>

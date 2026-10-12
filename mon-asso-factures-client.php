@@ -39,9 +39,10 @@ if (!$can_view_finances) {
 
 // Filtres
 $f_status = (string)($_GET['status'] ?? '');
-// Vue par défaut = année en cours (cohérent avec le badge de l'onglet).
-// L'utilisateur peut sélectionner « Toutes les années » (year=«») dans le filtre.
-$f_year   = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
+$f_tag    = (int)($_GET['tag'] ?? 0);
+// Vue par défaut = année en cours (cohérent avec le badge de l'onglet), sauf filtre par tag
+// (lien depuis /mon-asso-tags) : toutes les années. « Toutes les années » = year=«».
+$f_year   = isset($_GET['year']) ? (int)$_GET['year'] : ($f_tag > 0 ? 0 : (int)date('Y'));
 $allowed_status = ['paid', 'pending', 'overdue', 'draft', 'cancelled'];
 if ($f_status !== '' && !in_array($f_status, $allowed_status, true)) $f_status = '';
 
@@ -52,6 +53,13 @@ try {
     $ry->execute([':o' => $org_id]);
     $years = array_map('intval', array_column($ry->fetchAll(PDO::FETCH_ASSOC), 'y'));
 } catch (Throwable $e) { $years = []; }
+
+// Tags de l'association (filtre)
+$org_tags = [];
+try {
+    require_once __DIR__ . '/asso-tags-helpers.php';
+    $org_tags = ak_tag_list($pdo, $org_id);
+} catch (Throwable $e) { $org_tags = []; }
 
 // Requête liste factures client
 $where = 'i.org_id = :o';
@@ -66,6 +74,12 @@ if ($f_status === 'overdue') {
     $where .= ' AND i.status = :st'; $params[':st'] = $f_status;
 }
 if ($f_year > 0)     { $where .= ' AND YEAR(i.issued_at) = :yr'; $params[':yr'] = $f_year; }
+if ($f_tag > 0) {
+    // Tag de cette association uniquement
+    $where .= " AND i.id IN (SELECT l.entity_id FROM asso_tag_links l JOIN asso_tags t ON t.id = l.tag_id
+                             WHERE l.entity_type = 'invoice' AND l.tag_id = :tg AND t.org_id = :o2)";
+    $params[':tg'] = $f_tag; $params[':o2'] = $org_id;
+}
 
 $invoices = [];
 // Avoirs : colonne invoice_type (migration 2026-08-12), lue seulement si elle existe
@@ -147,8 +161,16 @@ render_sidebar('factures');
       <?php endforeach; ?>
     </select>
     <?php endif; ?>
+    <?php if (!empty($org_tags)): ?>
+    <select name="tag" style="padding:9px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:13.5px;">
+      <option value="">Tous les tags</option>
+      <?php foreach ($org_tags as $t): ?>
+      <option value="<?= (int)$t['id'] ?>" <?= $f_tag === (int)$t['id'] ? 'selected' : '' ?>><?= h($t['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <?php endif; ?>
     <button type="submit" style="background:#0F172A;color:white;padding:9px 18px;border:none;border-radius:8px;font-size:13.5px;cursor:pointer;font-weight:600;">Filtrer</button>
-    <?php if ($f_status || $f_year): ?>
+    <?php if ($f_status || $f_year || $f_tag): ?>
       <a href="/mon-asso-factures-client" style="color:#64748B;font-size:13px;text-decoration:none;">Réinitialiser</a>
     <?php endif; ?>
   </form>

@@ -201,6 +201,9 @@ $messages = $stmt->fetchAll();
 // /projets revient à zéro (rien n'est écrit pour une consultation extérieure).
 if ($active_tab === 'messages' && !$readonly_external && !empty($messages)) {
     ak_project_mark_seen($pdo, (int)$current['id'], $project_id);
+    // … et les notifications « message » / « mention » de ce projet sont soldées (cloche)
+    require_once __DIR__ . '/notification-helpers.php';
+    ak_project_notifs_mark_read($pdo, (int)$current['id'], $project_id);
 }
 
 // Fichiers
@@ -251,11 +254,12 @@ $budget_remaining = (float)$project['budget_planned'] - $total_validated;
 $active_conv_id = (int)($_GET['conv'] ?? 0);
 $active_conv_messages = [];
 if ($active_conv_id > 0) {
-    // Uniquement une conversation de CE projet (sinon lecture des conversations d'autres assos)
+    // Uniquement une conversation de CE projet (sinon lecture des conversations d'autres assos),
+    // et la sienne : celle d'un admin peut citer budget et factures (cf. action-ia.php)
     $stmt = $pdo->prepare("SELECT m.role, m.content FROM ai_messages m
-                           JOIN ai_conversations c ON c.id = m.conversation_id AND c.project_id = ?
+                           JOIN ai_conversations c ON c.id = m.conversation_id AND c.project_id = ? AND c.user_id = ?
                            WHERE m.conversation_id = ? ORDER BY m.created_at ASC, m.id ASC");
-    $stmt->execute([(int)$project['id'], $active_conv_id]);
+    $stmt->execute([(int)$project['id'], (int)$current['id'], $active_conv_id]);
     $active_conv_messages = $stmt->fetchAll();
 }
 
@@ -269,6 +273,15 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$project_id]);
 $generated_docs = $stmt->fetchAll();
+// Bilan d'AG, rapport de subvention, synthèse… d'un administrateur : le texte cite budget et
+// factures. Sans droit finances, seuls s'ouvrent l'e-mail aux parents, la fiche de com' et
+// ses propres documents (même règle que download-bilan.php) ; les autres restent listés.
+foreach ($generated_docs as &$gd) {
+    $gd['locked'] = !$can_view_finances && !in_array($gd['doc_type'], ['email_parents', 'fiche_com'], true)
+        && (int)$gd['user_id'] !== (int)$current['id'];
+    if ($gd['locked']) $gd['content'] = '';
+}
+unset($gd);
 
 // Helpers
 function status_info_p($s) {
@@ -578,11 +591,22 @@ render_sidebar('projets');
 <main class="main">
 
   <nav class="crumbs">
+    <?php if ($readonly_external):
+      // Consultation par la collectivité (ou l'équipe Assokit) : retour vers la fiche de
+      // l'association, jamais vers /dashboard ou /projets (espace association vide « org 0 »)
+      $crumb_asso = '/mairie-asso?id=' . (int)$project['folder_org_id'] . '&tab=projets'; ?>
+    <a href="<?= is_parent_org_user($current) ? '/mairie-dashboard' : '/super-admin-mairies' ?>">Accueil</a>
+    <span class="sep">›</span>
+    <a href="<?= h($crumb_asso) ?>">Projets de l’association</a>
+    <span class="sep">›</span>
+    <span><?= h($project['folder_name']) ?></span>
+    <?php else: ?>
     <a href="/dashboard">Dashboard</a>
     <span class="sep">›</span>
     <a href="/projets">Projets</a>
     <span class="sep">›</span>
     <a href="/projets#f<?= (int)$project['folder_id'] ?>"><?= h($project['folder_name']) ?></a>
+    <?php endif; ?>
     <span class="sep">›</span>
     <span class="current"><?= h($project['name']) ?></span>
   </nav>
@@ -2626,6 +2650,10 @@ render_sidebar('projets');
           </div>
           <span class="gen-doc-tag">IA</span>
         </div>
+        <?php if ($d['locked']): ?>
+        <div class="gen-doc-preview">Ce document peut citer le budget et les factures du projet : seuls les administrateurs de l’association et son auteur peuvent l’ouvrir.</div>
+      </div>
+      <?php continue; endif; ?>
         <div class="gen-doc-preview"><?= h($preview) ?>…</div>
         <div class="gen-doc-actions">
           <a href="#" onclick="showDoc(<?= (int)$d['id'] ?>); return false;">Voir en entier</a>

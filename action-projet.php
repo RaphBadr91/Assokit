@@ -15,6 +15,7 @@ activity_log_request();
 require_login();
 $user = current_user();
 $org_id = (int)$user['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: /projets');

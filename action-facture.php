@@ -46,7 +46,7 @@ if ($project_id <= 0) {
 
 // Vérifier que le projet appartient à l'organisation
 $stmt = $pdo->prepare("
-    SELECT p.id, p.referent_id FROM projects p
+    SELECT p.id, p.referent_id, p.archived_at, f.archived_at AS folder_archived_at FROM projects p
     JOIN folders f ON p.folder_id = f.id
     WHERE p.id = ? AND f.org_id = ?
 ");
@@ -55,6 +55,15 @@ $project = $stmt->fetch();
 if (!$project) {
     http_response_code(403);
     die('Accès refusé à ce projet.');
+}
+
+// Projet archivé (seul ou avec son dossier) : lecture seule, plus aucun ajout, validation,
+// rejet ni suppression de dépense (projet.php masque déjà ces formulaires). Le reclassement
+// comptable (set_account, depuis /factures) reste possible : la dépense compte toujours dans
+// les comptes de l'exercice.
+if ($action !== 'set_account' && (!empty($project['archived_at']) || !empty($project['folder_archived_at']))) {
+    header('Location: /projet/' . $project_id . '/factures?error=archived');
+    exit;
 }
 
 // Permissions
@@ -107,6 +116,11 @@ if ($action === 'add') {
     //   'no_vat'  : un seul montant (asso non assujettie à la TVA)
     $mode = $_POST['amount_mode'] ?? 'ttc';
     $vat_rate = (float)str_replace(',', '.', $_POST['vat_rate'] ?? '20');
+    // Taux hors de 0-100 % : refusé (-100 % provoquait une division par zéro en mode TTC)
+    if ($mode !== 'no_vat' && (!is_finite($vat_rate) || $vat_rate < 0 || $vat_rate > 100)) {
+        header('Location: /projet/' . $project_id . '/factures?err=invalid');
+        exit;
+    }
 
     $amount_ttc = 0.0;
     $amount_ht = 0.0;
@@ -127,6 +141,12 @@ if ($action === 'add') {
 
     // Validation de base
     if ($supplier === '' || $amount_ttc <= 0 || !$invoice_date) {
+        header('Location: /projet/' . $project_id . '/factures?err=invalid');
+        exit;
+    }
+    // Date réelle au format AAAA-MM-JJ (sinon erreur SQL en mode strict)
+    if (!is_string($invoice_date) || !preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $invoice_date, $dm)
+        || !checkdate((int)$dm[2], (int)$dm[3], (int)$dm[1])) {
         header('Location: /projet/' . $project_id . '/factures?err=invalid');
         exit;
     }

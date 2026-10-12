@@ -40,6 +40,45 @@ function purge(PDO $pdo, bool $live, string $label, string $table, string $where
     } catch (Throwable $e) { echo "  · $label : erreur — " . $e->getMessage() . "\n"; }
 }
 
+/** Règle 4 : compte, puis anonymise si LIVE (colonnes absentes en prod ignorées). */
+function anonymise_deleted_users(PDO $pdo, bool $live): void {
+    $label = 'Comptes supprimés > 30 jours à anonymiser';
+    require_once __DIR__ . '/trial-helpers.php';   // ak_db_columns()
+    $cols = ak_db_columns($pdo, 'users');
+    if (!isset($cols['deleted_at'], $cols['email'], $cols['first_name'], $cols['last_name'])) {
+        echo "  · $label : colonnes absentes, ignoré\n";
+        return;
+    }
+    $where = "deleted_at IS NOT NULL AND deleted_at >= '2000-01-01'"
+           . " AND deleted_at < DATE_SUB(NOW(), INTERVAL 30 DAY)"
+           . " AND (email IS NULL OR email NOT LIKE '%@anonyme.assokit.local')";
+    foreach (['is_founder', 'is_super_admin', 'is_platform_admin'] as $c) {
+        if (isset($cols[$c])) $where .= " AND COALESCE($c, 0) = 0";
+    }
+
+    $set = ["email = CONCAT('deleted_', id, '@anonyme.assokit.local')",
+            "first_name = 'Compte'", "last_name = 'supprimé'"];
+    if (isset($cols['is_active']))     $set[] = 'is_active = 0';
+    if (isset($cols['password_hash'])) $set[] = "password_hash = ''";
+    if (isset($cols['totp_enabled']))  $set[] = 'totp_enabled = 0';
+    // Données personnelles et secrets restants : vidés quand la colonne existe et accepte NULL
+    foreach (['phone', 'mobile', 'city', 'address', 'postal_code', 'zip_code', 'birth_date', 'birthdate',
+              'notes_admin', 'totp_secret', 'totp_backup_codes', 'ics_token'] as $c) {
+        if (isset($cols[$c]) && $cols[$c]['null']) $set[] = "$c = NULL";
+    }
+
+    try {
+        $n = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE $where")->fetchColumn();
+        if ($n === 0) { echo "  · $label : rien à anonymiser\n"; return; }
+        if ($live) {
+            $done = $pdo->exec("UPDATE users SET " . implode(', ', $set) . " WHERE $where");
+            echo "  · $label : " . (int) $done . " compte(s) ANONYMISÉ(S)\n";
+        } else {
+            echo "  · $label : $n compte(s) seraient anonymisés\n";
+        }
+    } catch (Throwable $e) { echo "  · $label : erreur — " . $e->getMessage() . "\n"; }
+}
+
 // --- Règles de conservation (voir docs/RGPD-CONFORMITE.md) ---
 
 // 1) Événements de tracking prospection > 24 mois
@@ -63,6 +102,19 @@ purge($pdo, $LIVE, 'Journaux activité > 12 mois', 'assokit_activity_log',
 // association, pour toujours.
 purge($pdo, $LIVE, 'Carnet d’envois des crons > 6 mois', 'cron_envois',
       'sent_at < DATE_SUB(NOW(), INTERVAL 6 MONTH)');
+
+// 4) Comptes supprimés depuis plus de 30 jours (sortis de la corbeille, plus
+//    restaurables) : ANONYMISÉS, jamais effacés — la ligne reste référencée par les
+//    paiements, projets et messages. Même anonymisation que la suppression de son
+//    propre compte (rgpd-supprimer-compte.php). Fondateur et administrateurs de la
+//    plateforme exclus. D'abord leurs jetons (notifications push, liens de mot de passe).
+$users_deleted_30d = "SELECT id FROM users WHERE deleted_at IS NOT NULL AND deleted_at >= '2000-01-01'"
+                   . " AND deleted_at < DATE_SUB(NOW(), INTERVAL 30 DAY)";
+purge($pdo, $LIVE, 'Jetons push des comptes supprimés > 30 jours', 'asso_push_tokens',
+      "user_id IN ($users_deleted_30d)");
+purge($pdo, $LIVE, 'Liens de mot de passe non utilisés des comptes supprimés > 30 jours', 'user_password_tokens',
+      "used_at IS NULL AND user_id IN ($users_deleted_30d)");
+anonymise_deleted_users($pdo, $LIVE);
 
 // NB : on ne purge JAMAIS asso_invoices / subscription_invoices ici
 // (conservation légale comptable = 10 ans).

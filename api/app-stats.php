@@ -9,6 +9,7 @@ ob_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes-layout.php';
 require_once __DIR__ . '/../finance-permissions.php';
+require_once __DIR__ . '/../platform-flags.php';
 @require_once __DIR__ . '/../asso-stats-helpers.php';
 ob_end_clean();
 
@@ -27,7 +28,7 @@ try {
 
     // Le site (mon-asso-stats.php) ouvre les statistiques au coordinateur
     // comme le reste de la Facturation : l'appli le refusait.
-    if (!user_can_access_billing($user)) {
+    if (!user_can_access_billing(ak_platform_flags($user))) {
         echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux administrateurs et coordinateurs.'], JSON_UNESCAPED_UNICODE);
         exit;
     }

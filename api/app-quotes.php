@@ -36,10 +36,12 @@ try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
 
-    // Parité site (mon-asso-devis.php) : devis réservés aux admin/coordinateurs/finances.
+    // Parité site : devis réservés à la Facturation (user_can_access_billing : admin, fondateur,
+    // super-admin, coordinateur, trésorier habilité), comme app-invoices.php.
     @require_once __DIR__ . '/../finance-permissions.php';
-    $role = (string) ($user['role'] ?? '');
-    if (!in_array($role, ['admin', 'coordinator'], true) && !(function_exists('user_can_view_finances') && user_can_view_finances($user))) {
+    @require_once __DIR__ . '/../platform-flags.php';
+    if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+    if (!function_exists('user_can_access_billing') || !user_can_access_billing($user)) {
         echo json_encode(['ok' => true, 'allowed' => false, 'quotes' => [], 'message' => 'Réservé aux administrateurs et coordinateurs.'], JSON_UNESCAPED_UNICODE);
         exit;
     }

@@ -13,9 +13,9 @@ $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
 
-$role = strtolower((string)($user['role'] ?? ''));
-$is_priv = in_array($role, ['admin','coordinator','founder'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
-if (!$is_priv) { $_SESSION['flash_error'] = 'Le copilote est réservé aux rôles de pilotage (admin, coordinateur).'; header('Location: /dashboard'); exit; }
+// Rôles de pilotage : règle unique de finance-permissions.php (page, endpoint et bulle flottante)
+require_once __DIR__ . '/finance-permissions.php';
+if (!ak_copilote_allowed($user)) { $_SESSION['flash_error'] = 'Le copilote est réservé aux rôles de pilotage (admin, coordinateur).'; header('Location: /dashboard'); exit; }
 
 render_head('Copilote IA');
 render_sidebar('mon-asso-copilote');

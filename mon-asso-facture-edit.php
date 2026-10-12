@@ -8,6 +8,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
+require_once __DIR__ . '/asso-tags-helpers.php';
 
 require_login();
 $user = current_user();
@@ -407,6 +408,15 @@ render_sidebar('factures');
         <?php if (!empty($invoice['description'])): ?><div><span style="color:#6B7280;">Note :</span> <?= h($invoice['description']) ?></div><?php endif; ?>
         <?php if (!empty($invoice['internal_notes'])): ?><div><span style="color:#6B7280;">Notes internes :</span> <?= h($invoice['internal_notes']) ?></div><?php endif; ?>
     </div>
+
+    <!-- Tags : classement interne, modifiable même sur une facture finalisée (absent du PDF) -->
+    <form method="POST" action="/mon-asso-facture-save" class="card" style="padding:12px 22px; margin-bottom:16px; display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+        <input type="hidden" name="action" value="tags">
+        <input type="hidden" name="invoice_id" value="<?= (int)$invoice_id ?>">
+        <div style="flex:1; min-width:220px;"><?= ak_tag_picker_html($pdo, $org_id, 'invoice', $invoice_id, 'Tags (internes, invisibles au client)') ?></div>
+        <button type="submit" class="btn btn-ghost" style="padding:7px 14px; margin-bottom:10px;">Enregistrer les tags</button>
+    </form>
     <?php else: ?>
 
     <!-- ────── FORMULAIRE ÉDITION (brouillon) ────── -->
@@ -529,6 +539,7 @@ render_sidebar('factures');
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Notes internes</label>
                     <textarea name="internal_notes" rows="2" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px; resize:vertical; font-family:inherit;"><?= h($invoice['internal_notes'] ?? '') ?></textarea>
                 </div>
+                <div style="grid-column:1/-1;"><?= ak_tag_picker_html($pdo, $org_id, 'invoice', $invoice_id, 'Tags (internes, invisibles au client)') ?></div>
             </div>
         </div>
 

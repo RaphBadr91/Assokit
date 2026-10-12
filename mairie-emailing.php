@@ -30,7 +30,7 @@ $stmt = $pdo->prepare("
            (SELECT COUNT(*) FROM users u WHERE u.org_id = o.id AND u.role = 'admin' AND u.is_active = 1 AND u.deleted_at IS NULL
               AND u.email IS NOT NULL AND u.email != '') AS nb_admins
     FROM organizations o
-    WHERE o.parent_org_id = ?
+    WHERE o.parent_org_id = ? AND o.deleted_at IS NULL
     ORDER BY o.name ASC
 ");
 $stmt->execute([$parent_org_id]);

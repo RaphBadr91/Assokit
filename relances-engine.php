@@ -185,11 +185,17 @@ function ak_rel_membership_targets(PDO $pdo, int $org_id, int $soon_days = 15): 
     $place = implode(',', array_fill(0, count($ids), '?'));
     $hist = [];
     try {
+        // Relances de l'échéance en cours seulement (envoyées au plus tôt à J-$soon_days) : après
+        // un renouvellement, les rappels du cycle précédent ne comptent plus et l'adhérent
+        // repart du rappel amical, pas de la mise en demeure.
         $hs = $pdo->prepare(
-            "SELECT user_id, MAX(stage) max_sent, COUNT(*) n, MAX(sent_at) last_at
-             FROM asso_membership_reminders WHERE org_id = ? AND user_id IN ($place)
-             GROUP BY user_id");
-        $hs->execute(array_merge([$org_id], $ids));
+            "SELECT r.user_id, MAX(r.stage) max_sent, COUNT(*) n, MAX(r.sent_at) last_at
+             FROM asso_membership_reminders r
+             JOIN users u ON u.id = r.user_id AND u.org_id = r.org_id
+             WHERE r.org_id = ? AND r.user_id IN ($place)
+               AND r.sent_at >= DATE_SUB(DATE(u.adhesion_valid_until), INTERVAL ? DAY)
+             GROUP BY r.user_id");
+        $hs->execute(array_merge([$org_id], $ids, [$soon_days + 1]));
         foreach ($hs->fetchAll(PDO::FETCH_ASSOC) as $h) {
             $hist[(int)$h['user_id']] = ['max_sent'=>(int)$h['max_sent'], 'count'=>(int)$h['n'], 'last_at'=>$h['last_at']];
         }

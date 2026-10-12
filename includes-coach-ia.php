@@ -117,12 +117,14 @@ function coach_build_context(PDO $pdo, int $org_id): array {
         $ctx['grants_active'] = $stmt->fetchAll();
     } catch (Throwable $e) { $ctx['grants_active'] = []; }
 
+    // Mêmes totaux que /subventions (gr_org_stats) : un dossier dont le bilan est
+    // rendu reste accordé ; un dossier « archived » sans date d'archivage est archivé.
     try {
         $stmt = $pdo->prepare("SELECT
             COUNT(*) total,
-            SUM(CASE WHEN status='granted' THEN amount_granted ELSE 0 END) accorde,
+            SUM(CASE WHEN status IN ('granted','reported') THEN amount_granted ELSE 0 END) accorde,
             SUM(CASE WHEN status='submitted' OR status='in_review' THEN 1 ELSE 0 END) en_cours
-            FROM grants WHERE org_id = ? AND archived_at IS NULL");
+            FROM grants WHERE org_id = ? AND archived_at IS NULL AND COALESCE(status, '') <> 'archived'");
         $stmt->execute([$org_id]);
         $ctx['grants_stats'] = $stmt->fetch() ?: [];
     } catch (Throwable $e) { $ctx['grants_stats'] = []; }

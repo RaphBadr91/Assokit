@@ -7,7 +7,7 @@
  */
 require_once __DIR__ . '/config.php';
 
-if (PHP_SAPI !== 'cli' && !(defined('CRON_TOKEN') && CRON_TOKEN !== '' && hash_equals(CRON_TOKEN, (string)($_GET['cron_key'] ?? '')))) {
+if (PHP_SAPI !== 'cli' && !(defined('CRON_TOKEN') && CRON_TOKEN !== '' && is_string($_GET['cron_key'] ?? null) && hash_equals((string)CRON_TOKEN, $_GET['cron_key']))) {
     // Protection minimale si appele en HTTP
     http_response_code(403);
     exit('CLI only');
@@ -33,7 +33,7 @@ function expo_push_send(array $messages): array {
 try {
     $pdo->query("SELECT 1 FROM asso_push_tokens LIMIT 1");
 } catch (Throwable $e) {
-    fwrite(STDOUT, "asso_push_tokens absente, rien a faire.\n");
+    echo "asso_push_tokens absente, rien a faire.\n";   // echo : STDOUT n'existe pas hors CLI (appel ?cron_key=)
     exit;
 }
 
@@ -174,4 +174,4 @@ try {
     error_log('[cron-push reminders] ' . $e->getMessage());
 }
 
-fwrite(STDOUT, "Push envoyes: $sent — relances: $reminders — tokens morts supprimes: " . count(array_unique($dead)) . "\n");
+echo "Push envoyes: $sent — relances: $reminders — tokens morts supprimes: " . count(array_unique($dead)) . "\n";

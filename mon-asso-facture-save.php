@@ -8,6 +8,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/asso-tags-helpers.php';
 
 require_login();
 $user = current_user();
@@ -71,6 +72,20 @@ if ($action === 'credit_note') {
     } catch (Throwable $e) {
         error_log('[ASSO CREDIT NOTE] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
         $_SESSION['flash_asso_factures'] = ['type' => 'error', 'message' => 'L’avoir n’a pas pu être créé. Réessayez dans un instant.'];
+    }
+    header('Location: /mon-asso-facture-edit?id=' . $invoice_id);
+    exit;
+}
+
+// ────── TAGS (fiche d'une facture finalisée : classement interne, absent du PDF) ──────
+if ($action === 'tags') {
+    $invoice_id = (int)($_POST['invoice_id'] ?? 0);
+    try {
+        ak_tag_save_from_post($pdo, $org_id, 'invoice', $invoice_id, $_POST);   // facture et tags de l'association uniquement
+        $_SESSION['flash_asso_factures'] = ['type' => 'success', 'message' => 'Tags enregistrés.'];
+    } catch (Throwable $e) {
+        error_log('[ASSO INVOICE TAGS] ' . $e->getMessage());
+        $_SESSION['flash_asso_factures'] = ['type' => 'error', 'message' => 'Les tags n’ont pas pu être enregistrés. Réessayez.'];
     }
     header('Location: /mon-asso-facture-edit?id=' . $invoice_id);
     exit;
@@ -247,6 +262,8 @@ try {
         }
 
         $pdf_path = ak_asso_invoice_render_pdf($pdo, $invoice_id);
+        try { ak_tag_save_from_post($pdo, $org_id, 'invoice', $invoice_id, $_POST); }
+        catch (Throwable $e) { error_log('[ASSO INVOICE TAGS] ' . $e->getMessage()); }
 
         $_SESSION['flash_asso_factures'] = [
             'type' => 'success',
@@ -284,6 +301,8 @@ try {
             'internal_notes' => trim((string)($_POST['internal_notes'] ?? '')) ?: null,
         ]);
         ak_asso_form_nonce_consume('invoice_new', $form_nonce, (int)$result['id']);
+        try { ak_tag_save_from_post($pdo, $org_id, 'invoice', (int)$result['id'], $_POST); }
+        catch (Throwable $e) { error_log('[ASSO INVOICE TAGS] ' . $e->getMessage()); }
 
         $_SESSION['flash_asso_factures'] = [
             'type' => 'success',

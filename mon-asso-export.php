@@ -14,13 +14,11 @@ $user = current_user();
 if (empty($user['org_id'])) { http_response_code(403); die('Aucune asso.'); }
 $org_id = (int)$user['org_id'];
 
-$is_admin = false;
-try {
-    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
-    $stmt->execute([':id' => (int)$user['id']]);
-    $is_admin = in_array($stmt->fetchColumn(), ['admin', 'coordinator'], true);
-} catch (Throwable $e) {}
-if (!$is_admin) { http_response_code(403); die('Accès refusé.'); }
+// Règle unique de la Facturation : admin, coordinateur, fondateur, super admin, ou membre
+// ayant le droit « Gérer les finances » (trésorier), comme Factures et Récurrences.
+require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/platform-flags.php';
+if (!user_can_access_billing(ak_platform_flags($user))) { http_response_code(403); die('Accès refusé.'); }
 
 $type = $_GET['type'] ?? 'invoice';
 $period = $_GET['period'] ?? 'all';
@@ -40,9 +38,9 @@ function ak_export_csv(string $filename, array $headers, array $rows): void {
 
     echo "\xEF\xBB\xBF"; // BOM UTF-8 pour Excel
     $out = fopen('php://output', 'w');
-    fputcsv($out, $headers, ';');
+    fputcsv($out, $headers, ';', '"', '\\');
     foreach ($rows as $row) {
-        fputcsv($out, ak_csv_safe($row), ';');
+        fputcsv($out, ak_csv_safe($row), ';', '"', '\\');
     }
     fclose($out);
     exit;

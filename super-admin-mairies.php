@@ -23,7 +23,7 @@ elseif ($filter === 'rejected')  $where = "status = 'rejected'";
 
 $mairies = $pdo->query("
     SELECT po.*,
-           (SELECT COUNT(*) FROM organizations WHERE parent_org_id = po.id) AS nb_orgs,
+           (SELECT COUNT(*) FROM organizations WHERE parent_org_id = po.id AND deleted_at IS NULL) AS nb_orgs,
            (SELECT COUNT(*) FROM users WHERE parent_org_id = po.id) AS nb_users
     FROM parent_orgs po
     WHERE $where
@@ -37,7 +37,7 @@ $stats = $pdo->query("
       SUM(status='pending') AS pending,
       SUM(status='suspended') AS suspended,
       SUM(validated_quota) AS total_quota,
-      (SELECT COUNT(*) FROM organizations WHERE parent_org_id IS NOT NULL) AS linked_orgs
+      (SELECT COUNT(*) FROM organizations WHERE parent_org_id IS NOT NULL AND deleted_at IS NULL) AS linked_orgs
     FROM parent_orgs
 ")->fetch(PDO::FETCH_ASSOC);
 

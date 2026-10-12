@@ -6,6 +6,8 @@
 ob_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/_app-founder.php';
+require_once __DIR__ . '/../platform-flags.php';
 ob_end_clean();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -18,6 +20,28 @@ if (empty($_SESSION['user_id'])) {
 }
 
 $ICON = ['message' => 'chatbubble', 'mention' => 'at', 'team_added' => 'people', 'step_assigned' => 'checkmark-circle', 'support' => 'help-buoy'];
+// Notifications de la plateforme (cloche du cockpit fondateur)
+$PICON = ['new_org_pending' => 'business', 'new_ticket' => 'help-buoy', 'new_ticket_message' => 'help-buoy',
+          'payment_received' => 'cash', 'invoice_overdue' => 'warning', 'super_admin_action' => 'shield-checkmark'];
+
+/**
+ * Écran natif de l'appli fondateur correspondant au lien d'une notification plateforme :
+ * ticket de support → 'fdsupport' (+ ticket_id), association à valider → 'fdorgs' ; null sinon
+ * (le lien web reste dans 'link').
+ */
+function platform_notif_target(array $r): ?array {
+    $url = (string) ($r['target_url'] ?? '');
+    if (preg_match('#^/super-admin/support(?:/(\d+)|\?id=(\d+))?(?:[/?\#]|$)#', $url, $m)) {
+        $tid = (int) (($m[1] ?? '') !== '' ? $m[1] : ($m[2] ?? 0));
+        return ['screen' => 'fdsupport', 'ticket_id' => $tid > 0 ? $tid : null];
+    }
+    if (($r['type'] ?? '') === 'new_org_pending' || strpos($url, '/super-admin/associations') === 0) {
+        $oid = (int) ($r['target_org_id'] ?? 0);
+        if ($oid <= 0 && preg_match('#[?&]id=(\d+)#', $url, $m)) $oid = (int) $m[1];
+        return ['screen' => 'fdorgs', 'org_id' => $oid > 0 ? $oid : null];
+    }
+    return null;
+}
 
 function nago($v) {
     $ts = strtotime((string) $v);
@@ -57,16 +81,57 @@ try {
         $isr = !empty($r['is_read']);
         $items[] = [
             'id'      => (int) $r['id'],
+            'source'  => 'user',
             'title'   => (string) ($r['title'] ?? ''),
             'body'    => (string) ($r['body'] ?? ''),
             'link'    => (string) ($r['link_url'] ?? ''),
+            'target'  => null,
             'icon'    => $ICON[$r['notification_type'] ?? ''] ?? 'notifications',
             'read'    => $isr,
             'ago'     => nago($r['created_at'] ?? null),
+            'created_at' => (string) ($r['created_at'] ?? ''),
         ];
     }
 
-    echo json_encode(['ok' => true, 'unread' => $unread, 'items' => $items], JSON_UNESCAPED_UNICODE);
+    // Fondateur / super admin : notifications de la plateforme (nouveau message support,
+    // association à valider…), celles de la cloche du cockpit web. Identifiant préfixé « p » :
+    // distinct de celui des notifications de l'association (api/app-notif-read.php le reconnaît).
+    $platform_unread = 0;
+    $pf = ak_platform_flags($user ?: ['id' => $uid]) ?: [];
+    if ($uid > 0 && (app_is_founder($pdo, $user) || !empty($pf['is_super_admin']))) {
+        try {
+            $pst = $pdo->prepare("
+                SELECT * FROM platform_notifications
+                WHERE recipient_user_id = ?
+                ORDER BY created_at DESC
+                LIMIT 50
+            ");
+            $pst->execute([$uid]);
+            foreach ($pst->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) {
+                $items[] = [
+                    'id'          => 'p' . (int) $r['id'],
+                    'platform_id' => (int) $r['id'],
+                    'source'      => 'platform',
+                    'title'       => (string) ($r['title'] ?? ''),
+                    'body'        => (string) ($r['message'] ?? ''),
+                    'link'        => (string) ($r['target_url'] ?? ''),
+                    'target'      => platform_notif_target($r),
+                    'icon'        => $PICON[$r['type'] ?? ''] ?? 'notifications',
+                    'read'        => !empty($r['is_read']),
+                    'ago'         => nago($r['created_at'] ?? null),
+                    'created_at'  => (string) ($r['created_at'] ?? ''),
+                ];
+            }
+            $pc = $pdo->prepare("SELECT COUNT(*) FROM platform_notifications WHERE recipient_user_id = ? AND is_read = 0");
+            $pc->execute([$uid]);
+            $platform_unread = (int) $pc->fetchColumn();
+            // Les plus récentes d'abord, toutes sources confondues
+            usort($items, fn($a, $b) => strcmp($b['created_at'], $a['created_at']));
+        } catch (Throwable $e) {}   // table absente : aucune notification plateforme
+    }
+
+    echo json_encode(['ok' => true, 'unread' => $unread + $platform_unread, 'platform_unread' => $platform_unread,
+                      'items' => $items], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-notifications] ' . $e->getMessage());
     http_response_code(500);

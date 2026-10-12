@@ -44,6 +44,7 @@ if ($gone || !$user) {
 
 try {
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    if ($org_id <= 0) $org_id = -1;   // compte sans association (agent de collectivité) : aucune ligne « org 0 », réponses vides
 
     // Parité cotisations.php : campagnes, encaissements et payeurs réservés à la gestion
     // (admin, coordinateur, fondateur, super-admin). Les autres rôles, suiveur externe compris,

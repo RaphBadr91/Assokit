@@ -22,6 +22,11 @@ if (is_follower()) {
 }
 
 $user = current_user();
+if ((int)($user['org_id'] ?? 0) <= 0) {  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Accès refusé']);
+    exit;
+}
 $id = (int)($_GET['id'] ?? 0);
 
 if ($id <= 0) {

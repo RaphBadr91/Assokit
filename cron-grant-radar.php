@@ -20,6 +20,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/financements-engine.php';
 require_once __DIR__ . '/includes-grants.php';
+require_once __DIR__ . '/asso-invoice-helpers.php';   // ak_asso_org_active_sql()
 @require_once __DIR__ . '/notification-helpers.php';
 @require_once __DIR__ . '/resend-helper.php';
 require_once __DIR__ . '/cron-lots.php';
@@ -108,10 +109,13 @@ function radar_email_shell(string $title, string $intro, string $itemsHtml): arr
 }
 
 // ── Orgs qui utilisent le radar (profil OU correspondances déjà calculées) ──
+// Association supprimée, suspendue (essai terminé, impayé) ou résiliée : ni
+// recalcul ni alerte, comme pour les relances automatiques.
 $orgIds = [];
 try {
-    foreach ($pdo->query("SELECT DISTINCT org_id FROM org_grant_profile")->fetchAll(PDO::FETCH_COLUMN) as $o) $orgIds[(int)$o] = true;
-    foreach ($pdo->query("SELECT DISTINCT org_id FROM grant_matches")->fetchAll(PDO::FETCH_COLUMN) as $o) $orgIds[(int)$o] = true;
+    $actives = " JOIN organizations o ON o.id = t.org_id WHERE " . ak_asso_org_active_sql('o');
+    foreach ($pdo->query("SELECT DISTINCT t.org_id FROM org_grant_profile t" . $actives)->fetchAll(PDO::FETCH_COLUMN) as $o) $orgIds[(int)$o] = true;
+    foreach ($pdo->query("SELECT DISTINCT t.org_id FROM grant_matches t" . $actives)->fetchAll(PDO::FETCH_COLUMN) as $o) $orgIds[(int)$o] = true;
 } catch (Throwable $e) { fwrite(STDERR, $e->getMessage()."\n"); }
 $orgIds = array_keys($orgIds);
 echo "→ " . count($orgIds) . " org(s) utilisant le radar\n";

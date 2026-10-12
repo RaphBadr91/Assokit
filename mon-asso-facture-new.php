@@ -8,6 +8,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
+require_once __DIR__ . '/asso-tags-helpers.php';
 
 require_login();
 $user = current_user();
@@ -203,6 +204,7 @@ render_sidebar('factures');
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Notes internes (invisibles au client)</label>
                     <textarea name="internal_notes" rows="2" placeholder="Notes privées..." style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px; font-size:14px; resize:vertical; font-family:inherit;"></textarea>
                 </div>
+                <div style="grid-column:1/-1;"><?= ak_tag_picker_html($pdo, $org_id, 'invoice', null, 'Tags (internes, invisibles au client)') ?></div>
             </div>
         </div>
 

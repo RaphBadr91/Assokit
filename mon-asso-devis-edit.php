@@ -7,19 +7,18 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/asso-quote-helpers.php';
+require_once __DIR__ . '/asso-tags-helpers.php';
 
 require_login();
 $user = current_user();
 if (empty($user['org_id'])) { http_response_code(403); die('Aucune asso.'); }
 $org_id = (int)$user['org_id'];
 
-$is_admin = false;
-try {
-    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
-    $stmt->execute([':id' => (int)$user['id']]);
-    $is_admin = in_array($stmt->fetchColumn(), ['admin', 'coordinator'], true);
-} catch (Throwable $e) {}
-if (!$is_admin) { http_response_code(403); die('Accès refusé.'); }
+// Règle unique de la Facturation : admin, coordinateur, fondateur, super admin, ou membre
+// ayant le droit « Gérer les finances » (trésorier), comme Factures et Récurrences.
+require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/platform-flags.php';
+if (!user_can_access_billing(ak_platform_flags($user))) { http_response_code(403); die('Accès refusé.'); }
 
 $quote_id = (int)($_GET['id'] ?? 0);
 if ($quote_id <= 0) { header('Location: /mon-asso-devis'); exit; }
@@ -158,6 +157,15 @@ render_sidebar('devis');
     <div class="card" style="padding:18px; margin-bottom:16px; background:#FEF3C7; border-left:4px solid #F59E0B;">
         <strong>🔒 Ce devis est <?= h(ak_asso_quote_status_label($quote['status'])) ?> et ne peut plus être modifié.</strong>
     </div>
+
+    <!-- Tags : classement interne, modifiable même sur un devis verrouillé (absent du PDF) -->
+    <form method="POST" action="/mon-asso-devis-save" class="card" style="padding:12px 22px; margin-bottom:16px; display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+        <input type="hidden" name="action" value="tags">
+        <input type="hidden" name="quote_id" value="<?= (int)$quote_id ?>">
+        <div style="flex:1; min-width:220px;"><?= ak_tag_picker_html($pdo, $org_id, 'quote', $quote_id, 'Tags (internes, invisibles au client)') ?></div>
+        <button type="submit" class="btn btn-ghost" style="padding:7px 14px; margin-bottom:10px;">Enregistrer les tags</button>
+    </form>
     <?php endif; ?>
 
     <form method="POST" action="/mon-asso-devis-save" id="quote-edit-form">
@@ -251,6 +259,9 @@ render_sidebar('devis');
                 <div style="grid-column:1/-1;"><label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Notes internes</label>
                     <textarea name="internal_notes" rows="2" style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px; resize:vertical; font-family:inherit;"><?= h($quote['internal_notes'] ?? '') ?></textarea>
                 </div>
+                <?php if (!$is_locked): ?>
+                <div style="grid-column:1/-1;"><?= ak_tag_picker_html($pdo, $org_id, 'quote', $quote_id, 'Tags (internes, invisibles au client)') ?></div>
+                <?php endif; ?>
             </div>
         </div>
 

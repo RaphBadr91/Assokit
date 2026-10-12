@@ -23,6 +23,11 @@ require_login();
 
 $current = current_user();
 $org_id = (int)$current['org_id'];
+if ($org_id <= 0) {  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'forbidden']);
+    exit;
+}
 
 $project_id = (int)($_GET['project_id'] ?? 0);
 $since = (int)($_GET['since'] ?? 0);

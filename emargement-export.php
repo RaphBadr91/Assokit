@@ -5,6 +5,7 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-attendance.php';
 require_login();
 $user = current_user(); $org_id = (int)$user['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 if (!in_array($user['role'], ['admin','coordinator'], true)) { http_response_code(403); die('Réservé.'); }
 
 $id = (int)($_GET['id'] ?? 0);

@@ -468,7 +468,14 @@ $date_fr = $days_fr[(int)date('w', $start_ts)] . ' ' . (int)date('j', $start_ts)
           <?= $date_fr ?>
           <br><span style="font-weight: 400; color: #57534E; font-size: 13px;">
             à <?= date('H\hi', $start_ts) ?>
-            <?php if ($end_ts): ?> · jusqu'à <?= date('H\hi', $end_ts) ?><?php endif; ?>
+            <?php if ($end_ts):
+              // Fin un autre jour (soirée qui finit après minuit, événement sur plusieurs jours)
+              $end_day = date('Y-m-d', $end_ts);
+              if ($end_day === date('Y-m-d', $start_ts)): ?> · jusqu’à <?= date('H\hi', $end_ts) ?>
+              <?php elseif ($end_day === date('Y-m-d', strtotime('+1 day', $start_ts))): ?> · jusqu’au lendemain <?= date('H\hi', $end_ts) ?>
+              <?php else: ?> · jusqu’au <?= $days_fr[(int)date('w', $end_ts)] . ' ' . (int)date('j', $end_ts) . ' ' . $months_fr[(int)date('n', $end_ts)] ?> à <?= date('H\hi', $end_ts) ?>
+              <?php endif; ?>
+            <?php endif; ?>
           </span>
         </div>
       </div>

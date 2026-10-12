@@ -7,6 +7,7 @@ require_once __DIR__ . '/includes-attendance.php';
 
 require_login();
 $user = current_user();
+if ((int)($user['org_id'] ?? 0) <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: /agenda'); exit; }
 

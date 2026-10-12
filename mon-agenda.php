@@ -100,7 +100,8 @@ render_sidebar('agenda');
   <?php elseif (isset($_GET['disconnected'])): ?>
     <div class="alert alert-success">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-      Google Calendar a été déconnecté.
+      <span>Google Calendar a été déconnecté.<?php if (!empty($_GET['google_kept'])): ?>
+        L’autorisation Google, elle, est conservée, car ce compte Google sert aussi à la boîte mail Assokit ou à une autre association (Google ne retire pas un seul accès à la fois). Pour tout retirer, passez par <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a> : la boîte mail et les autres accès Assokit liés à ce compte Google seront alors coupés eux aussi.<?php endif; ?></span>
     </div>
   <?php elseif (isset($_GET['ics_regenerated'])): ?>
     <div class="alert alert-success">

@@ -154,10 +154,18 @@ function ak_prev_horizon_keys(int $horizon): array {
 if (!function_exists('ak_prev_recurrence_amount')) {
 /**
  * Montant TTC (euros) d'une facture générée par une récurrence : mêmes
- * sources que la génération (asso-recurrence-helpers.php) — les lignes de la
- * facture source, sinon template_data (lignes saisies HT ou TTC).
+ * sources, dans le même ordre, que la génération (ak_recurrence_generate_invoice) —
+ * d'abord les lignes du formulaire de la récurrence (template_data), à défaut
+ * celles de la facture source. Une récurrence créée avec « Rendre récurrente »
+ * puis modifiée est ainsi prévue à son montant actuel, pas à celui de l'ancienne facture.
  */
 function ak_prev_recurrence_amount(PDO $pdo, array $rec): float {
+    if (!function_exists('ak_recurrence_template_lines')) require_once __DIR__ . '/asso-recurrence-helpers.php';
+    $lines = ak_recurrence_template_lines($rec);
+    if ($lines) {
+        // Total nul : la génération refuse la facture, rien n'est attendu
+        return max(0, array_sum(array_map(fn($l) => (int)$l['total_ttc_cents'], $lines))) / 100;
+    }
     $src = (int)($rec['source_invoice_id'] ?? 0);
     if ($src > 0) {
         try {
@@ -167,26 +175,7 @@ function ak_prev_recurrence_amount(PDO $pdo, array $rec): float {
             if ($v !== false && (int)$v > 0) return (int)$v / 100;
         } catch (Throwable $e) {}
     }
-    $td = json_decode((string)($rec['template_data'] ?? ''), true);
-    if (!is_array($td) || empty($td['lines']) || !is_array($td['lines'])) return 0.0;
-    $vm = (string)($rec['vat_mode'] ?? 'none');
-    $rec_rate = in_array($vm, ['5.5', '10', '20'], true) ? (float)$vm : null;
-    $cents = 0;
-    foreach ($td['lines'] as $l) {
-        if (!is_array($l)) continue;
-        $qty = round((float)($l['quantity'] ?? 1), 2);
-        if (isset($l['unit_price_ht_cents']) || isset($l['unit_price_ht'])) {
-            $vat = array_key_exists('vat_rate', $l)
-                ? ($l['vat_rate'] === null || $l['vat_rate'] === '' ? null : (float)$l['vat_rate'])
-                : $rec_rate;
-            $up = isset($l['unit_price_ht_cents']) ? (int)$l['unit_price_ht_cents'] : (int)round((float)$l['unit_price_ht'] * 100);
-            $ht = (int)round($qty * $up);
-            $cents += $ht + (($vat !== null && $vat > 0) ? (int)round($ht * $vat / 100) : 0);
-        } else {
-            $cents += (int)round($qty * (int)($l['unit_price_cents_ttc'] ?? 0));
-        }
-    }
-    return max(0, $cents) / 100;
+    return 0.0;
 }
 }
 

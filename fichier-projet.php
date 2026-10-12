@@ -17,7 +17,9 @@ require_login();
 
 $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
-if ($org_id <= 0) { http_response_code(403); exit('Accès refusé.'); }
+// Sans association : seuls l'agent de collectivité et le fondateur passent (fiche projet en lecture
+// seule) ; user_can_view_org() plus bas limite l'agent aux associations de sa collectivité ouverte.
+if ($org_id <= 0 && !is_parent_org_user($user) && !is_platform_admin($user)) { http_response_code(403); exit('Accès refusé.'); }
 
 $type = $_GET['type'] ?? '';
 $id   = (int)($_GET['id'] ?? 0);

@@ -30,6 +30,11 @@ if (!function_exists('check_csrf') || !check_csrf($_POST['csrf'] ?? '')) {
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
+if ($org_id <= 0) {  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Accès refusé']);
+    exit;
+}
 $user_id = (int)$user['id'];
 
 // Édition du planning : réservée aux admins, ou à son propre planning.

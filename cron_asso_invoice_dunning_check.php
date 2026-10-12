@@ -15,24 +15,30 @@
  * Une seule demande en attente par facture : celles qui ne correspondent plus au
  * stade du moment (déjà envoyé entre-temps, ou prématuré) sont écartées.
  *
- * Appel via :
- *   curl https://assokit.fr/cron_asso_invoice_dunning_check.php?token=XXX
+ * Appel (tâche cron cPanel), au choix :
+ *   /usr/local/bin/php /home/pura7044/public_html/cron_asso_invoice_dunning_check.php
+ *   curl -s "https://assokit.fr/cron_asso_invoice_dunning_check?token=XXX"
  */
 
 require_once __DIR__ . '/config.php';
 
-$token = $_GET['token'] ?? '';
-$expected_token = defined('CRON_TOKEN') ? CRON_TOKEN : '';
-if ($expected_token === '') { http_response_code(500); echo "CRON_TOKEN non configure\n"; exit; }
-if (!hash_equals($expected_token, $token)) {
-    http_response_code(403);
-    die('Forbidden');
+// CLI (binaire php lancé par la tâche cron, aucune requête HTTP) : pas de jeton.
+// Appel HTTP : jeton CRON_TOKEN obligatoire.
+$is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
+if (!$is_cli) {
+    $token = is_string($_GET['token'] ?? null) ? $_GET['token'] : '';
+    $expected_token = defined('CRON_TOKEN') ? (string)CRON_TOKEN : '';
+    if ($expected_token === '') { http_response_code(500); echo "CRON_TOKEN non configure\n"; exit; }
+    if (!hash_equals($expected_token, $token)) {
+        http_response_code(403);
+        die('Forbidden');
+    }
 }
 
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/relances-engine.php';
 
-header('Content-Type: text/plain; charset=UTF-8');
+if (!$is_cli) header('Content-Type: text/plain; charset=UTF-8');
 
 echo "=== CRON ASSO INVOICE DUNNING CHECK ===\n";
 echo "Date : " . date('Y-m-d H:i:s') . "\n\n";

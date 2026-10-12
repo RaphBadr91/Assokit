@@ -8,6 +8,7 @@ activity_log_request();
 require_once __DIR__ . '/includes-cotisations.php';
 require_login();
 $user = current_user(); $org_id = (int)$user['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 $is_admin = ($user['role'] === 'admin'); $is_coord = ($user['role'] === 'coordinator');
 if (!$is_admin && !$is_coord) { http_response_code(403); die('Accès refusé.'); }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: /cotisations'); exit; }

@@ -7,6 +7,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
+require_once __DIR__ . '/asso-tags-helpers.php';
 
 require_login();
 $user = current_user();
@@ -45,6 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     } else {
         try {
             ak_asso_client_update($pdo, $org_id, $client_id, $data);
+            try { ak_tag_save_from_post($pdo, $org_id, 'client', $client_id, $_POST); }
+            catch (Throwable $e) { error_log('[mon-asso-client-detail] tags : ' . $e->getMessage()); }
             $_SESSION['flash_asso_client'] = ['type' => 'success', 'message' => 'Fiche client mise à jour. Les factures et devis déjà émis gardent les coordonnées de leur émission.'];
         } catch (Throwable $e) {
             error_log('[mon-asso-client-detail] ' . $e->getMessage());
@@ -200,6 +203,7 @@ render_sidebar('factures');
                 <?= $fld('siren', 'SIREN') ?>
                 <?= $fld('siret', 'SIRET') ?>
                 <?= $fld('vat_number', 'N° TVA intracommunautaire') ?>
+                <div style="grid-column:1/-1;"><?= ak_tag_picker_html($pdo, $org_id, 'client', $client_id, 'Tags (internes)') ?></div>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:16px;">
                 <div style="font-size:12px; color:#6B7280;">Les factures et devis déjà émis gardent les coordonnées de leur émission.</div>

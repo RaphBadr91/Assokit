@@ -58,7 +58,7 @@ try {
             FROM users u
             INNER JOIN organizations o ON o.id = u.org_id
             WHERE u.org_id IN ($placeholders)
-              AND o.parent_org_id = ?
+              AND o.parent_org_id = ? AND o.deleted_at IS NULL
               AND u.role = 'admin'
               AND u.is_active = 1
               AND u.deleted_at IS NULL
@@ -71,7 +71,7 @@ try {
             SELECT u.id, u.email, u.first_name, u.last_name, u.org_id, o.name AS org_name
             FROM users u
             INNER JOIN organizations o ON o.id = u.org_id
-            WHERE o.parent_org_id = ?
+            WHERE o.parent_org_id = ? AND o.deleted_at IS NULL
               AND u.role = 'admin'
               AND u.is_active = 1
               AND u.deleted_at IS NULL

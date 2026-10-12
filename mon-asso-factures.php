@@ -17,9 +17,9 @@ $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
 
-// [PACK 6.5 - SECURITY STRICT] Accès finances : SEULS Admin / Founder / Super Admin
-// Admin / Founder / Super Admin, et Coordinateurs (cf. finance-permissions.php)
-$can_view_finances = user_can_access_billing($user);
+// Factures de l'abonnement Assokit : Admin / Founder / Super Admin seulement, comme « Mon abonnement »
+// (mon-asso-plan.php), l'appli (api/app-subscription-invoices.php) et leurs PDF (/facture-abonnement-pdf).
+$can_view_finances = user_can_view_finances($user);
 if (!$can_view_finances) {
     http_response_code(403);
     render_head('Accès refusé');
@@ -27,7 +27,7 @@ if (!$can_view_finances) {
     echo '<main class="main"><div style="max-width:600px;margin:60px auto;padding:32px;background:white;border:1px solid #FECACA;border-radius:14px;text-align:center;">';
     echo '<div style="color:#64748B;margin-bottom:14px;">'.ak_icon('lock',44,'1.5').'</div>';
     echo '<h1 style="font-size:22px;color:#0F172A;margin:0 0 12px;">Accès réservé</h1>';
-    echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">La liste des factures Stripe (montants, statuts, PDF) est strictement réservée aux <strong>Administrateurs</strong> de l\'association.</p>';
+    echo '<p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 22px;">L\'abonnement et les factures sont strictement réservés aux <strong>Administrateurs</strong> de l\'association.</p>';
     echo '<a href="/dashboard" style="display:inline-block;background:#0F172A;color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour au dashboard</a>';
     echo '</div></main>';
     render_foot();
@@ -40,6 +40,16 @@ $f_year = (int)($_GET['year'] ?? 0);
 
 // Récupération factures
 $invoices = function_exists('ak_get_org_invoices_all') ? ak_get_org_invoices_all($pdo, $org_id, 200) : (function_exists('ak_get_org_invoices_stripe') ? ak_get_org_invoices_stripe($pdo, $org_id, 200) : []);
+
+// Années disponibles pour le filtre : celles des factures listées, toutes sources confondues
+// (Stripe, manuelles et factures Assokit AK-AAAA-NNNNNN), avec la même date que le filtre.
+$years = [];
+foreach ($invoices as $inv_y) {
+    $t = strtotime((string)($inv_y['created_at'] ?? ''));
+    if ($t) $years[(int)date('Y', $t)] = true;
+}
+krsort($years);
+$years = array_keys($years);
 
 // Application filtres
 if ($f_status) {
@@ -65,19 +75,6 @@ foreach ($invoices as $inv) {
         $stats['open_count']++;
     }
 }
-
-// Années disponibles pour filtre
-$years = [];
-try {
-    $rows = $pdo->prepare("
-        SELECT DISTINCT YEAR(created_at) AS y FROM asso_invoices_stripe WHERE org_id = :id
-        UNION
-        SELECT DISTINCT YEAR(created_at) AS y FROM subscription_invoices WHERE org_id = :id
-        ORDER BY y DESC
-    ");
-    $rows->execute([':id' => $org_id]);
-    $years = array_column($rows->fetchAll(PDO::FETCH_ASSOC), 'y');
-} catch (Throwable $e) {}
 
 render_head('Mes factures');
 render_sidebar('mon-asso-factures');

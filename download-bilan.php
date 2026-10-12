@@ -28,7 +28,7 @@ if ($doc_id <= 0) {
 }
 
 $stmt = $pdo->prepare("
-    SELECT g.id, g.doc_type, g.title, g.content, g.created_at,
+    SELECT g.id, g.doc_type, g.title, g.content, g.created_at, g.user_id AS author_id,
            p.id AS project_id, p.name AS project_name, p.location AS project_location,
            p.start_date, p.end_date, p.budget_planned, p.budget_used,
            p.progress_percent, p.participants_count,
@@ -63,6 +63,15 @@ $project_id = (int)$doc['project_id'];
 require_once __DIR__ . '/finance-permissions.php';
 require_once __DIR__ . '/platform-flags.php';
 $show_budget = user_can_view_finances(ak_platform_flags($user));
+
+// Le texte d'un bilan d'AG, d'un rapport de subvention ou d'une synthèse généré par un
+// administrateur cite budget et factures. Sans droit finances, seuls s'ouvrent l'e-mail
+// aux parents, la fiche de com' et ses propres documents (générés sans données financières).
+if (!$show_budget && !in_array($doc['doc_type'], ['email_parents', 'fiche_com'], true)
+    && (int)($doc['author_id'] ?? 0) !== (int)$user['id']) {
+    http_response_code(403);
+    die('Ce document peut citer le budget et les factures du projet : seuls les administrateurs de l’association et son auteur peuvent l’ouvrir.');
+}
 
 // ============================================================
 // DONNÉES

@@ -19,6 +19,7 @@ if (is_follower()) { header('Location: /projets'); exit; }
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 
 // Gestionnaires des adhérents : admin, coordinateur, ou droit « Gérer les adhérents » donné par
 // l'admin (mêmes règles que l'ajout, la modification, l'import et l'export).

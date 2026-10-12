@@ -11,8 +11,11 @@ require __DIR__ . '/_app-write-boot.php';
 @require_once __DIR__ . '/../asso-invoice-helpers.php';
 @require_once __DIR__ . '/../asso-quote-helpers.php';
 
-// Même contrôle de rôle que le site (mon-asso-devis-save.php) : admin ou coordinateur.
-if (!in_array($user['role'] ?? '', ['admin', 'coordinator'], true)) {
+// Même contrôle d'accès que la Facturation (user_can_access_billing), comme app-update-invoice.php.
+@require_once __DIR__ . '/../finance-permissions.php';
+@require_once __DIR__ . '/../platform-flags.php';
+if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+if (!function_exists('user_can_access_billing') || !user_can_access_billing($user)) {
     app_fail(403, 'role', 'Rôle insuffisant pour modifier un devis.');
 }
 

@@ -90,7 +90,7 @@ if (!function_exists('ak_ai_quota_count_today')) {
             $st = $pdo->prepare("
                 SELECT COUNT(*) FROM asso_ai_generations
                 WHERE user_id = :u AND tool_type = :t
-                  AND status = 'success'
+                  AND status IN ('success', 'deleted')
                   AND DATE(created_at) = CURRENT_DATE()
             ");
             $st->execute([':u' => $user_id, ':t' => $tool_type]);

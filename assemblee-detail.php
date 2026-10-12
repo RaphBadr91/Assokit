@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-assemblies.php';
 require_login();
 $user = current_user(); $org_id = (int)$user['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 if ($user['role'] !== 'admin') { http_response_code(403); die('Réservé aux admins.'); }
 
 $id = (int)($_GET['id'] ?? 0);

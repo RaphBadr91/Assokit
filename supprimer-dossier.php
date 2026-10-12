@@ -17,6 +17,7 @@ require_login();
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 $user_id = (int)$user['id'];
 
 // Admin uniquement
@@ -70,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     } elseif ($typed !== $folder['name']) {
         $error = 'Le nom saisi ne correspond pas. Vérifiez majuscules/espaces.';
     } else {
-        $result = archive_folder($pdo, $folder_id, $user_id);
+        $result = archive_folder($pdo, $folder_id, $user_id, $org_id);
         if ($result['ok']) {
             $msg = "Dossier \"{$folder['name']}\" archivé avec succès.";
             if ($result['nb_projects'] > 0) {

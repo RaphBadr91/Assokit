@@ -444,7 +444,8 @@ if (!function_exists('ak_ai_get_org_context')) {
 if (!function_exists('ak_ai_count_this_month')) {
     function ak_ai_count_this_month(PDO $pdo, int $org_id): int {
         try {
-            $st = $pdo->prepare("SELECT COUNT(*) FROM asso_ai_generations WHERE org_id = :o AND status = 'success' AND DATE_FORMAT(created_at, '%Y-%m') = DATE_FORMAT(CURRENT_DATE(), '%Y-%m')");
+            // Générations supprimées comprises (statut « deleted ») : elles comptent dans le quota du mois
+            $st = $pdo->prepare("SELECT COUNT(*) FROM asso_ai_generations WHERE org_id = :o AND status IN ('success', 'deleted') AND DATE_FORMAT(created_at, '%Y-%m') = DATE_FORMAT(CURRENT_DATE(), '%Y-%m')");
             $st->execute([':o' => $org_id]);
             return (int)$st->fetchColumn();
         } catch (Throwable $e) { return 0; }
@@ -454,7 +455,7 @@ if (!function_exists('ak_ai_count_this_month')) {
 if (!function_exists('ak_ai_count_total')) {
     function ak_ai_count_total(PDO $pdo, int $org_id): int {
         try {
-            $st = $pdo->prepare("SELECT COUNT(*) FROM asso_ai_generations WHERE org_id = :o AND status = 'success'");
+            $st = $pdo->prepare("SELECT COUNT(*) FROM asso_ai_generations WHERE org_id = :o AND status IN ('success', 'deleted')");
             $st->execute([':o' => $org_id]);
             return (int)$st->fetchColumn();
         } catch (Throwable $e) { return 0; }
@@ -862,8 +863,13 @@ if (!function_exists('ak_ai_can_manage_all')) {
      * générations de l'association. Les autres rôles, seulement les leurs.
      */
     function ak_ai_can_manage_all(array $user): bool {
-        return in_array((string)($user['role'] ?? ''), ['admin', 'coordinator'], true)
-            || !empty($user['is_founder']) || !empty($user['is_super_admin']);
+        if (in_array((string)($user['role'] ?? ''), ['admin', 'coordinator'], true)) return true;
+        // current_user() ne charge pas toujours is_founder / is_super_admin : relus en base
+        if (!array_key_exists('is_founder', $user) || !array_key_exists('is_super_admin', $user)) {
+            require_once __DIR__ . '/platform-flags.php';
+            $user = ak_platform_flags($user) ?? $user;
+        }
+        return !empty($user['is_founder']) || !empty($user['is_super_admin']);
     }
 }
 
@@ -874,7 +880,8 @@ if (!function_exists('ak_ai_load_generation')) {
      */
     function ak_ai_load_generation(PDO $pdo, int $gen_id, int $org_id, ?array $user = null): ?array {
         try {
-            $sql = "SELECT * FROM asso_ai_generations WHERE id = :id AND org_id = :org";
+            // Génération supprimée (mon-asso-ia-action.php) : introuvable
+            $sql = "SELECT * FROM asso_ai_generations WHERE id = :id AND org_id = :org AND COALESCE(status, '') <> 'deleted'";
             $params = [':id' => $gen_id, ':org' => $org_id];
             if ($user !== null && !ak_ai_can_manage_all($user)) {
                 $sql .= " AND user_id = :u";
@@ -996,9 +1003,12 @@ if (!function_exists('ak_ai_collect_recipients')) {
 
 // --------------------------------------------------------------
 // DIFFUSION : envoi via Resend (un par un, simple)
+// Plus appelée par la diffusion IA (mon-asso-ia-diffusion-send.php passe par
+// send_transactional_email : nom de l'association, reply-to, désinscription).
+// $headers : en-têtes ajoutés tels quels (ex. ak_optout_headers()).
 // --------------------------------------------------------------
 if (!function_exists('ak_ai_send_email_resend')) {
-    function ak_ai_send_email_resend(string $to_email, string $to_name, string $subject, string $html): array {
+    function ak_ai_send_email_resend(string $to_email, string $to_name, string $subject, string $html, array $headers = []): array {
         // Espace de démonstration : envoi simulé (voir demo-guard.php)
         require_once __DIR__ . '/demo-guard.php';
         if (ak_demo_mail_blocked($to_email)) return ['ok' => true, 'id' => 'demo-simule'];
@@ -1012,6 +1022,7 @@ if (!function_exists('ak_ai_send_email_resend')) {
             'subject' => $subject,
             'html'    => $html,
         ];
+        if ($headers) $payload['headers'] = $headers;
         $ch = curl_init('https://api.resend.com/emails');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,

@@ -52,6 +52,7 @@ require_once __DIR__ . '/cron-includes.php';
 
 $expectedToken = defined('CRON_TOKEN') ? CRON_TOKEN : '';
 $providedToken = $_GET['token'] ?? ($argv[1] ?? '');
+if (!is_string($providedToken)) $providedToken = '';
 
 if (empty($expectedToken)) {
     http_response_code(500);

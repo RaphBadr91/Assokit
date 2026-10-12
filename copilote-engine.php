@@ -21,7 +21,7 @@ require_once __DIR__ . '/asso-ai-helpers.php'; // ak_ai_call_api()
 // ==============================================================
 // 1) REGISTRE D'INTENTIONS
 //    Chaque intention = métadonnée (vue par le LLM) + handler PHP (exécution sûre).
-//    handler(PDO $pdo, int $orgId, array $p): array{kind,title,columns,rows,facts}
+//    handler(PDO $pdo, int $orgId, array $p[, ?array $user]): array{kind,title,columns,rows,facts}
 // ==============================================================
 if (!function_exists('ak_cop_intents')) {
     function ak_cop_intents(): array {
@@ -159,7 +159,7 @@ if (!function_exists('ak_cop_intents')) {
             'label' => 'Total des impayés',
             'desc'  => 'Nombre et montant des factures non réglées (en attente + en retard).',
             'params'=> [],
-            'action'=> ['route' => '/mon-asso-factures', 'label' => 'Voir les factures'],
+            'action'=> ['route' => '/mon-asso-factures-client?year=', 'label' => 'Voir les factures'],
             'handler' => function (PDO $pdo, int $org, array $p): array {
                 $st = $pdo->prepare("SELECT COUNT(*) nb, COALESCE(SUM(amount_ttc_cents),0) c FROM asso_invoices
                                      WHERE org_id = :o AND status IN ('pending','overdue')");
@@ -174,7 +174,7 @@ if (!function_exists('ak_cop_intents')) {
             'label' => 'Factures en retard',
             'desc'  => 'Liste des factures en retard de paiement, par échéance.',
             'params'=> [],
-            'action'=> ['route' => '/mon-asso-factures', 'label' => 'Voir les factures'],
+            'action'=> ['route' => '/mon-asso-factures-client?status=overdue&year=', 'label' => 'Voir les factures'],
             'handler' => function (PDO $pdo, int $org, array $p): array {
                 $st = $pdo->prepare("SELECT i.invoice_number, c.display_name client, i.amount_ttc_cents cts,
                         DATE(i.due_at) ech, DATEDIFF(NOW(), i.due_at) retard
@@ -192,7 +192,7 @@ if (!function_exists('ak_cop_intents')) {
             'label' => 'Bilan facturation de l\'année',
             'desc'  => 'Nombre de factures, total émis, encaissé, reste dû, montant moyen.',
             'params'=> ['year' => ['type'=>'int','min'=>2015,'max'=>2100,'default'=>(int)date('Y')]],
-            'action'=> ['route' => '/mon-asso-factures', 'label' => 'Voir les factures'],
+            'action'=> ['route' => '/mon-asso-factures-client', 'label' => 'Voir les factures'],
             'handler' => function (PDO $pdo, int $org, array $p): array {
                 // Mêmes factures que le chiffre d'affaires de l'écran Facturation
                 // (ak_stats_global_kpis) : émises, payées ou non. Brouillons et
@@ -256,7 +256,7 @@ if (!function_exists('ak_cop_intents')) {
             'label' => 'Créances (argent à recevoir)',
             'desc'  => 'Montant total encore à encaisser (en attente + en retard).',
             'params'=> [],
-            'action'=> ['route' => '/mon-asso-factures', 'label' => 'Voir les factures'],
+            'action'=> ['route' => '/mon-asso-factures-client?year=', 'label' => 'Voir les factures'],
             'handler' => function (PDO $pdo, int $org, array $p): array {
                 $st = $pdo->prepare("SELECT
                         COALESCE(SUM(CASE WHEN status='pending' THEN amount_ttc_cents ELSE 0 END),0) att,
@@ -311,12 +311,19 @@ if (!function_exists('ak_cop_intents')) {
             'desc'  => 'Événements à venir sur les N prochains jours.',
             'params'=> ['days' => ['type'=>'int','min'=>1,'max'=>365,'default'=>30]],
             'action'=> ['route' => '/agenda', 'label' => 'Voir l\'agenda'],
-            'handler' => function (PDO $pdo, int $org, array $p): array {
+            'handler' => function (PDO $pdo, int $org, array $p, ?array $u = null): array {
+                // Même visibilité que /agenda pour la personne qui pose la question :
+                // événements « Équipe du projet uniquement » réservés à l'équipe du projet
+                // (sans compte connu : seulement les événements ouverts à toute l'asso).
+                require_once __DIR__ . '/includes-attendance.php';
+                [$visSql, $visArgs] = ak_event_visibility_sql($pdo, $u ?? [], 'events');
                 $st = $pdo->prepare("SELECT title, location, starts_at FROM events
-                        WHERE org_id = :o AND deleted_at IS NULL AND starts_at >= NOW()
-                          AND starts_at <= DATE_ADD(NOW(), INTERVAL :d DAY)
+                        WHERE org_id = ? AND deleted_at IS NULL AND starts_at >= NOW()
+                          AND starts_at <= DATE_ADD(NOW(), INTERVAL ? DAY)" . $visSql . "
                         ORDER BY starts_at ASC LIMIT 200");
-                $st->bindValue(':o',$org,PDO::PARAM_INT); $st->bindValue(':d',(int)$p['days'],PDO::PARAM_INT); $st->execute();
+                $st->bindValue(1, $org, PDO::PARAM_INT); $st->bindValue(2, (int)$p['days'], PDO::PARAM_INT);
+                foreach ($visArgs as $i => $v) $st->bindValue(3 + $i, (int)$v, PDO::PARAM_INT);
+                $st->execute();
                 $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 return ['kind'=>'table','title'=>"Prochains événements ({$p['days']} j)",
                         'columns'=>['Événement','Lieu','Date'],
@@ -457,9 +464,10 @@ if (!function_exists('ak_cop_answer')) {
         $def = $intents[$plan['intent']];
         $params = ak_cop_validate_params($def['params'], $plan['params']);
 
-        // Exécution déterministe (org_id lié, jamais du LLM)
+        // Exécution déterministe (org_id lié, jamais du LLM). La personne qui pose la
+        // question est passée aux handlers qui filtrent selon ses droits (événements).
         try {
-            $res = ($def['handler'])($pdo, $orgId, $params);
+            $res = ($def['handler'])($pdo, $orgId, $params, $asker);
         } catch (Throwable $e) {
             error_log('[copilote] '.$plan['intent'].' : '.$e->getMessage());
             return ['ok'=>true, 'intent'=>$plan['intent'],

@@ -38,6 +38,76 @@ if ($is_admin && is_file(__DIR__ . '/includes-mairie-channels.php')) {
 }
 
 // ==========================================================
+// Message interne (/messages?user={id}, lien « Message interne » de la fiche adhérent) :
+// ouvre la conversation privée à deux, ou la crée (canal privé « dm-{min}-{max} »)
+// ==========================================================
+if (!empty($_GET['user']) && empty($_GET['c'])) {
+    $dm_target_id = (int)$_GET['user'];
+    if ($dm_target_id === $user_id) {
+        header('Location: /messages');
+        exit;
+    }
+    // Destinataire : même association, actif, non supprimé, pas suiveur (sans accès à la messagerie)
+    $st = $pdo->prepare("SELECT id, first_name, last_name FROM users
+                         WHERE id = ? AND org_id = ? AND is_active = 1 AND deleted_at IS NULL
+                           AND (role IS NULL OR role <> 'follower') LIMIT 1");
+    $st->execute([$dm_target_id, $org_id]);
+    $dm_target = $st->fetch();
+    if (!$dm_target) {
+        header('Location: /messages?error=dm_user');
+        exit;
+    }
+    $dm_pair = [min($user_id, $dm_target_id), max($user_id, $dm_target_id)];
+    $dm_base_slug = 'dm-' . $dm_pair[0] . '-' . $dm_pair[1];
+
+    // Conversation existante : canal privé « dm-… » actif dont les deux personnes sont les seuls membres
+    $st = $pdo->prepare("
+        SELECT c.slug FROM channels c
+        WHERE c.org_id = ? AND c.type = 'private' AND c.is_archived = 0
+          AND (c.slug = ? OR c.slug LIKE ?)
+          AND (SELECT COUNT(*) FROM channel_members cm WHERE cm.channel_id = c.id) = 2
+          AND EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = ?)
+          AND EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = ?)
+        ORDER BY c.id ASC LIMIT 1
+    ");
+    $st->execute([$org_id, $dm_base_slug, $dm_base_slug . '-%', $dm_pair[0], $dm_pair[1]]);
+    $dm_slug = $st->fetchColumn();
+
+    if (!$dm_slug) {
+        try {
+            $pdo->beginTransaction();
+            // Slug libre (une ancienne conversation archivée garde le sien)
+            $dm_slug = $dm_base_slug;
+            $check = $pdo->prepare("SELECT id FROM channels WHERE org_id = ? AND slug = ?");
+            for ($n = 2; ; $n++) {
+                $check->execute([$org_id, $dm_slug]);
+                if (!$check->fetch()) break;
+                $dm_slug = $dm_base_slug . '-' . $n;
+            }
+            $pos_stmt = $pdo->prepare("SELECT COALESCE(MAX(position), 0) + 1 FROM channels WHERE org_id = ?");
+            $pos_stmt->execute([$org_id]);
+            $dm_name = mb_substr(trim($current['first_name'] . ' ' . $current['last_name']) . ' · '
+                       . trim($dm_target['first_name'] . ' ' . $dm_target['last_name']), 0, 120);
+            $pdo->prepare("INSERT INTO channels (org_id, created_by, name, slug, description, icon, color_theme, type, position, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, 'gray', 'private', ?, NOW())")
+                ->execute([$org_id, $user_id, $dm_name, $dm_slug, 'Conversation privée', '💬', (int)$pos_stmt->fetchColumn()]);
+            $dm_channel_id = (int)$pdo->lastInsertId();
+            $ins = $pdo->prepare("INSERT INTO channel_members (channel_id, user_id, role) VALUES (?, ?, ?)");
+            $ins->execute([$dm_channel_id, $user_id, 'moderator']);
+            $ins->execute([$dm_channel_id, $dm_target_id, 'member']);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            error_log('[messages] conversation privée : ' . $e->getMessage());
+            header('Location: /messages?error=dm_user');
+            exit;
+        }
+    }
+    header('Location: /messages?c=' . urlencode((string)$dm_slug));
+    exit;
+}
+
+// ==========================================================
 // Charger tous les canaux accessibles à l'utilisateur
 // ==========================================================
 // - Canaux publics / annonces : visibles par tous les membres de l'org
@@ -137,6 +207,8 @@ if ($is_admin) {
         foreach ($stmt->fetchAll() as $c) {
             // Le canal « Suivi · Mairie » est géré par Assokit (rattachement de la mairie), pas depuis ici
             if (!empty($c['is_mairie_channel'])) continue;
+            // Conversations privées à deux (« Message interne ») : elles ne regardent que leurs participants
+            if (empty($c['is_archived']) && preg_match('/^dm-\d+-\d+(-\d+)?$/', (string)$c['slug'])) continue;
             $admin_other_channels[] = $c;
         }
     } catch (Throwable $e) {
@@ -161,6 +233,7 @@ $errors_map = [
     'too_long'      => 'Message trop long (8 000 caractères maximum).',
     'permission'    => 'Vous ne pouvez pas supprimer ce message.',
     'mairie_locked' => 'Ce canal de suivi avec la mairie est géré par Assokit : il ne peut pas être modifié, archivé ni supprimé.',
+    'dm_user'       => 'Impossible d’ouvrir une conversation avec cette personne : elle n’a pas (ou plus) accès à la messagerie.',
 ];
 if (!empty($_GET['error'])) $flash_err = $errors_map[$_GET['error']] ?? 'Une erreur est survenue.';
 

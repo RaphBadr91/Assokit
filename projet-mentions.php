@@ -15,6 +15,7 @@ require_login();
 
 $current = current_user();
 $org_id = (int)$current['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 $project_id = (int)($_GET['id'] ?? 0);
 $active_tab = $_GET['tab'] ?? 'overview';
 
@@ -175,10 +176,11 @@ $budget_remaining = (float)$project['budget_planned'] - $total_validated;
 $active_conv_id = (int)($_GET['conv'] ?? 0);
 $active_conv_messages = [];
 if ($active_conv_id > 0) {
+    // Uniquement sa propre conversation de CE projet (cf. action-ia.php)
     $stmt = $pdo->prepare("SELECT m.role, m.content FROM ai_messages m
-                           JOIN ai_conversations c ON c.id = m.conversation_id AND c.project_id = ?
+                           JOIN ai_conversations c ON c.id = m.conversation_id AND c.project_id = ? AND c.user_id = ?
                            WHERE m.conversation_id = ? ORDER BY m.created_at ASC, m.id ASC");
-    $stmt->execute([(int)$project['id'], $active_conv_id]);
+    $stmt->execute([(int)$project['id'], (int)$current['id'], $active_conv_id]);
     $active_conv_messages = $stmt->fetchAll();
 }
 
@@ -192,6 +194,15 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$project_id]);
 $generated_docs = $stmt->fetchAll();
+// Bilan d'AG, rapport de subvention, synthèse… d'un administrateur : le texte cite budget et
+// factures. Sans droit finances, seuls s'ouvrent l'e-mail aux parents, la fiche de com' et
+// ses propres documents (même règle que download-bilan.php) ; les autres restent listés.
+foreach ($generated_docs as &$gd) {
+    $gd['locked'] = !$can_view_finances && !in_array($gd['doc_type'], ['email_parents', 'fiche_com'], true)
+        && (int)$gd['user_id'] !== (int)$current['id'];
+    if ($gd['locked']) $gd['content'] = '';
+}
+unset($gd);
 
 // Helpers
 function status_info_p($s) {
@@ -1004,6 +1015,10 @@ render_sidebar('projets');
           </div>
           <span class="gen-doc-tag">IA</span>
         </div>
+        <?php if ($d['locked']): ?>
+        <div class="gen-doc-preview">Ce document peut citer le budget et les factures du projet : seuls les administrateurs de l’association et son auteur peuvent l’ouvrir.</div>
+      </div>
+      <?php continue; endif; ?>
         <div class="gen-doc-preview"><?= h($preview) ?>…</div>
         <div class="gen-doc-actions">
           <a href="#" onclick="showDoc(<?= (int)$d['id'] ?>); return false;">Voir en entier</a>

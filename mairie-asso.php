@@ -9,6 +9,7 @@ require_once __DIR__ . '/includes-permissions.php';
 require_once __DIR__ . '/includes-grants.php';
 if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
+require_parent_org_user(); // collectivité en attente, suspendue ou refusée : page d'explication
 
 $current = current_user();
 $org_id = (int)($_GET['id'] ?? 0);
@@ -27,7 +28,8 @@ $org = $stmt->fetch(PDO::FETCH_ASSOC);
 // ont pas accès : leurs droits de rôle s'appliquent dans leur propre espace.
 $is_platform = is_platform_admin($current);
 $my_parent = $is_platform ? null : current_parent_org();
-$is_mairie_viewer = $org && $my_parent && (int)$org['parent_org_id'] === (int)$my_parent['id'];
+// Association supprimée depuis le cockpit : elle sort du portefeuille de la collectivité
+$is_mairie_viewer = $org && $my_parent && empty($org['deleted_at']) && (int)$org['parent_org_id'] === (int)$my_parent['id'];
 if (!$is_platform && !$is_mairie_viewer) {
     http_response_code(403);
     die('<h1>⛔ Accès refusé</h1><p>Vous n\'avez pas accès à cette association.</p>');

@@ -38,10 +38,11 @@ try {
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
 
-    // Parité site (mon-asso-devis.php) : réservé aux admin/coordinateurs/finances.
+    // Parité site : réservé à la Facturation (user_can_access_billing), comme app-invoice.php.
     @require_once __DIR__ . '/../finance-permissions.php';
-    $role = (string) ($user['role'] ?? '');
-    if (!in_array($role, ['admin', 'coordinator'], true) && !(function_exists('user_can_view_finances') && user_can_view_finances($user))) {
+    @require_once __DIR__ . '/../platform-flags.php';
+    if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
+    if (!function_exists('user_can_access_billing') || !user_can_access_billing($user)) {
         http_response_code(403);
         echo json_encode(['ok' => false, 'error' => 'role', 'message' => 'Réservé aux administrateurs et coordinateurs.'], JSON_UNESCAPED_UNICODE);
         exit;

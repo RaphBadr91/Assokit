@@ -6,19 +6,18 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/asso-quote-helpers.php';
+require_once __DIR__ . '/asso-tags-helpers.php';
 
 require_login();
 $user = current_user();
 if (empty($user['org_id'])) { http_response_code(403); die('Aucune asso.'); }
 $org_id = (int)$user['org_id'];
 
-$is_admin = false;
-try {
-    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
-    $stmt->execute([':id' => (int)$user['id']]);
-    $is_admin = in_array($stmt->fetchColumn(), ['admin', 'coordinator'], true);
-} catch (Throwable $e) {}
-if (!$is_admin) { http_response_code(403); die('Accès refusé.'); }
+// Règle unique de la Facturation : admin, coordinateur, fondateur, super admin, ou membre
+// ayant le droit « Gérer les finances » (trésorier), comme Factures et Récurrences.
+require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/platform-flags.php';
+if (!user_can_access_billing(ak_platform_flags($user))) { http_response_code(403); die('Accès refusé.'); }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: /mon-asso-devis'); exit;
@@ -29,6 +28,20 @@ if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_PO
 }
 
 $action = $_POST['action'] ?? 'create';
+
+// Tags seuls (devis signé, converti ou annulé : classement interne, absent du PDF)
+if ($action === 'tags') {
+    $quote_id = (int)($_POST['quote_id'] ?? 0);
+    try {
+        ak_tag_save_from_post($pdo, $org_id, 'quote', $quote_id, $_POST);   // devis et tags de l'association uniquement
+        $_SESSION['flash_asso_devis'] = ['type' => 'success', 'message' => 'Tags enregistrés.'];
+    } catch (Throwable $e) {
+        error_log('[ASSO QUOTE TAGS] ' . $e->getMessage());
+        $_SESSION['flash_asso_devis'] = ['type' => 'error', 'message' => 'Les tags n’ont pas pu être enregistrés. Réessayez.'];
+    }
+    header('Location: /mon-asso-devis-edit?id=' . $quote_id); exit;
+}
+
 $form_page = ($action === 'edit' && !empty($_POST['quote_id'])) ? '/mon-asso-devis-edit?id=' . (int)$_POST['quote_id'] : '/mon-asso-devis-new';
 
 $lines_post = $_POST['lines'] ?? [];
@@ -142,6 +155,8 @@ try {
         }
 
         $pdf_path = ak_asso_quote_render_pdf($pdo, $quote_id);
+        try { ak_tag_save_from_post($pdo, $org_id, 'quote', $quote_id, $_POST); }
+        catch (Throwable $e) { error_log('[ASSO QUOTE TAGS] ' . $e->getMessage()); }
 
         $_SESSION['flash_asso_devis'] = ['type' => 'success', 'message' => $status === 'draft'
             ? 'Brouillon ' . $quote['quote_number'] . ' enregistré. Envoyez-le au client quand il est prêt.'
@@ -169,6 +184,8 @@ try {
             'internal_notes' => trim((string)($_POST['internal_notes'] ?? '')) ?: null,
         ]);
         ak_asso_form_nonce_consume('quote_new', $form_nonce, (int)$result['id']);
+        try { ak_tag_save_from_post($pdo, $org_id, 'quote', (int)$result['id'], $_POST); }
+        catch (Throwable $e) { error_log('[ASSO QUOTE TAGS] ' . $e->getMessage()); }
 
         if (!empty($_POST['save_draft'])) {
             $_SESSION['flash_asso_devis'] = ['type' => 'success', 'message' => 'Devis ' . $result['quote_number'] . ' enregistré en brouillon.', 'pdf_link' => $result['pdf_path']];

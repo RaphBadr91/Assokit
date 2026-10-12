@@ -31,8 +31,8 @@ $stmt = $pdo->prepare("SELECT * FROM parent_orgs WHERE id = ?");
 $stmt->execute([$parent_org_id]);
 $mairie = $stmt->fetch(PDO::FETCH_ASSOC) ?: $parent_org;
 
-// Quota / nb asso
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM organizations WHERE parent_org_id = ?");
+// Quota / nb asso (une association supprimée ne compte plus)
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM organizations WHERE parent_org_id = ? AND deleted_at IS NULL");
 $stmt->execute([$parent_org_id]);
 $nb_orgs = (int)$stmt->fetchColumn();
 $quota = (int)$mairie['validated_quota'];

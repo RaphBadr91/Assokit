@@ -51,6 +51,7 @@ if ($gone || !$user) {
 
 try {
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    if ($org_id <= 0) $org_id = -1;   // compte sans association (agent de collectivité) : aucune ligne « org 0 », réponses vides
     // current_user() ne charge pas toujours is_founder / is_super_admin : relus en base.
     if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
     $role = (string) ($user['role'] ?? '');

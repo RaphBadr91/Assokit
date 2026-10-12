@@ -20,6 +20,7 @@ if (empty($_SESSION['user_id'])) {
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    if ($org_id <= 0) $org_id = -1;   // compte sans association (agent de collectivité) : aucune ligne « org 0 », réponses vides
 
     // Parité site (projets.php) : tous les projets non archivés, quel que soit leur statut
     // (brouillons compris) ; un « follower » ne voit que les projets qui lui sont autorisés.

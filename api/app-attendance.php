@@ -20,6 +20,7 @@ if (empty($_SESSION['user_id'])) {
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    if ($org_id <= 0) $org_id = -1;   // compte sans association (agent de collectivité) : aucune ligne « org 0 », réponses vides
     $role = (string) ($user['role'] ?? '');
     if (!in_array($role, ['admin', 'coordinator', 'founder', 'super_admin'], true) && empty($user['is_founder'])) {
         echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux encadrants.'], JSON_UNESCAPED_UNICODE);

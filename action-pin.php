@@ -40,6 +40,16 @@ if (!check_csrf($_POST['csrf_token'] ?? '')) {
 $user = current_user();
 $user_id = (int)$user['id'];
 $org_id = (int)$user['org_id'];
+// Compte sans association (agent de collectivité) : pas d'« org 0 » partagée
+if ($org_id <= 0) {
+    if ($is_ajax) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'invalid']);
+        exit;
+    }
+    header('Location: /dashboard');
+    exit;
+}
 
 $folder_id = (int)($_POST['folder_id'] ?? 0);
 $action = $_POST['action'] ?? 'pin';

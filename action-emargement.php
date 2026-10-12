@@ -8,6 +8,7 @@ require_login();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !check_csrf($_POST['csrf_token'] ?? '')) { http_response_code(400); die('Bad request.'); }
 $user = current_user(); $org_id = (int)$user['org_id']; $user_id = (int)$user['id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 if (!in_array($user['role'], ['admin','coordinator'], true)) { http_response_code(403); die('Réservé.'); }
 
 $action = $_POST['action'] ?? '';

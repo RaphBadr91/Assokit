@@ -14,14 +14,11 @@ $user = current_user();
 if (empty($user['org_id'])) { http_response_code(403); die('Aucune asso.'); }
 $org_id = (int)$user['org_id'];
 
-$is_admin = false;
-try {
-    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
-    $stmt->execute([':id' => (int)$user['id']]);
-    $is_admin = in_array($stmt->fetchColumn(), ['admin', 'founder', 'super_admin', 'coordinator'], true)
-        || !empty($user['is_founder']) || !empty($user['is_super_admin']);
-} catch (Throwable $e) {}
-if (!$is_admin) {
+// Règle unique de la Facturation : admin, coordinateur, fondateur, super admin, ou membre
+// ayant le droit « Gérer les finances » (trésorier), comme Factures et Récurrences.
+require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/platform-flags.php';
+if (!user_can_access_billing(ak_platform_flags($user))) {
     http_response_code(403);
     render_head('Accès refusé');
     render_sidebar('stats');
@@ -72,7 +69,8 @@ render_sidebar('stats');
             <span class="g" style="background:linear-gradient(90deg,#34D399,#059669);"></span>
             <div class="l">Factures payées</div>
             <div class="n" style="color:#059669;"><?= (int)$kpis['nb_paid'] ?></div>
-            <div class="c">sur <?= (int)$kpis['total_invoices'] ?> émise<?= $kpis['total_invoices']>1?'s':'' ?> en <?= (int)$kpis['year'] ?></div>
+            <?php $nb_emises = (int)$kpis['nb_paid'] + (int)$kpis['nb_pending']; // émises = payées + en attente (dont en retard), hors brouillons et annulées ?>
+            <div class="c">sur <?= $nb_emises ?> émise<?= $nb_emises > 1 ? 's' : '' ?> en <?= (int)$kpis['year'] ?></div>
         </div>
         <div class="fstat-kpi">
             <span class="g" style="background:linear-gradient(90deg,#F87171,#E5484D);"></span>

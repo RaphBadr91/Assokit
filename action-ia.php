@@ -32,12 +32,13 @@ $user = current_user();
 
 // Vérification projet
 $stmt = $pdo->prepare("
-    SELECT p.id FROM projects p
+    SELECT p.id, p.archived_at, f.archived_at AS folder_archived_at FROM projects p
     JOIN folders f ON p.folder_id = f.id
     WHERE p.id = ? AND f.org_id = ?
 ");
 $stmt->execute([$project_id, $user['org_id']]);
-if (!$stmt->fetch()) {
+$ia_project = $stmt->fetch();
+if (!$ia_project) {
     http_response_code(403);
     die('Accès refusé.');
 }
@@ -48,6 +49,20 @@ if (!$stmt->fetch()) {
 if (is_follower()) {
     http_response_code(403);
     die('Accès refusé.');
+}
+
+// Projet archivé (seul ou avec son dossier) : lecture seule, ni génération ni conversation
+// (projet.php masque déjà ces formulaires ; garantie côté serveur).
+if (!empty($ia_project['archived_at']) || !empty($ia_project['folder_archived_at'])) {
+    if (($_POST['stream'] ?? '') === '1') {
+        // Génération en direct : le message s'affiche dans la fenêtre de rédaction
+        header('Content-Type: text/event-stream; charset=utf-8');
+        header('Cache-Control: no-cache, no-transform');
+        echo 'data: ' . json_encode(['type' => 'error', 'error' => 'Ce projet est archivé : il est en lecture seule.'], JSON_UNESCAPED_UNICODE) . "\n\n";
+        exit;
+    }
+    header('Location: /projet/' . $project_id . '/ia?error=archived');
+    exit;
 }
 
 if (!is_ai_enabled()) {

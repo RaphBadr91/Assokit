@@ -13,14 +13,18 @@ require_once __DIR__ . '/asso-ai-helpers.php';
 
 require_login();
 $user = current_user();
-if (!in_array(($user['role'] ?? ''), ['admin', 'coordinator'], true)) {
-    http_response_code(403);
-    header('Location: /dashboard');
-    exit;
-}
 $org_id  = (int)($user['org_id'] ?? 0);
 $user_id = (int)($user['id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
+// Même règle que le bouton « Diffuser » des pages IA : admin, coordinateur, fondateur, super admin
+if (!ak_ai_can_manage_all($user)) {
+    http_response_code(403);
+    render_head('Diffusion e-mail');
+    render_sidebar('ia');
+    echo '<main class="main"><div class="empty-state" style="margin-top: 60px;">La diffusion par e-mail est réservée aux administrateurs et aux coordinateurs de l’association.<br><a href="/mon-asso-ia">Retour à Assokit IA</a></div></main>';
+    render_foot();
+    exit;
+}
 
 $page_error = null;
 // Retour de mon-asso-ia-diffusion-send.php : refus (rien n'est parti) ou bilan de l'envoi.

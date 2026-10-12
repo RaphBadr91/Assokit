@@ -44,8 +44,19 @@ try {
         $pdo->prepare("UPDATE asso_ai_generations SET is_favorite = :f WHERE id = :id AND org_id = :o" . $own)
             ->execute([':f' => $new, ':id' => $id, ':o' => $org_id] + $own_param);
     } elseif ($action === 'delete') {
-        $pdo->prepare("DELETE FROM asso_ai_generations WHERE id = :id AND org_id = :o" . $own)
-            ->execute([':id' => $id, ':o' => $org_id] + $own_param);
+        // Suppression « douce » : le texte et la demande sont effacés et la génération disparaît de
+        // l'historique, mais la ligne reste (statut « deleted ») et compte toujours dans les quotas du
+        // mois et du jour. Supprimer une génération ne rend donc pas de crédit IA.
+        require_once __DIR__ . '/trial-helpers.php';
+        if (ak_db_accepts($pdo, 'asso_ai_generations', 'status', 'deleted')) {
+            $pdo->prepare("UPDATE asso_ai_generations SET status = 'deleted', output_text = '', input_data = '', is_favorite = 0
+                           WHERE id = :id AND org_id = :o" . $own)
+                ->execute([':id' => $id, ':o' => $org_id] + $own_param);
+        } else {
+            // Statut en ENUM sans « deleted » (ancien schéma) : suppression définitive, comme avant
+            $pdo->prepare("DELETE FROM asso_ai_generations WHERE id = :id AND org_id = :o" . $own)
+                ->execute([':id' => $id, ':o' => $org_id] + $own_param);
+        }
     }
 } catch (Throwable $e) {
     error_log('[mon-asso-ia-action] ' . $e->getMessage());

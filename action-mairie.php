@@ -138,10 +138,8 @@ try {
             $mairie = $pdo->prepare("SELECT validated_quota FROM parent_orgs WHERE id=?");
             $mairie->execute([$mid]);
             $quota = (int)$mairie->fetchColumn();
-            $current_count = (int)$pdo->prepare("SELECT COUNT(*) FROM organizations WHERE parent_org_id=?")->execute([$mid]) ?: 0;
-            $c = $pdo->prepare("SELECT COUNT(*) FROM organizations WHERE parent_org_id=?");
-            $c->execute([$mid]);
-            $current_count = (int)$c->fetchColumn();
+            // Associations supprimées exclues : elles ne prennent plus de place dans le quota
+            $current_count = count_orgs_for_parent_org($mid);
             if ($quota > 0 && $current_count >= $quota) {
                 throw new RuntimeException("Quota atteint ($current_count/$quota). Augmente le quota avant de lier.");
             }

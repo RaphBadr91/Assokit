@@ -10,6 +10,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/rate-limit-helper.php';
 require_once __DIR__ . '/notification-helpers.php';
+require_once __DIR__ . '/includes-permissions.php';   // current_parent_org() : espace collectivité ouvert
 ak_rate_limit_or_die('api_channel_msg', 90, 60, (string)($_SESSION['user_id'] ?? ($_SERVER['REMOTE_ADDR'] ?? 'anon')));
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache, must-revalidate');
@@ -32,7 +33,9 @@ try {
     // Canaux public/announce : ouverts à tous les membres de l'org.
     // Canaux privés : réservés aux membres du canal.
     // Canal « Suivi · Mairie » : aussi ouvert aux agents de la mairie membres du canal
-    // (ils n'ont pas d'org_id : leur rattachement passe par parent_org_id).
+    // (ils n'ont pas d'org_id : leur rattachement passe par parent_org_id), seulement si
+    // l'espace de la collectivité est ouvert (en attente, suspendue ou refusée : refus,
+    // comme sur toutes les pages mairie).
     $stmt = $pdo->prepare("SELECT * FROM channels WHERE id = ?");
     $stmt->execute([$channel_id]);
     $channel = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -45,7 +48,8 @@ try {
     $same_org = (int)$channel['org_id'] === (int)($current['org_id'] ?? 0);
     $mairie_agent = !empty($channel['is_mairie_channel'])
         && !empty($channel['parent_org_id'])
-        && (int)($current['parent_org_id'] ?? 0) === (int)$channel['parent_org_id'];
+        && (int)($current['parent_org_id'] ?? 0) === (int)$channel['parent_org_id']
+        && current_parent_org() !== null;
     if (!$same_org && !$mairie_agent) {
         http_response_code(403);
         echo json_encode(['ok' => false, 'error' => 'forbidden']);

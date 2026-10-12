@@ -77,7 +77,13 @@ try {
                 echo json_encode(['ok' => false, 'error' => 'forbidden']);
                 exit;
             }
-            
+            // Suiveur : seulement les projets qu'il suit (même règle que projet.php)
+            if (!follower_can_access_project($project_id)) {
+                http_response_code(403);
+                echo json_encode(['ok' => false, 'error' => 'forbidden']);
+                exit;
+            }
+
             $result = ak_project_mark_read($pdo, $user_id, $project_id);
             echo json_encode([
                 'ok' => $result,

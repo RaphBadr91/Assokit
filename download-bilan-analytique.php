@@ -113,7 +113,10 @@ if (PHP_SAPI !== 'cli') {
     if (!user_can_access_billing(ak_platform_flags(current_user()))) { http_response_code(403); die('Accès réservé aux administrateurs et coordinateurs.'); }
 
     require_once __DIR__ . '/plan-helpers.php';
-    if (function_exists('ak_bilan_analytique_gate')) {
+    // Export inclus dans l'offre : décompté seulement pour les comptes de l'association.
+    // La mairie de rattachement et le fondateur consultent sans entamer le quota.
+    $__own_org = (int)(current_user()['org_id'] ?? 0) === (int)$ctx['proj_org_id'] && !is_platform_admin();
+    if ($__own_org && function_exists('ak_bilan_analytique_gate')) {
         $__g = ak_bilan_analytique_gate($pdo, (int)$ctx['proj_org_id']);
         if (!empty($__g['blocked'])) {
             http_response_code(402);

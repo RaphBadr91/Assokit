@@ -11,6 +11,9 @@ if (!function_exists('ak_generate_invoice_number')) {
 /**
  * Génère le prochain numéro de facture au format AK-2026-000001.
  * Utilise une séquence dédiée par année (stockée en BDD).
+ * La séquence n'est jamais en dessous du plus grand numéro déjà présent dans invoices
+ * (facture saisie ou importée à la main, ancienne numérotation du cron) : aucun appelant
+ * ne peut réémettre un numéro existant.
  */
 function ak_generate_invoice_number(PDO $pdo, ?int $year = null): string
 {
@@ -23,15 +26,22 @@ function ak_generate_invoice_number(PDO $pdo, ?int $year = null): string
         $stmt->execute([':y' => $year]);
         $seq = $stmt->fetchColumn();
 
+        // Plus grand numéro AK-<année>-NNNNNN déjà émis (lu sous le verrou de la séquence)
+        $mx = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(invoice_number, '-', -1) AS UNSIGNED))
+                             FROM invoices
+                             WHERE invoice_number LIKE :prefix AND invoice_number REGEXP '^AK-[0-9]{4}-[0-9]+$'");
+        $mx->execute([':prefix' => 'AK-' . $year . '-%']);
+        $max = (int) $mx->fetchColumn();
+
         if ($seq === false) {
             // Initialisation si année inexistante
-            $pdo->prepare("INSERT INTO invoice_sequences (year, next_sequence) VALUES (:y, 2)")
-                ->execute([':y' => $year]);
-            $current = 1;
+            $current = $max + 1;
+            $pdo->prepare("INSERT INTO invoice_sequences (year, next_sequence) VALUES (:y, :n)")
+                ->execute([':y' => $year, ':n' => $current + 1]);
         } else {
-            $current = (int) $seq;
-            $pdo->prepare("UPDATE invoice_sequences SET next_sequence = next_sequence + 1 WHERE year = :y")
-                ->execute([':y' => $year]);
+            $current = max((int) $seq, $max + 1);
+            $pdo->prepare("UPDATE invoice_sequences SET next_sequence = :n WHERE year = :y")
+                ->execute([':n' => $current + 1, ':y' => $year]);
         }
 
         $pdo->commit();
@@ -152,6 +162,18 @@ function ak_create_invoice(PDO $pdo, int $org_id, array $opts): array
     ]);
 
     $invoice_id = (int) $pdo->lastInsertId();
+
+    // Colonnes lues par les relances d'impayés (cron-job-impayes : amount_cents, due_date),
+    // si la table les a : mêmes TTC et échéance que ci-dessus.
+    try {
+        require_once __DIR__ . '/trial-helpers.php';
+        ak_db_update($pdo, 'invoices', $invoice_id, [
+            'amount_cents' => $amount_ttc_cents,
+            'due_date'     => substr($due_at, 0, 10),
+        ]);
+    } catch (Throwable $e) {
+        error_log('[invoice] amount_cents/due_date facture ' . $invoice_id . ' : ' . $e->getMessage());
+    }
 
     // Générer le PDF
     $pdf_path = ak_render_invoice_pdf($pdo, $invoice_id);

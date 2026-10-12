@@ -28,6 +28,7 @@ $MONTHS = ['', 'janv.', 'févr.', 'mars', 'avril', 'mai', 'juin', 'juil.', 'aoû
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    if ($org_id <= 0) $org_id = -1;   // compte sans association (agent de collectivité) : aucune ligne « org 0 », réponses vides
 
     // Tous les événements à venir (même compte que « événements à venir » de l'accueil),
     // les plus proches d'abord. Facultatif : ?from=AAAA-MM-JJ (suite de la liste, cf. next_from)

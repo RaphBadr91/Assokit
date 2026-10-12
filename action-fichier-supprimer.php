@@ -48,7 +48,7 @@ $stmt = $pdo->prepare("
 $stmt->execute([$file_id, $project_id]);
 $file = $stmt->fetch();
 
-if (!$file || (int)$file['org_id'] !== (int)$user['org_id']) {
+if (!$file || (int)$user['org_id'] <= 0 || (int)$file['org_id'] !== (int)$user['org_id']) {  // jamais d'« org 0 » partagée (compte sans association)
     http_response_code(403);
     die('Fichier introuvable ou accès refusé.');
 }

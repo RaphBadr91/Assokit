@@ -18,7 +18,7 @@ $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { echo json_encode(['ok' => false, 'count' => 0]); exit; }
 // Même règle que la page Diffusion et l'envoi : réservé aux admins et coordinateurs
 // (le compte révèle l'effectif par rôle et les désinscriptions d'une adresse donnée)
-if (!in_array(($user['role'] ?? ''), ['admin', 'coordinator'], true)) {
+if (!ak_ai_can_manage_all($user)) {
     http_response_code(403);
     echo json_encode(['ok' => false, 'count' => 0]);
     exit;

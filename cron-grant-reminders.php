@@ -18,6 +18,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/includes-grants.php';
+require_once __DIR__ . '/asso-invoice-helpers.php';   // ak_asso_org_active_sql()
 @require_once __DIR__ . '/resend-helper.php';
 
 // CLI uniquement (avec key web optionnelle)
@@ -42,11 +43,16 @@ $today = date('Y-m-d');
 // La requête est protégée, comme celle du radar : une table absente doit
 // laisser le cron finir proprement et rendre son verrou, pas le tuer au
 // milieu sans compte rendu.
+//
+// Association supprimée, suspendue (essai terminé, impayé) ou résiliée :
+// aucun rappel, comme pour les relances automatiques.
 $ids = [];
 try {
     $ids = $pdo->query("SELECT g.id FROM grants g
+                        JOIN organizations o ON o.id = g.org_id
                         WHERE g.archived_at IS NULL
-                          AND g.status NOT IN ('rejected','reported','archived')")
+                          AND g.status NOT IN ('rejected','reported','archived')
+                          AND " . ak_asso_org_active_sql('o'))
                ->fetchAll(PDO::FETCH_COLUMN);
 } catch (Throwable $e) {
     echo "  ! " . $e->getMessage() . "\n";

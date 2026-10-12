@@ -1,7 +1,8 @@
 <?php
 /**
  * api/app-stats-ai.php — Cockpit IA : analyse + insights + recommandations pour l'ecran Stats.
- * Reutilise les helpers stats + ask_claude(). JSON, scope org, admin. NE MODIFIE PAS le site.
+ * Reutilise les helpers stats + ask_claude(). JSON, scope org, droits de la Facturation
+ * (user_can_access_billing, comme api/app-stats.php). NE MODIFIE PAS le site.
  */
 ob_start();
 require_once __DIR__ . '/../config.php';
@@ -24,9 +25,11 @@ function e2($cents) { return number_format($cents / 100, 0, ',', ' ') . ' €'; 
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-    $role = (string) ($user['role'] ?? '');
-    if (!in_array($role, ['admin', 'founder', 'super_admin'], true) && empty($user['is_founder'])) {
-        echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
+    // Même règle que les statistiques (api/app-stats.php, mon-asso-stats.php) : la Facturation
+    require_once __DIR__ . '/../finance-permissions.php';
+    require_once __DIR__ . '/../platform-flags.php';
+    if (!user_can_access_billing(ak_platform_flags($user))) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux administrateurs et coordinateurs.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
     @require_once __DIR__ . '/../rate-limit-helper.php';

@@ -1,7 +1,11 @@
 <?php
 /**
  * api/app-notif-read.php — Marque des notifications comme lues (app mobile).
- * Corps JSON : { id?: int, type?: 'message'|'support', channel_id?: int, project_id?: int, all?: bool, csrf }
+ * Corps JSON : { id?: int|'p<N>', source?: 'platform', platform_id?: int, type?: 'message'|'support',
+ *               channel_id?: int, project_id?: int, all?: bool, csrf }
+ *   - notification de la plateforme (fondateur, api/app-notifications.php) : id 'p<N>', ou
+ *     source 'platform' avec platform_id (ou id) N — seulement celles de l'utilisateur
+ *   - all : aussi les notifications de la plateforme de l'utilisateur
  *   - channel_id : canal ouvert → ses notifications seulement (comme messages.php sur le site)
  *   - project_id : discussion d'un projet lue → ses notifications de messages seulement
  *   - type 'message' sans channel_id (versions de l'appli qui l'envoient à l'ouverture d'un canal) :
@@ -13,9 +17,21 @@
  */
 require __DIR__ . '/_app-write-boot.php';
 @require_once __DIR__ . '/../notification-helpers.php';
+require_once __DIR__ . '/../platform-flags.php';
 
 $all  = !empty($input['all']);
-$id   = (int) ($input['id'] ?? 0);
+$raw_id = $input['id'] ?? 0;
+$platform_id = 0;
+if (is_string($raw_id) && preg_match('/^p(\d+)$/', $raw_id, $pm)) {
+    $platform_id = (int) $pm[1];
+} elseif ((string) ($input['source'] ?? '') === 'platform') {
+    $platform_id = (int) ($input['platform_id'] ?? $raw_id);
+}
+$id   = $platform_id > 0 ? 0 : (int) $raw_id;
+// Fondateur / super admin : seuls à recevoir les notifications de la plateforme (même règle
+// que la liste, api/app-notifications.php)
+$pf = ak_platform_flags($user) ?: [];
+$is_platform = app_is_founder($pdo, $user) || !empty($pf['is_super_admin']);
 $type = (string) ($input['type'] ?? '');
 $channel_id = (int) ($input['channel_id'] ?? 0);
 $project_id = (int) ($input['project_id'] ?? 0);
@@ -24,6 +40,19 @@ try {
     if ($all) {
         $pdo->prepare("UPDATE user_notifications SET is_read = 1, read_at = NOW() WHERE user_id = ? AND is_read = 0")
             ->execute([$uid]);
+        // Notifications de la plateforme de l'utilisateur (fondateur), comme la cloche du cockpit
+        if ($is_platform) {
+            try {
+                $pdo->prepare("UPDATE platform_notifications SET is_read = 1, read_at = NOW() WHERE recipient_user_id = ? AND is_read = 0")
+                    ->execute([$uid]);
+            } catch (Throwable $e) {}   // table absente
+        }
+    } elseif ($platform_id > 0) {
+        // Celle de l'utilisateur uniquement
+        try {
+            $pdo->prepare("UPDATE platform_notifications SET is_read = 1, read_at = NOW() WHERE id = ? AND recipient_user_id = ?")
+                ->execute([$platform_id, $uid]);
+        } catch (Throwable $e) {}   // table absente
     } elseif ($channel_id > 0) {
         // Canal de l'association de l'utilisateur uniquement
         $st = $pdo->prepare("SELECT id, slug FROM channels WHERE id = ? AND org_id = ? LIMIT 1");
@@ -79,6 +108,17 @@ try {
         $c = (int) $row['c']; $notif_unread += $c;
         if ($row['t'] === 'message' || $row['t'] === 'mention') $msg_unread += $c;
     }
+    // Fondateur / super admin : notifications de la plateforme non lues, comptées dans le total
+    // comme dans la liste (api/app-notifications.php) ; aussi renvoyées à part.
+    $platform_unread = 0;
+    if ($is_platform) {
+        try {
+            $pst = $pdo->prepare("SELECT COUNT(*) FROM platform_notifications WHERE recipient_user_id = ? AND is_read = 0");
+            $pst->execute([$uid]);
+            $platform_unread = (int) $pst->fetchColumn();
+        } catch (Throwable $e) {}   // table absente
+    }
+    $notif_unread += $platform_unread;
     // Support : même calcul que l'accueil (api/app-dashboard.php) — réponses du support
     // non lues par l'association, et non des notifications : sinon le badge disparaît à tort.
     try {
@@ -97,6 +137,7 @@ try {
         'notif_unread' => $notif_unread,
         'msg_unread' => $msg_unread,
         'support_unread' => $support_unread,
+        'platform_unread' => $platform_unread,
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[app-notif-read] ' . $e->getMessage());

@@ -17,6 +17,7 @@ require_once __DIR__ . '/includes-coach-ia.php';
 @require_once __DIR__ . '/ai-helper.php';
 @require_once __DIR__ . '/resend-helper.php';
 require_once __DIR__ . '/cron-lots.php';
+require_once __DIR__ . '/asso-invoice-helpers.php';   // ak_asso_org_active_sql()
 
 $is_cli = (PHP_SAPI === 'cli');
 $has_key = is_string($_GET['key'] ?? null) && defined('CRON_SECRET') && (string)CRON_SECRET !== '' && hash_equals((string)CRON_SECRET, $_GET['key']);
@@ -39,13 +40,12 @@ $week_start = date('Y-m-d', strtotime('monday last week'));
 // EXISTS plutôt que « id IN (SELECT DISTINCT org_id …) » : le DISTINCT
 // matérialisait la liste des org_id de tous les comptes de la base.
 //
-// On écarte les associations suspendues (essai terminé sans abonnement)
-// et les supprimées : sinon, chaque semaine, un appel IA payant et un
+// On écarte les associations suspendues (essai terminé sans abonnement),
+// résiliées et supprimées : sinon, chaque semaine, un appel IA payant et un
 // e-mail pour un espace fermé.
 $stmt = $pdo->prepare("SELECT o.id, o.name, o.legal_form AS type
     FROM organizations o
-    WHERE (o.status IS NULL OR o.status <> 'suspended')
-      AND o.deleted_at IS NULL
+    WHERE " . ak_asso_org_active_sql('o') . "
       AND EXISTS (SELECT 1 FROM users u
                    WHERE u.org_id = o.id AND u.is_active = 1 AND u.role = 'admin')
       AND NOT EXISTS (SELECT 1 FROM coach_reports c

@@ -17,6 +17,12 @@ require_login();
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
+// Compte sans association (agent de collectivité) : pas d'« org 0 » partagée. Un suiveur n'est
+// pas renvoyé vers /dashboard, qui le renvoie ici.
+if ($org_id <= 0) {
+    if (!is_follower()) { header('Location: /dashboard'); exit; }
+    http_response_code(403); exit('Ce compte n’est rattaché à aucune association.');
+}
 $can_create = can('create_projects');
 $is_admin = ($user['role'] === 'admin');
 // Création de dossier : admin ou droit « Peut créer des dossiers » (même règle que nouveau-dossier.php)
@@ -39,6 +45,10 @@ if (!empty($_SESSION['flash_projets'])) {
     // Renvoi de /projet/<id> (lien d'une notification, d'un e-mail…) vers un projet non ouvert à ce compte
     $flash = ['type' => 'error', 'message' => 'Vous n\'avez pas accès à ce projet.'];
 }
+
+// Filtre présélectionné par un lien (ex. suggestion du tableau de bord : /projets?filter=warn)
+$pj_filter = $_GET['filter'] ?? 'all';
+if (!in_array($pj_filter, ['all', 'active', 'warn', 'wait', 'done'], true)) $pj_filter = 'all';
 
 // Suiveur : compteurs, avancement, avatars et activité des dossiers calculés
 // sur les seuls projets qu'il suit (jamais sur le reste de l'association).
@@ -996,11 +1006,11 @@ render_sidebar('projets');
   ?>
   <div class="pj-toolbar">
     <div class="pj-chips" id="pjChips">
-      <span class="pj-chip on" data-filter="all">Tous <span class="n"><?= $cnt_all ?></span></span>
-      <span class="pj-chip" data-filter="active"><i style="background:var(--acc)"></i> En cours <span class="n"><?= $cnt_active ?></span></span>
-      <span class="pj-chip" data-filter="warn"><i style="background:var(--amber, #E0850C)"></i> À surveiller <span class="n"><?= $cnt_warn ?></span></span>
-      <span class="pj-chip" data-filter="wait"><i style="background:var(--ink-4)"></i> En attente <span class="n"><?= $cnt_wait ?></span></span>
-      <span class="pj-chip" data-filter="done"><i style="background:var(--blue, #2F73E8)"></i> Terminés <span class="n"><?= $cnt_done ?></span></span>
+      <span class="pj-chip<?= $pj_filter === 'all' ? ' on' : '' ?>" data-filter="all">Tous <span class="n"><?= $cnt_all ?></span></span>
+      <span class="pj-chip<?= $pj_filter === 'active' ? ' on' : '' ?>" data-filter="active"><i style="background:var(--acc)"></i> En cours <span class="n"><?= $cnt_active ?></span></span>
+      <span class="pj-chip<?= $pj_filter === 'warn' ? ' on' : '' ?>" data-filter="warn"><i style="background:var(--amber, #E0850C)"></i> À surveiller <span class="n"><?= $cnt_warn ?></span></span>
+      <span class="pj-chip<?= $pj_filter === 'wait' ? ' on' : '' ?>" data-filter="wait"><i style="background:var(--ink-4)"></i> En attente <span class="n"><?= $cnt_wait ?></span></span>
+      <span class="pj-chip<?= $pj_filter === 'done' ? ' on' : '' ?>" data-filter="done"><i style="background:var(--blue, #2F73E8)"></i> Terminés <span class="n"><?= $cnt_done ?></span></span>
     </div>
     <div class="pj-seg" id="pjView">
       <button class="on" data-view="grid" title="Grille" aria-label="Vue grille"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
@@ -1402,7 +1412,7 @@ render_sidebar('projets');
   var chips = document.getElementById('pjChips');
   var search = document.getElementById('pjSearch');
   var view = document.getElementById('pjView');
-  var curFilter = 'all', curQuery = '';
+  var curFilter = <?= json_encode($pj_filter) ?>, curQuery = '';
 
   function apply(){
     cards.forEach(function(c){
@@ -1422,6 +1432,7 @@ render_sidebar('projets');
     apply();
   });
   if (search) search.addEventListener('input', function(){ curQuery = this.value.trim().toLowerCase(); apply(); });
+  if (curFilter !== 'all') apply();
   if (view) view.addEventListener('click', function(e){
     var b = e.target.closest('button'); if (!b) return;
     view.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });

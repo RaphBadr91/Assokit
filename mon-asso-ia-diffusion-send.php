@@ -42,8 +42,9 @@ $org_id  = (int)($user['org_id'] ?? 0);
 $user_id = (int)($user['id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
 
-// Envoi de masse : reserve aux admins/coordinateurs (comms officielles au nom de l'asso)
-if (!in_array(($user['role'] ?? ''), ['admin', 'coordinator'], true)) {
+// Envoi de masse : reserve aux admins/coordinateurs (comms officielles au nom de l'asso),
+// fondateur et super admin compris (meme regle que la page Diffusion)
+if (!ak_ai_can_manage_all($user)) {
     header('Location: /dashboard');
     exit;
 }

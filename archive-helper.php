@@ -141,6 +141,7 @@ function restore_folder(PDO $pdo, int $folder_id, int $admin_user_id, int $org_i
         $stmt->execute([$folder_id, $org_id]);
 
         archive_log($pdo, (int)$folder['org_id'], 'restore_folder', 'folder', $folder_id, $folder['name'], $admin_user_id, []);
+        archive_forget_purge_alerts($pdo, 'folder', $folder_id);
 
         $pdo->commit();
         return ['ok' => true];
@@ -185,11 +186,25 @@ function restore_project(PDO $pdo, int $project_id, int $admin_user_id, int $org
         $stmt->execute([$project_id, $org_id]);
 
         archive_log($pdo, (int)$proj['org_id'], 'restore_project', 'project', $project_id, $proj['name'], $admin_user_id, []);
+        archive_forget_purge_alerts($pdo, 'project', $project_id);
 
         return ['ok' => true];
     } catch (Throwable $e) {
         error_log('restore_project error: ' . $e->getMessage());
         return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Oublie les alertes de purge déjà envoyées pour une cible restaurée : si elle est
+ * ré-archivée plus tard, les alertes J-30 à J-1 (cron-purge-archives.php) repartent de zéro.
+ */
+function archive_forget_purge_alerts(PDO $pdo, string $target_type, int $target_id): void
+{
+    try {
+        $pdo->prepare("DELETE FROM archive_purge_alerts WHERE target_type = ? AND target_id = ?")->execute([$target_type, $target_id]);
+    } catch (Throwable $e) {
+        error_log('archive_forget_purge_alerts: ' . $e->getMessage());
     }
 }
 

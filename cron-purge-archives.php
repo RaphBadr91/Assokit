@@ -65,6 +65,8 @@ function purge_org_admins(PDO $pdo, int $org_id): array
 /**
  * Alerte J-x avant la purge d'un dossier ou d'un projet archivé seul, envoyée à chaque
  * administrateur actif. Une ligne archive_purge_alerts par (cible, jour) évite les doublons.
+ * Le délai annoncé est celui qui reste vraiment ($t['days_left']) : une alerte relancée
+ * après un échec d'envoi n'annonce pas « dans 7 jours » à J-5.
  */
 function purge_send_alert(PDO $pdo, string $type, array $t, int $alert_day): void
 {
@@ -84,24 +86,25 @@ function purge_send_alert(PDO $pdo, string $type, array $t, int $alert_day): voi
         return;
     }
 
+    $left = max(0, (int)($t['days_left'] ?? $alert_day));
     $urgency = match(true) {
-        $alert_day <= 1 => '🚨 Dernière chance',
-        $alert_day <= 7 => '⚠️ Urgent',
-        $alert_day <= 14 => '🔔 Bientôt purgé',
+        $left <= 1 => '🚨 Dernière chance',
+        $left <= 7 => '⚠️ Urgent',
+        $left <= 14 => '🔔 Bientôt purgé',
         default => '📅 Information',
     };
-    $days = $alert_day . ' jour' . ($alert_day > 1 ? 's' : '');
+    $when = $left > 0 ? 'dans ' . $left . ' jour' . ($left > 1 ? 's' : '') : 'aujourd’hui';
     $purge_date = date('d/m/Y', strtotime($t['archived_at']) + ARCHIVE_RETENTION_DAYS * 86400);
     $url_archives = 'https://assokit.fr/archives';
 
     $sent = [];
     foreach ($admins as $a) {
         if (!function_exists('send_transactional_email')) break;
-        $content = '<h1 style="font-size:22px;margin:0 0 14px;font-weight:500;color:#1C1917">' . $urgency . ' : Purge d\'archive dans ' . $days . '</h1>'
+        $content = '<h1 style="font-size:22px;margin:0 0 14px;font-weight:500;color:#1C1917">' . $urgency . ' : Purge d\'archive ' . $when . '</h1>'
                  . '<p>Bonjour ' . htmlspecialchars($a['first_name'] ?: 'Administrateur') . ',</p>'
                  . '<p>Le ' . $what . ' <strong>« ' . htmlspecialchars($t['name']) . ' »</strong> de votre association <strong>' . htmlspecialchars($t['org_name']) . '</strong> est archivé depuis le <strong>' . date('d/m/Y', strtotime($t['archived_at'])) . '</strong>.</p>'
-                 . '<div style="background:' . ($alert_day <= 7 ? '#FEF2F2' : '#FFFBEB') . ';border-left:3px solid ' . ($alert_day <= 7 ? '#DC2626' : '#F59E0B') . ';padding:12px 16px;border-radius:6px;margin:16px 0;font-size:13px;line-height:1.6;">'
-                 . '⏰ <strong>Il sera définitivement supprimé dans ' . $days . '</strong>, soit le <strong>' . $purge_date . '</strong>, avec ses fichiers et justificatifs.<br>'
+                 . '<div style="background:' . ($left <= 7 ? '#FEF2F2' : '#FFFBEB') . ';border-left:3px solid ' . ($left <= 7 ? '#DC2626' : '#F59E0B') . ';padding:12px 16px;border-radius:6px;margin:16px 0;font-size:13px;line-height:1.6;">'
+                 . '⏰ <strong>Il sera définitivement supprimé ' . $when . '</strong>, soit le <strong>' . $purge_date . '</strong>, avec ses fichiers et justificatifs.<br>'
                  . 'Après cette date, aucune restauration ne sera possible.'
                  . '</div>'
                  . '<p>Si vous souhaitez conserver ce ' . $what . ', vous pouvez encore le <strong>restaurer depuis votre espace Archives</strong>.</p>'
@@ -112,7 +115,7 @@ function purge_send_alert(PDO $pdo, string $type, array $t, int $alert_day): voi
         try {
             $result = send_transactional_email(
                 $a['email'],
-                '[' . $t['org_name'] . '] ' . $urgency . ' : Purge du ' . $what . ' "' . $t['name'] . '" dans ' . $alert_day . 'j',
+                '[' . $t['org_name'] . '] ' . $urgency . ' : Purge du ' . $what . ' "' . $t['name'] . '" ' . ($left > 0 ? 'dans ' . $left . 'j' : 'aujourd’hui'),
                 $html,
                 ['tag' => 'archive_alert_j' . $alert_day]
             );
@@ -122,12 +125,15 @@ function purge_send_alert(PDO $pdo, string $type, array $t, int $alert_day): voi
         }
     }
 
+    // Aucun e-mail parti : rien n'est noté, le passage suivant du cron la renverra (fenêtre J-x).
+    if (!$sent) {
+        cron_log("  ⚠ Alerte J-{$alert_day} non envoyée (email KO) pour {$what} #{$t['id']} : non notée, à relancer");
+        return;
+    }
     try {
         $ins = $pdo->prepare("INSERT INTO archive_purge_alerts (target_type, target_id, alert_day, admin_email) VALUES (?, ?, ?, ?)");
-        $ins->execute([$type, (int)$t['id'], $alert_day, mb_substr(implode(',', $sent ?: [$admins[0]['email']]), 0, 255)]);
-        cron_log($sent
-            ? "  ✅ Alerte J-{$alert_day} envoyée pour {$what} « {$t['name']} » (" . implode(', ', $sent) . ")"
-            : "  ⚠ Alerte J-{$alert_day} loggée mais email KO pour {$what} #{$t['id']}");
+        $ins->execute([$type, (int)$t['id'], $alert_day, mb_substr(implode(',', $sent), 0, 255)]);
+        cron_log("  ✅ Alerte J-{$alert_day} envoyée pour {$what} « {$t['name']} » (" . implode(', ', $sent) . ")");
     } catch (Throwable $e) {
         cron_log("  ❌ Erreur SQL alert log: " . $e->getMessage());
     }
@@ -237,29 +243,43 @@ cron_log('========== DÉMARRAGE CRON ARCHIVES ==========');
 //   dossiers archivés, et projets archivés seuls (hors archivage de dossier)
 // =====================================================================
 $alert_days = [30, 14, 7, 1];
+if (!isset(ak_db_columns($pdo, 'archive_purge_alerts')['alert_day'])) {
+    cron_log("  ❌ Table archive_purge_alerts absente : alertes non envoyées (doublons impossibles à éviter)");
+    $alert_days = [];
+}
 
-foreach ($alert_days as $alert_day) {
+// Chaque alerte couvre les jours jusqu'à la suivante (J-30 : 30 à 15 jours restants, J-14 : 14 à 8,
+// J-7 : 7 à 2, J-1 : 1 à 0) : une alerte non partie (e-mail en échec, cron sauté) est retentée
+// au passage suivant au lieu d'être perdue. Celles déjà notées ne sont pas reprises.
+foreach ($alert_days as $i => $alert_day) {
+    $floor = ($alert_days[$i + 1] ?? -1) + 1;
     cron_log("--- Vérification alertes J-{$alert_day} ---");
 
     $stmt = $pdo->prepare("
-        SELECT f.id, f.name, f.archived_at, f.org_id, o.name AS org_name
+        SELECT f.id, f.name, f.archived_at, f.org_id, o.name AS org_name,
+               DATEDIFF(DATE_ADD(f.archived_at, INTERVAL ? DAY), NOW()) AS days_left
         FROM folders f
         JOIN organizations o ON f.org_id = o.id
         WHERE f.archived_at IS NOT NULL
-          AND DATEDIFF(DATE_ADD(f.archived_at, INTERVAL ? DAY), NOW()) = ?
+          AND DATEDIFF(DATE_ADD(f.archived_at, INTERVAL ? DAY), NOW()) BETWEEN ? AND ?
+          AND NOT EXISTS (SELECT 1 FROM archive_purge_alerts a
+                          WHERE a.target_type = 'folder' AND a.target_id = f.id AND a.alert_day = ?)
     ");
-    $stmt->execute([ARCHIVE_RETENTION_DAYS, $alert_day]);
+    $stmt->execute([ARCHIVE_RETENTION_DAYS, ARCHIVE_RETENTION_DAYS, $floor, $alert_day, $alert_day]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $f) purge_send_alert($pdo, 'folder', $f, $alert_day);
 
     $stmt = $pdo->prepare("
-        SELECT p.id, p.name, p.archived_at, f.org_id, o.name AS org_name
+        SELECT p.id, p.name, p.archived_at, f.org_id, o.name AS org_name,
+               DATEDIFF(DATE_ADD(p.archived_at, INTERVAL ? DAY), NOW()) AS days_left
         FROM projects p
         JOIN folders f ON p.folder_id = f.id
         JOIN organizations o ON f.org_id = o.id
         WHERE p.archived_at IS NOT NULL AND COALESCE(p.archived_via_folder, 0) = 0
-          AND DATEDIFF(DATE_ADD(p.archived_at, INTERVAL ? DAY), NOW()) = ?
+          AND DATEDIFF(DATE_ADD(p.archived_at, INTERVAL ? DAY), NOW()) BETWEEN ? AND ?
+          AND NOT EXISTS (SELECT 1 FROM archive_purge_alerts a
+                          WHERE a.target_type = 'project' AND a.target_id = p.id AND a.alert_day = ?)
     ");
-    $stmt->execute([ARCHIVE_RETENTION_DAYS, $alert_day]);
+    $stmt->execute([ARCHIVE_RETENTION_DAYS, ARCHIVE_RETENTION_DAYS, $floor, $alert_day, $alert_day]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $p) purge_send_alert($pdo, 'project', $p, $alert_day);
 }
 

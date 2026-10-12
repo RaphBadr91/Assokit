@@ -9,6 +9,7 @@ require_once __DIR__ . '/includes-permissions.php';
 require_once __DIR__ . '/includes-mairie-channels.php';
 if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
+require_parent_org_user(); // collectivité en attente, suspendue ou refusée : page d'explication
 
 $current = current_user();
 $is_platform = is_platform_admin($current);

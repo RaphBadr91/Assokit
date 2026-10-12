@@ -11,6 +11,7 @@ require_once __DIR__ . '/resend-helper.php';
 require_once __DIR__ . '/sa-permissions.php';   // sa_notify_all_founders()
 if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
+require_parent_org_user(); // collectivité en attente, suspendue ou refusée : page d'explication
 
 $current = current_user();
 $parent_org = current_parent_org();

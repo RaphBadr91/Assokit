@@ -129,15 +129,21 @@ if (!table_existe($pdo, 'asso_prospects')) {
                 ON DUPLICATE KEY UPDATE asso_prospection.id = asso_prospection.id");
     dit('  fiches reprises : ' . count($reprises) . ' colonnes');
 
+    // asso_prospect_events se juge sur ses propres colonnes : sans org_id,
+    // c'est l'historique d'envoi du fondateur (api/_app-prospect.php).
     if (table_existe($pdo, 'asso_prospect_events')) {
-        $pdo->exec("INSERT INTO asso_prospection_events (id, org_id, prospect_id, user_id, type, detail, created_at)
-                    SELECT id, org_id, prospect_id, user_id, type, detail, created_at FROM asso_prospect_events
-                    ON DUPLICATE KEY UPDATE asso_prospection_events.id = asso_prospection_events.id");
-        dit('  historique repris');
+        if (colonne_existe($pdo, 'asso_prospect_events', 'org_id')) {
+            $pdo->exec("INSERT INTO asso_prospection_events (id, org_id, prospect_id, user_id, type, detail, created_at)
+                        SELECT id, org_id, prospect_id, user_id, type, detail, created_at FROM asso_prospect_events
+                        ON DUPLICATE KEY UPDATE asso_prospection_events.id = asso_prospection_events.id");
+            dit('  historique repris');
+            $pdo->exec("DROP TABLE asso_prospect_events");
+        } else {
+            dit('  asso_prospect_events : historique du fondateur, laissé en place');
+        }
     }
 
     // Libère le nom : le fondateur recréera sa propre table au besoin.
-    $pdo->exec("DROP TABLE IF EXISTS asso_prospect_events");
     $pdo->exec("DROP TABLE asso_prospects");
     dit('  ancienne table supprimée, le nom est rendu à la prospection du fondateur');
 } else {
@@ -155,9 +161,13 @@ if (!table_existe($pdo, 'asso_prospects')) {
         ? '  colonnes ajoutées par erreur, retirées : ' . implode(', ', $retirees)
         : '  aucune colonne parasite');
 
-    // asso_prospect_events n'a jamais servi à personne d'autre : c'était la
-    // mienne, restée vide puisque la page n'a jamais pu créer de fiche.
-    if (table_existe($pdo, 'asso_prospect_events')) {
+    // asso_prospect_events : la mienne portait org_id. Sans org_id, c'est
+    // l'historique d'envoi du fondateur (api/_app-prospect.php, lu par
+    // fondateur-prospection.php et cron-prospect-send.php) : on n'y touche
+    // pas, vide ou non.
+    if (table_existe($pdo, 'asso_prospect_events') && !colonne_existe($pdo, 'asso_prospect_events', 'org_id')) {
+        dit('  asso_prospect_events : historique du fondateur, laissé en place');
+    } elseif (table_existe($pdo, 'asso_prospect_events')) {
         $n = (int) $pdo->query("SELECT COUNT(*) FROM asso_prospect_events")->fetchColumn();
         if ($n === 0) {
             $pdo->exec("DROP TABLE asso_prospect_events");

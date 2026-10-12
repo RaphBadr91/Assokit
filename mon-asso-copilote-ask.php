@@ -27,10 +27,10 @@ $org_id = (int)($user['org_id'] ?? 0);
 $uid    = (int)($user['id'] ?? 0);
 if ($org_id <= 0) ak_cop_fail(403, 'no_org', 'Accès non autorisé.');
 
-// Le copilote expose des données financières → réservé aux rôles de pilotage.
-$role = strtolower((string)($user['role'] ?? ''));
-$is_priv = in_array($role, ['admin','coordinator','founder'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
-if (!$is_priv) ak_cop_fail(403, 'forbidden', 'Accès non autorisé.');
+// Le copilote expose des données financières → réservé aux rôles de pilotage
+// (règle unique de finance-permissions.php, reprise par la bulle flottante).
+require_once __DIR__ . '/finance-permissions.php';
+if (!ak_copilote_allowed($user)) ak_cop_fail(403, 'forbidden', 'Accès non autorisé.');
 
 // Corps JSON ou form
 $body = json_decode(file_get_contents('php://input'), true);

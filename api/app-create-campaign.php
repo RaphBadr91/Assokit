@@ -34,6 +34,12 @@ if ($opens && $closes && strtotime($closes) < strtotime($opens)) {
     app_fail(422, 'invalid', 'La date de clôture précède la date d\'ouverture.');
 }
 $is_active = !empty($input['is_active']) ? 1 : 0;
+// « Ces paiements renouvellent l'adhésion » (comme action-cotisation.php) : '' ou absent =
+// automatique (NULL), 1 = oui, 0 = non. Enregistré seulement si la colonne existe.
+$renews_sent = array_key_exists('renews_membership', $input);
+$rv = $renews_sent ? $input['renews_membership'] : '';
+$renews_raw = is_bool($rv) ? (string) (int) $rv : (is_scalar($rv) ? trim((string) $rv) : '');
+$renews = $renews_raw === '1' ? 1 : ($renews_raw === '0' ? 0 : null);
 
 // Tarifs (nom + montant obligatoires) — normalise la virgule décimale
 $num = static fn($v) => (float) str_replace([' ', ','], ['', '.'], (string) $v);
@@ -58,6 +64,14 @@ try {
         VALUES (?,?,?,?,?,?,?,?,?,?)")
         ->execute([$org_id, $name, $year ?: null, $description ?: null, $currency, $opens, $closes, $is_active, $token, $uid]);
     $campaign_id = (int) $pdo->lastInsertId();
+
+    if ($renews_sent && $renews !== null) {
+        require_once __DIR__ . '/../trial-helpers.php';
+        if (isset(ak_db_columns($pdo, 'cotisation_campaigns')['renews_membership'])) {
+            $pdo->prepare("UPDATE cotisation_campaigns SET renews_membership = ? WHERE id = ? AND org_id = ?")
+                ->execute([$renews, $campaign_id, $org_id]);
+        }
+    }
 
     if ($tiers) {
         $ins = $pdo->prepare("INSERT INTO cotisation_tiers (campaign_id, name, amount, description, position) VALUES (?,?,?,?,?)");

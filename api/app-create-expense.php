@@ -11,15 +11,29 @@ $project_id = (int) ($input['project_id'] ?? 0);
 if ($project_id <= 0) app_fail(422, 'invalid', 'Projet manquant.');
 
 // Le projet appartient a l'org
-$st = $pdo->prepare("SELECT p.id, p.referent_id FROM projects p JOIN folders f ON p.folder_id = f.id WHERE p.id = ? AND f.org_id = ? LIMIT 1");
+$st = $pdo->prepare("SELECT p.id, p.referent_id, p.archived_at, f.archived_at AS folder_archived_at FROM projects p JOIN folders f ON p.folder_id = f.id WHERE p.id = ? AND f.org_id = ? LIMIT 1");
 $st->execute([$project_id, $org_id]);
 $project = $st->fetch(PDO::FETCH_ASSOC);
 if (!$project) app_fail(403, 'forbidden', 'Accès refusé à ce projet.');
 
 $role = (string) ($user['role'] ?? '');
+// Suiveur (financeur externe) : lecture seule, aucune dépense (comme action-facture.php)
+if ($role === 'follower') app_fail(403, 'forbidden', 'Action non autorisée.');
+// Projet archivé (seul ou avec son dossier) : lecture seule, comme sur le site
+if (!empty($project['archived_at']) || !empty($project['folder_archived_at'])) {
+    app_fail(403, 'archived', 'Ce projet est archivé : il est en lecture seule.');
+}
 // Parité site (action-facture.php) : seuls admin/coordinateur auto-valident ; un référent crée en « pending »
 // (sinon le budget engagé diverge entre l'app et le site).
 $can_validate = in_array($role, ['admin', 'coordinator'], true);
+// Hors admin / coordinateur / habilité finances : seule l'équipe du projet (référent ou membre)
+// peut y déclarer une dépense.
+if (!$can_validate && (int) ($project['referent_id'] ?? 0) !== $uid
+    && empty($user['can_manage_finances']) && !(function_exists('can') && can('manage_finances'))) {
+    $pm = $pdo->prepare("SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? LIMIT 1");
+    $pm->execute([$project_id, $uid]);
+    if (!$pm->fetchColumn()) app_fail(403, 'forbidden', 'Seule l’équipe du projet peut y ajouter une facture.');
+}
 
 $supplier = trim((string) ($input['supplier_name'] ?? ''));
 $category = trim((string) ($input['category'] ?? ''));

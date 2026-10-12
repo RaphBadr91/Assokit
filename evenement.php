@@ -6,6 +6,7 @@ require_once __DIR__ . '/includes-attendance.php';
 require_login();
 $current = current_user();
 $org_id = (int)$current['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 
 $event_id = (int)($_GET['id'] ?? 0);
 if ($event_id <= 0) { header('Location: /agenda'); exit; }
@@ -26,7 +27,8 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute(array_merge([$event_id, $org_id], $vis_params));
 $event = $stmt->fetch();
-if (!$event) { header('Location: /agenda?error=notfound'); exit; }
+// Suiveur : seulement les événements des projets qu'il suit (déjà filtré ci-dessus ; défense en profondeur)
+if (!$event || !follower_can_access_project((int)($event['project_id'] ?? 0))) { header('Location: /agenda?error=notfound'); exit; }
 
 // Admin, coordinateur, droit « Gérer les événements » ou créateur ; jamais un suiveur (cf. action-evenement.php)
 $can_edit = ak_event_can_edit($current, $event);

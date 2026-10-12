@@ -124,7 +124,7 @@ function ak_anom_invoices_numbering(PDO $pdo, int $org_id): array {
             $out[] = ['severity'=>'high', 'category'=>'numbering-duplicate',
                 'title'=>"Numéro de facture en double : $num",
                 'detail'=>"$c factures portent le numéro « $num ». Un numéro doit être unique et séquentiel (obligation légale + piste d'audit).",
-                'route'=>'/mon-asso-factures'];
+                'route'=>'/mon-asso-factures-client?year='];
         }
     }
     foreach ($groups as $prefix => $items) {
@@ -141,7 +141,7 @@ function ak_anom_invoices_numbering(PDO $pdo, int $org_id): array {
             $out[] = ['severity'=>'medium', 'category'=>'numbering-gap',
                 'title'=>count($missing)." numéro(s) manquant(s) dans la série « {$prefix} »",
                 'detail'=>"Trous de séquence : ".implode(', ', $sample).$more.". Une numérotation continue est requise ; vérifiez qu'aucune facture n'a été supprimée.",
-                'route'=>'/mon-asso-factures'];
+                'route'=>'/mon-asso-factures-client?year='];
         }
     }
     return $out;
@@ -169,7 +169,7 @@ function ak_anom_invoices_duplicates(PDO $pdo, int $org_id): array {
         $out[] = ['severity'=>'medium', 'category'=>'invoice-duplicate',
             'title'=>"Doublon possible : {$r['n1']} et {$r['n2']}",
             'detail'=>"Même client (".($r['client'] ?: '—').") et même montant (".ak_anom_eur($r['amt']).") à ".($r['d1']===$r['d2']?"la même date ({$r['d1']})":"{$r['d1']} et {$r['d2']}")." — vérifiez qu'il ne s'agit pas d'une facture émise deux fois.",
-            'route'=>'/mon-asso-factures'];
+            'route'=>'/mon-asso-factures-client?year='];
     }
     return $out;
 }
@@ -189,7 +189,7 @@ function ak_anom_invoices_vat(PDO $pdo, int $org_id): array {
             $out[] = ['severity'=>'high', 'category'=>'vat-arithmetic',
                 'title'=>"Incohérence de calcul : {$r['invoice_number']}",
                 'detail'=>"HT (".ak_anom_eur($ht).") + TVA (".ak_anom_eur($vat).") = ".ak_anom_eur($ht+$vat)." ≠ TTC (".ak_anom_eur($ttc)."). Le total ne correspond pas.",
-                'route'=>'/mon-asso-factures'];
+                'route'=>'/mon-asso-factures-client?year='];
             continue;
         }
         // taux implicite
@@ -201,7 +201,7 @@ function ak_anom_invoices_vat(PDO $pdo, int $org_id): array {
                 $out[] = ['severity'=>'medium', 'category'=>'vat-rate',
                     'title'=>"Taux de TVA inhabituel ({$rate} %) : {$r['invoice_number']}",
                     'detail'=>"Le taux implicite ({$rate} %) ne correspond à aucun taux légal courant (0 / 2,1 / 5,5 / 10 / 20 %). À vérifier.",
-                    'route'=>'/mon-asso-factures'];
+                    'route'=>'/mon-asso-factures-client?year='];
             }
         }
     }
@@ -224,7 +224,7 @@ function ak_anom_invoices_amounts(PDO $pdo, int $org_id): array {
             'title'=>"Montant nul : {$r['invoice_number']}",
             'hash_key'=>"Montant nul ou négatif : {$r['invoice_number']}",   // ancien titre
             'detail'=>"Cette facture émise a un montant TTC de ".ak_anom_eur($r['amount_ttc_cents']).". Une facture validée devrait avoir un montant non nul.",
-            'route'=>'/mon-asso-factures'];
+            'route'=>'/mon-asso-factures-client?year='];
     }
     return $out;
 }
@@ -243,7 +243,7 @@ function ak_anom_invoices_dates(PDO $pdo, int $org_id): array {
         $out[] = ['severity'=>'medium', 'category'=>'date-incoherent',
             'title'=>"Échéance avant émission : {$r['invoice_number']}",
             'detail'=>"Échéance ({$r['due']}) antérieure à la date d'émission ({$r['issued']}).",
-            'route'=>'/mon-asso-factures'];
+            'route'=>'/mon-asso-factures-client?year='];
     }
     return $out;
 }
@@ -261,7 +261,7 @@ function ak_anom_invoices_status(PDO $pdo, int $org_id): array {
         $out[] = ['severity'=>'high', 'category'=>'status-paid-nodate',
             'title'=>"Facture « payée » sans date de paiement : $num",
             'detail'=>"Statut « payée » mais aucune date d'encaissement enregistrée. Renseignez la date pour la fiabilité de la piste d'audit.",
-            'route'=>'/mon-asso-factures'];
+            'route'=>'/mon-asso-factures-client?year='];
     }
     $st = $pdo->prepare(
         "SELECT invoice_number FROM asso_invoices
@@ -271,7 +271,7 @@ function ak_anom_invoices_status(PDO $pdo, int $org_id): array {
         $out[] = ['severity'=>'medium', 'category'=>'status-unpaid-withdate',
             'title'=>"Facture impayée mais datée comme payée : $num",
             'detail'=>"Une date d'encaissement est renseignée alors que le statut reste « en attente / en retard ». Passez-la en « payée » si elle l'est.",
-            'route'=>'/mon-asso-factures'];
+            'route'=>'/mon-asso-factures-client?year='];
     }
     return $out;
 }
@@ -298,7 +298,7 @@ function ak_anom_invoices_outliers(PDO $pdo, int $org_id): array {
             $out[] = ['severity'=>'low', 'category'=>'amount-outlier',
                 'title'=>"Montant inhabituellement élevé : {$r['invoice_number']}",
                 'detail'=>"Montant (".ak_anom_eur($r['amount_ttc_cents']).") très supérieur à votre facture médiane (".ak_anom_eur($median)."). Simple vérification — pas forcément une erreur.",
-                'route'=>'/mon-asso-factures'];
+                'route'=>'/mon-asso-factures-client?year='];
         }
     }
     return array_slice($out, 0, 20);

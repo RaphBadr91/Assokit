@@ -107,8 +107,10 @@ if ($action === 'sync_now') {
 }
 
 if ($action === 'disconnect') {
-    disconnect_google($user['org_id']);
-    header('Location: /mon-agenda?disconnected=1');
+    // 'kept' : autorisation Google non révoquée (même compte Google utilisé par la boîte mail
+    // Assokit ou par une autre association) ; seuls les jetons de l'agenda sont effacés.
+    $r = disconnect_google($user['org_id']);
+    header('Location: /mon-agenda?disconnected=1' . ($r === 'kept' ? '&google_kept=1' : ''));
     exit;
 }
 

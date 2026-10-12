@@ -29,6 +29,7 @@ $AG_TYPE = ['ag_ord' => 'AG Ordinaire', 'ag_ext' => 'AG Extraordinaire', 'ca' =>
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+    if ($org_id <= 0) $org_id = -1;   // compte sans association (agent de collectivité) : aucune ligne « org 0 », réponses vides
     $role = (string) ($user['role'] ?? '');
     if (!in_array($role, ['admin', 'founder', 'super_admin'], true) && empty($user['is_founder'])) {
         echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);

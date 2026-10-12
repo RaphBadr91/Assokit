@@ -7,19 +7,18 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/asso-quote-helpers.php';
+require_once __DIR__ . '/asso-tags-helpers.php';
 
 require_login();
 $user = current_user();
 if (empty($user['org_id'])) { http_response_code(403); die('Aucune asso.'); }
 $org_id = (int)$user['org_id'];
 
-$is_admin = false;
-try {
-    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
-    $stmt->execute([':id' => (int)$user['id']]);
-    $is_admin = in_array($stmt->fetchColumn(), ['admin', 'coordinator'], true);
-} catch (Throwable $e) {}
-if (!$is_admin) { http_response_code(403); die('Accès refusé.'); }
+// Règle unique de la Facturation : admin, coordinateur, fondateur, super admin, ou membre
+// ayant le droit « Gérer les finances » (trésorier), comme Factures et Récurrences.
+require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/platform-flags.php';
+if (!user_can_access_billing(ak_platform_flags($user))) { http_response_code(403); die('Accès refusé.'); }
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -195,6 +194,7 @@ render_sidebar('devis');
                     <label style="display:block; font-size:12px; color:#6B7280; margin-bottom:6px;">Notes internes</label>
                     <textarea name="internal_notes" rows="2" placeholder="Notes privées..." style="width:100%; padding:10px; border:1px solid #E5E7EB; border-radius:8px; resize:vertical; font-family:inherit;"></textarea>
                 </div>
+                <div style="grid-column:1/-1;"><?= ak_tag_picker_html($pdo, $org_id, 'quote', null, 'Tags (internes, invisibles au client)') ?></div>
             </div>
         </div>
 

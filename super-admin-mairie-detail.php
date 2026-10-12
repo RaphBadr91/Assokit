@@ -31,7 +31,7 @@ $users_mairie = $users_stmt->fetchAll(PDO::FETCH_ASSOC);
 $orgs_available = $pdo->query("
     SELECT id, name, billing_address_city, siret
     FROM organizations
-    WHERE parent_org_id IS NULL
+    WHERE parent_org_id IS NULL AND deleted_at IS NULL
     ORDER BY name ASC
     LIMIT 500
 ")->fetchAll(PDO::FETCH_ASSOC);

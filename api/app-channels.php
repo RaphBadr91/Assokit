@@ -30,6 +30,23 @@ try {
         exit;
     }
 
+    // Sans association (agent d'une collectivité seul) : pas de messagerie d'association ici
+    if ($org_id <= 0) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'error' => 'no_org', 'channels' => [],
+                          'message' => 'La messagerie interne est réservée aux membres d’une association.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // Admin nommé après le rattachement à une mairie : il rejoint le canal « Suivi · Mairie »
+    // (même synchronisation que messages.php sur le site)
+    if (($user['role'] ?? '') === 'admin' && is_file(__DIR__ . '/../includes-mairie-channels.php')) {
+        require_once __DIR__ . '/../includes-mairie-channels.php';
+        if (function_exists('sync_mairie_channels_for_org_admin')) {
+            try { sync_mairie_channels_for_org_admin($pdo, $uid, $org_id); }
+            catch (Throwable $e) { error_log('[api/app-channels] sync mairie : ' . $e->getMessage()); }
+        }
+    }
+
     $stmt = $pdo->prepare("
         SELECT c.id, c.name, c.slug, c.type, c.color_theme, c.icon,
                (SELECT COUNT(*) FROM channel_messages cm WHERE cm.channel_id = c.id AND cm.deleted_at IS NULL) AS msg_count,
