@@ -12,15 +12,12 @@ $user = current_user();
 if (empty($user['org_id'])) { http_response_code(403); die('Aucune asso.'); }
 $org_id = (int)$user['org_id'];
 
-// Admin ou coordinateur : les tags classent factures, devis et clients, dont l'accès est réservé
-// à ces rôles (user_can_access_billing) ; l'entrée « Tags » du menu suit la même règle.
-$is_admin = false;
-try {
-    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
-    $stmt->execute([':id' => (int)$user['id']]);
-    $is_admin = in_array($stmt->fetchColumn(), ['admin', 'coordinator'], true);
-} catch (Throwable $e) {}
-if (!$is_admin) { http_response_code(403); die('Accès refusé.'); }
+// Les tags classent factures, devis et clients : même règle que ces pages (user_can_access_billing :
+// admin, coordinateur, trésorier qui a « Gérer les finances », Fondateur ; jamais un suiveur).
+// L'entrée « Tags » du menu et le lien « Créer des tags » des formulaires suivent la même règle.
+require_once __DIR__ . '/finance-permissions.php';
+require_once __DIR__ . '/platform-flags.php';
+if (!user_can_access_billing(ak_platform_flags($user))) { http_response_code(403); die('Accès refusé.'); }
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -122,7 +119,7 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
             <h1 class="page-title" style="display:flex; align-items:center; gap:11px;"><?= ak_icon_badge('tag','#059669',36) ?><span>Mes tags</span></h1>
             <div class="page-sub">Catégorise tes factures, devis et clients</div>
         </div>
-        <a href="/mon-asso-factures" class="btn btn-ghost">← Retour</a>
+        <a href="/mon-asso-factures-client" class="btn btn-ghost">← Retour</a>
     </div>
 
     <?php if ($flash): ?>
@@ -143,7 +140,7 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
             </h3>
             <a href="/mon-asso-tags" class="btn btn-ghost" style="padding:6px 12px; font-size:12.5px;">Fermer</a>
         </div>
-        <p style="margin:0 0 14px; font-size:12.5px; color:#6B7280;">Coche les clients, factures et devis à classer sous ce tag, puis enregistre. Les listes Clients et Devis peuvent ensuite être filtrées par tag.</p>
+        <p style="margin:0 0 14px; font-size:12.5px; color:#6B7280;">Coche les clients, factures et devis à classer sous ce tag, puis enregistre. Les listes Clients, Factures et Devis peuvent ensuite être filtrées par tag.</p>
         <form method="POST" action="/mon-asso-tags">
             <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
             <input type="hidden" name="action" value="assign">
@@ -233,7 +230,7 @@ $colors = ['#6B7280','#EF4444','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899'
                         </td>
                         <td style="padding:12px 14px; font-size:13px; color:#6B7280;">
                             <?php if ($total > 0): ?>
-                                <?php $parts = []; foreach (['invoice'=>['facture',''],'quote'=>['devis','/mon-asso-devis'],'client'=>['client','/mon-asso-clients']] as $k=>[$lbl, $url]): $n = $usage[$k] ?? 0; if ($n > 0) { $txt = "$n " . $lbl . ($n > 1 && $lbl !== 'devis' ? 's' : ''); $parts[] = $url ? '<a href="' . $url . '?tag=' . (int)$t['id'] . '" style="color:inherit;">' . h($txt) . '</a>' : h($txt); } endforeach; echo implode(' · ', $parts); ?>
+                                <?php $parts = []; foreach (['invoice'=>['facture','/mon-asso-factures-client'],'quote'=>['devis','/mon-asso-devis'],'client'=>['client','/mon-asso-clients']] as $k=>[$lbl, $url]): $n = $usage[$k] ?? 0; if ($n > 0) { $txt = "$n " . $lbl . ($n > 1 && $lbl !== 'devis' ? 's' : ''); $parts[] = $url ? '<a href="' . $url . '?tag=' . (int)$t['id'] . '" style="color:inherit;">' . h($txt) . '</a>' : h($txt); } endforeach; echo implode(' · ', $parts); ?>
                             <?php else: ?>
                                 <span style="color:#6B7280;">Pas encore utilisé</span>
                             <?php endif; ?>

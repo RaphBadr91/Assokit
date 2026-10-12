@@ -341,11 +341,6 @@ render_sidebar('agenda');
 
 </main>
 
-<style>
-.alert-warn { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; }
-.alert-info { background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE; }
-</style>
-
 <script>
 function copyIcs() {
   var input = document.getElementById('icsUrl');

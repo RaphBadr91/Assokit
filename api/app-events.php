@@ -3,20 +3,8 @@
  * api/app-events.php — Agenda (evenements a venir) pour l'ecran natif.
  * JSON, lecture seule, scope org. NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 require_once __DIR__ . '/../includes-attendance.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
 
 $TYPE_COLOR = [
     'meeting' => 'blue', 'workshop' => 'purple', 'public' => 'green',
@@ -26,8 +14,6 @@ $DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'
 $MONTHS = ['', 'janv.', 'févr.', 'mars', 'avril', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
     if ($org_id <= 0) $org_id = -1;   // compte sans association (agent de collectivité) : aucune ligne « org 0 », réponses vides
 
     // Tous les événements à venir (même compte que « événements à venir » de l'accueil),

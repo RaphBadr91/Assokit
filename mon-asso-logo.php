@@ -184,7 +184,7 @@ render_sidebar('logo');
 
 <div class="main">
     <nav class="crumbs">
-        <a href="/mon-asso-factures">Mes factures</a>
+        <a href="/mon-asso-factures-parametres">Facturation</a>
         <span class="sep">›</span>
         <span class="current">Logo</span>
     </nav>
@@ -195,7 +195,7 @@ render_sidebar('logo');
             <div class="page-sub">Sera affiché sur tous vos PDF de factures</div>
         </div>
         <div>
-            <a href="/mon-asso-factures" class="btn btn-ghost">← Retour</a>
+            <a href="/mon-asso-factures-parametres" class="btn btn-ghost">← Retour</a>
         </div>
     </div>
 
@@ -255,7 +255,7 @@ render_sidebar('logo');
             </div>
 
             <div style="display:flex; gap:10px; justify-content:flex-end;">
-                <a href="/mon-asso-factures" class="btn btn-ghost">Annuler</a>
+                <a href="/mon-asso-factures-parametres" class="btn btn-ghost">Annuler</a>
                 <button type="submit" class="btn btn-primary" style="padding:10px 20px;">📤 Uploader le logo</button>
             </div>
         </form>

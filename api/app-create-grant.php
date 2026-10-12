@@ -36,12 +36,8 @@ $amount_req   = (isset($input['amount_requested']) && $input['amount_requested']
 $amount_gr    = (isset($input['amount_granted']) && $input['amount_granted'] !== '' && $input['amount_granted'] !== null) ? max(0, $num($input['amount_granted'])) : null;
 $currency     = (($input['currency'] ?? 'EUR') === 'CHF') ? 'CHF' : 'EUR';
 
-// Dates : YYYY-MM-DD (sinon null)
-$dt = static function ($v) {
-    $v = trim((string) $v);
-    return ($v !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) ? $v : null;
-};
-$deadline_apply = $dt($input['deadline_apply'] ?? '');
+// Date : vide = aucune ; AAAA-MM-JJ ou JJ/MM/AAAA ; illisible = 422 (au lieu d'être ignorée en silence)
+$deadline_apply = app_parse_date($input['deadline_apply'] ?? '', 'Date limite de dépôt');
 
 $project_id = (int) ($input['project_id'] ?? 0);
 if ($project_id > 0) {

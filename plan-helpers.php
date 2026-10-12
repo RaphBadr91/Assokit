@@ -337,7 +337,9 @@ function ak_get_usage(PDO $pdo, int $org_id): array {
         $ai_table = ak_table_exists($pdo, 'asso_ai_generations') ? 'asso_ai_generations'
                   : (ak_table_exists($pdo, 'asso_ai_logs') ? 'asso_ai_logs' : null);
         if ($ai_table !== null) {
-            $ok = $ai_table === 'asso_ai_generations' ? " AND status = 'success'" : '';
+            // Générations supprimées comprises (suppression douce, statut « deleted ») : supprimer une
+            // génération ne rend pas de quota du mois (comme asso-ai-quotas.php et ak_ai_count_this_month).
+            $ok = $ai_table === 'asso_ai_generations' ? " AND status IN ('success', 'deleted')" : '';
             $st = $pdo->prepare("
                 SELECT COUNT(*) FROM {$ai_table}
                 WHERE org_id = :o{$ok}

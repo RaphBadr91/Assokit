@@ -4,20 +4,8 @@
  * Verifie la visibilite (public/announce OU membre) + scope org. Lecture seule.
  * NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 require_once __DIR__ . '/../notification-helpers.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
 
 function m_ini($fn, $ln) {
     $x = (function_exists('mb_substr') ? mb_substr($fn, 0, 1) : substr($fn, 0, 1))
@@ -27,9 +15,6 @@ function m_ini($fn, $ln) {
 }
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-    $uid = (int) ($user['id'] ?? ($_SESSION['user_id'] ?? 0));
     $channel_id = (int) ($_GET['channel_id'] ?? 0);
     if ($channel_id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'channel']); exit; }
     // Suiveurs (financeurs externes) : pas d'accès à la messagerie interne, comme sur le site

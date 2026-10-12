@@ -9,20 +9,12 @@
  * Les actions (répondre, brouillon IA, archiver, catégorie, synchroniser)
  * passent par /boite-mail-action (POST JSON + jeton CSRF), comme sur le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 require_once __DIR__ . '/../mail-helpers.php';
 require_once __DIR__ . '/../demo-guard.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
 
 $out = function (array $d, int $code = 200) { http_response_code($code); echo json_encode($d, JSON_UNESCAPED_UNICODE); exit; };
-if (empty($_SESSION['user_id'])) $out(['ok' => false, 'error' => 'auth'], 401);
 
-$user = current_user();
 if (!mail_can_access($user)) $out(['ok' => false, 'error' => 'Boîte mail réservée aux administrateurs et coordinateurs.'], 403);
 if (!mail_schema_ready($pdo)) $out(['ok' => false, 'error' => 'Boîte mail non installée sur ce serveur.'], 503);
 $org = (int)$user['org_id'];

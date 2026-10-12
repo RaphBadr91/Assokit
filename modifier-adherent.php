@@ -184,6 +184,24 @@ if ($is_post && !$csrf_ok) {
                     $id, $org_id,
                 ]);
 
+                // Adresse de connexion changée ou compte désactivé : les liens d'invitation et de
+                // « mot de passe oublié » déjà envoyés ne servent plus (ils donneraient la main sur le
+                // compte à qui lit l'ancienne boîte), comme dans Paramètres › Utilisateurs.
+                $email_changed = strcasecmp($form['email'], (string)$adherent['email']) !== 0;
+                if ($email_changed || ((int)$adherent['is_active'] === 1 && $form['is_active'] === '0')) {
+                    try {
+                        $pdo->prepare("UPDATE user_password_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL")
+                            ->execute([$id]);
+                    } catch (Throwable $e) {
+                        error_log('[MODIFIER-ADHERENT] jetons : ' . $e->getMessage());
+                    }
+                }
+                // L'ancienne adresse est prévenue et la nouvelle doit être confirmée
+                if ($email_changed) {
+                    require_once __DIR__ . '/password-token-helper.php';
+                    ak_account_email_changed($pdo, $id, (string)$adherent['email'], $form['email'], $form['first_name'], true);
+                }
+
                 $_SESSION['flash_adherent'] = [
                     'type' => 'success',
                     'message' => 'Les modifications ont été enregistrées avec succès.'

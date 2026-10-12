@@ -37,6 +37,11 @@ Contact / DPO : **[à désigner]** — dpo@assokit.fr (à créer).
 | Logs techniques | 12 mois | Suppression |
 | Événements de tracking prospection | 24 mois | Suppression |
 | Données de compte supprimé (RGPD) | Immédiat | Anonymisation (déjà en place : `app-delete-account.php`) |
+| Comptes supprimés par un administrateur (corbeille) | 30 jours | Anonymisation (e-mail `deleted_<id>@anonyme.assokit.local`, nom « Compte supprimé », téléphone, ville, notes, 2FA et jeton d'agenda vidés ; jetons push et liens de mot de passe supprimés), `cron-rgpd-purge.php` règle 4, active seulement si `AK_RGPD_PURGE_LIVE` |
+
+Les comptes des associations supprimées par le Fondateur (cockpit, `super-admin-associations.php`) sont
+concernés de la même façon : anonymisés 30 jours après la suppression de l'association. Le Fondateur et
+les administrateurs de la plateforme ne sont jamais anonymisés par cette règle.
 
 Mécanisme technique : voir `cron-rgpd-purge.php` (**désactivé par défaut** ; à réviser
 puis activer après validation juridique).

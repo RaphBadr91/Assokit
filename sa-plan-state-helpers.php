@@ -149,10 +149,10 @@ if (!function_exists('sa_plan_tone_class')) {
 }
 
 if (!function_exists('sa_plan_price_label')) {
-    /** Prix lisible d'un plan : « 49,99 €/mois », « Gratuit », « Sur devis ». */
+    /** Prix lisible d'un plan (asso_plans.price_cents est HT) : « 49,99 € HT/mois », « Gratuit », « Sur devis ». */
     function sa_plan_price_label(int $price_cents, string $slug = '', bool $is_trial = false): string {
         if ($is_trial) return 'Gratuit pendant l’essai';
-        if ($price_cents > 0) return number_format($price_cents / 100, 2, ',', ' ') . ' €/mois';
+        if ($price_cents > 0) return number_format($price_cents / 100, 2, ',', ' ') . ' € HT/mois';
         return $slug === 'sur-mesure' ? 'Sur devis' : 'Gratuit';
     }
 }
@@ -201,7 +201,7 @@ if (!function_exists('sa_plans_list')) {
     /**
      * Plans réels (asso_plans) pour les listes déroulantes, dans l'ordre d'affichage :
      * [['id', 'slug', 'label', 'price_cents', 'is_trial', 'is_visible', 'option']].
-     * « option » = libellé prêt à afficher : « Assokit — 49,99 €/mois ».
+     * « option » = libellé prêt à afficher : « Assokit — 49,99 € HT/mois ».
      */
     function sa_plans_list(PDO $pdo): array {
         $cols = ak_db_columns($pdo, 'asso_plans');

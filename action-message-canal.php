@@ -27,6 +27,12 @@ require_login();
 $user = current_user();
 $user_id = (int)$user['id'];
 $org_id = (int)$user['org_id'];
+// Sans association (agent de collectivité, org_id vide) : aucun canal d'association où écrire, et
+// rien à écrire dans l'espace « org 0 » commun à toutes les collectivités
+if ($org_id <= 0) {
+    header('Location: /dashboard');
+    exit;
+}
 $is_admin = ($user['role'] === 'admin');
 $is_coord = ($user['role'] === 'coordinator');
 

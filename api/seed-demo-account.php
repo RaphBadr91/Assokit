@@ -102,8 +102,22 @@ try {
     if ($row = $st->fetch(PDO::FETCH_ASSOC)) {
         $old_org = (int) $row['org_id'];
         say("• Ancienne démo trouvée (org #$old_org) → suppression…");
+        // Justificatifs des notes de frais de l'ancienne démo (dossier privé de l'org, notes-frais-engine.php),
+        // effacés avant leurs lignes, sinon ils resteraient orphelins sur le disque (comme demo-formation/purge.php).
+        if ($old_org > 0 && table_exists($pdo, 'expense_report_lines') && col_exists($pdo, 'expense_report_lines', 'receipt_file')
+            && is_file(__DIR__ . '/../notes-frais-engine.php')) {
+            require_once __DIR__ . '/../notes-frais-engine.php';
+            try {
+                $rf = $pdo->prepare("SELECT receipt_file FROM expense_report_lines WHERE org_id = ? AND receipt_file IS NOT NULL");
+                $rf->execute([$old_org]);
+                foreach ($rf->fetchAll(PDO::FETCH_COLUMN) as $f) {
+                    if (function_exists('nf_receipt_delete')) nf_receipt_delete($old_org, (string)$f);
+                }
+            } catch (Throwable $e) {}
+        }
         foreach (['asso_subscriptions','asso_clients','projects','folders','events',
-                  'asso_invoices','asso_quotes','channels','channel_messages','event_participants'] as $t) {
+                  'asso_invoices','asso_quotes','channels','channel_messages','event_participants',
+                  'expense_report_lines','expense_reports'] as $t) {
             if (table_exists($pdo, $t) && col_exists($pdo, $t, 'org_id')) {
                 try { $pdo->prepare("DELETE FROM $t WHERE org_id = ?")->execute([$old_org]); } catch (Throwable $e) {}
             }

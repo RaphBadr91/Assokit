@@ -24,6 +24,14 @@ $user = current_user();
 $user_id = (int)$user['id'];
 $org_id = (int)$user['org_id'];
 
+// Sans association (agent de collectivité : rôle admin, org_id vide) : aucun canal à gérer. Un canal
+// créé ici tombait dans l'espace « org 0 », commun à toutes les collectivités. Les actions ne
+// chargent pas includes-layout.php : ak_mairie_space_guard() ne les couvre pas.
+if ($org_id <= 0) {
+    header('Location: /dashboard');
+    exit;
+}
+
 // Seuls les admins peuvent gérer les canaux
 if ($user['role'] !== 'admin') {
     header('Location: /messages?error=not_admin');

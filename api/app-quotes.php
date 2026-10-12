@@ -3,19 +3,7 @@
  * api/app-quotes.php — Liste des devis pour l'ecran natif. JSON, scope org.
  * NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 
 $Q_META = [
     'draft'     => ['label' => 'Brouillon', 'kind' => 'draft'],
@@ -33,9 +21,6 @@ function qfd($v) {
 }
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-
     // Parité site : devis réservés à la Facturation (user_can_access_billing : admin, fondateur,
     // super-admin, coordinateur, trésorier habilité), comme app-invoices.php.
     @require_once __DIR__ . '/../finance-permissions.php';

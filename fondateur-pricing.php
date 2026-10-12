@@ -13,7 +13,7 @@ sa_require_capability('can_manage_billing_config');
 $plans = $pdo->query("SELECT * FROM asso_plans WHERE is_visible = 1 ORDER BY display_order ASC")->fetchAll();
 $orgs  = $pdo->query("SELECT id, name, legal_form, vat_subject, siret, plan FROM organizations ORDER BY name LIMIT 200")->fetchAll();
 $sim_org_id = (int)($_GET['org'] ?? 0);
-$sim_cycle  = ($_GET['cycle'] ?? 'monthly') === 'yearly' ? 'yearly' : 'monthly';
+$sim_cycle  = 'monthly';   // abonnement mensuel uniquement : la formule annuelle (-15 %) n'est plus vendue
 $sim_org    = null;
 foreach ($orgs as $o) { if ((int)$o['id'] === $sim_org_id) { $sim_org = $o; break; } }
 // Plan réel de l'organisation simulée (même vérité que la fiche association : un essai est à 0 €)
@@ -27,7 +27,7 @@ sa_render_sidebar('fondateur-pricing');
     <div class="sa-pg-head">
       <div>
         <h1>💶 Tarifs &amp; facturation</h1>
-        <p>Plans publics, prix HT/TTC selon assujettissement TVA, cycle mensuel ou annuel (-15%).</p>
+        <p>Plans publics, prix HT/TTC selon assujettissement TVA, abonnement mensuel sans engagement.</p>
       </div>
       <div style="display:flex;gap:8px;">
         <a href="/fondateur-plans" class="sa-btn sa-btn-ghost">⚙️ Modifier les plans</a>
@@ -47,13 +47,6 @@ sa_render_sidebar('fondateur-pricing');
               <?= htmlspecialchars($o['name']) ?> · <?= $is_co ? 'Entreprise (HT)' : 'Asso/Particulier (TTC)' ?>
             </option>
             <?php endforeach; ?>
-          </select>
-        </div>
-        <div>
-          <label>Cycle</label>
-          <select name="cycle" onchange="this.form.submit()">
-            <option value="monthly" <?= $sim_cycle==='monthly'?'selected':'' ?>>Mensuel</option>
-            <option value="yearly"  <?= $sim_cycle==='yearly'?'selected':'' ?>>Annuel (-15%)</option>
           </select>
         </div>
       </form>
@@ -98,9 +91,6 @@ sa_render_sidebar('fondateur-pricing');
                 soit <?= pricing_format_eur($p['ttc_cents']) ?> TTC (TVA <?= number_format($p['vat_rate'], 0) ?>%)
               <?php endif; ?>
             </div>
-            <?php if ($sim_cycle === 'yearly'): $monthly_eq = (int)round($p['billed_cents'] / 12); ?>
-            <div class="ap-plan-eq">≈ <?= pricing_format_eur($monthly_eq) ?> <?= $p['label_unit'] ?>/mois</div>
-            <?php endif; ?>
           <?php endif; ?>
         </div>
         <div class="ap-plan-limits">
@@ -139,7 +129,7 @@ sa_render_sidebar('fondateur-pricing');
 .sa-pg-head p { color: #64748B; margin: 0; font-size: 14px; }
 .sa-card { background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 20px 22px; margin-bottom: 18px; }
 .sa-card h2 { font-size: 14px; margin: 0 0 14px; color: #FCD34D; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; padding-bottom: 8px; border-bottom: 1px solid #334155; }
-.ap-sim-form { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+.ap-sim-form { display: grid; grid-template-columns: minmax(0, 560px); gap: 12px; }
 .ap-sim-form label { display: block; font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; margin-bottom: 4px; }
 .ap-sim-form select { width: 100%; padding: 9px 12px; border: 1px solid #475569; background: #0F172A; color: #fff; border-radius: 8px; font-size: 14px; font-family: inherit; }
 .ap-sim-info { margin-top: 14px; padding: 10px 14px; background: #0F172A; border-radius: 8px; font-size: 13px; color: #E2E8F0; }

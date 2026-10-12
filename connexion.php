@@ -257,26 +257,42 @@ if (empty($_SESSION['csrf_token'])) {
   </div>
 <?php if ($suspended_notice !== null):
     $is_org_admin = ($suspended_notice['role'] ?? '') === 'admin';
-    // Le paiement ne lève tout seul que la suspension de fin d'essai (stripe-webhook.php) ;
-    // les autres (impayé, décision du support) se lèvent à la main.
-    $auto_unsuspend = false;
-    if ($is_org_admin) {
-        try {
-            $st = $pdo->prepare('SELECT * FROM organizations WHERE id = ? LIMIT 1');
-            $st->execute([(int)($_SESSION['org_id'] ?? 0) ?: (int)($suspended_notice['org_id'] ?? 0)]);
-            $auto_unsuspend = !empty(($st->fetch(PDO::FETCH_ASSOC) ?: [])['trial_ends_at']);
-        } catch (Throwable $e) {
-            $auto_unsuspend = false;
-        }
+    // Le paiement lève tout seul la suspension d'une association en fin d'essai (trial_ends_at
+    // renseignée) et celle pour impayé (motif « Impayé », « Paiement en retard »…) : stripe-webhook.php,
+    // ak_end_trial_after_payment. Les autres (décision du support) se lèvent à la main.
+    $susp_org = [];
+    try {
+        $st = $pdo->prepare('SELECT * FROM organizations WHERE id = ? LIMIT 1');
+        $st->execute([(int)($_SESSION['org_id'] ?? 0) ?: (int)($suspended_notice['org_id'] ?? 0)]);
+        $susp_org = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+        $susp_org = [];
     }
+    $auto_unsuspend = !empty($susp_org['trial_ends_at'])
+        || preg_match('/impay|retard de paiement|paiement en retard|d[eé]faut de paiement|non[- ]paiement/u',
+                      mb_strtolower((string)($susp_org['suspended_reason'] ?? ''))) === 1;
+    // Fin de l'essai gratuit (date passée, aucun abonnement payant) : dite telle quelle, avec le
+    // choix de la formule, plutôt qu'une « suspension » à régulariser
+    $trial_ended = false;
+    $trial_ts = !empty($susp_org['trial_ends_at']) ? strtotime((string)$susp_org['trial_ends_at']) : false;
+    if ($trial_ts && $trial_ts > 0 && $trial_ts <= time()) {
+        require_once __DIR__ . '/trial-helpers.php';
+        $trial_ended = function_exists('ak_org_is_trial') && ak_org_is_trial($pdo, (int)($susp_org['id'] ?? 0));
+    }
+    $show_billing = $is_org_admin && !ak_billing_hidden();
 ?>
   <div id="ak-acces-suspendu">
-    <h1>Accès suspendu</h1>
+    <h1><?= $trial_ended ? 'Votre essai gratuit est terminé' : 'Accès suspendu' ?></h1>
     <p class="subtitle"><?= htmlspecialchars(trim(($suspended_notice['first_name'] ?? '') . ' ' . ($suspended_notice['last_name'] ?? ''))) ?> · <?= htmlspecialchars($suspended_notice['email'] ?? '') ?></p>
+    <?php if ($trial_ended): ?>
+    <div class="notice-box">Vos données sont conservées.
+      <?php if ($show_billing): ?>Choisissez votre formule pour retrouver votre espace.<?php elseif (!$is_org_admin): ?><?= ak_billing_hidden() ? 'Vous pouvez en parler à l’administrateur de votre association.' : 'L’administrateur de votre association peut choisir la formule qui vous redonnera accès à votre espace.' ?><?php else: ?>Pour toute question, écrivez à <?= AK_SUPPORT_EMAIL ?>.<?php endif; ?></div>
+    <?php else: ?>
     <div class="notice-box"><?= htmlspecialchars(ak_session_access_message('org_suspended')) ?>
       <?php if (!$is_org_admin): ?><br>Vous pouvez aussi en parler à l’administrateur de votre association.<?php endif; ?></div>
-    <?php if ($is_org_admin && !ak_billing_hidden()): ?>
-      <a href="/mon-asso-plan" class="btn-submit btn-link">Régulariser mon abonnement</a>
+    <?php endif; ?>
+    <?php if ($show_billing): ?>
+      <a href="/mon-asso-plan" class="btn-submit btn-link"><?= $trial_ended ? 'Choisir ma formule' : 'Régulariser mon abonnement' ?></a>
       <p class="subtitle" style="margin:8px 0 0"><?= $auto_unsuspend
           ? 'L’accès revient de lui-même dès que le paiement est enregistré, en général en quelques minutes.'
           : 'Une fois le paiement effectué, prévenez ' . AK_SUPPORT_EMAIL . ' : nous rétablissons l’accès au plus vite.' ?></p>

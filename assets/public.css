@@ -417,7 +417,8 @@ a:hover { text-decoration: underline; }
 .pub-article-content li { margin-bottom: 8px; }
 .pub-article-content blockquote { border-left: 4px solid var(--c-emeraude); padding: 12px 22px; background: var(--c-emeraude-light); border-radius: var(--radius-md); margin: 26px 0; color: var(--c-encre); font-style: italic; }
 .pub-article-content a { color: var(--c-emeraude-dark); border-bottom: 1px solid currentColor; }
-.pub-article-content code { background: var(--c-creme-2); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+/* Longues adresses (API Google, § 12.1 de la confidentialité) coupées au besoin : pas de débordement sur mobile */
+.pub-article-content code { background: var(--c-creme-2); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; overflow-wrap: anywhere; word-break: break-word; }
 .pub-article-content img { border-radius: var(--radius-md); margin: 24px 0; }
 
 @media (max-width: 760px) {

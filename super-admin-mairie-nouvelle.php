@@ -9,6 +9,9 @@ require_once __DIR__ . '/includes-permissions.php';
 require_once __DIR__ . '/includes-mairie-channels.php';
 require_login();
 ak_require_mairie_manager();
+// Confirmation d'identité du cockpit (/super-admin-login), comme les autres pages du Fondateur
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
 
 // Génère le token CSRF s'il n'existe pas (sécurité)
 if (empty($_SESSION['csrf_token'])) {

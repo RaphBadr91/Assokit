@@ -240,42 +240,51 @@ $mpdf->WriteHTML($css . <<<'HTML'
 HTML);
 
 // Page 4 - TARIFS + CONTACT
+// Offre en vigueur (tarifs.php) : Essai PRO gratuit, formule Assokit (prix HT + TVA lus en base par
+// ak_offer_price, jamais écrits en dur), Sur-mesure sur devis. Aucune formule gratuite.
+require_once __DIR__ . '/includes-pricing.php';
+$offer = ak_offer_price($pdo ?? null);
+$trial_days = defined('AK_TRIAL_DAYS') ? (int)AK_TRIAL_DAYS : 14;
+$fl_price = htmlspecialchars(str_replace("\u{00A0}€", '€', $offer['ht']), ENT_QUOTES, 'UTF-8');
+$fl_unit = (($offer['has_vat'] || !$offer['vat_known']) ? '/mois HT' : '/mois')
+    . ($offer['ttc_note'] !== '' ? '<br>' . htmlspecialchars($offer['ttc_note'], ENT_QUOTES, 'UTF-8') : '');   // « 59,99 € TTC » ou « TVA non applicable »
+
 $mpdf->AddPage();
-$mpdf->WriteHTML($css . <<<'HTML'
+$mpdf->WriteHTML($css . <<<HTML
 <div class="page face4">
   <div class="f4-head">
     <div class="f4-eyebrow">💎 TARIFS SIMPLES</div>
-    <div class="f4-title">Choisissez votre <em>plan</em>.</div>
-    <div class="f4-sub">Sans engagement. Essai gratuit 14 jours. Sans carte bancaire.</div>
+    <div class="f4-title">Une seule <em>formule</em>.</div>
+    <div class="f4-sub">Sans engagement. Essai gratuit {$trial_days} jours. Sans carte bancaire.</div>
   </div>
 
   <div class="plans">
     <div class="plan">
       <table class="plan-row"><tr>
         <td>
-          <div class="plan-name">Essentiel</div>
-          <div class="plan-tag">DÉMARRER</div>
+          <div class="plan-name">Essai PRO</div>
+          <div class="plan-tag">POUR DÉCOUVRIR</div>
         </td>
         <td style="text-align:right;">
-          <div class="plan-price">29,99€</div>
-          <div class="plan-unit">/mois HT</div>
+          <div class="plan-price">Gratuit</div>
+          <div class="plan-unit">{$trial_days} jours · sans carte bancaire</div>
         </td>
       </tr></table>
-      <div class="plan-feats">30 contacts · 2 utilisateurs · 20 IA/mois · Support email</div>
+      <div class="plan-feats">Toutes les fonctionnalités · Aucun prélèvement · Vos données conservées</div>
     </div>
 
     <div class="plan featured">
       <table class="plan-row"><tr>
         <td>
-          <div class="plan-name">Pro ⭐</div>
-          <div class="plan-tag">LE PLUS CHOISI</div>
+          <div class="plan-name">Assokit ⭐</div>
+          <div class="plan-tag">TOUT INCLUS</div>
         </td>
         <td style="text-align:right;">
-          <div class="plan-price">49,99€</div>
-          <div class="plan-unit">/mois HT</div>
+          <div class="plan-price">{$fl_price}</div>
+          <div class="plan-unit">{$fl_unit}</div>
         </td>
       </tr></table>
-      <div class="plan-feats">400 adhérents · 20 utilisateurs · 300 IA/mois · Pack Asso · Sous-domaine inclus</div>
+      <div class="plan-feats">Adhérents · Projets · Facturation · Compta · Subventions · IA · Appli mobile · Sous-domaine inclus</div>
     </div>
 
     <div class="plan">
@@ -285,11 +294,11 @@ $mpdf->WriteHTML($css . <<<'HTML'
           <div class="plan-tag">GRANDS COMPTES</div>
         </td>
         <td style="text-align:right;">
-          <div class="plan-price">149€</div>
-          <div class="plan-unit">/mois HT</div>
+          <div class="plan-price">Sur devis</div>
+          <div class="plan-unit">réseaux · fédérations</div>
         </td>
       </tr></table>
-      <div class="plan-feats">Illimité · Domaine perso · White-label · Support dédié</div>
+      <div class="plan-feats">Domaine perso · White-label · Support dédié · Collectivités</div>
     </div>
   </div>
 

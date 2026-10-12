@@ -18,6 +18,7 @@ require_login();
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 
 // Dépenses de TOUS les projets (fournisseurs, montants, totaux) : rôles finances uniquement,
 // comme l'onglet Factures de la fiche projet. Admin / Fondateur / Super Admin, Coordinateur

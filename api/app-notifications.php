@@ -3,21 +3,8 @@
  * api/app-notifications.php — Notifications de l'utilisateur pour l'ecran natif.
  * JSON, scope user. NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
-require_once __DIR__ . '/_app-founder.php';
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 require_once __DIR__ . '/../platform-flags.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
 
 $ICON = ['message' => 'chatbubble', 'mention' => 'at', 'team_added' => 'people', 'step_assigned' => 'checkmark-circle', 'support' => 'help-buoy'];
 // Notifications de la plateforme (cloche du cockpit fondateur)
@@ -55,9 +42,6 @@ function nago($v) {
 }
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $uid = (int) ($user['id'] ?? ($_SESSION['user_id'] ?? 0));
-
     $stmt = $pdo->prepare("
         SELECT n.id, n.notification_type, n.title, n.body, n.link_url, n.is_read, n.created_at,
                u.first_name AS actor_first, u.last_name AS actor_last, u.avatar_color AS actor_color

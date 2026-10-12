@@ -690,6 +690,8 @@ body { font-family: var(--font-sans); color: var(--ink); font-size: 14px; line-h
 .alert svg { flex-shrink: 0; margin-top: 2px; }
 .alert-error { background: rgba(185, 28, 28, 0.1); color: #B91C1C; border: 1px solid rgba(185, 28, 28, 0.2); }
 .alert-success { background: var(--acc-light); color: var(--acc-dark); border: 1px solid rgba(5, 150, 105, 0.2); }
+.alert-warn { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
+.alert-info { background: #EFF6FF; color: #1E40AF; border: 1px solid #BFDBFE; }
 /* DARK MODE DISABLED (orphelin neutralise) :
 @media (prefers-color-scheme: dark) { .alert-error { background: rgba(185, 28, 28, 0.15); color: #FCA5A5; } }
 */

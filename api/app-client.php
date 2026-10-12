@@ -3,19 +3,7 @@
  * api/app-client.php — Detail d'un client (profil TPE) pour l'ecran natif.
  * JSON, authentifie par session, scope a l'org du user. NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 
 $INV_META = [
     'paid'      => ['label' => 'Payée',      'kind' => 'done'],
@@ -32,8 +20,6 @@ function fd($v) {
 }
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
     // Parité site (mon-asso-client-detail.php, require_billing_access) : fiche client et
     // facturation ouvertes aux admins, fondateur, super-admin et coordinateurs.
     @require_once __DIR__ . '/../finance-permissions.php';

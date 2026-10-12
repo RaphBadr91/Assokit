@@ -89,6 +89,9 @@ $can_edit = $is_admin_or_coord && !$is_self
     && empty($plat['is_founder']) && empty($plat['is_super_admin'])
     && !in_array($adherent['role'], $roles_reserved, true);
 $can_message = $is_admin_or_coord && !$is_self && !empty($adherent['email']);
+// Message interne (/messages?user=…, conversation privée à deux) : mêmes règles que messages.php,
+// destinataire actif et non suiveur ; jamais soi-même (les suiveurs ne voient pas cette fiche).
+$can_dm = !$is_self && (int)$adherent['is_active'] === 1 && ($adherent['role'] ?? '') !== 'follower';
 // Invitation (lien de création de mot de passe) : compte actif qui n'a pas encore choisi son mot de passe
 $can_invite = $can_edit && (int)$adherent['is_active'] === 1 && !empty($adherent['email'])
     && (!empty($adherent['must_change_password']) || empty($adherent['last_login_at']))
@@ -169,12 +172,18 @@ render_sidebar('adherents');
         <?php endif; ?>
       </div>
     </div>
-    <?php if ($can_edit || $can_message || $can_delete || $can_invite): ?>
+    <?php if ($can_edit || $can_dm || $can_message || $can_delete || $can_invite): ?>
     <div class="head-actions" style="display:flex; gap:8px; flex-wrap:wrap; position:relative;">
       <?php if ($can_edit): ?>
       <a href="/modifier-adherent/<?= (int)$adherent['id'] ?>" class="btn btn-ghost">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         Modifier
+      </a>
+      <?php endif; ?>
+      <?php if ($can_dm): ?>
+      <a href="/messages?user=<?= (int)$adherent['id'] ?>" class="btn btn-ghost" title="Conversation privée dans Assokit">
+        <?= ak_icon('message', 14) ?>
+        Message interne
       </a>
       <?php endif; ?>
       <?php if ($can_message): ?>

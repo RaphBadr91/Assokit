@@ -39,7 +39,7 @@ function ak_nav_familles(array $ctx): array
     $role        = (string)($ctx['role'] ?? '');
     $estAdmin    = ($role === 'admin');
     $estCoord    = in_array($role, ['admin', 'coordinator'], true);
-    // Facturation et Relances : même règle que les pages (user_can_access_billing :
+    // Facturation, Relances et Tags : même règle que les pages (user_can_access_billing :
     // admin, coordinateur, trésorier qui a « Gérer les finances », jamais un suiveur)
     $billing     = array_key_exists('peut_facturation', $ctx)
                  ? !empty($ctx['peut_facturation'])
@@ -78,7 +78,7 @@ function ak_nav_familles(array $ctx): array
             'icone' => $i('projets', 16),
             'entrees' => [
                 ['projets',       '/projets',       $membre ? 'Projets' : 'Projets suivis', true, ['projets'], $membre ? ($ctx['proj_count'] ?? null) : null],
-                ['tags',          '/mon-asso-tags', 'Tags',                                 $estCoord, ['tags']],   // admin et coordinateur, comme mon-asso-tags.php
+                ['tags',          '/mon-asso-tags', 'Tags',                                 $billing,  ['tags']],   // même règle que mon-asso-tags.php (user_can_access_billing)
                 ['notes-de-frais','/notes-de-frais','Notes de frais',                       $membre,   ['notes-de-frais']],
             ],
         ],

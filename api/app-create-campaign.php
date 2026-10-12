@@ -16,19 +16,23 @@ $name = trim((string) ($input['name'] ?? ''));
 if ($name === '') app_fail(422, 'invalid', 'Le nom de la campagne est obligatoire.');
 $name = mb_substr($name, 0, 150);
 
-$year = (int) ($input['year'] ?? date('Y'));
-if ($year < 2020 || $year > 2050) $year = (int) date('Y');
+// Année : absente ou vide = année en cours ; sinon 4 chiffres entre 2020 et 2050, refusée avec un
+// message clair au lieu d'être remplacée en silence par l'année en cours (« deux mille »).
+$year_raw = $input['year'] ?? '';
+$year_raw = is_int($year_raw) ? (string) $year_raw : (is_string($year_raw) ? trim($year_raw) : null);
+if ($year_raw === null || ($year_raw !== '' && !preg_match('/^\d{4}$/', $year_raw))) {
+    app_fail(422, 'invalid', 'Année invalide : saisissez l’année sur 4 chiffres (ex : ' . date('Y') . ').');
+}
+$year = $year_raw === '' ? (int) date('Y') : (int) $year_raw;
+if ($year < 2020 || $year > 2050) app_fail(422, 'invalid', 'Année invalide : choisissez une année entre 2020 et 2050.');
 
 $description = trim((string) ($input['description'] ?? ''));
 $_cur = (string) ($input['currency'] ?? 'EUR');
 $currency = in_array($_cur, ['EUR', 'USD', 'CHF', 'GBP'], true) ? $_cur : 'EUR';
 
-$dt = static function ($v) {
-    $v = trim((string) $v);
-    return ($v !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) ? $v : null;
-};
-$opens  = $dt($input['opens_at'] ?? '');
-$closes = $dt($input['closes_at'] ?? '');
+// Dates : vide = aucune ; AAAA-MM-JJ ou JJ/MM/AAAA ; illisible = 422 (au lieu d'être ignorée en silence)
+$opens  = app_parse_date($input['opens_at'] ?? '', 'Date d’ouverture');
+$closes = app_parse_date($input['closes_at'] ?? '', 'Date de clôture');
 // Une clôture ne peut pas précéder l'ouverture
 if ($opens && $closes && strtotime($closes) < strtotime($opens)) {
     app_fail(422, 'invalid', 'La date de clôture précède la date d\'ouverture.');
@@ -41,15 +45,21 @@ $rv = $renews_sent ? $input['renews_membership'] : '';
 $renews_raw = is_bool($rv) ? (string) (int) $rv : (is_scalar($rv) ? trim((string) $rv) : '');
 $renews = $renews_raw === '1' ? 1 : ($renews_raw === '0' ? 0 : null);
 
-// Tarifs (nom + montant obligatoires) — normalise la virgule décimale
-$num = static fn($v) => (float) str_replace([' ', ','], ['', '.'], (string) $v);
+// Tarifs (nom obligatoire ; montant vide = 0) — normalise la virgule décimale. Un montant illisible
+// (« abc ») est refusé avec le nom du tarif, au lieu de devenir 0,00 € en silence.
 $tiers = [];
 foreach ((array) ($input['tiers'] ?? []) as $t) {
-    $tn = trim((string) ($t['name'] ?? ''));
+    if (!is_array($t)) continue;
+    $tn = trim((string) (is_scalar($t['name'] ?? null) ? $t['name'] : ''));
     if ($tn === '') continue;
+    $ta = $t['amount'] ?? '';
+    $ta = is_scalar($ta) ? str_replace([' ', "\u{00A0}", "\u{202F}", ','], ['', '', '', '.'], trim((string) $ta)) : null;
+    if ($ta === null || ($ta !== '' && !is_numeric($ta))) {
+        app_fail(422, 'invalid', 'Montant invalide pour le tarif « ' . mb_substr($tn, 0, 120) . ' » : saisissez un nombre (ex : 25 ou 25,50).');
+    }
     $tiers[] = [
         'name'        => mb_substr($tn, 0, 120),
-        'amount'      => max(0, $num($t['amount'] ?? 0)),
+        'amount'      => $ta === '' ? 0.0 : max(0, (float) $ta),
         'description' => trim((string) ($t['description'] ?? '')) ?: null,
     ];
 }

@@ -341,9 +341,10 @@ render_sidebar('admin-stripe-config');
     <h2 style="margin:0 0 6px;font-size:18px;">📊 TVA (Taxe sur la valeur ajoutée)</h2>
     <p style="color:#64748B;font-size:13.5px;margin:0 0 18px;">
       <?php if (!$vat_enabled): ?>
-        Actuellement <strong>désactivée</strong> (franchise en base de TVA, art. 293 B du CGI). À activer quand RBPS sera assujettie à la TVA.
+        Actuellement <strong>désactivée</strong> (franchise en base de TVA, art. 293 B du CGI) : le site affiche alors « TVA non applicable ». À activer quand RBPS sera assujettie à la TVA.
       <?php else: ?>
-        Actuellement <strong>activée à <?= $vat_rate ?>%</strong>. La TVA est ajoutée automatiquement aux factures Stripe.
+        Actuellement <strong>activée à <?= h((string)$vat_rate) ?> %</strong>. Les nouveaux abonnements par carte sont facturés HT + TVA (taux Stripe « TVA » créé automatiquement au premier paiement, gardé dans asso_stripe_config sous <code>stripe_tax_rate_id_&lt;test|live&gt;_&lt;taux&gt;</code>) ; les abonnements déjà en place restent au montant prélevé jusqu’ici.
+        Cochez aussi « Société assujettie à la TVA » dans <a href="/fondateur-cockpit/societe" style="color:#059669;">Paramètres société</a>.
       <?php endif; ?>
     </p>
 
@@ -363,9 +364,9 @@ render_sidebar('admin-stripe-config');
       <li><strong>Créer un compte Stripe</strong> sur <a href="https://stripe.com" target="_blank" rel="noopener" style="color:#059669;">stripe.com</a> avec les infos RBPS</li>
       <li><strong>Créer 3 produits</strong> dans Stripe Dashboard :
         <ul style="margin-top:4px;">
-          <li>Plan Assokit Mensuel — 49,99€ récurrent</li>
+          <li>Plan Assokit Mensuel — 49,99 € HT récurrent (prix hors taxes, la TVA est ajoutée par Assokit)</li>
           <li>Plan Sur-mesure — sur devis (peut être laissé vide)</li>
-          <li>Add-on Domaine personnalisé — 10€/mois HT récurrent</li>
+          <li>Add-on Domaine personnalisé — 10 € HT/mois récurrent</li>
         </ul>
       </li>
       <li><strong>Copier les clés API</strong> depuis <em>Developers > API keys</em> dans le bloc 🔑 ci-dessus</li>

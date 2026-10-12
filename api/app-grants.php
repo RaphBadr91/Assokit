@@ -3,20 +3,8 @@
  * api/app-grants.php — Subventions (grants) pour l'ecran natif. JSON, scope org.
  * NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 require_once __DIR__ . '/../includes-grants.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
 
 $G_META = [
     'draft'     => ['label' => 'Brouillon',   'kind' => 'draft'],
@@ -30,9 +18,6 @@ $G_META = [
 $FUNDER = ['etat' => 'État', 'region' => 'Région', 'departement' => 'Département', 'commune' => 'Commune', 'epci' => 'EPCI', 'caf' => 'CAF', 'fondation' => 'Fondation', 'entreprise' => 'Entreprise', 'europe' => 'Europe', 'autre' => 'Autre'];
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-
     // Administrateur ou coordinateur seulement, comme /subventions : les
     // dossiers portent les montants, les financeurs et leurs contacts.
     // Mêmes clés qu'une liste vide (l'appli lit stats et grants).

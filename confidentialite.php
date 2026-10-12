@@ -21,8 +21,6 @@ render_public_nav('');
 <section class="pub-section" style="padding-top:0;">
   <div class="pub-container-narrow">
     <article class="pub-article-content">
-      <?php /* Adresses d'API Google (section 12.1) : coupées au besoin, sinon la page déborde sur mobile */ ?>
-      <style>.pub-article-content code{overflow-wrap:anywhere;word-break:break-word}</style>
       <p style="background:var(--c-emeraude-light);border-left:4px solid var(--c-emeraude);padding:16px 20px;border-radius:8px;font-style:italic;color:var(--c-encre);">
         🌿 <strong>En une phrase</strong> : on ne collecte que le strict nécessaire, on l'héberge en France, on ne le revend jamais, et vous pouvez tout récupérer ou tout supprimer en un clic.
       </p>

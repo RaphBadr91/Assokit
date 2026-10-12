@@ -6,6 +6,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/app-context.php'; // pas d'incitation à l'achat dans l'app (Apple 3.1.1)
+ak_session_guard();   // compte désactivé, association résiliée ou suspendue, mot de passe provisoire
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/pca-mapping.php';
 require_once __DIR__ . '/report-charts-helper.php'; // ak_report_filename_slug()

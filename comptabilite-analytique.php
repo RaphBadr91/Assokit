@@ -5,6 +5,16 @@
  * Styles : .pub-* (assets/public.css) + .ake-* (ajoutes en fin de public.css).
  */
 require_once __DIR__ . '/includes-public.php';
+require_once __DIR__ . '/includes-pricing.php';
+
+// Prix de la formule Assokit (ak_offer_price : dernier prix lu en base, la page n'ouvre pas la base).
+// Coût annuel comparé à la prestation externalisée : TTC quand la TVA s'applique (ce que paie une
+// association non assujettie), sinon HT ; jamais écrit en dur.
+$offer = ak_offer_price($pdo ?? null);
+$trial_days = defined('AK_TRIAL_DAYS') ? (int)AK_TRIAL_DAYS : 14;
+$offer_year = (int)round(12 * ($offer['has_vat'] ? $offer['ttc_cents'] : $offer['ht_cents']) / 100);
+$offer_year_txt = number_format($offer_year, 0, ',', "\u{00A0}") . "\u{00A0}€" . ($offer['has_vat'] ? ' TTC' : ($offer['vat_known'] ? '' : ' HT'));
+$offer_saving_txt = number_format(max(0, 900 - $offer_year), 0, ',', "\u{00A0}") . "\u{00A0}€";
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil',                 'url' => '/'],
@@ -14,9 +24,9 @@ $breadcrumb = build_breadcrumb_jsonld([
 // FAQPage : reprend les questions visibles plus bas (rich results Google)
 $ca_faqs = [
     ['Dois-je vraiment garder un expert-comptable ?', "Oui. AssoKit remplace la prestation de comptabilité analytique (la ventilation par projet et poste, que vous payiez en plus). Votre expert-comptable, lui, conserve son rôle : il contrôle et valide les comptes. Vous lui transmettez simplement un dossier déjà prêt."],
-    ['Quelles offres incluent la compta analytique illimitée ?', "Les offres Pro et Sur-mesure incluent le bilan analytique illimité. L'offre Essentiel inclut 1 bilan pour découvrir la fonctionnalité."],
+    ['Quelles offres incluent la compta analytique illimitée ?', "Le bilan analytique est illimité dans l'abonnement Assokit (" . $offer['label'] . "), pendant l'essai PRO de " . $trial_days . " jours et en Sur-mesure."],
     ['Puis-je tout exporter pour mon comptable ?', "Oui : le bilan analytique s'exporte en PDF et Excel, avec les pièces justificatives rattachées. En Sur-mesure, vous obtenez aussi des exports de données comptables avancés."],
-    ['Combien vais-je réellement économiser ?', "Une prestation de compta analytique externalisée tourne autour de 900 €/an. Avec l'offre Pro (~600 €/an), vous gardez jusqu'à 300 €/an — davantage si votre prestation actuelle coûte plus cher ou en facturation annuelle."],
+    ['Combien vais-je réellement économiser ?', "Une prestation de compta analytique externalisée tourne autour de 900 €/an. Avec l'abonnement Assokit (≈ " . $offer_year_txt . "/an, tout le logiciel compris), vous gardez jusqu'à " . $offer_saving_txt . "/an — davantage si votre prestation actuelle coûte plus cher."],
 ];
 $ca_faq_schema = [
     '@context'   => 'https://schema.org',
@@ -30,7 +40,7 @@ $ca_faq_schema = [
 
 render_public_head([
     'title'         => 'Comptabilité analytique incluse · AssoKit · sans comptable',
-    'description'   => 'La comptabilité analytique coûte environ 900 euros par an chez un comptable. Avec AssoKit, elle est incluse dès l\'offre Pro : bilan par projet et par poste, export PDF et Excel, validation par votre expert-comptable.',
+    'description'   => 'La comptabilité analytique coûte environ 900 euros par an chez un comptable. Avec AssoKit, elle est incluse dans l\'abonnement : bilan par projet et par poste, export PDF et Excel, validation par votre expert-comptable.',
     'path'          => '/comptabilite-analytique',
     'schema_jsonld' => [$breadcrumb, $ca_faq_schema],
 ]);
@@ -49,7 +59,7 @@ render_public_nav('');
       Incluse dans votre abonnement
     </span>
     <h1 class="pub-h1 ake-anim ake-d2" style="max-width:820px;margin-left:auto;margin-right:auto;">Votre comptabilité analytique, <em>incluse — sans comptable</em></h1>
-    <p class="pub-tagline ake-anim ake-d2" style="max-width:640px;">Suivez vos recettes et dépenses par projet et par poste, en temps réel. Dès l'offre Pro, la compta analytique est <strong>illimitée et incluse</strong> — votre expert-comptable n'intervient plus que pour valider les comptes.</p>
+    <p class="pub-tagline ake-anim ake-d2" style="max-width:640px;">Suivez vos recettes et dépenses par projet et par poste, en temps réel. Dans l’abonnement Assokit, la compta analytique est <strong>illimitée et incluse</strong> — votre expert-comptable n'intervient plus que pour valider les comptes.</p>
     <div class="ake-hero-cta ake-anim ake-d3">
       <a class="pub-btn pub-btn-primary pub-btn-lg" href="/contact">Réserver une démo gratuite
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
@@ -83,10 +93,10 @@ render_public_nav('');
       </article>
       <div class="ake-vs ake-anim ake-d2">VS</div>
       <article class="ake-card ake-card--avec ake-anim ake-d3">
-        <span class="ake-tag">OFFRE PRO</span>
+        <span class="ake-tag">ABONNEMENT ASSOKIT</span>
         <div class="ake-card__top">
           <span class="ake-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 4 12 14.01l-3-3"/></svg></span>
-          <div><h3>Avec AssoKit</h3><span>Incluse dès l'offre Pro</span></div>
+          <div><h3>Avec AssoKit</h3><span>Incluse dans l’abonnement, dès l’essai gratuit</span></div>
         </div>
         <div class="ake-price"><b>Incluse</b><em><span class="ake-strike">~900&nbsp;€</span> dans votre abonnement</em></div>
         <ul class="ake-list">
@@ -108,7 +118,7 @@ render_public_nav('');
         <div>
           <p class="ake-saving__lbl">Votre économie</p>
           <p class="ake-big">jusqu'à <b>900&nbsp;€</b> <small>/ an</small></p>
-          <p class="ake-saving__note">Le coût d'une compta analytique externalisée, désormais compris dans votre abonnement Pro.</p>
+          <p class="ake-saving__note">Le coût d'une compta analytique externalisée, désormais compris dans votre abonnement Assokit.</p>
         </div>
         <div class="ake-calc">
           <p class="ake-calc__q">Combien vous coûte votre compta analytique aujourd'hui ?</p>
@@ -117,9 +127,9 @@ render_public_nav('');
           <div class="ake-cur"><b id="akeCur">900&nbsp;€</b><span>/ an aujourd'hui</span></div>
           <div class="ake-bars">
             <div><div class="ake-bar__top"><span>Aujourd'hui</span><b id="akeNowLbl">900&nbsp;€/an</b></div><div class="ake-bar ake-bar--now"><i id="akeNowBar" style="width:100%"></i></div></div>
-            <div><div class="ake-bar__top"><span>Avec AssoKit Pro</span><b>≈ 600&nbsp;€/an</b></div><div class="ake-bar ake-bar--ak"><i id="akeAkBar" style="width:66%"></i></div></div>
+            <div><div class="ake-bar__top"><span>Avec Assokit</span><b>≈ <?= pub_h($offer_year_txt) ?>/an</b></div><div class="ake-bar ake-bar--ak"><i id="akeAkBar" style="width:<?= round(min(100, $offer_year / 900 * 100), 1) ?>%"></i></div></div>
           </div>
-          <div class="ake-out"><span>Vous économisez</span><b id="akeSave">≈ 300&nbsp;€</b><span>par an *</span></div>
+          <div class="ake-out"><span>Vous économisez</span><b id="akeSave">≈ <?= pub_h($offer_saving_txt) ?></b><span>par an *</span></div>
         </div>
       </div>
     </div>
@@ -162,11 +172,11 @@ render_public_nav('');
   <div class="pub-container">
     <div class="pub-section-head">
       <span class="pub-section-eyebrow">Selon votre offre</span>
-      <h2 class="pub-h2">Compta analytique <em>illimitée dès Pro</em></h2>
+      <h2 class="pub-h2">Compta analytique <em>illimitée dès l’essai</em></h2>
     </div>
     <div class="ake-tiers">
-      <a href="/tarifs#offre-essentiel" class="ake-tier ake-anim ake-d2"><div class="ake-tier__name">Essentiel</div><div class="ake-tier__val">1 bilan</div><small>pour découvrir</small></a>
-      <a href="/tarifs#offre-pro" class="ake-tier ake-tier--pro ake-anim ake-d3"><div class="ake-tier__name">Pro</div><div class="ake-tier__val"><em>Illimité</em></div><small>par projet & poste</small></a>
+      <a href="/tarifs#offre-essai" class="ake-tier ake-anim ake-d2"><div class="ake-tier__name">Essai PRO</div><div class="ake-tier__val"><em>Illimité</em></div><small><?= $trial_days ?> jours gratuits</small></a>
+      <a href="/tarifs#offre-assokit" class="ake-tier ake-tier--pro ake-anim ake-d3"><div class="ake-tier__name">Assokit</div><div class="ake-tier__val"><em>Illimité</em></div><small><?= pub_h($offer['per_month']) ?></small></a>
       <a href="/tarifs#offre-sur-mesure" class="ake-tier ake-anim ake-d4"><div class="ake-tier__name">Sur-mesure</div><div class="ake-tier__val"><em>Illimité</em></div><small>+ données comptables</small></a>
     </div>
     <div class="pub-text-center"><a class="pub-btn pub-btn-primary pub-btn-lg" href="/tarifs">Voir tous les tarifs</a></div>
@@ -182,9 +192,9 @@ render_public_nav('');
     </div>
     <div class="ake-faq ake-anim ake-d2">
       <details open><summary>Dois-je vraiment garder un expert-comptable ?</summary><div class="ake-faq__body">Oui. AssoKit remplace la <strong>prestation de comptabilité analytique</strong> (la ventilation par projet et poste, que vous payiez en plus). Votre expert-comptable, lui, conserve son rôle : il <strong>contrôle et valide</strong> les comptes. Vous lui transmettez simplement un dossier déjà prêt.</div></details>
-      <details><summary>Quelles offres incluent la compta analytique illimitée ?</summary><div class="ake-faq__body">Les offres <strong>Pro</strong> et <strong>Sur-mesure</strong> incluent le bilan analytique <strong>illimité</strong>. L'offre <strong>Essentiel</strong> inclut <strong>1 bilan</strong> pour découvrir la fonctionnalité.</div></details>
+      <details><summary>Quelles offres incluent la compta analytique illimitée ?</summary><div class="ake-faq__body">Le bilan analytique est <strong>illimité</strong> dans l’abonnement <strong>Assokit</strong> (<?= pub_h($offer['label']) ?>), pendant l’<strong>essai PRO de <?= $trial_days ?> jours</strong> et en <strong>Sur-mesure</strong>.</div></details>
       <details><summary>Puis-je tout exporter pour mon comptable ?</summary><div class="ake-faq__body">Oui : le bilan analytique s'exporte en <strong>PDF</strong> et <strong>Excel</strong>, avec les <strong>pièces justificatives</strong> rattachées. En Sur-mesure, vous obtenez aussi des exports de données comptables avancés.</div></details>
-      <details><summary>Combien vais-je réellement économiser ?</summary><div class="ake-faq__body">Une prestation de compta analytique externalisée tourne autour de <strong>900&nbsp;€/an</strong>. Avec l'offre Pro (~600&nbsp;€/an), vous gardez <strong>jusqu'à 300&nbsp;€/an</strong> — davantage si votre prestation actuelle coûte plus cher ou en facturation annuelle.</div></details>
+      <details><summary>Combien vais-je réellement économiser ?</summary><div class="ake-faq__body">Une prestation de compta analytique externalisée tourne autour de <strong>900&nbsp;€/an</strong>. Avec l’abonnement Assokit (≈&nbsp;<?= pub_h($offer_year_txt) ?>/an, tout le logiciel compris), vous gardez <strong>jusqu’à <?= pub_h($offer_saving_txt) ?>/an</strong> — davantage si votre prestation actuelle coûte plus cher.</div></details>
     </div>
   </div>
 </section>
@@ -205,7 +215,7 @@ render_public_nav('');
 
 <script>
 (function(){
-  var PRO_AN = 600;
+  var PRO_AN = <?= (int)$offer_year ?>;
   var r=document.getElementById('akeRange'), cur=document.getElementById('akeCur'), now=document.getElementById('akeNowLbl'),
       nowBar=document.getElementById('akeNowBar'), akBar=document.getElementById('akeAkBar'), save=document.getElementById('akeSave');
   function fmt(n){ return Math.round(n).toLocaleString('fr-FR')+'\u00A0€'; }

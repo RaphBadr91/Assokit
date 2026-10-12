@@ -5,21 +5,9 @@
  * Même liste que « Mes factures » du site (ak_get_org_invoices_all : Stripe, manuelles
  * et factures AK-AAAA-NNNNNN), réservée aux administrateurs comme « Mon abonnement ».
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 require_once __DIR__ . '/../finance-permissions.php';
 require_once __DIR__ . '/../stripe-helpers.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
 
 $META = [
     'paid'          => ['label' => 'Payée',        'kind' => 'done'],
@@ -35,9 +23,6 @@ function sfd($v) {
 }
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-
     // Parité site (« Mon abonnement », abonnement.php) : abonnement Assokit réservé aux administrateurs.
     if (!user_can_view_finances($user)) {
         echo json_encode(['ok' => true, 'allowed' => false, 'invoices' => [], 'stats' => [], 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);

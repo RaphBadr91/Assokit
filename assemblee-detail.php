@@ -307,7 +307,6 @@ render_head($ag['title']);
   </div>
 </main>
 <style>
-.alert-warn { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; }
 .ag-detail-hero { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; margin-bottom:18px; flex-wrap:wrap; }
 .ag-detail-hero .ag-status { display:inline-block; margin-bottom:8px; }
 .ag-detail-hero h1 { margin:0 0 6px; }

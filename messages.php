@@ -16,6 +16,7 @@ require_once __DIR__ . '/notification-helpers.php';
 require_login();
 $current = current_user();
 $org_id = (int)$current['org_id'];
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
 $user_id = (int)$current['id'];
 $is_admin = ($current['role'] === 'admin');
 $is_coord = ($current['role'] === 'coordinator');

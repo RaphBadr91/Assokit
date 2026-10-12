@@ -11,6 +11,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !check_csrf($_POST['csrf_token'] ??
 }
 
 $user = current_user(); $org_id = (int)$user['org_id']; $user_id = (int)$user['id'];
+// Sans association (agent de collectivité : rôle admin, org_id vide) : aucun dossier dans l'espace
+// « org 0 », commun à toutes les collectivités (gr_can_manage() accepte le rôle admin)
+if ($org_id <= 0) { header('Location: /dashboard'); exit; }
 $is_admin = ($user['role'] === 'admin');
 // Même règle que la liste, la fiche, le formulaire et l'appli
 if (!gr_can_manage($user)) { http_response_code(403); die('Accès refusé.'); }

@@ -318,9 +318,14 @@ try {
     } catch (Throwable $e) {}
     // Fondateur / super admin : notifications de la plateforme (nouveau message support,
     // association à valider…), celles de la cloche du cockpit web (platform_notifications).
-    // Clé séparée : la liste de l'appli (app-notifications.php) ne les contient pas encore.
+    // Comptées dans notif_unread comme dans la liste (api/app-notifications.php, « unread ») et après
+    // lecture (api/app-notif-read.php) : sinon le badge du fondateur change de valeur d'un écran à l'autre.
+    // Aussi renvoyées à part (platform_unread).
+    // Même règle que la liste et la lecture : drapeaux relus par ak_platform_flags().
     $platform_unread = 0;
-    if ($is_founder || !empty($user['is_super_admin'])) {
+    require_once __DIR__ . '/../platform-flags.php';
+    $pf_notif = ak_platform_flags($user ?: ['id' => $uid]) ?: [];
+    if ($is_founder || !empty($pf_notif['is_super_admin'])) {
         try {
             $nst = $pdo->prepare("SELECT COUNT(*) FROM platform_notifications WHERE recipient_user_id = ? AND is_read = 0");
             $nst->execute([(int) ($user['id'] ?? 0)]);
@@ -367,7 +372,7 @@ try {
         'can_create_projects' => !$mairie && ((($user['role'] ?? '') === 'admin') || !empty($user['can_create_projects']) || $is_founder || !empty($user['is_super_admin'])),
         'is_founder'   => $is_founder,
         'is_super_admin' => ($is_founder || !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin'),
-        'notif_unread' => $notif_unread,
+        'notif_unread' => $notif_unread + $platform_unread,
         'platform_unread' => $platform_unread,
         'msg_unread'   => $msg_unread,
         'support_unread' => $support_unread,

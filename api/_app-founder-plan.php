@@ -172,9 +172,9 @@ if (!function_exists('fd_price_text')) {
     function fd_price_text(array $p): string {
         if (!empty($p['is_trial'])) return 'Essai ' . (int) AK_TRIAL_DAYS . ' j';
         $c = (int) ($p['price_cents'] ?? 0);
-        // Même règle que le cockpit web (sa_plan_price_label) : Sur-mesure sans prix = sur devis
+        // Même règle que le cockpit web (sa_plan_price_label) : prix HT, Sur-mesure sans prix = sur devis
         if (!empty($p['is_custom_quote']) || ($c <= 0 && ($p['slug'] ?? '') === 'sur-mesure')) return 'Sur devis';
-        return $c > 0 ? number_format($c / 100, 2, ',', "\u{202F}") . "\u{00A0}€/mois" : 'Gratuit';
+        return $c > 0 ? number_format($c / 100, 2, ',', "\u{202F}") . "\u{00A0}€\u{00A0}HT/mois" : 'Gratuit';
     }
 }
 

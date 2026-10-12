@@ -3,19 +3,7 @@
  * api/app-members.php — Liste des membres (adherents) pour l'ecran natif de l'app.
  * JSON, authentifie par session. NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 
 // Mêmes libellés que le site (role_label())
 $ROLE_LABELS = [
@@ -27,33 +15,7 @@ $ROLE_LABELS = [
     'super_admin' => 'Super admin',
 ];
 
-// Compte désactivé ou supprimé depuis l'ouverture de la session : même règle que
-// _app-write-boot.php (session fermée, 401 'auth' → l'appli revient à la connexion).
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $st = $pdo->prepare("SELECT is_active, deleted_at FROM users WHERE id = ? LIMIT 1");
-    $st->execute([(int) $_SESSION['user_id']]);
-    $live = $st->fetch(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {
-    error_log('[api/app-members] ' . $e->getMessage());
-    http_response_code(500);
-    echo json_encode(['ok' => false, 'error' => 'server']);
-    exit;
-}
-$gone = !$live || (int) ($live['is_active'] ?? 1) !== 1
-    || (!empty($live['deleted_at']) && strpos((string) $live['deleted_at'], '0000-00-00') !== 0);
-if ($gone || !$user) {
-    if ($gone) {
-        $_SESSION = [];
-        if (session_status() === PHP_SESSION_ACTIVE) @session_destroy();
-    }
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
-
-try {
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
     if ($org_id <= 0) $org_id = -1;   // compte sans association (agent de collectivité) : aucune ligne « org 0 », réponses vides
     if (function_exists('ak_platform_flags')) $user = ak_platform_flags($user);
     $role_me = (string) ($user['role'] ?? '');

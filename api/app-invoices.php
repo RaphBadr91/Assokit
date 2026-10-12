@@ -3,19 +3,7 @@
  * api/app-invoices.php — Liste des factures pour l'ecran natif de l'app.
  * JSON, authentifie par session. NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 
 $STATUS_META = [
     'paid'      => ['label' => 'Payée',      'kind' => 'done'],
@@ -27,9 +15,6 @@ $STATUS_META = [
 ];
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-
     // Parité site (mon-asso-factures-client.php, require_billing_access) : factures ouvertes
     // aux admins, fondateur, super-admin et coordinateurs (finance-permissions.php).
     @require_once __DIR__ . '/../finance-permissions.php';

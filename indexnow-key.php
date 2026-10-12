@@ -14,7 +14,7 @@
 require_once __DIR__ . '/admin-blog/config.php';
 require_once __DIR__ . '/admin-blog/includes/db.php';
 
-$requested = trim((string)($_GET['key'] ?? ''));
+$requested = is_string($_GET['key'] ?? null) ? trim($_GET['key']) : '';   // ?key[]=… : 404 sans avertissement
 $stored    = trim((string) config_get('indexnow_key', ''));
 
 header('Content-Type: text/plain; charset=utf-8');

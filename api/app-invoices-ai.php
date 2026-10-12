@@ -3,27 +3,12 @@
  * api/app-invoices-ai.php — Analyse IA de la facturation pour l'app. JSON, scope org.
  * Reutilise ask_claude(). NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 @require_once __DIR__ . '/../ai-helper.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
 
 function eur($cents) { return number_format($cents / 100, 0, ',', ' ') . ' €'; }
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-
     // Même droit que l'écran Factures qui porte ce bouton (app-invoices.php) et que les
     // statistiques de facturation du site (mon-asso-stats.php) : admins, fondateur,
     // super-admin et coordinateurs. + limite d'appels IA.

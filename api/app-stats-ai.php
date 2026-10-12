@@ -4,27 +4,13 @@
  * Reutilise les helpers stats + ask_claude(). JSON, scope org, droits de la Facturation
  * (user_can_access_billing, comme api/app-stats.php). NE MODIFIE PAS le site.
  */
-ob_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 @require_once __DIR__ . '/../asso-stats-helpers.php';
 @require_once __DIR__ . '/../ai-helper.php';
-ob_end_clean();
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-
-if (empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'auth']);
-    exit;
-}
 
 function e2($cents) { return number_format($cents / 100, 0, ',', ' ') . ' €'; }
 
 try {
-    $user = function_exists('current_user') ? current_user() : null;
-    $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
     // Même règle que les statistiques (api/app-stats.php, mon-asso-stats.php) : la Facturation
     require_once __DIR__ . '/../finance-permissions.php';
     require_once __DIR__ . '/../platform-flags.php';

@@ -12,6 +12,9 @@ require_once __DIR__ . '/includes-permissions.php';
 require_once __DIR__ . '/includes-mairie-channels.php';
 require_login();
 ak_require_mairie_manager();
+// Confirmation d'identité du cockpit (/super-admin-login), comme les autres pages du Fondateur
+require_once __DIR__ . '/sa-auth-helpers.php';
+sa_auth_gate();
 
 $filter = $_GET['filter'] ?? 'all';
 $filter_labels = ['all'=>'Toutes','active'=>'Actives','pending'=>'En attente','suspended'=>'Suspendues','rejected'=>'Rejetées'];

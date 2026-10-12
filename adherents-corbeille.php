@@ -175,7 +175,8 @@ render_sidebar('adherents');
     </div>
 
     <div style="font-size:12px; color:var(--ink-4); text-align:center; margin-top:16px; line-height:1.5;">
-      💡 Les comptes restent dans la corbeille pendant <strong>30 jours</strong>, puis n’y apparaissent plus et ne peuvent plus être restaurés.
+      <?php // Mention RGPD seulement quand l'effacement réel est activé (cron-rgpd-purge.php, règle 4 ; sinon simple simulation) ?>
+      💡 Les comptes restent dans la corbeille pendant <strong>30 jours</strong>, puis n’y apparaissent plus<?= (defined('AK_RGPD_PURGE_LIVE') && AK_RGPD_PURGE_LIVE) ? ', ne peuvent plus être restaurés et leurs données personnelles sont effacées (RGPD).' : ' et ne peuvent plus être restaurés.' ?>
       Pour réinscrire une personne ensuite, utilisez « Ajouter un adhérent » avec la même adresse e-mail.
     </div>
   <?php endif; ?>

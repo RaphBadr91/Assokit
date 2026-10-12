@@ -25,7 +25,7 @@ require_once __DIR__ . '/api/_app-prospect.php';
 // secrète CONFIGURÉE et correcte, sinon 403. Sans AK_CRON_KEY défini, l'accès HTTP
 // est refusé (on ne se repose jamais sur "constante absente = pas de contrôle").
 if (!$CLI) {
-    $provided = (string) ($_GET['key'] ?? '');
+    $provided = is_string($_GET['key'] ?? null) ? $_GET['key'] : '';   // ?key[]=… : refusé sans avertissement
     if (!defined('AK_CRON_KEY') || !AK_CRON_KEY || !hash_equals((string) AK_CRON_KEY, $provided)) {
         http_response_code(403);
         exit("forbidden\n");

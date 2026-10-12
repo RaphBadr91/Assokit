@@ -43,7 +43,9 @@ try {
             // Raison du refus, à afficher sous le bouton grisé (null si la suppression est possible)
             'delete_blocked_reason' => $can_delete ? null : $delete_blocked,
         ],
-        'org' => ['name' => $org_name, 'logo' => $org_logo, 'is_admin' => (($u['role'] ?? '') === 'admin')],
+        // Agent de collectivité (aucune association) : jamais administrateur d'une association,
+        // même si son users.role vaut « admin ».
+        'org' => ['name' => $org_name, 'logo' => $org_logo, 'is_admin' => $org_id > 0 && (($u['role'] ?? '') === 'admin')],
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-account] ' . $e->getMessage());

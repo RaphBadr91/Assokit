@@ -31,6 +31,8 @@ if (!defined('CRON_EXECUTING') && !defined('CRON_ADMIN_UI')) {
  */
 function cron_email_render(string $type, array $vars): array
 {
+    // Prix de la formule Assokit (HT + TVA lus en base, includes-pricing.php) : jamais écrit en dur
+    require_once __DIR__ . '/includes-pricing.php';
     $vars = array_merge([
         'first_name'     => 'bonjour',
         'asso_name'      => 'votre association',
@@ -115,32 +117,33 @@ function cron_email_render(string $type, array $vars): array
 
         case 'essai_j3':
             $subject = 'Votre essai Assokit se termine dans 3 jours';
-            $preheader = 'Passez au plan Association pour garder toutes les fonctionnalités.';
+            $preheader = 'Choisissez la formule Assokit pour garder toutes les fonctionnalités.';
             $title = 'Plus que 3 jours ✨';
             $body = '
                 <p>Bonjour ' . htmlspecialchars($vars['first_name']) . ',</p>
                 <p>Votre essai gratuit Assokit se termine dans <strong>3 jours</strong>, le ' . htmlspecialchars($vars['trial_end_date']) . '.</p>
                 <p>Pour que ' . htmlspecialchars($vars['asso_name']) . ' continue à bénéficier du copilote IA, des projets illimités,
-                   de l\'agenda partagé et des 3 000 emails inclus chaque mois, il vous suffit de choisir le plan Association.</p>
-                <p><strong>49,99 € TTC/mois, sans engagement.</strong> Vous pouvez revenir à l\'essentiel gratuit à tout moment.</p>
+                   de l\'agenda partagé et des envois d\'e-mails, il vous suffit de choisir la formule Assokit :
+                   <strong>' . htmlspecialchars(ak_offer_price()['label']) . ', sans engagement.</strong></p>
+                <p>Sinon, vos données sont conservées : vous pourrez choisir votre formule plus tard.</p>
             ';
-            $cta = ['label' => 'Choisir mon plan', 'url' => $vars['upgrade_url']];
+            $cta = ['label' => 'Choisir ma formule', 'url' => $vars['upgrade_url']];
             break;
 
         case 'essai_j0':
             $subject = 'Votre essai Assokit se termine aujourd\'hui';
-            $preheader = 'Dernier jour pour choisir votre plan et garder tous vos avantages.';
+            $preheader = 'Dernier jour pour choisir votre formule et garder tous vos avantages.';
             $title = 'Votre essai se termine aujourd\'hui';
             $body = '
                 <p>Bonjour ' . htmlspecialchars($vars['first_name']) . ',</p>
                 <p>Votre période d\'essai Assokit se termine <strong>aujourd\'hui</strong>.</p>
                 <p>Si vous souhaitez continuer avec toutes les fonctionnalités pour ' . htmlspecialchars($vars['asso_name']) . '
-                   (copilote IA complet, projets illimités, 500 adhérents, agenda, messagerie, 3 000 emails/mois),
-                   passez au plan Association dès maintenant.</p>
-                <p>Sinon, votre espace reste accessible en version Essentiel (gratuite) — vous gardez vos données,
-                   avec les limites du plan gratuit.</p>
+                   (copilote IA complet, projets illimités, agenda, messagerie, envois d\'e-mails),
+                   choisissez dès maintenant la formule Assokit :
+                   <strong>' . htmlspecialchars(ak_offer_price()['label']) . ', sans engagement.</strong></p>
+                <p>Sinon, vos données sont conservées : vous pourrez choisir votre formule plus tard.</p>
             ';
-            $cta = ['label' => 'Activer mon plan Association', 'url' => $vars['upgrade_url']];
+            $cta = ['label' => 'Choisir ma formule', 'url' => $vars['upgrade_url']];
             break;
 
         case 'renouvellement':

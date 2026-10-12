@@ -13,6 +13,8 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/app-context.php';   // ak_session_guard() : compte désactivé, association résiliée ou suspendue, mot de passe provisoire
+ak_session_guard();
 require_once __DIR__ . '/rate-limit-helper.php';
 ak_rate_limit_or_die('api_messages', 90, 60, (string)($_SESSION['user_id'] ?? ($_SERVER['REMOTE_ADDR'] ?? 'anon')));
 
