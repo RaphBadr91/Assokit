@@ -143,8 +143,6 @@ try {
 $testMode   = ak_invoice_is_test_mode();
 // TVA des factures hors Stripe : taux de la plateforme si la société est assujettie (null : franchise)
 $vatRate    = ak_manual_invoice_vat_rate($pdo);
-// Première période facturée HT + TVA pour les clients historiques sur facture (préavis de 30 jours)
-if (!defined('AK_HT_PRICE_FROM')) define('AK_HT_PRICE_FROM', '2026-11-12');
 
 foreach ($orgs as $org) {
     $orgId = (int) $org['org_id'];
@@ -240,12 +238,6 @@ foreach ($orgs as $org) {
             // le cockpit et Stripe) ; TVA de la plateforme si la société y est assujettie ; TTC = HT + TVA
             // (ak_create_invoice). 49,99 € HT → 59,99 € TTC à 20 %, le prix payé par carte.
             $ht = (int) $sub['price_cents'];
-            // Clients historiques facturés jusqu'ici 49,99 € TTC : passer à 49,99 € HT + TVA est une
-            // hausse de prix, applicable 30 jours après leur information (CGU). Avant AK_HT_PRICE_FROM,
-            // leur facture garde l'ancien total TTC (HT recalculé à partir de ce total).
-            if ($legacy && $vatRate !== null && (float) $vatRate > 0 && $periodStart < AK_HT_PRICE_FROM) {
-                $ht = (int) round($ht / (1 + (float) $vatRate / 100));
-            }
             $inv = ak_create_invoice($pdo, $orgId, [
                 'amount_ht_cents' => $ht,
                 'vat_rate'        => $vatRate,
