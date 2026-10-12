@@ -16,6 +16,8 @@ function set_fail($c, $e, $m = null) { http_response_code($c); echo json_encode(
 if (empty($_SESSION['user_id'])) set_fail(401, 'auth');
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) set_fail(401, 'auth');
 $is_sa = app_is_founder($pdo, $user);   // IBAN / coordonnées de la société : fondateur uniquement (comme sur le site)
 if (!$is_sa) set_fail(403, 'forbidden');
 

@@ -215,3 +215,23 @@ if (!function_exists('fd_plan_choices')) {
         return $out;
     }
 }
+
+if (!function_exists('fd_unpaid_summary')) {
+    /**
+     * Impayés : factures d'abonnement envoyées ou en retard des associations NON supprimées,
+     * le même périmètre que le filtre « Impayés » des Associations (app-founder-orgs.php).
+     * Partagé par le cockpit, les statistiques et la facturation pour afficher les mêmes chiffres.
+     *   nb = factures · orgs = associations concernées · total = montant TTC
+     */
+    function fd_unpaid_summary(PDO $pdo): array {
+        $out = ['nb' => 0, 'orgs' => 0, 'total' => 0.0];
+        try {
+            $r = $pdo->query("SELECT COUNT(*) AS nb, COUNT(DISTINCT i.org_id) AS orgs, COALESCE(SUM(i.amount_ttc),0) AS total
+                              FROM subscription_invoices i
+                              JOIN organizations o ON o.id = i.org_id AND o.deleted_at IS NULL
+                              WHERE i.status IN ('sent','overdue')")->fetch(PDO::FETCH_ASSOC);
+            if ($r) $out = ['nb' => (int) $r['nb'], 'orgs' => (int) $r['orgs'], 'total' => round((float) $r['total'], 2)];
+        } catch (Throwable $e) {}
+        return $out;
+    }
+}

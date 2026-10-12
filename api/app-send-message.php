@@ -12,13 +12,15 @@ $channel_id = (int) ($input['channel_id'] ?? 0);
 $content = trim((string) ($input['content'] ?? ''));
 $reply_to = (int) ($input['reply_to_message_id'] ?? 0);
 
+// Suiveurs (financeurs externes) : pas d'accès à la messagerie interne, comme sur le site
+if (function_exists('is_follower') && is_follower()) app_fail(403, 'forbidden', 'La messagerie interne est réservée aux membres de l\'association.');
 if ($channel_id <= 0) app_fail(422, 'invalid', 'Canal manquant.');
 if ($content === '') app_fail(422, 'invalid', 'Message vide.');
 if (mb_strlen($content) > 8000) app_fail(422, 'invalid', 'Message trop long.');
 
 try {
     // Canal de l'org
-    $st = $pdo->prepare("SELECT id, type, name, slug FROM channels WHERE id = ? AND org_id = ? AND is_archived = 0 LIMIT 1");
+    $st = $pdo->prepare("SELECT * FROM channels WHERE id = ? AND org_id = ? AND is_archived = 0 LIMIT 1");
     $st->execute([$channel_id, $org_id]);
     $ch = $st->fetch(PDO::FETCH_ASSOC);
     if (!$ch) app_fail(404, 'not_found', 'Canal introuvable.');
@@ -45,38 +47,22 @@ try {
         if ($r->fetchColumn()) $reply_val = $reply_to;
     }
 
-    $ins = $pdo->prepare("INSERT INTO channel_messages (channel_id, user_id, content, reply_to_message_id) VALUES (?, ?, ?, ?)");
+    $ins = $pdo->prepare("INSERT INTO channel_messages (channel_id, user_id, content, reply_to_message_id, created_at) VALUES (?, ?, ?, ?, NOW())");
     $ins->execute([$channel_id, $uid, $content, $reply_val]);
     $new_id = (int) $pdo->lastInsertId();
 
     try {
         $pdo->prepare("INSERT INTO channel_reads (channel_id, user_id, last_read_message_id) VALUES (?, ?, ?)
-                       ON DUPLICATE KEY UPDATE last_read_message_id = GREATEST(last_read_message_id, VALUES(last_read_message_id))")
+                       ON DUPLICATE KEY UPDATE last_read_message_id = GREATEST(COALESCE(last_read_message_id, 0), VALUES(last_read_message_id))")
             ->execute([$channel_id, $uid, $new_id]);
     } catch (Throwable $e) {}
 
-    // Notifs in-app (+ push via cron) pour les autres membres du canal — comme le site
+    // @mentions (notif + e-mail) puis notifs in-app (+ push via cron) pour les autres membres du canal :
+    // même helper que le site (action-message-canal.php), agents de la mairie compris.
     try {
         @require_once __DIR__ . '/../notification-helpers.php';
-        if (function_exists('ak_notif_create')) {
-            $author_name = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: 'Un membre';
-            $excerpt = mb_substr($content, 0, 150) . (mb_strlen($content) > 150 ? '…' : '');
-            if ($ch['type'] === 'private') {
-                $rs = $pdo->prepare("SELECT cm.user_id FROM channel_members cm JOIN users u ON u.id = cm.user_id AND u.org_id = ? WHERE cm.channel_id = ? AND cm.user_id != ?");
-                $rs->execute([$org_id, $channel_id, $uid]);
-            } else {
-                $rs = $pdo->prepare("SELECT id AS user_id FROM users WHERE org_id = ? AND is_active = 1 AND id != ?");
-                $rs->execute([$org_id, $uid]);
-            }
-            foreach (array_column($rs->fetchAll(PDO::FETCH_ASSOC), 'user_id') as $mid) {
-                ak_notif_create(
-                    $pdo, (int) $mid, 'message',
-                    $author_name . ' a écrit dans #' . ($ch['name'] ?? 'canal'),
-                    $excerpt,
-                    '/messages?c=' . ($ch['slug'] ?? ''),
-                    null, null, null, $uid
-                );
-            }
+        if (function_exists('ak_channel_message_notify')) {
+            ak_channel_message_notify($pdo, $ch, (array) $user, $content);
         }
     } catch (Throwable $e) {
         error_log('[app-send-message] notifs: ' . $e->getMessage());

@@ -7,11 +7,11 @@
  *   - Sidebar gauche : liste des canaux accessibles
  *   - Zone principale : messages du canal sélectionné
  *   - Actions admin : créer/gérer canaux
- *   - Bouton IA : résumer/compte-rendu du canal
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+require_once __DIR__ . '/notification-helpers.php';
 
 require_login();
 $current = current_user();
@@ -20,6 +20,22 @@ $user_id = (int)$current['id'];
 $is_admin = ($current['role'] === 'admin');
 $is_coord = ($current['role'] === 'coordinator');
 $is_admin_or_coord = $is_admin || $is_coord;
+
+// Suiveurs (financeurs externes) : la messagerie interne de l'association ne les concerne pas
+// (entrée masquée dans le menu, aucune notification) — ils ne voient que les projets qu'ils suivent.
+if (is_follower()) {
+    header('Location: /projets');
+    exit;
+}
+
+// Admin nommé après le rattachement à une mairie : il rejoint le canal « Suivi · Mairie »
+if ($is_admin && is_file(__DIR__ . '/includes-mairie-channels.php')) {
+    require_once __DIR__ . '/includes-mairie-channels.php';
+    if (function_exists('sync_mairie_channels_for_org_admin')) {
+        try { sync_mairie_channels_for_org_admin($pdo, $user_id, $org_id); }
+        catch (Throwable $e) { error_log('[messages] sync mairie : ' . $e->getMessage()); }
+    }
+}
 
 // ==========================================================
 // Charger tous les canaux accessibles à l'utilisateur
@@ -52,6 +68,11 @@ if ($active_slug) {
     foreach ($channels as $c) {
         if ($c['slug'] === $active_slug) { $active_channel = $c; break; }
     }
+} elseif (!empty($_GET['channel'])) {
+    // Liens envoyés par la mairie (/messages?channel={id}) : même résolution, parmi les canaux accessibles
+    foreach ($channels as $c) {
+        if ((int)$c['id'] === (int)$_GET['channel']) { $active_channel = $c; $active_slug = $c['slug']; break; }
+    }
 }
 if (!$active_channel && !empty($channels)) {
     $active_channel = $channels[0];
@@ -62,10 +83,12 @@ if (!$active_channel && !empty($channels)) {
 // Marquer comme lu + charger les messages du canal actif
 // ==========================================================
 $messages = [];
+$last_loaded_id = 0;
 if ($active_channel) {
-    // Charger les 100 derniers messages
+    // Charger les 100 derniers messages (les plus récents), affichés dans l'ordre chronologique
     $stmt = $pdo->prepare("
         SELECT cm.*, u.first_name, u.last_name, u.role, u.avatar_color,
+               u.parent_org_id AS author_parent_org_id, u.org_id AS author_org_id,
                rcm.content AS reply_to_content,
                rcm.deleted_at AS reply_to_deleted,
                ru.first_name AS reply_to_first_name,
@@ -76,22 +99,70 @@ if ($active_channel) {
         LEFT JOIN users ru ON rcm.user_id = ru.id
         WHERE cm.channel_id = ?
           AND cm.deleted_at IS NULL
-        ORDER BY cm.created_at ASC
+        ORDER BY cm.created_at DESC, cm.id DESC
         LIMIT 100
     ");
     $stmt->execute([$active_channel['id']]);
-    $messages = $stmt->fetchAll();
+    $messages = array_reverse($stmt->fetchAll());
 
-    // Marquer le canal comme lu
+    // Marquer le canal comme lu jusqu'à son dernier message (même repère que le compteur de non-lus)
     if (!empty($messages)) {
-        $last_id = end($messages)['id'];
+        $last_loaded_id = max(array_map('intval', array_column($messages, 'id')));
+        $last_id = max($last_loaded_id, (int)($active_channel['last_msg_id'] ?? 0));
         $pdo->prepare("
             INSERT INTO channel_reads (channel_id, user_id, last_read_message_id, last_read_at)
             VALUES (?, ?, ?, NOW())
-            ON DUPLICATE KEY UPDATE last_read_message_id = VALUES(last_read_message_id), last_read_at = NOW()
+            ON DUPLICATE KEY UPDATE last_read_message_id = GREATEST(COALESCE(last_read_message_id, 0), VALUES(last_read_message_id)), last_read_at = NOW()
         ")->execute([$active_channel['id'], $user_id, $last_id]);
     }
+    // Canal lu : ses notifications (messages, mentions) sont soldées, et seulement elles
+    ak_channel_notifs_mark_read($pdo, $user_id, $active_channel);
 }
+
+// ==========================================================
+// Admins : canaux archivés (à restaurer) et canaux privés dont ils ne sont pas membres
+// (sinon un canal passé en privé sans membres devient introuvable)
+// ==========================================================
+$admin_other_channels = [];
+if ($is_admin) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT c.* FROM channels c
+            WHERE c.org_id = ?
+              AND (c.is_archived = 1
+                   OR (c.type = 'private' AND NOT EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = ?)))
+            ORDER BY c.is_archived ASC, c.name ASC
+        ");
+        $stmt->execute([$org_id, $user_id]);
+        foreach ($stmt->fetchAll() as $c) {
+            // Le canal « Suivi · Mairie » est géré par Assokit (rattachement de la mairie), pas depuis ici
+            if (!empty($c['is_mairie_channel'])) continue;
+            $admin_other_channels[] = $c;
+        }
+    } catch (Throwable $e) {
+        $admin_other_channels = [];
+    }
+}
+
+// Bandeau de retour après une action (création, modification, archivage…)
+$flash_ok = null;
+$flash_err = null;
+if (isset($_GET['created']))       $flash_ok = 'Canal créé.';
+elseif (isset($_GET['updated']))   $flash_ok = 'Canal mis à jour.';
+elseif (isset($_GET['archived']))  $flash_ok = 'Canal archivé. Vous pouvez le restaurer depuis « Canaux archivés ou privés », sous la liste des canaux.';
+elseif (isset($_GET['restored']))  $flash_ok = 'Canal restauré.';
+elseif (isset($_GET['deleted']))   $flash_ok = isset($_GET['c']) ? 'Message supprimé.' : 'Canal supprimé.';
+$errors_map = [
+    'not_admin'     => 'Cette action est réservée aux administrateurs.',
+    'csrf'          => 'Session expirée, veuillez réessayer.',
+    'notfound'      => 'Canal ou message introuvable.',
+    'invalid'       => 'Informations manquantes ou invalides.',
+    'no_write'      => 'Vous ne pouvez pas écrire dans ce canal.',
+    'too_long'      => 'Message trop long (8 000 caractères maximum).',
+    'permission'    => 'Vous ne pouvez pas supprimer ce message.',
+    'mairie_locked' => 'Ce canal de suivi avec la mairie est géré par Assokit : il ne peut pas être modifié, archivé ni supprimé.',
+];
+if (!empty($_GET['error'])) $flash_err = $errors_map[$_GET['error']] ?? 'Une erreur est survenue.';
 
 // ==========================================================
 // [NEW] Charger les membres mentionnables (pour autocomplete @)
@@ -106,6 +177,7 @@ if ($active_channel) {
                 FROM users u
                 WHERE u.is_active = 1 AND u.org_id = :org_id
                   AND (u.deleted_at IS NULL OR u.deleted_at = '')
+                  AND (u.role IS NULL OR u.role <> 'follower')
                   AND (
                       u.id IN (SELECT user_id FROM channel_members WHERE channel_id = :cid)
                       OR u.role = 'admin'
@@ -114,12 +186,13 @@ if ($active_channel) {
             ");
             $stmt->execute([':org_id' => $org_id, ':cid' => $active_channel['id']]);
         } else {
-            // Canal public/annonces : tous les membres actifs de l'org
+            // Canal public/annonces : tous les membres actifs de l'org (hors suiveurs, sans accès à la messagerie)
             $stmt = $pdo->prepare("
                 SELECT id, first_name, last_name, role, avatar_color
                 FROM users
                 WHERE is_active = 1 AND org_id = ?
                   AND (deleted_at IS NULL OR deleted_at = '')
+                  AND (role IS NULL OR role <> 'follower')
                 ORDER BY first_name ASC
             ");
             $stmt->execute([$org_id]);
@@ -232,6 +305,12 @@ render_sidebar('messages');
     <span class="current">Messages<?php if ($active_channel): ?> <span class="sep">›</span> <?= h($active_channel['name']) ?><?php endif; ?></span>
   </nav>
 
+  <?php if ($flash_err): ?>
+    <div class="alert alert-error"><?= h($flash_err) ?></div>
+  <?php elseif ($flash_ok): ?>
+    <div class="alert alert-success">✅ <?= h($flash_ok) ?></div>
+  <?php endif; ?>
+
   <div class="msg-layout">
 
     <!-- ========== SIDEBAR CANAUX ========== -->
@@ -280,6 +359,19 @@ render_sidebar('messages');
           </a>
           <?php endforeach; ?>
         <?php endif; ?>
+
+        <?php if (!empty($admin_other_channels)): ?>
+          <details class="msg-channels-other"<?= isset($_GET['archived']) ? ' open' : '' ?>>
+            <summary>Canaux archivés ou privés (<?= count($admin_other_channels) ?>)</summary>
+            <?php foreach ($admin_other_channels as $oc): ?>
+              <a href="/canal/<?= h($oc['slug']) ?>/parametres" class="msg-channel-link" title="Ouvrir les paramètres du canal">
+                <span class="msg-channel-icon"><?= h($oc['icon'] ?: '#') ?></span>
+                <span class="msg-channel-name"><?= h($oc['name']) ?></span>
+                <span class="msg-channel-type-icon"><?= !empty($oc['is_archived']) ? 'archivé' : '🔒 sans vous' ?></span>
+              </a>
+            <?php endforeach; ?>
+          </details>
+        <?php endif; ?>
       </div>
     </aside>
 
@@ -312,10 +404,6 @@ render_sidebar('messages');
             <?php endif; ?>
           </div>
           <div class="msg-head-actions">
-            <button type="button" class="msg-head-btn ai" onclick="openAiModal()" title="Demander un compte-rendu IA">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-              Résumer avec IA
-            </button>
             <?php if ($is_admin): ?>
               <a href="/canal/<?= h($active_channel['slug']) ?>/parametres" class="msg-head-btn" title="Paramètres du canal">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -334,6 +422,11 @@ render_sidebar('messages');
               <div class="msg-empty-desc">Aucun message pour l'instant. Soyez le premier à écrire quelque chose.</div>
             </div>
           <?php else:
+            if ((int)($active_channel['msg_count'] ?? 0) > count($messages)): ?>
+            <div class="msg-day-sep">
+              <span class="msg-day-sep-label">Seuls les <?= count($messages) ?> messages les plus récents sont affichés</span>
+            </div>
+          <?php endif;
             $last_day = null;
             foreach ($messages as $msg):
               $msg_day = date('Y-m-d', strtotime($msg['created_at']));
@@ -352,7 +445,9 @@ render_sidebar('messages');
               <div class="msg-body">
                 <div class="msg-header">
                   <span class="msg-author"><?= h($msg['first_name'] . ' ' . $msg['last_name']) ?></span>
-                  <?php if ($msg['role'] === 'admin'): ?>
+                  <?php if (!empty($msg['author_parent_org_id'])): ?>
+                    <span class="msg-author-role mairie">Mairie</span>
+                  <?php elseif ($msg['role'] === 'admin'): ?>
                     <span class="msg-author-role">admin</span>
                   <?php elseif ($msg['role'] === 'coordinator'): ?>
                     <span class="msg-author-role">coord</span>
@@ -379,7 +474,10 @@ render_sidebar('messages');
                         title="Repondre">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
                 </button>
-                <?php if ($msg['user_id'] == $user_id || $is_admin): ?>
+                <?php
+                  // Canal « Suivi · Mairie » : les messages des agents de la mairie ne sont supprimables que par leur auteur
+                  $msg_from_mairie = !empty($active_channel['is_mairie_channel']) && (int)($msg['author_org_id'] ?? 0) !== $org_id;
+                  if ($msg['user_id'] == $user_id || ($is_admin && !$msg_from_mairie)): ?>
                   <form method="POST" action="/action-message-canal" style="margin:0;display:inline;"
                         onsubmit="return confirm('Supprimer ce message ?');">
                     <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
@@ -467,33 +565,6 @@ render_sidebar('messages');
 
 </main>
 
-<!-- Modal IA compte-rendu (sera géré en Phase 2) -->
-<div class="msg-ai-modal-backdrop" id="aiModal">
-  <div class="msg-ai-modal">
-    <div class="msg-ai-modal-head">
-      <div class="msg-ai-modal-title">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ai)" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        Demander un compte-rendu IA
-      </div>
-      <button type="button" class="msg-ai-modal-close" onclick="closeAiModal()">✕</button>
-    </div>
-    <div class="msg-ai-modal-body">
-      <p style="font-size: 13px; color: var(--ink-2); margin-bottom: 14px;">🚧 <strong>Fonctionnalité IA à venir en Phase 2</strong> — L'IA analysera les messages récents de ce canal et produira un compte-rendu structuré (synthèse, décisions, actions à faire).</p>
-      <div style="background: var(--ai-light); border: 1px solid var(--ai); border-radius: 10px; padding: 14px 16px; font-size: 12.5px; color: var(--ink-2); line-height: 1.6;">
-        <strong>Aperçu de ce qui sera disponible :</strong><br>
-        • Résumé des 50 derniers messages<br>
-        • Compte-rendu des dernières 24h / semaine / mois<br>
-        • Extraction des décisions prises<br>
-        • Liste des actions à faire<br>
-        • Historique des comptes-rendus conservé
-      </div>
-    </div>
-    <div class="msg-ai-modal-foot">
-      <button type="button" class="btn btn-ghost" onclick="closeAiModal()">Fermer</button>
-    </div>
-  </div>
-</div>
-
 <script>
 // Auto-scroll vers le bas au chargement
 (function() {
@@ -503,11 +574,25 @@ render_sidebar('messages');
 
 // Auto-resize du textarea
 var input = document.getElementById('composeInput');
+// Texte en cours d'envoi gardé le temps de l'aller-retour : si l'envoi est refusé
+// (session expirée, droits…), il est remis dans la zone de saisie au lieu d'être perdu.
+var DRAFT_KEY = 'ak_msg_draft_<?= $active_channel ? (int)$active_channel['id'] : 0 ?>';
+function saveDraft() {
+  try { if (input && input.value.trim()) sessionStorage.setItem(DRAFT_KEY, input.value); } catch (e) {}
+}
 if (input) {
   input.addEventListener('input', function() {
     this.style.height = 'auto';
     this.style.height = Math.min(this.scrollHeight, 150) + 'px';
   });
+  var draft = null;
+  try { draft = sessionStorage.getItem(DRAFT_KEY); sessionStorage.removeItem(DRAFT_KEY); } catch (e) {}
+  if (draft && <?= $flash_err ? 'true' : 'false' ?> && !input.value) {
+    input.value = draft;
+    input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+  }
+  var composeForm = document.getElementById('composeForm');
+  if (composeForm) composeForm.addEventListener('submit', saveDraft);
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       // Ne pas soumettre si le dropdown @mention est ouvert
@@ -517,7 +602,7 @@ if (input) {
       }
       e.preventDefault();
       var form = document.getElementById('composeForm');
-      if (form && this.value.trim()) form.submit();
+      if (form && this.value.trim()) { saveDraft(); form.submit(); }
     }
   });
   input.focus();
@@ -719,13 +804,6 @@ if (input) {
     });
 })();
 
-// Modal IA (placeholder pour Phase 2)
-function openAiModal() { document.getElementById('aiModal').classList.add('open'); }
-function closeAiModal() { document.getElementById('aiModal').classList.remove('open'); }
-var aiModalEl = document.getElementById('aiModal');
-if (aiModalEl) aiModalEl.addEventListener('click', function(e) {
-  if (e.target === this) closeAiModal();
-});
 </script>
 
 <?php render_foot(); ?>
@@ -767,6 +845,10 @@ if (aiModalEl) aiModalEl.addEventListener('click', function(e) {
 .msg-reply-preview-close { padding: 4px 10px; background: transparent; border: none; color: #6B7280; cursor: pointer; font-size: 16px; border-radius: 4px; line-height: 1; }
 .msg-reply-preview-close:hover { background: #fff; color: #ef4444; }
 .msg-item.highlight { animation: msg-flash 1.8s ease-out; border-radius: 8px; }
+.msg-channels-other { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+.msg-channels-other summary { cursor: pointer; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 4px 10px; }
+.msg-channels-other .msg-channel-link { opacity: .8; }
+.msg-channels-other .msg-channel-type-icon { font-size: 10.5px; white-space: nowrap; }
 @keyframes msg-flash {
   0%, 100% { background: transparent; }
   20%, 60% { background: #FEF3C7; }
@@ -781,9 +863,9 @@ if (aiModalEl) aiModalEl.addEventListener('click', function(e) {
 .msg-channel-link.active{background:var(--acc-light)!important;color:var(--acc-dark)!important;font-weight:650}
 .msg-main{background:var(--glass)!important;backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--glass-border)!important;border-radius:var(--radius-lg,18px)!important;box-shadow:var(--shadow-card)}
 .msg-head-name{font-weight:700}
-.msg-head-btn.ai{color:var(--ai)!important;background:var(--ai-light)!important;border:1px solid rgba(99,102,241,.2)!important;font-weight:650;border-radius:11px}
 .msg-author{font-weight:650}
 .msg-author-role{font-size:10px;font-weight:700;background:var(--bg-2);color:var(--ink-3);border-radius:6px;padding:2px 7px}
+.msg-author-role.mairie{background:#FEF3C7;color:#92400E}
 .msg-quote{background:var(--bg-2);border-left:3px solid var(--brand-2,#10B981);border-radius:0 10px 10px 0}
 .msg-quote:hover{background:var(--bg-3)}
 .msg-quote-author{color:var(--brand-ink,#065F46)}
@@ -818,7 +900,7 @@ function scrollToMsg(msgId) {
 (function() {
   const channelId = <?= (int)$active_channel['id'] ?>;
   const selfUserId = <?= (int)$user_id ?>;
-  let lastId = <?= !empty($messages) ? (int)end($messages)['id'] : 0 ?>;
+  let lastId = <?= (int)$last_loaded_id ?>;
   let pollTimer = null;
   const POLL_INTERVAL_ACTIVE = 4000;
   const POLL_INTERVAL_IDLE = 30000;
@@ -850,7 +932,8 @@ function scrollToMsg(msgId) {
   function appendMessage(m) {
     if (document.querySelector('[data-msg-id="' + m.id + '"]')) return;
     const avatarColor = AVATAR_COLORS[m.avatar_color] || '#78716C';
-    const roleBadge = (m.author_role === 'admin') ? '<span class="msg-author-role">admin</span>'
+    const roleBadge = (m.role_class === 'mairie') ? '<span class="msg-author-role mairie">Mairie</span>'
+                    : (m.author_role === 'admin') ? '<span class="msg-author-role">admin</span>'
                     : (m.author_role === 'coordinator') ? '<span class="msg-author-role">coord</span>' : '';
     const editedBadge = m.is_edited ? '<span class="msg-edited">(modifié)</span>' : '';
 
@@ -874,10 +957,14 @@ function scrollToMsg(msgId) {
     msgList.appendChild(div);
   }
 
-  async function poll() {
+  // seen : la page est à l'écran. Onglet en arrière-plan (seen=0), les messages reçus
+  // ne sont pas comptés comme lus ; au retour sur l'onglet (seen=1), tout ce qui est
+  // affiché l'est, avec les notifications du canal.
+  async function poll(seen) {
     try {
       const wasAtBottom = isScrolledToBottom();
-      const res = await fetch('/api-channel-messages?channel_id=' + channelId + '&since=' + lastId, {
+      const seenParam = document.hidden ? '&seen=0' : (seen ? '&seen=1' : '');
+      const res = await fetch('/api-channel-messages?channel_id=' + channelId + '&since=' + lastId + seenParam, {
         credentials: 'same-origin',
         cache: 'no-cache',
       });
@@ -895,16 +982,16 @@ function scrollToMsg(msgId) {
 
   function startPolling(interval) {
     if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(poll, interval);
+    pollTimer = setInterval(function() { poll(false); }, interval);
   }
 
   msgList.scrollTop = msgList.scrollHeight;
   startPolling(POLL_INTERVAL_ACTIVE);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) startPolling(POLL_INTERVAL_IDLE);
-    else { poll(); startPolling(POLL_INTERVAL_ACTIVE); }
+    else { poll(true); startPolling(POLL_INTERVAL_ACTIVE); }
   });
-  setTimeout(poll, 1000);
+  setTimeout(function() { poll(false); }, 1000);
 })();
 </script>
 <?php endif; ?>

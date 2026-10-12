@@ -11,6 +11,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+@require_once __DIR__ . '/resend-helper.php';
 require_login();
 require_capability('access_marketing');
 
@@ -20,6 +21,21 @@ $broadcast_id = (int) ($_GET['id'] ?? 0);
 
 if ($broadcast_id <= 0) {
     header('Location: /communication?tab=diffuser');
+    exit;
+}
+
+$flash = $_SESSION['flash_communication'] ?? null;
+unset($_SESSION['flash_communication']);
+
+// Reprise d'un envoi interrompu : seuls les destinataires restés « pending » reçoivent l'e-mail
+// (ak_comm_broadcast_send prend un verrou : une reprise lancée deux fois n'envoie rien en double).
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reprendre'
+    && check_csrf($_POST['csrf_token'] ?? '') && function_exists('ak_comm_broadcast_send')) {
+    $res = ak_comm_broadcast_send($pdo, $org_id, $broadcast_id);
+    if ($res['status'] !== 'missing') {
+        $_SESSION['flash_communication'] = ak_comm_broadcast_flash($res, 'Diffusion');
+    }
+    header('Location: /communication-diffusion?id=' . $broadcast_id);
     exit;
 }
 
@@ -48,6 +64,16 @@ $stmt = $pdo->prepare("
 $stmt->execute([$broadcast_id]);
 $recipients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+$nb_pending = count(array_filter($recipients, fn($r) => ($r['status'] ?? '') === 'pending'));
+$running = $nb_pending > 0 && function_exists('ak_comm_broadcast_running') && ak_comm_broadcast_running($pdo, $broadcast_id);
+$status_label = [
+    'sent'    => ['Envoyée', 'var(--acc)'],
+    'partial' => ['Envoyée en partie', '#B45309'],
+    'failed'  => ['Échec : aucun e-mail envoyé', '#B91C1C'],
+    'sending' => [$running ? 'Envoi en cours' : 'Envoi interrompu', '#B45309'],
+    'draft'   => ['Brouillon', 'var(--ink-3)'],
+][$b['status'] ?? ''] ?? null;
+
 render_head('Diffusion #' . $broadcast_id);
 render_sidebar('communication');
 ?>
@@ -62,15 +88,46 @@ render_sidebar('communication');
     <span class="current">Diffusion #<?= $broadcast_id ?></span>
   </nav>
 
+  <?php if ($flash): ?>
+    <?php $flash_warn = ($flash['type'] ?? '') === 'warning'; ?>
+    <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>"<?= $flash_warn ? ' style="background:#FEF3C7; color:#92400E; border-color:#FCD34D;"' : '' ?>>
+      <span><?= $flash['type'] === 'success' ? '✅' : '⚠️' ?></span>
+      <div><?= h($flash['message']) ?></div>
+    </div>
+  <?php endif; ?>
+
   <div class="main-head">
     <div>
       <h1 class="page-title" style="font-size:22px;"><?= h($b['subject']) ?></h1>
       <div class="page-sub">
         Envoyé par <strong><?= h($b['first_name'] . ' ' . $b['last_name']) ?></strong>
         le <?= $b['sent_at'] ? date('d/m/Y à H:i', strtotime($b['sent_at'])) : '—' ?>
+        <?php if ($status_label): ?>
+          · <strong style="color:<?= $status_label[1] ?>;"><?= h($status_label[0]) ?></strong>
+        <?php endif; ?>
       </div>
     </div>
   </div>
+
+  <?php if ($nb_pending > 0): ?>
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; border-radius:10px; padding:12px 16px; margin-bottom:18px; font-size:13px;">
+      <div>
+        <?php if ($running): ?>
+          ⏳ Envoi en cours : <?= $nb_pending ?> destinataire<?= $nb_pending > 1 ? 's' : '' ?> restant<?= $nb_pending > 1 ? 's' : '' ?>. Rechargez la page dans quelques minutes.
+        <?php else: ?>
+          ⚠️ L’envoi s’est interrompu : <?= $nb_pending ?> destinataire<?= $nb_pending > 1 ? 's' : '' ?> n’<?= $nb_pending > 1 ? 'ont' : 'a' ?> pas encore reçu l’e-mail.
+          Ceux qui l’ont reçu ne le recevront pas une seconde fois.
+        <?php endif; ?>
+      </div>
+      <?php if (!$running): ?>
+        <form method="POST" style="margin:0;" onsubmit="var b = this.querySelector('button'); b.disabled = true; b.textContent = '⏳ Envoi en cours…'; return true;">
+          <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
+          <input type="hidden" name="action" value="reprendre">
+          <button type="submit" class="btn btn-primary" style="padding:6px 14px; font-size:12.5px;">📧 Reprendre l’envoi</button>
+        </form>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
 
   <!-- Stats -->
   <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:10px; margin-bottom:20px;">
@@ -121,10 +178,10 @@ render_sidebar('communication');
           <div>
             <?php if ($r['status'] === 'sent'): ?>
               <span style="color:var(--acc); font-size:11px;">✓ Envoyé</span>
-            <?php elseif ($r['status'] === 'failed'): ?>
-              <span style="color:#EF4444; font-size:11px;" title="<?= h($r['error_message'] ?? '') ?>">✕ Échec</span>
+            <?php elseif ($r['status'] === 'failed' || $r['status'] === 'bounced'): ?>
+              <span style="color:#EF4444; font-size:11px;" title="<?= h($r['error_message'] ?? '') ?>">✕ <?= $r['status'] === 'bounced' ? 'Rejeté' : 'Échec' ?></span>
             <?php else: ?>
-              <span style="color:var(--ink-4); font-size:11px;">⏳ <?= h($r['status']) ?></span>
+              <span style="color:var(--ink-4); font-size:11px;">⏳ <?= h($r['status'] === 'pending' ? 'En attente' : $r['status']) ?></span>
             <?php endif; ?>
           </div>
         </div>

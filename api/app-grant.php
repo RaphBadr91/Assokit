@@ -31,8 +31,17 @@ try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
     $role = (string) ($user['role'] ?? '');
-    $can_manage = in_array($role, ['admin', 'coordinator'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
     $is_admin = ($role === 'admin') || !empty($user['is_founder']) || !empty($user['is_super_admin']);
+
+    // Administrateur ou coordinateur seulement, comme /subvention/{id} :
+    // montants, contacts du financeur et notes internes.
+    $can_manage = function_exists('gr_can_manage') && gr_can_manage($user);
+    if (!$can_manage) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'allowed' => false, 'error' => 'forbidden',
+            'message' => 'Les dossiers de subvention sont réservés aux administrateurs et aux coordinateurs.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     $id = (int) ($_GET['id'] ?? 0);
     if ($id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'id']); exit; }
@@ -94,12 +103,12 @@ try {
             'cerfa'        => (string) ($g['cerfa_number'] ?? ''),
             'reference'    => (string) ($g['reference'] ?? ''),
             'platform'     => (string) ($g['platform'] ?? ''),
-            'platform_url' => (string) ($g['platform_url'] ?? ''),
+            'platform_url' => (string) (gr_http_url($g['platform_url'] ?? '') ?? ''),   // http(s) seulement
             'contact_name' => (string) ($g['contact_name'] ?? ''),
             'contact_email' => (string) ($g['contact_email'] ?? ''),
             'contact_phone' => (string) ($g['contact_phone'] ?? ''),
             'last_relance' => grd($g['last_relance_at'] ?? null),
-            'archived'     => !empty($g['archived_at']),
+            'archived'     => gr_is_archived($g),
         ],
         'steps'    => $steps,
         'activity' => $activity,

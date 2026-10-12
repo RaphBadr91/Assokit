@@ -46,7 +46,7 @@ if (isset($_GET['download'])) {
 }
 
 // ── Aperçu (stats) ───────────────────────────────────────────────────
-$stats = ['lines'=>0,'sales'=>0,'cotis'=>0,'buys'=>0,'debit'=>0,'credit'=>0,'balanced'=>true];
+$stats = ['lines'=>0,'sales'=>0,'cotis'=>0,'buys'=>0,'debit'=>0,'credit'=>0,'balanced'=>true,'vat_subject'=>false];
 $ready = true;
 try { $stats = fec_build($pdo, $org_id, $year)['stats']; }
 catch (Throwable $e) { $ready = false; error_log('[export-fec] '.$e->getMessage()); }
@@ -102,7 +102,8 @@ echo render_sidebar('export-fec');
     <div class="fec-note">
       <p><strong><?= ak_icon('info',14) ?> À savoir</strong></p>
       <ul>
-        <li>Assokit n'est pas un logiciel de comptabilité en partie double : ce FEC est une <strong>reconstitution fidèle des flux</strong> (ventes 411/706/44571, encaissements 512/411, cotisations 512/756, achats 606/44566/401). Faites-le <strong>valider par votre expert-comptable</strong>.</li>
+        <li>Assokit n'est pas un logiciel de comptabilité en partie double : ce FEC est une <strong>reconstitution fidèle des flux</strong> (ventes 411/706/44571, encaissements 512/411, cotisations 512/756, achats 60/61/62 selon le poste de chaque facture, comme le bilan analytique, puis 44566/401). Faites-le <strong>valider par votre expert-comptable</strong>.</li>
+        <?php if ($ready): ?><li>TVA des achats : <?= !empty($stats['vat_subject']) ? 'votre structure est déclarée <strong>assujettie à la TVA</strong> : les achats sont passés HT et la TVA en 44566 (déductible).' : 'votre structure n\'est pas déclarée assujettie à la TVA : la TVA des achats n\'est pas récupérable, les charges sont passées <strong>TTC</strong> (pas de 44566).' ?> Le régime se règle dans les paramètres de l'association.</li><?php endif; ?>
         <li>Format : 18 champs obligatoires, séparateur tabulation, encodage UTF-8, conforme à l'arrêté du 29 juillet 2013.</li>
         <li>Nom du fichier : <code>&lt;SIREN&gt;FEC&lt;AAAAMMJJ&gt;.txt</code> (clôture au 31/12). Renseignez votre SIREN dans les paramètres pour un nom conforme.</li>
       </ul>

@@ -82,7 +82,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
         // Transaction SQL
         try {
             $pdo->beginTransaction();
-            $pdo->prepare("DELETE FROM grant_reminders_sent WHERE grant_id = ?")->execute([$grant_id]);
+            // Journal des rappels : sur une base où la table manque (migration
+            // 2026-10-11-L06-finances pas encore passée), il n'y a rien à effacer,
+            // et la suppression du dossier ne doit pas échouer pour autant.
+            try { $pdo->prepare("DELETE FROM grant_reminders_sent WHERE grant_id = ?")->execute([$grant_id]); } catch (Throwable $e) {}
             $pdo->prepare("DELETE FROM grant_activity_log WHERE grant_id = ?")->execute([$grant_id]);
             $pdo->prepare("DELETE FROM grant_steps WHERE grant_id = ?")->execute([$grant_id]);
             $pdo->prepare("DELETE FROM grant_documents WHERE grant_id = ?")->execute([$grant_id]);
@@ -99,9 +102,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
                 }
             }
 
+            // Affiché en tête de /subventions
             $_SESSION['flash_subventions'] = [
                 'type' => 'success',
-                'message' => 'Dossier "' . $grant['name'] . '" supprimé définitivement.'
+                'message' => 'Dossier « ' . $grant['name'] . ' » supprimé définitivement.'
             ];
             header('Location: /subventions');
             exit;
@@ -134,7 +138,7 @@ render_sidebar('subventions');
     <span class="sep">›</span>
     <a href="/subventions">Subventions</a>
     <span class="sep">›</span>
-    <a href="/subvention-detail?id=<?= $grant_id ?>"><?= h($grant['name']) ?></a>
+    <a href="/subvention/<?= $grant_id ?>"><?= h($grant['name']) ?></a>
     <span class="sep">›</span>
     <span class="current">Supprimer</span>
   </nav>
@@ -241,7 +245,7 @@ render_sidebar('subventions');
     <?php endif; ?>
 
     <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:14px;">
-      <a href="/subvention-detail?id=<?= $grant_id ?>" class="btn btn-ghost">Annuler</a>
+      <a href="/subvention/<?= $grant_id ?>" class="btn btn-ghost">Annuler</a>
       <button type="submit" class="btn"
               style="background:#DC2626; color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:500; cursor:pointer;"
               onmouseover="this.style.background='#B91C1C'" onmouseout="this.style.background='#DC2626'">

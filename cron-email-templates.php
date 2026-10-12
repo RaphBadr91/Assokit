@@ -40,7 +40,8 @@ function cron_email_render(string $type, array $vars): array
         'invoice_number' => '',
         'period_end'     => '',
         'login_url'      => 'https://assokit.fr/connexion',
-        'billing_url'    => 'https://assokit.fr/facturation',
+        // Page où l'association voit ses factures et son abonnement (/facturation n'existe pas)
+        'billing_url'    => function_exists('cron_billing_url') ? cron_billing_url() : 'https://assokit.fr/mon-asso-plan',
         'upgrade_url'    => 'https://assokit.fr/tarifs',
     ], $vars);
 

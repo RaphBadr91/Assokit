@@ -3,7 +3,9 @@
  * api/app-founder-create-org.php — Créer une association / TPE (Fondateur, natif).
  * GET  → liste des plans disponibles.
  * POST → crée organisation + compte admin + abonnement (porte la logique du site,
- *        sans le modifier), renvoie les identifiants générés.
+ *        sans le modifier), renvoie les identifiants générés. Création par un Super Admin
+ *        non fondateur : association « en attente de validation Fondateur », fondateurs
+ *        notifiés (comme /fondateur-create-organization et /super-admin/nouvelle-asso).
  * NE MODIFIE PAS le site : dédié à l'application.
  */
 ob_start();
@@ -19,8 +21,11 @@ function oorg_fail($c, $e, $m = null) { http_response_code($c); echo json_encode
 if (empty($_SESSION['user_id'])) oorg_fail(401, 'auth');
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) oorg_fail(401, 'auth');
 require_once __DIR__ . '/_app-founder-plan.php';
-$is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
+$is_founder = app_is_founder($pdo, $user);
+$is_sa = $is_founder || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
 if (!$is_sa) oorg_fail(403, 'forbidden');
 
 // --- Liste des plans (GET) : les mêmes que le sélecteur de formule de la fiche association ---
@@ -96,10 +101,16 @@ try {
     $pdo->prepare("INSERT INTO organizations (name, slug, billing_email, created_at) VALUES (?, ?, ?, NOW())")
         ->execute([$org_name, $slug, $email]);
     $new_org_id = (int) $pdo->lastInsertId();
+    // Auteur + statut de validation, comme le web : Fondateur = validée, Super Admin non
+    // fondateur = en attente de validation Fondateur (onglet « À valider » du cockpit)
+    $validation_status = ak_db_pick($pdo, 'organizations', 'validation_status', [$is_founder ? 'validated' : 'pending_founder']);
+    ak_db_update($pdo, 'organizations', $new_org_id, ['created_by_user_id' => (int) $_SESSION['user_id']]
+        + ($validation_status !== null ? ['validation_status' => $validation_status] : []));
 
     $pdo->prepare("INSERT INTO users (org_id, email, password_hash, first_name, last_name, role, is_active, created_at)
                    VALUES (?, ?, ?, ?, ?, 'admin', 1, NOW())")
         ->execute([$new_org_id, $email, $password_hash, $first_name, $last_name]);
+    $new_user_id = (int) $pdo->lastInsertId();
 
     $new_sub_id = 0;
     try {
@@ -143,6 +154,48 @@ try {
     }
     $pdo->commit();
 
+    // Historique du cockpit (filtre « Création asso ») : même code et mêmes détails que le web
+    @include_once __DIR__ . '/../superadmin-layout.php';
+    if (function_exists('sa_log_action')) {
+        try {
+            sa_log_action((int) ($user['id'] ?? $_SESSION['user_id']), 'create_org', $new_org_id, $new_user_id ?: null, [
+                'org_name' => $org_name, 'plan' => $chosen_slug, 'status' => $sub_status, 'payment_mode' => $payment_mode,
+                'days' => $period_days, 'admin_email' => $email, 'validation_status' => $validation_status, 'source' => 'appli',
+            ]);
+        } catch (Throwable $e) {}
+    }
+
+    // Création par un Super Admin non fondateur : les fondateurs valident (in-app + e-mail), comme le web
+    if (!$is_founder) {
+        $creator = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: (string) ($user['email'] ?? 'Un Super Admin');
+        @include_once __DIR__ . '/../sa-permissions.php';
+        if (function_exists('sa_notify_all_founders')) {
+            sa_notify_all_founders(
+                'new_org_pending',
+                'Nouvelle association à valider',
+                $creator . ' a créé « ' . $org_name . ' » (en attente de validation).',
+                '/super-admin/associations?id=' . $new_org_id,
+                $new_org_id
+            );
+        }
+        try {
+            @require_once __DIR__ . '/../resend-helper.php';
+            if (function_exists('send_transactional_email')) {
+                $founders = $pdo->query("SELECT email, first_name FROM users WHERE is_founder = 1 AND is_active = 1")->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($founders as $f) {
+                    $content = '<p>Bonjour ' . htmlspecialchars((string) $f['first_name']) . ',</p>'
+                        . '<p><strong>' . htmlspecialchars($creator) . '</strong> (Super Admin) vient de créer le compte <strong>' . htmlspecialchars($org_name) . '</strong>'
+                        . ' (plan ' . htmlspecialchars(ak_plan_label($chosen_slug, $chosen['name'] ?? null)) . ', jusqu’au ' . date('d/m/Y', strtotime($period_end)) . ').</p>'
+                        . '<p>Il est en attente de votre validation.</p>';
+                    $html = function_exists('email_wrap')
+                        ? email_wrap('Validation requise', $content, 'Examiner ce compte', 'https://assokit.fr/super-admin/associations?id=' . $new_org_id)
+                        : $content;
+                    send_transactional_email((string) $f['email'], '🏗️ Nouvelle association à valider — ' . $org_name, $html, ['tag' => 'org_pending_validation']);
+                }
+            }
+        } catch (Throwable $e) { error_log('[app-founder-create-org] notification fondateurs : ' . get_class($e)); }
+    }
+
     $email_sent = false;
     if ($send_email) {
         try {
@@ -154,10 +207,12 @@ try {
                     . "<strong>Mot de passe :</strong> <code>" . htmlspecialchars($password_plain) . "</code></p>"
                     . ($is_trial ? "<p>Votre période d’essai gratuit (" . htmlspecialchars(ak_plan_label($chosen_slug, $chosen['name'] ?? null)) . ") est active jusqu’au <strong>" . htmlspecialchars(ak_trial_end_label($period_end)) . "</strong>.</p>" : "")
                     . "<p>👉 <a href='https://assokit.fr/login'>Se connecter</a></p>";
-                send_transactional_email($email, 'Bienvenue chez Assokit !', $body, ['tag' => 'founder_new_org']);
-                $email_sent = true;
+                // « Email de bienvenue envoyé » seulement s'il est vraiment parti : sinon l'appli
+                // demande au fondateur de transmettre lui-même les identifiants
+                $res = send_transactional_email($email, 'Bienvenue chez Assokit !', $body, ['tag' => 'founder_new_org']);
+                $email_sent = !empty($res['success']);
             }
-        } catch (Throwable $e) {}
+        } catch (Throwable $e) { error_log('[app-founder-create-org] e-mail de bienvenue : ' . $e->getMessage()); }
     }
 
     echo json_encode([
@@ -167,6 +222,7 @@ try {
         'email' => $email,
         'password' => $password_plain,
         'email_sent' => $email_sent,
+        'validation_status' => $validation_status,   // 'pending_founder' : création d'un Super Admin, à valider par le Fondateur
         'state' => fd_org_plan($pdo, $new_org_id),
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {

@@ -19,6 +19,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/financements-engine.php';
+require_once __DIR__ . '/includes-grants.php';
 @require_once __DIR__ . '/notification-helpers.php';
 @require_once __DIR__ . '/resend-helper.php';
 require_once __DIR__ . '/cron-lots.php';
@@ -69,13 +70,21 @@ function radar_mark_sent(PDO $pdo, int $org_id, int $catalog_id, string $type): 
     } catch (Throwable $e) {}
 }
 
+/**
+ * Envoi par le canal des e-mails transactionnels (resend-helper.php) :
+ * vrai seulement si l'e-mail est vraiment parti, pour qu'une alerte en
+ * échec ne soit pas notée envoyée et reparte au passage suivant.
+ */
 function radar_send_email(array $admins, string $subject, string $html, string $text): bool {
     $ok = false;
     foreach ($admins as $a) {
         if (!filter_var($a['email'] ?? '', FILTER_VALIDATE_EMAIL)) continue;
         try {
             if (ak_demo_mail_blocked($a['email'])) { $ok = true; }   // démo : envoi simulé
-            elseif (function_exists('send_email_resend')) { send_email_resend($a['email'], $subject, $html, $text); $ok = true; }
+            elseif (function_exists('send_transactional_email')) {
+                $r = send_transactional_email($a['email'], $subject, $html, ['tag' => 'grant_radar']);
+                if (!empty($r['success'])) $ok = true;
+            }
             else {
                 $headers = "MIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\nFrom: AssoKit <noreply@assokit.fr>\r\n";
                 if (@mail($a['email'], $subject, $html, $headers)) $ok = true;
@@ -182,7 +191,7 @@ foreach ($aVoir as $org_id) {
                AND c.deadline_apply IS NOT NULL AND c.deadline_apply >= ?");
         $st->execute([$org_id, $today]);
         foreach ($st->fetchAll() as $r) {
-            $diff = (int)((strtotime($r['deadline_apply']) - strtotime($today)) / 86400);
+            $diff = gr_days_between($today, (string)$r['deadline_apply']);   // jours calendaires, heure d'été comprise
             $type = $diff === 30 ? 'deadline_30' : ($diff === 7 ? 'deadline_7' : null);
             if ($type === null) continue;
             if (radar_already_sent($pdo, $org_id, (int)$r['catalog_id'], $type)) continue;

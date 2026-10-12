@@ -13,6 +13,8 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/report-charts-helper.php';
 require_once __DIR__ . '/vendor/autoload.php';
 require_login();
+// Même droit que tout le module Communication (PV d'AG, rapports financiers, courriers…)
+require_capability('access_marketing');
 
 $current = current_user();
 $org_id = (int)($current['org_id'] ?? 0);

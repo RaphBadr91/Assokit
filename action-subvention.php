@@ -11,8 +11,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !check_csrf($_POST['csrf_token'] ??
 }
 
 $user = current_user(); $org_id = (int)$user['org_id']; $user_id = (int)$user['id'];
-$is_admin = ($user['role'] === 'admin'); $is_coord = ($user['role'] === 'coordinator');
-if (!$is_admin && !$is_coord) { http_response_code(403); die('Accès refusé.'); }
+$is_admin = ($user['role'] === 'admin');
+// Même règle que la liste, la fiche, le formulaire et l'appli
+if (!gr_can_manage($user)) { http_response_code(403); die('Accès refusé.'); }
 
 $action = $_POST['action'] ?? '';
 
@@ -48,9 +49,11 @@ if ($action === 'create' || $action === 'update') {
     if (!$name || !$funder) { die('Nom et financeur requis.'); }
 
     $valid_types = ['etat','region','departement','commune','epci','caf','fondation','entreprise','europe','autre'];
-    $valid_statuses = ['draft','submitted','in_review','granted','rejected','reported','archived'];
+    // Pas de statut « archived » ici : l'archivage passe par action=archive
+    // (admin seul), qui note aussi la date et l'ancien statut.
+    $valid_statuses = ['draft','submitted','in_review','granted','rejected','reported'];
     $funder_type = in_array($_POST['funder_type'] ?? '', $valid_types, true) ? $_POST['funder_type'] : 'autre';
-    $status = in_array($_POST['status'] ?? '', $valid_statuses, true) ? $_POST['status'] : 'draft';
+    $status = in_array($_POST['status'] ?? '', $valid_statuses, true) ? $_POST['status'] : null;
     $project_id = (int)($_POST['project_id'] ?? 0) ?: null;
     if ($project_id) {   // le projet doit appartenir à cette association
         $ckp = $pdo->prepare("SELECT p.id FROM projects p JOIN folders f ON f.id = p.folder_id WHERE p.id = ? AND f.org_id = ?");
@@ -59,8 +62,8 @@ if ($action === 'create' || $action === 'update') {
     }
     $description = trim($_POST['description'] ?? '') ?: null;
     $notes = trim($_POST['notes'] ?? '') ?: null;
-    $amount_req = $_POST['amount_requested'] !== '' ? (float)$_POST['amount_requested'] : null;
-    $amount_gr = $_POST['amount_granted'] !== '' ? (float)$_POST['amount_granted'] : null;
+    $amount_req = ($_POST['amount_requested'] ?? '') !== '' ? (float)$_POST['amount_requested'] : null;
+    $amount_gr = ($_POST['amount_granted'] ?? '') !== '' ? (float)$_POST['amount_granted'] : null;
     $currency = ($_POST['currency'] ?? 'EUR') === 'CHF' ? 'CHF' : 'EUR';
     $deadline_apply = $_POST['deadline_apply'] ?? null ?: null;
     $submitted_at = $_POST['submitted_at'] ?? null ?: null;
@@ -70,16 +73,15 @@ if ($action === 'create' || $action === 'update') {
     $cerfa = trim($_POST['cerfa_number'] ?? '') ?: null;
     $reference = trim($_POST['reference'] ?? '') ?: null;
     $platform = trim($_POST['platform'] ?? '') ?: null;
-    $platform_url = trim($_POST['platform_url'] ?? '') ?: null;
-    // Validation URL
-    if ($platform_url && !filter_var($platform_url, FILTER_VALIDATE_URL)) {
-        $platform_url = null;
-    }
+    // Validation URL : http(s) seulement (filter_var seul laisse passer
+    // « javascript://… », affiché ensuite comme lien sur la fiche)
+    $platform_url = gr_http_url($_POST['platform_url'] ?? '');
     $contact_name = trim($_POST['contact_name'] ?? '') ?: null;
     $contact_email = trim($_POST['contact_email'] ?? '') ?: null;
     $contact_phone = trim($_POST['contact_phone'] ?? '') ?: null;
 
     if ($action === 'create') {
+        $status = $status ?? 'draft';
         $stmt = $pdo->prepare("INSERT INTO grants (org_id, project_id, name, funder, funder_type, description, amount_requested, amount_granted, currency, status,
             deadline_apply, submitted_at, decision_at, deadline_report, reported_at, cerfa_number, reference, platform, platform_url,
             contact_name, contact_email, contact_phone, notes, created_by)
@@ -93,6 +95,12 @@ if ($action === 'create' || $action === 'update') {
         $grant_id = (int)($_POST['id'] ?? 0);
         $existing = gr_load($pdo, $grant_id, $org_id);
         if (!$existing) { http_response_code(404); die('Introuvable.'); }
+        // Un dossier archivé se désarchive d'abord (comme dans l'appli) :
+        // le formulaire n'a pas de statut « Archivé » et l'aurait remis en
+        // brouillon tout en le laissant caché de la liste.
+        if (gr_is_archived($existing)) { header('Location: /subvention/' . $grant_id); exit; }
+        // Statut absent ou inconnu : on garde celui du dossier
+        $status = $status ?? (in_array((string)$existing['status'], $valid_statuses, true) ? (string)$existing['status'] : 'draft');
         $stmt = $pdo->prepare("UPDATE grants SET project_id=?, name=?, funder=?, funder_type=?, description=?, amount_requested=?, amount_granted=?, currency=?, status=?,
             deadline_apply=?, submitted_at=?, decision_at=?, deadline_report=?, reported_at=?, cerfa_number=?, reference=?, platform=?, platform_url=?,
             contact_name=?, contact_email=?, contact_phone=?, notes=? WHERE id=? AND org_id=?");
@@ -183,10 +191,22 @@ if ($action === 'archive') {
     if (!$is_admin) { http_response_code(403); die('Admin requis.'); }
     $g = gr_load($pdo, $grant_id, $org_id);
     if (!$g) { http_response_code(404); die('Introuvable.'); }
-    $pdo->prepare("UPDATE grants SET archived_at = NOW(), status = 'archived' WHERE id = ? AND org_id = ?")
-        ->execute([$grant_id, $org_id]);
-    gr_log($pdo, $grant_id, $user_id, 'archive', '📦 Dossier archivé');
-    header('Location: /subventions');
+    // Sur archived_at et non gr_is_archived() : un dossier passé au statut
+    // « archived » sans date (ancien formulaire) reçoit ainsi sa date.
+    if (empty($g['archived_at'])) gr_archive($pdo, $g, $user_id);
+    header('Location: /subventions?status=archived');
+    exit;
+}
+
+// Désarchiver : le dossier revient dans la liste avec le statut qu'il
+// avait avant l'archivage (archivé depuis le site ou depuis l'appli).
+if ($action === 'unarchive') {
+    $grant_id = (int)($_POST['id'] ?? 0);
+    if (!$is_admin) { http_response_code(403); die('Admin requis.'); }
+    $g = gr_load($pdo, $grant_id, $org_id);
+    if (!$g) { http_response_code(404); die('Introuvable.'); }
+    if (gr_is_archived($g)) gr_unarchive($pdo, $g, $user_id);
+    header('Location: /subvention/' . $grant_id);
     exit;
 }
 

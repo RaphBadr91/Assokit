@@ -9,7 +9,7 @@
  * POST action=set_email     → renseigne un email LÉGITIME sur une asso de l'annuaire.
  * POST action=to_prospect   → promeut une asso (avec email) vers la file de prospection conforme.
  *
- * Données publiques (RNA/INSEE) sans email. Réservé Fondateur/Super Admin. NE MODIFIE PAS le site.
+ * Données publiques (RNA/INSEE) sans email. Réservé au Fondateur. NE MODIFIE PAS le site.
  */
 ob_start();
 require_once __DIR__ . '/../config.php';
@@ -25,8 +25,10 @@ function dir_fail($c, $e, $m = null) { http_response_code($c); echo json_encode(
 if (empty($_SESSION['user_id'])) dir_fail(401, 'auth');
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
-$is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
-if (!$is_sa) dir_fail(403, 'forbidden');
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) dir_fail(401, 'auth');
+// Annuaire de prospection : Fondateur uniquement, comme /fondateur-prospection
+if (!app_is_founder($pdo, $user)) dir_fail(403, 'forbidden');
 
 ak_directory_tables_ensure($pdo);
 $CATS = ak_directory_categories();

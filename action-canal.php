@@ -7,9 +7,12 @@
  *   - create : créer un nouveau canal
  *   - update : modifier un canal existant
  *   - archive : archiver un canal (le masque sans supprimer)
+ *   - restore : restaurer un canal archivé
  *   - delete : supprimer définitivement (+ tous les messages)
  *   - add_member : ajouter un utilisateur à un canal privé
  *   - remove_member : retirer un utilisateur
+ * Le canal « Suivi · Mairie » (is_mairie_channel = 1) est verrouillé : il n'est géré
+ * que par le rattachement / détachement de la mairie (includes-mairie-channels.php).
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
@@ -51,6 +54,35 @@ function make_slug($name) {
     $s = preg_replace('/[^a-z0-9]+/', '-', $s);
     $s = trim($s, '-');
     return $s ?: 'canal';
+}
+
+// Helper : charger un canal de l'association (null s'il n'est pas à elle)
+function load_org_channel(PDO $pdo, int $channel_id, int $org_id): ?array {
+    if ($channel_id <= 0) return null;
+    $stmt = $pdo->prepare("SELECT * FROM channels WHERE id = ? AND org_id = ?");
+    $stmt->execute([$channel_id, $org_id]);
+    return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+// Helper : refuser toute modification du canal « Suivi · Mairie » (la mairie perdrait la conversation)
+function refuse_if_mairie_channel(array $channel): void {
+    if (!empty($channel['is_mairie_channel'])) {
+        header('Location: /canal/' . urlencode((string)$channel['slug']) . '/parametres?error=mairie_locked');
+        exit;
+    }
+}
+
+// Helper : ajouter un utilisateur à un canal privé (sans doublon)
+function add_channel_member(PDO $pdo, int $channel_id, int $user_id, string $role = 'member'): void {
+    $check = $pdo->prepare("SELECT id FROM channel_members WHERE channel_id = ? AND user_id = ?");
+    $check->execute([$channel_id, $user_id]);
+    if ($check->fetch()) return;
+    try {
+        $pdo->prepare("INSERT INTO channel_members (channel_id, user_id, role) VALUES (?, ?, ?)")
+            ->execute([$channel_id, $user_id, $role]);
+    } catch (Exception $e) {
+        // Doublon concurrent : déjà membre
+    }
 }
 
 // =========================================================
@@ -123,8 +155,8 @@ if ($action === 'create') {
             foreach ($initial_members as $m_id) {
                 $m_id = (int)$m_id;
                 if ($m_id > 0 && $m_id !== $user_id) {
-                    // Vérifier que l'utilisateur appartient à l'org
-                    $check = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ?");
+                    // Vérifier que l'utilisateur appartient à l'org (les suiveurs n'ont pas accès à la messagerie)
+                    $check = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ? AND (role IS NULL OR role <> 'follower')");
                     $check->execute([$m_id, $org_id]);
                     if ($check->fetch()) {
                         try {
@@ -160,13 +192,12 @@ if ($action === 'update') {
     }
 
     // Vérifier que le canal appartient bien à l'org
-    $stmt = $pdo->prepare("SELECT * FROM channels WHERE id = ? AND org_id = ?");
-    $stmt->execute([$channel_id, $org_id]);
-    $channel = $stmt->fetch();
+    $channel = load_org_channel($pdo, $channel_id, $org_id);
     if (!$channel) {
         header('Location: /messages?error=notfound');
         exit;
     }
+    refuse_if_mairie_channel($channel);
 
     $valid_types = ['public', 'private', 'announce'];
     $valid_colors = ['blue', 'purple', 'amber', 'pink', 'teal', 'green', 'red', 'gray'];
@@ -188,6 +219,17 @@ if ($action === 'update') {
         $channel_id,
     ]);
 
+    // Passage en privé : seuls les membres le voient. L'auteur du changement en devient
+    // modérateur, sinon le canal (et ses messages) disparaît pour tout le monde, lui compris.
+    if ($type === 'private' && $channel['type'] !== 'private') {
+        add_channel_member($pdo, $channel_id, $user_id, 'moderator');
+    }
+
+    // Canal archivé : on reste sur ses paramètres (il n'apparaît pas dans la liste des canaux)
+    if (!empty($channel['is_archived'])) {
+        header('Location: /canal/' . urlencode($channel['slug']) . '/parametres?updated=1');
+        exit;
+    }
     header('Location: /messages?c=' . urlencode($channel['slug']) . '&updated=1');
     exit;
 }
@@ -196,10 +238,35 @@ if ($action === 'update') {
 // ACTION : Archiver un canal
 // =========================================================
 if ($action === 'archive') {
-    $channel_id = (int)($_POST['channel_id'] ?? 0);
+    $channel = load_org_channel($pdo, (int)($_POST['channel_id'] ?? 0), $org_id);
+    if (!$channel) {
+        header('Location: /messages?error=notfound');
+        exit;
+    }
+    refuse_if_mairie_channel($channel);
     $stmt = $pdo->prepare("UPDATE channels SET is_archived = 1 WHERE id = ? AND org_id = ?");
-    $stmt->execute([$channel_id, $org_id]);
+    $stmt->execute([(int)$channel['id'], $org_id]);
     header('Location: /messages?archived=1');
+    exit;
+}
+
+// =========================================================
+// ACTION : Restaurer un canal archivé
+// =========================================================
+if ($action === 'restore') {
+    $channel = load_org_channel($pdo, (int)($_POST['channel_id'] ?? 0), $org_id);
+    if (!$channel) {
+        header('Location: /messages?error=notfound');
+        exit;
+    }
+    refuse_if_mairie_channel($channel);
+    $stmt = $pdo->prepare("UPDATE channels SET is_archived = 0 WHERE id = ? AND org_id = ?");
+    $stmt->execute([(int)$channel['id'], $org_id]);
+    // Canal privé : l'admin qui le restaure doit pouvoir le retrouver dans sa liste
+    if ($channel['type'] === 'private') {
+        add_channel_member($pdo, (int)$channel['id'], $user_id, 'moderator');
+    }
+    header('Location: /messages?c=' . urlencode($channel['slug']) . '&restored=1');
     exit;
 }
 
@@ -207,9 +274,14 @@ if ($action === 'archive') {
 // ACTION : Supprimer un canal (définitif)
 // =========================================================
 if ($action === 'delete') {
-    $channel_id = (int)($_POST['channel_id'] ?? 0);
+    $channel = load_org_channel($pdo, (int)($_POST['channel_id'] ?? 0), $org_id);
+    if (!$channel) {
+        header('Location: /messages?error=notfound');
+        exit;
+    }
+    refuse_if_mairie_channel($channel);
     $stmt = $pdo->prepare("DELETE FROM channels WHERE id = ? AND org_id = ?");
-    $stmt->execute([$channel_id, $org_id]);
+    $stmt->execute([(int)$channel['id'], $org_id]);
     header('Location: /messages?deleted=1');
     exit;
 }
@@ -228,25 +300,21 @@ if ($action === 'add_member') {
     }
 
     // Vérifs : le canal doit appartenir à cette association
-    $chk = $pdo->prepare("SELECT id FROM channels WHERE id = ? AND org_id = ?");
-    $chk->execute([$channel_id, $org_id]);
-    if (!$chk->fetch()) {
+    $channel = load_org_channel($pdo, $channel_id, $org_id);
+    if (!$channel) {
         header('Location: /canal/' . urlencode($channel_slug) . '/parametres?error=invalid');
         exit;
     }
-    $check = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ?");
+    refuse_if_mairie_channel($channel);
+    // Membre actif de l'association, hors suiveurs (financeurs externes, sans accès à la messagerie)
+    $check = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ? AND (role IS NULL OR role <> 'follower')");
     $check->execute([$new_user_id, $org_id]);
     if (!$check->fetch()) {
         header('Location: /canal/' . urlencode($channel_slug) . '/parametres?error=user');
         exit;
     }
 
-    try {
-        $pdo->prepare("INSERT INTO channel_members (channel_id, user_id, role) VALUES (?, ?, 'member')")
-            ->execute([$channel_id, $new_user_id]);
-    } catch (Exception $e) {
-        // Doublon : déjà membre
-    }
+    add_channel_member($pdo, $channel_id, $new_user_id, 'member');
 
     header('Location: /canal/' . urlencode($channel_slug) . '/parametres?member_added=1');
     exit;
@@ -259,6 +327,13 @@ if ($action === 'remove_member') {
     $channel_id = (int)($_POST['channel_id'] ?? 0);
     $remove_user_id = (int)($_POST['user_id'] ?? 0);
     $channel_slug = $_POST['channel_slug'] ?? '';
+
+    $channel = load_org_channel($pdo, $channel_id, $org_id);
+    if (!$channel) {
+        header('Location: /canal/' . urlencode($channel_slug) . '/parametres?error=invalid');
+        exit;
+    }
+    refuse_if_mairie_channel($channel);
 
     $pdo->prepare("DELETE cm FROM channel_members cm JOIN channels c ON c.id = cm.channel_id AND c.org_id = ?
                    WHERE cm.channel_id = ? AND cm.user_id = ?")

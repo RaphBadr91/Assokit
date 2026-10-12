@@ -46,11 +46,15 @@ try {
     $stmt->execute([$uid]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+    // Total des non lues (et pas seulement dans cette page de 100) : même nombre que le badge
+    // de l'accueil et que le site, sinon « Tout marquer comme lu » n'apparaît plus.
+    $cst = $pdo->prepare("SELECT COUNT(*) FROM user_notifications WHERE user_id = ? AND is_read = 0");
+    $cst->execute([$uid]);
+    $unread = (int) $cst->fetchColumn();
+
     $items = [];
-    $unread = 0;
     foreach ($rows as $r) {
         $isr = !empty($r['is_read']);
-        if (!$isr) $unread++;
         $items[] = [
             'id'      => (int) $r['id'],
             'title'   => (string) ($r['title'] ?? ''),

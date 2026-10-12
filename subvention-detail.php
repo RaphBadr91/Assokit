@@ -4,8 +4,11 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-grants.php';
 require_login();
 $user = current_user(); $org_id = (int)$user['org_id'];
-$is_admin = ($user['role'] === 'admin'); $is_coord = ($user['role'] === 'coordinator');
-$can_manage = $is_admin || $is_coord;
+$is_admin = ($user['role'] === 'admin');
+// Administrateur ou coordinateur seulement (montants, contacts des
+// financeurs, notes internes) : même règle que l'appli et les actions.
+gr_require_manage($user);
+$can_manage = gr_can_manage($user);
 
 $grant_id = (int)($_GET['id'] ?? 0);
 $grant = gr_load($pdo, $grant_id, $org_id);
@@ -25,10 +28,14 @@ try {
 } catch (Throwable $e) {}
 
 $m = gr_status_meta($grant['status']);
+$is_archived = gr_is_archived($grant);
+$platform_url = gr_http_url($grant['platform_url'] ?? '');   // jamais de lien javascript:
 
-// Calculs
-$days_to_apply = $grant['deadline_apply'] ? (int)((strtotime($grant['deadline_apply']) - time()) / 86400) : null;
-$days_to_report = $grant['deadline_report'] ? (int)((strtotime($grant['deadline_report']) - time()) / 86400) : null;
+// Calculs, en jours calendaires (mêmes nombres que la liste et le
+// tableau de bord). Le dépôt ne compte que pour un dossier pas encore
+// déposé : un dossier déposé à temps n'est jamais « en retard ».
+$days_to_apply = gr_days_to_apply($grant);
+$days_to_report = !empty($grant['deadline_report']) ? gr_days_between(date('Y-m-d'), (string)$grant['deadline_report']) : null;
 
 render_head($grant['name']);
 ?>
@@ -52,6 +59,14 @@ render_head($grant['name']);
       <div class="gr-detail-actions">
         <?php if ($is_admin): ?>
           <a href="/supprimer-subvention/<?= (int)$grant['id'] ?>" class="gr-btn-danger" title="Supprimer définitivement (confirmation requise)"><?= ak_icon('trash', 14) ?> Supprimer</a>
+          <?php if (!$is_archived): ?>
+          <form method="POST" action="/action-subvention" style="display:inline-flex;" onsubmit="return confirm('Archiver ce dossier ? Il quittera la liste et restera consultable dans « Archivés ».');">
+            <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+            <input type="hidden" name="action" value="archive">
+            <input type="hidden" name="id" value="<?= (int)$grant['id'] ?>">
+            <button type="submit" class="gr-btn-ghost" title="Retirer le dossier de la liste sans le supprimer">📦 Archiver</button>
+          </form>
+          <?php endif; ?>
         <?php endif; ?>
         <?php if ($grant['contact_email']):
           // Template mailto auto selon statut
@@ -80,18 +95,36 @@ render_head($grant['name']);
             <button type="submit" class="gr-btn-ghost" title="Confirme que la relance a été envoyée (log + horodatage)">✓ Marquer relance envoyée</button>
           </form>
         <?php endif; ?>
+        <?php if (!$is_archived): ?>
         <a href="/subvention-form?id=<?= (int)$grant['id'] ?>" class="gr-btn-ghost"><?= ak_icon('edit', 14) ?> Modifier</a>
+        <?php endif; ?>
       </div>
       <?php endif; ?>
     </div>
+
+    <?php if ($is_archived): ?>
+    <div class="gr-archived">
+      <span>📦 Dossier archivé<?= !empty($grant['archived_at']) ? ' le ' . date('d/m/Y', strtotime($grant['archived_at'])) : '' ?> : il n'apparaît plus dans la liste ni dans les rappels.<?= $is_admin ? ' Désarchivez-le pour le modifier ou changer son statut.' : '' ?></span>
+      <?php if ($is_admin): ?>
+      <form method="POST" action="/action-subvention">
+        <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+        <input type="hidden" name="action" value="unarchive">
+        <input type="hidden" name="id" value="<?= (int)$grant['id'] ?>">
+        <button type="submit" class="gr-btn-ghost">♻️ Désarchiver</button>
+      </form>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
 
     <!-- KPI -->
     <div class="gr-kpis">
       <div class="gr-kpi"><div class="gr-kpi-lbl">Demandé</div><div class="gr-kpi-val"><?= $grant['amount_requested'] ? number_format((float)$grant['amount_requested'], 0, ',', ' ').' €' : '—' ?></div></div>
       <div class="gr-kpi"><div class="gr-kpi-lbl">Accordé</div><div class="gr-kpi-val gr-green"><?= $grant['amount_granted'] ? number_format((float)$grant['amount_granted'], 0, ',', ' ').' €' : '—' ?></div></div>
       <div class="gr-kpi"><div class="gr-kpi-lbl">Étapes</div><div class="gr-kpi-val"><?= $done_steps ?>/<?= $total_steps ?></div><div class="gr-kpi-sub"><?= $progress ?>%</div></div>
-      <?php if ($days_to_apply !== null && in_array($grant['status'], ['draft','submitted','in_review'], true)): ?>
+      <?php if ($days_to_apply !== null): ?>
         <div class="gr-kpi"><div class="gr-kpi-lbl">Deadline dépôt</div><div class="gr-kpi-val <?= $days_to_apply < 0 ? 'gr-red' : ($days_to_apply <= 7 ? 'gr-amber' : '') ?>"><?= $days_to_apply < 0 ? abs($days_to_apply).'j retard' : 'J-'.$days_to_apply ?></div><div class="gr-kpi-sub"><?= date('d/m/Y', strtotime($grant['deadline_apply'])) ?></div></div>
+      <?php elseif (in_array($grant['status'], ['submitted','in_review'], true) && !empty($grant['submitted_at'])): ?>
+        <div class="gr-kpi"><div class="gr-kpi-lbl">Déposé le</div><div class="gr-kpi-val"><?= date('d/m/Y', strtotime($grant['submitted_at'])) ?></div><?php if (!empty($grant['deadline_apply'])): ?><div class="gr-kpi-sub">date limite : <?= date('d/m/Y', strtotime($grant['deadline_apply'])) ?></div><?php endif; ?></div>
       <?php elseif ($days_to_report !== null && $grant['status'] === 'granted' && !$grant['reported_at']): ?>
         <div class="gr-kpi"><div class="gr-kpi-lbl">Bilan dû</div><div class="gr-kpi-val <?= $days_to_report < 0 ? 'gr-red' : ($days_to_report <= 30 ? 'gr-amber' : '') ?>"><?= $days_to_report < 0 ? abs($days_to_report).'j retard' : 'J-'.$days_to_report ?></div><div class="gr-kpi-sub"><?= date('d/m/Y', strtotime($grant['deadline_report'])) ?></div></div>
       <?php endif; ?>
@@ -150,7 +183,7 @@ render_head($grant['name']);
           <div class="gr-logs">
             <?php foreach ($logs as $l): ?>
             <div class="gr-log">
-              <span class="gr-log-date"><?= date('d/m H:i', strtotime($l['created_at'])) ?></span>
+              <span class="gr-log-date"><?= !empty($l['created_at']) ? date('d/m H:i', strtotime($l['created_at'])) : '' ?></span>
               <span class="gr-log-user"><?= h(trim(($l['first_name'] ?? '') . ' ' . ($l['last_name'] ?? '')) ?: 'Système') ?></span>
               <span class="gr-log-label"><?= h($l['action_label']) ?></span>
             </div>
@@ -212,7 +245,7 @@ if (!function_exists('gr_platform_label')) {
   }
 }
 ?>
-<?php if (!empty($grant['platform']) || !empty($grant['platform_url'])):
+<?php if (!empty($grant['platform']) || $platform_url):
   [$pf_ico, $pf_name, $pf_sub] = gr_platform_label($grant['platform'] ?? 'autre');
 ?>
   <div class="gr-detail-block" style="margin-top:14px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:12px;background:#f9fafb;">
@@ -223,8 +256,8 @@ if (!function_exists('gr_platform_label')) {
         <div style="font-weight:600;color:#111827;font-size:15px;"><?= h($pf_name) ?></div>
         <?php if ($pf_sub): ?><div style="font-size:12.5px;color:#6b7280;"><?= h($pf_sub) ?></div><?php endif; ?>
       </div>
-      <?php if (!empty($grant['platform_url'])): ?>
-        <a href="<?= h($grant['platform_url']) ?>" target="_blank" rel="noopener" style="background:#10B981;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
+      <?php if ($platform_url): ?>
+        <a href="<?= h($platform_url) ?>" target="_blank" rel="noopener" style="background:#10B981;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
           Ouvrir le dossier ↗
         </a>
       <?php endif; ?>
@@ -282,6 +315,7 @@ if (!function_exists('gr_platform_label')) {
 .gr-dates li:last-child { border-bottom: 0; }
 .gr-date-lbl { color: #6b7280; }
 .gr-kpi-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
+.gr-archived { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: #F9FAFB; border: 1px dashed #9CA3AF; border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; font-size: 13.5px; color: #374151; }
 @media (max-width: 720px) { .gr-cols { grid-template-columns: 1fr; } }
 
 /* === FIX 2026-05 : KPI cards manquantes sur page detail === */

@@ -23,9 +23,28 @@ $user_id = (int)($user['id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
 
 $page_error = null;
-// Plafond de l'essai gratuit refusé par mon-asso-ia-diffusion-send.php
-$trial_flash = $_SESSION['flash_ia_diffusion'] ?? null;
+// Retour de mon-asso-ia-diffusion-send.php : refus (rien n'est parti) ou bilan de l'envoi.
+// Ancien format : simple texte (plafond de l'essai gratuit).
+$dif_flash = $_SESSION['flash_ia_diffusion'] ?? null;
 unset($_SESSION['flash_ia_diffusion']);
+if (is_string($dif_flash) && $dif_flash !== '') {
+    $dif_flash = ['type' => 'warning', 'message' => $dif_flash];
+} elseif (!is_array($dif_flash) || empty($dif_flash['message'])) {
+    $dif_flash = null;
+}
+// Page rechargée après l'envoi (message déjà affiché) : rappel sobre du résultat
+if (!$dif_flash && isset($_GET['sent'])) {
+    $sent_flag = (string)$_GET['sent'];
+    if ($sent_flag === 'partial') {
+        $dif_flash = ['type' => 'warning', 'message' => 'La dernière diffusion n’est partie qu’en partie : voir le détail dans l’historique.'];
+    } elseif ($sent_flag === 'failed') {
+        $dif_flash = ['type' => 'error', 'message' => 'La dernière diffusion a échoué : voir l’historique.'];
+    } else {
+        $dif_flash = ['type' => 'success', 'message' => 'Diffusion envoyée. Voir l’historique en bas de page.'];
+    }
+}
+// Saisie reprise après un refus (rien n'est parti)
+$form_back = (is_array($dif_flash) && isset($dif_flash['form']) && is_array($dif_flash['form'])) ? $dif_flash['form'] : null;
 $gen_prefill = null;
 $gen_id = (int)($_GET['gen'] ?? 0);
 
@@ -78,6 +97,19 @@ try {
 
 $prefill_subject = $gen_prefill['title'] ?? '';
 $prefill_body    = $gen_prefill['output_text'] ?? '';
+$prefill_manual  = '';
+$prefill_roles   = [];
+$prefill_projects = [];
+if ($form_back) {
+    $prefill_subject  = (string)($form_back['subject'] ?? $prefill_subject);
+    $prefill_body     = (string)($form_back['body_md'] ?? $prefill_body);
+    $prefill_manual   = (string)($form_back['manual_emails'] ?? '');
+    $prefill_roles    = array_map('strval', (array)($form_back['roles'] ?? []));
+    $prefill_projects = array_map('intval', (array)($form_back['project_ids'] ?? []));
+}
+
+// Statuts de l'historique (asso_ai_diffusions.status)
+$dif_status_labels = ['sent' => 'Envoyée', 'partial' => 'Partielle', 'failed' => 'Échec', 'sending' => 'En cours'];
 
 render_head('Diffusion email');
 render_sidebar('ia');
@@ -145,6 +177,7 @@ render_sidebar('ia');
 
     .dif-warning { background: #FEF3C7; border: 1px solid #FDE68A; border-radius: 10px; padding: 12px 14px; color: #92400E; font-size: 13px; margin-bottom: 14px; }
     .dif-success { background: #D1FAE5; border: 1px solid #A7F3D0; border-radius: 10px; padding: 12px 14px; color: #065F46; font-size: 13px; margin-bottom: 14px; }
+    .dif-error { background: #FEE2E2; border: 1px solid #FECACA; border-radius: 10px; padding: 12px 14px; color: #991B1B; font-size: 13px; margin-bottom: 14px; }
   </style>
 
   <div class="dif-page">
@@ -158,11 +191,15 @@ render_sidebar('ia');
       </div>
     </div>
 
-    <?php if (isset($_GET['sent'])): ?>
-      <div class="dif-success">✅ Diffusion envoyée avec succès. Voir l'historique en bas de page.</div>
-    <?php endif; ?>
-    <?php if ($trial_flash): ?>
-      <div class="dif-warning">⚠️ <?= h($trial_flash) ?></div>
+    <?php if ($dif_flash):
+      $dif_type = (string)($dif_flash['type'] ?? 'warning'); ?>
+      <?php if ($dif_type === 'success'): ?>
+        <div class="dif-success" role="status">✅ <?= h($dif_flash['message']) ?></div>
+      <?php elseif ($dif_type === 'error'): ?>
+        <div class="dif-error" role="alert">❌ <?= h($dif_flash['message']) ?></div>
+      <?php else: ?>
+        <div class="dif-warning" role="alert">⚠️ <?= h($dif_flash['message']) ?></div>
+      <?php endif; ?>
     <?php endif; ?>
 
     <form method="post" action="/mon-asso-ia-diffusion-send" id="difForm">
@@ -217,8 +254,8 @@ render_sidebar('ia');
               <div class="dif-checks" id="rolesChecks">
                 <?php foreach ($roles_available as $role): ?>
                   <label>
-                    <input type="checkbox" name="roles[]" value="<?= h($role) ?>" onchange="updateCount()">
-                    <span><?= h(ucfirst($role)) ?></span>
+                    <input type="checkbox" name="roles[]" value="<?= h($role) ?>" onchange="updateCount()"<?= in_array((string)$role, $prefill_roles, true) ? ' checked' : '' ?>>
+                    <span><?= h(role_label($role)) ?></span>
                   </label>
                 <?php endforeach; ?>
               </div>
@@ -231,7 +268,7 @@ render_sidebar('ia');
               <div class="dif-checks" id="projectsChecks">
                 <?php foreach ($projects_available as $p): ?>
                   <label>
-                    <input type="checkbox" name="project_ids[]" value="<?= (int)$p['id'] ?>" onchange="updateCount()">
+                    <input type="checkbox" name="project_ids[]" value="<?= (int)$p['id'] ?>" onchange="updateCount()"<?= in_array((int)$p['id'], $prefill_projects, true) ? ' checked' : '' ?>>
                     <span><?= h(mb_strimwidth($p['name'], 0, 40, '…')) ?></span>
                   </label>
                 <?php endforeach; ?>
@@ -242,7 +279,7 @@ render_sidebar('ia');
             <div class="dif-rec-section">
               <h3>Emails manuels (1 par ligne ou séparés par virgules)</h3>
               <div class="dif-field" style="margin:0;">
-                <textarea name="manual_emails" id="manualEmails" rows="3" placeholder="contact@asso.fr&#10;benevole@example.com" oninput="debouncedCount()"></textarea>
+                <textarea name="manual_emails" id="manualEmails" rows="3" placeholder="contact@asso.fr&#10;benevole@example.com" oninput="debouncedCount()"><?= h($prefill_manual) ?></textarea>
               </div>
             </div>
 
@@ -282,7 +319,7 @@ render_sidebar('ia');
                   <?= h(date('d/m/Y H:i', strtotime($d['created_at']))) ?>
                   · <?= (int)$d['sent_count'] ?>/<?= (int)$d['recipients_count'] ?> envoyés
                   <?php if ((int)$d['failed_count'] > 0): ?> · ⚠️ <?= (int)$d['failed_count'] ?> échec(s)<?php endif; ?>
-                  <span class="dif-pill <?= h($cls) ?>" style="margin-left:6px;"><?= h($st) ?></span>
+                  <span class="dif-pill <?= h($cls) ?>" style="margin-left:6px;"><?= h($dif_status_labels[$st] ?? $st) ?></span>
                 </div>
               </div>
             <?php endforeach; ?>

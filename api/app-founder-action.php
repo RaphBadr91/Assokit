@@ -27,11 +27,13 @@ if ($target <= 0) app_fail(400, 'org_id');
 if (!in_array($action, ['validate', 'reject', 'suspend', 'activate', 'resiliate', 'edit', 'extend_trial'], true)) app_fail(400, 'action');
 if (in_array($action, ['validate', 'reject'], true) && !$is_founder) app_fail(403, 'founder_only');   // valider / refuser une asso : fondateur uniquement
 
-// Journal plateforme (même table et même signature que le cockpit web)
+// Journal plateforme : même table, mêmes codes et mêmes détails que le cockpit web (validate_org,
+// suspend_org…), pour que /super-admin/logs et ses filtres affichent les actions de l'appli comme
+// les siennes ; 'source' => 'appli' en dit l'origine. (Les anciennes entrées founder_* restent lisibles.)
 @include_once __DIR__ . '/../superadmin-layout.php';
-$log = function (string $what, array $details = []) use ($uid, $target) {
+$log = function (string $code, array $details = []) use ($uid, $target) {
     if (function_exists('sa_log_action')) {
-        try { sa_log_action((int) $uid, 'founder_' . $what, $target, null, $details); } catch (Throwable $e) {}
+        try { sa_log_action((int) $uid, $code, $target, null, $details + ['source' => 'appli']); } catch (Throwable $e) {}
     }
 };
 
@@ -52,25 +54,25 @@ try {
         $keep = "CASE WHEN status IN ('suspended', 'cancelled') THEN status ELSE ? END";
         try { $pdo->prepare("UPDATE organizations SET validation_status = 'validated', status = $keep WHERE id = ?")->execute([$status, $target]); }
         catch (Throwable $e) { $pdo->prepare("UPDATE organizations SET status = $keep WHERE id = ?")->execute([$status, $target]); }
-        $log('validate', ['status' => $status]);
+        $log('validate_org', ['status' => $status]);
     } elseif ($action === 'reject') {
         // Comme le cockpit web (« Refuser ») : refusée ET suspendue, plus aucun rappel d'essai
         $reason = trim((string) ($input['reason'] ?? ''));
         ak_org_reject($pdo, $target, $reason, (int) $uid);
-        $log('reject', $reason !== '' ? ['reason' => $reason] : []);
+        $log('reject_org', ['reason' => $reason]);
     } elseif ($action === 'suspend') {
         // Comme le cockpit web (ak_org_suspend) : suspendue pendant son essai, l'ancienne table passe
         // aussi en « suspended » (plus de rappels J-7 / J-3 / J-0 ni d'e-mail de fin d'essai).
         $reason = trim((string) ($input['reason'] ?? ''));
         ak_org_suspend($pdo, $target, $reason !== '' ? $reason : 'Suspendu depuis l’application');
-        $log('suspend');
+        $log('suspend_org', ['reason' => $reason]);
     } elseif ($action === 'activate') {
         // Même règle que le cockpit web (ak_org_reactivate) : un essai en cours repasse EN ESSAI (même fin,
         // le cron le fera expirer à la date prévue) ; un essai dont la date est passée se termine tout de
         // suite et l'association repart active sur Démarrage. Pour lui redonner du temps : « Prolonger l'essai ».
         $trial_ended = null;
         $status = ak_org_reactivate($pdo, $target, $trial_ended);
-        $log('activate', ['status' => $status] + ($trial_ended ? ['trial_ended' => $trial_ended] : []));
+        $log('reactivate_org', $status === 'trial' ? ['trial' => true] : ($trial_ended ? ['trial_ended' => $trial_ended] : []));
         if ($trial_ended) {
             $extra['notice'] = 'Association réactivée sur le plan gratuit Démarrage (essai terminé le ' . ak_trial_end_label($trial_ended) . '). '
                              . 'Prolongez l’essai ou changez sa formule pour rouvrir les fonctionnalités PRO.';
@@ -89,7 +91,7 @@ try {
         }
         $pdo->prepare("UPDATE organizations SET status='cancelled' WHERE id=?")->execute([$target]);
         $pdo->commit();
-        $log('resiliate', $ended_trial ? ['trial_ended' => true] : []);
+        $log('cancel_org', $ended_trial ? ['trial_ended' => true] : []);
     } elseif ($action === 'extend_trial') {
         $days = (int) ($input['days'] ?? 0);
         if (!in_array($days, [7, 14], true)) app_fail(400, 'days', 'Durée invalide : 7 ou 14 jours.');
@@ -103,7 +105,7 @@ try {
         $end = ak_trial_extend($pdo, $target, $days);
         $pdo->commit();
         $extra = ['days' => $days, 'trial_ends_at' => $end, 'trial_ends' => ak_trial_end_label($end)];
-        $log('extend_trial', ['days' => $days, 'until' => $end]);
+        $log('trial_extend', ['days' => $days, 'from' => $before['trial_ends_at'], 'to' => $end]);
     } elseif ($action === 'edit') {
         // Édition : nom, email de facturation, plan, note interne — comme le web
         $name    = trim((string) ($input['name'] ?? ''));
@@ -143,7 +145,7 @@ try {
         // ak_org_set_plan fait aussi le ménage de sortie d'essai (échéance, mode « Offert »), comme sur le web
         if ($new_plan) ak_org_set_plan($pdo, $target, $new_plan['id']);
         $pdo->commit();
-        $log('edit', $new_plan ? ['plan' => [$before['plan_slug'], $new_plan['slug']]] : []);
+        $log('update_org', ['name' => $name] + ($new_plan ? ['plan' => ['from' => $before['plan_slug'], 'to' => $new_plan['slug']]] : []));
         if ($new_plan) {
             $extra = ['plan_changed' => true, 'from' => $before['plan_label'], 'to' => ak_plan_label($new_plan['slug'])];
             // Client Stripe passé sur un plan que Stripe ne facture pas (gratuit, essai, Sur-mesure…) :

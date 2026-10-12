@@ -37,10 +37,20 @@ try {
     exit;
 }
 
-$tokens = $pdo->query("SELECT id, user_id, token, last_pushed_notif_id FROM asso_push_tokens")->fetchAll(PDO::FETCH_ASSOC);
+// Jetons des comptes encore actifs. Compte désactivé, supprimé ou disparu : son téléphone ne
+// doit plus rien recevoir (extraits de messages sur l'écran verrouillé) — le jeton est retiré ;
+// l'appli le réenregistre à la prochaine connexion si le compte est réactivé.
+$tokens = $pdo->query("
+    SELECT t.id, t.user_id, t.token, t.last_pushed_notif_id,
+           CASE WHEN u.id IS NOT NULL AND u.is_active = 1 AND (u.deleted_at IS NULL OR u.deleted_at = '')
+                THEN 1 ELSE 0 END AS user_alive
+    FROM asso_push_tokens t
+    LEFT JOIN users u ON u.id = t.user_id
+")->fetchAll(PDO::FETCH_ASSOC);
 $sent = 0; $dead = [];
 
 foreach ($tokens as $tk) {
+    if (empty($tk['user_alive'])) { $dead[] = (int) $tk['id']; continue; }
     $uid = (int) $tk['user_id'];
     $last = (int) $tk['last_pushed_notif_id'];
 
@@ -126,6 +136,10 @@ try {
         FROM projects p
         JOIN folders f ON p.folder_id = f.id
         JOIN asso_push_tokens t ON t.user_id = p.referent_id
+        JOIN users u ON u.id = p.referent_id
+                    AND u.org_id = f.org_id
+                    AND u.is_active = 1
+                    AND (u.deleted_at IS NULL OR u.deleted_at = '')
         WHERE p.status IN ('active','warning')
           AND (p.archived_at IS NULL OR p.archived_at = '0000-00-00 00:00:00')
           AND (f.archived_at IS NULL OR f.archived_at = '0000-00-00 00:00:00')

@@ -32,9 +32,13 @@ function ak_anom_sev_meta(string $s): array {
 }
 
 if (!function_exists('ak_anom_hash')) {
-/** Empreinte stable d'une anomalie (pour l'ignorer durablement). */
+/**
+ * Empreinte stable d'une anomalie (pour l'ignorer durablement).
+ * 'hash_key' remplace le titre quand celui-ci a été reformulé : les
+ * anomalies déjà ignorées le restent.
+ */
 function ak_anom_hash(array $f): string {
-    return sha1(($f['category'] ?? '').'|'.($f['title'] ?? ''));
+    return sha1(($f['category'] ?? '').'|'.($f['hash_key'] ?? ($f['title'] ?? '')));
 }
 }
 
@@ -205,18 +209,21 @@ function ak_anom_invoices_vat(PDO $pdo, int $org_id): array {
 }
 }
 
-// ── D. Montants nuls / négatifs ─────────────────────────────────────
+// ── D. Montants nuls ────────────────────────────────────────────────
+// Un montant négatif est un avoir, émis pour corriger une facture (le FEC
+// le passe comme tel) : ce n'est pas une anomalie. Seul le zéro en est une.
 if (!function_exists('ak_anom_invoices_amounts')) {
 function ak_anom_invoices_amounts(PDO $pdo, int $org_id): array {
     $st = $pdo->prepare(
         "SELECT invoice_number, amount_ttc_cents FROM asso_invoices
-         WHERE org_id = :o AND status <> 'draft' AND amount_ttc_cents <= 0 LIMIT 60");
+         WHERE org_id = :o AND status <> 'draft' AND amount_ttc_cents = 0 LIMIT 60");
     $st->execute([':o'=>$org_id]);
     $out = [];
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $out[] = ['severity'=>'medium', 'category'=>'amount-zero',
-            'title'=>"Montant nul ou négatif : {$r['invoice_number']}",
-            'detail'=>"Cette facture émise a un montant TTC de ".ak_anom_eur($r['amount_ttc_cents']).". Une facture validée devrait avoir un montant positif.",
+            'title'=>"Montant nul : {$r['invoice_number']}",
+            'hash_key'=>"Montant nul ou négatif : {$r['invoice_number']}",   // ancien titre
+            'detail'=>"Cette facture émise a un montant TTC de ".ak_anom_eur($r['amount_ttc_cents']).". Une facture validée devrait avoir un montant non nul.",
             'route'=>'/mon-asso-factures'];
     }
     return $out;

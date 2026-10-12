@@ -16,11 +16,13 @@ if ($current['role'] !== 'admin') {
     exit;
 }
 
-// Charger les utilisateurs de l'org (pour la sélection initiale de membres en cas de canal privé)
+// Charger les utilisateurs de l'org (pour la sélection initiale de membres en cas de canal privé).
+// Les suiveurs (financeurs externes) n'ont pas accès à la messagerie : jamais proposés.
 $stmt = $pdo->prepare("
     SELECT id, first_name, last_name, role, avatar_color
     FROM users
     WHERE org_id = ? AND is_active = 1 AND id != ?
+      AND (role IS NULL OR role <> 'follower')
     ORDER BY first_name ASC
 ");
 $stmt->execute([$org_id, $current['id']]);

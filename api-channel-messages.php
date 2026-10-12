@@ -1,11 +1,15 @@
 <?php
 /**
  * API : récupérer les nouveaux messages d'un channel depuis un ID donné
- * GET /api-channel-messages.php?channel_id=X&since=Y
+ * GET /api-channel-messages.php?channel_id=X&since=Y[&seen=0|1]
  * Retourne : { ok: true, messages: [...], last_id: N }
+ * Lecture : les messages renvoyés sont affichés dans le canal ouvert, ils sont donc
+ * marqués lus (channel_reads + notifications du canal). seen=0 : onglet en arrière-plan,
+ * rien n'est marqué ; seen=1 : retour sur l'onglet, tout ce qui est affiché (jusqu'à since) est lu.
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/rate-limit-helper.php';
+require_once __DIR__ . '/notification-helpers.php';
 ak_rate_limit_or_die('api_channel_msg', 90, 60, (string)($_SESSION['user_id'] ?? ($_SERVER['REMOTE_ADDR'] ?? 'anon')));
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache, must-revalidate');
@@ -15,6 +19,7 @@ $current = current_user();
 $user_id = (int)$current['id'];
 $channel_id = (int)($_GET['channel_id'] ?? 0);
 $since = (int)($_GET['since'] ?? 0);
+$seen = isset($_GET['seen']) ? (string)$_GET['seen'] : '';
 
 if ($channel_id <= 0) {
     http_response_code(400);
@@ -23,10 +28,12 @@ if ($channel_id <= 0) {
 }
 
 try {
-    // === Sécurité : accès au canal (aligné sur messages.php) ===
+    // === Sécurité : accès au canal (aligné sur messages.php et mairie-messages.php) ===
     // Canaux public/announce : ouverts à tous les membres de l'org.
     // Canaux privés : réservés aux membres du canal.
-    $stmt = $pdo->prepare("SELECT id, type, org_id, is_archived FROM channels WHERE id = ?");
+    // Canal « Suivi · Mairie » : aussi ouvert aux agents de la mairie membres du canal
+    // (ils n'ont pas d'org_id : leur rattachement passe par parent_org_id).
+    $stmt = $pdo->prepare("SELECT * FROM channels WHERE id = ?");
     $stmt->execute([$channel_id]);
     $channel = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$channel) {
@@ -35,13 +42,24 @@ try {
         exit;
     }
 
-    if ((int)$channel['org_id'] !== (int)($current['org_id'] ?? 0)) {
+    $same_org = (int)$channel['org_id'] === (int)($current['org_id'] ?? 0);
+    $mairie_agent = !empty($channel['is_mairie_channel'])
+        && !empty($channel['parent_org_id'])
+        && (int)($current['parent_org_id'] ?? 0) === (int)$channel['parent_org_id'];
+    if (!$same_org && !$mairie_agent) {
         http_response_code(403);
         echo json_encode(['ok' => false, 'error' => 'forbidden']);
         exit;
     }
 
-    if (!in_array($channel['type'], ['public', 'announce'], true)) {
+    // Suiveurs (financeurs externes) : pas d'accès à la messagerie interne
+    if (($current['role'] ?? '') === 'follower') {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => 'forbidden']);
+        exit;
+    }
+
+    if ($mairie_agent || !in_array($channel['type'], ['public', 'announce'], true)) {
         $stmt = $pdo->prepare("SELECT id FROM channel_members WHERE channel_id = ? AND user_id = ?");
         $stmt->execute([$channel_id, $user_id]);
         if (!$stmt->fetchColumn()) {
@@ -98,6 +116,26 @@ try {
             'is_edited' => (bool)$r['is_edited'],
         ];
         if ((int)$r['id'] > $last_id) $last_id = (int)$r['id'];
+    }
+
+    // Marquer lu ce qui est affiché (même repère que le compteur de non-lus de messages.php)
+    if ($seen !== '0' && ($messages || $seen === '1') && $last_id > 0) {
+        try {
+            // Jamais au-delà du dernier message du canal (since vient du navigateur)
+            $mx = $pdo->prepare("SELECT MAX(id) FROM channel_messages WHERE channel_id = ?");
+            $mx->execute([$channel_id]);
+            $read_upto = min($last_id, (int)$mx->fetchColumn());
+            if ($read_upto > 0) {
+                $pdo->prepare("
+                    INSERT INTO channel_reads (channel_id, user_id, last_read_message_id, last_read_at)
+                    VALUES (?, ?, ?, NOW())
+                    ON DUPLICATE KEY UPDATE last_read_message_id = GREATEST(COALESCE(last_read_message_id, 0), VALUES(last_read_message_id)), last_read_at = NOW()
+                ")->execute([$channel_id, $user_id, $read_upto]);
+            }
+            ak_channel_notifs_mark_read($pdo, $user_id, $channel);
+        } catch (Throwable $e) {
+            error_log('[api-channel-messages] lecture : ' . $e->getMessage());
+        }
     }
 
     echo json_encode([

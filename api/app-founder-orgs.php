@@ -19,6 +19,8 @@ if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['o
 
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 require_once __DIR__ . '/_app-founder-plan.php';
 $is_founder = app_is_founder($pdo, $user);
 $is_sa = $is_founder || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');

@@ -13,7 +13,9 @@ function ak_stats_revenue_monthly(PDO $pdo, int $org_id, int $months = 12): arra
     $labels = []; $paid = []; $pending = []; $overdue = [];
 
     for ($i = $months - 1; $i >= 0; $i--) {
-        $ts = strtotime("-$i months");
+        // « first day of » : un 31, « -1 month » retombait sur le même mois
+        // (31/10 → 01/10) et sautait le précédent.
+        $ts = strtotime("first day of -$i months");
         $year = (int)date('Y', $ts);
         $month = (int)date('n', $ts);
         $start = sprintf('%04d-%02d-01 00:00:00', $year, $month);

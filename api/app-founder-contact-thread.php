@@ -1,7 +1,8 @@
 <?php
 /**
  * api/app-founder-contact-thread.php — Fil complet d'une demande de contact (Fondateur).
- * GET ?id=  → message initial + fil (réponses fondateur & prospect). NE MODIFIE PAS le site.
+ * GET ?id=  → message initial + fil (réponses fondateur & prospect) ; ouvrir le fil marque la demande lue.
+ * NE MODIFIE PAS le site.
  */
 ob_start();
 require_once __DIR__ . '/../config.php';
@@ -14,6 +15,8 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 require_once __DIR__ . '/_app-contact-token.php';
 if (!app_is_founder($pdo, $user) && !( !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin')) {
     http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit;
@@ -51,6 +54,10 @@ try {
         // Marque les entrants comme lus
         $pdo->prepare("UPDATE asso_contact_thread SET read_by_founder = 1 WHERE contact_id = ? AND direction = 'in' AND read_by_founder = 0")->execute([$id]);
     } catch (Throwable $e) {}
+    // Demande ouverte = lue (comme un ticket de support) : elle sort de « À TRAITER » et du compteur
+    // des contacts. Une demande déjà « Répondu » le reste ; le pipe la repasse à 'new' à chaque
+    // nouvelle réponse du prospect. Colonne absente sur un ancien schéma : ignoré.
+    ak_contact_set_status($pdo, $id, 'read', 'new');
 
     echo json_encode([
         'ok' => true,

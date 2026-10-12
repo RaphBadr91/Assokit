@@ -14,6 +14,8 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 require_once __DIR__ . '/_app-founder-plan.php';
 if (!app_is_founder($pdo, $user) && !( !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin')) {
     http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit;
@@ -36,11 +38,14 @@ try {
     $pc = fd_plan_counts($pdo);
     $mrr = (float) $pc['mrr'];
     $ca_paid      = (float) $scalar("SELECT COALESCE(SUM(amount_ttc),0) FROM subscription_invoices WHERE status='paid'");
-    $unpaid_total = (float) $scalar("SELECT COALESCE(SUM(amount_ttc),0) FROM subscription_invoices WHERE status IN ('sent','overdue')");
-    $unpaid_nb    = (int) $scalar("SELECT COUNT(*) FROM subscription_invoices WHERE status IN ('sent','overdue')");
+    // Impayés : mêmes chiffres que le signal du cockpit (associations supprimées exclues) ;
+    // la liste « Impayées » suit le même périmètre, « Toutes » garde toutes les factures
+    $unpaid       = fd_unpaid_summary($pdo);
+    $unpaid_total = $unpaid['total'];
+    $unpaid_nb    = $unpaid['nb'];
 
     $where = "1=1";
-    if ($filter === 'unpaid') $where = "i.status IN ('sent','overdue')";
+    if ($filter === 'unpaid') $where = "i.status IN ('sent','overdue') AND o.id IS NOT NULL AND o.deleted_at IS NULL";
     elseif ($filter === 'paid') $where = "i.status = 'paid'";
 
     $rows = [];
@@ -76,7 +81,7 @@ try {
     echo json_encode([
         'ok' => true,
         'filter' => $filter,
-        'summary' => ['mrr' => round($mrr, 2), 'ca_paid' => round($ca_paid, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb,
+        'summary' => ['mrr' => round($mrr, 2), 'ca_paid' => round($ca_paid, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb, 'unpaid_orgs' => $unpaid['orgs'],
                       'paying' => $pc['paying'], 'trial' => $pc['trial'], 'trial_expired' => $pc['trial_expired']],
         'invoices' => $invoices,
     ], JSON_UNESCAPED_UNICODE);

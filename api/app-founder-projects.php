@@ -1,7 +1,8 @@
 <?php
 /**
  * api/app-founder-projects.php — Vue globale de TOUS les projets de toutes les orgs (Fondateur).
- * GET ?q=&status= → liste (lecture seule). Réservé Fondateur/Super Admin. NE MODIFIE PAS le site.
+ * GET ?q=&status= → liste (lecture seule). Réservé au Fondateur (comme /super-admin/projets :
+ * can_view_all_projects). NE MODIFIE PAS le site.
  */
 ob_start();
 require_once __DIR__ . '/../config.php';
@@ -13,8 +14,11 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
-$is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
-if (!$is_sa) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
+// Projets de toutes les associations : Fondateur uniquement, un super-admin simple n'y a pas
+// accès sur le site (sa-permissions.php : can_view_all_projects)
+if (!app_is_founder($pdo, $user)) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
 $q = trim((string) ($_GET['q'] ?? ''));
 $status = (string) ($_GET['status'] ?? '');

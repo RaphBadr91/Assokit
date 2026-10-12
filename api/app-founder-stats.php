@@ -1,7 +1,7 @@
 <?php
 /**
  * api/app-founder-stats.php — Statistiques plateforme (cockpit Fondateur, natif).
- * Réservé Fondateur/Super Admin. NE MODIFIE PAS le site : dédié à l'application.
+ * Réservé au Fondateur. NE MODIFIE PAS le site : dédié à l'application.
  */
 ob_start();
 require_once __DIR__ . '/../config.php';
@@ -14,8 +14,12 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 require_once __DIR__ . '/_app-founder-plan.php';
-if (!app_is_founder($pdo, $user) && !( !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin')) {
+// Statistiques avancées : Fondateur uniquement, comme /super-admin/stats et le bloc
+// « Emails envoyés — plateforme » du cockpit web (sa-permissions.php : can_view_platform_stats)
+if (!app_is_founder($pdo, $user)) {
     http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit;
 }
 
@@ -37,24 +41,28 @@ try {
 
     $ca_paid = (float) $scalar("SELECT COALESCE(SUM(amount_ttc),0) FROM subscription_invoices WHERE status='paid'");
     $ca_paid_30 = (float) $scalar("SELECT COALESCE(SUM(amount_ttc),0) FROM subscription_invoices WHERE status='paid' AND paid_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
-    $unpaid_total = (float) $scalar("SELECT COALESCE(SUM(amount_ttc),0) FROM subscription_invoices WHERE status IN ('sent','overdue')");
-    $unpaid_nb = (int) $scalar("SELECT COUNT(*) FROM subscription_invoices WHERE status IN ('sent','overdue')");
+    // Impayés : associations supprimées exclues, comme le cockpit et le filtre « Impayés »
+    $unpaid = fd_unpaid_summary($pdo);
+    $unpaid_total = $unpaid['total'];
+    $unpaid_nb = $unpaid['nb'];
 
     $ia = ['nb' => 0, 'cost' => 0.0];
     try { $ia = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(ai_cost_euros),0) AS cost FROM communication_campaigns WHERE ai_generated=1")->fetch(PDO::FETCH_ASSOC) ?: $ia; } catch (Throwable $e) {}
 
-    // Emails & SMS envoyés — plateforme (semaine / mois / trimestre / année)
+    // Emails & SMS envoyés — plateforme (semaine / mois / trimestre / année) : mêmes règles que
+    // le cockpit web (super-admin.php) — envois réussis seulement (les échecs sont aussi journalisés,
+    // status='failed'), sur 7 jours / 1 mois / 3 mois / 1 an
     $periods = [
         'week'    => "created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
-        'month'   => "created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
-        'quarter' => "created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)",
-        'year'    => "created_at >= DATE_SUB(NOW(), INTERVAL 365 DAY)",
+        'month'   => "created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)",
+        'quarter' => "created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)",
+        'year'    => "created_at >= DATE_SUB(NOW(), INTERVAL 1 YEAR)",
     ];
     $emails = ['week' => 0, 'month' => 0, 'quarter' => 0, 'year' => 0];
     $sms    = ['week' => 0, 'month' => 0, 'quarter' => 0, 'year' => 0];
     foreach ($periods as $k => $cond) {
-        $emails[$k] = (int) $scalar("SELECT COUNT(*) FROM email_log WHERE $cond");
-        $sms[$k]    = (int) $scalar("SELECT COUNT(*) FROM sms_log WHERE $cond");
+        $emails[$k] = (int) $scalar("SELECT COUNT(*) FROM email_log WHERE $cond AND status = 'sent'");
+        $sms[$k]    = (int) $scalar("SELECT COUNT(*) FROM sms_log WHERE $cond AND status IN ('sent','delivered')");
     }
 
     // Courbe : associations créées par mois (6 derniers mois)
@@ -73,7 +81,7 @@ try {
                    'paying' => $pc['paying'], 'free' => $pc['free'], 'pending_payment' => $pc['pending_payment'],
                    'trial_expired' => $pc['trial_expired'], 'expiring' => $pc['expiring'], 'cancelled' => $pc['cancelled']],
         'users' => ['total' => $users_total, 'new30' => $users_new30],
-        'revenue' => ['mrr' => round($mrr, 2), 'paying' => $pc['paying'], 'ca_paid' => round($ca_paid, 2), 'ca_paid_30' => round($ca_paid_30, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb],
+        'revenue' => ['mrr' => round($mrr, 2), 'paying' => $pc['paying'], 'ca_paid' => round($ca_paid, 2), 'ca_paid_30' => round($ca_paid_30, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb, 'unpaid_orgs' => $unpaid['orgs']],
         'ia' => ['nb' => (int) $ia['nb'], 'cost' => round((float) $ia['cost'], 2)],
         'emails' => $emails,
         'sms' => $sms,

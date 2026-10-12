@@ -7,6 +7,7 @@
 ob_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/../notification-helpers.php';
 ob_end_clean();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -31,9 +32,11 @@ try {
     $uid = (int) ($user['id'] ?? ($_SESSION['user_id'] ?? 0));
     $channel_id = (int) ($_GET['channel_id'] ?? 0);
     if ($channel_id <= 0) { http_response_code(400); echo json_encode(['ok' => false, 'error' => 'channel']); exit; }
+    // Suiveurs (financeurs externes) : pas d'accès à la messagerie interne, comme sur le site
+    if (($user['role'] ?? '') === 'follower') { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
     // Le canal appartient a l'org + visibilite
-    $st = $pdo->prepare("SELECT id, name, type FROM channels WHERE id = ? AND org_id = ? AND is_archived = 0 LIMIT 1");
+    $st = $pdo->prepare("SELECT id, name, slug, type FROM channels WHERE id = ? AND org_id = ? AND is_archived = 0 LIMIT 1");
     $st->execute([$channel_id, $org_id]);
     $ch = $st->fetch(PDO::FETCH_ASSOC);
     if (!$ch) { http_response_code(404); echo json_encode(['ok' => false, 'error' => 'not_found']); exit; }
@@ -43,20 +46,35 @@ try {
         if (!$m->fetchColumn()) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
     }
 
+    // Marquer comme lu jusqu'au dernier message du canal (même calcul que la pastille d'app-channels.php),
+    // dès les droits vérifiés : l'appli envoie en même temps api/app-notif-read.php, qui attend cette
+    // lecture (last_read_at) pour renvoyer des compteurs tenant compte de ce canal.
+    try {
+        $mx = $pdo->prepare("SELECT MAX(id) FROM channel_messages WHERE channel_id = ? AND deleted_at IS NULL");
+        $mx->execute([$channel_id]);
+        $last_id = (int) $mx->fetchColumn();
+        $pdo->prepare("INSERT INTO channel_reads (channel_id, user_id, last_read_message_id, last_read_at) VALUES (?, ?, ?, NOW())
+                       ON DUPLICATE KEY UPDATE last_read_message_id = GREATEST(COALESCE(last_read_message_id, 0), VALUES(last_read_message_id)), last_read_at = NOW()")
+            ->execute([$channel_id, $uid, $last_id]);
+    } catch (Throwable $e) {}
+    // Canal ouvert : ses notifications (messages, mentions) sont soldées, et seulement elles
+    $notif_read = ak_channel_notifs_mark_read($pdo, $uid, $ch);
+
     $stmt = $pdo->prepare("
         SELECT cm.id, cm.user_id, cm.content, cm.created_at, cm.reply_to_message_id,
-               u.first_name, u.last_name, u.role, u.avatar_color,
+               u.first_name, u.last_name, u.role, u.avatar_color, u.parent_org_id AS author_parent_org_id,
                rcm.content AS reply_content, ru.first_name AS reply_first, ru.last_name AS reply_last
         FROM channel_messages cm
         JOIN users u ON cm.user_id = u.id
         LEFT JOIN channel_messages rcm ON cm.reply_to_message_id = rcm.id
         LEFT JOIN users ru ON rcm.user_id = ru.id
         WHERE cm.channel_id = ? AND cm.deleted_at IS NULL
-        ORDER BY cm.created_at ASC, cm.id ASC
+        ORDER BY cm.created_at DESC, cm.id DESC
         LIMIT 100
     ");
     $stmt->execute([$channel_id]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    // Les 100 plus récents, remis dans l'ordre chronologique (le fil défile vers le bas)
+    $rows = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
 
     $messages = [];
     foreach ($rows as $r) {
@@ -76,6 +94,8 @@ try {
             'author'   => trim($fn . ' ' . $ln),
             'initials' => m_ini($fn, $ln),
             'role'     => (string) ($r['role'] ?? ''),
+            // Agent de la mairie (canal « Suivi · Mairie ») : à présenter comme « Mairie », pas par son rôle
+            'is_mairie' => !empty($r['author_parent_org_id']),
             'color'    => function_exists('folder_color_hex') ? folder_color_hex((string) ($r['avatar_color'] ?? 'blue')) : '#3B82F6',
             'content'  => (string) $r['content'],
             'time'     => $ts ? date('d/m H:i', $ts) : '',
@@ -83,17 +103,7 @@ try {
         ];
     }
 
-    // Marquer comme lu (best effort)
-    if (!empty($messages)) {
-        $last_id = (int) end($messages)['id'];
-        try {
-            $pdo->prepare("INSERT INTO channel_reads (channel_id, user_id, last_read_message_id) VALUES (?, ?, ?)
-                           ON DUPLICATE KEY UPDATE last_read_message_id = GREATEST(last_read_message_id, VALUES(last_read_message_id))")
-                ->execute([$channel_id, $uid, $last_id]);
-        } catch (Throwable $e) {}
-    }
-
-    echo json_encode(['ok' => true, 'channel' => ['id' => (int) $ch['id'], 'name' => (string) $ch['name']], 'messages' => $messages], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'notifs_marked_read' => $notif_read, 'channel' => ['id' => (int) $ch['id'], 'name' => (string) $ch['name']], 'messages' => $messages], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-channel-messages] ' . $e->getMessage());
     http_response_code(500);

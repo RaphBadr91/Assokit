@@ -4,14 +4,18 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-grants.php';
 require_login();
 $user = current_user(); $org_id = (int)$user['org_id'];
-$is_admin = ($user['role'] === 'admin'); $is_coord = false;
-if (!$is_admin && !$is_coord) { http_response_code(403); die('Accès refusé.'); }
+// Administrateur ou coordinateur : ceux qu'action-subvention.php accepte
+// (le coordinateur arrivait ici depuis « + Nouvelle demande », « Modifier »
+// ou le radar, et tombait sur « Accès refusé »).
+gr_require_manage($user);
 
 $grant_id = (int)($_GET['id'] ?? 0);
 $grant = null; $steps = [];
 if ($grant_id > 0) {
     $grant = gr_load($pdo, $grant_id, $org_id);
     if (!$grant) { http_response_code(404); die('Subvention introuvable.'); }
+    // Archivé : la fiche propose d'abord de le désarchiver
+    if (gr_is_archived($grant)) { header('Location: /subvention/' . $grant_id); exit; }
     $steps = gr_load_steps($pdo, $grant_id);
 }
 

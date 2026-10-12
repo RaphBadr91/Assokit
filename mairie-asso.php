@@ -6,6 +6,8 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-permissions.php';
+require_once __DIR__ . '/includes-grants.php';
+if (function_exists('ak_session_guard')) ak_session_guard(); // agent retiré depuis sa connexion : session fermée tout de suite
 require_login();
 
 $current = current_user();
@@ -15,19 +17,27 @@ if ($org_id <= 0) {
     exit;
 }
 
-// Sécurité : l'utilisateur doit pouvoir voir cette asso
-require_can_view_org($org_id);
-
 // Charge l'asso
 $stmt = $pdo->prepare("SELECT * FROM organizations WHERE id = ? LIMIT 1");
 $stmt->execute([$org_id]);
 $org = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Sécurité : vue réservée au fondateur et aux agents de la collectivité de
+// rattachement. Les membres de l'asso (membre, bénévole, financeur suivi…) n'y
+// ont pas accès : leurs droits de rôle s'appliquent dans leur propre espace.
+$is_platform = is_platform_admin($current);
+$my_parent = $is_platform ? null : current_parent_org();
+$is_mairie_viewer = $org && $my_parent && (int)$org['parent_org_id'] === (int)$my_parent['id'];
+if (!$is_platform && !$is_mairie_viewer) {
+    http_response_code(403);
+    die('<h1>⛔ Accès refusé</h1><p>Vous n\'avez pas accès à cette association.</p>');
+}
 if (!$org) { http_response_code(404); die('Association introuvable.'); }
 
 // Détermine le contexte (mairie ou super admin) pour les liens retour
 $parent_org = $org['parent_org_id'] ? get_parent_org((int)$org['parent_org_id']) : null;
-$is_platform = is_platform_admin($current);
-$back_url = is_parent_org_user() ? '/mairie-dashboard' : ($is_platform ? '/super-admin-mairie-detail?id=' . (int)$org['parent_org_id'] : '/dashboard');
+$back_url = $is_mairie_viewer ? '/mairie-dashboard'
+    : (!empty($org['parent_org_id']) ? '/super-admin-mairie-detail?id=' . (int)$org['parent_org_id'] : '/super-admin-mairies');
 
 // === DONNÉES ===
 
@@ -55,26 +65,41 @@ $projects = $projects->fetchAll(PDO::FETCH_ASSOC);
 
 // Subventions
 $grants = [];
-$grants_stats = ['total'=>0,'accepted'=>0,'rejected'=>0,'in_review'=>0,'submitted'=>0,'pending'=>0,'sum_requested'=>0,'sum_granted'=>0];
+// Regroupements identiques au module Subventions de l'asso (includes-grants.php) :
+// « Accordées » = Accordé + Bilan rendu (gr_is_granted, même montant que gr_org_stats),
+// « En instruction » = déposées + en instruction (comme /subventions, la liste et le
+// tableau de bord mairie). Calculés sur tous les dossiers non archivés, pas seulement
+// les 100 affichés.
+$grants_stats = ['total'=>0,'accepted'=>0,'reported'=>0,'rejected'=>0,'pending'=>0,'draft'=>0,'sum_requested'=>0,'sum_granted'=>0];
+$grants_count_status = function (string $st, int $n, float $requested, float $granted) use (&$grants_stats): void {
+    $grants_stats['total'] += $n;
+    $grants_stats['sum_requested'] += $requested;
+    if ($st === 'accepted' || $st === 'paid' || gr_is_granted($st)) {   // accepted / paid : anciens statuts
+        $grants_stats['accepted'] += $n;
+        $grants_stats['sum_granted'] += $granted;
+        if ($st === 'reported') $grants_stats['reported'] += $n;
+    } elseif ($st === 'rejected') {
+        $grants_stats['rejected'] += $n;
+    } elseif ($st === 'submitted' || $st === 'in_review') {
+        $grants_stats['pending'] += $n;
+    } elseif ($st !== 'archived') {
+        $grants_stats['draft'] += $n;
+    }
+};
 try {
     $g = $pdo->prepare("SELECT * FROM grants WHERE org_id = ? AND (archived_at IS NULL OR archived_at = '0000-00-00 00:00:00') ORDER BY created_at DESC LIMIT 100");
     $g->execute([$org_id]);
     $grants = $g->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($grants as $gr) {
-        $grants_stats['total']++;
-        $grants_stats['sum_requested'] += (float)$gr['amount_requested'];
-        if ($gr['status'] === 'granted' || $gr['status'] === 'accepted' || $gr['status'] === 'paid') {
-            $grants_stats['accepted']++;
-            $grants_stats['sum_granted'] += (float)$gr['amount_granted'];
-        } elseif ($gr['status'] === 'rejected') {
-            $grants_stats['rejected']++;
-        } elseif ($gr['status'] === 'in_review') {
-            $grants_stats['in_review']++;
-        } elseif ($gr['status'] === 'submitted') {
-            $grants_stats['submitted']++;
-        } else {
-            $grants_stats['pending']++;
-        }
+    try {
+        $ga = $pdo->prepare("
+            SELECT status, COUNT(*) AS n, COALESCE(SUM(amount_requested),0) AS req, COALESCE(SUM(amount_granted),0) AS gr
+            FROM grants WHERE org_id = ? AND (archived_at IS NULL OR archived_at = '0000-00-00 00:00:00')
+            GROUP BY status
+        ");
+        $ga->execute([$org_id]);
+        foreach ($ga->fetchAll(PDO::FETCH_ASSOC) as $r) $grants_count_status((string)$r['status'], (int)$r['n'], (float)$r['req'], (float)$r['gr']);
+    } catch (Exception $e) {
+        foreach ($grants as $gr) $grants_count_status((string)($gr['status'] ?? ''), 1, (float)$gr['amount_requested'], (float)$gr['amount_granted']);
     }
 } catch (Exception $e) {}
 
@@ -89,12 +114,29 @@ try {
     $members_recent = $m->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// Stats projets
+// Stats projets : tous les projets non archivés (terminés compris), comme le
+// tableau de bord et la liste des associations — calculées en base pour ne pas
+// dépendre de la limite d'affichage de la liste
 $stats_p = ['active'=>0, 'warning'=>0, 'done'=>0, 'draft'=>0, 'archived'=>0, 'total_budget'=>0, 'total_spent'=>0];
-foreach ($projects as $p) {
-    if (isset($stats_p[$p['status']])) $stats_p[$p['status']]++;
-    $stats_p['total_budget'] += (float)$p['budget_planned'];
-    $stats_p['total_spent'] += (float)$p['budget_used'];
+try {
+    $sp = $pdo->prepare("
+        SELECT p.status, COUNT(*) AS n, COALESCE(SUM(p.budget_planned),0) AS planned, COALESCE(SUM(p.budget_used),0) AS used
+        FROM projects p INNER JOIN folders f ON p.folder_id = f.id
+        WHERE f.org_id = ? AND (p.archived_at IS NULL OR p.archived_at = '0000-00-00 00:00:00')
+        GROUP BY p.status
+    ");
+    $sp->execute([$org_id]);
+    foreach ($sp->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        if (isset($stats_p[$r['status']])) $stats_p[$r['status']] += (int)$r['n'];
+        $stats_p['total_budget'] += (float)$r['planned'];
+        $stats_p['total_spent'] += (float)$r['used'];
+    }
+} catch (Exception $e) {
+    foreach ($projects as $p) {
+        if (isset($stats_p[$p['status']])) $stats_p[$p['status']]++;
+        $stats_p['total_budget'] += (float)$p['budget_planned'];
+        $stats_p['total_spent'] += (float)$p['budget_used'];
+    }
 }
 
 $tab = $_GET['tab'] ?? 'projets';
@@ -104,6 +146,9 @@ render_sidebar('mairie-assos');
 ?>
 
 <style>
+/* contain: la colonne de la mise en page ne s'élargit plus à la largeur d'un tableau (page coupée sur téléphone) */
+.ma-page { contain:inline-size; }
+.ma-profil td + td { overflow-wrap:anywhere; }
 .mairie-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -8px; padding:0 8px; }
 .mairie-table-wrap table { width:100%; min-width:560px; border-collapse:collapse; font-size:13px; }
 .mairie-tabs { overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
@@ -120,16 +165,18 @@ render_sidebar('mairie-assos');
   .mairie-table-wrap table { font-size:12px; }
   .mairie-table-wrap th, .mairie-table-wrap td { padding:8px 6px !important; }
   .mairie-tabs a { padding:9px 12px !important; font-size:12.5px !important; }
+  .ma-profil td:first-child { width:110px !important; padding-right:10px !important; }
+  .ma-head { padding:16px 18px !important; }
 }
 </style>
-<div class="main" style="max-width:1300px;margin:0 auto;padding:clamp(12px,3vw,24px);">
+<div class="main ma-page" style="max-width:1300px;margin:0 auto;padding:clamp(12px,3vw,24px);">
 
   <div style="margin-bottom:16px;">
-    <a href="<?= h($back_url) ?>" style="color:#3F3F46;text-decoration:none;font-size:13px;">← Retour <?= is_parent_org_user() ? 'dashboard' : 'mairie' ?></a>
+    <a href="<?= h($back_url) ?>" style="color:#3F3F46;text-decoration:none;font-size:13px;">← Retour <?= $is_mairie_viewer ? 'dashboard' : 'mairie' ?></a>
   </div>
 
   <!-- HEADER ASSO -->
-  <div style="background:#fff;border:1px solid #E5E7EB;border-left:5px solid #059669;border-radius:14px;padding:22px 28px;margin-bottom:20px;">
+  <div class="ma-head" style="background:#fff;border:1px solid #E5E7EB;border-left:5px solid #059669;border-radius:14px;padding:22px 28px;margin-bottom:20px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
       <div style="flex:1;">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap;">
@@ -141,9 +188,11 @@ render_sidebar('mairie-assos');
         </div>
         <div style="font-size:13px;color:#71717A;line-height:1.65;">
           <?php if (!empty($org['legal_name']) && $org['legal_name'] !== $org['name']): ?>Nom légal : <?= h($org['legal_name']) ?><br><?php endif; ?>
-          <?php if ($org['billing_address_city']): ?>📍 <?= h(($org['billing_address_zip'] ?? '') . ' ' . $org['billing_address_city']) ?> · <?php endif; ?>
-          <?php if ($org['siret']): ?>SIRET <?= h($org['siret']) ?><?php endif; ?>
-          <?php if (!empty($org['rna_number'])): ?> · RNA <?= h($org['rna_number']) ?><?php endif; ?>
+          <?= implode(' · ', array_filter([
+              !empty($org['billing_address_city']) ? '📍 ' . h(trim(($org['billing_address_zip'] ?? '') . ' ' . $org['billing_address_city'])) : '',
+              !empty($org['siret']) ? 'SIRET ' . h($org['siret']) : '',
+              !empty($org['rna_number']) ? 'RNA ' . h($org['rna_number']) : '',
+          ])) ?>
         </div>
       </div>
     </div>
@@ -174,7 +223,7 @@ render_sidebar('mairie-assos');
   <?php if ($tab === 'profil'): ?>
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px;">
       <h2 style="margin:0 0 18px;font-size:17px;color:#0A0A0B;font-weight:700;">📋 Informations de l'association</h2>
-      <table style="width:100%;font-size:13.5px;">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table class="ma-profil" style="width:100%;font-size:13.5px;">
         <?php foreach ([
           'name' => 'Nom commercial',
           'legal_name' => 'Nom légal',
@@ -196,7 +245,7 @@ render_sidebar('mairie-assos');
           <td style="padding:10px 0;color:#0A0A0B;"><?= h($v) ?></td>
         </tr>
         <?php endforeach; ?>
-      </table>
+      </table></div>
     </div>
 
   <!-- ============================================================ -->
@@ -220,7 +269,7 @@ render_sidebar('mairie-assos');
       </div>
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px;text-align:center;">
         <div style="font-size:18px;font-weight:700;color:#0A0A0B;"><?= number_format($stats_p['total_budget'], 0, ',', ' ') ?> €</div>
-        <div style="font-size:10.5px;color:#71717A;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-top:2px;">💵 Budget</div>
+        <div style="font-size:10.5px;color:#71717A;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-top:2px;" title="Somme des budgets prévus de tous les projets non archivés (terminés compris)">💵 Budget prévu</div>
       </div>
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px;text-align:center;">
         <div style="font-size:18px;font-weight:700;color:#059669;"><?= number_format($stats_p['total_spent'], 0, ',', ' ') ?> €</div>
@@ -302,25 +351,24 @@ render_sidebar('mairie-assos');
         <div style="font-size:22px;font-weight:700;color:#0A0A0B;line-height:1;"><?= $grants_stats['total'] ?></div>
         <div style="font-size:10px;color:#71717A;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-top:3px;">📊 Demandes</div>
       </div>
-      <div style="background:#F0FDF4;border:1px solid #D1FAE5;border-radius:10px;padding:13px;text-align:center;">
+      <div style="background:#F0FDF4;border:1px solid #D1FAE5;border-radius:10px;padding:13px;text-align:center;" title="Subventions accordées, y compris celles dont le bilan a été rendu">
         <div style="font-size:22px;font-weight:700;color:#047857;line-height:1;"><?= $grants_stats['accepted'] ?></div>
         <div style="font-size:10px;color:#065F46;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-top:3px;">✅ Accordées</div>
+        <?php if ($grants_stats['reported'] > 0): ?>
+          <div style="font-size:10.5px;color:#6D28D9;margin-top:3px;">dont <?= $grants_stats['reported'] ?> bilan<?= $grants_stats['reported'] > 1 ? 's' : '' ?> rendu<?= $grants_stats['reported'] > 1 ? 's' : '' ?></div>
+        <?php endif; ?>
+      </div>
+      <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:13px;text-align:center;" title="Dossiers déposés ou en cours d'instruction">
+        <div style="font-size:22px;font-weight:700;color:#B45309;line-height:1;"><?= $grants_stats['pending'] ?></div>
+        <div style="font-size:10px;color:#78350F;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-top:3px;">🔍 En instruction</div>
       </div>
       <div style="background:#FEE2E2;border:1px solid #FECACA;border-radius:10px;padding:13px;text-align:center;">
         <div style="font-size:22px;font-weight:700;color:#B91C1C;line-height:1;"><?= $grants_stats['rejected'] ?></div>
         <div style="font-size:10px;color:#7F1D1D;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-top:3px;">❌ Refusées</div>
       </div>
-      <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:13px;text-align:center;">
-        <div style="font-size:22px;font-weight:700;color:#B45309;line-height:1;"><?= $grants_stats['in_review'] ?></div>
-        <div style="font-size:10px;color:#78350F;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-top:3px;">👀 En examen</div>
-      </div>
-      <div style="background:#E0E7FF;border:1px solid #C7D2FE;border-radius:10px;padding:13px;text-align:center;">
-        <div style="font-size:22px;font-weight:700;color:#4338CA;line-height:1;"><?= $grants_stats['submitted'] ?></div>
-        <div style="font-size:10px;color:#3730A3;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-top:3px;">📤 Soumises</div>
-      </div>
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:13px;text-align:center;">
-        <div style="font-size:22px;font-weight:700;color:#71717A;line-height:1;"><?= $grants_stats['pending'] ?></div>
-        <div style="font-size:10px;color:#71717A;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-top:3px;">📝 En cours</div>
+        <div style="font-size:22px;font-weight:700;color:#71717A;line-height:1;"><?= $grants_stats['draft'] ?></div>
+        <div style="font-size:10px;color:#71717A;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-top:3px;">📝 Brouillons</div>
       </div>
     </div>
 
@@ -358,25 +406,24 @@ render_sidebar('mairie-assos');
           </tr></thead>
           <tbody>
           <?php
-          $statuses = [
-              'draft' => ['📝 Brouillon', '#71717A', '#F4F4F5'],
-              'to_prepare' => ['📋 À préparer', '#3F3F46', '#E5E7EB'],
-              'in_progress' => ['🔄 En cours', '#0369A1', '#DBEAFE'],
-              'submitted' => ['📤 Soumise', '#4F46E5', '#E0E7FF'],
-              'in_review' => ['👀 En examen', '#B45309', '#FEF3C7'],
-              'accepted' => ['✅ Acceptée', '#047857', '#D1FAE5'],
-              'granted' => ['✅ Accordée', '#047857', '#D1FAE5'],
-              'rejected' => ['❌ Refusée', '#B91C1C', '#FEE2E2'],
-              'paid' => ['💰 Versée', '#047857', '#D1FAE5'],
-              'archived' => ['📦 Archivée', '#A1A1AA', '#F4F4F5'],
+          // Mêmes libellés que le module Subventions de l'asso (gr_status_meta) ;
+          // anciens statuts conservés pour les dossiers historiques
+          $legacy_statuses = [
+              'accepted' => ['✅ Accordé', '#047857', '#D1FAE5'],
+              'paid' => ['💰 Versé', '#047857', '#D1FAE5'],
           ];
           foreach ($grants as $g):
-              $st = $g['status'] ?? '';
-              $meta = $statuses[$st] ?? [ucfirst($st ?: '—'), '#71717A', '#F4F4F5'];
+              $st = (string)($g['status'] ?? '');
+              if (isset($legacy_statuses[$st])) {
+                  $meta = $legacy_statuses[$st];
+              } else {
+                  $gm = gr_status_meta($st);
+                  $meta = $gm[0] !== '—' ? [$gm[3] . ' ' . $gm[0], $gm[1], $gm[2]] : ['—', '#71717A', '#F4F4F5'];
+              }
           ?>
             <tr style="border-bottom:1px solid #F4F4F5;">
               <td style="padding:11px 6px;font-weight:600;color:#0A0A0B;"><?= h($g['name'] ?? '—') ?></td>
-              <td style="padding:11px 6px;color:#3F3F46;"><?= h($g['funder'] ?? '—') ?><?php if (!empty($g['funder_type'])): ?><br><span style="font-size:10.5px;color:#6B7280;"><?= h($g['funder_type']) ?></span><?php endif; ?></td>
+              <td style="padding:11px 6px;color:#3F3F46;"><?= h($g['funder'] ?? '—') ?><?php if (!empty($g['funder_type'])): ?><br><span style="font-size:10.5px;color:#6B7280;"><?= h(gr_funder_label((string)$g['funder_type'])) ?></span><?php endif; ?></td>
               <td style="padding:11px 6px;text-align:right;font-weight:700;white-space:nowrap;">
                 <?php if ((float)$g['amount_requested'] > 0): ?>
                   <span style="color:#0A0A0B;"><?= number_format((float)$g['amount_requested'], 0, ',', ' ') ?> €</span>
@@ -407,7 +454,7 @@ render_sidebar('mairie-assos');
       <?php if (empty($members_recent)): ?>
         <div style="text-align:center;padding:36px;color:#71717A;background:#FAFAF9;border-radius:10px;">Aucun adhérent.</div>
       <?php else: ?>
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="width:100%;min-width:560px;border-collapse:collapse;font-size:13px;">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
           <thead><tr style="border-bottom:1.5pt solid #E5E7EB;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#71717A;">
             <th style="text-align:left;padding:10px 6px;">Nom</th>
             <th style="text-align:left;padding:10px 6px;">Email</th>
@@ -416,9 +463,9 @@ render_sidebar('mairie-assos');
           <tbody>
           <?php foreach ($members_recent as $m): ?>
             <tr style="border-bottom:1px solid #F4F4F5;">
-              <td style="padding:10px 6px;color:#0A0A0B;font-weight:600;"><?= h(trim(($m['first_name'] ?? '') . ' ' . ($m['last_name'] ?? '')) ?: '—') ?></td>
-              <td style="padding:10px 6px;color:#3F3F46;"><?= h($m['email'] ?? '—') ?></td>
-              <td style="padding:10px 6px;color:#71717A;"><?= !empty($m['created_at']) ? date('d/m/Y', strtotime($m['created_at'])) : '—' ?></td>
+              <td style="padding:10px 6px;color:#0A0A0B;font-weight:600;overflow-wrap:anywhere;"><?= h(trim(($m['first_name'] ?? '') . ' ' . ($m['last_name'] ?? '')) ?: '—') ?></td>
+              <td style="padding:10px 6px;color:#3F3F46;overflow-wrap:anywhere;"><?= h($m['email'] ?? '—') ?></td>
+              <td style="padding:10px 6px;color:#71717A;white-space:nowrap;"><?= !empty($m['created_at']) ? date('d/m/Y', strtotime($m['created_at'])) : '—' ?></td>
             </tr>
           <?php endforeach; ?>
           </tbody>

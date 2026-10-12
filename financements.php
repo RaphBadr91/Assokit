@@ -11,6 +11,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/financements-engine.php';
+require_once __DIR__ . '/includes-grants.php';
 require_login();
 
 $user = current_user();
@@ -190,7 +191,9 @@ echo render_sidebar('financements');
           $em = fin_eligibility_meta($m['eligibility']);
           $reasons = json_decode($m['reasons'] ?? '[]', true) ?: [];
           $dl = $m['deadline_apply'];
-          $days = $dl ? (int)floor((strtotime($dl) - time())/86400) : null;
+          // Jours calendaires jusqu'à la date limite : 0 le jour même (dépôt
+          // encore possible), négatif seulement à partir du lendemain.
+          $days = $dl ? gr_days_between(date('Y-m-d'), (string)$dl) : null;
           $amount = '';
           if ($m['amount_min'] && $m['amount_max']) $amount = number_format((float)$m['amount_min'],0,',',' ').' – '.number_format((float)$m['amount_max'],0,',',' ').' €';
           elseif ($m['amount_max']) $amount = 'jusqu\'à '.number_format((float)$m['amount_max'],0,',',' ').' €';
@@ -200,7 +203,7 @@ echo render_sidebar('financements');
             <span class="fin-elig" style="background:<?= $em[2] ?>;color:<?= $em[1] ?>;"><?= $m['eligibility']==='eligible' ? ak_icon('check',12,'2.6') : ak_dot($em[1]) ?> <?= h($em[0]) ?> · <?= (int)$m['score'] ?>%</span>
             <?php if ($days !== null): ?>
               <span class="fin-deadline <?= $days<0?'over':($days<=15?'urgent':'') ?>">
-                <?= $days<0 ? 'Clôturé' : 'échéance J-'.$days ?> · <?= h(date('d/m/Y', strtotime($dl))) ?>
+                <?= $days<0 ? 'Clôturé' : ($days===0 ? 'échéance aujourd\'hui' : 'échéance J-'.$days) ?> · <?= h(date('d/m/Y', strtotime($dl))) ?>
               </span>
             <?php else: ?>
               <span class="fin-deadline soft"><?= h(ucfirst($m['recurrence'] ?? 'annuel')) ?></span>
@@ -218,10 +221,12 @@ echo render_sidebar('financements');
           <?php endif; ?>
 
           <div class="fin-card-actions">
-            <?php if (!empty($m['apply_url'])): ?>
-              <a href="<?= h($m['apply_url']) ?>" target="_blank" rel="noopener noreferrer" class="fin-btn primary sm">Déposer une demande ↗</a>
-            <?php elseif (!empty($m['source_url'])): ?>
-              <a href="<?= h($m['source_url']) ?>" target="_blank" rel="noopener noreferrer" class="fin-btn primary sm">En savoir plus ↗</a>
+            <?php // liens importés (Aides-territoires…) : http(s) seulement
+              $apply_link = gr_http_url($m['apply_url'] ?? ''); $source_link = gr_http_url($m['source_url'] ?? ''); ?>
+            <?php if ($apply_link): ?>
+              <a href="<?= h($apply_link) ?>" target="_blank" rel="noopener noreferrer" class="fin-btn primary sm">Déposer une demande ↗</a>
+            <?php elseif ($source_link): ?>
+              <a href="<?= h($source_link) ?>" target="_blank" rel="noopener noreferrer" class="fin-btn primary sm">En savoir plus ↗</a>
             <?php endif; ?>
             <a href="/subvention-form" class="fin-btn ghost sm">+ Suivre en dossier</a>
             <button type="button" class="fin-icon-btn js-save <?= (int)$m['saved']?'on':'' ?>" title="Suivre cette piste"><?= ak_icon((int)$m['saved']?'star-fill':'star',15) ?></button>

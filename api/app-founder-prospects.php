@@ -6,7 +6,7 @@
  * POST queue      → met des prospects en file d'envoi (séquence).
  * POST status     → change le statut (répondu / RDV pris / désinscrit).
  * POST delete     → supprime un prospect.
- * Réservé Fondateur/Super Admin. NE MODIFIE PAS le site.
+ * Réservé au Fondateur. NE MODIFIE PAS le site.
  */
 ob_start();
 require_once __DIR__ . '/../config.php';
@@ -21,8 +21,10 @@ function pr_fail($c, $e, $m = null) { http_response_code($c); echo json_encode([
 if (empty($_SESSION['user_id'])) pr_fail(401, 'auth');
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
-$is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
-if (!$is_sa) pr_fail(403, 'forbidden');
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) pr_fail(401, 'auth');
+// Prospection : Fondateur uniquement, comme /fondateur-prospection
+if (!app_is_founder($pdo, $user)) pr_fail(403, 'forbidden');
 
 ak_prospect_tables_ensure($pdo);
 

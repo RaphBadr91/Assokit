@@ -4,7 +4,8 @@
  * ===============================================================
  * Formulaire en 2 etapes :
  *   1. Composer : sujet + corps + destinataires
- *   2. Envoi immediat via Resend
+ *   2. Envoi immediat via Resend (ak_comm_broadcast_send, resend-helper.php : au nom de
+ *      l'association, reponses vers son e-mail de contact, reprise possible si coupure)
  *
  * Destinataires possibles :
  *   - Tous les adherents de l'org
@@ -22,12 +23,6 @@ require_capability('access_marketing');
 $user = current_user();
 $org_id = (int) $user['org_id'];
 
-// Charger nom de l'org pour les emails
-$stmt = $pdo->prepare("SELECT name FROM organizations WHERE id = ?");
-$stmt->execute([$org_id]);
-$org = $stmt->fetch();
-$org_name = $org['name'] ?? 'votre association';
-
 // Charger users pour la selection custom
 $stmt = $pdo->prepare("
     SELECT id, first_name, last_name, email, role
@@ -37,6 +32,11 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$org_id]);
 $all_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Adhérents désinscrits des envois groupés de l'association (lien en pied de chaque diffusion)
+$optouts = function_exists('ak_optout_emails') ? ak_optout_emails($pdo, $org_id) : [];
+$is_optout = fn(array $u): bool => isset($optouts[strtolower(trim((string)$u['email']))]);
+$nb_optout = count(array_filter($all_users, $is_optout));
 
 $error = null;
 $form = [
@@ -48,11 +48,11 @@ $form = [
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? '')) {
-    $form['subject']         = trim($_POST['subject'] ?? '');
-    $form['body']            = trim($_POST['body'] ?? '');
-    $form['recipient_type']  = $_POST['recipient_type'] ?? 'all';
-    $form['recipient_roles'] = $_POST['recipient_roles'] ?? [];
-    $form['recipient_user_ids'] = $_POST['recipient_user_ids'] ?? [];
+    $form['subject']         = trim((string)($_POST['subject'] ?? ''));
+    $form['body']            = trim((string)($_POST['body'] ?? ''));
+    $form['recipient_type']  = (string)($_POST['recipient_type'] ?? 'all');
+    $form['recipient_roles'] = array_values(array_filter((array)($_POST['recipient_roles'] ?? []), 'is_string'));
+    $form['recipient_user_ids'] = array_values(array_filter(array_map('intval', (array)($_POST['recipient_user_ids'] ?? []))));
 
     // Validation
     if ($form['subject'] === '' || strlen($form['subject']) < 5) {
@@ -94,15 +94,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
             $error = 'Aucun destinataire trouvé pour ces critères.';
         }
 
+        // Les personnes désinscrites des envois groupés ne sont plus contactées
+        $nb_skipped_optout = 0;
+        if (!$error && $optouts) {
+            $kept = [];
+            foreach ($all_users as $u) {
+                if (!in_array((int)$u['id'], array_map('intval', $recipient_ids), true)) continue;
+                if ($is_optout($u)) { $nb_skipped_optout++; continue; }
+                $kept[] = $u['id'];
+            }
+            $recipient_ids = $kept;
+            if (empty($recipient_ids)) {
+                $error = 'Les destinataires choisis se sont tous désinscrits des envois groupés de l’association.';
+            }
+        }
+
         // Essai gratuit : 200 destinataires par envoi, 500 par 24 h (anti-relais de spam)
         if (!$error) {
             $error = ak_trial_send_block($pdo, $org_id, count($recipient_ids));
         }
 
+        if (!$error && !function_exists('ak_comm_broadcast_send')) {
+            $error = 'L’envoi d’e-mails n’est pas disponible pour le moment. Réessayez plus tard.';
+        }
+
         if (!$error) {
-            // Créer le broadcast
-            $pdo->beginTransaction();
+            // La diffusion est enregistrée (hors transaction) avant le premier e-mail :
+            // ak_comm_broadcast_send note chaque destinataire dès son envoi, si bien qu'une
+            // coupure en cours de route laisse une trace exacte et se reprend sans doublon.
             try {
+                // Liste des personnes choisies : simple information (les destinataires réels sont
+                // dans communication_broadcast_recipients). Si elle ne tient pas dans la colonne
+                // (VARCHAR court en production), on ne l'écrit pas plutôt que de bloquer l'envoi.
+                $cols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'communication_broadcasts') : [];
+                $fit = function (string $col, string $json) use ($cols): ?string {
+                    $type = $cols[$col]['type'] ?? '';
+                    if (preg_match('/^(?:var)?char\((\d+)\)/', $type, $m) && strlen($json) > (int)$m[1]) return null;
+                    if (strpos($type, 'tinytext') === 0 && strlen($json) > 255) return null;
+                    return $json;
+                };
                 $stmt = $pdo->prepare("
                     INSERT INTO communication_broadcasts
                         (org_id, created_by_user_id, subject, body, recipient_type,
@@ -112,92 +142,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
                 $stmt->execute([
                     $org_id, (int) $user['id'], $form['subject'], $form['body'],
                     $form['recipient_type'],
-                    json_encode($form['recipient_roles']),
-                    json_encode($form['recipient_user_ids']),
+                    $fit('recipient_roles', json_encode($form['recipient_roles'])),
+                    $fit('recipient_user_ids', json_encode($form['recipient_user_ids'])),
                     count($recipient_ids),
                 ]);
                 $broadcast_id = (int) $pdo->lastInsertId();
 
-                // Envoi mails
-                $nb_sent = 0;
-                $nb_failed = 0;
-
-                foreach ($recipient_ids as $uid) {
-                    $u = null;
-                    foreach ($all_users as $row) {
-                        if ((int)$row['id'] === (int)$uid) { $u = $row; break; }
-                    }
-                    if (!$u) continue;
-
-                    // Construction du mail HTML
-                    $body_html = nl2br(htmlspecialchars($form['body']));
-                    $content = '<h1 style="font-size:20px;margin:0 0 10px;font-weight:500;letter-spacing:-0.01em;color:#1C1917">' . h($form['subject']) . '</h1>'
-                             . '<p>Bonjour ' . h($u['first_name']) . ',</p>'
-                             . '<div style="font-size:14px; line-height:1.6; color:#3F3F46; margin:14px 0;">' . $body_html . '</div>'
-                             . '<p style="font-size:12px; color:#78716C; margin-top:18px;">— L\'équipe de ' . h($org_name) . '</p>';
-
-                    if (function_exists('email_wrap')) {
-                        $html = email_wrap($form['subject'], $content, null, null);
-                    } else {
-                        $html = $content;
-                    }
-
-                    $status = 'failed';
-                    $error_msg = null;
-                    if (function_exists('send_transactional_email')) {
-                        try {
-                            $result = send_transactional_email($u['email'], $form['subject'], $html, ['tag' => 'broadcast']);
-                            if (!empty($result['success'])) {
-                                $status = 'sent';
-                                $nb_sent++;
-                            } else {
-                                $nb_failed++;
-                                $error_msg = $result['error'] ?? 'Erreur inconnue';
-                            }
-                        } catch (Throwable $e) {
-                            $nb_failed++;
-                            $error_msg = $e->getMessage();
-                        }
-                    } else {
-                        $error_msg = 'Resend non configuré';
-                        $nb_failed++;
-                    }
-
-                    // Log individuel
-                    try {
-                        $stmt2 = $pdo->prepare("
-                            INSERT INTO communication_broadcast_recipients
-                                (broadcast_id, user_id, email, status, error_message, sent_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        ");
-                        $stmt2->execute([
-                            $broadcast_id, (int)$u['id'], $u['email'],
-                            $status, $error_msg ? mb_substr($error_msg, 0, 500) : null,
-                            $status === 'sent' ? date('Y-m-d H:i:s') : null,
-                        ]);
-                    } catch (Throwable $e) {}
+                $recipients = [];
+                $wanted = array_flip(array_map('intval', $recipient_ids));
+                foreach ($all_users as $u) {
+                    if (isset($wanted[(int)$u['id']])) $recipients[] = $u;
                 }
+                $res = ak_comm_broadcast_send($pdo, $org_id, $broadcast_id, $recipients);
 
-                // Maj broadcast
-                $stmt = $pdo->prepare("
-                    UPDATE communication_broadcasts
-                    SET nb_sent = ?, nb_failed = ?, status = 'sent'
-                    WHERE id = ?
-                ");
-                $stmt->execute([$nb_sent, $nb_failed, $broadcast_id]);
-
-                $pdo->commit();
-
-                $_SESSION['flash_communication'] = [
-                    'type' => 'success',
-                    'message' => "Diffusion envoyée : $nb_sent email(s) envoyé(s)" . ($nb_failed > 0 ? ", $nb_failed échec(s)" : "") . ".",
-                ];
-                header('Location: /communication?tab=diffuser');
+                $flash = ak_comm_broadcast_flash($res, 'Diffusion');
+                if ($nb_skipped_optout > 0) {
+                    $flash['message'] = rtrim($flash['message'], '.') . " · $nb_skipped_optout personne(s) désinscrite(s) non contactée(s).";
+                }
+                $_SESSION['flash_communication'] = $flash;
+                // Échec ou envoi incomplet : la fiche de la diffusion montre le détail (et la reprise)
+                header('Location: ' . ($flash['type'] === 'success' ? '/communication?tab=diffuser' : '/communication-diffusion?id=' . $broadcast_id));
                 exit;
 
             } catch (Throwable $e) {
-                $pdo->rollBack();
-                $error = 'Erreur technique : ' . $e->getMessage();
+                error_log('[communication-diffuser-nouveau] org ' . $org_id . ' : ' . $e->getMessage());
+                $error = 'La diffusion n’a pas pu être enregistrée (erreur technique). Aucun e-mail n’est parti : réessayez dans quelques minutes.';
             }
         }
     }
@@ -232,6 +201,7 @@ render_sidebar('communication');
   <?php endif; ?>
 
   <form method="POST" action="/communication-diffuser-nouveau"
+        onsubmit="var b = this.querySelector('button[type=submit]'); if (b) { b.disabled = true; b.textContent = '⏳ Envoi en cours…'; } return true;"
         style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:24px; max-width:900px;">
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
 
@@ -263,7 +233,11 @@ render_sidebar('communication');
           <div>
             <div style="font-size:13.5px; font-weight:500;">📢 Tous les adhérents</div>
             <div style="font-size:12px; color:var(--ink-3); margin-top:2px;">
-              <?= count($all_users) ?> adhérent<?= count($all_users) > 1 ? 's' : '' ?> recevront l'email
+              <?php $nb_reach = count($all_users) - $nb_optout; ?>
+              <?= $nb_reach ?> adhérent<?= $nb_reach > 1 ? 's' : '' ?> recevront l'email
+              <?php if ($nb_optout > 0): ?>
+                · <?= $nb_optout ?> désinscrit<?= $nb_optout > 1 ? 's' : '' ?> des envois groupés, non contacté<?= $nb_optout > 1 ? 's' : '' ?>
+              <?php endif; ?>
             </div>
           </div>
         </label>
@@ -296,9 +270,10 @@ render_sidebar('communication');
               <?php foreach ($all_users as $u): ?>
                 <label style="display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:6px; cursor:pointer; font-size:12.5px;" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
                   <input type="checkbox" name="recipient_user_ids[]" value="<?= (int)$u['id'] ?>"
-                         <?= in_array($u['id'], $form['recipient_user_ids']) ? 'checked' : '' ?>>
+                         <?= in_array($u['id'], $form['recipient_user_ids']) && !$is_optout($u) ? 'checked' : '' ?><?= $is_optout($u) ? ' disabled' : '' ?>>
                   <span><?= h($u['first_name'] . ' ' . $u['last_name']) ?></span>
                   <span style="color:var(--ink-4); font-size:11px;"><?= h($u['email']) ?></span>
+                  <?php if ($is_optout($u)): ?><span style="color:var(--ink-4); font-size:11px;">· désinscrit des envois groupés</span><?php endif; ?>
                 </label>
               <?php endforeach; ?>
             </div>

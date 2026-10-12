@@ -10,7 +10,9 @@
  *   - Ventes (asso_invoices)          -> journal VT : 411 / 706 + 44571
  *   - Encaissements factures (paid)   -> journal BQ : 512 / 411
  *   - Cotisations encaissées          -> journal BQ : 512 / 756
- *   - Achats fournisseurs (validés)   -> journal AC : 606 + 44566 / 401
+ *   - Achats fournisseurs (validés)   -> journal AC : 6xxxx (poste du plan
+ *     comptable associatif, comme le bilan analytique) + 44566 / 401.
+ *     Association non assujettie à la TVA : charge au TTC, sans 44566.
  *
  * ⚠️ Assokit n'est pas un logiciel de comptabilité en partie double :
  *    ce FEC est une reconstitution fidèle des flux, à faire valider par
@@ -22,6 +24,8 @@
  */
 
 if (!defined('FEC_SEP')) define('FEC_SEP', "\t");
+
+require_once __DIR__ . '/pca-mapping.php';   // comptes de charge (plan comptable associatif)
 
 if (!function_exists('fec_fields')) {
 function fec_fields(): array {
@@ -69,27 +73,76 @@ function fec_line(array $o): array {
 }
 }
 
+if (!function_exists('fec_supplier_aux')) {
+/**
+ * Compte auxiliaire fournisseur : un par fournisseur (nom normalisé),
+ * et non plus un par facture. Sans nom : « FDIVERS ». Un nom de plus de
+ * 20 caractères garde ses 16 premiers et 4 caractères tirés du nom
+ * complet : deux fournisseurs au même début ne partagent pas un compte.
+ */
+function fec_supplier_aux(?string $supplier): string {
+    $s = function_exists('mb_strtoupper') ? mb_strtoupper(trim((string)$supplier), 'UTF-8') : strtoupper(trim((string)$supplier));
+    $s = strtr($s, ['É'=>'E','È'=>'E','Ê'=>'E','Ë'=>'E','À'=>'A','Â'=>'A','Ä'=>'A','Ç'=>'C','Ô'=>'O','Ö'=>'O','Û'=>'U','Ü'=>'U','Î'=>'I','Ï'=>'I','Ù'=>'U','Œ'=>'OE','Æ'=>'AE']);
+    $s = preg_replace('/[^A-Z0-9]/', '', $s);
+    if ($s === '') return 'FDIVERS';
+    if (strlen($s) > 20) $s = substr($s, 0, 16) . strtoupper(substr(md5($s), 0, 4));
+    return 'F' . $s;
+}
+}
+
+if (!function_exists('fec_charge_account')) {
+/**
+ * Compte de charge d'un achat : celui du plan comptable associatif déjà
+ * utilisé par le bilan analytique (catégorie de la facture, ou poste choisi
+ * à la main), complété à 6 chiffres. Un même numéro garde un seul libellé
+ * dans tout le fichier.
+ * @return array{0:string,1:string} [CompteNum, CompteLib]
+ */
+function fec_charge_account(?string $category, ?string $override): array {
+    $m = ak_pca_map($category, $override);
+    $compte = (string)$m['compte'];
+    $lib = (string)$m['libelle'];
+    $comptes = ak_pca_comptes();
+    if (isset($comptes[$compte])) $lib = $comptes[$compte]['label'];
+    // 60680 sert aussi aux catégories non reconnues : libellé du PCG (6068).
+    if ($compte === '60680') $lib = 'AUTRES MATIERES ET FOURNITURES';
+    return [str_pad($compte, 6, '0'), $lib];
+}
+}
+
 if (!function_exists('fec_build')) {
 /**
  * Construit toutes les écritures FEC de l'org pour l'exercice $year.
+ *
+ * Les écritures sont d'abord collectées sans numéro, puis numérotées par
+ * journal dans l'ordre chronologique (règlements et cotisations ensemble
+ * dans BQ), et le fichier est trié par date : l'article A47 A-1 du LPF
+ * exige une numérotation continue et chronologique.
  * @return array{rows:array<array>, stats:array}
  */
 function fec_build(PDO $pdo, int $org_id, int $year): array {
-    $rows = [];
     $start = sprintf('%04d-01-01', $year);
     $end   = sprintf('%04d-12-31', $year);
-    $seq = ['VT'=>0, 'AC'=>0, 'BQ'=>0];
-    $nb_sales = 0; $nb_cotis = 0; $nb_buy = 0; $tot_debit = 0.0; $tot_credit = 0.0;
+    $nb_sales = 0; $nb_cotis = 0; $nb_buy = 0;
 
-    $add = function(array $o) use (&$rows, &$tot_debit, &$tot_credit) {
-        $rows[] = fec_line($o);
-        $tot_debit  += (float)($o['debit']  ?? 0);
-        $tot_credit += (float)($o['credit'] ?? 0);
-    };
-
+    // Écritures sans numéro : ['j'=>journal, 'date'=>AAAA-MM-JJ, 'lines'=>[...]].
+    // L'ordre d'ajout départage deux écritures d'un même jour.
+    $entries = [];
     $partial = false; // vrai si une catégorie d'écritures a échoué (n'annonce pas "prêt")
 
+    // Régime de TVA : une association non assujettie ne récupère pas la
+    // TVA de ses achats, la charge est le TTC (pas de 445660).
+    $vat_subject = true;
+    try {
+        $st = $pdo->prepare("SELECT vat_subject FROM organizations WHERE id = ?");
+        $st->execute([$org_id]);
+        $v = $st->fetchColumn();
+        if ($v !== false) $vat_subject = !empty($v);
+    } catch (Throwable $e) { error_log('[fec] regime TVA: '.$e->getMessage()); }
+
     // ── VENTES (asso_invoices non brouillon, émises dans l'exercice) ──
+    // La TVA portée par la facture est reprise telle quelle : mentionnée sur
+    // la facture, elle est due (art. 283-3 du CGI), même sans assujettissement.
     try {
         $st = $pdo->prepare(
             "SELECT i.id, i.invoice_number, i.amount_ht_cents, i.amount_vat_cents, i.amount_ttc_cents,
@@ -106,14 +159,16 @@ function fec_build(PDO $pdo, int $org_id, int $year): array {
             $a_ttc = abs($ttc); $a_tva = abs($tva);
             $a_ht = round($a_ttc - $a_tva, 2);               // I1 : HT dérivé = TTC - TVA -> écriture équilibrée par construction
             if ($a_ht < 0) { $a_ht = $a_ttc; $a_tva = 0.0; }
-            $seq['VT']++; $num = 'VT'.$seq['VT']; $nb_sales++;
+            $nb_sales++;
             $aux = $i['client_id'] ? 'C'.(int)$i['client_id'] : '';
             $lib = ($avoir ? 'Avoir ' : 'Facture ').$i['invoice_number'].($i['client'] ? ' - '.$i['client'] : '');
-            $base = ['jcode'=>'VT','jlib'=>'Ventes','num'=>$num,'edate'=>$i['issued'],'pdate'=>$i['issued'],'piece'=>$i['invoice_number'],'lib'=>$lib];
+            $base = ['jcode'=>'VT','jlib'=>'Ventes','edate'=>$i['issued'],'pdate'=>$i['issued'],'piece'=>$i['invoice_number'],'lib'=>$lib];
             // Sens normal pour une facture, inversé pour un avoir.
-            $add($base + ['compte'=>'411000','compte_lib'=>'Clients','aux'=>$aux,'aux_lib'=>$i['client'] ?? '', ($avoir?'credit':'debit')=>$a_ttc]);
-            $add($base + ['compte'=>'706000','compte_lib'=>'Prestations de services', ($avoir?'debit':'credit')=>$a_ht]);
-            if ($a_tva > 0.001) $add($base + ['compte'=>'445710','compte_lib'=>'TVA collectée', ($avoir?'debit':'credit')=>$a_tva]);
+            $lines = [];
+            $lines[] = $base + ['compte'=>'411000','compte_lib'=>'Clients','aux'=>$aux,'aux_lib'=>$i['client'] ?? '', ($avoir?'credit':'debit')=>$a_ttc];
+            $lines[] = $base + ['compte'=>'706000','compte_lib'=>'Prestations de services', ($avoir?'debit':'credit')=>$a_ht];
+            if ($a_tva > 0.001) $lines[] = $base + ['compte'=>'445710','compte_lib'=>'TVA collectée', ($avoir?'debit':'credit')=>$a_tva];
+            $entries[] = ['j'=>'VT', 'date'=>(string)$i['issued'], 'lines'=>$lines];
         }
     } catch (Throwable $e) { $partial = true; error_log('[fec] ventes: '.$e->getMessage()); }
 
@@ -130,11 +185,12 @@ function fec_build(PDO $pdo, int $org_id, int $year): array {
             $ttc = (int)$i['amount_ttc_cents']/100;
             if (abs($ttc) < 0.005) continue;
             $avoir = $ttc < 0; $a = abs($ttc);
-            $seq['BQ']++; $num = 'BQ'.$seq['BQ'];
             $aux = $i['client_id'] ? 'C'.(int)$i['client_id'] : '';
-            $bb = ['jcode'=>'BQ','jlib'=>'Banque','num'=>$num,'edate'=>$i['paid'],'pdate'=>$i['paid'],'piece'=>$i['invoice_number'],'lib'=>'Règlement '.$i['invoice_number']];
-            $add($bb + ['compte'=>'512000','compte_lib'=>'Banque', ($avoir?'credit':'debit')=>$a]);
-            $add($bb + ['compte'=>'411000','compte_lib'=>'Clients','aux'=>$aux,'aux_lib'=>$i['client'] ?? '', ($avoir?'debit':'credit')=>$a]);
+            $bb = ['jcode'=>'BQ','jlib'=>'Banque','edate'=>$i['paid'],'pdate'=>$i['paid'],'piece'=>$i['invoice_number'],'lib'=>'Règlement '.$i['invoice_number']];
+            $entries[] = ['j'=>'BQ', 'date'=>(string)$i['paid'], 'lines'=>[
+                $bb + ['compte'=>'512000','compte_lib'=>'Banque', ($avoir?'credit':'debit')=>$a],
+                $bb + ['compte'=>'411000','compte_lib'=>'Clients','aux'=>$aux,'aux_lib'=>$i['client'] ?? '', ($avoir?'debit':'credit')=>$a],
+            ]];
         }
     } catch (Throwable $e) { $partial = true; error_log('[fec] encaissements: '.$e->getMessage()); }
 
@@ -149,45 +205,74 @@ function fec_build(PDO $pdo, int $org_id, int $year): array {
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $p) {
             $amt = (float)$p['amount']; if (abs($amt) < 0.005) continue;
             $avoir = $amt < 0; $a = abs($amt);
-            $seq['BQ']++; $num = 'BQ'.$seq['BQ']; $nb_cotis++;
+            $nb_cotis++;
             $piece = $p['reference'] ?: ('COT'.(int)$p['id']);
             $lib = 'Cotisation'.($p['payer_name'] ? ' - '.$p['payer_name'] : '');
-            $bb = ['jcode'=>'BQ','jlib'=>'Banque','num'=>$num,'edate'=>$p['paid'],'pdate'=>$p['paid'],'piece'=>$piece,'lib'=>$lib];
-            $add($bb + ['compte'=>'512000','compte_lib'=>'Banque', ($avoir?'credit':'debit')=>$a]);
-            $add($bb + ['compte'=>'756000','compte_lib'=>'Cotisations', ($avoir?'debit':'credit')=>$a]);
+            $bb = ['jcode'=>'BQ','jlib'=>'Banque','edate'=>$p['paid'],'pdate'=>$p['paid'],'piece'=>$piece,'lib'=>$lib];
+            $entries[] = ['j'=>'BQ', 'date'=>(string)$p['paid'], 'lines'=>[
+                $bb + ['compte'=>'512000','compte_lib'=>'Banque', ($avoir?'credit':'debit')=>$a],
+                $bb + ['compte'=>'756000','compte_lib'=>'Cotisations', ($avoir?'debit':'credit')=>$a],
+            ]];
         }
     } catch (Throwable $e) { $partial = true; error_log('[fec] cotisations: '.$e->getMessage()); }
 
     // ── ACHATS fournisseurs (project_invoices validées) ──
+    // Compte de charge = poste du plan comptable associatif (comme le bilan
+    // analytique) ; un compte auxiliaire par fournisseur.
     try {
         $st = $pdo->prepare(
-            "SELECT pi.id, pi.supplier_name, pi.amount_ht, pi.amount_ttc, DATE(pi.invoice_date) idate
+            "SELECT pi.id, pi.supplier_name, pi.category, pi.account_override, pi.amount_ht, pi.amount_ttc, DATE(pi.invoice_date) idate
              FROM project_invoices pi JOIN projects p ON p.id = pi.project_id
              JOIN folders f ON f.id = p.folder_id
              WHERE f.org_id = :o AND pi.status = 'validated' AND DATE(pi.invoice_date) BETWEEN :s AND :e
              ORDER BY pi.invoice_date ASC, pi.id ASC");
         $st->execute([':o'=>$org_id, ':s'=>$start, ':e'=>$end]);
+        // Un seul libellé par compte auxiliaire : le premier nom lu (ordre
+        // de la requête) pour toutes les écritures du même fournisseur.
+        $aux_lib = [];
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $b) {
             $ttc = (float)$b['amount_ttc'];
             if (abs($ttc) < 0.005) continue;
             $ht = (float)($b['amount_ht'] ?: $b['amount_ttc']);
             $avoir = $ttc < 0; $a_ttc = abs($ttc); $a_ht = abs($ht);
             if ($a_ht > $a_ttc) $a_ht = $a_ttc;              // I3 : HT ne peut excéder TTC
+            if (!$vat_subject) $a_ht = $a_ttc;               // non assujettie : TVA non récupérable, charge au TTC
             $a_tva = round($a_ttc - $a_ht, 2);
-            $seq['AC']++; $num = 'AC'.$seq['AC']; $nb_buy++;
+            $nb_buy++;
+            [$compte, $compte_lib] = fec_charge_account($b['category'] ?? null, $b['account_override'] ?? null);
             $lib = ($avoir ? 'Avoir achat' : 'Achat').($b['supplier_name'] ? ' - '.$b['supplier_name'] : '');
-            $base = ['jcode'=>'AC','jlib'=>'Achats','num'=>$num,'edate'=>$b['idate'],'pdate'=>$b['idate'],'piece'=>'FRN'.(int)$b['id'],'lib'=>$lib];
-            $add($base + ['compte'=>'606000','compte_lib'=>'Achats', ($avoir?'credit':'debit')=>$a_ht]);
-            if ($a_tva > 0.001) $add($base + ['compte'=>'445660','compte_lib'=>'TVA déductible', ($avoir?'credit':'debit')=>$a_tva]);
-            $add($base + ['compte'=>'401000','compte_lib'=>'Fournisseurs','aux'=>'F'.(int)$b['id'],'aux_lib'=>$b['supplier_name'] ?? '', ($avoir?'debit':'credit')=>$a_ttc]);
+            $base = ['jcode'=>'AC','jlib'=>'Achats','edate'=>$b['idate'],'pdate'=>$b['idate'],'piece'=>'FRN'.(int)$b['id'],'lib'=>$lib];
+            $lines = [];
+            $lines[] = $base + ['compte'=>$compte,'compte_lib'=>$compte_lib, ($avoir?'credit':'debit')=>$a_ht];
+            if ($a_tva > 0.001) $lines[] = $base + ['compte'=>'445660','compte_lib'=>'TVA déductible', ($avoir?'credit':'debit')=>$a_tva];
+            $aux = fec_supplier_aux($b['supplier_name'] ?? '');
+            $aux_lib[$aux] ??= (trim((string)($b['supplier_name'] ?? '')) ?: 'Fournisseur divers');
+            $lines[] = $base + ['compte'=>'401000','compte_lib'=>'Fournisseurs','aux'=>$aux,'aux_lib'=>$aux_lib[$aux], ($avoir?'debit':'credit')=>$a_ttc];
+            $entries[] = ['j'=>'AC', 'date'=>(string)$b['idate'], 'lines'=>$lines];
         }
     } catch (Throwable $e) { $partial = true; error_log('[fec] achats: '.$e->getMessage()); }
+
+    // ── Numérotation chronologique par journal, puis tri du fichier par date ──
+    // usort est stable (PHP 8) : à date égale, l'ordre de lecture est gardé.
+    usort($entries, fn($a, $b) => strcmp($a['date'], $b['date']));
+    $seq = [];
+    $rows = []; $tot_debit = 0.0; $tot_credit = 0.0;
+    foreach ($entries as $en) {
+        $seq[$en['j']] = ($seq[$en['j']] ?? 0) + 1;
+        $num = $en['j'] . $seq[$en['j']];
+        foreach ($en['lines'] as $o) {
+            $rows[] = fec_line($o + ['num'=>$num]);
+            $tot_debit  += (float)($o['debit']  ?? 0);
+            $tot_credit += (float)($o['credit'] ?? 0);
+        }
+    }
 
     return ['rows'=>$rows, 'stats'=>[
         'lines'=>count($rows), 'sales'=>$nb_sales, 'cotis'=>$nb_cotis, 'buys'=>$nb_buy,
         'debit'=>round($tot_debit,2), 'credit'=>round($tot_credit,2),
         'partial'=>$partial,
         'balanced'=>!$partial && abs($tot_debit - $tot_credit) < 0.01,
+        'vat_subject'=>$vat_subject,
     ]];
 }
 }

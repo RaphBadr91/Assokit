@@ -6,15 +6,28 @@ require_login();
 
 $user = current_user();
 $org_id = (int)$user['org_id'];
-$is_admin = ($user['role'] === 'admin'); $is_coord = ($user['role'] === 'coordinator');
-$can_manage = $is_admin || $is_coord;
+$is_admin = ($user['role'] === 'admin');
+// Administrateur ou coordinateur seulement (montants, contacts des
+// financeurs, notes internes) : même règle que l'appli et les actions.
+gr_require_manage($user);
+$can_manage = gr_can_manage($user);
+
+// Message laissé par une page qui renvoie ici (suppression d'un dossier)
+$gr_flash = $_SESSION['flash_subventions'] ?? null;
+unset($_SESSION['flash_subventions']);
 
 $filter = $_GET['status'] ?? '';
-$valid_filters = ['draft','submitted','in_review','granted','rejected','reported'];
+$valid_filters = ['draft','submitted','in_review','granted','rejected','reported','archived'];
 
-$where = "g.org_id = ? AND g.archived_at IS NULL";
+// « Archivés » : les dossiers archivés (site ou appli), sinon introuvables
+// une fois sortis de la liste.
 $params = [$org_id];
-if (in_array($filter, $valid_filters, true)) { $where .= " AND g.status = ?"; $params[] = $filter; }
+if ($filter === 'archived') {
+    $where = "g.org_id = ? AND (g.archived_at IS NOT NULL OR g.status = 'archived')";
+} else {
+    $where = "g.org_id = ? AND g.archived_at IS NULL AND COALESCE(g.status, '') <> 'archived'";
+    if (in_array($filter, $valid_filters, true)) { $where .= " AND g.status = ?"; $params[] = $filter; }
+}
 
 $stmt = $pdo->prepare("SELECT g.*, p.name AS project_name FROM grants g LEFT JOIN projects p ON p.id = g.project_id WHERE $where ORDER BY
     CASE WHEN g.deadline_apply IS NOT NULL AND g.deadline_apply >= CURDATE() THEN 0 ELSE 1 END,
@@ -37,6 +50,10 @@ render_head('Subventions');
       <?php if ($can_manage): ?><a href="/subvention-form" class="gr-btn-primary">+ Nouvelle demande</a><?php endif; ?>
     </div>
 
+    <?php if (is_array($gr_flash) && !empty($gr_flash['message'])): ?>
+    <div class="gr-flash <?= ($gr_flash['type'] ?? '') === 'success' ? 'ok' : 'err' ?>" role="status"><?= h($gr_flash['message']) ?></div>
+    <?php endif; ?>
+
     <div class="gr-kpis">
       <div class="gr-kpi"><div class="gr-kpi-lbl">Total dossiers</div><div class="gr-kpi-val"><?= (int)$stats['count'] ?></div></div>
       <div class="gr-kpi"><div class="gr-kpi-lbl">Demandé</div><div class="gr-kpi-val"><?= number_format($stats['requested'], 0, ',', ' ') ?> €</div></div>
@@ -52,7 +69,12 @@ render_head('Subventions');
       <?php endforeach; ?>
     </div>
 
-    <?php if (empty($grants)): ?>
+    <?php if (empty($grants) && $filter === 'archived'): ?>
+    <div class="gr-empty">
+      <h2>Aucun dossier archivé</h2>
+      <p>Les dossiers archivés depuis le site ou l'application apparaissent ici, et peuvent être désarchivés depuis leur fiche.</p>
+    </div>
+    <?php elseif (empty($grants)): ?>
     <div class="gr-empty">
       <div class="gr-empty-emoji" style="color:#64748B;"><?= ak_icon('euro',44,'1.5') ?></div>
       <h2>Aucune subvention pour le moment</h2>
@@ -63,10 +85,9 @@ render_head('Subventions');
     <div class="gr-list">
       <?php foreach ($grants as $g):
         $m = gr_status_meta($g['status']);
-        $days_left = null;
-        if ($g['deadline_apply']) {
-          $days_left = (int)((strtotime($g['deadline_apply']) - time()) / 86400);
-        }
+        // Compte à rebours du dépôt : dossiers pas encore déposés seulement,
+        // en jours calendaires (même nombre que le tableau de bord).
+        $days_left = gr_days_to_apply($g);
       ?>
       <a href="/subvention/<?= (int)$g['id'] ?>" class="gr-row">
         <div class="gr-row-main">
@@ -77,7 +98,7 @@ render_head('Subventions');
           </div>
         </div>
         <div class="gr-row-amount">
-          <?php if ($g['status'] === 'granted' && $g['amount_granted']): ?>
+          <?php if (gr_is_granted((string)$g['status']) && $g['amount_granted']): ?>
             <strong class="gr-green"><?= number_format((float)$g['amount_granted'], 0, ',', ' ') ?> €</strong>
             <span class="gr-row-amount-sub">accordé</span>
           <?php elseif ($g['amount_requested']): ?>
@@ -88,10 +109,12 @@ render_head('Subventions');
           <?php endif; ?>
         </div>
         <span class="gr-status" style="background:<?= $m[2] ?>;color:<?= $m[1] ?>;"><?= $m[3] ?> <?= h($m[0]) ?></span>
-        <?php if ($days_left !== null && in_array($g['status'], ['draft','submitted','in_review'], true)): ?>
+        <?php if ($days_left !== null): ?>
           <span class="gr-deadline <?= $days_left < 0 ? 'gr-overdue' : ($days_left <= 7 ? 'gr-urgent' : '') ?>">
-            <?php if ($days_left < 0): ?>Retard <?= abs($days_left) ?>j<?php else: ?>J-<?= $days_left ?><?php endif; ?>
+            <?php if ($days_left < 0): ?>Retard <?= abs($days_left) ?>j<?php elseif ($days_left === 0): ?>Aujourd'hui<?php else: ?>J-<?= $days_left ?><?php endif; ?>
           </span>
+        <?php elseif (in_array($g['status'], ['submitted','in_review'], true) && !empty($g['submitted_at'])): ?>
+          <span class="gr-deadline">Déposé le <?= date('d/m', strtotime($g['submitted_at'])) ?></span>
         <?php endif; ?>
       </a>
       <?php endforeach; ?>
@@ -132,6 +155,9 @@ render_head('Subventions');
 .gr-deadline { font-size: 11px; padding: 3px 9px; border-radius: 6px; font-weight: 700; background: #f3f4f6; color: #6b7280; white-space: nowrap; }
 .gr-deadline.gr-urgent { background: #FEF3C7; color: #92400E; }
 .gr-deadline.gr-overdue { background: #FEE2E2; color: #991B1B; }
+.gr-flash { padding: 10px 14px; border-radius: 10px; font-size: 13.5px; margin-bottom: 14px; }
+.gr-flash.ok { background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }
+.gr-flash.err { background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; }
 @media (max-width: 540px) { .gr-row { flex-wrap: wrap; } .gr-row-main { flex: 1 0 100%; } }
 </style>
 <?= render_foot() ?>

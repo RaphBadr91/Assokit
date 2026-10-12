@@ -6,7 +6,8 @@
  * POST update    → met à jour un plan.
  * POST delete    → supprime un plan (si aucune org ne l'utilise).
  * POST toggle    → bascule la visibilité.
- * Réservé Fondateur/Super Admin. Porte la logique de fondateur-plans.php. NE MODIFIE PAS le site.
+ * Réservé au Fondateur, comme /fondateur-plans et /admin-plans (sa-permissions.php :
+ * can_manage_billing_config). Porte la logique de fondateur-plans.php. NE MODIFIE PAS le site.
  */
 ob_start();
 require_once __DIR__ . '/../config.php';
@@ -21,9 +22,11 @@ function plans_fail($c, $e, $m = null) { http_response_code($c); echo json_encod
 if (empty($_SESSION['user_id'])) plans_fail(401, 'auth');
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) plans_fail(401, 'auth');
 require_once __DIR__ . '/_app-founder-plan.php';
-$is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
-if (!$is_sa) plans_fail(403, 'forbidden');
+// Plans et prix : Fondateur uniquement (lecture comme écriture), un super-admin simple n'y a pas accès sur le site
+if (!app_is_founder($pdo, $user)) plans_fail(403, 'forbidden');
 
 // Champs entiers-nullable (quotas) et booléens (features)
 $INT_FIELDS = ['limit_adherents', 'limit_invoices_total', 'limit_quotes_total', 'limit_contacts', 'limit_users',

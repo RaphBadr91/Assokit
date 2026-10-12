@@ -23,6 +23,13 @@ try {
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
     $uid = (int) ($user['id'] ?? ($_SESSION['user_id'] ?? 0));
 
+    // Suiveurs (financeurs externes) : pas d'accès à la messagerie interne, comme sur le site
+    if (($user['role'] ?? '') === 'follower') {
+        echo json_encode(['ok' => true, 'allowed' => false, 'channels' => [],
+                          'message' => 'La messagerie interne est réservée aux membres de l\'association.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         SELECT c.id, c.name, c.slug, c.type, c.color_theme, c.icon,
                (SELECT COUNT(*) FROM channel_messages cm WHERE cm.channel_id = c.id AND cm.deleted_at IS NULL) AS msg_count,

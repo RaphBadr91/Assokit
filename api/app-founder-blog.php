@@ -14,6 +14,8 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 if (!app_is_founder($pdo, $user) && !( !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin')) {
     http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit;
 }
@@ -54,8 +56,9 @@ try {
             'published'  => $pub,
             'reading'    => (int) ($r['reading_time_min'] ?? 0),
             'date'       => !empty($r['created_at']) ? date('d/m/Y', strtotime($r['created_at'])) : '',
-            'pub_date'   => $pubAt ? date('d/m/Y', $pubAt) : ($pub && !empty($r['created_at']) ? date('d/m/Y', strtotime($r['created_at'])) : ''),
-            'url'        => $slug !== '' ? ('https://assokit.fr/blog/' . $slug) : '',
+            // Brouillon : ni date de publication ni lien public (/blog/… ne sert que les articles publiés : 404)
+            'pub_date'   => !$pub ? '' : ($pubAt ? date('d/m/Y', $pubAt) : (!empty($r['created_at']) ? date('d/m/Y', strtotime($r['created_at'])) : '')),
+            'url'        => ($pub && $slug !== '') ? ('https://assokit.fr/blog/' . $slug) : '',
         ];
     }
 

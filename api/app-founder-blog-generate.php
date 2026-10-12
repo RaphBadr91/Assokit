@@ -41,7 +41,8 @@ try {
         'slug'      => $slug,
         'title'     => (string) ($result['title'] ?? $title),
         'published' => (bool) $publish,
-        'url'       => $slug !== '' ? ('https://assokit.fr/blog/' . $slug) : '',
+        // Lien public seulement pour un article publié (un brouillon y donnerait une page 404)
+        'url'       => ($publish && $slug !== '') ? ('https://assokit.fr/blog/' . $slug) : '',
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[app-founder-blog-generate] ' . $e->getMessage());

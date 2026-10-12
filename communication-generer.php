@@ -506,6 +506,43 @@ $types_config = [
 
 ];
 
+// ==================================================================
+// Rouvrir un document généré (?campaign=ID, « Vos dernières générations »)
+// ou un modèle de la bibliothèque (?template=ID) : son texte s'affiche dans
+// la zone « Document généré » (copier, PDF, sauvegarder, régénérer).
+// ==================================================================
+$reopen = null;
+$type_from_title = function (string $title) use ($types_config): ?string {
+    $norm = fn($t) => mb_strtolower(trim(preg_replace('/^[^\p{L}\p{N}]+/u', '', (string)$t)));
+    $prefix = $norm(explode(' — ', $title, 2)[0]);
+    foreach ($types_config as $k => $c) {
+        if ($norm($c['title']) === $prefix) return $k;
+    }
+    return null;
+};
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && !empty($_GET['campaign'])) {
+    $stmt = $pdo->prepare("SELECT id, title, content, created_at FROM communication_campaigns WHERE id = ? AND org_id = ?");
+    $stmt->execute([(int)$_GET['campaign'], $org_id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) { header('Location: /communication?tab=bibliotheque'); exit; }
+    $reopen = ['kind' => 'campaign', 'id' => (int)$row['id'], 'title' => (string)$row['title'],
+               'content' => (string)$row['content'], 'date' => (string)$row['created_at']];
+    $type = $type_from_title((string)$row['title']) ?? 'libre';
+} elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && !empty($_GET['template'])) {
+    $stmt = $pdo->prepare("SELECT * FROM communication_saved_templates WHERE id = ? AND org_id = ?");
+    $stmt->execute([(int)$_GET['template'], $org_id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) { header('Location: /communication?tab=bibliotheque'); exit; }
+    $reopen = ['kind' => 'template', 'id' => (int)$row['id'], 'title' => (string)($row['title'] ?? ''),
+               'content' => (string)($row['content'] ?? ''), 'date' => (string)($row['updated_at'] ?? $row['created_at'] ?? '')];
+    $type = isset($types_config[$row['type'] ?? '']) ? $row['type'] : 'libre';
+    // Réutilisation du modèle (compteur affiché dans la bibliothèque)
+    try {
+        $pdo->prepare("UPDATE communication_saved_templates SET usage_count = COALESCE(usage_count, 0) + 1 WHERE id = ? AND org_id = ?")
+            ->execute([(int)$row['id'], $org_id]);
+    } catch (Throwable $e) {}
+}
+
 // Type non supporté → retour catalogue
 if (!$type || !isset($types_config[$type])) {
     render_head('Communication — Type non disponible');
@@ -531,12 +568,67 @@ if (!$type || !isset($types_config[$type])) {
 $config = $types_config[$type];
 
 // ==================================================================
+// « Télécharger PDF » : le PDF reprend le texte affiché, corrections comprises.
+// Le texte est d'abord enregistré dans le document (communication_campaigns),
+// puis communication-pdf.php le met en page. Un modèle de la bibliothèque
+// devient un nouveau document au premier PDF.
+// ==================================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'pdf') {
+    if (!check_csrf($_POST['csrf_token'] ?? '')) {
+        http_response_code(403);
+        die('Session expirée : rechargez la page puis recommencez.');
+    }
+    $content = trim(str_replace("\r\n", "\n", (string)($_POST['content'] ?? '')));
+    $cid = (int)($_POST['campaign_id'] ?? 0);
+    if ($content === '') {
+        http_response_code(400);
+        die('Le document est vide : rien à mettre en PDF.');
+    }
+    try {
+        if ($cid > 0) {
+            $stmt = $pdo->prepare("SELECT id FROM communication_campaigns WHERE id = ? AND org_id = ?");
+            $stmt->execute([$cid, $org_id]);
+            if (!$stmt->fetchColumn()) { http_response_code(404); die('Document introuvable.'); }
+            $pdo->prepare("UPDATE communication_campaigns SET content = ? WHERE id = ? AND org_id = ?")
+                ->execute([$content, $cid, $org_id]);
+        } else {
+            // Même texte déjà mis en PDF dans l'heure (double clic) : même document
+            $title_prefix = $config['title'] . ' — ';
+            $stmt = $pdo->prepare("SELECT id FROM communication_campaigns
+                                   WHERE org_id = ? AND created_by = ? AND content = ? AND title LIKE ?
+                                     AND created_at > NOW() - INTERVAL 1 HOUR
+                                   ORDER BY id DESC LIMIT 1");
+            $stmt->execute([$org_id, $user_id, $content, addcslashes($title_prefix, '%_\\') . '%']);
+            $cid = (int)$stmt->fetchColumn();
+            if ($cid <= 0) {
+                $channel = ($config['category'] === 'reseaux_sociaux') ? 'facebook' : 'other';
+                $pdo->prepare("INSERT INTO communication_campaigns
+                                   (org_id, created_by, channel, title, content, status, ai_generated, ai_cost_euros, created_at)
+                               VALUES (?, ?, ?, ?, ?, 'draft', 0, 0, NOW())")
+                    ->execute([$org_id, $user_id, $channel, $title_prefix . date('d/m/Y H:i'), $content]);
+                $cid = (int)$pdo->lastInsertId();
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[communication-generer] pdf org ' . $org_id . ' : ' . $e->getMessage());
+        http_response_code(500);
+        die('Le document n’a pas pu être enregistré. Réessayez dans quelques minutes.');
+    }
+    header('Location: /communication-pdf?id=' . $cid, true, 303);
+    exit;
+}
+
+// ==================================================================
 // Traitement POST : génération IA
 // ==================================================================
 $generated = null;
 $campaign_id = null;
 $error = null;
 $form_values = $_POST;
+if ($reopen) {
+    $generated = $reopen['content'];
+    $campaign_id = $reopen['kind'] === 'campaign' ? $reopen['id'] : null;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && check_csrf($_POST['csrf_token'] ?? '')) {
 
@@ -713,8 +805,14 @@ render_sidebar('communication');
 
             <?php elseif ($f['type'] === 'select_project'): ?>
               <?php
-              $stmt = $pdo->prepare("SELECT p.id, p.title FROM projects p JOIN folders fo ON p.folder_id = fo.id WHERE fo.org_id = ? ORDER BY p.title");
-              $stmt->execute([$org_id]);
+              // projects n'a pas de colonne title (name) ; les projets archivés ne sont pas proposés
+              try {
+                  $stmt = $pdo->prepare("SELECT p.id, p.name AS title FROM projects p JOIN folders fo ON p.folder_id = fo.id WHERE fo.org_id = ? AND p.archived_at IS NULL ORDER BY p.name");
+                  $stmt->execute([$org_id]);
+              } catch (Throwable $e) {
+                  $stmt = $pdo->prepare("SELECT p.id, p.name AS title FROM projects p JOIN folders fo ON p.folder_id = fo.id WHERE fo.org_id = ? ORDER BY p.name");
+                  $stmt->execute([$org_id]);
+              }
               $projects = $stmt->fetchAll(PDO::FETCH_ASSOC);
               ?>
               <select id="f_<?= $key ?>" name="<?= $key ?>">
@@ -750,16 +848,29 @@ render_sidebar('communication');
     <section class="gen-result-wrap">
       <?php if ($generated): ?>
         <div class="gen-result-head">
-          <div class="gen-result-title">📄 Document généré</div>
+          <div class="gen-result-title">📄 <?= $reopen && $reopen['kind'] === 'template' ? 'Modèle « ' . h($reopen['title']) . ' »' : 'Document généré' ?></div>
           <div class="gen-result-actions">
             <button type="button" class="btn btn-ghost" onclick="copyGen()">📋 Copier</button>
-            <?php if (!empty($campaign_id)): ?><a href="/communication-pdf?id=<?= (int)$campaign_id ?>" class="btn btn-ghost" target="_blank" rel="noopener">📄 Télécharger PDF</a><?php else: ?><button type="button" class="btn btn-ghost" onclick="downloadGen()">💾 Télécharger</button><?php endif; ?>
+            <form id="gen-pdf-form" method="POST" action="/communication-generer" target="_blank" style="display:inline; margin:0;">
+              <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
+              <input type="hidden" name="action" value="pdf">
+              <input type="hidden" name="type" value="<?= h($type) ?>">
+              <input type="hidden" name="campaign_id" value="<?= (int)($campaign_id ?? 0) ?>">
+              <button type="submit" class="btn btn-ghost" title="Le PDF reprend le texte affiché, avec vos corrections">📄 Télécharger PDF</button>
+            </form>
+            <button type="button" class="btn btn-ghost" onclick="downloadGen()">💾 Texte</button>
             <button type="button" class="btn btn-ghost" onclick="saveGen()">⭐ Sauvegarder</button>
           </div>
         </div>
-        <textarea id="gen-content" class="gen-content" rows="28"><?= h($generated) ?></textarea>
+        <textarea id="gen-content" name="content" form="gen-pdf-form" class="gen-content" rows="28"><?= h($generated) ?></textarea>
         <div style="text-align:right;font-size:11.5px;color:var(--ink-3);margin-top:6px">
-          Généré par Assokit IA
+          <?php if ($reopen && $reopen['kind'] === 'campaign'): ?>
+            Document du <?= h(date('d/m/Y à H:i', strtotime($reopen['date']))) ?> · vos corrections sont enregistrées au téléchargement du PDF
+          <?php elseif ($reopen): ?>
+            Modèle de votre bibliothèque · le PDF en fait un nouveau document
+          <?php else: ?>
+            Généré par Assokit IA · vos corrections sont reprises dans le PDF
+          <?php endif; ?>
         </div>
       <?php else: ?>
         <div class="gen-empty">

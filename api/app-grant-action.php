@@ -1,9 +1,9 @@
 <?php
 /**
  * api/app-grant-action.php — Actions sur une subvention depuis l'app (natif).
- * Reproduit action-subvention.php (toggle_step, log_relance, archive, status). JSON.
+ * Reproduit action-subvention.php (toggle_step, log_relance, archive, unarchive, status). JSON.
  *
- * Rôle : admin ou coordinateur (archive : admin seul, parité web).
+ * Rôle : admin ou coordinateur (archive / unarchive : admin seul, parité web).
  * NE MODIFIE PAS le site.
  */
 require __DIR__ . '/_app-write-boot.php';
@@ -55,7 +55,8 @@ try {
 
     /* Changer le statut du dossier */
     if ($action === 'set_status') {
-        if (!empty($g['archived_at'])) app_fail(409, 'state', 'Ce dossier est archivé : désarchivez-le sur le site pour le rouvrir.');
+        // Le site propose « Désarchiver » sur la fiche (admin), filtre « Archivés »
+        if (gr_is_archived($g)) app_fail(409, 'state', 'Ce dossier est archivé : désarchivez-le sur le site (Subventions › Archivés) pour le rouvrir.');
         $valid = ['draft', 'submitted', 'in_review', 'granted', 'rejected', 'reported'];
         $new = (string) ($input['status'] ?? '');
         if (!in_array($new, $valid, true)) app_fail(422, 'invalid', 'Statut invalide.');
@@ -90,10 +91,21 @@ try {
     /* Archiver le dossier (admin seul, parité web) */
     if ($action === 'archive') {
         if (!$is_admin) app_fail(403, 'role', 'Seul un administrateur peut archiver un dossier.');
-        $pdo->prepare("UPDATE grants SET archived_at = NOW(), status = 'archived' WHERE id = ? AND org_id = ?")
-            ->execute([$grant_id, $org_id]);
-        gr_log($pdo, $grant_id, $uid, 'archive', '📦 Dossier archivé');
+        // Même helper que le site : l'ancien statut est noté au journal
+        // pour être rétabli au désarchivage.
+        // Sur archived_at : un dossier au statut « archived » sans date
+        // (ancien formulaire) reçoit ainsi sa date d'archivage.
+        if (empty($g['archived_at'])) gr_archive($pdo, $g, $uid);
         echo json_encode(['ok' => true, 'id' => $grant_id, 'archived' => true, 'message' => 'Dossier archivé.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    /* Désarchiver le dossier (admin seul, parité web) */
+    if ($action === 'unarchive') {
+        if (!$is_admin) app_fail(403, 'role', 'Seul un administrateur peut désarchiver un dossier.');
+        $restored = gr_is_archived($g) ? gr_unarchive($pdo, $g, $uid) : (string) $g['status'];
+        echo json_encode(['ok' => true, 'id' => $grant_id, 'archived' => false, 'status' => $restored,
+            'message' => 'Dossier désarchivé (statut : ' . gr_status_meta($restored)[0] . ').'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 

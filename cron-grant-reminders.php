@@ -7,11 +7,12 @@
  *   /usr/bin/php /home/pura7044/public_html/cron-grant-reminders.php
  *
  * Envoie un email aux admins de l'org pour :
- *   - J-7, J-1, jour J : avant deadline dépôt
- *   - Retard : si deadline dépôt dépassée et statut draft/submitted
+ *   - J-7, J-1, jour J : avant deadline dépôt (dossier encore en brouillon)
+ *   - Retard : si deadline dépôt dépassée et dossier toujours en brouillon
  *   - J-30, J-7 : avant deadline bilan (statut granted)
  *   - Retard bilan : si deadline_report dépassée
- * Chaque rappel n'est envoyé qu'1x grâce à grant_reminders_sent.
+ * Chaque rappel n'est envoyé qu'1x grâce à grant_reminders_sent, posé
+ * seulement si l'envoi a réussi : un envoi en échec repart au passage suivant.
  */
 
 require_once __DIR__ . '/config.php';
@@ -65,10 +66,17 @@ echo "→ " . count($grants) . " scanné(s) ce passage\n";
 $sent_total = 0;
 
 function reminder_send(PDO $pdo, array $grant, string $type, string $subject, string $bodyHtml, string $bodyText): bool {
-    // Vérifier qu'on n'a pas déjà envoyé ce type
-    $stmt = $pdo->prepare("SELECT 1 FROM grant_reminders_sent WHERE grant_id = ? AND reminder_type = ?");
-    $stmt->execute([$grant['id'], $type]);
-    if ($stmt->fetch()) return false;
+    // Vérifier qu'on n'a pas déjà envoyé ce type. Si la vérification est
+    // impossible (table absente…), on n'envoie pas : sans elle, le même
+    // rappel repartirait à chaque passage.
+    try {
+        $stmt = $pdo->prepare("SELECT 1 FROM grant_reminders_sent WHERE grant_id = ? AND reminder_type = ?");
+        $stmt->execute([$grant['id'], $type]);
+        if ($stmt->fetch()) return false;
+    } catch (Throwable $e) {
+        echo "  ! " . $e->getMessage() . "\n";
+        return false;
+    }
 
     // Récupérer admins de l'org
     $stmt = $pdo->prepare("SELECT email, first_name FROM users WHERE org_id = ? AND role = 'admin' AND is_active = 1");
@@ -76,15 +84,18 @@ function reminder_send(PDO $pdo, array $grant, string $type, string $subject, st
     $admins = $stmt->fetchAll();
     if (empty($admins)) return false;
 
+    // Même canal que les autres e-mails transactionnels (resend-helper.php),
+    // dont on lit le résultat : un rappel n'est noté envoyé que s'il est
+    // vraiment parti, sinon il est retenté au passage suivant.
     $sent_any = false;
     foreach ($admins as $a) {
         if (!filter_var($a['email'], FILTER_VALIDATE_EMAIL)) continue;
         try {
             if (ak_demo_mail_blocked($a['email'])) {
                 $sent_any = true;   // démo : envoi simulé
-            } elseif (function_exists('send_email_resend')) {
-                send_email_resend($a['email'], $subject, $bodyHtml, $bodyText);
-                $sent_any = true;
+            } elseif (function_exists('send_transactional_email')) {
+                $r = send_transactional_email($a['email'], $subject, $bodyHtml, ['tag' => 'grant_reminder']);
+                if (!empty($r['success'])) $sent_any = true;
             } else {
                 // Fallback mail() PHP
                 $headers = "MIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\nFrom: AssoKit <noreply@assokit.fr>\r\n";
@@ -128,9 +139,10 @@ foreach ($grants as $g) {
     ak_tour_vu($pdo, 'grant-reminders', (int) $g['id']);
 
     // === DEADLINE DÉPÔT ===
-    if (in_array($g['status'], ['draft','submitted','in_review'], true) && $g['deadline_apply']) {
-        $diff = (int)((strtotime($g['deadline_apply']) - strtotime($today)) / 86400);
-
+    // Seulement pour un dossier pas encore déposé : un dossier « Déposé »
+    // ou « en instruction » recevait « Dépose le dossier MAINTENANT ».
+    $diff = $g['deadline_apply'] ? gr_days_between($today, (string)$g['deadline_apply']) : null;
+    if ($g['status'] === 'draft' && empty($g['submitted_at']) && $diff !== null) {
         if ($diff === 7) {
             list($s, $h, $t) = build_email($g, "⏰ Deadline dans 7 jours", '#F59E0B', 'J-7', "La deadline de dépôt approche. Vérifie que ton dossier est prêt et complet.");
             if (reminder_send($pdo, $g, 'apply_7d', $s, $h, $t)) { echo "  ✓ J-7 dépôt #{$g['id']}\n"; $sent_total++; }
@@ -143,16 +155,15 @@ foreach ($grants as $g) {
             list($s, $h, $t) = build_email($g, "🚨 C'est aujourd'hui !", '#DC2626', "JOUR J", "Dépose le dossier MAINTENANT, avant la fermeture (vérifie l'heure limite).");
             if (reminder_send($pdo, $g, 'apply_0d', $s, $h, $t)) { echo "  ✓ J0 dépôt #{$g['id']}\n"; $sent_total++; }
         }
-        if ($diff < 0 && $g['status'] !== 'submitted') {
+        if ($diff < 0) {
             list($s, $h, $t) = build_email($g, "❌ Deadline dépassée", '#7F1D1D', 'RETARD', "Le dossier n'a pas encore été déposé alors que la deadline est dépassée. Contacte le financeur pour savoir si un dépôt tardif est possible.");
             if (reminder_send($pdo, $g, 'apply_overdue', $s, $h, $t)) { echo "  ✓ Retard dépôt #{$g['id']}\n"; $sent_total++; }
         }
     }
 
     // === DEADLINE BILAN ===
-    if ($g['status'] === 'granted' && $g['deadline_report'] && !$g['reported_at']) {
-        $diff = (int)((strtotime($g['deadline_report']) - strtotime($today)) / 86400);
-
+    $diff = $g['deadline_report'] ? gr_days_between($today, (string)$g['deadline_report']) : null;
+    if ($g['status'] === 'granted' && $diff !== null && !$g['reported_at']) {
         if ($diff === 30) {
             list($s, $h, $t) = build_email($g, "📊 Bilan à rendre dans 30 jours", '#3B82F6', 'BILAN J-30', "Pense à préparer le bilan de cette subvention. Compile factures, photos et rapport d'activité.");
             if (reminder_send($pdo, $g, 'report_30d', $s, $h, $t)) { echo "  ✓ J-30 bilan #{$g['id']}\n"; $sent_total++; }

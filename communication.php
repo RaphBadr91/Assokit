@@ -10,6 +10,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+@require_once __DIR__ . '/resend-helper.php';   // état des envois de diffusion (ak_comm_broadcast_running)
 require_login();
 require_capability('access_marketing');
 
@@ -48,7 +49,7 @@ try {
 // Stats V2 diffusion
 $nb_broadcasts = 0;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM communication_broadcasts WHERE org_id = ? AND status = 'sent'");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM communication_broadcasts WHERE org_id = ? AND status IN ('sent', 'partial')");
     $stmt->execute([$org_id]);
     $nb_broadcasts = (int) $stmt->fetchColumn();
 } catch (Throwable $e) {}
@@ -138,7 +139,7 @@ render_sidebar('communication');
 <div class="main">
 
   <?php if ($flash): ?>
-    <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom:18px;">
+    <div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : 'alert-error' ?>" style="margin-bottom:18px;<?= ($flash['type'] ?? '') === 'warning' ? ' background:#FEF3C7; color:#92400E; border-color:#FCD34D;' : '' ?>">
       <span><?= $flash['type'] === 'success' ? ak_icon('check-circle',15) : ak_icon('alert-tri',15) ?></span>
       <div><?= h($flash['message']) ?></div>
     </div>
@@ -207,12 +208,12 @@ render_sidebar('communication');
     </section>
 
     <?php if (!empty($recent_campaigns)): ?>
-    <div class="comm-sec-h2"><b>Vos dernières générations</b><a href="/communication?tab=bibliotheque">Tout voir →</a></div>
+    <div class="comm-sec-h2"><b>Vos dernières générations</b><a href="/communication?tab=bibliotheque#documents">Tout voir →</a></div>
     <section class="comm-recents">
       <?php foreach ($recent_campaigns as $rc):
         $rc_sent = ($rc['status'] ?? '') === 'sent';
       ?>
-        <a href="/communication?tab=bibliotheque" class="comm-recent">
+        <a href="/communication-generer?campaign=<?= (int)$rc['id'] ?>" class="comm-recent">
           <div class="comm-recent-t"><span class="comm-recent-i"><?= ak_icon('sparkle',14) ?></span><h4><?= h($rc['title']) ?></h4></div>
           <p><span class="comm-recent-badge<?= $rc_sent ? '' : ' draft' ?>"><?= $rc_sent ? 'Envoyé' : 'Brouillon' ?></span> · <?= h(date('d/m/Y', strtotime($rc['created_at']))) ?></p>
         </a>
@@ -267,6 +268,14 @@ render_sidebar('communication');
         $stmt->execute([$org_id]);
         $broadcasts = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {}
+    // « En cours » seulement si un envoi tient encore le verrou de la diffusion ; sinon l'envoi
+    // a été coupé en route (à reprendre depuis la fiche de la diffusion)
+    $bc_running = [];
+    if (function_exists('ak_comm_broadcast_running')) {
+        foreach ($broadcasts as $b) {
+            if (($b['status'] ?? '') === 'sending') $bc_running[(int)$b['id']] = ak_comm_broadcast_running($pdo, (int)$b['id']);
+        }
+    }
     ?>
 
     <?php if (empty($broadcasts)): ?>
@@ -290,15 +299,19 @@ render_sidebar('communication');
               </div>
             </div>
             <div style="font-size:12px; color:var(--ink-3); text-align:right;">
-              <?php if ($b['status'] === 'sent'): ?>
+              <?php if ($b['status'] === 'sent' || $b['status'] === 'partial'): ?>
                 <strong style="color:var(--acc);"><?= (int)$b['nb_sent'] ?></strong> envoyé<?= $b['nb_sent'] > 1 ? 's' : '' ?>
                 <?php if ($b['nb_failed'] > 0): ?>
                   <br><span style="color:#EF4444;"><?= (int)$b['nb_failed'] ?> échec<?= $b['nb_failed'] > 1 ? 's' : '' ?></span>
                 <?php endif; ?>
               <?php else: ?>
-                <span style="background:var(--bg-3); padding:2px 7px; border-radius:999px; font-size:11px;">
-                  <?= match($b['status']) { 'draft' => 'Brouillon', 'sending' => 'En cours', 'failed' => 'Échec', default => h($b['status']) } ?>
+                <?php $bc_stopped = $b['status'] === 'sending' && isset($bc_running[(int)$b['id']]) && !$bc_running[(int)$b['id']]; ?>
+                <span style="background:<?= $b['status'] === 'failed' ? '#FEE2E2; color:#991B1B' : ($bc_stopped ? '#FEF3C7; color:#92400E' : 'var(--bg-3)') ?>; padding:2px 7px; border-radius:999px; font-size:11px;"<?= $bc_stopped ? ' title="L’envoi s’est interrompu : reprenez-le depuis la fiche de la diffusion."' : '' ?>>
+                  <?= $bc_stopped ? 'Interrompu' : match($b['status']) { 'draft' => 'Brouillon', 'sending' => 'En cours', 'failed' => 'Échec', default => h($b['status']) } ?>
                 </span>
+                <?php if ($b['status'] === 'failed' && $b['nb_failed'] > 0): ?>
+                  <br><span style="color:#EF4444;"><?= (int)$b['nb_failed'] ?> échec<?= $b['nb_failed'] > 1 ? 's' : '' ?></span>
+                <?php endif; ?>
               <?php endif; ?>
             </div>
             <div>
@@ -329,6 +342,7 @@ render_sidebar('communication');
             SELECT e.*,
                    u.first_name, u.last_name,
                    (SELECT COUNT(*) FROM communication_event_rsvps WHERE event_id = e.id AND response = 'yes') AS nb_yes,
+                   (SELECT COALESCE(SUM(1 + COALESCE(nb_accompanying, 0)), 0) FROM communication_event_rsvps WHERE event_id = e.id AND response = 'yes') AS nb_people,
                    (SELECT COUNT(*) FROM communication_event_rsvps WHERE event_id = e.id AND response = 'maybe') AS nb_maybe,
                    (SELECT COUNT(*) FROM communication_event_rsvps WHERE event_id = e.id AND response = 'no') AS nb_no
             FROM communication_events e
@@ -362,7 +376,7 @@ render_sidebar('communication');
              style="display:block; padding:18px; text-decoration:none; color:inherit; <?= $is_past ? 'opacity:0.65;' : '' ?>">
             <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
               <div style="font-size:11px; font-weight:500; color:var(--acc); letter-spacing:0.03em; text-transform:uppercase;">
-                <?= date('d M Y', strtotime($e['start_date'])) ?> · <?= date('H:i', strtotime($e['start_date'])) ?>
+                <?= h(fr_format_date('%d %b %Y', strtotime($e['start_date']))) ?> · <?= date('H:i', strtotime($e['start_date'])) ?>
               </div>
               <?php if ($is_past): ?>
                 <span style="font-size:10px; background:var(--bg-3); color:var(--ink-3); padding:2px 7px; border-radius:999px;">Passé</span>
@@ -383,6 +397,9 @@ render_sidebar('communication');
                 <span style="color:var(--acc);">✓ <?= (int)$e['nb_yes'] ?></span>
                 <span style="color:var(--ink-3);">? <?= (int)$e['nb_maybe'] ?></span>
                 <span style="color:var(--ink-4);">✕ <?= (int)$e['nb_no'] ?></span>
+                <span style="margin-left:auto; color:var(--ink-2);" title="Réponses oui et leurs accompagnants">
+                  <?= (int)$e['nb_people'] ?><?= (int)$e['max_attendees'] > 0 ? ' / ' . (int)$e['max_attendees'] : '' ?> pers.
+                </span>
               </div>
             <?php endif; ?>
           </a>
@@ -433,9 +450,24 @@ render_sidebar('communication');
     ");
     $stmt->execute([$org_id]);
     $tpls = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Documents générés (communication_campaigns) : rouverts dans le générateur
+    $docs = [];
+    try {
+        $stmt = $pdo->prepare("
+          SELECT c.id, c.title, c.status, c.created_at, u.first_name, u.last_name
+          FROM communication_campaigns c
+          LEFT JOIN users u ON c.created_by = u.id
+          WHERE c.org_id = ?
+          ORDER BY c.created_at DESC, c.id DESC
+          LIMIT 50
+        ");
+        $stmt->execute([$org_id]);
+        $docs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) { $docs = []; }
     ?>
 
-    <?php if (empty($tpls)): ?>
+    <?php if (empty($tpls) && empty($docs)): ?>
       <div class="empty-state" style="padding:60px 20px">
         <div style="margin-bottom:10px;color:#64748B"><?= ak_icon('book', 44, '1.5') ?></div>
         <div style="font-size:17px;color:var(--ink);font-weight:500;margin-bottom:6px">Votre bibliothèque est vide</div>
@@ -445,20 +477,43 @@ render_sidebar('communication');
         <a href="/communication?tab=rediger" class="btn btn-primary">Générer un premier document →</a>
       </div>
     <?php else: ?>
+      <?php if (!empty($tpls)): ?>
+      <div class="comm-sec-h2"><b>Modèles sauvegardés</b></div>
       <div class="comm-lib">
         <?php foreach ($tpls as $t): ?>
-          <div class="comm-lib-row">
+          <a href="/communication-generer?template=<?= (int)$t['id'] ?>" class="comm-lib-row" style="color:inherit; text-decoration:none;">
             <div class="comm-lib-main">
               <div class="comm-lib-title"><?php if ($t['is_favorite']): ?><?= ak_icon('star-fill',13) ?> <?php endif; ?><?= h($t['title']) ?></div>
               <div class="comm-lib-meta">
                 <span class="comm-lib-cat"><?= h($t['category']) ?></span>
                 par <?= h(trim(($t['first_name'] ?? '') . ' ' . ($t['last_name'] ?? ''))) ?>
-                · <?= (int) $t['usage_count'] ?> utilisations
+                · <?= (int) $t['usage_count'] ?> utilisation<?= (int) $t['usage_count'] > 1 ? 's' : '' ?>
               </div>
             </div>
-          </div>
+            <span style="font-size:12.5px; color:var(--acc); font-weight:500; white-space:nowrap;">Ouvrir →</span>
+          </a>
         <?php endforeach; ?>
       </div>
+      <?php endif; ?>
+
+      <?php if (!empty($docs)): ?>
+      <div class="comm-sec-h2" id="documents"><b>Documents générés</b></div>
+      <div class="comm-lib">
+        <?php foreach ($docs as $d): ?>
+          <a href="/communication-generer?campaign=<?= (int)$d['id'] ?>" class="comm-lib-row" style="color:inherit; text-decoration:none;">
+            <div class="comm-lib-main">
+              <div class="comm-lib-title"><?= h($d['title']) ?></div>
+              <div class="comm-lib-meta">
+                <span class="comm-lib-cat"><?= ($d['status'] ?? '') === 'sent' ? 'Envoyé' : 'Brouillon' ?></span>
+                par <?= h(trim(($d['first_name'] ?? '') . ' ' . ($d['last_name'] ?? ''))) ?>
+                · <?= h(date('d/m/Y', strtotime($d['created_at']))) ?>
+              </div>
+            </div>
+            <span style="font-size:12.5px; color:var(--acc); font-weight:500; white-space:nowrap;">Ouvrir →</span>
+          </a>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
     <?php endif; ?>
 
   <?php endif; ?>

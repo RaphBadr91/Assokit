@@ -25,6 +25,7 @@
  * ------------------------------------------------------------------
  */
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes-grants.php';
 
 $cli = (php_sapi_name() === 'cli');
 if (!$cli) {
@@ -170,8 +171,9 @@ while ($url && $page < $maxPages) {
             $summary = mb_substr($summary, 0, 480);
         }
 
-        $apply = $aid['application_url'] ?? ($aid['origin_url'] ?? ($aid['url'] ?? null));
-        $srcUrl = $aid['url'] ?? ($aid['origin_url'] ?? null);
+        // Liens affichés tels quels dans le radar : http(s) seulement
+        $apply = gr_http_url($aid['application_url'] ?? '') ?? gr_http_url($aid['origin_url'] ?? '') ?? gr_http_url($aid['url'] ?? '');
+        $srcUrl = gr_http_url($aid['url'] ?? '') ?? gr_http_url($aid['origin_url'] ?? '');
         $deadline = !empty($aid['submission_deadline']) ? substr((string)$aid['submission_deadline'], 0, 10) : null;
         if ($deadline && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $deadline)) $deadline = null;
 

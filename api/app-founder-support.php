@@ -14,6 +14,8 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 if (!app_is_founder($pdo, $user) && !( !empty($user['is_super_admin']) || ($user['role'] ?? '') === 'super_admin')) {
     http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit;
 }
@@ -30,7 +32,9 @@ $ST_META = [
 ];
 
 try {
-    $open_nb    = (int) $scalar("SELECT COUNT(*) FROM support_tickets WHERE status IN ('open','in_progress')");
+    // « Ouverts » : même périmètre que la liste du filtre ci-dessous et que l'onglet du cockpit web
+    // (super-admin-support.php) — un ticket en attente de l'association reste ouvert
+    $open_nb    = (int) $scalar("SELECT COUNT(*) FROM support_tickets WHERE status IN ('open','in_progress','waiting_user')");
     $unread_nb  = (int) $scalar("SELECT COUNT(DISTINCT t.id) FROM support_tickets t JOIN support_messages m ON m.ticket_id=t.id WHERE m.author_side='org' AND m.read_by_support=0 AND m.is_internal_note=0");
 
     $where = "1=1";

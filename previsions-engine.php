@@ -6,7 +6,8 @@
  *   - historique mensuel recettes / dépenses / net ;
  *   - indice de saisonnalité (recettes & adhésions) ;
  *   - entrées futures connues (créances échéancées + récurrences) ;
- *   - prévision N mois (moyenne mobile ajustée de la saisonnalité) ;
+ *   - prévision : reste du mois en cours puis N mois (moyenne mobile
+ *     ajustée de la saisonnalité) ;
  *   - alertes de tendance.
  *
  * Sources (toutes scopées par org_id) :
@@ -92,6 +93,23 @@ function ak_prev_history(PDO $pdo, int $org_id, int $months = 24): array {
 }
 }
 
+if (!function_exists('ak_prev_active_months')) {
+/**
+ * Mois PLEINS de l'historique (sans le mois en cours), à partir du premier
+ * mois avec une recette ou une dépense.
+ */
+function ak_prev_active_months(array $history): array {
+    unset($history[date('Y-m')]);
+    $out = []; $started = false;
+    foreach ($history as $ym=>$v) {
+        if (!$started && (float)$v['rev'] == 0.0 && (float)$v['exp'] == 0.0) continue;
+        $started = true;
+        $out[$ym] = $v;
+    }
+    return $out;
+}
+}
+
 if (!function_exists('ak_prev_seasonal_index')) {
 /**
  * Indice de saisonnalité des recettes par mois calendaire (1..12).
@@ -99,8 +117,15 @@ if (!function_exists('ak_prev_seasonal_index')) {
  * @return array<int,float>
  */
 function ak_prev_seasonal_index(array $history): array {
+    // Mois pleins depuis la première activité : le mois en cours n'est pas
+    // terminé, et les mois d'avant l'arrivée sur Assokit ne sont pas des
+    // mois sans recettes. Moins d'un an de données : indices neutres (sinon
+    // un mois sans historique passait pour le « plus faible »).
+    $full = ak_prev_active_months($history);
+    $idx = array_fill(1, 12, 1.0);
+    if (count($full) < 12) return $idx;
     $byMonth = array_fill(1, 12, []);
-    foreach ($history as $ym=>$v) {
+    foreach ($full as $ym=>$v) {
         $mo = (int)substr($ym, 5, 2);
         $byMonth[$mo][] = $v['rev'];
     }
@@ -110,7 +135,6 @@ function ak_prev_seasonal_index(array $history): array {
         else $monthAvg[$mo] = null;
     }
     $global = $all ? array_sum($all)/count($all) : 0.0;
-    $idx = array_fill(1, 12, 1.0);
     if ($global > 0) {
         foreach ($monthAvg as $mo=>$avg) $idx[$mo] = ($avg === null) ? 1.0 : round($avg / $global, 3);
     }
@@ -118,49 +142,124 @@ function ak_prev_seasonal_index(array $history): array {
 }
 }
 
+if (!function_exists('ak_prev_horizon_keys')) {
+/** Mois projetés : le mois en cours (son reste) puis les $horizon suivants. */
+function ak_prev_horizon_keys(int $horizon): array {
+    $keys = [date('Y-m')];
+    for ($i = 1; $i <= $horizon; $i++) $keys[] = date('Y-m', strtotime("first day of +$i month"));
+    return $keys;
+}
+}
+
+if (!function_exists('ak_prev_recurrence_amount')) {
+/**
+ * Montant TTC (euros) d'une facture générée par une récurrence : mêmes
+ * sources que la génération (asso-recurrence-helpers.php) — les lignes de la
+ * facture source, sinon template_data (lignes saisies HT ou TTC).
+ */
+function ak_prev_recurrence_amount(PDO $pdo, array $rec): float {
+    $src = (int)($rec['source_invoice_id'] ?? 0);
+    if ($src > 0) {
+        try {
+            $st = $pdo->prepare("SELECT amount_ttc_cents FROM asso_invoices WHERE id = ? AND org_id = ?");
+            $st->execute([$src, (int)$rec['org_id']]);
+            $v = $st->fetchColumn();
+            if ($v !== false && (int)$v > 0) return (int)$v / 100;
+        } catch (Throwable $e) {}
+    }
+    $td = json_decode((string)($rec['template_data'] ?? ''), true);
+    if (!is_array($td) || empty($td['lines']) || !is_array($td['lines'])) return 0.0;
+    $vm = (string)($rec['vat_mode'] ?? 'none');
+    $rec_rate = in_array($vm, ['5.5', '10', '20'], true) ? (float)$vm : null;
+    $cents = 0;
+    foreach ($td['lines'] as $l) {
+        if (!is_array($l)) continue;
+        $qty = round((float)($l['quantity'] ?? 1), 2);
+        if (isset($l['unit_price_ht_cents']) || isset($l['unit_price_ht'])) {
+            $vat = array_key_exists('vat_rate', $l)
+                ? ($l['vat_rate'] === null || $l['vat_rate'] === '' ? null : (float)$l['vat_rate'])
+                : $rec_rate;
+            $up = isset($l['unit_price_ht_cents']) ? (int)$l['unit_price_ht_cents'] : (int)round((float)$l['unit_price_ht'] * 100);
+            $ht = (int)round($qty * $up);
+            $cents += $ht + (($vat !== null && $vat > 0) ? (int)round($ht * $vat / 100) : 0);
+        } else {
+            $cents += (int)round($qty * (int)($l['unit_price_cents_ttc'] ?? 0));
+        }
+    }
+    return max(0, $cents) / 100;
+}
+}
+
 if (!function_exists('ak_prev_known_inflows')) {
 /**
- * Entrées futures « connues » par mois, sur $horizon mois à venir :
- *   - créances (factures pending/overdue) rattachées à leur échéance ;
- *   - factures récurrentes programmées (next_run_date).
+ * Entrées « connues » par mois, du mois en cours à $horizon mois :
+ *   - créances (factures pending/overdue) à leur échéance ; celles déjà
+ *     échues ou sans échéance sont attendues dans le mois en cours ;
+ *   - chaque facture que les récurrences actives émettront sur la période,
+ *     attendue à son échéance (émission + délai de paiement, 30 j par défaut).
  * @return array<string,array{receivables:float,recurring:float}>
  */
 function ak_prev_known_inflows(PDO $pdo, int $org_id, int $horizon = 6): array {
-    // Mois à venir, à partir du mois prochain.
-    $keys = [];
-    for ($i = 1; $i <= $horizon; $i++) $keys[] = date('Y-m', strtotime("first day of +$i month"));
+    $keys = ak_prev_horizon_keys($horizon);
     $out = [];
     foreach ($keys as $k) $out[$k] = ['receivables'=>0.0, 'recurring'=>0.0];
+    $cur = $keys[0];
+    $last_day = date('Y-m-t', strtotime(end($keys).'-01'));
 
-    // Créances échéancées dans la fenêtre (impayées : on les attend à leur échéance).
+    // Créances : même périmètre que le KPI « À encaisser (créances) ».
     try {
         $st = $pdo->prepare(
-            "SELECT DATE_FORMAT(due_at, '%Y-%m') ym, COALESCE(SUM(amount_ttc_cents),0)/100 v
+            "SELECT CASE WHEN due_at IS NULL OR due_at < :m0 THEN :cur ELSE DATE_FORMAT(due_at, '%Y-%m') END ym,
+                    COALESCE(SUM(amount_ttc_cents),0)/100 v
              FROM asso_invoices
-             WHERE org_id = :o AND status IN ('pending','overdue') AND due_at IS NOT NULL
-               AND DATE_FORMAT(due_at,'%Y-%m') IN (".implode(',', array_map(fn($k)=>$pdo->quote($k), $keys)).")
+             WHERE org_id = :o AND status IN ('pending','overdue')
              GROUP BY ym");
-        $st->execute([':o'=>$org_id]);
+        $st->execute([':o'=>$org_id, ':m0'=>$cur.'-01', ':cur'=>$cur]);
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) if (isset($out[$r['ym']])) $out[$r['ym']]['receivables'] += (float)$r['v'];
     } catch (Throwable $e) {}
 
-    // Factures récurrentes programmées : le montant est dans template_data (JSON).
+    // Récurrences actives : chaque occurrence jusqu'à la fin de l'horizon.
     try {
+        if (!function_exists('ak_recurrence_following_date') && is_file(__DIR__ . '/asso-recurrence-helpers.php')) {
+            require_once __DIR__ . '/asso-recurrence-helpers.php';
+        }
         $st = $pdo->prepare(
-            "SELECT DATE_FORMAT(next_run_date, '%Y-%m') ym, template_data
-             FROM asso_invoice_recurrences
+            "SELECT * FROM asso_invoice_recurrences
              WHERE org_id = :o AND next_run_date IS NOT NULL AND COALESCE(status,'active') = 'active'");
         $st->execute([':o'=>$org_id]);
-        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            if (!isset($out[$r['ym']])) continue;
-            $td = json_decode((string)$r['template_data'], true);
-            $sum = 0.0;
-            if (isset($td['lines']) && is_array($td['lines'])) {
-                foreach ($td['lines'] as $l) {
-                    $sum += ((float)($l['quantity'] ?? 1)) * ((int)($l['unit_price_cents_ttc'] ?? 0)) / 100;
-                }
+        $today = date('Y-m-d');
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $rec) {
+            $amount = ak_prev_recurrence_amount($pdo, $rec);
+            if ($amount <= 0) continue;
+            // Délai de paiement : celui de la facture source, sinon 30 jours.
+            $due_days = 30;
+            $src = (int)($rec['source_invoice_id'] ?? 0);
+            if ($src > 0) {
+                try {
+                    $s2 = $pdo->prepare("SELECT DATEDIFF(due_at, issued_at) FROM asso_invoices WHERE id = ? AND org_id = ?");
+                    $s2->execute([$src, $org_id]);
+                    $dd = (int)$s2->fetchColumn();
+                    if ($dd > 0 && $dd < 365) $due_days = $dd;
+                } catch (Throwable $e) {}
             }
-            $out[$r['ym']]['recurring'] += $sum;
+            // Échéance prévue ($planned) et jour d'émission ($run) : en retard,
+            // la facture part au prochain passage du cron, et la suivante se
+            // calcule depuis l'échéance prévue (comme ak_recurrence_run_due).
+            $planned = date('Y-m-d', strtotime((string)$rec['next_run_date']));
+            $run = max($planned, $today);
+            $count = (int)($rec['occurrences_count'] ?? 0);
+            $max = !empty($rec['max_occurrences']) ? (int)$rec['max_occurrences'] : null;
+            $end = !empty($rec['end_date']) ? date('Y-m-d', strtotime((string)$rec['end_date'])) : null;
+            for ($guard = 0; $guard < 400 && $run <= $last_day; $guard++) {
+                if (($max !== null && $count >= $max) || ($end !== null && $run > $end)) break;
+                $ym = date('Y-m', strtotime($run . " +$due_days day"));
+                if (isset($out[$ym])) $out[$ym]['recurring'] += $amount;
+                $count++;
+                if (!function_exists('ak_recurrence_following_date')) break;   // une seule occurrence connue
+                $next = ak_recurrence_following_date(array_merge($rec, ['next_run_date' => $planned]), $run);
+                if ($next <= $run) break;
+                $planned = $run = $next;
+            }
         }
     } catch (Throwable $e) { /* structure différente : on ignore */ }
 
@@ -170,38 +269,45 @@ function ak_prev_known_inflows(PDO $pdo, int $org_id, int $horizon = 6): array {
 
 if (!function_exists('ak_prev_forecast')) {
 /**
- * Prévision sur $horizon mois.
- * Méthode : moyenne mobile (6 derniers mois) des recettes et dépenses,
- * ajustée par l'indice de saisonnalité du mois visé ; les recettes projetées
- * sont plancherées par les entrées connues (créances + récurrences).
- * Cumul de trésorerie à partir de $start_balance (0 si inconnu).
+ * Prévision : reste du mois en cours, puis $horizon mois.
+ * Méthode : moyenne mobile (6 derniers mois pleins) des recettes et
+ * dépenses, ajustée par l'indice de saisonnalité du mois visé ; les
+ * recettes projetées sont plancherées par les entrées connues (créances +
+ * récurrences). Pour le mois en cours, seule la part restante de la
+ * moyenne est projetée (prorata des jours restants).
+ * Cumul de trésorerie à partir de $start_balance (0 si inconnu), le solde
+ * saisi étant celui d'aujourd'hui.
  *
- * @return array{months:array,rows:array,method:string}
+ * @return array{rows:array,avg_rev:float,avg_exp:float,method:string,season:array}
  */
-function ak_prev_forecast(PDO $pdo, int $org_id, int $horizon = 6, float $start_balance = 0.0): array {
-    $history = ak_prev_history($pdo, $org_id, 24);
+function ak_prev_forecast(PDO $pdo, int $org_id, int $horizon = 6, float $start_balance = 0.0, ?array $history = null): array {
+    $history = $history ?? ak_prev_history($pdo, $org_id, 24);
     $idx = ak_prev_seasonal_index($history);
     $known = ak_prev_known_inflows($pdo, $org_id, $horizon);
 
-    // Moyenne mobile 6 mois (hors mois courant incomplet).
-    $vals = array_values($history);
-    $tail = array_slice($vals, -7, 6); // 6 mois pleins précédents
-    $avgRev = $tail ? array_sum(array_map(fn($x)=>$x['rev'], $tail))/count($tail) : 0.0;
-    $avgExp = $tail ? array_sum(array_map(fn($x)=>$x['exp'], $tail))/count($tail) : 0.0;
+    // Moyenne mobile sur les 6 derniers mois pleins, sans compter les mois
+    // d'avant la première activité (une structure arrivée il y a 2 mois
+    // n'a pas 4 mois à zéro).
+    $tail = array_slice(ak_prev_active_months($history), -6, 6, true);
+    $n = count($tail);
+    $avgRev = $n ? array_sum(array_map(fn($x)=>$x['rev'], $tail))/$n : 0.0;
+    $avgExp = $n ? array_sum(array_map(fn($x)=>$x['exp'], $tail))/$n : 0.0;
 
     $rows = []; $cum = $start_balance;
-    for ($i = 1; $i <= $horizon; $i++) {
-        $ym = date('Y-m', strtotime("first day of +$i month"));
+    $dim = (int)date('t'); $day = (int)date('j');
+    foreach (ak_prev_horizon_keys($horizon) as $i => $ym) {
+        $partial = ($i === 0);
+        $share = $partial ? ($dim - $day + 1) / $dim : 1.0;   // jours restants, aujourd'hui compris
         $mo = (int)substr($ym, 5, 2);
         $season = $idx[$mo] ?? 1.0;
-        $baseRev = $avgRev * $season;
-        $baseExp = $avgExp; // dépenses moins saisonnières : on garde la moyenne
+        $baseRev = $avgRev * $season * $share;
+        $baseExp = $avgExp * $share; // dépenses moins saisonnières : on garde la moyenne
         $knownIn = ($known[$ym]['receivables'] ?? 0) + ($known[$ym]['recurring'] ?? 0);
         $projRev = max($baseRev, $knownIn); // plancher par les entrées certaines
         $net = $projRev - $baseExp;
         $cum += $net;
         $rows[] = [
-            'ym' => $ym, 'label' => ak_prev_month_label($ym),
+            'ym' => $ym, 'label' => ($partial ? 'fin ' : '').ak_prev_month_label($ym), 'partial' => $partial,
             'rev' => round($projRev, 0), 'exp' => round($baseExp, 0), 'net' => round($net, 0),
             'cum' => round($cum, 0), 'known' => round($knownIn, 0), 'season' => $season,
         ];
@@ -209,7 +315,8 @@ function ak_prev_forecast(PDO $pdo, int $org_id, int $horizon = 6, float $start_
     return [
         'rows' => $rows,
         'avg_rev' => round($avgRev, 0), 'avg_exp' => round($avgExp, 0),
-        'method' => "Moyenne des 6 derniers mois pleins, ajustée de la saisonnalité, plancher = entrées connues (créances + récurrences).",
+        'season' => $idx,
+        'method' => "Moyenne des 6 derniers mois pleins, ajustée de la saisonnalité, plancher = entrées connues (créances à leur échéance, chaque facture des récurrences actives). Mois en cours : part restante de la moyenne, et les créances échues ou à échoir ce mois-ci.",
     ];
 }
 }

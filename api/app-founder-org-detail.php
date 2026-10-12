@@ -1,7 +1,8 @@
 <?php
 /**
  * api/app-founder-org-detail.php — Fiche détaillée d'une association (Fondateur, natif).
- * GET ?id=INT → infos éditables + membres + plan + note interne + plans disponibles.
+ * GET ?id=INT → infos éditables + membres actifs (50 premiers ; nb_users = total, members_more = le reste)
+ *               + plan + note interne + plans disponibles.
  * Le plan et l'essai viennent d'ak_org_plan_state() (même vérité que le web) ; « plans »
  * liste les VRAIS plans (asso_plans) pour le sélecteur de formule.
  * Réservé Fondateur/Super Admin. NE MODIFIE PAS le site : dédié à l'application.
@@ -17,6 +18,8 @@ header('Cache-Control: no-store');
 if (empty($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 $user = function_exists('current_user') ? current_user() : null;
 require_once __DIR__ . '/_app-founder.php';
+// Compte désactivé ou supprimé depuis l'ouverture de la session : session fermée, 401
+if (!app_session_account_alive($pdo)) { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'auth']); exit; }
 require_once __DIR__ . '/_app-founder-plan.php';
 $is_sa = app_is_founder($pdo, $user) || !empty($user['is_super_admin']) || (($user['role'] ?? '') === 'super_admin');
 if (!$is_sa) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
@@ -46,10 +49,18 @@ try {
     $o = $st->fetch(PDO::FETCH_ASSOC);
     if (!$o) { http_response_code(404); echo json_encode(['ok' => false, 'error' => 'not_found']); exit; }
 
-    // Membres
+    // Membres : comptes actifs seulement, avec le même décompte que la liste des associations et le
+    // cockpit web (is_active = 1, non supprimés). nb_users est compté à part : la liste affichée
+    // s'arrête à 50 (members_more = membres actifs non affichés).
+    $nb_users = 0;
+    try {
+        $cst = $pdo->prepare("SELECT COUNT(*) FROM users WHERE org_id = ? AND deleted_at IS NULL AND is_active = 1");
+        $cst->execute([$id]);
+        $nb_users = (int) $cst->fetchColumn();
+    } catch (Throwable $e) {}
     $members = [];
     try {
-        $mst = $pdo->prepare("SELECT first_name, last_name, email, role FROM users WHERE org_id = ? AND deleted_at IS NULL ORDER BY (role='admin') DESC, created_at ASC LIMIT 50");
+        $mst = $pdo->prepare("SELECT first_name, last_name, email, role FROM users WHERE org_id = ? AND deleted_at IS NULL AND is_active = 1 ORDER BY (role='admin') DESC, created_at ASC LIMIT 50");
         $mst->execute([$id]);
         foreach ($mst->fetchAll(PDO::FETCH_ASSOC) as $m) {
             $members[] = [
@@ -78,7 +89,8 @@ try {
             'validation_status' => (string) $o['validation_status'],
             'note'          => $hasNote ? (string) ($o['notes_superadmin'] ?? '') : '',
             'created'       => !empty($o['created_at']) ? date('d/m/Y', strtotime($o['created_at'])) : '',
-            'nb_users'      => count($members),
+            'nb_users'      => max($nb_users, count($members)),
+            'members_more'  => max(0, $nb_users - count($members)),
             // Prolonger l'essai : seulement un essai en cours ou terminé (jamais un abonnement payant)
             'can_extend_trial' => ($ps['is_trial'] || $ps['trial_expired']) && (string) $o['status'] !== 'cancelled',
             'trial_days'    => (int) AK_TRIAL_DAYS,

@@ -62,6 +62,30 @@ function fin_region_from_dept(?string $dept): ?string {
 }
 }
 
+require_once __DIR__ . '/trial-helpers.php';   // ak_db_columns() : colonnes réellement présentes
+
+if (!function_exists('fin_org_type')) {
+/**
+ * 'association' ou 'tpe' pour le filtre « bénéficiaire » du catalogue.
+ * Le type choisi à l'inscription (organizations.org_type) prime ; sans lui,
+ * on le déduit de la forme juridique (même règle que coach_org_type()).
+ * Ni le SIRET ni l'assujettissement à la TVA ne font une entreprise : une
+ * association a un SIRET pour recevoir une subvention publique, et peut
+ * être assujettie pour ses activités lucratives.
+ */
+function fin_org_type(array $org): string {
+    $declared = (string)($org['org_type'] ?? '');
+    if ($declared === 'tpe') return 'tpe';
+    if ($declared === 'asso') return 'association';
+    $form = (string)($org['legal_form'] ?? '');
+    if ($form === '' || stripos($form, 'association') !== false) return 'association';
+    if (preg_match('/\b(SAS|SASU|SARL|EURL|SA|SNC|SCI|SCS|SCA|SCOP|EI|EIRL)\b|micro|auto-entrepr|entreprise|libérale|commerçant|artisan/iu', $form)) {
+        return 'tpe';
+    }
+    return 'association';
+}
+}
+
 if (!function_exists('fin_build_profile')) {
 /**
  * Construit le profil d'éligibilité de l'org :
@@ -80,13 +104,18 @@ function fin_build_profile(PDO $pdo, int $org_id): array {
         'has_saved_profile' => false,
     ];
 
-    // 1) org (type + adresse)
+    // 1) org (type + adresse). Seules les colonnes présentes sont lues :
+    // org_type n'arrive qu'avec la migration 2026-10-09.
     try {
-        $st = $pdo->prepare("SELECT name, siret, vat_subject, billing_address_zip, billing_address_city FROM organizations WHERE id = ?");
+        $sel = ['name', 'billing_address_zip', 'billing_address_city'];
+        $cols = ak_db_columns($pdo, 'organizations');
+        foreach (['org_type', 'legal_form'] as $c) {
+            if (isset($cols[$c])) $sel[] = $c;
+        }
+        $st = $pdo->prepare("SELECT " . implode(', ', $sel) . " FROM organizations WHERE id = ?");
         $st->execute([$org_id]);
         if ($o = $st->fetch()) {
-            $is_company = (!empty($o['vat_subject']) || (!empty($o['siret']) && trim((string)$o['siret']) !== ''));
-            $prof['org_type'] = $is_company ? 'tpe' : 'association';
+            $prof['org_type'] = fin_org_type($o);
             $prof['zip'] = $o['billing_address_zip'] ?? null;
             $prof['city'] = $o['billing_address_city'] ?? null;
             $prof['dept_code'] = fin_dept_from_zip($prof['zip']);

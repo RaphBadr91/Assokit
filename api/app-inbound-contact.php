@@ -31,7 +31,13 @@ $collect($src['to'] ?? null); $collect($src['recipient'] ?? null); $collect($src
 $collect($form['recipient'] ?? null); $collect($form['to'] ?? null);
 
 $body = (string) ($src['stripped-text'] ?? $form['stripped-text'] ?? $src['text'] ?? $form['body-plain'] ?? $src['body'] ?? '');
-if ($body === '' && !empty($src['html'])) $body = trim(strip_tags((string) $src['html']));
+if ($body === '' && !empty($src['html'])) {
+    $html = preg_replace('#<(style|script|head)\b[^>]*>.*?</\1>#is', '', (string) $src['html']);
+    $html = preg_replace('#<br\s*/?>|</(p|div|li|tr|h[1-6])>#i', "\n", (string) $html);
+    $body = trim(html_entity_decode(strip_tags((string) $html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+}
+// « Hélène D'Aubigné <h@x.fr> » : l'adresse seule est extraite, et un texte qui n'est pas
+// de l'UTF-8 est converti, par ak_contact_store_inbound (mêmes règles que le pipe)
 $from = $src['from'] ?? $form['sender'] ?? $form['from'] ?? '';
 if (is_array($from)) $from = (string) ($from['address'] ?? $from['email'] ?? '');
 

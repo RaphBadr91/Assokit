@@ -25,7 +25,8 @@ $funder = mb_substr($funder, 0, 150);
 $num = static fn($v) => (float) str_replace([' ', ','], ['', '.'], (string) $v);
 
 $valid_types    = ['etat', 'region', 'departement', 'commune', 'epci', 'caf', 'fondation', 'entreprise', 'europe', 'autre'];
-$valid_statuses = ['draft', 'submitted', 'in_review', 'granted', 'rejected', 'reported', 'archived'];
+// Sans « archived » : l'archivage passe par app-grant-action (admin seul).
+$valid_statuses = ['draft', 'submitted', 'in_review', 'granted', 'rejected', 'reported'];
 $funder_type = in_array(($input['funder_type'] ?? ''), $valid_types, true) ? $input['funder_type'] : 'autre';
 $status      = in_array(($input['status'] ?? ''), $valid_statuses, true) ? $input['status'] : 'draft';
 

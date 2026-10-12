@@ -19,6 +19,7 @@ if (empty($_SESSION['user_id'])) {
 
 $B_META = [
     'sent'    => ['label' => 'Envoyée',   'kind' => 'done'],
+    'partial' => ['label' => 'Envoi partiel', 'kind' => 'wait'],
     'draft'   => ['label' => 'Brouillon', 'kind' => 'draft'],
     'sending' => ['label' => 'En cours',  'kind' => 'wait'],
     'failed'  => ['label' => 'Échec',     'kind' => 'late'],
@@ -32,6 +33,14 @@ function bfd($v) {
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
+
+    // Même règle que le site (/communication : require_capability('access_marketing')) :
+    // sans ce droit, ni les objets des diffusions ni les brouillons ne sont visibles.
+    if (!function_exists('can') || !can('access_marketing')) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'stats' => ['nb' => 0, 'sent' => 0], 'items' => [],
+                          'message' => 'Réservé à l\'équipe communication.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     $rows = [];
     try {
@@ -50,7 +59,8 @@ try {
     foreach ($rows as $r) {
         $status = (string) ($r['status'] ?? 'draft');
         $meta = $B_META[$status] ?? ['label' => ucfirst($status), 'kind' => 'draft'];
-        if ($status === 'sent') $sent++;
+        $went_out = $status === 'sent' || $status === 'partial';   // au moins un e-mail parti
+        if ($went_out) $sent++;
         $items[] = [
             'id'           => (int) $r['id'],
             'subject'      => (string) ($r['subject'] ?? '(sans objet)'),
@@ -58,7 +68,7 @@ try {
             'status_kind'  => $meta['kind'],
             'nb_sent'      => (int) ($r['nb_sent'] ?? 0),
             'nb_failed'    => (int) ($r['nb_failed'] ?? 0),
-            'date'         => $status === 'sent' ? bfd($r['sent_at'] ?? null) : bfd($r['created_at'] ?? null),
+            'date'         => $went_out ? bfd($r['sent_at'] ?? null) : bfd($r['created_at'] ?? null),
         ];
     }
 

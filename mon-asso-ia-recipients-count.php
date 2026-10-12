@@ -8,6 +8,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/asso-ai-helpers.php';
+require_once __DIR__ . '/resend-helper.php';   // désinscription des envois groupés (ak_optout_*)
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -15,6 +16,13 @@ require_login();
 $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { echo json_encode(['ok' => false, 'count' => 0]); exit; }
+// Même règle que la page Diffusion et l'envoi : réservé aux admins et coordinateurs
+// (le compte révèle l'effectif par rôle et les désinscriptions d'une adresse donnée)
+if (!in_array(($user['role'] ?? ''), ['admin', 'coordinator'], true)) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'count' => 0]);
+    exit;
+}
 
 $sources = [
     'roles'       => $_POST['roles']       ?? [],
@@ -24,7 +32,11 @@ $sources = [
 
 try {
     $list = ak_ai_collect_recipients($pdo, $org_id, $sources);
-    echo json_encode(['ok' => true, 'count' => count($list)]);
+    // Même filtre qu'à l'envoi : les désinscrits des envois groupés ne sont pas comptés
+    $optouts = ak_optout_emails($pdo, $org_id);
+    $kept = array_filter($list, fn($r) => !isset($optouts[strtolower(trim((string)$r['email']))]));
+    echo json_encode(['ok' => true, 'count' => count($kept), 'optout' => count($list) - count($kept)]);
 } catch (Throwable $e) {
-    echo json_encode(['ok' => false, 'count' => 0, 'error' => $e->getMessage()]);
+    error_log('[mon-asso-ia-recipients-count] ' . $e->getMessage());
+    echo json_encode(['ok' => false, 'count' => 0, 'error' => 'server']);
 }

@@ -47,21 +47,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     $form['rsvp_enabled'] = isset($_POST['rsvp_enabled']) ? '1' : '0';
     $form['is_public']    = isset($_POST['is_public']) ? '1' : '0';
 
+    // Projet lié : uniquement un projet de l'association (ceux proposés dans la liste)
+    $project_val = null;
+    $pid = (int) $form['project_id'];
+    if ($pid > 0 && in_array($pid, array_map('intval', array_column($projects, 'id')), true)) {
+        $project_val = $pid;
+    }
+    $time_ok = fn(string $t): bool => (bool) preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $t);
+
     if ($form['title'] === '' || strlen($form['title']) < 3) {
         $error = 'Le titre est obligatoire (min 3 caractères).';
     } elseif ($form['start_date'] === '') {
         $error = 'La date de l\'événement est obligatoire.';
+    } elseif ($form['project_id'] !== '' && $project_val === null) {
+        $error = 'Le projet choisi n’existe pas dans votre association.';
+    } elseif (($form['start_time'] !== '' && !$time_ok($form['start_time'])) || ($form['end_time'] !== '' && !$time_ok($form['end_time']))) {
+        $error = 'Format d’heure invalide (HH:MM).';
     } else {
         // Construire datetime
+        $form['start_time'] = substr($form['start_time'], 0, 5);
+        $form['end_time'] = substr($form['end_time'], 0, 5);
         $start_datetime = $form['start_date'] . ' ' . ($form['start_time'] ?: '00:00') . ':00';
-        if (!strtotime($start_datetime)) {
+        $end_datetime = $form['end_time'] !== '' ? $form['start_date'] . ' ' . $form['end_time'] . ':00' : null;
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $form['start_date']) || !strtotime($start_datetime)) {
             $error = 'Format de date invalide.';
+        } elseif ($end_datetime !== null && strtotime($end_datetime) === strtotime($start_datetime)) {
+            $error = 'L’heure de fin doit être différente de l’heure de début.';
         } else {
-            $end_datetime = null;
-            if (!empty($form['end_time'])) {
-                $end_datetime = $form['start_date'] . ' ' . $form['end_time'] . ':00';
+            // Fin avant le début (soirée qui se termine après minuit) : l'événement finit le lendemain
+            if ($end_datetime !== null && strtotime($end_datetime) < strtotime($start_datetime)) {
+                $end_datetime = date('Y-m-d', strtotime($form['start_date'] . ' +1 day')) . ' ' . $form['end_time'] . ':00';
             }
-
             try {
                 // Generer un slug unique pour l'URL publique
                 $slug_base = strtolower(preg_replace('/[^a-z0-9]+/i', '-', $form['title']));
@@ -78,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
                 ");
                 $stmt->execute([
                     $org_id, (int) $user['id'],
-                    $form['project_id'] ? (int) $form['project_id'] : null,
+                    $project_val,
                     $form['title'],
                     $form['description'] ?: null,
                     $form['location'] ?: null,
@@ -100,7 +116,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
                 exit;
 
             } catch (Throwable $e) {
-                $error = 'Erreur technique : ' . $e->getMessage();
+                error_log('[communication-evenement-nouveau] org ' . $org_id . ' : ' . $e->getMessage());
+                $error = 'L’événement n’a pas pu être créé (erreur technique). Réessayez dans quelques minutes.';
             }
         }
     }
@@ -172,6 +189,7 @@ render_sidebar('communication');
         <input type="time" id="end_time" name="end_time"
                value="<?= h($form['end_time']) ?>"
                style="width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:14px; color:var(--ink);">
+        <div id="end_time_hint" style="display:none; font-size:11.5px; color:var(--ink-3); margin-top:4px;">🌙 Se termine le lendemain</div>
       </div>
     </div>
 
@@ -244,5 +262,20 @@ render_sidebar('communication');
   </form>
 
 </div>
+
+<script>
+// Heure de fin : identique au début → refusée (contrôlé aussi côté serveur) ;
+// avant le début → l'événement se termine le lendemain (soirée après minuit)
+(function () {
+  var s = document.getElementById('start_time'), e = document.getElementById('end_time'), hint = document.getElementById('end_time_hint');
+  if (!s || !e) return;
+  function sync() {
+    var both = e.value && s.value;
+    e.setCustomValidity(both && e.value === s.value ? 'L’heure de fin doit être différente de l’heure de début.' : '');
+    if (hint) hint.style.display = both && e.value < s.value ? 'block' : 'none';
+  }
+  s.addEventListener('input', sync); e.addEventListener('input', sync); sync();
+})();
+</script>
 
 <?php render_foot(); ?>

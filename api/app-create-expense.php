@@ -31,6 +31,11 @@ $_amount_mode = (string) ($input['amount_mode'] ?? 'ttc');
 $mode = in_array($_amount_mode, ['ttc', 'ht', 'no_vat'], true) ? $_amount_mode : 'ttc';
 $vat_rate = (float) str_replace(',', '.', (string) ($input['vat_rate'] ?? '20'));
 $norm = fn($v) => (float) str_replace([',', ' '], ['.', ''], (string) $v);
+// Taux saisi librement dans l'appli : -100 % divisait par zéro (erreur
+// fatale, réponse vide).
+if ($mode !== 'no_vat' && (!is_finite($vat_rate) || $vat_rate < 0 || $vat_rate > 100)) {
+    app_fail(422, 'invalid', 'Taux de TVA invalide (entre 0 et 100 %).');
+}
 
 $amount_ttc = 0.0; $amount_ht = 0.0;
 if ($mode === 'ht') {
@@ -48,7 +53,9 @@ if ($mode === 'ht') {
 if ($supplier === '' || $amount_ttc <= 0 || $invoice_date === '') {
     app_fail(422, 'invalid', 'Fournisseur, montant et date sont obligatoires.');
 }
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $invoice_date)) {
+// Le format ne suffit pas : « 2026-02-31 » passait et la base le refusait
+// (erreur serveur au lieu d'un message sur la date).
+if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $invoice_date, $dm) || !checkdate((int) $dm[2], (int) $dm[3], (int) $dm[1])) {
     app_fail(422, 'invalid', 'Date invalide (format AAAA-MM-JJ).');
 }
 

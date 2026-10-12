@@ -46,9 +46,10 @@ try {
         if ($b = $bp->fetch()) { $start_balance = ((int)$b['start_balance_cents'])/100; $balance_set = !empty($b['balance_set_at']); }
     } catch (Throwable $e) {}
 
-    $history  = ak_prev_history($pdo, $org_id, 18);
-    $forecast = ak_prev_forecast($pdo, $org_id, 6, $balance_set ? $start_balance : 0.0);
-    $season_rev = ak_prev_seasonal_index($history);
+    // Un seul historique (24 mois) pour la prévision et la saisonnalité affichée
+    $history  = ak_prev_history($pdo, $org_id, 24);
+    $forecast = ak_prev_forecast($pdo, $org_id, 6, $balance_set ? $start_balance : 0.0, $history);
+    $season_rev = $forecast['season'] ?? ak_prev_seasonal_index($history);
     $season_adh = ak_prev_membership_seasonality($pdo, $org_id);
     $alerts = ak_prev_trend_alerts($history, $forecast, $balance_set ? $start_balance : 0.0);
 
@@ -60,12 +61,19 @@ try {
 $hist12 = array_slice($history, -12, 12, true);
 $bars = [];
 foreach ($hist12 as $ym=>$v) $bars[] = ['label'=>ak_prev_month_label($ym), 'net'=>$v['net'], 'rev'=>$v['rev'], 'exp'=>$v['exp'], 'proj'=>false];
-foreach ($forecast['rows'] as $r) $bars[] = ['label'=>$r['label'], 'net'=>$r['net'], 'rev'=>$r['rev'], 'exp'=>$r['exp'], 'proj'=>true, 'cum'=>$r['cum']];
+// Reste du mois en cours : « fin Oct », à côté du réalisé « Oct 26 »
+foreach ($forecast['rows'] as $r) $bars[] = ['label'=>!empty($r['partial']) ? 'fin '.substr(ak_prev_month_label($r['ym']), 0, -3) : $r['label'], 'net'=>$r['net'], 'rev'=>$r['rev'], 'exp'=>$r['exp'], 'proj'=>true, 'cum'=>$r['cum']];
 
 $proj_rev_total = array_sum(array_map(fn($r)=>$r['rev'], $forecast['rows']));
 $avg_net = $forecast['avg_rev'] - $forecast['avg_exp'];
+$last_row = $forecast['rows'] ? end($forecast['rows']) : null;
+// Mois fort / faible : seulement si l'historique en dégage un (indices
+// tous à 1,0 = pas assez de données, arsort aurait désigné janvier et décembre).
 $best_mo = null; $worst_mo = null;
-if ($season_rev) { arsort($season_rev); $best_mo = array_key_first($season_rev); $worst_mo = array_key_last($season_rev); }
+if ($season_rev && max($season_rev) - min($season_rev) > 0.05) {
+    $sorted = $season_rev; arsort($sorted);
+    $best_mo = array_key_first($sorted); $worst_mo = array_key_last($sorted);
+}
 $mo_names = [1=>'janvier',2=>'février',3=>'mars',4=>'avril',5=>'mai',6=>'juin',7=>'juillet',8=>'août',9=>'septembre',10=>'octobre',11=>'novembre',12=>'décembre'];
 
 render_head('Prévisions');
@@ -98,7 +106,7 @@ echo render_sidebar('previsions');
       <div class="pv-kpi"><div class="pv-kpi-lbl">Recettes moy./mois</div><div class="pv-kpi-val pv-green"><?= ak_prev_eur($forecast['avg_rev']) ?></div></div>
       <div class="pv-kpi"><div class="pv-kpi-lbl">Dépenses moy./mois</div><div class="pv-kpi-val pv-red"><?= ak_prev_eur($forecast['avg_exp']) ?></div></div>
       <div class="pv-kpi"><div class="pv-kpi-lbl">Solde de flux moy.</div><div class="pv-kpi-val <?= $avg_net<0?'pv-red':'pv-green' ?>"><?= ak_prev_eur($avg_net) ?></div></div>
-      <div class="pv-kpi"><div class="pv-kpi-lbl">Recettes projetées 6 mois</div><div class="pv-kpi-val"><?= ak_prev_eur($proj_rev_total) ?></div></div>
+      <div class="pv-kpi"><div class="pv-kpi-lbl">Recettes projetées<?= $last_row ? ' d\'ici fin '.h($mo_names[(int)substr($last_row['ym'], 5, 2)]).' '.h(substr($last_row['ym'], 0, 4)) : '' ?></div><div class="pv-kpi-val"><?= ak_prev_eur($proj_rev_total) ?></div></div>
       <div class="pv-kpi"><div class="pv-kpi-lbl">À encaisser (créances)</div><div class="pv-kpi-val pv-amber"><?= ak_prev_eur($outstanding) ?></div></div>
     </div>
 
@@ -142,7 +150,7 @@ echo render_sidebar('previsions');
 
     <!-- TABLE PRÉVISION -->
     <div class="pv-card">
-      <div class="pv-card-h">Projection sur 6 mois</div>
+      <div class="pv-card-h">Projection : fin du mois en cours et 6 mois suivants</div>
       <div class="pv-table-scroll">
         <table class="pv-table">
           <thead><tr><th>Mois</th><th>Recettes</th><th>Dépenses</th><th>Solde du mois</th><?php if ($balance_set): ?><th>Trésorerie cumulée</th><?php endif; ?><th>dont connu</th></tr></thead>
@@ -168,6 +176,8 @@ echo render_sidebar('previsions');
         <div class="pv-card-h">Saisonnalité des recettes</div>
         <?php if ($best_mo): ?>
           <p class="pv-note">Mois le plus fort : <strong><?= h($mo_names[$best_mo]) ?></strong> · le plus faible : <strong><?= h($mo_names[$worst_mo]) ?></strong>.</p>
+        <?php else: ?>
+          <p class="pv-note">Pas encore assez d'historique pour dégager une saisonnalité : il faut au moins 12 mois complets de recettes.</p>
         <?php endif; ?>
         <div class="pv-season">
           <?php ksort($season_rev); foreach ($season_rev as $mo=>$idx): $pct = min(100, (int)round($idx*50)); ?>
@@ -177,7 +187,7 @@ echo render_sidebar('previsions');
             </div>
           <?php endforeach; ?>
         </div>
-        <p class="pv-method">Indice 1,0 = mois moyen. Basé sur votre historique (jusqu'à 24 mois).</p>
+        <p class="pv-method">Indice 1,0 = mois moyen. Basé sur vos mois complets (jusqu'à 24 mois), le même historique que la projection.</p>
       </div>
 
       <!-- SOLDE DE DÉPART -->

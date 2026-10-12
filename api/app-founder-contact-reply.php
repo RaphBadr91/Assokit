@@ -2,6 +2,7 @@
 /**
  * api/app-founder-contact-reply.php — Répondre à une demande de contact par email (Fondateur).
  * POST { contact_id:int, body, csrf } → envoie un email au prospect + marque répondu.
+ * Si l'e-mail n'est pas parti : 502 'mail' et rien n'est enregistré (ni bulle « envoyée », ni « Répondu »).
  * NE MODIFIE PAS le site : dédié à l'application.
  */
 require __DIR__ . '/_app-write-boot.php';
@@ -34,14 +35,21 @@ try {
            . "<p style='margin-top:18px'>— L'équipe Assokit · <a href='https://assokit.fr'>assokit.fr</a></p>";
     // Reply-To à jeton : la réponse du prospect revient dans l'app (via inbound-contact.php)
     $reply_to = ak_contact_reply_address($id, $to);
-    send_transactional_email($to, $subj, $html, ['tag' => 'founder_contact_reply', 'reply_to' => $reply_to]);
+    $res = send_transactional_email($to, $subj, $html, ['tag' => 'founder_contact_reply', 'reply_to' => $reply_to]);
+    // E-mail refusé (Resend en panne, adresse refusée, quota…) : rien n'est noté comme envoyé,
+    // le fondateur voit l'erreur et peut réessayer (le prospect n'a rien reçu)
+    if (empty($res['success'])) {
+        $why = trim((string) ($res['error'] ?? ''));
+        error_log('[app-founder-contact-reply] envoi refusé pour le contact ' . $id . ' : ' . ($why !== '' ? $why : 'inconnu'));
+        app_fail(502, 'mail', 'E-mail non envoyé : le prospect n’a rien reçu' . ($why !== '' ? ' (' . mb_substr($why, 0, 160) . ')' : '') . '. Réessayez dans un instant.');
+    }
 
     // Historise la réponse du fondateur dans le fil
     ak_contact_thread_ensure($pdo);
     try { $pdo->prepare("INSERT INTO asso_contact_thread (contact_id, direction, body, from_email, read_by_founder, created_at) VALUES (?, 'out', ?, ?, 1, NOW())")->execute([$id, $body, 'support']); } catch (Throwable $e) {}
 
-    // Marque comme répondu (si la colonne existe)
-    try { $pdo->prepare("UPDATE asso_contact_messages SET status = 'replied' WHERE id = ?")->execute([$id]); } catch (Throwable $e) {}
+    // Marque comme répondu (si la colonne existe ; sinon l'état se déduit du fil)
+    ak_contact_set_status($pdo, $id, 'replied');
 
     echo json_encode(['ok' => true, 'contact_id' => $id], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {

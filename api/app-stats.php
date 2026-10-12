@@ -2,11 +2,13 @@
 /**
  * api/app-stats.php — Statistiques (KPIs facturation) pour l'ecran natif.
  * Reutilise ak_stats_global_kpis / ak_stats_top_clients / ak_stats_revenue_monthly.
- * Gate admin (comme le site). JSON, scope org. NE MODIFIE PAS le site.
+ * Accès : même règle que le site (Facturation : admin ou coordinateur,
+ * voir user_can_access_billing). JSON, scope org. NE MODIFIE PAS le site.
  */
 ob_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes-layout.php';
+require_once __DIR__ . '/../finance-permissions.php';
 @require_once __DIR__ . '/../asso-stats-helpers.php';
 ob_end_clean();
 
@@ -22,11 +24,11 @@ if (empty($_SESSION['user_id'])) {
 try {
     $user = function_exists('current_user') ? current_user() : null;
     $org_id = (int) ($user['org_id'] ?? ($_SESSION['org_id'] ?? 0));
-    $role = (string) ($user['role'] ?? '');
-    $is_admin = in_array($role, ['admin', 'founder', 'super_admin'], true) || !empty($user['is_founder']) || !empty($user['is_super_admin']);
 
-    if (!$is_admin) {
-        echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux administrateurs.'], JSON_UNESCAPED_UNICODE);
+    // Le site (mon-asso-stats.php) ouvre les statistiques au coordinateur
+    // comme le reste de la Facturation : l'appli le refusait.
+    if (!user_can_access_billing($user)) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'message' => 'Réservé aux administrateurs et coordinateurs.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 

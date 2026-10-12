@@ -7,8 +7,10 @@
  * Permet à l'admin de :
  *   - Modifier nom / icône / description / couleur / type
  *   - Gérer les membres (si canal privé)
- *   - Archiver le canal
+ *   - Archiver / restaurer le canal
  *   - Supprimer définitivement le canal
+ * Le canal « Suivi · Mairie » est en lecture seule ici : il est géré par
+ * le rattachement de la mairie (sinon la mairie perdrait la conversation).
  * ============================================================
  */
 require_once __DIR__ . '/config.php';
@@ -37,12 +39,14 @@ if (!$channel) {
     header('Location: /messages?error=notfound');
     exit;
 }
+$is_mairie_channel = !empty($channel['is_mairie_channel']);
+$is_archived = !empty($channel['is_archived']);
 
 // Membres actuels du canal privé
 $members = [];
 if ($channel['type'] === 'private') {
     $stmt = $pdo->prepare("
-        SELECT cm.*, u.first_name, u.last_name, u.role AS user_role, u.email, u.avatar_color
+        SELECT cm.*, u.first_name, u.last_name, u.role AS user_role, u.email, u.avatar_color, u.parent_org_id AS user_parent_org_id
         FROM channel_members cm
         JOIN users u ON cm.user_id = u.id
         WHERE cm.channel_id = ?
@@ -52,17 +56,18 @@ if ($channel['type'] === 'private') {
     $members = $stmt->fetchAll();
 }
 
-// Users de l'org qui ne sont pas encore membres (pour l'ajout)
+// Users de l'org qui ne sont pas encore membres (pour l'ajout).
+// Les suiveurs (financeurs externes) n'ont pas accès à la messagerie : jamais proposés.
 $member_user_ids = array_column($members, 'user_id');
 $available_users = [];
-if ($channel['type'] === 'private') {
+if ($channel['type'] === 'private' && !$is_mairie_channel) {
     if (empty($member_user_ids)) {
-        $stmt = $pdo->prepare("SELECT id, first_name, last_name, role, avatar_color FROM users WHERE org_id = ? AND is_active = 1 ORDER BY first_name");
+        $stmt = $pdo->prepare("SELECT id, first_name, last_name, role, avatar_color FROM users WHERE org_id = ? AND is_active = 1 AND (role IS NULL OR role <> 'follower') ORDER BY first_name");
         $stmt->execute([$org_id]);
     } else {
         $placeholders = implode(',', array_fill(0, count($member_user_ids), '?'));
         $params = array_merge([$org_id], $member_user_ids);
-        $stmt = $pdo->prepare("SELECT id, first_name, last_name, role, avatar_color FROM users WHERE org_id = ? AND is_active = 1 AND id NOT IN ($placeholders) ORDER BY first_name");
+        $stmt = $pdo->prepare("SELECT id, first_name, last_name, role, avatar_color FROM users WHERE org_id = ? AND is_active = 1 AND (role IS NULL OR role <> 'follower') AND id NOT IN ($placeholders) ORDER BY first_name");
         $stmt->execute($params);
     }
     $available_users = $stmt->fetchAll();
@@ -111,8 +116,31 @@ render_sidebar('messages');
     <div class="alert alert-success">✅ Membre ajouté.</div>
   <?php elseif (isset($_GET['member_removed'])): ?>
     <div class="alert alert-success">✅ Membre retiré.</div>
+  <?php elseif (($_GET['error'] ?? '') === 'user'): ?>
+    <div class="alert alert-error">Cette personne ne peut pas être ajoutée à ce canal.</div>
+  <?php elseif (!empty($_GET['error']) && !$is_mairie_channel): ?>
+    <div class="alert alert-error">Action impossible, veuillez réessayer.</div>
   <?php endif; ?>
 
+  <?php if ($is_mairie_channel): ?>
+    <div class="alert alert-info">
+      🏛️ Ce canal est la conversation de suivi avec votre mairie. Il est géré par Assokit lors du rattachement de l'association :
+      il ne peut pas être modifié, archivé ni supprimé, et ses membres sont tenus à jour automatiquement.
+      <a href="/messages?c=<?= h($channel['slug']) ?>">Ouvrir la conversation</a>
+    </div>
+  <?php elseif ($is_archived): ?>
+    <div class="alert alert-info">
+      Ce canal est archivé : il n'apparaît plus dans la liste des canaux, mais ses messages sont conservés.
+      <form method="POST" action="/action-canal" style="display:inline; margin:0 0 0 8px;">
+        <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+        <input type="hidden" name="action" value="restore">
+        <input type="hidden" name="channel_id" value="<?= (int)$channel['id'] ?>">
+        <button type="submit" class="btn btn-primary">Restaurer le canal</button>
+      </form>
+    </div>
+  <?php endif; ?>
+
+  <?php if (!$is_mairie_channel): ?>
   <!-- Formulaire de modification -->
   <form method="POST" action="/action-canal" novalidate>
     <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
@@ -176,12 +204,13 @@ render_sidebar('messages');
       </div>
     </div>
   </form>
+  <?php endif; ?>
 
   <!-- Gestion des membres (uniquement pour canaux privés) -->
   <?php if ($channel['type'] === 'private'): ?>
   <div class="form-section">
     <h2 class="form-section-title">👥 Membres du canal privé</h2>
-    <p class="form-section-desc">Seuls les membres listés peuvent voir et écrire dans ce canal (plus les admins de l'org).</p>
+    <p class="form-section-desc">Seuls les membres listés voient ce canal et peuvent y écrire.</p>
 
     <!-- Liste actuelle -->
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; margin-bottom: 20px;">
@@ -196,13 +225,13 @@ render_sidebar('messages');
           <div style="flex: 1; min-width: 0;">
             <div style="font-size: 13px; font-weight: 500;"><?= h($m['first_name'] . ' ' . $m['last_name']) ?></div>
             <div style="font-size: 11px; color: var(--ink-3);">
-              <?= h(role_label($m['user_role'])) ?>
+              <?= !empty($m['user_parent_org_id']) ? 'Mairie' : h(role_label($m['user_role'])) ?>
               <?php if ($m['role'] === 'moderator'): ?>
                 · <span style="color: var(--ai-dark);">Modérateur du canal</span>
               <?php endif; ?>
             </div>
           </div>
-          <?php if ($m['user_id'] != $current['id']): ?>
+          <?php if ($m['user_id'] != $current['id'] && !$is_mairie_channel): ?>
             <form method="POST" action="/action-canal" style="margin: 0;" onsubmit="return confirm('Retirer <?= h(addslashes($m['first_name'])) ?> de ce canal ?');">
               <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
               <input type="hidden" name="action" value="remove_member">
@@ -219,7 +248,9 @@ render_sidebar('messages');
     </div>
 
     <!-- Ajouter un membre -->
-    <?php if (!empty($available_users)): ?>
+    <?php if ($is_mairie_channel): ?>
+      <div class="form-hint">Membres synchronisés automatiquement : les agents de la mairie et les administrateurs de l'association.</div>
+    <?php elseif (!empty($available_users)): ?>
       <h3 style="font-size: 14px; font-weight: 500; margin-bottom: 10px;">➕ Ajouter un membre</h3>
       <form method="POST" action="/action-canal" style="display: flex; gap: 10px; align-items: center;">
         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
@@ -240,12 +271,14 @@ render_sidebar('messages');
   </div>
   <?php endif; ?>
 
+  <?php if (!$is_mairie_channel): ?>
   <!-- Zone dangereuse -->
   <div class="form-section" style="border: 1px solid rgba(185,28,28,0.2); background: rgba(185,28,28,0.03);">
     <h2 class="form-section-title" style="color: #B91C1C;">⚠️ Zone sensible</h2>
-    <p class="form-section-desc">Ces actions sont irréversibles. Réfléchissez bien avant de cliquer.</p>
+    <p class="form-section-desc">Un canal archivé peut être restauré ; la suppression, elle, est irréversible. Réfléchissez bien avant de cliquer.</p>
 
     <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+      <?php if (!$is_archived): ?>
       <form method="POST" action="/action-canal" style="margin: 0;"
             onsubmit="return confirm('Archiver le canal « <?= h(addslashes($channel['name'])) ?> » ? Il sera masqué mais les messages seront conservés.');">
         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
@@ -256,6 +289,7 @@ render_sidebar('messages');
           Archiver le canal
         </button>
       </form>
+      <?php endif; ?>
 
       <form method="POST" action="/action-canal" style="margin: 0;"
             onsubmit="return confirm('⚠️ SUPPRIMER DÉFINITIVEMENT le canal « <?= h(addslashes($channel['name'])) ?> » et ses <?= $msg_count ?> message<?= $msg_count > 1 ? 's' : '' ?> ?\n\nCette action est IRRÉVERSIBLE.');">
@@ -269,6 +303,7 @@ render_sidebar('messages');
       </form>
     </div>
   </div>
+  <?php endif; ?>
 
 </main>
 
