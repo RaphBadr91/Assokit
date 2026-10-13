@@ -42,26 +42,12 @@ if ($hash === '' || !password_verify((string)($_POST['current_password'] ?? ''),
     redir('Mot de passe incorrect : votre compte n’a pas été supprimé.');
 }
 
-// Anonymisation + soft-delete (préserve l'intégrité référentielle) ; le lien d'abonnement à
-// l'agenda (ics_token) est effacé avec le reste
+// Anonymisation + soft-delete (préserve l'intégrité référentielle), la même que dans l'app
+// (ak_account_self_anonymise, app-context.php) : identité, coordonnées, mot de passe, double
+// authentification, notes d'administrateur, contrat, dates d'adhésion, jetons de notification,
+// liens d'agenda et de mot de passe
 try {
-    $st = $pdo->prepare("
-        UPDATE users SET
-            email              = CONCAT('deleted_', id, '@anonyme.assokit.local'),
-            first_name         = 'Compte',
-            last_name          = 'supprimé',
-            phone              = NULL,
-            city               = NULL,
-            ics_token          = NULL,
-            is_active          = 0,
-            deleted_at         = NOW(),
-            deleted_by_user_id = id
-        WHERE id = ? AND deleted_at IS NULL
-    ");
-    $st->execute([$uid]);
-
-    // Plus aucune notification push sur les téléphones de ce compte
-    try { $pdo->prepare("DELETE FROM asso_push_tokens WHERE user_id = ?")->execute([$uid]); } catch (Throwable $e) {}
+    ak_account_self_anonymise($pdo, $uid);
 
     // Journaliser (sans donnée personnelle)
     try {

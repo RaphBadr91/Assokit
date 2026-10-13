@@ -63,8 +63,10 @@ function anonymise_deleted_users(PDO $pdo, bool $live): void {
     if (isset($cols['password_hash'])) $set[] = "password_hash = ''";
     if (isset($cols['totp_enabled']))  $set[] = 'totp_enabled = 0';
     // Données personnelles et secrets restants : vidés quand la colonne existe et accepte NULL
+    // (même liste que ak_account_self_anonymise, app-context.php : page /suppression-compte § 4)
     foreach (['phone', 'mobile', 'city', 'address', 'postal_code', 'zip_code', 'birth_date', 'birthdate',
-              'notes_admin', 'totp_secret', 'totp_backup_codes', 'ics_token'] as $c) {
+              'notes_admin', 'totp_secret', 'totp_backup_codes', 'ics_token', 'contract_type', 'contract_start_date',
+              'contract_end_date', 'adhesion_date', 'adhesion_valid_until', 'last_login_at', 'organization_name'] as $c) {
         if (isset($cols[$c]) && $cols[$c]['null']) $set[] = "$c = NULL";
     }
 
@@ -115,6 +117,8 @@ purge($pdo, $LIVE, 'Jetons push des comptes supprimés > 30 jours', 'asso_push_t
       "user_id IN ($users_deleted_30d)");
 purge($pdo, $LIVE, 'Liens de mot de passe non utilisés des comptes supprimés > 30 jours', 'user_password_tokens',
       "used_at IS NULL AND user_id IN ($users_deleted_30d)");
+purge($pdo, $LIVE, 'Liens d’agenda des comptes supprimés > 30 jours', 'user_calendar_tokens',
+      "user_id IN ($users_deleted_30d)");
 anonymise_deleted_users($pdo, $LIVE);
 
 // NB : on ne purge JAMAIS asso_invoices / subscription_invoices ici

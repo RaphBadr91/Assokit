@@ -127,6 +127,11 @@ Par défaut, tu peux répondre **Non**.
 
 ## 3. 🤖 Google Play — Play Console
 
+> ⚠️ **Section remplacée** par le dossier `mobile/store/google-play/` (13/10/2026) : comptes de
+> démonstration DEMO F, formulaire « Sécurité des données » établi d'après le code, page publique
+> de suppression de compte, guide de publication. Les réponses ci-dessous sont gardées pour
+> mémoire ; en cas de différence, c'est le dossier `mobile/store/google-play/` qui fait foi.
+
 ### 3.1 App access (Play Console → App content → App access)
 
 Choisir **« All or some functionality is restricted »**, puis ajouter un accès :

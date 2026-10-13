@@ -22,6 +22,9 @@ import {
   KeyboardAvoidingView,
   Alert,
   Linking,
+  AppState,
+  Dimensions,
+  TurboModuleRegistry,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -72,6 +75,72 @@ function isAssokitUrl(u) {
     return h === 'assokit.fr' || h.endsWith('.assokit.fr');
   } catch (e) { return false; }
 }
+
+/* ────────────────────────────────────────────────────────────────────
+ * Zones sûres Android. Avec Expo SDK 57, l'app est « bord à bord » : elle
+ * dessine sous la barre d'état et sous la barre de navigation (48 dp en
+ * navigation à 3 boutons, environ 16 à 24 dp avec la barre de gestes).
+ * SafeAreaView de react-native n'agit que sur iPhone, et
+ * StatusBar.backgroundColor n'a plus d'effet.
+ *
+ * Les marges réelles viennent du module natif de
+ * react-native-safe-area-context (dans package.json : il est compilé dans
+ * le binaire Android dès le premier build). On ne lit que sa constante
+ * initialWindowMetrics, relue au retour au premier plan et quand les
+ * dimensions changent ; aucun de ses composants n'est utilisé. Lecture
+ * gardée : TurboModuleRegistry.get renvoie null quand le module manque, si
+ * bien que le binaire iPhone 1.0.0, qui ne l'a pas, reçoit la même mise à
+ * jour OTA sans planter. Sur iPhone ces marges valent 0 (SafeAreaView fait
+ * le travail). Sans le module (Expo Go…) : StatusBar.currentHeight en haut
+ * et 48 dp en bas, la plus haute barre de navigation.
+ * ──────────────────────────────────────────────────────────────────── */
+// Valeurs d'attente jusqu'à la première lecture, faite au montage (useSystemInsets) : lue au
+// chargement du code, la fenêtre pourrait ne pas être encore mise en page.
+const SYS_INSETS = Platform.OS === 'android' ? { top: StatusBar.currentHeight || 24, bottom: 48 } : { top: 0, bottom: 0 };
+function readSystemInsets() {
+  if (Platform.OS !== 'android') return { top: 0, bottom: 0 };
+  const fallback = { top: StatusBar.currentHeight || 24, bottom: 48 };
+  try {
+    const m = TurboModuleRegistry && TurboModuleRegistry.get ? TurboModuleRegistry.get('RNCSafeAreaContext') : null;
+    const c = m && typeof m.getConstants === 'function' ? m.getConstants() : null;
+    const i = c && c.initialWindowMetrics ? c.initialWindowMetrics.insets : null;
+    if (i && typeof i.top === 'number' && typeof i.bottom === 'number') {
+      return { top: Math.round(i.top > 0 ? i.top : fallback.top), bottom: Math.round(Math.max(0, i.bottom)) };
+    }
+  } catch (e) {}
+  return fallback;
+}
+// Marges du moment, mises à jour quand la fenêtre est prête puis à chaque retour au premier plan
+// (l'utilisateur peut passer des gestes aux 3 boutons entre-temps).
+function useSystemInsets() {
+  const [ins, setIns] = useState(() => ({ top: SYS_INSETS.top, bottom: SYS_INSETS.bottom }));
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    const upd = () => {
+      const n = readSystemInsets();
+      Object.assign(SYS_INSETS, n);
+      setIns((p) => (p.top === n.top && p.bottom === n.bottom ? p : n));
+    };
+    upd();
+    const t = setTimeout(upd, 400); // au tout premier rendu, la fenêtre n'est pas toujours mise en page
+    const d = Dimensions.addEventListener('change', upd);
+    const a = AppState.addEventListener('change', (st) => { if (st === 'active') upd(); });
+    return () => { clearTimeout(t); if (d && d.remove) d.remove(); if (a && a.remove) a.remove(); };
+  }, []);
+  return ins;
+}
+// Feuilles du bas (Modal) : sur Android elles s'étendent aussi sous la barre de navigation
+function sheetInset(base = 18) {
+  return Platform.OS === 'android' ? { paddingBottom: base + SYS_INSETS.bottom } : null;
+}
+
+// Pages de présentation du site (accueil, fonctionnalités, pages « logiciel-… », guides, comparatifs,
+// blog, modèles, dépliant) : elles annoncent le prix de la formule Assokit. Règles de paiement de
+// Google Play et règle 3.1.1 d'Apple : aucun prix dans l'application. Le serveur les renvoie déjà
+// vers /connexion pour l'agent « AssokitApp » (includes-public.php, AK_PUBLIC_APP_PAGES) ; l'app
+// ne les charge pas non plus (onShouldStartLoadWithRequest). Restent ouvertes : /signup, /connexion,
+// /mot-de-passe-oublie, /confidentialite, /cgu, /cookies, /mentions-legales, /suppression-compte, /contact.
+const MARKETING_URL_RE = /^https?:\/\/(?:www\.)?assokit\.fr(?:\/(?:index\.php)?|\/(?:fonctionnalites|logiciel-[a-z-]+|comptabilite-analytique|alternative-helloasso|guide-association-loi-1901|guide-comptabilite-association|pour-associations|pour-tpe|pour-organismes|a-propos|avis|application|blog|modeles?-[a-z-]+|flyer)(?:\.php)?(?:\/[^?#]*)?)?(?:[?#]|$)/i;
 
 const APP_ONLY_CSS = `
 (function(){ try {
@@ -635,6 +704,7 @@ const INV_KIND = {
 /*  ECRAN D'ACCUEIL (marketing) natif                                  */
 /* ================================================================== */
 function WelcomeScreen({ onLogin, onSignup }) {
+  const sys = useSystemInsets();
   return (
     <View style={styles.wBg}>
       <LinearGradient
@@ -648,7 +718,10 @@ function WelcomeScreen({ onLogin, onSignup }) {
       <View style={[styles.blob, styles.blob2]} />
       <View style={[styles.blob, styles.blob3]} />
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      <SafeAreaView style={styles.wSafe}>
+      <SafeAreaView style={[styles.wSafe, Platform.OS === 'android' && { paddingTop: sys.top, paddingBottom: 16 + sys.bottom }]}>
+        {/* Défilement seulement si l'écran est trop petit (iPhone SE, petits Android) : sinon la mise
+            en page reste la même (flexGrow + space-between) et rien ne défile */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.wScroll} showsVerticalScrollIndicator={false} bounces={false}>
         <View style={styles.wTop}>
           <View style={styles.logoHalo}>
             <View style={styles.logoRing}>
@@ -687,7 +760,14 @@ function WelcomeScreen({ onLogin, onSignup }) {
             </BlurView>
           </TouchableOpacity>
           <Text style={styles.wFooter}>🇫🇷 Hébergé en France · Conforme RGPD</Text>
+          {/* Règles de Google Play et d'Apple : la politique de confidentialité doit être accessible dans l'app */}
+          <Text style={styles.wLegal}>
+            <Text style={styles.wLegalLink} accessibilityRole="link" onPress={() => Linking.openURL(BASE + '/confidentialite').catch(() => {})}>Confidentialité</Text>
+            {'  ·  '}
+            <Text style={styles.wLegalLink} accessibilityRole="link" onPress={() => Linking.openURL(BASE + '/cgu').catch(() => {})}>Conditions générales</Text>
+          </Text>
         </View>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -696,7 +776,7 @@ function WelcomeScreen({ onLogin, onSignup }) {
 /* ================================================================== */
 /*  CONNEXION NATIVE (formulaire natif — conforme App Store)           */
 /* ================================================================== */
-function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId, hasFaceId }) {
+function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId, hasFaceId, onLegal }) {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [show, setShow] = useState(false);
@@ -778,7 +858,8 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
               {hasFaceId ? (
                 <TouchableOpacity accessibilityRole="button" style={styles.lgFace} activeOpacity={0.85} onPress={onFaceId}>
                   <Ionicons name="finger-print" size={19} color="#059669" />
-                  <Text style={styles.lgFaceTxt}>Se connecter avec Face ID</Text>
+                  {/* « Face ID » est le nom Apple : sur Android, empreinte ou visage selon le téléphone */}
+                  <Text style={styles.lgFaceTxt}>{Platform.OS === 'ios' ? 'Se connecter avec Face ID' : 'Se connecter avec la biométrie'}</Text>
                 </TouchableOpacity>
               ) : null}
 
@@ -788,6 +869,13 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
               </Text>
             </View>
             <Text style={styles.lgHosted}>🇫🇷 Hébergé en France · Conforme RGPD</Text>
+            {onLegal ? (
+              <Text style={styles.lgLegal}>
+                <Text style={styles.lgLegalLink} accessibilityRole="link" onPress={() => onLegal('/confidentialite')}>Confidentialité</Text>
+                {'  ·  '}
+                <Text style={styles.lgLegalLink} accessibilityRole="link" onPress={() => onLegal('/cgu')}>Conditions générales</Text>
+              </Text>
+            ) : null}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -2074,7 +2162,7 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction
       <Modal visible={payOpen} transparent animationType="slide" onRequestClose={() => setPayOpen(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable style={styles.sheetBackdrop} onPress={() => setPayOpen(false)}>
-            <Pressable style={styles.sheet}>
+            <Pressable style={[styles.sheet, sheetInset()]}>
               <View style={styles.sheetHandle} />
               <Text style={styles.sheetTitle}>Marquer comme payée</Text>
               <Text style={[styles.dMuted, { marginBottom: 14, marginLeft: 4 }]}>
@@ -2109,7 +2197,7 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction
       <Modal visible={creditOpen} transparent animationType="slide" onRequestClose={() => setCreditOpen(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable style={styles.sheetBackdrop} onPress={() => setCreditOpen(false)}>
-            <Pressable style={styles.sheet}>
+            <Pressable style={[styles.sheet, sheetInset()]}>
               <View style={styles.sheetHandle} />
               <Text style={styles.sheetTitle}>Créer un avoir</Text>
               <Text style={[styles.dMuted, { marginBottom: 14, marginLeft: 4, lineHeight: 19 }]}>
@@ -2310,7 +2398,7 @@ function SheetPicker({ visible, title, options, selected, onPick, onClose }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.sheetBackdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, { maxHeight: '75%' }]}>
+        <Pressable style={[styles.sheet, sheetInset(), { maxHeight: '75%' }]}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>{title}</Text>
           {many ? (
@@ -2899,7 +2987,7 @@ function BillingForm({ mode, edit, onBack, onSubmit, submitting, error, clients,
 
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setPickerOpen(false)}>
-          <Pressable style={[styles.sheet, { maxHeight: '70%' }]}>
+          <Pressable style={[styles.sheet, sheetInset(), { maxHeight: '70%' }]}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Clients existants</Text>
             <ScrollView>
@@ -3066,7 +3154,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members, ca
       {/* Picker référent */}
       <Modal visible={refPickerOpen} transparent animationType="slide" onRequestClose={() => setRefPickerOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setRefPickerOpen(false)}>
-          <Pressable style={[styles.sheet, { maxHeight: '70%' }]}>
+          <Pressable style={[styles.sheet, sheetInset(), { maxHeight: '70%' }]}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Référent du projet</Text>
             {referents.length > 12 ? (
@@ -3093,7 +3181,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members, ca
       {/* Picker équipe (multi) */}
       <Modal visible={teamPickerOpen} transparent animationType="slide" onRequestClose={() => setTeamPickerOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setTeamPickerOpen(false)}>
-          <Pressable style={[styles.sheet, { maxHeight: '75%' }]}>
+          <Pressable style={[styles.sheet, sheetInset(), { maxHeight: '75%' }]}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Équipe du projet</Text>
             {allMembers.length > 12 ? (
@@ -3125,7 +3213,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members, ca
 
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setPickerOpen(false)}>
-          <Pressable style={[styles.sheet, { maxHeight: '70%' }]}>
+          <Pressable style={[styles.sheet, sheetInset(), { maxHeight: '70%' }]}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Dossiers</Text>
             <ScrollView>
@@ -3223,7 +3311,7 @@ function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject
 
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setPickerOpen(false)}>
-          <Pressable style={[styles.sheet, { maxHeight: '70%' }]}>
+          <Pressable style={[styles.sheet, sheetInset(), { maxHeight: '70%' }]}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Projets</Text>
             <ScrollView>
@@ -3288,7 +3376,7 @@ function NativeAgenda({ data, loading, onRefresh, onOpen, onBack, onNew, onMore,
                   <TouchableOpacity accessibilityRole="button" key={e.id} style={[styles.agCard, i > 0 ? styles.agSep : null]}
                     activeOpacity={0.85} onPress={() => onOpen(e.id)}>
                     <View style={[styles.agBar, { backgroundColor: e.color }]} />
-                    <View style={styles.agTime}><Text style={[styles.agTimeTxt, { color: e.color }]}>{e.time}</Text></View>
+                    <View style={styles.agTime}><Text style={[styles.agTimeTxt, { color: e.color }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{e.time}</Text></View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={styles.agTitle} numberOfLines={2}>{e.title}</Text>
                       {(e.location || e.project) ? (
@@ -4043,7 +4131,7 @@ function NativeMailThread({ data, loading, busy, draft, onBack, onReply, onDraft
       )}
       <Modal visible={catOpen} transparent animationType="fade" onRequestClose={() => setCatOpen(false)}>
         <Pressable style={mailStyles.modalBg} onPress={() => setCatOpen(false)}>
-          <View style={mailStyles.modalCard}>
+          <View style={[mailStyles.modalCard, sheetInset()]}>
             <Text style={mailStyles.modalTitle}>Ranger dans…</Text>
             <ScrollView style={{ maxHeight: 420 }}>
               {((data && data.categories) || []).map((c) => (
@@ -5567,7 +5655,7 @@ function NativeFounderBlog({ data, loading, filter, onFilter, onBack, onRefresh,
       <Modal visible={open} transparent animationType="slide" onRequestClose={close}>
         <View style={styles.blogModalWrap}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.blogModal}>
+            <View style={[styles.blogModal, sheetInset(14)]}>
               <View style={styles.blogModalHandle} />
               <View style={styles.blogModalHead}>
                 <Text style={styles.blogModalTitle}><Ionicons name="sparkles-outline" size={17} color={INK} /> Génération IA</Text>
@@ -6652,7 +6740,7 @@ function NativeGrantDetail({ entry, onBack, onRefresh, onAction, busy }) {
               et ne se redimensionne pas au clavier sur iOS (le bouton passait dessous). */}
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <Pressable style={styles.sheetBackdrop} onPress={() => setGrantedOpen(false)}>
-              <Pressable style={styles.sheet}>
+              <Pressable style={[styles.sheet, sheetInset()]}>
                 <View style={styles.sheetHandle} />
                 <Text style={styles.sheetTitle}>Subvention accordée</Text>
                 <Text style={[styles.dMuted, { marginBottom: 14 }]}>Quel montant le financeur a-t-il accordé ?</Text>
@@ -6814,7 +6902,7 @@ function SuspendedScreen({ message, onAccount, onLogout, onRetry }) {
   );
 }
 
-function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav, plan }) {
+function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav, plan, onLegal }) {
   const a = (data && data.account) || null;
   const [f, setF] = useState(null);
   const [delOpen, setDelOpen] = useState(false);
@@ -6896,6 +6984,26 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
           </TouchableOpacity>
         )}
 
+        {/* Informations légales : la politique de confidentialité doit être accessible dans l'app
+            (Google Play, données utilisateur ; Apple 5.1.1). Pages du site, sans connexion ni prix. */}
+        {onLegal ? (
+          <>
+            <Text style={[styles.formCardTitle, { marginTop: 20 }]}>Informations légales</Text>
+            {[
+              { path: '/confidentialite', icon: 'shield-checkmark-outline', label: 'Politique de confidentialité' },
+              { path: '/suppression-compte', icon: 'trash-outline', label: 'Supprimer mon compte : aide' },
+              { path: '/cgu', icon: 'document-text-outline', label: 'Conditions générales' },
+            ].map((l) => (
+              <TouchableOpacity key={l.path} accessibilityRole="link" style={styles.settingsRow} activeOpacity={0.7} onPress={() => onLegal(l.path)}>
+                <Ionicons name={l.icon} size={20} color="#45544D" />
+                <Text style={styles.settingsRowTxt}>{l.label}</Text>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5D1" />
+              </TouchableOpacity>
+            ))}
+            <View style={{ height: 14 }} />
+          </>
+        ) : null}
+
         <TouchableOpacity accessibilityRole="button" style={styles.logoutBtn} activeOpacity={0.85} onPress={onLogout}>
           <Ionicons name="log-out-outline" size={19} color="#DC2626" /><Text style={styles.logoutTxt}>Se déconnecter</Text>
         </TouchableOpacity>
@@ -6913,7 +7021,7 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
 
         <Modal visible={delOpen} transparent animationType="fade" onRequestClose={() => setDelOpen(false)}>
           <Pressable style={[styles.sheetBackdrop, { justifyContent: 'center', padding: 22 }]} onPress={() => setDelOpen(false)}>
-            <Pressable style={[styles.sheet, { borderRadius: R_CARD, paddingTop: 18, paddingBottom: 12 }]}>
+            <Pressable style={[styles.sheet, sheetInset(), { borderRadius: R_CARD, paddingTop: 18, paddingBottom: 12 }]}>
               <Text style={styles.sheetTitle}>Supprimer mon compte</Text>
               <Text style={[styles.dMuted, { marginBottom: 14 }]}>Cette action est définitive et anonymise vos données personnelles (RGPD). Saisissez votre mot de passe pour confirmer.</Text>
               <Field label="Mot de passe" value={delPw} onChangeText={setDelPw} secureTextEntry autoCapitalize="none" autoCorrect={false}
@@ -7909,9 +8017,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       authPageRef.current = null; setAuthPage(null); setWebMode(false);
     }
     const isLogin = /\/(connexion(?!-2fa)|signup|deconnexion|login|mot-de-passe|verifier-email)/.test(u);
+    // Pages publiques ouvertes sans être connecté (liens CGU / confidentialité de /signup, aide à la
+    // suppression de compte, contact) : elles ne disent rien de la session, l'état reste celui d'avant
+    const isPublicInfo = /\/(confidentialite|cgu|cookies|mentions-legales|suppression-compte|contact)(\.php)?\/?([?#]|$)/.test(u);
     if (isLogin) {
       setAuthed(false);
       // Le motif d'un refus de connexion est lu sur la page une fois chargée (onLoadEnd → LOGIN_PAGE_JS)
+    } else if (isPublicInfo) {
+      // rien
     } else if (isAssokitUrl(u)) {
       setAuthed(true);
       loginAttempted.current = false;
@@ -8616,11 +8729,18 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   // Deux SafeAreaView superposées — la première (flex: 0) ne couvre que l'encoche,
   // la seconde le reste. Sans ça, iOS laissait un bandeau blanc au-dessus du
   // dégradé et Android gardait le vert pâle de l'ancienne maquette.
+  // Android (bord à bord, Expo SDK 57) : ces SafeAreaView n'y font rien et StatusBar.backgroundColor
+  // n'a plus d'effet. La zone de la barre d'état est donc une bande de la teinte voulue (vert foncé
+  // sur l'accueil, sinon icônes blanches sur fond blanc), et le bas réserve la hauteur de la barre de
+  // navigation (useSystemInsets) : onglets, boutons « Enregistrer » et zone de saisie restent au-dessus.
   const topTint = showHome ? HEAD_GRAD[0] : '#fff';
+  const sys = useSystemInsets();
+  const isAndroid = Platform.OS === 'android';
   return (
     <>
     <SafeAreaView style={{ flex: 0, backgroundColor: topTint }} />
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={[styles.safe, isAndroid && { paddingTop: 0, paddingBottom: sys.bottom }]}>
+      {isAndroid && <View style={{ height: sys.top, backgroundColor: topTint }} />}
       <StatusBar barStyle={showHome ? 'light-content' : 'dark-content'} backgroundColor={topTint} />
       <View style={styles.webWrap}>
         <WebView
@@ -8673,6 +8793,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             // /mon-asso-facturation reste autorisée : c'est la facturation de
             // l'association à ses propres clients, pas un achat Assokit.
             if (/\/(tarifs|abonnement|mon-asso-plan|mon-asso-paiement|mon-asso-abonnement|mon-asso-annuler-abonnement)(\b|\/|\?|$)/i.test(u)) {
+              inject(gotoJS('/dashboard'));
+              return false;
+            }
+            // Pages de présentation (prix de l'offre) : jamais dans l'app (MARKETING_URL_RE). Le
+            // tableau de bord renvoie lui-même vers /connexion quand personne n'est connecté.
+            if (MARKETING_URL_RE.test(u)) {
               inject(gotoJS('/dashboard'));
               return false;
             }
@@ -8834,6 +8960,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'settings' ? (
               <NativeSettings data={account} onBack={() => setMenuScreen(null)} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
                 onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb} onNav={openMenuScreen}
+                onLegal={(p) => { openWeb(p); webReturnRef.current = 'settings'; }}
                 onLogout={doLogout} plan={kpi ? { label: kpi.plan_label || '', trial: orgTrialInfo(kpi) } : null} />
             ) : menuScreen === 'mail' ? (
               mailOpenId ? (
@@ -9025,6 +9152,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               onBack={onExitToWelcome}
               onForgot={() => { setLoginErr(''); openWeb('/mot-de-passe-oublie'); }}
               onDemo={() => { setLoginErr(''); openWeb('/signup'); }}
+              onLegal={(p) => Linking.openURL(BASE + p).catch(() => {})}
               hasFaceId={!!autoCreds}
               onFaceId={() => autoCreds && submitLogin(autoCreds.email, autoCreds.password)}
             />
@@ -9062,7 +9190,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           la barre, celle-ci le rognerait — c'est le défaut corrigé sur la maquette. */}
       {/* Agent d'une collectivité : ni onglets ni « Créer » (écrans d'association fermés, 403 'mairie_space') */}
       {authed && !orgSuspended && !isMairie && !['fdctcthread', 'fdthread', 'fdorgdetail', 'fdplans', 'fdsettings', 'fdprospects', 'fddir'].includes(menuScreen) && (
-      <View style={styles.tabDock}>
+      <View style={[styles.tabDock, isAndroid && sys.bottom > 0 && { marginBottom: 8 }]}>
         <View style={styles.tabBar}>
           {TABS.map((tab) => {
             if (tab.key === 'add') return canQuickCreate ? <View key={tab.key} style={styles.tabSpacer} /> : null;
@@ -9088,7 +9216,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       <Modal visible={quickOpen} transparent animationType="fade" onRequestClose={() => setQuickOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setQuickOpen(false)}>
           <SheetIn visible={quickOpen} still={stillMotion}>
-            <Pressable style={styles.sheet}>
+            <Pressable style={[styles.sheet, sheetInset()]}>
               <View style={styles.sheetHandle} />
               <Text style={styles.sheetTitle}>Créer</Text>
               {QUICK_ACTIONS.map((a, i) => (
@@ -9207,7 +9335,8 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  // Android edge-to-edge (SDK 57) : SafeAreaView natif n'inset pas → on compense la barre de statut
+  // Android bord à bord (SDK 57) : SafeAreaView n'y fait rien ; AppShell remplace ce paddingTop par une
+  // bande teintée de la hauteur de la barre d'état et ajoute la barre de navigation en bas (useSystemInsets)
   safe: { flex: 1, backgroundColor: '#fff', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0 },
   webWrap: { flex: 1, backgroundColor: '#fff' },
   logoutVeil: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center', zIndex: 999, elevation: 999 },
@@ -9564,7 +9693,7 @@ const styles = StyleSheet.create({
   agCard: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
   agSep: { borderTopWidth: 1, borderTopColor: SEP },
   agBar: { width: 3, height: 42, borderRadius: 2 },
-  agTime: { width: 40 },
+  agTime: { width: 56 }, // « Journée » (événement sur la journée) tient sur une ligne
   agTimeTxt: { fontSize: 12, fontWeight: '800' },
   agTitle: { fontSize: 14.5, fontWeight: '700', color: INK },
   agMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
@@ -10097,7 +10226,8 @@ const styles = StyleSheet.create({
   blob1: { width: 380, height: 380, top: -110, right: -110, backgroundColor: 'rgba(255,255,255,0.10)' },
   blob2: { width: 320, height: 320, bottom: 20, left: -120, backgroundColor: 'rgba(16,201,141,0.22)' },
   blob3: { width: 240, height: 240, top: 200, right: 150, backgroundColor: 'rgba(255,255,255,0.06)' },
-  wSafe: { flex: 1, paddingHorizontal: 24, justifyContent: 'space-between', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0, paddingBottom: Platform.OS === 'android' ? 16 : 0 },
+  wSafe: { flex: 1, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0, paddingBottom: Platform.OS === 'android' ? 16 : 0 },
+  wScroll: { flexGrow: 1, justifyContent: 'space-between', paddingHorizontal: 24 },
   wTop: { alignItems: 'center', marginTop: 40 },
   logoHalo: { width: 116, height: 116, borderRadius: 34, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', marginBottom: 22 },
   logoRing: { width: 88, height: 88, borderRadius: 26, padding: 3, backgroundColor: 'rgba(255,255,255,0.55)', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 26, shadowOffset: { width: 0, height: 14 }, elevation: 12 },
@@ -10118,6 +10248,8 @@ const styles = StyleSheet.create({
   btnGlass: { paddingVertical: 16, alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.45)', borderRadius: 16, overflow: 'hidden' },
   btnGhostTxt: { color: '#fff', fontSize: 16, fontWeight: '700' },
   wFooter: { color: 'rgba(255,255,255,0.9)', fontSize: 12.5, textAlign: 'center', marginTop: 18 },
+  wLegal: { color: 'rgba(255,255,255,0.75)', fontSize: 12, textAlign: 'center', marginTop: 10 },
+  wLegalLink: { color: 'rgba(255,255,255,0.92)', textDecorationLine: 'underline' },
 
   /* ===== Connexion native ===== */
   lgWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#EAF6F1', overflow: 'hidden' },
@@ -10151,4 +10283,6 @@ const styles = StyleSheet.create({
   lgFooter: { fontSize: 13.5, color: '#5F6D66', textAlign: 'center' },
   lgLink: { color: '#059669', fontWeight: '800' },
   lgHosted: { fontSize: 12.5, color: '#5F6D66', textAlign: 'center', marginTop: 18 },
+  lgLegal: { fontSize: 12, color: '#8A968F', textAlign: 'center', marginTop: 10 },
+  lgLegalLink: { color: '#45544D', textDecorationLine: 'underline' },
 });

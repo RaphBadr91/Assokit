@@ -40,6 +40,7 @@ render_public_nav('');
         <li><strong>Structure</strong> : nom, type, adresse, SIREN/RNA si applicable</li>
         <li><strong>Usage</strong> : journaux de connexion, statistiques d'utilisation anonymisées</li>
         <li><strong>Contenus</strong> : ce que vous téléversez (factures, contacts, messages…)</li>
+        <li><strong>Application mobile</strong> : un jeton de notifications, si vous acceptez les notifications, et un identifiant d'installation tiré au hasard, qui sert à livrer les mises à jour de l'application ; les photos que vous prenez ou choisissez pour scanner une facture ou changer le logo. L'empreinte digitale et la reconnaissance faciale restent gérées par votre téléphone : nous n'y avons jamais accès. Pour la connexion biométrique, vos identifiants sont gardés dans le stockage sécurisé du téléphone et effacés à la déconnexion. L'application n'intègre aucun outil de mesure d'audience ni de publicité.</li>
       </ul>
 
       <h2>3. Pourquoi ces données, et sur quelle base légale ?</h2>
@@ -58,7 +59,9 @@ render_public_nav('');
       <h2>4. Combien de temps les conservons-nous ?</h2>
       <ul>
         <li><strong>Compte actif</strong> : tant que le compte existe (essai, abonnement, ou accès limité après résiliation de l'abonnement)</li>
-        <li><strong>Après suppression du compte</strong> : 30 jours pour permettre l'export, puis suppression définitive</li>
+        <li><strong>Compte que vous supprimez vous-même</strong> (dans l'application ou sur le site) : votre identité (nom, e-mail, téléphone, ville), votre mot de passe, votre double authentification, votre lien d'agenda et vos jetons de notification sont effacés ou anonymisés <strong>immédiatement</strong>, et la connexion n'est plus possible (pensez à exporter vos données avant). Ce que vous avez partagé dans votre association (messages, comptes rendus, fichiers…) y reste, signé « Compte supprimé », tant que l'association utilise Assokit. Détails sur la page <a href="/suppression-compte">Supprimer votre compte</a>.</li>
+        <li><strong>Compte retiré par un administrateur de l'association</strong> : 30 jours dans la corbeille de l'association, où il peut encore être restauré, puis anonymisation de la même façon</li>
+        <li><strong>Fermeture de l'espace d'une association</strong> (sur demande à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>) : 30 jours pour exporter les données, puis suppression définitive, sauf les pièces comptables (ligne suivante)</li>
         <li><strong>Factures et obligations légales</strong> : 10 ans (obligation comptable française)</li>
         <li><strong>Logs techniques</strong> : 12 mois maximum</li>
         <li><strong>Cookies de mesure d'audience</strong> : 13 mois maximum ; votre choix sur ces cookies est conservé 6 mois</li>
@@ -72,6 +75,7 @@ render_public_nav('');
         <li><strong>Stripe</strong> (UE) — traitement des paiements (abonnements Assokit, paiements en ligne)</li>
         <li><strong>Anthropic</strong> (USA) — pour les fonctions IA : contenus que vous générez volontairement et, si la Boîte mail est reliée, tri et brouillons de réponse (voir section 12.3). Pas d'entraînement de modèles sur vos données.</li>
         <li><strong>Google LLC</strong> (USA) — uniquement si vous reliez Gmail ou Google Agenda (voir section 12)</li>
+        <li><strong>Expo</strong> (650 Industries, USA) — application mobile : acheminement des notifications vers votre téléphone (avec Google Firebase Cloud Messaging sur Android et le service de notifications d'Apple sur iPhone) et livraison des mises à jour de l'application. Ces services reçoivent le jeton de notifications et le texte de la notification, ou l'identifiant d'installation, rien d'autre.</li>
         <li><strong>Google Analytics</strong> (Google LLC, USA) — mesure d'audience anonymisée sur le site public uniquement (pas dans l'application), <strong>seulement si vous l'acceptez</strong> (section 9). IP anonymisée. Aucune publicité.</li>
       </ul>
       <p>Aucun partage à des fins publicitaires.</p>
@@ -99,6 +103,7 @@ render_public_nav('');
         <li><strong>Limitation</strong> : restreindre certains traitements</li>
       </ul>
       <p>Pour exercer ces droits : <a href="mailto:contact@assokit.fr">contact@assokit.fr</a> · réponse sous 30 jours maximum.</p>
+      <p>Vous pouvez aussi supprimer votre compte vous-même, dans l'application ou sur le site : la marche à suivre, ce qui est effacé et ce qui est conservé sont détaillés sur la page <a href="/suppression-compte">Supprimer votre compte</a>.</p>
 
       <h2>9. Cookies</h2>
       <p>Le site utilise des cookies <strong>strictement nécessaires</strong> (session, sécurité, mémorisation de votre choix) et, <strong>uniquement si vous l'acceptez</strong>, des cookies de mesure d'audience Google Analytics sur le site public : adresse IP anonymisée, 13 mois au maximum, aucun usage publicitaire. Vous pouvez donner ou retirer ce consentement à tout moment avec le lien <a href="/cookies#gerer" onclick="if(window.akShowCookieBanner){akShowCookieBanner();return false;}">Gérer mes cookies</a>, présent en bas de chaque page. Pas de cookies publicitaires. Voir notre <a href="/cookies">politique cookies</a> pour le détail.</p>
@@ -107,7 +112,7 @@ render_public_nav('');
       <p>Si vous estimez que vos droits ne sont pas respectés, vous pouvez introduire une réclamation auprès de la <a href="https://www.cnil.fr" target="_blank" rel="noopener">CNIL</a>.</p>
 
       <h2>11. Transferts hors de l'Union européenne</h2>
-      <p>Vos données sont hébergées en France. Certains sous-traitants sont établis aux <strong>États-Unis</strong> : <strong>Anthropic</strong> (fonctions d'IA) et <strong>Google</strong> (Gmail et Google Agenda si vous les reliez, Google Analytics si vous l'acceptez). Ces transferts se limitent aux données nécessaires à la fonction concernée et sont encadrés par les garanties prévues par le RGPD : décision d'adéquation de la Commission européenne pour les entreprises adhérant au cadre de protection des données UE–États-Unis (<em>Data Privacy Framework</em>), ou à défaut clauses contractuelles types de la Commission européenne (article 46 du RGPD).</p>
+      <p>Vos données sont hébergées en France. Certains sous-traitants sont établis aux <strong>États-Unis</strong> : <strong>Anthropic</strong> (fonctions d'IA), <strong>Google</strong> (Gmail et Google Agenda si vous les reliez, Google Analytics si vous l'acceptez, notifications de l'application Android) et <strong>Expo</strong> (notifications et mises à jour de l'application mobile). Ces transferts se limitent aux données nécessaires à la fonction concernée et sont encadrés par les garanties prévues par le RGPD : décision d'adéquation de la Commission européenne pour les entreprises adhérant au cadre de protection des données UE–États-Unis (<em>Data Privacy Framework</em>), ou à défaut clauses contractuelles types de la Commission européenne (article 46 du RGPD).</p>
 
       <h2 id="google-api">12. Connexion à Google (Gmail et Google Agenda)</h2>
       <p>Deux connexions à Google sont proposées dans Assokit, toutes deux <strong>facultatives</strong>, activées uniquement par un administrateur de l'association et <strong>révocables à tout moment</strong> : la <strong>Boîte mail</strong> (Gmail) et la <strong>synchronisation de l'agenda</strong> (Google Agenda). L'accès passe par le protocole sécurisé <strong>OAuth 2.0</strong> : Assokit ne connaît jamais votre mot de passe Google.</p>
@@ -167,7 +172,7 @@ render_public_nav('');
       <p>Cette politique peut évoluer. Toute modification substantielle vous sera notifiée par email avec un préavis de 30 jours.</p>
 
       <?php /* Date de version : à changer seulement quand le texte change */ ?>
-      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 12/10/2026</p>
+      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 13/10/2026</p>
     </article>
   </div>
 </section>

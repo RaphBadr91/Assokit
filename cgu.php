@@ -13,7 +13,7 @@ render_public_nav('');
     <div class="pub-breadcrumb"><a href="/">Accueil</a><span class="pub-breadcrumb-sep">›</span><strong style="color:var(--c-encre);">CGU / CGV</strong></div>
     <h1 class="pub-h1" style="font-size:36px;">Conditions générales</h1>
     <?php /* Date de version du texte (dernière modification) : à changer seulement quand le texte change */ ?>
-    <p class="pub-tagline">Version du 12/10/2026</p>
+    <p class="pub-tagline">Version du 13/10/2026</p>
   </div>
 </section>
 <section class="pub-section" style="padding-top:0;">
@@ -69,7 +69,9 @@ render_public_nav('');
 
       <h2>8. Résiliation</h2>
       <p>L’abonnement est <strong>sans engagement de durée</strong>. L'Utilisateur peut le résilier à tout moment, sans frais, depuis son espace (rubrique « Mon abonnement ») ou par e-mail. La résiliation prend effet à la <strong>fin de la période mensuelle en cours</strong>, déjà payée : l’accès à la formule est maintenu jusqu’à cette date et aucun nouveau prélèvement n’a lieu. Aucun remboursement au prorata n’est effectué pour la période entamée.</p>
-      <p>Après la résiliation de l’abonnement, le compte passe en accès limité : les données restent conservées et exportables, et l’Utilisateur peut reprendre un abonnement à tout moment. En cas de suppression du compte (depuis son espace ou sur demande à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>), RBPS conserve les données 30 jours pour permettre à l'Utilisateur de les exporter, puis les supprime définitivement.</p>
+      <p>Après la résiliation de l’abonnement, le compte passe en accès limité : les données restent conservées et exportables, et l’Utilisateur peut reprendre un abonnement à tout moment.</p>
+      <p><strong>Suppression d’un compte personnel par son titulaire</strong> (depuis son espace, sur le site ou dans l’application) : les données d’identification du compte sont anonymisées immédiatement et la connexion n’est plus possible ; il appartient donc à l’Utilisateur d’exporter ses données avant (Paramètres › Compte). Les contenus qu’il a partagés dans son association restent dans les dossiers de celle-ci, signés « Compte supprimé », tant que l’association utilise le Service. Un compte retiré par un administrateur de l’association reste 30 jours dans la corbeille de l’association, puis il est anonymisé de la même façon.</p>
+      <p><strong>Fermeture de l’espace d’une association</strong> (sur demande à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>) : RBPS conserve les données 30 jours pour permettre de les exporter, puis les supprime définitivement, à l’exception des pièces comptables, conservées 10 ans (obligation comptable). Le détail figure sur la page <a href="/suppression-compte">Supprimer votre compte</a>.</p>
 
       <h2>9. Propriété intellectuelle</h2>
       <p>Le Service — son code source, sa conception, son architecture, ses interfaces, ses textes, ses bases de données, sa marque et son identité visuelle — est la propriété exclusive de <strong>Raphaël Badr Pujol-Siwane</strong>, auteur et titulaire de l'ensemble des droits de propriété intellectuelle qui s'y attachent, y compris ceux portant sur l'innovation qu'il met en œuvre. RBPS exploite le Service sur autorisation du titulaire des droits.</p>

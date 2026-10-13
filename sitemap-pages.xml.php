@@ -50,6 +50,7 @@ $pages = [
     ['/cgu',                       '0.3', 'yearly'],
     ['/confidentialite',           '0.3', 'yearly'],
     ['/cookies',                   '0.3', 'yearly'],
+    ['/suppression-compte',        '0.3', 'yearly'],
 ];
 
 echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";

@@ -25,6 +25,8 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/trial-helpers.php';
 // Prix annoncé après l'essai (formule Assokit, HT + TTC)
 require_once __DIR__ . '/includes-pricing.php';
+// ak_billing_hidden() : page ouverte dans l'application mobile (bouton « Créer ma démo ») → aucun prix
+require_once __DIR__ . '/app-context.php';
 
 // Si deja connecte, rediriger
 if (!empty($_SESSION['user_id'])) {
@@ -724,7 +726,12 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
 
     <h1>Démarrez votre essai PRO gratuit</h1>
     <p class="sub">Toutes les fonctionnalités PRO pendant <?= (int)AK_TRIAL_DAYS ?> jours, activées dès l’inscription. Sans carte bancaire, sans engagement.
-      Ensuite, si Assokit vous convient : <?= htmlspecialchars(ak_offer_price($pdo)['label']) ?>, résiliable à tout moment. Sinon, rien n’est prélevé.</p>
+      <?php // Dans l'application : aucun prix (règles de paiement Google Play, règle Apple 3.1.1) ?>
+      <?php if (!ak_billing_hidden()): ?>
+      Ensuite, si Assokit vous convient : <?= htmlspecialchars(ak_offer_price($pdo)['label']) ?>, résiliable à tout moment. Sinon, rien n’est prélevé.
+      <?php else: ?>
+      Aucun achat dans l’application.
+      <?php endif; ?></p>
 
     <?php if ($notice): ?>
       <div class="alert-ok" style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.55;margin-bottom:6px;">✅ <?= htmlspecialchars($notice) ?></div>

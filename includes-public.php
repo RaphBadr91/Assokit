@@ -115,8 +115,43 @@ if (!function_exists('pub_customer_reviews')) {
     }
 }
 
+if (!defined('AK_PUBLIC_APP_PAGES')) {
+    /**
+     * Pages publiques qui s'affichent dans l'application mobile (WebView, agent « AssokitApp ») :
+     * textes légaux, suppression de compte, contact. Aucune ne montre de prix.
+     * Les autres (accueil, fonctionnalités, pages « logiciel-… », guides, comparatifs, blog…)
+     * annoncent le prix de la formule Assokit (ak_offer_price) : dans l'application, elles
+     * renvoient vers /connexion. Règles de paiement de Google Play et règle 3.1.1 d'Apple :
+     * aucun prix ni parcours d'achat dans l'application. /signup, /connexion et
+     * /mot-de-passe-oublie ont leur propre en-tête (sans prix dans l'application).
+     */
+    define('AK_PUBLIC_APP_PAGES', [
+        'confidentialite.php', 'cgu.php', 'cookies.php', 'mentions-legales.php',
+        'suppression-compte.php', 'contact.php',
+    ]);
+}
+
+if (!function_exists('pub_in_app')) {
+    /** La page est-elle affichée dans l'application mobile (WebView, agent « AssokitApp ») ? */
+    function pub_in_app(): bool {
+        return stripos((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 'AssokitApp') !== false;
+    }
+}
+
 if (!function_exists('render_public_head')) {
     function render_public_head(array $seo): void {
+        // Dans l'application, seules les pages AK_PUBLIC_APP_PAGES s'affichent (voir plus haut).
+        // Fait avant tout affichage : la page n'a encore rien envoyé.
+        if (pub_in_app() && !in_array(basename((string)($_SERVER['SCRIPT_NAME'] ?? '')), AK_PUBLIC_APP_PAGES, true)) {
+            if (!headers_sent()) {
+                header('Cache-Control: no-store');
+                header('Location: /connexion', true, 302);
+            } else {
+                echo '<!DOCTYPE html><meta http-equiv="refresh" content="0;url=/connexion"><a href="/connexion">Continuer</a>';
+            }
+            exit;
+        }
+
         $title       = trim((string)($seo['title'] ?? 'Assokit'));
         // Si title_full est fourni, on l'utilise tel quel (pour SEO précis homepage)
         // Sinon, on construit avec " · Assokit" en suffixe
@@ -266,6 +301,14 @@ if (!function_exists('render_public_head')) {
             }
         }
 
+        // Page publique ouverte dans l'application mobile (WebView, agent « AssokitApp », voir
+        // mobile/App.js) : ni bandeau cookies ni Google Analytics. La politique cookies annonce
+        // une mesure d'audience « jamais dans l'application », et la fiche Google Play
+        // (Sécurité des données) ne déclare aucun outil d'analyse dans l'application.
+        if (pub_in_app()) {
+            echo "</head>\n<body>\n";
+            return;
+        }
         ?>
   <!-- Consentement cookies + GA4 (chargé uniquement après acceptation) -->
   <script>
@@ -318,6 +361,20 @@ if (!function_exists('render_public_head')) {
 if (!function_exists('render_public_nav')) {
     function render_public_nav(string $active = ''): void {
         $is_logged = !empty($_SESSION['user_id'] ?? null);
+        if (pub_in_app()) {
+            // Application mobile : ni menu ni lien vers les pages de présentation (voir AK_PUBLIC_APP_PAGES)
+            ?>
+        <header class="pub-nav">
+          <div class="pub-nav-inner">
+            <a href="<?= $is_logged ? '/dashboard' : '/connexion' ?>" class="pub-logo" aria-label="Assokit">
+              <img src="/assets/logo-assokit.png" alt="Assokit" class="pub-logo-img">
+              <span class="pub-logo-text">Assokit</span>
+            </a>
+          </div>
+        </header>
+            <?php
+            return;
+        }
         ?>
         <header class="pub-nav">
           <div class="pub-nav-inner">
@@ -401,6 +458,34 @@ if (!function_exists('render_public_nav')) {
 if (!function_exists('render_public_footer')) {
     function render_public_footer(): void {
         $year = date('Y');
+        if (pub_in_app()) {
+            // Application mobile : liens légaux et contact seulement (voir AK_PUBLIC_APP_PAGES)
+            ?>
+        <footer class="pub-footer">
+          <div class="pub-footer-inner">
+            <div class="pub-footer-grid">
+              <div class="pub-footer-col">
+                <h4>Légal</h4>
+                <a href="/mentions-legales">Mentions légales</a>
+                <a href="/cgu">CGU / CGV</a>
+                <a href="/confidentialite">Confidentialité</a>
+                <a href="/cookies">Cookies</a>
+                <a href="/suppression-compte">Suppression de compte</a>
+              </div>
+              <div class="pub-footer-col">
+                <h4>Contact</h4>
+                <a href="/contact">Nous écrire</a>
+                <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>
+              </div>
+            </div>
+            <div class="pub-footer-bottom">
+              <p>© <?= $year ?> Assokit · Édité par RBPS</p>
+            </div>
+          </div>
+        </footer>
+            <?php
+            return;
+        }
         ?>
         <footer class="pub-footer">
           <div class="pub-footer-inner">
@@ -463,6 +548,7 @@ if (!function_exists('render_public_footer')) {
                 <a href="/cgu">CGU / CGV</a>
                 <a href="/confidentialite">Confidentialité</a>
                 <a href="/cookies">Cookies</a>
+                <a href="/suppression-compte">Suppression de compte</a>
                 <a href="/cookies#gerer" onclick="if(window.akShowCookieBanner){akShowCookieBanner();return false;}">Gérer mes cookies</a>
               </div>
             </div>

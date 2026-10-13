@@ -486,3 +486,69 @@ function ak_account_delete_blocker(PDO $pdo, int $uid): string
 }
 
 }
+
+if (!function_exists('ak_account_self_anonymise')) {
+
+/**
+ * Suppression de son propre compte : anonymisation immédiate de la ligne users, la même sur le
+ * site (rgpd-supprimer-compte.php) et dans l'app (api/app-delete-account.php). Ce qu'elle efface
+ * est décrit sur la page publique /suppression-compte (§ 4) : la garder alignée.
+ *
+ *   1. identité et coordonnées (nom, e-mail, téléphone, ville), lien d'agenda, compte désactivé —
+ *      colonnes présentes partout, une seule requête comme avant ;
+ *   2. tout le reste de la ligne qui touche à la personne : mot de passe, double authentification
+ *      et codes de secours, notes d'un administrateur sur elle, contrat (type et dates), dates
+ *      d'adhésion, dernière connexion. Seulement les colonnes qui existent dans la base ;
+ *   3. ses jetons : notifications push, liens de mot de passe non utilisés, liens d'agenda.
+ *
+ * Les contenus partagés dans l'association (messages, comptes rendus, fichiers…) restent,
+ * signés « Compte supprimé » ; les paiements et pièces comptables aussi (10 ans).
+ * Renvoie le nombre de comptes anonymisés (0 si déjà supprimé). Une erreur sur l'étape 1 lève
+ * l'exception PDO ; les étapes 2 et 3 sont journalisées sans arrêter la suppression.
+ */
+function ak_account_self_anonymise(PDO $pdo, int $uid): int
+{
+    $st = $pdo->prepare("
+        UPDATE users SET
+            email              = CONCAT('deleted_', id, '@anonyme.assokit.local'),
+            first_name         = 'Compte',
+            last_name          = 'supprimé',
+            phone              = NULL,
+            city               = NULL,
+            ics_token          = NULL,
+            is_active          = 0,
+            deleted_at         = NOW(),
+            deleted_by_user_id = id
+        WHERE id = ? AND deleted_at IS NULL
+    ");
+    $st->execute([$uid]);
+    $done = $st->rowCount();
+    if ($done === 0) return 0;
+
+    try {
+        $cols = [];
+        foreach ($pdo->query('SHOW COLUMNS FROM users')->fetchAll(PDO::FETCH_ASSOC) as $c) {
+            $cols[$c['Field']] = strtoupper((string)$c['Null']) === 'YES';
+        }
+        $set = [];
+        if (isset($cols['password_hash'])) $set[] = "password_hash = ''";   // plus aucune connexion possible
+        if (isset($cols['totp_enabled']))  $set[] = 'totp_enabled = 0';
+        foreach (['totp_secret', 'totp_backup_codes', 'notes_admin', 'contract_type', 'contract_start_date',
+                  'contract_end_date', 'adhesion_date', 'adhesion_valid_until', 'last_login_at', 'organization_name',
+                  'mobile', 'address', 'postal_code', 'zip_code', 'birth_date', 'birthdate'] as $c) {
+            if (!empty($cols[$c])) $set[] = "`$c` = NULL";   // colonne présente et qui accepte NULL
+        }
+        if ($set) $pdo->prepare('UPDATE users SET ' . implode(', ', $set) . ' WHERE id = ?')->execute([$uid]);
+    } catch (Throwable $e) {
+        error_log('[ak_account_self_anonymise] users ' . $e->getMessage());
+    }
+
+    foreach (['DELETE FROM asso_push_tokens WHERE user_id = ?',
+              'DELETE FROM user_password_tokens WHERE user_id = ? AND used_at IS NULL',
+              'DELETE FROM user_calendar_tokens WHERE user_id = ?'] as $q) {
+        try { $pdo->prepare($q)->execute([$uid]); } catch (Throwable $e) {}   // table absente : rien à effacer
+    }
+    return $done;
+}
+
+}

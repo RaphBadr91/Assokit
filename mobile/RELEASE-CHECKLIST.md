@@ -107,11 +107,20 @@ eas submit --platform android --latest
 
 ## 5. Google Play Console
 
+> **Tout est détaillé dans `mobile/store/google-play/`** : `publication-android.md` (guide pas à pas),
+> `fiche-google-play.md`, `securite-des-donnees.md`, `contenu-de-l-application.md`, et les visuels
+> (`icon-512.png`, `feature-graphic-1024x500.png`, `captures/`, détail dans `README-visuels.md`).
+> Page de suppression de compte exigée par Google : https://assokit.fr/suppression-compte.
+> La liste ci-dessous n'est qu'un rappel.
+
 - ⏳ Créer l'app (`fr.assokit.app`).
-- ⏳ **Data safety form** : mêmes déclarations que le nutrition label Apple.
+- ⏳ **Data safety form** : réponses case par case dans `securite-des-donnees.md` (dont l'IBAN de la structure, « Informations de paiement de l'utilisateur »).
 - ⏳ **Content rating** : questionnaire (app pro → tout public probable).
 - ⏳ **Politique de confidentialité URL** : https://assokit.fr/confidentialite
-- ⏳ **Assets** : icône 512×512, feature graphic 1024×500, captures téléphone (min. 2).
+- ✅ **Assets** : icône 512×512 (`icon-512.png`), feature graphic 1024×500, 8 captures téléphone 1080×1920 — prêts dans `mobile/store/google-play/`. À comparer au rendu réel du build de test interne.
+- ✅ **Corrections natives avant le premier build Android** (13/10/2026) : icône adaptative refaite (rond dans la zone sûre, fond transparent, `monochromeImage`) ; module `react-native-safe-area-context` (~5.7.0) pour les marges de la barre d'état et de la barre de navigation. Lu sans import, donc sans risque pour l'OTA vers l'iPhone 1.0.0 (voir `publication-android.md`, étape 9).
+- ✅ **Lien vers la politique de confidentialité dans l'app** : Plus › Paramètres › Informations légales, sous le formulaire de connexion et sur l'écran d'accueil.
+- ⏳ **Compte personnel** : vérifier l'accès à un appareil Android avec l'application Play Console (`publication-android.md`, étape 1.2).
 - ⏳ **Target API level** : Play exige API récente (34+). Expo SDK 57 la cible → OK.
 - ⏳ Publier d'abord en **test interne** (rapide) → valider → promouvoir en production.
 - ⏳ Compte de démo dans les instructions de test.

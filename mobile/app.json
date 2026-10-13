@@ -32,12 +32,16 @@
       "package": "fr.assokit.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
+        "monochromeImage": "./assets/adaptive-icon-monochrome.png",
         "backgroundColor": "#059669"
       },
       "permissions": [
         "CAMERA",
         "USE_BIOMETRIC",
         "USE_FINGERPRINT"
+      ],
+      "blockedPermissions": [
+        "com.google.android.gms.permission.AD_ID"
       ]
     },
     "plugins": [

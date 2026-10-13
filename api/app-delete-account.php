@@ -2,6 +2,7 @@
 /**
  * api/app-delete-account.php — Suppression RGPD du compte depuis l'app (natif).
  * Reproduit rgpd-supprimer-compte.php (anonymisation + soft-delete + deconnexion). JSON.
+ * L'anonymisation est commune aux deux : ak_account_self_anonymise() (app-context.php).
  * NE MODIFIE PAS le site.
  */
 require __DIR__ . '/_app-write-boot.php';
@@ -16,7 +17,10 @@ if (ak_demo_protected_account($uid)) {
         echo json_encode(['ok' => true, 'message' => 'Votre compte a été supprimé.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
-    app_fail(403, 'demo', ak_demo_message());
+    // Comptes partagés de la démo DEMO F : la suppression ne s'applique pas (sinon le premier
+    // examinateur supprimerait la démo pour tous les suivants). Le message dit ce qu'elle fait
+    // sur un vrai compte : un examinateur Google ou Apple le lit à la place d'une erreur sèche.
+    app_fail(403, 'demo', 'Compte de démonstration partagé : sa suppression est désactivée pour que la démo reste utilisable (elle est remise à zéro chaque nuit). Sur un vrai compte, cette étape anonymise immédiatement les données personnelles et ferme la session.');
 }
 
 
@@ -54,17 +58,10 @@ try {
         }
     }
 
-    $pdo->prepare("
-        UPDATE users SET
-            email = CONCAT('deleted_', id, '@anonyme.assokit.local'),
-            first_name = 'Compte', last_name = 'supprimé',
-            phone = NULL, city = NULL, ics_token = NULL, is_active = 0,
-            deleted_at = NOW(), deleted_by_user_id = id
-        WHERE id = ? AND deleted_at IS NULL
-    ")->execute([$uid]);
-
-    // Plus aucune notification push sur les téléphones de ce compte
-    try { $pdo->prepare("DELETE FROM asso_push_tokens WHERE user_id = ?")->execute([$uid]); } catch (Throwable $e) {}
+    // Anonymisation immédiate, la même que sur le site (ak_account_self_anonymise, app-context.php) :
+    // identité, coordonnées, mot de passe, double authentification, notes d'administrateur, contrat,
+    // dates d'adhésion, jetons de notification, liens d'agenda et de mot de passe
+    ak_account_self_anonymise($pdo, $uid);
 
     try {
         $pdo->prepare("INSERT INTO assokit_activity_log (event_type, event_action, ip, created_at) VALUES ('account','self_delete', ?, NOW())")
