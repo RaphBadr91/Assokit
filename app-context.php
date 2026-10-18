@@ -47,6 +47,20 @@ function ak_is_mobile_app(): bool
 }
 
 /**
+ * La requête vient-elle de l'app iPhone ? (agent « AssokitApp » sans « Android »)
+ *
+ * Sur iPhone, l'app sert seulement à se connecter à un espace existant
+ * (règle 3.1.1 d'Apple) : pas d'inscription, donc pas d'essai qui
+ * commencerait dans l'app (mobile/App.js, IOS_LOGIN_ONLY). L'app Android
+ * garde l'inscription.
+ */
+function ak_is_ios_app(): bool
+{
+    if (!ak_is_mobile_app()) return false;
+    return stripos((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 'Android') === false;
+}
+
+/**
  * Faut-il supprimer toute surface d'achat de cette page ?
  *
  * Vrai dans l'app (règle Apple 3.1.1), et vrai aussi pour le compte
@@ -483,6 +497,35 @@ function ak_account_delete_blocker(PDO $pdo, int $uid): string
         return 'Vérification impossible pour le moment. Merci de réessayer.';
     }
     return '';
+}
+
+}
+
+if (!function_exists('ak_account_sole_org')) {
+
+/**
+ * Seul compte actif de son association (administrateur, personne d'autre) : id de l'association,
+ * sinon 0. Dans l'application, ce compte peut se supprimer lui-même, ce qui ferme l'espace de
+ * l'association (api/app-delete-account.php) : un compte créé dans l'app (« Créer ma démo ») est
+ * justement dans ce cas, et Apple (règle 5.1.1 v) n'admet pas une suppression par e-mail au support.
+ * Fondateur, administrateur de la plateforme, agent de collectivité : jamais (0).
+ */
+function ak_account_sole_org(PDO $pdo, int $uid): int
+{
+    try {
+        $st = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
+        $st->execute([$uid]);
+        $u = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+        if (!$u || !empty($u['is_founder']) || !empty($u['is_platform_admin']) || !empty($u['parent_org_id'])) return 0;
+        $org = (int)($u['org_id'] ?? 0);
+        if (($u['role'] ?? '') !== 'admin' || $org <= 0) return 0;
+        $st = $pdo->prepare("SELECT COUNT(*) FROM users WHERE org_id = ? AND is_active = 1 AND deleted_at IS NULL AND id <> ?");
+        $st->execute([$org, $uid]);
+        return (int)$st->fetchColumn() === 0 ? $org : 0;
+    } catch (Throwable $e) {
+        error_log('[ak_account_sole_org] ' . $e->getMessage());
+        return 0;
+    }
 }
 
 }

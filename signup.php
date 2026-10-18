@@ -34,6 +34,13 @@ if (!empty($_SESSION['user_id'])) {
     exit;
 }
 
+// App iPhone : connexion seule, aucune inscription dans l'app (règle 3.1.1 d'Apple ;
+// mobile/App.js, IOS_LOGIN_ONLY). Les structures s'inscrivent sur le site.
+if (ak_is_ios_app()) {
+    header('Location: /connexion');
+    exit;
+}
+
 const AK_SIGNUP_PLANS = ['essentiel', 'association', 'organisation'];
 const AK_SIGNUP_TYPES = ['asso' => 'Association', 'tpe' => 'TPE / entreprise'];
 const AK_SIGNUP_FORMS = [
@@ -577,7 +584,8 @@ $_SESSION['signup_form_at'] = time();
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
-<title>Essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours — Assokit</title>
+<?php // Dans l'application (ak_billing_hidden) : ni « gratuit », ni « PRO », ni carte bancaire — rien qui évoque un achat (Apple 3.1.1 / 3.1.3 f) ?>
+<title><?= ak_billing_hidden() ? 'Créer votre espace' : 'Essai PRO gratuit ' . (int)AK_TRIAL_DAYS . ' jours' ?> — Assokit</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%23059669'/%3E%3Ccircle cx='22' cy='22' r='4.5' fill='%23FFFFFF'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -716,7 +724,9 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
   <div class="card">
 
     <?php // Anciens liens ?plan= : « association » = formule Assokit, « organisation » = Sur-mesure ?>
-    <?php if ($form['plan'] === 'association'): ?>
+    <?php if (ak_billing_hidden()): ?>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Aucun achat dans l’application</span>
+    <?php elseif ($form['plan'] === 'association'): ?>
       <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Assokit · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
     <?php elseif ($form['plan'] === 'organisation'): ?>
       <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Sur-mesure · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
@@ -724,14 +734,16 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
       <span class="plan-pill"><span class="plan-pill-dot"></span>Essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours · sans carte bancaire</span>
     <?php endif; ?>
 
+    <?php // Dans l'application : aucun prix ni mot d'achat (règles de paiement Google Play, Apple 3.1.1 / 3.1.3 f).
+          // La durée reste dite : l'utilisateur sait que l'accès complet dure AK_TRIAL_DAYS jours (CGU § 4). ?>
+    <?php if (ak_billing_hidden()): ?>
+    <h1>Créez l’espace de votre structure</h1>
+    <p class="sub">Toutes les fonctionnalités sont ouvertes dès l’inscription, pendant <?= (int)AK_TRIAL_DAYS ?> jours.</p>
+    <?php else: ?>
     <h1>Démarrez votre essai PRO gratuit</h1>
     <p class="sub">Toutes les fonctionnalités PRO pendant <?= (int)AK_TRIAL_DAYS ?> jours, activées dès l’inscription. Sans carte bancaire, sans engagement.
-      <?php // Dans l'application : aucun prix (règles de paiement Google Play, règle Apple 3.1.1) ?>
-      <?php if (!ak_billing_hidden()): ?>
-      Ensuite, si Assokit vous convient : <?= htmlspecialchars(ak_offer_price($pdo)['label']) ?>, résiliable à tout moment. Sinon, rien n’est prélevé.
-      <?php else: ?>
-      Aucun achat dans l’application.
-      <?php endif; ?></p>
+      Ensuite, si Assokit vous convient : <?= htmlspecialchars(ak_offer_price($pdo)['label']) ?>, résiliable à tout moment. Sinon, rien n’est prélevé.</p>
+    <?php endif; ?>
 
     <?php if ($notice): ?>
       <div class="alert-ok" style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.55;margin-bottom:6px;">✅ <?= htmlspecialchars($notice) ?></div>
@@ -901,7 +913,7 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
         <span>J'accepte les <a href="/cgu" target="_blank">conditions générales d'utilisation</a> et la <a href="/confidentialite" target="_blank">politique de confidentialité</a>.</span>
       </label>
 
-      <button type="submit" class="btn-submit" id="signupBtn">Activer mon essai PRO de <?= (int)AK_TRIAL_DAYS ?> jours →</button>
+      <button type="submit" class="btn-submit" id="signupBtn"><?= ak_billing_hidden() ? 'Créer mon espace' : 'Activer mon essai PRO de ' . (int)AK_TRIAL_DAYS . ' jours' ?> →</button>
     </form>
     <script>
       // Association / TPE : libellés, listes et champs propres à chaque type

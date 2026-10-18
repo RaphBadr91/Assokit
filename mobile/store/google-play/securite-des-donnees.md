@@ -11,7 +11,7 @@ Les réponses ci-dessous ont été établies **en lisant le code**, pas de mémo
 | `mobile/App.js` | Données envoyées au serveur `https://assokit.fr` uniquement (API `api/app-*.php` et WebView). Jeton de notifications envoyé à `api/app-register-push.php`. Identifiants de connexion gardés dans `expo-secure-store` sur le téléphone pour la connexion biométrique, effacés à la déconnexion. Liens externes ouverts dans le navigateur du téléphone, pas dans l'application. |
 | `api/app-register-push.php` | Stocke : jeton Expo, plateforme (android / ios), utilisateur, association. Rien d'autre sur l'appareil. |
 | `api/app-*.php`, `activity-tracker.php` | Le serveur journalise les pages et appels d'API des comptes connectés (chemin, IP, navigateur, date) : sécurité et statistiques d'usage. |
-| `action-scan-facture.php` | La photo d'une facture est envoyée à Anthropic (sous-traitant) pour en lire les montants. |
+| `action-scan-facture.php` | La photo d'une facture est envoyée à Anthropic (sous-traitant) pour en lire les montants. Depuis le 18/10/2026, dans l'application, aucune fonction IA n'envoie quoi que ce soit sans l'accord de l'utilisateur, demandé une fois dans une fenêtre native qui nomme Anthropic (réglage dans Paramètres › Fonctions IA ; contrôle côté serveur dans `ai-consent-helper.php`). |
 | `mon-asso-factures-parametres.php`, `admin-paiements.php` | L'**IBAN et le BIC de la structure** se saisissent dans ces pages, ouvertes dans l'application (WebView, page en 200 avec l'agent « AssokitApp »), et s'impriment sur ses factures, devis et appels à cotisation (tables `org_invoice_settings` et `org_payment_settings`). |
 | `includes-public.php` | Google Analytics n'est chargé que sur le site public, avec consentement, **et plus jamais dans l'application** (agent « AssokitApp » exclu — modification faite le 13/10/2026, à mettre en ligne avant la soumission). |
 | `confidentialite.php` | Politique alignée sur ces réponses (paragraphe « Application mobile » et sous-traitant Expo ajoutés le 13/10/2026). |
@@ -65,8 +65,8 @@ Puis, type par type :
 | Type de données | Collecte obligatoire ou facultative ? | Finalités à cocher | Ce que c'est concrètement |
 |---|---|---|---|
 | **Nom** | Obligatoire | Fonctionnement de l'application · Gestion du compte | Prénom et nom du compte ; noms des adhérents, clients, contacts saisis |
-| **Adresse e-mail** | Obligatoire | Fonctionnement de l'application · Gestion du compte · Communications du développeur | Identifiant de connexion ; e-mails de service (vérification d'adresse, mot de passe, fin d'essai, factures) ; adresses des adhérents et clients |
-| **ID utilisateur** | Obligatoire | Fonctionnement de l'application · Gestion du compte · Prévention des fraudes, sécurité et conformité | Identifiant interne du compte, utilisé aussi dans les journaux de sécurité |
+| **Adresse e-mail** | Obligatoire | Fonctionnement de l'application · Gestion du compte · Communications du développeur · **Publicité ou marketing** | Identifiant de connexion ; e-mails de service (vérification d'adresse, mot de passe, factures) ; e-mails de fin de période d'essai qui présentent les formules (`cron-trial-check.php`, `cron-email-templates.php` : communication commerciale, d'où « Publicité ou marketing », comme chez Apple) ; adresses des adhérents et clients |
+| **ID utilisateur** | Obligatoire | Fonctionnement de l'application · Gestion du compte · Prévention des fraudes, sécurité et conformité · Analyses | Identifiant interne du compte, utilisé aussi dans le journal d'activité, qui sert à la sécurité et aux statistiques d'usage (12 mois) |
 | **Adresse** | Facultative | Fonctionnement de l'application | Ville du profil, adresses de facturation de la structure et des clients |
 | **Numéro de téléphone** | Facultative | Fonctionnement de l'application | Téléphone du profil, des adhérents et des clients |
 | **Informations de paiement de l'utilisateur** | Facultative | Fonctionnement de l'application | IBAN et BIC de la structure (réglages des factures et des cotisations), imprimés sur ses factures, devis et appels à cotisation. Aucune carte bancaire. |
@@ -81,11 +81,19 @@ Puis, type par type :
 | **Interactions avec l'application** | Obligatoire | Analyses · Prévention des fraudes, sécurité et conformité | Journal serveur des pages et écrans consultés (chemin, date, IP, navigateur), conservé 12 mois maximum |
 | **Historique des recherches dans l'application** | Facultative | Fonctionnement de l'application · Prévention des fraudes, sécurité et conformité | Les recherches faites dans les pages du site affichées par l'application passent dans l'adresse de la page, donc dans le même journal |
 | **Autres contenus générés par l'utilisateur** | Facultative | Fonctionnement de l'application | Projets, étapes, comptes rendus, notes, contenus rédigés avec l'IA |
-| **Appareil ou autres identifiants** | Obligatoire | Fonctionnement de l'application | Jeton de notifications Expo / Firebase Cloud Messaging ; identifiant d'installation aléatoire envoyé par le module de mises à jour OTA (`expo-updates`) |
+| **Appareil ou autres identifiants** | Obligatoire | Fonctionnement de l'application · Analyses | Jeton de notifications Expo / Firebase Cloud Messaging ; identifiant d'installation aléatoire envoyé par le module de mises à jour OTA (`expo-updates`), qu'Expo compte pour ses statistiques de mises à jour |
 
 Rappel des définitions Google : « facultative » = l'utilisateur peut utiliser l'application sans fournir la donnée ; « obligatoire » = il ne peut pas s'y soustraire.
 
-**Ne cocher nulle part** : Publicité ou marketing · Personnalisation.
+**Ne cocher nulle part ailleurs** : Publicité ou marketing (seulement pour l'adresse e-mail, ligne plus haut) · **nulle part** : Personnalisation.
+
+Ces finalités sont alignées le 18/10/2026 sur la rubrique « Confidentialité de l'app » d'Apple
+(`../app-store/confidentialite-app.md`), qui en déclare le plus : e-mail aussi pour le marketing
+du développeur ; identifiant utilisateur, identifiants de l'appareil et interactions aussi pour
+les analyses ; historique des achats déclaré des deux côtés. La politique de confidentialité
+(`confidentialite.php` § 2 et § 3) dit la même chose depuis le 18/10/2026 : « statistiques
+d'utilisation tirées du journal d'activité (12 mois) » et e-mails de fin d'essai fondés sur
+l'intérêt légitime.
 
 **Suivant**, puis **Enregistrer**.
 

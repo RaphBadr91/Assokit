@@ -5,6 +5,9 @@
  */
 
 require_once __DIR__ . '/seo-helpers.php';
+// ak_is_mobile_app() : page vue dans l'application (agent « AssokitApp »). Ni « Tarifs », ni « Essai
+// gratuit », ni pages de présentation dans l'app (règle 3.1.1 d'Apple, paiements Google Play).
+require_once __DIR__ . '/app-context.php';
 
 http_response_code(404);
 ?><!DOCTYPE html>
@@ -111,6 +114,10 @@ p {
     <h1>Cette page n'existe pas</h1>
     <p>La page que vous cherchez a peut-être été déplacée ou n'a jamais existé. Pas de panique, voici quelques pistes pour continuer votre visite.</p>
 
+<?php if (ak_is_mobile_app()): ?>
+    <a href="/dashboard" class="btn">← Retour à mon espace</a>
+    <a href="/contact" class="btn btn-ghost">Nous contacter</a>
+<?php else: ?>
     <a href="/" class="btn">← Retour à l'accueil</a>
     <a href="/contact" class="btn btn-ghost">Nous contacter</a>
 
@@ -121,6 +128,7 @@ p {
         <a href="/fonctionnalites">Fonctionnalités</a>
         <a href="/connexion">Se connecter</a>
     </div>
+<?php endif; ?>
 </div>
 </body>
 </html>

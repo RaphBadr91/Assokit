@@ -35,6 +35,14 @@ if (!is_ai_enabled()) {
     exit;
 }
 
+// Dans l'app : la photo ne part chez Anthropic qu'avec l'accord de l'utilisateur
+// (règle 5.1.2(i) d'Apple ; ai-consent-helper.php, chargé par ai-helper.php)
+if (function_exists('ak_ai_app_gate') && ($ak_gate = ak_ai_app_gate()) !== null) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => $ak_gate, 'consent_required' => true]);
+    exit;
+}
+
 $project_id = (int)($_POST['project_id'] ?? 0);
 if ($project_id <= 0) {
     http_response_code(400);

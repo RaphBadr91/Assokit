@@ -746,6 +746,12 @@ if (!function_exists('ak_ai_build_prompt')) {
 // --------------------------------------------------------------
 if (!function_exists('ak_ai_call_api')) {
     function ak_ai_call_api(string $system, string $user_msg): array {
+        // Dans l'app : accord préalable pour l'envoi à Anthropic (règle 5.1.2(i) d'Apple, ai-consent-helper.php)
+        if (!function_exists('ak_ai_app_gate')) require_once __DIR__ . '/ai-consent-helper.php';
+        if (($ak_gate = ak_ai_app_gate()) !== null) {
+            return ['ok' => false, 'text' => '', 'tokens_in' => 0, 'tokens_out' => 0, 'error' => $ak_gate,
+                    'error_detail' => 'ai_consent', 'consent_required' => true, 'model' => defined('AK_AI_MODEL') ? AK_AI_MODEL : ''];
+        }
         if (function_exists('set_time_limit')) @set_time_limit(250);
         $api_key = defined('CLAUDE_API_KEY') ? CLAUDE_API_KEY : (getenv('CLAUDE_API_KEY') ?: '');
         if (!$api_key) {

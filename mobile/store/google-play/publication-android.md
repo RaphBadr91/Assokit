@@ -1,6 +1,6 @@
 # Publier Assokit sur Google Play — guide pas à pas
 
-Pour : le fondateur, sur le Mac. Application : `fr.assokit.app`, Expo SDK 57, version **1.0.0**, profil EAS `production` (fichier `.aab`).
+Pour : le fondateur, sur le Mac. Application : `fr.assokit.app`, Expo SDK 57, version **1.0.1** (passée de 1.0.0 à 1.0.1 le 18/10/2026, voir l'étape 9), profil EAS `production` (fichier `.aab`).
 
 Les autres fichiers de ce dossier contiennent les textes à coller :
 
@@ -149,7 +149,7 @@ npx eas-cli@latest build --platform android --profile production
 ```
 
 - Au **premier** build Android, EAS demande : *Generate a new Android Keystore?* → **Yes**. EAS garde cette clé (c'est la « clé d'importation ») ; ne la supprimez jamais de votre compte Expo.
-- `eas.json` est déjà prêt : `buildType: app-bundle`, `autoIncrement: true` et `appVersionSource: remote` → EAS gère le `versionCode` tout seul (1, 2, 3…). Le nom de version affiché est `1.0.0` (`app.json › version`).
+- `eas.json` est déjà prêt : `buildType: app-bundle`, `autoIncrement: true` et `appVersionSource: remote` → EAS gère le `versionCode` tout seul (1, 2, 3…). Le nom de version affiché est `1.0.1` (`app.json › version`).
 - Le build tourne dans le cloud Expo. À la fin, le terminal affiche un lien.
 
 Télécharger le fichier : **https://expo.dev** › compte › projet **assokit** › **Builds** › le build **Android** le plus récent › **Download** (fichier `.aab`).
@@ -175,7 +175,7 @@ Google exige que le **tout premier** `.aab` soit envoyé à la main dans la Cons
 3. Onglet **Releases** › **Créer une release**.
 4. Encadré **Signature d'application par Google Play** : **Choisir une clé de signature** › **Utiliser une clé générée par Google** (choix par défaut, recommandé) › confirmer. Google signera l'application avec sa propre clé ; la clé EAS ne sert qu'à l'importation. En cas de perte de la clé EAS, Google peut la réinitialiser — sans Play App Signing, ce serait impossible.
 5. **App bundles** › **Importer** › choisir le `.aab` téléchargé.
-6. **Nom de la release** : laisser la valeur proposée (`1 (1.0.0)`).
+6. **Nom de la release** : laisser la valeur proposée (par exemple `1 (1.0.1)` ; le premier nombre est le `versionCode` donné par EAS).
 7. **Notes de version** : coller le bloc de `fiche-google-play.md` § 4.
 8. **Suivant**. L'écran de vérification peut afficher des **avertissements** (ex. « aucun fichier de désobscurcissement ») : ce ne sont pas des erreurs, on peut continuer. Une **erreur** (en rouge) bloque : la lire et la corriger.
 9. **Enregistrer** › **Lancer le déploiement en test interne** (ou **Envoyer les modifications pour examen** selon l'écran).
@@ -283,7 +283,8 @@ Raccourci : `npx eas-cli@latest build --platform android --profile production --
 
 ## Étape 9 — Les mises à jour OTA continuent de marcher
 
-- `app.json` : `runtimeVersion.policy = appVersion` → la version d'exécution est **`1.0.0`**, la même pour l'iPhone et pour Android. Le build Android de production est sur le canal **`production`** (`eas.json`).
+- `app.json` : `runtimeVersion.policy = appVersion` → la version d'exécution est **`1.0.1`** depuis le 18/10/2026, la même pour l'iPhone et pour Android. Le build Android de production est sur le canal **`production`** (`eas.json`).
+- **Pourquoi 1.0.1** : React Native est passé de 0.86.0 à 0.86.3 (changement natif, `../app-store/conformite-ios.md` § A4), et des binaires 1.0.0 ont déjà été distribués (iPhone sur TestFlight, peut-être un test interne Android). Restés en 1.0.0, ils **accepteraient** une OTA compilée avec le JavaScript de 0.86.3 (même version d'exécution) et recevraient une mise à jour incompatible. En 1.0.1, les nouveaux builds ont leur propre version d'exécution ; les binaires 1.0.0 gardent leur dernière OTA. Remplacer ces anciens builds de test par les builds 1.0.1.
 - Une mise à jour JavaScript part donc aux deux plateformes :
 
 ```bash
@@ -293,9 +294,9 @@ npx eas-cli@latest update --channel production --message "…"
 
   (ajouter `--platform android` ou `--platform ios` pour n'en viser qu'une).
 - Une mise à jour publiée **avant** le build Android ne remplace pas le code embarqué, plus récent : l'application garde le plus récent des deux.
-- **Règle d'or** : un changement **natif** (nouveau module, nouvelle permission, icône, `app.json › android` ou `ios`) n'arrive **pas** par OTA. Dans ce cas : passer `version` à `1.0.1` dans `app.json`, refaire les builds iOS **et** Android, et les envoyer aux deux stores. Sinon une OTA pourrait appeler du code natif absent des anciens builds.
+- **Règle d'or** : un changement **natif** (nouveau module, nouvelle permission, icône, `app.json › android` ou `ios`) n'arrive **pas** par OTA. Dans ce cas : passer `version` à la version suivante (`1.0.2` après la 1.0.1) dans `app.json`, refaire les builds iOS **et** Android, et les envoyer aux deux stores. Sinon une OTA pourrait appeler du code natif absent des anciens builds.
 - Le libellé « Se connecter avec la biométrie » ajouté aujourd'hui est du JavaScript : il est dans le build Android et partira vers l'iPhone avec la prochaine OTA (sans effet visible sur iPhone, qui garde « Face ID »).
-- **Le module `react-native-safe-area-context` est une exception voulue à la règle d'or**, sans passage en 1.0.1 : le JavaScript ne l'importe pas ; il lit seulement sa constante par `TurboModuleRegistry.get('RNCSafeAreaContext')`, qui renvoie `null` quand le module manque, et uniquement sur Android. Le binaire iPhone 1.0.0, qui ne l'a pas, peut donc recevoir la même OTA sans planter (sur iPhone, rien ne change : `SafeAreaView` y fait déjà le travail). Le prochain build iPhone l'embarquera, sans effet.
+- **Le module `react-native-safe-area-context` était une exception voulue à la règle d'or** (13/10/2026), sans changement de version : le JavaScript ne l'importe pas ; il lit seulement sa constante par `TurboModuleRegistry.get('RNCSafeAreaContext')`, qui renvoie `null` quand le module manque, et uniquement sur Android. Le binaire iPhone 1.0.0, qui ne l'a pas, peut donc recevoir la même OTA sans planter (sur iPhone, rien ne change : `SafeAreaView` y fait déjà le travail). Le prochain build iPhone l'embarquera, sans effet.
 - Les autres corrections du 13/10/2026 dans `App.js` (liens légaux dans les Paramètres, sur la connexion et l'accueil ; blocage des pages de présentation ; agenda) sont du JavaScript : elles partiront aussi vers l'iPhone avec la prochaine OTA (`--platform ios` si l'on veut ne viser que lui). Le lien vers la politique de confidentialité dans l'application est aussi demandé par Apple (règle 5.1.1).
 
 ---

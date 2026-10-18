@@ -21,7 +21,7 @@ try {
     if (($user['role'] ?? '') === 'follower') { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
     // Le canal appartient a l'org + visibilite
-    $st = $pdo->prepare("SELECT id, name, slug, type FROM channels WHERE id = ? AND org_id = ? AND is_archived = 0 LIMIT 1");
+    $st = $pdo->prepare("SELECT id, name, slug, type, is_mairie_channel FROM channels WHERE id = ? AND org_id = ? AND is_archived = 0 LIMIT 1");
     $st->execute([$channel_id, $org_id]);
     $ch = $st->fetch(PDO::FETCH_ASSOC);
     if (!$ch) { http_response_code(404); echo json_encode(['ok' => false, 'error' => 'not_found']); exit; }
@@ -48,7 +48,8 @@ try {
     $stmt = $pdo->prepare("
         SELECT cm.id, cm.user_id, cm.content, cm.created_at, cm.reply_to_message_id,
                u.first_name, u.last_name, u.role, u.avatar_color, u.parent_org_id AS author_parent_org_id,
-               rcm.content AS reply_content, ru.first_name AS reply_first, ru.last_name AS reply_last
+               u.org_id AS author_org_id,
+               rcm.content AS reply_content, rcm.user_id AS reply_user_id, ru.first_name AS reply_first, ru.last_name AS reply_last
         FROM channel_messages cm
         JOIN users u ON cm.user_id = u.id
         LEFT JOIN channel_messages rcm ON cm.reply_to_message_id = rcm.id
@@ -61,21 +62,29 @@ try {
     // Les 100 plus récents, remis dans l'ordre chronologique (le fil défile vers le bas)
     $rows = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
 
+    // Appui long dans l'app (api/app-message-action.php) : « Supprimer » n'est proposé que si le
+    // serveur l'accepterait, avec les règles d'action-message-canal.php (auteur, ou administrateur
+    // sauf pour les messages des agents de la mairie sur le canal « Suivi · Mairie »).
+    $viewer_admin = (($user['role'] ?? '') === 'admin');
     $messages = [];
     foreach ($rows as $r) {
+        $is_mairie_agent_msg = !empty($ch['is_mairie_channel']) && (int) ($r['author_org_id'] ?? 0) !== (int) $org_id;
         $fn = trim((string) ($r['first_name'] ?? ''));
         $ln = trim((string) ($r['last_name'] ?? ''));
         $ts = strtotime((string) $r['created_at']);
         $reply = null;
         if (!empty($r['reply_to_message_id']) && $r['reply_content'] !== null) {
             $reply = [
-                'author'  => trim(trim((string) ($r['reply_first'] ?? '')) . ' ' . trim((string) ($r['reply_last'] ?? ''))),
+                'author'    => trim(trim((string) ($r['reply_first'] ?? '')) . ' ' . trim((string) ($r['reply_last'] ?? ''))),
+                'author_id' => (int) ($r['reply_user_id'] ?? 0),
                 'content' => mb_substr((string) $r['reply_content'], 0, 90),
             ];
         }
         $messages[] = [
             'id'       => (int) $r['id'],
             'is_self'  => ((int) $r['user_id'] === $uid),
+            'author_id' => (int) $r['user_id'],
+            'can_delete' => ((int) $r['user_id'] === $uid) || ($viewer_admin && !$is_mairie_agent_msg),
             'author'   => trim($fn . ' ' . $ln),
             'initials' => m_ini($fn, $ln),
             'role'     => (string) ($r['role'] ?? ''),
@@ -88,7 +97,7 @@ try {
         ];
     }
 
-    echo json_encode(['ok' => true, 'notifs_marked_read' => $notif_read, 'channel' => ['id' => (int) $ch['id'], 'name' => (string) $ch['name']], 'messages' => $messages], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'viewer_id' => (int) $uid, 'notifs_marked_read' => $notif_read, 'channel' => ['id' => (int) $ch['id'], 'name' => (string) $ch['name']], 'messages' => $messages], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-channel-messages] ' . $e->getMessage());
     http_response_code(500);

@@ -29,6 +29,13 @@ Mot de passe : AssokitDemo2026!
 
 ## 2. 🍏 Apple — App Store Connect
 
+> ⚠️ **Section remplacée** par le dossier `mobile/store/app-store/` (18/10/2026) : comptes de
+> démonstration DEMO F, notes pour l'examen en anglais, rubrique « Confidentialité de l'app »
+> établie d'après le code (15 types de données), suppression de compte (chemin réel :
+> Plus › Paramètres), app réservée à l'iPhone (`supportsTablet: false`, pas de captures
+> iPad), guide de publication. Les réponses ci-dessous sont gardées pour mémoire ; en cas de
+> différence, c'est le dossier `mobile/store/app-store/` qui fait foi.
+
 ### 2.1 « App Review Information » (App Store Connect → ta version → Informations pour la review)
 
 | Champ | Valeur à coller |

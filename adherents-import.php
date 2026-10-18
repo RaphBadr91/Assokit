@@ -447,7 +447,7 @@ render_sidebar('adherents');
       </p>
       <?php if (ak_trial_limited($pdo, $org_id)): ?>
       <p style="margin:8px 0 0; font-size:12.5px; color:var(--ink-3);">
-        ⏳ Pendant l’essai gratuit : <?= (int)AK_TRIAL_MAX_IMPORT_ROWS ?> adhérents au plus par import, <?= (int)AK_TRIAL_MAX_MEMBERS_PER_DAY ?> par 24 h.
+        ⏳ <?php // ak_trial_msg() : dans l'app, « essai » sans « gratuit » (Apple 3.1.1 / 3.1.3 f) ?><?= h(ak_trial_msg('Pendant l’essai gratuit : ' . (int)AK_TRIAL_MAX_IMPORT_ROWS . ' adhérents au plus par import, ' . (int)AK_TRIAL_MAX_MEMBERS_PER_DAY . ' par 24 h.')) ?>
       </p>
       <?php endif; ?>
     </div>

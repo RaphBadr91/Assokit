@@ -30,6 +30,32 @@ if (!defined('AK_TRIAL_MAX_RECIPIENTS_PLATFORM_DAY')) define('AK_TRIAL_MAX_RECIP
 if (!defined('AK_TRIAL_MAX_IMPORT_ROWS'))         define('AK_TRIAL_MAX_IMPORT_ROWS', 200);
 if (!defined('AK_TRIAL_MAX_MEMBERS_PER_DAY'))     define('AK_TRIAL_MAX_MEMBERS_PER_DAY', 300);
 
+if (!function_exists('ak_trial_msg')) {
+    /**
+     * Message de plafond tel qu'affiché. Dans l'application mobile (ak_billing_hidden), aucune
+     * invitation à « passer à une formule Assokit » ni mot « gratuit » : ce serait un appel à
+     * acheter hors de l'app (Apple 3.1.1 / 3.1.3 f, règles de paiement Google Play).
+     * Sur le site, le message reste inchangé.
+     */
+    function ak_trial_msg(string $m): string {
+        if (!function_exists('ak_billing_hidden')) @include_once __DIR__ . '/app-context.php';
+        if (!function_exists('ak_billing_hidden') || !ak_billing_hidden()) return $m;
+        return str_replace([
+            'Réduisez le fichier, réessayez demain ou passez à une formule Assokit pour lever la limite.',
+            ' ou passez à une formule Assokit pour lever la limite.',
+            ', ou passez à une formule Assokit pour envoyer sans attendre.',
+            ' Passez à une formule Assokit pour lever la limite.',
+            'essai gratuit',
+        ], [
+            'Réduisez le fichier ou réessayez demain.',
+            '.',
+            '.',
+            '',
+            'essai',
+        ], $m);
+    }
+}
+
 if (!function_exists('ak_trial_limited')) {
     /** Les plafonds d'essai s'appliquent-ils à cette association ? false en cas de doute. */
     function ak_trial_limited(PDO $pdo, int $org_id): bool {
@@ -137,27 +163,27 @@ if (!function_exists('ak_trial_send_block')) {
         $per_day  = AK_TRIAL_MAX_RECIPIENTS_PER_DAY;
 
         if ($n > $per_send) {
-            return "Pendant l’essai gratuit, les envois sont limités à $per_send destinataires à la fois "
-                 . "(celui-ci en compte $n). Passez à une formule Assokit pour lever la limite.";
+            return ak_trial_msg("Pendant l’essai gratuit, les envois sont limités à $per_send destinataires à la fois "
+                 . "(celui-ci en compte $n). Passez à une formule Assokit pour lever la limite.");
         }
         $done = ak_trial_recipients_24h($pdo, $org_id);
         if ($done !== null && $done + $n > $per_day) {
             $left = max(0, $per_day - $done);
             if ($left === 0) {
-                return "Pendant l’essai gratuit, les envois sont limités à $per_day destinataires par 24 h "
+                return ak_trial_msg("Pendant l’essai gratuit, les envois sont limités à $per_day destinataires par 24 h "
                      . "(diffusions, convocations, factures, devis et relances compris), et cette limite est atteinte. "
-                     . "Réessayez demain ou passez à une formule Assokit pour lever la limite.";
+                     . "Réessayez demain ou passez à une formule Assokit pour lever la limite.");
             }
-            return "Pendant l’essai gratuit, les envois sont limités à $per_day destinataires par 24 h : "
+            return ak_trial_msg("Pendant l’essai gratuit, les envois sont limités à $per_day destinataires par 24 h : "
                  . "il en reste $left aujourd’hui, pour $n prévus. "
-                 . "Réessayez demain ou passez à une formule Assokit pour lever la limite.";
+                 . "Réessayez demain ou passez à une formule Assokit pour lever la limite.");
         }
         // Budget commun à tous les comptes d'essai
         $all = ak_trial_platform_recipients_24h($pdo);
         if ($all !== null && $all + $n > AK_TRIAL_MAX_RECIPIENTS_PLATFORM_DAY) {
             error_log('[trial-limits] budget plateforme des essais atteint (' . $all . ' destinataires en 24 h) — org ' . $org_id);
-            return "Les envois des comptes en essai gratuit sont momentanément suspendus : la limite quotidienne "
-                 . "commune à tous les essais est atteinte. Réessayez plus tard, ou passez à une formule Assokit pour envoyer sans attendre.";
+            return ak_trial_msg("Les envois des comptes en essai gratuit sont momentanément suspendus : la limite quotidienne "
+                 . "commune à tous les essais est atteinte. Réessayez plus tard, ou passez à une formule Assokit pour envoyer sans attendre.");
         }
         ak_trial_platform_recipients_24h($pdo, $n);   // l'envoi accepté compte pour la suite de la requête
         return null;
@@ -244,21 +270,21 @@ if (!function_exists('ak_trial_members_block')) {
         $per_day    = AK_TRIAL_MAX_MEMBERS_PER_DAY;
 
         if ($import && $n > $per_import) {
-            return "Pendant l’essai gratuit, un import est limité à $per_import adhérents à la fois "
+            return ak_trial_msg("Pendant l’essai gratuit, un import est limité à $per_import adhérents à la fois "
                  . "(ce fichier en contient $n à créer). Découpez-le en plusieurs fichiers "
-                 . "ou passez à une formule Assokit pour lever la limite.";
+                 . "ou passez à une formule Assokit pour lever la limite.");
         }
         $done = ak_trial_members_24h($pdo, $org_id);
         if ($done !== null && $done + $n > $per_day) {
             $left = max(0, $per_day - $done);
             if ($left === 0) {
-                return "Pendant l’essai gratuit, vous pouvez ajouter jusqu’à $per_day adhérents par 24 h, "
-                     . "et cette limite est atteinte. Réessayez demain ou passez à une formule Assokit pour lever la limite.";
+                return ak_trial_msg("Pendant l’essai gratuit, vous pouvez ajouter jusqu’à $per_day adhérents par 24 h, "
+                     . "et cette limite est atteinte. Réessayez demain ou passez à une formule Assokit pour lever la limite.");
             }
             // $n > $left >= 1 : n'arrive qu'avec un import (ajout unitaire : $n = 1).
-            return "Pendant l’essai gratuit, vous pouvez ajouter jusqu’à $per_day adhérents par 24 h : "
+            return ak_trial_msg("Pendant l’essai gratuit, vous pouvez ajouter jusqu’à $per_day adhérents par 24 h : "
                  . "il en reste $left aujourd’hui, pour $n à créer. Réduisez le fichier, réessayez demain "
-                 . "ou passez à une formule Assokit pour lever la limite.";
+                 . "ou passez à une formule Assokit pour lever la limite.");
         }
         return null;
     }

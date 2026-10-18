@@ -285,7 +285,7 @@ render_sidebar('communication');
     <div style="padding:14px; background:rgba(5, 150, 105, 0.06); border:1px solid rgba(5, 150, 105, 0.2); border-radius:10px; margin-bottom:20px; font-size:12.5px; color:var(--acc-dark); line-height:1.5;">
       ⚠️ <strong>Attention :</strong> l'email sera envoyé immédiatement à la validation. Vérifie bien le message et les destinataires avant de confirmer.
       <?php if (ak_trial_limited($pdo, $org_id)): ?>
-        <br>⏳ Pendant l’essai gratuit : <?= (int)AK_TRIAL_MAX_RECIPIENTS_PER_SEND ?> destinataires au plus par envoi, <?= (int)AK_TRIAL_MAX_RECIPIENTS_PER_DAY ?> par 24 h.
+        <br>⏳ <?php // ak_trial_msg() : dans l'app, « essai » sans « gratuit » (Apple 3.1.1 / 3.1.3 f) ?><?= h(ak_trial_msg('Pendant l’essai gratuit : ' . (int)AK_TRIAL_MAX_RECIPIENTS_PER_SEND . ' destinataires au plus par envoi, ' . (int)AK_TRIAL_MAX_RECIPIENTS_PER_DAY . ' par 24 h.')) ?>
       <?php endif; ?>
     </div>
 

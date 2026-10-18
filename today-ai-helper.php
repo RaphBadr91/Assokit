@@ -763,6 +763,9 @@ function today_call_claude(string $prompt): array
     if (!defined('CLAUDE_API_KEY') || CLAUDE_API_KEY === '') {
         return ['ok' => false, 'error' => 'CLAUDE_API_KEY non configurée', 'suggestions' => []];
     }
+    if (!today_ai_enabled()) {
+        return ['ok' => false, 'error' => 'ai_consent', 'suggestions' => []];
+    }
     if (function_exists('set_time_limit')) @set_time_limit(TODAY_AI_TIMEOUT_SECONDS + 30);
 
     $payload = [
@@ -828,7 +831,11 @@ function today_call_claude(string $prompt): array
  */
 function today_ai_enabled(): bool
 {
-    return defined('CLAUDE_API_KEY') && CLAUDE_API_KEY !== '';
+    if (!defined('CLAUDE_API_KEY') || CLAUDE_API_KEY === '') return false;
+    // Dans l'app, sans l'accord de l'utilisateur pour l'envoi à Anthropic (règle 5.1.2(i)
+    // d'Apple) : repli statique, aucun appel (ai-consent-helper.php)
+    if (!function_exists('ak_ai_app_gate')) require_once __DIR__ . '/ai-consent-helper.php';
+    return ak_ai_app_gate() === null;
 }
 
 /**
@@ -1139,9 +1146,16 @@ function today_render_items(array $suggestions): string
         'info'      => ['bg' => '#F0FDF4', 'border' => '#86EFAC', 'text' => '#166534'],
     ];
     $e = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    // Dans l'application (ak_billing_hidden) : aucune suggestion qui invite à choisir une formule
+    // ou à s'abonner, même rédigée par l'IA (Apple 3.1.1 / 3.1.3 f, règles de paiement Google Play).
+    $hide_billing = function_exists('ak_billing_hidden') && ak_billing_hidden();
     $html = '';
     foreach ($suggestions as $sugg) {
         if (!is_array($sugg)) continue;
+        if ($hide_billing && (
+            preg_match('#^/(tarifs|abonnement|mon-asso-plan|mon-asso-paiement|mon-asso-factures(?:[?/]|$)|upgrade)#', (string)($sugg['link'] ?? ''))
+            || preg_match('/formule|abonnement|essai/iu', (string)($sugg['title'] ?? '') . ' ' . (string)($sugg['description'] ?? '') . ' ' . (string)($sugg['link_label'] ?? ''))
+        )) continue;
         $priority = (string)($sugg['priority'] ?? 'info');
         $colors = $colors_by_priority[$priority] ?? $colors_by_priority['info'];
         $link = (string)($sugg['link'] ?? '#');

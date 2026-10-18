@@ -38,7 +38,7 @@ render_public_nav('');
       <ul>
         <li><strong>Identification</strong> : nom, prénom, email, mot de passe (haché)</li>
         <li><strong>Structure</strong> : nom, type, adresse, SIREN/RNA si applicable</li>
-        <li><strong>Usage</strong> : journaux de connexion, statistiques d'utilisation anonymisées</li>
+        <li><strong>Usage</strong> : journaux de connexion, statistiques d'utilisation tirées du journal d'activité (12 mois)</li>
         <li><strong>Contenus</strong> : ce que vous téléversez (factures, contacts, messages…)</li>
         <li><strong>Application mobile</strong> : un jeton de notifications, si vous acceptez les notifications, et un identifiant d'installation tiré au hasard, qui sert à livrer les mises à jour de l'application ; les photos que vous prenez ou choisissez pour scanner une facture ou changer le logo. L'empreinte digitale et la reconnaissance faciale restent gérées par votre téléphone : nous n'y avons jamais accès. Pour la connexion biométrique, vos identifiants sont gardés dans le stockage sécurisé du téléphone et effacés à la déconnexion. L'application n'intègre aucun outil de mesure d'audience ni de publicité.</li>
       </ul>
@@ -50,7 +50,8 @@ render_public_nav('');
         <li><strong>Vous envoyer les informations contractuelles</strong> (factures, support, sécurité du compte) — <em>exécution du contrat</em></li>
         <li><strong>Relier Gmail ou Google Agenda</strong>, si un administrateur de votre association le décide (section 12) — <em>exécution du contrat</em>, révocable à tout moment</li>
         <li><strong>Respecter nos obligations légales</strong> (comptabilité, fiscalité, conservation des factures) — <em>obligation légale</em></li>
-        <li><strong>Sécuriser le Service</strong> (journaux de connexion, prévention des abus) et <strong>l'améliorer</strong> à partir de statistiques anonymisées — <em>intérêt légitime</em> à fournir un service fiable</li>
+        <li><strong>Sécuriser le Service</strong> (journaux de connexion, prévention des abus) et <strong>l'améliorer</strong> à partir de statistiques d'utilisation tirées du journal d'activité (12 mois) — <em>intérêt légitime</em> à fournir un service fiable</li>
+        <li><strong>Vous informer par e-mail de la fin de votre période d'essai et des formules disponibles</strong> — <em>intérêt légitime</em> (vous pouvez vous y opposer à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>)</li>
         <li><strong>Répondre à vos demandes</strong> envoyées par le formulaire de contact — <em>mesures précontractuelles</em> prises à votre demande, ou <em>intérêt légitime</em> à vous répondre</li>
         <li><strong>Mesurer l'audience du site public</strong> (Google Analytics) — <em>votre consentement</em>, que vous pouvez retirer à tout moment (section 9)</li>
       </ul>
@@ -61,7 +62,7 @@ render_public_nav('');
         <li><strong>Compte actif</strong> : tant que le compte existe (essai, abonnement, ou accès limité après résiliation de l'abonnement)</li>
         <li><strong>Compte que vous supprimez vous-même</strong> (dans l'application ou sur le site) : votre identité (nom, e-mail, téléphone, ville), votre mot de passe, votre double authentification, votre lien d'agenda et vos jetons de notification sont effacés ou anonymisés <strong>immédiatement</strong>, et la connexion n'est plus possible (pensez à exporter vos données avant). Ce que vous avez partagé dans votre association (messages, comptes rendus, fichiers…) y reste, signé « Compte supprimé », tant que l'association utilise Assokit. Détails sur la page <a href="/suppression-compte">Supprimer votre compte</a>.</li>
         <li><strong>Compte retiré par un administrateur de l'association</strong> : 30 jours dans la corbeille de l'association, où il peut encore être restauré, puis anonymisation de la même façon</li>
-        <li><strong>Fermeture de l'espace d'une association</strong> (sur demande à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>) : 30 jours pour exporter les données, puis suppression définitive, sauf les pièces comptables (ligne suivante)</li>
+        <li><strong>Fermeture de l'espace d'une association</strong> (sur demande à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>, ou depuis l'application, Paramètres › Supprimer mon compte, quand votre compte est le seul de l'association) : 30 jours pour exporter les données, puis suppression définitive, sauf les pièces comptables (ligne suivante)</li>
         <li><strong>Factures et obligations légales</strong> : 10 ans (obligation comptable française)</li>
         <li><strong>Logs techniques</strong> : 12 mois maximum</li>
         <li><strong>Cookies de mesure d'audience</strong> : 13 mois maximum ; votre choix sur ces cookies est conservé 6 mois</li>
@@ -73,7 +74,7 @@ render_public_nav('');
         <li><strong>O2Switch</strong> (France) — hébergement</li>
         <li><strong>Resend</strong> (UE) — envoi d'emails transactionnels</li>
         <li><strong>Stripe</strong> (UE) — traitement des paiements (abonnements Assokit, paiements en ligne)</li>
-        <li><strong>Anthropic</strong> (USA) — pour les fonctions IA : contenus que vous générez volontairement et, si la Boîte mail est reliée, tri et brouillons de réponse (voir section 12.3). Pas d'entraînement de modèles sur vos données.</li>
+        <li><strong>Anthropic</strong> (USA) — pour les fonctions IA : contenus que vous générez volontairement et, si la Boîte mail est reliée, tri et brouillons de réponse (voir section 12.3). Pas d'entraînement de modèles sur vos données. Dans l'application, aucun contenu ne lui est envoyé sans votre accord, demandé avant la première fonction IA et modifiable dans Paramètres › Fonctions IA.</li>
         <li><strong>Google LLC</strong> (USA) — uniquement si vous reliez Gmail ou Google Agenda (voir section 12)</li>
         <li><strong>Expo</strong> (650 Industries, USA) — application mobile : acheminement des notifications vers votre téléphone (avec Google Firebase Cloud Messaging sur Android et le service de notifications d'Apple sur iPhone) et livraison des mises à jour de l'application. Ces services reçoivent le jeton de notifications et le texte de la notification, ou l'identifiant d'installation, rien d'autre.</li>
         <li><strong>Google Analytics</strong> (Google LLC, USA) — mesure d'audience anonymisée sur le site public uniquement (pas dans l'application), <strong>seulement si vous l'acceptez</strong> (section 9). IP anonymisée. Aucune publicité.</li>
@@ -172,7 +173,7 @@ render_public_nav('');
       <p>Cette politique peut évoluer. Toute modification substantielle vous sera notifiée par email avec un préavis de 30 jours.</p>
 
       <?php /* Date de version : à changer seulement quand le texte change */ ?>
-      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 13/10/2026</p>
+      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 18/10/2026</p>
     </article>
   </div>
 </section>

@@ -51,15 +51,14 @@ Ces changements sont dans le code mais **ne prennent effet qu'au prochain build 
 
 | Point | État | Action |
 |-------|------|--------|
-| `version` 1.0.0 / `buildNumber` / `versionCode` | ✅ | 1er build ; `eas.json` a `autoIncrement:true` + `appVersionSource:"remote"` → EAS gère l'incrément. |
+| `version` 1.0.1 / `buildNumber` / `versionCode` | ✅ | 1.0.0 → 1.0.1 le 18/10/2026 (React Native 0.86.3 : les binaires 1.0.0 distribués ne doivent plus recevoir d'OTA, voir `store/app-store/conformite-ios.md` § A4) ; `eas.json` a `autoIncrement:true` + `appVersionSource:"remote"` → EAS gère l'incrément. |
 | `bundleIdentifier` = `package` = `fr.assokit.app` | ✅ | cohérent. |
 | iOS `infoPlist` : Face ID, Caméra, Photos + `ITSAppUsesNonExemptEncryption:false` | ✅ | descriptions présentes (évite le prompt export chiffrement). |
 | Permissions Android (CAMERA, biometric) | ✅ | minimales. |
 | Icônes (1024²) + splash (2732²) | ✅ | présents dans `assets/`. |
-| **`supportsTablet: true`** | ⚠️ | **Oblige à fournir des captures iPad à Apple.** Si tu ne vises pas l'iPad au lancement → passe à `false` (plus simple, moins de tests). C'est un choix produit. |
+| `supportsTablet` | ✅ | `false` : app iPhone seulement, pas de captures iPad. Manifeste de confidentialité, enregistrement dans Photos, langue française et React Native 0.86.3 ajoutés le 18/10/2026 : voir `store/app-store/conformite-ios.md`. |
 | Icône avec canal alpha | ℹ️ | EAS régénère l'icône store (opaque). OK en pratique. |
 
-> 💡 Recommandation lancement rapide : `supportsTablet: false` pour ne gérer que l'iPhone au départ.
 
 ---
 
@@ -93,6 +92,11 @@ eas submit --platform android --latest
 ---
 
 ## 4. Apple App Store Connect
+
+> **Tout est détaillé dans `mobile/store/app-store/`** (18/10/2026) : `publication-ios.md` (guide pas à pas),
+> `conformite-ios.md`, `fiche-app-store.md`, `confidentialite-app.md`, `age-et-revue.md` (notes pour l'examen
+> et comptes DEMO F), captures `captures-6.9/`. La liste ci-dessous n'est qu'un rappel ; en cas de différence,
+> c'est ce dossier qui fait foi.
 
 - ⏳ Créer l'app (bundle `fr.assokit.app`).
 - ⏳ **App Privacy** (« nutrition label ») : déclarer les données collectées. Assokit collecte au moins : e-mail/identifiant (compte), contenu utilisateur (via le compte web), usage. Caméra & Face ID = **locaux, non collectés**.

@@ -1037,7 +1037,13 @@ function mail_ai_triage(array $cats, array $lot): array {
             . "r = raison en français, 4 à 10 mots, factuelle, avec la date limite si elle est citée (ex. « Dépôt du dossier avant le 15/12 ») ; r vide si p vaut normal ou faible.\n\n"
             . "E-MAILS :\n{$mails}"
             . "Réponds UNIQUEMENT par un objet JSON : {\"<numéro>\": {\"c\": \"<slug>\", \"p\": \"urgent|important|normal|faible\", \"r\": \"<raison>\"}}";
-    $r = ask_claude('Tu es l\'assistant de tri d\'une boîte mail associative. Tu réponds uniquement en JSON valide, sans texte autour.', [['role' => 'user', 'content' => $prompt]], 1500);
+    // Tri réglé pour toute l'association par un administrateur, sur le site (« Tri par l'IA », qui
+    // nomme Anthropic) : il ne dépend pas de l'accord de la personne dont la requête l'a déclenché
+    // (bouton « Synchroniser » de l'app). Voir ai-consent-helper.php.
+    $call = function () use ($prompt) {
+        return ask_claude('Tu es l\'assistant de tri d\'une boîte mail associative. Tu réponds uniquement en JSON valide, sans texte autour.', [['role' => 'user', 'content' => $prompt]], 1500);
+    };
+    $r = function_exists('ak_ai_org_process') ? ak_ai_org_process($call) : $call();
     if (empty($r['success'])) return [];
     $txt = trim((string)$r['content']);
     if (preg_match('/\{.*\}/s', $txt, $m)) $txt = $m[0];

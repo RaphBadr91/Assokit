@@ -25,6 +25,8 @@ try {
         1500
     );
     $raw = ($resp && !empty($resp['success'])) ? ($resp['content'] ?? '') : '';
+    // Accord pour l'IA manquant dans l'app (ai-consent-helper.php) : le motif, pas une panne
+    if (!$raw && !empty($resp['consent_required'])) app_fail(403, 'ai_consent', (string) $resp['error']);
     if (!$raw) app_fail(502, 'ai', 'Pas de réponse de l\'IA.');
     $parsed = coach_parse_response($raw);
     if (!$parsed) app_fail(502, 'ai', 'Réponse IA invalide.');

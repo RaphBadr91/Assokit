@@ -16,6 +16,8 @@
 if (!defined('ANTHROPIC_API_KEY')) {
     require_once __DIR__ . '/config.php';
 }
+// ak_ai_app_gate() : dans l'app, aucun envoi à l'IA sans l'accord de l'utilisateur (règle 5.1.2(i) d'Apple)
+require_once __DIR__ . '/ai-consent-helper.php';
 
 /**
  * Vérifie que l'IA est configurée (clé API présente).
@@ -280,6 +282,10 @@ function ask_claude($system_prompt, $messages, $max_tokens = null) {
             'tokens' => 0,
         ];
     }
+    // Dans l'app : accord préalable pour l'envoi à Anthropic (règle 5.1.2(i) d'Apple, ai-consent-helper.php)
+    if (function_exists('ak_ai_app_gate') && ($ak_gate = ak_ai_app_gate()) !== null) {
+        return ['success' => false, 'content' => '', 'error' => $ak_gate, 'tokens' => 0, 'consent_required' => true];
+    }
 
     $max_tokens = $max_tokens ?: AI_MAX_TOKENS;
 
@@ -362,6 +368,10 @@ function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_to
             'error' => 'L\'IA n\'est pas configurée. Demandez à l\'administrateur d\'ajouter la clé API Anthropic dans config.php.',
             'tokens' => 0,
         ];
+    }
+    // Dans l'app : accord préalable pour l'envoi à Anthropic (règle 5.1.2(i) d'Apple, ai-consent-helper.php)
+    if (function_exists('ak_ai_app_gate') && ($ak_gate = ak_ai_app_gate()) !== null) {
+        return ['success' => false, 'content' => '', 'error' => $ak_gate, 'tokens' => 0, 'consent_required' => true];
     }
 
     $max_tokens = $max_tokens ?: AI_MAX_TOKENS;
@@ -489,6 +499,10 @@ function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_to
 function extract_invoice_from_image($image_path, $mime_type) {
     if (!is_ai_enabled()) {
         return ['success' => false, 'data' => [], 'error' => 'IA non configurée', 'tokens' => 0];
+    }
+    // Dans l'app : accord préalable pour l'envoi à Anthropic (règle 5.1.2(i) d'Apple, ai-consent-helper.php)
+    if (function_exists('ak_ai_app_gate') && ($ak_gate = ak_ai_app_gate()) !== null) {
+        return ['success' => false, 'data' => [], 'error' => $ak_gate, 'tokens' => 0, 'consent_required' => true];
     }
 
     if (!file_exists($image_path)) {

@@ -1,5 +1,10 @@
 <?php
 require_once __DIR__ . '/includes-public.php';
+// ak_billing_hidden() : page vue dans l'application mobile (ou par un compte de démonstration). Le
+// contrat reste le même, mais l'app ne décrit ni le mode de paiement ni le lien Tarifs (masqué par
+// l'app, ce qui laissait « décrites sur la page  : ») : Apple 3.1.1 / 3.1.3 f, paiements Google Play.
+require_once __DIR__ . '/app-context.php';
+$cgu_in_app = ak_billing_hidden();
 
 render_public_head([
     'title'       => 'Conditions générales d\'utilisation et de vente',
@@ -13,7 +18,7 @@ render_public_nav('');
     <div class="pub-breadcrumb"><a href="/">Accueil</a><span class="pub-breadcrumb-sep">›</span><strong style="color:var(--c-encre);">CGU / CGV</strong></div>
     <h1 class="pub-h1" style="font-size:36px;">Conditions générales</h1>
     <?php /* Date de version du texte (dernière modification) : à changer seulement quand le texte change */ ?>
-    <p class="pub-tagline">Version du 13/10/2026</p>
+    <p class="pub-tagline">Version du 18/10/2026</p>
   </div>
 </section>
 <section class="pub-section" style="padding-top:0;">
@@ -33,6 +38,10 @@ render_public_nav('');
       <h2>3. Inscription et compte</h2>
       <p>L'inscription est ouverte aux associations loi 1901, TPE, indépendants et autres structures professionnelles. L'Utilisateur s'engage à fournir des informations exactes et à les maintenir à jour.</p>
 
+<?php if ($cgu_in_app): ?>
+      <h2>4. Conditions commerciales</h2>
+      <p>Les conditions commerciales du Service (formule, durée, prix) sont convenues avec la structure (association, entreprise) lors de sa souscription, et décrites sur notre site, dans la version complète de ces conditions générales. Toute modification de prix est annoncée par e-mail au moins 30 jours avant son application ; la structure qui la refuse peut résilier avant son entrée en vigueur. En cas de défaut de paiement, l'accès peut être suspendu après un préavis de 15 jours.</p>
+<?php else: ?>
       <h2>4. Formules, essai, tarifs et paiement</h2>
       <p>Le Service est proposé selon trois formules, décrites sur la page <a href="/tarifs">Tarifs</a> :</p>
       <ul>
@@ -44,6 +53,7 @@ render_public_nav('');
       <p>L’abonnement Assokit est <strong>mensuel</strong> (il n’existe pas de formule annuelle). Il est payable d’avance chaque mois, par carte bancaire via notre partenaire de paiement sécurisé (Stripe) ou, sur accord, sur facture par virement, et se renouvelle automatiquement chaque mois jusqu’à sa résiliation. Les factures sont mises à disposition dans l’espace de l’Utilisateur.</p>
       <p>Toute modification des prix est annoncée par e-mail au moins 30 jours avant son application à un abonnement en cours ; l’Utilisateur qui la refuse peut résilier avant son entrée en vigueur.</p>
       <p>En cas de défaut de paiement, l'accès peut être suspendu après un préavis de 15 jours.</p>
+<?php endif; ?>
 
       <h2>5. Propriété des données</h2>
       <p><strong>Vos données vous appartiennent.</strong> RBPS ne s'octroie aucun droit sur les données téléversées par l'Utilisateur. Un export complet est disponible à tout moment.</p>
@@ -68,10 +78,10 @@ render_public_nav('');
       </ul>
 
       <h2>8. Résiliation</h2>
-      <p>L’abonnement est <strong>sans engagement de durée</strong>. L'Utilisateur peut le résilier à tout moment, sans frais, depuis son espace (rubrique « Mon abonnement ») ou par e-mail. La résiliation prend effet à la <strong>fin de la période mensuelle en cours</strong>, déjà payée : l’accès à la formule est maintenu jusqu’à cette date et aucun nouveau prélèvement n’a lieu. Aucun remboursement au prorata n’est effectué pour la période entamée.</p>
+      <p>L’abonnement est <strong>sans engagement de durée</strong>. L'Utilisateur peut le résilier à tout moment, sans frais, <?= $cgu_in_app ? 'depuis son espace sur le site' : 'depuis son espace (rubrique « Mon abonnement »)' ?> ou par e-mail. La résiliation prend effet à la <strong>fin de la période mensuelle en cours</strong>, déjà payée : l’accès à la formule est maintenu jusqu’à cette date et aucun nouveau prélèvement n’a lieu. Aucun remboursement au prorata n’est effectué pour la période entamée.</p>
       <p>Après la résiliation de l’abonnement, le compte passe en accès limité : les données restent conservées et exportables, et l’Utilisateur peut reprendre un abonnement à tout moment.</p>
       <p><strong>Suppression d’un compte personnel par son titulaire</strong> (depuis son espace, sur le site ou dans l’application) : les données d’identification du compte sont anonymisées immédiatement et la connexion n’est plus possible ; il appartient donc à l’Utilisateur d’exporter ses données avant (Paramètres › Compte). Les contenus qu’il a partagés dans son association restent dans les dossiers de celle-ci, signés « Compte supprimé », tant que l’association utilise le Service. Un compte retiré par un administrateur de l’association reste 30 jours dans la corbeille de l’association, puis il est anonymisé de la même façon.</p>
-      <p><strong>Fermeture de l’espace d’une association</strong> (sur demande à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>) : RBPS conserve les données 30 jours pour permettre de les exporter, puis les supprime définitivement, à l’exception des pièces comptables, conservées 10 ans (obligation comptable). Le détail figure sur la page <a href="/suppression-compte">Supprimer votre compte</a>.</p>
+      <p><strong>Fermeture de l’espace d’une association</strong> (sur demande à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>, ou depuis l’application, Paramètres › Supprimer mon compte, quand le compte est le seul de l’association) : RBPS conserve les données 30 jours pour permettre de les exporter, puis les supprime définitivement, à l’exception des pièces comptables, conservées 10 ans (obligation comptable). Le détail figure sur la page <a href="/suppression-compte">Supprimer votre compte</a>.</p>
 
       <h2>9. Propriété intellectuelle</h2>
       <p>Le Service — son code source, sa conception, son architecture, ses interfaces, ses textes, ses bases de données, sa marque et son identité visuelle — est la propriété exclusive de <strong>Raphaël Badr Pujol-Siwane</strong>, auteur et titulaire de l'ensemble des droits de propriété intellectuelle qui s'y attachent, y compris ceux portant sur l'innovation qu'il met en œuvre. RBPS exploite le Service sur autorisation du titulaire des droits.</p>

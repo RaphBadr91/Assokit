@@ -222,6 +222,18 @@ try {
     } catch (Throwable $e) {
         error_log('[api/app-dashboard] plan: ' . get_class($e));
     }
+    // App iPhone : connexion seule, ni essai ni formule à l'écran (règle 3.1.1 d'Apple ;
+    // mobile/App.js, IOS_LOGIN_ONLY). Même vide côté serveur, quelle que soit la version de l'app.
+    if (function_exists('ak_is_ios_app') && ak_is_ios_app()) {
+        $plan_info = ['in_trial' => false, 'trial_expired' => false, 'trial_ends_at' => null, 'days_left' => null, 'plan_label' => '—'];
+    }
+
+    // Accord pour les fonctions IA dans l'app (règle 5.1.2(i) d'Apple) : null = jamais demandé
+    $ai_consent = null;
+    try {
+        require_once __DIR__ . '/../ai-consent-helper.php';
+        $ai_consent = ak_ai_consent_get($pdo, (int) $uid);
+    } catch (Throwable $e) {}
 
     /* ── Fil « Aujourd'hui » de l'accueil natif (maquette V2) ───────────────
        Trois sources, une couleur d'accent par type, comme sur l'écran de
@@ -417,6 +429,7 @@ try {
         'plan_label'      => (string) (!empty($plan_info['in_trial']) && !empty($plan_info['trial_name']) ? $plan_info['trial_name']
                                        : ($plan_info['plan_label'] === '—' ? '' : $plan_info['plan_label'])),
         'today'        => $today,
+        'ai_consent'   => $ai_consent,
         // L'appli masque les cartes Budget / Facturation quand ces drapeaux sont faux
         'can_view_finances'  => $can_fin,
         'can_access_billing' => $can_bill,

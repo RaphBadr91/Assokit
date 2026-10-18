@@ -100,7 +100,7 @@ render_public_nav('');
       <p>La suppression est bloquée tant que votre association n'a pas d'autre administrateur, pour qu'elle ne se retrouve pas sans personne pour la gérer. L'application et le site affichent alors la raison sous le bouton « Supprimer mon compte ». Sur le site, ouvrez le menu <strong>« Administration »</strong>, donnez le rôle <strong>Administrateur</strong> à un autre membre, puis supprimez votre compte. Dans un espace collectivité, l'autre administrateur se nomme depuis le menu <strong>« Paramètres »</strong>.</p>
 
       <h3>Vous êtes le seul compte de votre association</h3>
-      <p>Il n'y a personne d'autre à nommer : c'est l'association elle-même qu'il faut fermer. Écrivez-nous à <a href="mailto:contact@assokit.fr?subject=Fermeture%20de%20l%27association">contact@assokit.fr</a>. Comme le prévoient nos <a href="/cgu">conditions générales</a> (section 8), à la fermeture de l'espace de l'association, les données restent conservées 30 jours pour vous permettre de les exporter, puis elles sont supprimées définitivement, à l'exception des pièces comptables (10 ans).</p>
+      <p>Il n'y a personne d'autre à nommer : c'est l'association elle-même qu'il faut fermer. Dans l'application, faites-le vous-même : <strong>Plus › Paramètres › Supprimer mon compte</strong> anonymise votre compte et ferme l'espace de l'association (un éventuel abonnement est arrêté en même temps). Depuis le site, écrivez-nous à <a href="mailto:contact@assokit.fr?subject=Fermeture%20de%20l%27association">contact@assokit.fr</a>. Comme le prévoient nos <a href="/cgu">conditions générales</a> (section 8), à la fermeture de l'espace de l'association, les données restent conservées 30 jours pour vous permettre de les exporter, puis elles sont supprimées définitivement, à l'exception des pièces comptables (10 ans).</p>
 
       <h3>Votre compte a été retiré par un administrateur de votre association</h3>
       <p>Il reste 30 jours dans la corbeille de l'association, d'où il peut encore être restauré. Passé ce délai, vos données personnelles sont anonymisées de la même façon (section 4).</p>
@@ -113,7 +113,7 @@ render_public_nav('');
       <p>Voir aussi : <a href="/confidentialite">politique de confidentialité</a> · <a href="/cgu">conditions générales</a> · <a href="/mentions-legales">mentions légales</a>.</p>
 
       <?php /* Date de version : à changer seulement quand le texte change */ ?>
-      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 13/10/2026</p>
+      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 18/10/2026</p>
     </article>
   </div>
 </section>

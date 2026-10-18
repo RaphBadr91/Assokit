@@ -25,8 +25,19 @@ try {
     // Mêmes règles que le site (ak_account_delete_blocker) : Fondateur, seul administrateur de l'association…
     $delete_blocked = function_exists('ak_account_delete_blocker') ? ak_account_delete_blocker($pdo, $uid)
         : ((!empty($u['is_founder']) || !empty($u['is_platform_admin'])) ? 'Contactez le support.' : '');
+    // Seul compte de l'association : dans l'app, la suppression reste possible et ferme l'espace
+    // de l'association (api/app-delete-account.php, Apple 5.1.1 v). La fiche de confirmation le dit.
+    $delete_note = null;
+    if ($delete_blocked !== '' && function_exists('ak_account_sole_org') && ak_account_sole_org($pdo, $uid) > 0) {
+        $delete_blocked = '';
+        $delete_note = 'Vous êtes le seul compte de « ' . ($org_name !== '' ? $org_name : 'votre association') . ' » : '
+            . 'supprimer votre compte ferme aussi son espace Assokit. Ses données sont conservées 30 jours '
+            . '(export sur demande à ' . (defined('AK_SUPPORT_EMAIL') ? AK_SUPPORT_EMAIL : 'contact@assokit.fr') . '), '
+            . 'puis supprimées, sauf les pièces comptables (10 ans).';
+    }
     if ($delete_blocked === '' && !empty($_SESSION['impersonation_target_user_id'])) {
         $delete_blocked = 'Suppression impossible pendant une incarnation.';
+        $delete_note = null;
     }
     $can_delete = ($delete_blocked === '');
 
@@ -49,6 +60,8 @@ try {
             'can_delete' => $can_delete,
             // Raison du refus, à afficher sous le bouton grisé (null si la suppression est possible)
             'delete_blocked_reason' => $can_delete ? null : $delete_blocked,
+            // Seul compte de l'association : ce que la suppression ferme en plus (null sinon)
+            'delete_note' => $can_delete ? $delete_note : null,
         ],
         // Agent de collectivité (aucune association) : jamais administrateur d'une association,
         // même si son users.role vaut « admin ».

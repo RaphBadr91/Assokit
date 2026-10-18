@@ -108,7 +108,10 @@ C'est cohérent avec l'application elle-même (vérifié sur le banc avec l'agen
 
 À garder ainsi : toute nouvelle page publique qui affiche un prix doit passer par `render_public_head()` (redirigée d'office dans l'application) ou tester `ak_billing_hidden()`.
 
-## 4. Notes de version « Nouveautés » — version 1.0.0 (500 caractères max)
+## 4. Notes de version « Nouveautés » — version 1.0.1 (500 caractères max)
+
+Première version publiée sur Google Play : le numéro est 1.0.1 depuis le 18/10/2026
+(`publication-android.md`, étape 9) ; le texte ne change pas.
 
 À coller dans la release (Tests › Test interne, puis Production), champ **Notes de version**. La Console ajoute elle-même les balises de langue ; si elle les affiche, gardez-les.
 
@@ -180,4 +183,4 @@ Vérifié dans le code :
 | Nom | 30 | 28 |
 | Description courte | 80 | 72 |
 | Description complète | 4 000 | 3 012 |
-| Notes de version 1.0.0 | 500 | 319 |
+| Notes de version 1.0.1 | 500 | 319 |

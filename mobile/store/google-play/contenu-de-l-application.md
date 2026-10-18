@@ -125,6 +125,7 @@ Si une question porte sur la **modération** des échanges, répondre Oui. Moyen
 - les échanges (canaux de discussion, messages de projet) sont **privés**, limités aux membres d'une même association, inscrits par ses administrateurs : pas de profils publics, pas de messagerie avec des inconnus ;
 - un **administrateur peut supprimer n'importe quel message** d'un canal (`action-message-canal.php`, action `delete`) et **désactiver ou retirer le compte** d'un membre ;
 - tout utilisateur peut **signaler un problème** au support (Plus › Support, ou contact@assokit.fr) ;
+- depuis le 18/10/2026, dans l'application (Android et iPhone), un **appui long sur un message** d'un canal permet de le **signaler** (ticket de support pré-rempli), de **masquer les messages de son auteur** sur l'appareil, et, pour son auteur ou un administrateur, de le **supprimer** (`api/app-message-action.php` ; détail dans `../app-store/conformite-ios.md` § B7) ;
 - les conditions générales interdisent les usages illicites et le spam (`cgu.php`, § 7).
 
 5. **Enregistrer** › **Calculer la classification** › **Appliquer la classification**.

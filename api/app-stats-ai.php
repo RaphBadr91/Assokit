@@ -62,6 +62,8 @@ try {
         900
     );
     $raw = ($resp && !empty($resp['success'])) ? (string) ($resp['content'] ?? '') : '';
+    // Accord pour l'IA manquant dans l'app (ai-consent-helper.php) : le motif s'affiche comme résumé
+    if ($raw === '' && !empty($resp['consent_required'])) $raw = (string) $resp['error'];
     $raw = trim(preg_replace('/^```(json)?|```$/m', '', $raw));
     $parsed = json_decode($raw, true);
 

@@ -16,6 +16,9 @@ require_login();
 $user = current_user();
 $org_id = (int)($user['org_id'] ?? 0);
 if ($org_id <= 0) { header('Location: /'); exit; }
+// Factures de l'abonnement Assokit, avec un bouton « Régulariser » vers la page de paiement Stripe :
+// jamais dans l'application (Apple 3.1.1 / 3.1.3 f, règles de paiement Google Play), comme /abonnement.
+ak_block_billing_page();
 
 // Factures de l'abonnement Assokit : Admin / Founder / Super Admin seulement, comme « Mon abonnement »
 // (mon-asso-plan.php), l'appli (api/app-subscription-invoices.php) et leurs PDF (/facture-abonnement-pdf).

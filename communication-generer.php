@@ -665,7 +665,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
     };
     // Appel IA (essaie plusieurs signatures possibles)
     error_log('[comm-gen] type=' . ($type ?? '?') . ' cat=' . $cat . ' max_tok=' . $max_tok);
+    // Dans l'app : accord préalable pour l'envoi à Anthropic (règle 5.1.2(i) d'Apple)
+    if (!function_exists('ak_ai_app_gate')) require_once __DIR__ . '/ai-consent-helper.php';
+    $ak_gate = ak_ai_app_gate();
     try {
+        if ($ak_gate !== null) throw new RuntimeException($ak_gate);
         if (function_exists('ai_chat')) {
             $generated = ai_chat([['role' => 'user', 'content' => $prompt]], $config['system'], $max_tok);
         } elseif (function_exists('call_claude_api')) {

@@ -289,7 +289,7 @@ if (empty($_SESSION['csrf_token'])) {
     $show_billing = $is_org_admin && !ak_billing_hidden();
 ?>
   <div id="ak-acces-suspendu">
-    <h1><?= $trial_ended ? 'Votre essai gratuit est terminé' : 'Accès suspendu' ?></h1>
+    <h1><?= $trial_ended ? (ak_billing_hidden() ? 'Votre période d’essai est terminée' : 'Votre essai gratuit est terminé') : 'Accès suspendu' ?></h1>
     <p class="subtitle"><?= htmlspecialchars(trim(($suspended_notice['first_name'] ?? '') . ' ' . ($suspended_notice['last_name'] ?? ''))) ?> · <?= htmlspecialchars($suspended_notice['email'] ?? '') ?></p>
     <?php if ($trial_ended): ?>
     <div class="notice-box">Vos données sont conservées.
@@ -341,7 +341,12 @@ if (empty($_SESSION['csrf_token'])) {
     <button type="submit" class="btn-submit">Se connecter</button>
   </form>
   <a href="/mot-de-passe-oublie" class="forgot-link">Mot de passe oublié ?</a>
-  <div class="footer-note">Pas encore de compte ? <a href="/signup">Créer mon compte gratuit</a> · <a href="/contact">Parler à un conseiller</a></div>
+  <?php // Dans l'application : pas de « gratuit » (Apple 3.1.1 / 3.1.3 f : rien qui évoque un achat) ?>
+  <?php if (ak_is_ios_app()): // App iPhone : connexion seule, pas d'inscription (règle 3.1.1 d'Apple) ?>
+  <div class="footer-note">Pas encore de compte ? Demandez-le à l’administrateur de votre association ou de votre entreprise.</div>
+  <?php else: ?>
+  <div class="footer-note">Pas encore de compte ? <a href="/signup"><?= ak_billing_hidden() ? 'Créer mon compte' : 'Créer mon compte gratuit' ?></a> · <a href="/contact">Parler à un conseiller</a></div>
+  <?php endif; ?>
 <?php endif; ?>
 </div>
 </body>

@@ -134,12 +134,21 @@ function sheetInset(base = 18) {
   return Platform.OS === 'android' ? { paddingBottom: base + SYS_INSETS.bottom } : null;
 }
 
+/* iPhone : l'app sert seulement à se connecter à un espace existant (règle 3.1.1 d'Apple). Les
+   structures s'inscrivent sur le site ; un accès qui commencerait dans l'app puis expirerait sans
+   pouvoir être prolongé dans l'app est le motif de refus le plus courant pour une app B2B. Sur iPhone,
+   donc : ni « Créer ma démo », ni page /signup (bloquée ici et renvoyée vers /connexion par
+   signup.php pour l'agent iOS), ni pastille d'essai, ni carte « Formule ». Android ne change pas. */
+const IOS_LOGIN_ONLY = Platform.OS === 'ios';
+const SIGNUP_URL_RE = /^https?:\/\/(?:[a-z0-9-]+\.)*assokit\.fr\/signup(?:\.php)?\/?(?:[?#]|$)/i;
+
 // Pages de présentation du site (accueil, fonctionnalités, pages « logiciel-… », guides, comparatifs,
 // blog, modèles, dépliant) : elles annoncent le prix de la formule Assokit. Règles de paiement de
 // Google Play et règle 3.1.1 d'Apple : aucun prix dans l'application. Le serveur les renvoie déjà
 // vers /connexion pour l'agent « AssokitApp » (includes-public.php, AK_PUBLIC_APP_PAGES) ; l'app
-// ne les charge pas non plus (onShouldStartLoadWithRequest). Restent ouvertes : /signup, /connexion,
-// /mot-de-passe-oublie, /confidentialite, /cgu, /cookies, /mentions-legales, /suppression-compte, /contact.
+// ne les charge pas non plus (onShouldStartLoadWithRequest). Restent ouvertes : /signup (Android
+// seulement, voir IOS_LOGIN_ONLY), /connexion, /mot-de-passe-oublie, /confidentialite, /cgu, /cookies,
+// /mentions-legales, /suppression-compte, /contact.
 const MARKETING_URL_RE = /^https?:\/\/(?:www\.)?assokit\.fr(?:\/(?:index\.php)?|\/(?:fonctionnalites|logiciel-[a-z-]+|comptabilite-analytique|alternative-helloasso|guide-association-loi-1901|guide-comptabilite-association|pour-associations|pour-tpe|pour-organismes|a-propos|avis|application|blog|modeles?-[a-z-]+|flyer)(?:\.php)?(?:\/[^?#]*)?)?(?:[?#]|$)/i;
 
 const APP_ONLY_CSS = `
@@ -323,24 +332,78 @@ function autoLoginJS(email, password) {
     + " } catch(x){} })(); true;";
 }
 
-// Récupère un PDF authentifié en base64 (pour partage/téléchargement natif).
-// Une réponse qui n'est pas un PDF (403 « réservé aux administrateurs », 402 « export
-// inclus déjà utilisé », page d'erreur…) n'est jamais partagée comme un fichier .pdf :
-// son texte (sans balises ni liens) est renvoyé pour être affiché.
-function fetchPdfJS(url) {
-  return "(function(){ try {"
+// Récupère un fichier authentifié en base64 (même session que la WebView), pour l'enregistrer ou le
+// partager nativement. `accept` : source d'une expression régulière sur le type MIME attendu. Une
+// réponse d'un autre type (403 « réservé aux administrateurs », 402 « export inclus déjà utilisé »,
+// page d'erreur…) n'est jamais partagée comme un fichier : son texte (sans balises ni liens) est
+// renvoyé pour être affiché. Réponse sous `key` : { ok, data, mime, disposition } ou { ok:false, status, message }.
+function fetchFileJS(url, key, accept) {
+  const k = JSON.stringify(key);
+  return "(function(){ var send=function(o){ var w={}; w[" + k + "]=o; window.ReactNativeWebView.postMessage(JSON.stringify(w)); }; try {"
     + " fetch(" + JSON.stringify(url) + ", {credentials:'include'})"
-    + ".then(function(r){ var ct=String((r.headers && r.headers.get('content-type'))||'');"
-    + " if (r.ok && /pdf/i.test(ct)) return r.blob();"
+    + ".then(function(r){ var ct=String((r.headers && r.headers.get('content-type'))||''); var cd=String((r.headers && r.headers.get('content-disposition'))||'');"
+    + " if (r.ok && new RegExp(" + JSON.stringify(accept) + ", 'i').test(ct)) return r.blob().then(function(b){ return { b:b, ct:ct, cd:cd }; });"
     + " return r.text().then(function(t){ var m='';"
     + "  try { var d=new DOMParser().parseFromString(String(t||''),'text/html'); var ls=d.querySelectorAll('a,script,style,title'); for (var i=0;i<ls.length;i++){ ls[i].parentNode.removeChild(ls[i]); }"
     + "   var bl=d.querySelectorAll('h1,h2,h3,p'), parts=[]; for (var j=0;j<bl.length;j++){ var s=String(bl[j].textContent||'').replace(/\\s+/g,' ').trim(); if (s) parts.push(/[.!?:\\u2026]$/.test(s) ? s : s+'.'); }"
     + "   m=parts.length ? parts.join(' ') : String((d.body&&d.body.textContent)||''); } catch(x){ m=String(t||'').replace(/<[^>]*>/g,' '); }"
     + "  m=m.replace(/[\\uD800-\\uDFFF\\u2600-\\u27BF\\uFE0F]/g,'').replace(/\\s+/g,' ').trim(); if (m.length>300) m=m.slice(0,297)+'…';"
-    + "  window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false, status:r.status, message:m}})); return null; }); })"
-    + ".then(function(b){ if (!b) return; var fr=new FileReader(); fr.onloadend=function(){ var s=String(fr.result||''); var i=s.indexOf('base64,'); window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:true, data: i>=0 ? s.slice(i+7) : ''}})); }; fr.onerror=function(){ window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false}})); }; fr.readAsDataURL(b); })"
-    + ".catch(function(){ window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false}})); });"
-    + " } catch(x){ window.ReactNativeWebView.postMessage(JSON.stringify({__akpdf:{ok:false}})); } })(); true;";
+    + "  send({ok:false, status:r.status, message:m}); return null; }); })"
+    + ".then(function(x){ if (!x) return; var fr=new FileReader(); fr.onloadend=function(){ var s=String(fr.result||''); var i=s.indexOf('base64,'); send({ok:true, mime:x.ct, disposition:x.cd, data: i>=0 ? s.slice(i+7) : ''}); }; fr.onerror=function(){ send({ok:false}); }; fr.readAsDataURL(x.b); })"
+    + ".catch(function(){ send({ok:false}); });"
+    + " } catch(x){ send({ok:false}); } })(); true;";
+}
+
+// PDF authentifié (bilan analytique…) : partage natif. Seule une réponse PDF est acceptée.
+function fetchPdfJS(url) {
+  return fetchFileJS(url, '__akpdf', 'pdf');
+}
+
+/* Fichiers téléchargés depuis les pages du site (export FEC, Excel, ZIP, agenda…). Sur iPhone, la
+   WebView n'enregistre rien d'elle-même : sans onFileDownload, un fichier en pièce jointe s'affichait
+   en texte brut (FEC) ou ne faisait rien (xlsx, zip). Type MIME → extension et UTI d'Apple pour la
+   feuille de partage (« Enregistrer dans Fichiers »). */
+const FILE_TYPES = {
+  'application/pdf': { ext: 'pdf', uti: 'com.adobe.pdf' },
+  'text/plain': { ext: 'txt', uti: 'public.plain-text' },
+  'text/csv': { ext: 'csv', uti: 'public.comma-separated-values-text' },
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { ext: 'xlsx', uti: 'org.openxmlformats.spreadsheetml.sheet' },
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { ext: 'docx', uti: 'org.openxmlformats.wordprocessingml.document' },
+  'application/vnd.ms-excel': { ext: 'xls', uti: 'com.microsoft.excel.xls' },
+  'application/zip': { ext: 'zip', uti: 'public.zip-archive' },
+  'application/x-zip-compressed': { ext: 'zip', uti: 'public.zip-archive' },
+  'application/json': { ext: 'json', uti: 'public.json' },
+  'application/xml': { ext: 'xml', uti: 'public.xml' },
+  'text/xml': { ext: 'xml', uti: 'public.xml' },
+  'text/calendar': { ext: 'ics', uti: 'public.calendar-event' },
+  'image/png': { ext: 'png', uti: 'public.png' },
+  'image/jpeg': { ext: 'jpg', uti: 'public.jpeg' },
+  'image/svg+xml': { ext: 'svg', uti: 'public.svg-image' },
+};
+function fileTypeOf(mime, name) {
+  const base = String(mime || '').split(';')[0].trim().toLowerCase();
+  if (FILE_TYPES[base]) return { mime: base, ...FILE_TYPES[base] };
+  const ext = (/\.([A-Za-z0-9]{1,5})$/.exec(String(name || '')) || [])[1];
+  const byExt = ext ? Object.keys(FILE_TYPES).find((k) => FILE_TYPES[k].ext === ext.toLowerCase()) : null;
+  if (byExt) return { mime: byExt, ...FILE_TYPES[byExt] };
+  return { mime: base || 'application/octet-stream', ext: '', uti: 'public.data' };
+}
+// Nom du fichier : Content-Disposition (filename*= puis filename=), sinon fin de l'adresse.
+function downloadFileName(disposition, url, mime) {
+  const d = String(disposition || '');
+  let n = '';
+  let m = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(d);
+  if (m) { try { n = decodeURIComponent(m[1].trim().replace(/^"|"$/g, '')); } catch (e) { n = ''; } }
+  if (!n) { m = /filename\s*=\s*(?:"([^"]+)"|([^;]+))/i.exec(d); if (m) n = String(m[1] || m[2] || '').trim(); }
+  if (!n) {
+    const p = /^[a-z]+:\/\/[^/?#]+([^?#]*)/i.exec(String(url || ''));
+    try { n = decodeURIComponent(((p && p[1]) || '').split('/').pop() || ''); } catch (e) { n = ''; }
+    if (/\.php$/i.test(n)) n = n.replace(/\.php$/i, '');
+  }
+  n = n.replace(/[\/\\:*?"<>|\u0000-\u001F]/g, '_').replace(/^\.+/, '').slice(0, 120) || 'assokit-export';
+  const t = fileTypeOf(mime, n);
+  if (t.ext && !/\.[A-Za-z0-9]{1,5}$/.test(n)) n += '.' + t.ext;
+  return n;
 }
 
 const STATUS_META = {
@@ -388,8 +451,11 @@ function fmtDayFr(v) {
 /* Essai de l'association connectée, d'après api/app-dashboard.php :
    trial (bool), trial_ends_at, trial_days_left, plan_label (+ trial_expired si présent).
    Champs absents (ancien serveur) → null : rien n'est affiché.
-   Information seulement : aucun lien d'achat ni prix dans l'app (règles des stores). */
+   Information seulement : aucun lien d'achat ni prix dans l'app (règles des stores).
+   Sur iPhone, rien n'est affiché (IOS_LOGIN_ONLY) : un compte à rebours d'essai sans moyen de
+   prolonger l'accès dans l'app est précisément ce que la règle 3.1.1 d'Apple sanctionne. */
 function orgTrialInfo(k) {
+  if (IOS_LOGIN_ONLY) return null;
   if (!k || typeof k !== 'object') return null;
   const end = fmtDayFr(k.trial_ends_at);
   const raw = k.trial_days_left;
@@ -404,6 +470,18 @@ function orgTrialInfo(k) {
   const jx = left === null ? '' : (left <= 0 ? ' · dernier jour' : ' · J-' + left);
   return { expired: false, text: name + (end ? ' jusqu’au ' + end : '') + jx };
 }
+
+/* Accord pour les fonctions IA (règle 5.1.2(i) d'Apple) : avant le premier envoi d'un contenu à
+   l'IA, une fenêtre native nomme le destinataire (Anthropic, États-Unis) et demande « Accepter » ou
+   « Refuser ». Le choix est gardé par compte sur le serveur (api/app-ai-consent.php, lu dans
+   api/app-dashboard.php › ai_consent) ; il se change dans Plus › Paramètres › Fonctions IA. Le
+   serveur refuse de son côté tout envoi venant de l'app sans accord (ai-consent-helper.php). */
+function aiConsentText(what) {
+  return 'Pour ' + (what || 'utiliser cette fonction') + ', le contenu concerné est envoyé à Anthropic (États-Unis), '
+    + 'notre sous-traitant d’intelligence artificielle, uniquement pour produire ce résultat ; il ne sert pas à entraîner ses modèles.'
+    + '\n\nVotre choix vaut pour toutes les fonctions IA de l’application. Vous pourrez le changer dans Plus › Paramètres.';
+}
+const AI_OFF_TEXT = 'Vous avez refusé l’envoi de contenus à Anthropic, notre sous-traitant d’IA. Pour utiliser cette fonction, activez « Fonctions IA » dans Plus › Paramètres.';
 
 /* Formateurs pour le compteur animé. L'unité est figée sur la valeur CIBLE :
    sans ça, un compteur montant vers 18 400 basculerait de « 900 € » à « 1,0 k€ »
@@ -629,7 +707,9 @@ Notifications.setNotificationHandler({
 
 const FEATURES = [
   { icon: 'briefcase', label: 'Projets, adhérents & cotisations' },
-  { icon: 'document-text', label: 'Factures & reçus fiscaux' },
+  // « reçus fiscaux » retiré (18/10/2026) : Assokit n'émet pas de reçus fiscaux (l'IA rédige seulement
+  // la lettre qui accompagne un reçu) ; un écran d'accueil ne doit annoncer que des fonctions réelles.
+  { icon: 'document-text', label: 'Devis & factures' },
   { icon: 'stats-chart', label: 'Comptabilité analytique incluse' },
 ];
 
@@ -703,7 +783,7 @@ const INV_KIND = {
 /* ================================================================== */
 /*  ECRAN D'ACCUEIL (marketing) natif                                  */
 /* ================================================================== */
-function WelcomeScreen({ onLogin, onSignup }) {
+function WelcomeScreen({ onLogin, onSignup, onLegal }) {
   const sys = useSystemInsets();
   return (
     <View style={styles.wBg}>
@@ -754,17 +834,24 @@ function WelcomeScreen({ onLogin, onSignup }) {
             <Text style={styles.btnPrimaryTxt}>Se connecter</Text>
             <Ionicons name="arrow-forward" size={18} color="#047857" />
           </TouchableOpacity>
-          <TouchableOpacity accessibilityRole="button" activeOpacity={0.85} onPress={onSignup} style={styles.btnGlassWrap}>
-            <BlurView intensity={18} tint="light" style={styles.btnGlass}>
-              <Text style={styles.btnGhostTxt}>Créer ma démo</Text>
-            </BlurView>
-          </TouchableOpacity>
+          {IOS_LOGIN_ONLY ? (
+            // iPhone : connexion seule (voir IOS_LOGIN_ONLY)
+            <Text style={styles.wFooter}>Accès réservé aux structures qui utilisent Assokit.</Text>
+          ) : (
+            <TouchableOpacity accessibilityRole="button" activeOpacity={0.85} onPress={onSignup} style={styles.btnGlassWrap}>
+              <BlurView intensity={18} tint="light" style={styles.btnGlass}>
+                <Text style={styles.btnGhostTxt}>Créer ma démo</Text>
+              </BlurView>
+            </TouchableOpacity>
+          )}
           <Text style={styles.wFooter}>🇫🇷 Hébergé en France · Conforme RGPD</Text>
-          {/* Règles de Google Play et d'Apple : la politique de confidentialité doit être accessible dans l'app */}
+          {/* Règles de Google Play et d'Apple : la politique de confidentialité doit être accessible dans l'app.
+              Ouverte DANS l'app (onLegal) : la version « app » de la page n'a ni lien Tarifs ni « Essai gratuit »,
+              alors que Safari afficherait l'en-tête complet du site (Apple 3.1.1 / 3.1.3 f). */}
           <Text style={styles.wLegal}>
-            <Text style={styles.wLegalLink} accessibilityRole="link" onPress={() => Linking.openURL(BASE + '/confidentialite').catch(() => {})}>Confidentialité</Text>
+            <Text style={styles.wLegalLink} accessibilityRole="link" onPress={() => (onLegal ? onLegal('/confidentialite') : Linking.openURL(BASE + '/confidentialite').catch(() => {}))}>Confidentialité</Text>
             {'  ·  '}
-            <Text style={styles.wLegalLink} accessibilityRole="link" onPress={() => Linking.openURL(BASE + '/cgu').catch(() => {})}>Conditions générales</Text>
+            <Text style={styles.wLegalLink} accessibilityRole="link" onPress={() => (onLegal ? onLegal('/cgu') : Linking.openURL(BASE + '/cgu').catch(() => {}))}>Conditions générales</Text>
           </Text>
         </View>
         </ScrollView>
@@ -864,9 +951,16 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
               ) : null}
 
               <View style={styles.lgDivider} />
-              <Text style={styles.lgFooter}>
-                Pas encore de compte ? <Text style={styles.lgLink} onPress={onDemo}>Créer ma démo</Text>
-              </Text>
+              {IOS_LOGIN_ONLY ? (
+                // iPhone : connexion seule (voir IOS_LOGIN_ONLY). Le compte est créé par la structure.
+                <Text style={styles.lgFooter}>
+                  Pas encore de compte ? Demandez-le à l’administrateur de votre association ou de votre entreprise.
+                </Text>
+              ) : (
+                <Text style={styles.lgFooter}>
+                  Pas encore de compte ? <Text style={styles.lgLink} onPress={onDemo}>Créer ma démo</Text>
+                </Text>
+              )}
             </View>
             <Text style={styles.lgHosted}>🇫🇷 Hébergé en France · Conforme RGPD</Text>
             {onLegal ? (
@@ -896,7 +990,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-12-controle-complet';
+const UI_REV = '2026-10-18-app-store';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -1469,7 +1563,7 @@ function NativePeople({ mode, data, loading, onRefresh, onOpen, onNew, onBack })
 /* ================================================================== */
 /*  FACTURES (liste native)                                            */
 /* ================================================================== */
-function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiText, aiLoading, onAnalyze, onMore, moreLoading }) {
+function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiText, aiLoading, onAnalyze, onMore, moreLoading, aiOff }) {
   if (data && data.allowed === false) return <GatedScreen title="Factures" message={data.message} onBack={onBack} />;
   const list = data ? (data.invoices || []) : null;
   // Totaux calculés par le serveur sur TOUTES les factures (data.totals) ; la somme de la
@@ -1521,9 +1615,10 @@ function NativeInvoices({ data, loading, onRefresh, onOpen, onNew, onBack, aiTex
           <View style={styles.aiCard}>
             <View style={styles.aiHead}><Ionicons name="sparkles" size={15} color="#7C3AED" /><Text style={styles.aiTitle}>Analyse IA</Text></View>
             {aiText ? <Text style={styles.aiTxt}>{aiText}</Text> : <Text style={styles.aiMuted}>Un conseil de trésorerie personnalisé sur vos factures.</Text>}
-            <TouchableOpacity accessibilityRole="button" style={[styles.aiBtn, aiLoading ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={aiLoading ? undefined : onAnalyze}>
+            {/* aiOff : l'utilisateur a refusé l'envoi à Anthropic (Plus › Paramètres › Fonctions IA) */}
+            <TouchableOpacity accessibilityRole="button" accessibilityHint={aiOff ? 'Fonctions IA désactivées' : undefined} style={[styles.aiBtn, aiLoading ? { opacity: 0.6 } : null, aiOff ? { opacity: 0.45 } : null]} activeOpacity={0.85} onPress={aiLoading ? undefined : onAnalyze}>
               {aiLoading ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="sparkles" size={15} color="#7C3AED" />}
-              <Text style={styles.aiBtnTxt}>{aiLoading ? 'Analyse…' : (aiText ? 'Actualiser l\'analyse' : 'Analyser via IA')}</Text>
+              <Text style={styles.aiBtnTxt}>{aiLoading ? 'Analyse…' : (aiOff ? 'IA désactivée' : (aiText ? 'Actualiser l\'analyse' : 'Analyser via IA'))}</Text>
             </TouchableOpacity>
           </View>
 
@@ -3234,7 +3329,7 @@ function ProjectForm({ onBack, onSubmit, submitting, error, folders, members, ca
 const EXPENSE_CATS = ['Matériel', 'Fournitures', 'Alimentation', 'Transport', 'Location', 'Télécom', 'Prestations externes', 'Frais administratifs', 'Autre'];
 
 // teamOnly : des projets ont été retirés de la liste (can_add_expense false : hors de leur équipe)
-function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject, scanData, scanning, onScan, teamOnly }) {
+function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject, scanData, scanning, onScan, teamOnly, aiOff }) {
   const [projectId, setProjectId] = useState(preProject || 0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [supplier, setSupplier] = useState('');
@@ -3277,12 +3372,13 @@ function ExpenseForm({ onBack, onSubmit, submitting, error, projects, preProject
         <Ionicons name="chevron-down" size={18} color={MUTE} />
       </TouchableOpacity>
 
-      <TouchableOpacity accessibilityRole="button" style={[styles.scanBtn, (!projectId || scanning) ? { opacity: 0.5 } : null]} activeOpacity={0.85}
+      <TouchableOpacity accessibilityRole="button" style={[styles.scanBtn, (!projectId || scanning || aiOff) ? { opacity: 0.5 } : null]} activeOpacity={0.85}
         onPress={() => { if (projectId && !scanning) onScan(projectId); }}>
         {scanning ? <ActivityIndicator color={BRAND} /> : <Ionicons name="camera" size={20} color={BRAND} />}
         <Text style={styles.scanBtnTxt}>{scanning ? 'Analyse en cours…' : (scanned ? 'Rescanner une photo' : 'Scanner la facture (IA)')}</Text>
       </TouchableOpacity>
       {!projectId && <Text style={styles.fHint}>Choisissez d'abord un projet pour scanner.</Text>}
+      {aiOff && <Text style={styles.fHint}>Fonctions IA désactivées : saisissez la facture ci-dessous, ou activez-les dans Plus › Paramètres.</Text>}
       {scanned && <Text style={[styles.fHint, { color: BRAND }]}>✓ Champs pré-remplis par l'IA — vérifiez puis validez.</Text>}
 
       <View style={{ height: 8 }} />
@@ -3876,14 +3972,79 @@ function NativeChannels({ data, loading, onRefresh, onOpen, onBack }) {
   );
 }
 
-function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh, sendResult }) {
+/* Messages masqués (« Masquer les messages de cette personne ») : liste locale à l'appareil et au
+   compte connecté, dans le trousseau (expo-secure-store). { [identifiant de l'auteur]: nom }.
+   Rien n'est envoyé au serveur ; l'auteur n'est pas prévenu. Règle 1.2 d'Apple (bloquer). */
+function hiddenAuthorsKey(viewerId) { return 'ak_hidden_authors_' + (parseInt(viewerId, 10) || 0); }
+async function loadHiddenAuthors(viewerId) {
+  try {
+    const raw = await SecureStore.getItemAsync(hiddenAuthorsKey(viewerId));
+    const o = raw ? JSON.parse(raw) : null;
+    return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+  } catch (e) { return {}; }
+}
+async function saveHiddenAuthors(viewerId, map) {
+  try {
+    if (map && Object.keys(map).length) await SecureStore.setItemAsync(hiddenAuthorsKey(viewerId), JSON.stringify(map));
+    else await SecureStore.deleteItemAsync(hiddenAuthorsKey(viewerId));
+  } catch (e) {}
+}
+
+function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh, sendResult, onMsgAction, msgActBusy }) {
   const [text, setText] = useState('');
-  const msgs = data ? (data.messages || []) : null;
+  const all = data ? (data.messages || []) : null;
   const scRef = useRef(null);
+  const viewerId = data && data.viewer_id ? data.viewer_id : 0;
+  const [hidden, setHidden] = useState({});
+  const [sel, setSel] = useState(null); // message choisi par appui long
+  useEffect(() => {
+    let alive = true;
+    if (!viewerId) return undefined;
+    loadHiddenAuthors(viewerId).then((h) => { if (alive) setHidden(h); });
+    return () => { alive = false; };
+  }, [viewerId]);
+  const isHidden = (id) => !!id && Object.prototype.hasOwnProperty.call(hidden, String(id));
+  const msgs = all ? all.filter((m) => m.is_self || !isHidden(m.author_id)) : null;
+  const hiddenCount = all && msgs ? all.length - msgs.length : 0;
   const submit = () => { const t = text.trim(); if (!t || sending) return; onSend(channel.id, t); };
   // On ne vide le champ QUE si l'envoi a réussi : en cas d'échec (canal en lecture
   // seule, réseau…) l'utilisateur garde son message et peut réessayer.
   useEffect(() => { if (sendResult && sendResult.ok) setText(''); }, [sendResult]);
+
+  // Appui long sur un message (règle 1.2 d'Apple, contenus des utilisateurs) : signaler, masquer
+  // son auteur, supprimer (auteur ou administrateur : can_delete, calculé par le serveur).
+  const canMod = !!onMsgAction;
+  const report = (m) => {
+    setSel(null);
+    Alert.alert('Signaler ce message ?',
+      'Le message, son auteur et le canal sont transmis à l’équipe Assokit, qui l’examine. Vous suivez le signalement dans Plus › Support.',
+      [{ text: 'Annuler', style: 'cancel' }, { text: 'Signaler', style: 'destructive', onPress: () => onMsgAction('report', m) }]);
+  };
+  const hide = (m) => {
+    setSel(null);
+    const who = m.author || 'cette personne';
+    Alert.alert('Masquer les messages de ' + who + ' ?',
+      'Sur cet appareil, vous ne verrez plus ses messages, dans aucun canal. Vous pourrez les réafficher depuis le haut d’un canal.',
+      [{ text: 'Annuler', style: 'cancel' }, { text: 'Masquer', style: 'destructive', onPress: () => {
+        const next = { ...hidden, [String(m.author_id)]: m.author || '' };
+        setHidden(next); saveHiddenAuthors(viewerId, next);
+      } }]);
+  };
+  const remove = (m) => {
+    setSel(null);
+    Alert.alert('Supprimer ce message ?', 'Il disparaît pour tous les membres du canal.',
+      [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: () => onMsgAction('delete', m) }]);
+  };
+  const unhideAll = () => {
+    const names = Object.values(hidden).filter(Boolean);
+    Alert.alert('Réafficher les messages masqués ?', names.length ? 'Messages de : ' + names.join(', ') + '.' : '',
+      [{ text: 'Annuler', style: 'cancel' }, { text: 'Réafficher', onPress: () => { setHidden({}); saveHiddenAuthors(viewerId, {}); } }]);
+  };
+  const selOpts = !sel ? [] : [
+    !sel.is_self && sel.author_id ? { key: 'report', label: 'Signaler ce message', icon: 'flag-outline', color: '#B45309', run: () => report(sel) } : null,
+    !sel.is_self && sel.author_id ? { key: 'hide', label: 'Masquer les messages de ' + (sel.author || 'cette personne'), icon: 'eye-off-outline', color: INK_2, run: () => hide(sel) } : null,
+    sel.can_delete ? { key: 'delete', label: 'Supprimer le message', icon: 'trash-outline', color: '#DC2626', run: () => remove(sel) } : null,
+  ].filter(Boolean);
   return (
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       <DetailHeader title={channel.name} onBack={onBack} />
@@ -3893,6 +4054,12 @@ function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh
         <ScrollView ref={scRef} contentContainerStyle={{ padding: 14, paddingBottom: 18 }} showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scRef.current && scRef.current.scrollToEnd({ animated: false })}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
+          {hiddenCount > 0 ? (
+            <TouchableOpacity accessibilityRole="button" style={styles.msgHiddenBar} activeOpacity={0.8} onPress={unhideAll}>
+              <Ionicons name="eye-off-outline" size={15} color={MUTE} />
+              <Text style={styles.msgHiddenTxt}>{hiddenCount + ' message' + (hiddenCount > 1 ? 's masqués' : ' masqué') + ' · Réafficher'}</Text>
+            </TouchableOpacity>
+          ) : null}
           {msgs.length === 0 ? (
             <View style={{ alignItems: 'center', paddingTop: 40 }}><Text style={styles.dMuted}>Aucun message. Lancez la discussion !</Text></View>
           ) : msgs.map((m) => (
@@ -3901,17 +4068,43 @@ function NativeChat({ channel, data, loading, sending, onBack, onSend, onRefresh
               <View style={[styles.msgBubbleWrap, m.is_self ? { alignItems: 'flex-end' } : null]}>
                 {!m.is_self && <Text style={styles.msgAuthor}>{m.author}</Text>}
                 {m.reply ? (
-                  <View style={styles.msgReply}><Text style={styles.msgReplyAuthor} numberOfLines={1}>{m.reply.author}</Text><Text style={styles.msgReplyTxt} numberOfLines={1}>{m.reply.content}</Text></View>
+                  isHidden(m.reply.author_id) ? (
+                    <View style={styles.msgReply}><Text style={styles.msgReplyTxt} numberOfLines={1}>Message masqué</Text></View>
+                  ) : (
+                    <View style={styles.msgReply}><Text style={styles.msgReplyAuthor} numberOfLines={1}>{m.reply.author}</Text><Text style={styles.msgReplyTxt} numberOfLines={1}>{m.reply.content}</Text></View>
+                  )
                 ) : null}
-                <View style={[styles.msgBubble, m.is_self ? styles.msgBubbleSelf : null]}>
+                <Pressable
+                  onLongPress={canMod && (!m.is_self || m.can_delete) ? () => setSel(m) : undefined}
+                  delayLongPress={350}
+                  accessibilityHint={canMod && (!m.is_self || m.can_delete) ? (m.is_self ? 'Appui long pour supprimer le message' : 'Appui long pour signaler le message ou masquer son auteur') : undefined}
+                  style={({ pressed }) => [styles.msgBubble, m.is_self ? styles.msgBubbleSelf : null, pressed && canMod ? { opacity: 0.75 } : null]}>
                   <Text style={[styles.msgTxt, m.is_self ? { color: '#fff' } : null]}>{m.content}</Text>
-                </View>
+                </Pressable>
                 <Text style={styles.msgTime}>{m.time}</Text>
               </View>
             </View>
           ))}
         </ScrollView>
       )}
+      <Modal visible={!!sel} transparent animationType="slide" onRequestClose={() => setSel(null)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setSel(null)}>
+          <Pressable style={[styles.sheet, sheetInset()]}>
+            <View style={styles.sheetHandle} />
+            {sel ? <Text style={[styles.dMuted, { marginBottom: 6 }]} numberOfLines={2}>{(sel.is_self ? 'Votre message' : (sel.author || 'Message')) + ' : « ' + String(sel.content || '').replace(/\s+/g, ' ').slice(0, 90) + ' »'}</Text> : null}
+            {selOpts.map((o) => (
+              <TouchableOpacity accessibilityRole="button" key={o.key} style={styles.qaRow} activeOpacity={0.7} disabled={!!msgActBusy} onPress={o.run}>
+                <Ionicons name={o.icon} size={20} color={o.color} />
+                <Text style={[styles.qaLabel, { color: o.color, marginLeft: 12 }]}>{o.label}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity accessibilityRole="button" style={styles.qaRow} activeOpacity={0.7} onPress={() => setSel(null)}>
+              <Ionicons name="close" size={20} color={MUTE} />
+              <Text style={[styles.qaLabel, { color: MUTE, marginLeft: 12 }]}>Annuler</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <View style={styles.composer}>
         <TextInput style={styles.composerInput} value={text} onChangeText={setText} placeholder="Écrire un message…" placeholderTextColor="#8A968F" multiline />
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Envoyer" style={[styles.composerBtn, (!text.trim() || sending) ? { opacity: 0.5 } : null]} onPress={submit} activeOpacity={0.85}>
@@ -4040,7 +4233,7 @@ const MAIL_TONES = [
   { k: 'auto', l: 'Ton adapté' }, { k: 'formel', l: 'Très formel' }, { k: 'cordial', l: 'Chaleureux' }, { k: 'court', l: 'Bref' },
 ];
 
-function NativeMailThread({ data, loading, busy, draft, onBack, onReply, onDraft, onAction, onCategory, onRefresh }) {
+function NativeMailThread({ data, loading, busy, draft, onBack, onReply, onDraft, onAction, onCategory, onRefresh, aiOff }) {
   const [body, setBody] = useState('');
   const [to, setTo] = useState('');
   const [consigne, setConsigne] = useState('');
@@ -4111,11 +4304,11 @@ function NativeMailThread({ data, loading, busy, draft, onBack, onReply, onDraft
               ))}
             </ScrollView>
             <View style={mailStyles.replyBtns}>
-              <TouchableOpacity style={mailStyles.btnAi} onPress={() => onDraft(th.id, consigne, ton, '')} activeOpacity={0.85} disabled={!!busy}>
+              <TouchableOpacity style={[mailStyles.btnAi, aiOff ? { opacity: 0.45 } : null]} accessibilityHint={aiOff ? 'Fonctions IA désactivées' : undefined} onPress={() => onDraft(th.id, consigne, ton, '')} activeOpacity={0.85} disabled={!!busy}>
                 {busy === 'draft' ? <ActivityIndicator color="#fff" size="small" /> : <><Ionicons name="sparkles" size={15} color="#fff" /><Text style={mailStyles.btnPrimaryTxt}>Brouillon IA</Text></>}
               </TouchableOpacity>
               {body.trim() ? (
-                <TouchableOpacity style={mailStyles.btnImprove} onPress={() => onDraft(th.id, consigne, ton, body)} activeOpacity={0.85} disabled={!!busy}>
+                <TouchableOpacity style={[mailStyles.btnImprove, aiOff ? { opacity: 0.45 } : null]} accessibilityHint={aiOff ? 'Fonctions IA désactivées' : undefined} onPress={() => onDraft(th.id, consigne, ton, body)} activeOpacity={0.85} disabled={!!busy}>
                   <Ionicons name="color-wand-outline" size={15} color="#6D28D9" /><Text style={mailStyles.btnImproveTxt}>Améliorer</Text>
                 </TouchableOpacity>
               ) : null}
@@ -4251,7 +4444,7 @@ const MORE_GROUPS = [
     title: 'Communication',
     items: [
       { label: 'Boîte mail', icon: 'mail-unread', nav: { screen: 'mail' }, badge: 'mail', mail: true },
-      { label: 'Copilote IA', icon: 'sparkles', nav: { web: '/mon-asso-copilote' }, admin: true },
+      { label: 'Copilote IA', icon: 'sparkles', nav: { web: '/mon-asso-copilote', ai: 'répondre à vos questions sur votre structure' }, admin: true },
       { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' }, badge: 'msg', noFollower: true },
       { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' }, badge: 'notif', noOrg: true },
       { label: 'Communication', icon: 'mail', nav: { screen: 'broadcasts' }, admin: true },
@@ -6094,7 +6287,7 @@ function NativeQuotes({ data, loading, onRefresh, onOpen, onNew, onBack }) {
   );
 }
 
-function NativeStats({ data, loading, onRefresh, onBack, cockpit, cockpitLoading, onCockpit }) {
+function NativeStats({ data, loading, onRefresh, onBack, cockpit, cockpitLoading, onCockpit, aiOff }) {
   if (!data) return <DetailLoading title="Cockpit" onBack={onBack} />;
   if (data.allowed === false) {
     return (
@@ -6146,9 +6339,9 @@ function NativeStats({ data, loading, onRefresh, onBack, cockpit, cockpitLoading
           ) : (
             <Text style={styles.cockpitEmpty}>Une analyse complète de votre santé financière et vos actions prioritaires, par l'IA.</Text>
           )}
-          <TouchableOpacity accessibilityRole="button" style={[styles.cockpitBtn, cockpitLoading ? { opacity: 0.7 } : null]} activeOpacity={0.85} onPress={cockpitLoading ? undefined : onCockpit}>
+          <TouchableOpacity accessibilityRole="button" accessibilityHint={aiOff ? 'Fonctions IA désactivées' : undefined} style={[styles.cockpitBtn, cockpitLoading ? { opacity: 0.7 } : null, aiOff ? { opacity: 0.45 } : null]} activeOpacity={0.85} onPress={cockpitLoading ? undefined : onCockpit}>
             {cockpitLoading ? <ActivityIndicator size="small" color="#4F46E5" /> : <Ionicons name="sparkles" size={16} color="#4F46E5" />}
-            <Text style={styles.cockpitBtnTxt}>{cockpitLoading ? 'Analyse en cours…' : (cockpit ? 'Actualiser' : 'Générer mon cockpit IA')}</Text>
+            <Text style={styles.cockpitBtnTxt}>{cockpitLoading ? 'Analyse en cours…' : (aiOff ? 'IA désactivée' : (cockpit ? 'Actualiser' : 'Générer mon cockpit IA'))}</Text>
           </TouchableOpacity>
         </LinearGradient>
 
@@ -6820,7 +7013,7 @@ function StatusItemCard({ title, sub, right, kind, statusLabel, onPress, unread,
   );
 }
 
-function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack }) {
+function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack, aiOff }) {
   if (!data) return <DetailLoading title="Coach IA" onBack={onBack} />;
   if (data.allowed === false) {
     return (<View style={styles.detailWrap}><DetailHeader title="Coach IA" onBack={onBack} />
@@ -6858,9 +7051,9 @@ function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack 
             )}
           </>
         )}
-        <TouchableOpacity accessibilityRole="button" style={[styles.dPrimaryBtn, generating ? { opacity: 0.6 } : null]} activeOpacity={0.85} onPress={generating ? undefined : onGenerate}>
+        <TouchableOpacity accessibilityRole="button" accessibilityHint={aiOff ? 'Fonctions IA désactivées' : undefined} style={[styles.dPrimaryBtn, generating ? { opacity: 0.6 } : null, aiOff ? { opacity: 0.45 } : null]} activeOpacity={0.85} onPress={generating ? undefined : onGenerate}>
           {generating ? <ActivityIndicator color="#fff" /> : <Ionicons name="sparkles" size={18} color="#fff" />}
-          <Text style={styles.dPrimaryBtnTxt}>{generating ? 'Génération…' : (r ? 'Générer un nouveau rapport' : 'Générer mon rapport')}</Text>
+          <Text style={styles.dPrimaryBtnTxt}>{generating ? 'Génération…' : (aiOff ? 'Fonctions IA désactivées' : (r ? 'Générer un nouveau rapport' : 'Générer mon rapport'))}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -6902,7 +7095,7 @@ function SuspendedScreen({ message, onAccount, onLogout, onRetry }) {
   );
 }
 
-function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav, plan, onLegal }) {
+function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav, plan, onLegal, aiConsent, aiSaving, onAiConsent }) {
   const a = (data && data.account) || null;
   const [f, setF] = useState(null);
   const [delOpen, setDelOpen] = useState(false);
@@ -6929,7 +7122,8 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <DetailHeader title="Paramètres" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        {plan && (plan.trial || plan.label) ? (
+        {/* Formule de l'association : jamais sur iPhone (IOS_LOGIN_ONLY, règle 3.1.1 d'Apple) */}
+        {!IOS_LOGIN_ONLY && plan && (plan.trial || plan.label) ? (
           <View style={styles.setPlanCard} accessible accessibilityLabel={'Formule : ' + (plan.trial ? plan.trial.text : plan.label)}>
             <View style={[styles.setPlanIc, { backgroundColor: plan.trial ? (plan.trial.expired ? '#FEE2E2' : '#FEF3C7') : '#ECFDF5' }]}>
               <Ionicons name={plan.trial ? (plan.trial.expired ? 'alert-circle-outline' : 'hourglass-outline') : 'ribbon-outline'} size={18} color={plan.trial ? (plan.trial.expired ? '#B91C1C' : '#B45309') : BRAND} />
@@ -6984,6 +7178,27 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
           </TouchableOpacity>
         )}
 
+        {/* Fonctions IA : accord pour l'envoi de contenus à Anthropic (règle 5.1.2(i) d'Apple),
+            demandé une fois avant la première fonction IA et modifiable ici à tout moment */}
+        {onAiConsent ? (
+          <>
+            <Text style={[styles.formCardTitle, { marginTop: 20 }]}>Fonctions IA</Text>
+            <View style={styles.settingsRow}>
+              <Ionicons name="sparkles-outline" size={20} color="#45544D" />
+              <Text style={styles.settingsRowTxt}>Utiliser l’IA dans l’application</Text>
+              {aiSaving ? <ActivityIndicator color={BRAND} /> : (
+                <Switch value={aiConsent === true} onValueChange={(v) => onAiConsent(v)}
+                  trackColor={{ true: BRAND, false: '#D5DDD9' }} thumbColor="#fff"
+                  accessibilityLabel="Utiliser l’IA dans l’application" />
+              )}
+            </View>
+            <Text style={[styles.fHint, { marginTop: 2 }]}>
+              {'Lecture des factures photographiées, analyses, coach et brouillons d’e-mails : le contenu concerné est envoyé à Anthropic (États-Unis), notre sous-traitant d’IA, uniquement pour produire le résultat ; il ne sert pas à entraîner ses modèles. '
+                + (aiConsent === true ? 'Activé.' : aiConsent === false ? 'Désactivé : aucun contenu n’est envoyé.' : 'Votre accord sera demandé à la première utilisation.')}
+            </Text>
+          </>
+        ) : null}
+
         {/* Informations légales : la politique de confidentialité doit être accessible dans l'app
             (Google Play, données utilisateur ; Apple 5.1.1). Pages du site, sans connexion ni prix. */}
         {onLegal ? (
@@ -7023,7 +7238,9 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
           <Pressable style={[styles.sheetBackdrop, { justifyContent: 'center', padding: 22 }]} onPress={() => setDelOpen(false)}>
             <Pressable style={[styles.sheet, sheetInset(), { borderRadius: R_CARD, paddingTop: 18, paddingBottom: 12 }]}>
               <Text style={styles.sheetTitle}>Supprimer mon compte</Text>
-              <Text style={[styles.dMuted, { marginBottom: 14 }]}>Cette action est définitive et anonymise vos données personnelles (RGPD). Saisissez votre mot de passe pour confirmer.</Text>
+              <Text style={[styles.dMuted, { marginBottom: a.delete_note ? 8 : 14 }]}>Cette action est définitive et anonymise vos données personnelles (RGPD). Saisissez votre mot de passe pour confirmer.</Text>
+              {/* Seul compte de l'association (api/app-account.php) : la suppression ferme aussi son espace */}
+              {a.delete_note ? <Text style={[styles.dMuted, { marginBottom: 14, color: '#991B1B' }]}>{a.delete_note}</Text> : null}
               <Field label="Mot de passe" value={delPw} onChangeText={setDelPw} secureTextEntry autoCapitalize="none" autoCorrect={false}
                 textContentType="password" autoFocus returnKeyType="done" onSubmitEditing={confirmDelete} />
               <TouchableOpacity accessibilityRole="button" style={[styles.dDangerBtn, { marginTop: 4 }, !delPw ? { opacity: 0.5 } : null]} activeOpacity={0.85}
@@ -7091,7 +7308,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [invoices, setInvoices] = useState(null);
   const [invLoading, setInvLoading] = useState(false);
-  const [webMode, setWebMode] = useState(startPath === '/signup');
+  // Inscription, ou page légale ouverte depuis l'écran d'accueil : la page web s'affiche d'emblée
+  const [webMode, setWebMode] = useState(startPath === '/signup' || startPath === '/confidentialite' || startPath === '/cgu');
   const [stack, setStack] = useState([]); // pile de fiches détail natives
   const [form, setForm] = useState(null); // { type } formulaire natif ouvert
   const [formErr, setFormErr] = useState('');
@@ -7134,6 +7352,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [sendingMsg, setSendingMsg] = useState(false);
   const [msgSendResult, setMsgSendResult] = useState(null); // {ok, seq} — signale à NativeChat le résultat d'envoi
   const msgSendSeq = useRef(0);
+  // Appui long sur un message : signaler / supprimer (api/app-message-action.php)
+  const [msgActBusy, setMsgActBusy] = useState(false);
+  const msgActKind = useRef('');
+  // Accord pour les fonctions IA : true, false (refusé) ou null (jamais demandé) — aiConsentText()
+  const [aiConsent, setAiConsent] = useState(null);
+  const aiConsentRef = useRef(null);
+  const aiPending = useRef(null);
+  const [aiSaving, setAiSaving] = useState(false);
   const [subInv, setSubInv] = useState(null);
   const [subInvLoading, setSubInvLoading] = useState(false);
   const [quotes, setQuotes] = useState(null);
@@ -7808,6 +8034,46 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     inject(postJS('/api/app-send-message.php', { channel_id: chId, content, csrf }, '__akmsgsent'));
   }, [csrf, inject]);
 
+  // Modération d'un message (règle 1.2 d'Apple) : « report » ouvre un ticket de support pré-rempli,
+  // « delete » supprime le message (auteur ou administrateur, mêmes règles que le site).
+  const msgAction = useCallback((action, m) => {
+    if (!m || !m.id) return;
+    if (!csrf) { inject(FETCH_CSRF_JS); Alert.alert('Un instant', 'Session en préparation, réessayez dans un instant.'); return; }
+    msgActKind.current = action;
+    setMsgActBusy(true);
+    inject(postJS('/api/app-message-action.php', { action, message_id: m.id, csrf }, '__akmsgact'));
+  }, [csrf, inject]);
+
+  // Fonctions IA : rien ne part chez Anthropic sans l'accord de l'utilisateur (règle 5.1.2(i) d'Apple)
+  useEffect(() => { aiConsentRef.current = aiConsent; }, [aiConsent]);
+  useEffect(() => {
+    if (kpi && kpi.ai_consent !== undefined && !aiSaving) setAiConsent(kpi.ai_consent === true ? true : (kpi.ai_consent === false ? false : null));
+  }, [kpi]); // eslint-disable-line react-hooks/exhaustive-deps
+  const saveAiConsent = useCallback((yes, then) => {
+    if (!csrf) { inject(FETCH_CSRF_JS); Alert.alert('Un instant', 'Session en préparation, réessayez dans un instant.'); return; }
+    aiPending.current = yes && then ? then : null;
+    setAiSaving(true);
+    inject(postJS('/api/app-ai-consent.php', { consent: !!yes, csrf }, '__akaiconsent'));
+  }, [csrf, inject]);
+  const askAiConsent = useCallback((what, then) => {
+    Alert.alert('Fonctions IA', aiConsentText(what), [
+      { text: 'Refuser', style: 'cancel', onPress: () => saveAiConsent(false) },
+      { text: 'Accepter', onPress: () => saveAiConsent(true, then) },
+    ], { cancelable: false });
+  }, [saveAiConsent]);
+  const withAi = useCallback((what, run) => {
+    if (aiConsentRef.current === true) { run(); return; }
+    if (aiConsentRef.current === false) {
+      Alert.alert('Fonctions IA désactivées', AI_OFF_TEXT, [
+        { text: 'Fermer', style: 'cancel' },
+        { text: 'Paramètres', onPress: () => openMenuScreen('settings') },
+      ]);
+      return;
+    }
+    askAiConsent(what, run);
+  }, [askAiConsent, openMenuScreen]);
+  const aiOff = aiConsent === false;
+
   const onMoreNav = useCallback((nav) => {
     if (!nav) return;
     if (nav.founder) { if (nav.founder === 'cockpit') openMenuScreen('founder'); else onFounderTile(nav.founder); return; }
@@ -7818,8 +8084,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (nav.tab === 'people') { setActive('people'); setWebMode(false); return; }
       setActive(nav.tab); setWebMode(false); return;
     }
-    if (nav.web) { clearDetail(); closeForm(); setWebMode(true); inject(gotoJS(nav.web)); }
-  }, [openMenuScreen, onFounderTile, clearDetail, closeForm, inject]);
+    if (nav.web) {
+      const go = () => { clearDetail(); closeForm(); setWebMode(true); inject(gotoJS(nav.web)); };
+      // Pages IA du site (Copilote) : même accord que les écrans natifs (règle 5.1.2(i) d'Apple)
+      if (nav.ai) withAi(nav.ai, go); else go();
+    }
+  }, [openMenuScreen, onFounderTile, clearDetail, closeForm, inject, withAi]);
 
   const saveAccount = useCallback((f) => {
     if (!csrf) { setSettingsErr('Session en préparation, réessayez.'); inject(FETCH_CSRF_JS); return; }
@@ -7942,6 +8212,36 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       autoLoginTried.current = false;
     }
   }, [authed, onSaveCreds]);
+
+  // Fichier en pièce jointe demandé par une page du site (export FEC, Excel, ZIP, agenda…). Sur
+  // iPhone, la WebView annule la navigation et le signale ici (onFileDownload) : le fichier est relu
+  // avec la session de la WebView, puis proposé dans la feuille de partage (« Enregistrer dans
+  // Fichiers »). Android garde son gestionnaire de téléchargements.
+  const [fileBusy, setFileBusy] = useState(false);
+  const dlUrl = useRef('');
+  const onFileDownload = useCallback(({ nativeEvent }) => {
+    const u = (nativeEvent && nativeEvent.downloadUrl) || '';
+    if (!u) return;
+    if (!isAssokitUrl(u)) { Linking.openURL(u).catch(() => {}); return; }
+    dlUrl.current = u;
+    setFileBusy(true);
+    inject(fetchFileJS(u, '__akfile', '^(?!\\s*text/html)'));
+  }, [inject]);
+  const shareDownloadedFile = useCallback(async (f) => {
+    try {
+      const name = downloadFileName(f.disposition, dlUrl.current, f.mime);
+      const t = fileTypeOf(f.mime, name);
+      const uri = FileSystem.cacheDirectory + name;
+      await FileSystem.writeAsStringAsync(uri, f.data, { encoding: FileSystem.EncodingType.Base64 });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: t.mime, UTI: t.uti, dialogTitle: name });
+      } else {
+        Alert.alert('Téléchargement', 'Le partage n’est pas disponible sur cet appareil.');
+      }
+    } catch (e) {
+      Alert.alert('Téléchargement', 'Impossible d’enregistrer le fichier.');
+    }
+  }, []);
 
   // Partage/téléchargement d'un PDF authentifié
   const sharePdf = useCallback((url) => {
@@ -8483,6 +8783,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           Alert.alert('Action impossible', r.message || 'Réessayez dans un instant.');
         }
       }
+      if (msg && msg.__akfile) {
+        setFileBusy(false);
+        const f = msg.__akfile;
+        if (f.ok && f.data) shareDownloadedFile(f);
+        else Alert.alert('Téléchargement', (typeof f.message === 'string' && f.message.trim()) ? f.message.trim() : 'Impossible de récupérer le fichier.');
+      }
       if (msg && msg.__akpdf) {
         setPdfBusy(false);
         if (msg.__akpdf.ok && msg.__akpdf.data) sharePdfData(msg.__akpdf.data);
@@ -8549,6 +8855,30 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (msg && msg.__akdeleted) {
         if (msg.__akdeleted.ok) { if (onClearCreds) onClearCreds(); Alert.alert('Compte supprimé', msg.__akdeleted.message || 'À bientôt.'); onExitToWelcome(); }
         else Alert.alert('Suppression', msg.__akdeleted.message || 'Erreur.');
+      }
+      if (msg && msg.__akaiconsent) {
+        setAiSaving(false);
+        const r = msg.__akaiconsent;
+        const run = aiPending.current; aiPending.current = null;
+        if (r.ok) {
+          const v = r.consent === true ? true : (r.consent === false ? false : null);
+          setAiConsent(v); aiConsentRef.current = v;
+          setKpi((k) => (k ? { ...k, ai_consent: v } : k));
+          if (v === true && run) run();
+        } else {
+          Alert.alert('Choix non enregistré', r.message || 'Réessayez dans un instant.');
+        }
+      }
+      if (msg && msg.__akmsgact) {
+        setMsgActBusy(false);
+        const r = msg.__akmsgact;
+        const kind = msgActKind.current;
+        if (r.ok) {
+          if (kind === 'delete' && openChannel) fetchChanMsgs(openChannel.id);
+          Alert.alert(kind === 'delete' ? 'Message supprimé' : 'Message signalé', r.message || '');
+        } else {
+          Alert.alert(kind === 'delete' ? 'Suppression impossible' : 'Signalement impossible', r.message || 'Réessayez dans un instant.');
+        }
       }
       if (msg && msg.__akmsgsent) {
         setSendingMsg(false);
@@ -8783,6 +9113,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             if (/^(mailto:|tel:|sms:|geo:|maps:)/i.test(u)) { Linking.openURL(u).catch(() => {}); return false; }
             // Lien externe (hors assokit.fr) -> navigateur systeme, pas dans la WebView applicative
             if (/^https?:\/\//i.test(u) && !isAssokitUrl(u)) { Linking.openURL(u).catch(() => {}); return false; }
+            // iPhone : pas d'inscription dans l'app (IOS_LOGIN_ONLY, règle 3.1.1 d'Apple). La
+            // navigation est simplement annulée ; signup.php renvoie aussi l'agent iOS vers /connexion.
+            if (IOS_LOGIN_ONLY && SIGNUP_URL_RE.test(u)) return false;
             // Conformité stores (Apple 3.1.1 / Google) : on ne charge JAMAIS une page
             // de tarifs / d'abonnement Assokit dans l'app -> redirection vers le dashboard.
             // /abonnement manquait : la page existe, elle est liée depuis la barre
@@ -8804,11 +9137,21 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             }
             return true;
           }}
+          onFileDownload={onFileDownload}
           setSupportMultipleWindows={false}
           applicationNameForUserAgent="AssokitApp/1.0"
           injectedJavaScript={APP_ONLY_CSS}
           style={styles.web}
         />
+        {fileBusy ? (
+          // Fichier demandé par une page du site, en cours de récupération (onFileDownload)
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: 28, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(11,26,19,0.85)', borderRadius: 18, paddingVertical: 9, paddingHorizontal: 14 }}>
+              <ActivityIndicator size="small" color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Préparation du fichier…</Text>
+            </View>
+          </View>
+        ) : null}
         {showHome && (
           <View style={styles.homeOverlay}>
             {isMairie ? (
@@ -8834,7 +9177,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           <View style={styles.homeOverlay}>
             <NativeInvoices data={invoices} loading={invLoading} onRefresh={fetchInvoices} onOpen={openInvoice} onNew={canBill ? () => openForm('invoice') : undefined}
               onBack={TABS.some((t) => t.key === 'factures') ? undefined : backToHub}
-              aiText={invAI} aiLoading={invAILoading} onAnalyze={onAnalyzeInvoices}
+              aiText={invAI} aiLoading={invAILoading} onAnalyze={() => withAi('analyser vos factures', onAnalyzeInvoices)} aiOff={aiOff}
               onMore={fetchInvoicesMore} moreLoading={invMoreLoading} />
           </View>
         )}
@@ -8870,7 +9213,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <ExpenseForm onBack={closeForm} onSubmit={(d) => submitForm('expense', d)} submitting={submitting} error={formErr}
                 projects={((projects && projects.projects) || []).filter((pr) => pr.can_add_expense !== false)}
                 teamOnly={((projects && projects.projects) || []).some((pr) => pr.can_add_expense === false)} preProject={expenseProject}
-                scanData={scanData} scanning={scanning} onScan={pickAndScan} />
+                scanData={scanData} scanning={scanning} onScan={(pid) => withAi('lire la facture photographiée', () => pickAndScan(pid))} aiOff={aiOff} />
             )}
             {form.type === 'campaign' && (
               <CampaignForm onBack={closeForm} onSubmit={(d) => submitForm('campaign', d)} submitting={submitting} error={formErr} />
@@ -8900,7 +9243,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeQuotes data={quotes} loading={quotesLoading} onRefresh={fetchQuotes} onOpen={(id) => pushDetail('quote', id)} onNew={canBillQuotes ? () => openForm('quote') : undefined} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'stats' ? (
               <NativeStats data={stats} loading={statsLoading} onRefresh={fetchStats} onBack={() => setMenuScreen(null)}
-                cockpit={statsCockpit} cockpitLoading={statsCockpitLoading} onCockpit={onCockpit} />
+                cockpit={statsCockpit} cockpitLoading={statsCockpitLoading} onCockpit={() => withAi('analyser vos chiffres', onCockpit)} aiOff={aiOff} />
             ) : menuScreen === 'members' ? (
               <NativePeople mode="members" data={people} loading={peopleLoading} onRefresh={() => fetchPeople(false)}
                 onOpen={(id) => pushDetail('member', id)} onNew={canAddMember ? () => openForm('member') : undefined} onBack={() => setMenuScreen(null)} />
@@ -8956,18 +9299,21 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                   statusLabel={it.status_label} kind={it.status_kind} unread={!!it.unread}
                   onPress={() => openSupportWeb('/support/ticket/' + it.id, it)} />)} />
             ) : menuScreen === 'coach' ? (
-              <NativeCoach data={coach} loading={secLoading} generating={coachGen} onGenerate={generateCoach} onRefresh={fetchCoach} onBack={() => setMenuScreen(null)} />
+              <NativeCoach data={coach} loading={secLoading} generating={coachGen} onGenerate={() => withAi('rédiger le bilan du coach', generateCoach)} aiOff={aiOff} onRefresh={fetchCoach} onBack={() => setMenuScreen(null)} />
             ) : menuScreen === 'settings' ? (
               <NativeSettings data={account} onBack={() => setMenuScreen(null)} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
                 onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb} onNav={openMenuScreen}
                 onLegal={(p) => { openWeb(p); webReturnRef.current = 'settings'; }}
-                onLogout={doLogout} plan={kpi ? { label: kpi.plan_label || '', trial: orgTrialInfo(kpi) } : null} />
+                onLogout={doLogout} plan={kpi ? { label: kpi.plan_label || '', trial: orgTrialInfo(kpi) } : null}
+                aiConsent={aiConsent} aiSaving={aiSaving}
+                onAiConsent={(v) => (v ? askAiConsent('lire une facture, analyser vos chiffres ou rédiger un texte', null) : saveAiConsent(false))} />
             ) : menuScreen === 'mail' ? (
               mailOpenId ? (
                 <NativeMailThread data={mailThread} loading={mailThreadLoading} busy={mailBusy} draft={mailDraft}
                   onBack={mailClose} onRefresh={() => fetchMailThread(mailOpenId)}
                   onReply={(id, to, body) => mailAct('reply', { action: 'reply', thread_id: id, to, body })}
-                  onDraft={(id, consigne, ton, texte) => mailAct('draft', { action: 'draft', thread_id: id, consigne, ton: ton || 'auto', improve: texte ? 1 : 0, body: texte || '' })}
+                  onDraft={(id, consigne, ton, texte) => withAi('rédiger ce brouillon de réponse', () => mailAct('draft', { action: 'draft', thread_id: id, consigne, ton: ton || 'auto', improve: texte ? 1 : 0, body: texte || '' }))}
+                  aiOff={aiOff}
                   onAction={(act, id) => mailAct(act, { action: act, thread_id: id })}
                   onCategory={(id, cid) => mailAct('category', { action: 'category', thread_id: id, category_id: cid })} />
               ) : (
@@ -8984,7 +9330,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'messages' ? (
               openChannel ? (
                 <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg} sendResult={msgSendResult}
-                  onBack={() => { setOpenChannel(null); }} onSend={sendMessage} onRefresh={() => fetchChanMsgs(openChannel.id)} />
+                  onBack={() => { setOpenChannel(null); }} onSend={sendMessage} onRefresh={() => fetchChanMsgs(openChannel.id)}
+                  onMsgAction={msgAction} msgActBusy={msgActBusy} />
               ) : (
                 <NativeChannels data={channels} loading={channelsLoading} onRefresh={fetchChannels} onOpen={openChannelFn} onBack={() => setMenuScreen(null)} />
               )
@@ -9152,7 +9499,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               onBack={onExitToWelcome}
               onForgot={() => { setLoginErr(''); openWeb('/mot-de-passe-oublie'); }}
               onDemo={() => { setLoginErr(''); openWeb('/signup'); }}
-              onLegal={(p) => Linking.openURL(BASE + p).catch(() => {})}
+              onLegal={(p) => { setLoginErr(''); openWeb(p); }}
               hasFaceId={!!autoCreds}
               onFaceId={() => autoCreds && submitLogin(autoCreds.email, autoCreds.password)}
             />
@@ -9319,7 +9666,7 @@ export default function App() {
     return <View style={{ flex: 1, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color="#fff" /></View>;
   }
   if (!path) {
-    return <WelcomeScreen onLogin={() => setPath('/connexion')} onSignup={() => setPath('/signup')} />;
+    return <WelcomeScreen onLogin={() => setPath('/connexion')} onSignup={() => setPath('/signup')} onLegal={(p) => setPath(p)} />;
   }
   return (
     <AppShell
@@ -9720,6 +10067,9 @@ const styles = StyleSheet.create({
   msgBubbleSelf: { backgroundColor: BRAND },
   msgTxt: { fontSize: 14.5, color: INK, lineHeight: 20 },
   msgTime: { fontSize: 10.5, color: '#B6C0CC', marginTop: 3, marginHorizontal: 4 },
+  // Bandeau « N messages masqués · Réafficher » (NativeChat, appui long → Masquer)
+  msgHiddenBar: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center', gap: 6, backgroundColor: '#F1F5F4', borderRadius: 14, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 12 },
+  msgHiddenTxt: { fontSize: 12.5, color: MUTE, fontWeight: '600' },
   composer: { flexDirection: 'row', alignItems: 'flex-end', padding: 10, paddingBottom: Platform.OS === 'ios' ? 24 : 10, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#EEF2F6', gap: 8 },
   composerInput: { flex: 1, maxHeight: 110, backgroundColor: '#F1F5F4', borderRadius: 20, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 11 : 8, paddingBottom: Platform.OS === 'ios' ? 11 : 8, fontSize: 15, color: INK },
   composerBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' },

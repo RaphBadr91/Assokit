@@ -1,5 +1,12 @@
 # Fiche App Store — Assokit
 
+> ⚠️ **Fichier remplacé le 18/10/2026 par le dossier `mobile/store/app-store/`** (fiche,
+> confidentialité, classification, notes pour l'examen, guide de publication, captures).
+> Ne plus utiliser ce fichier : il cite un compte d'examen qui n'est plus celui donné à
+> Apple (`apple.review@assokit.fr` → comptes DEMO F), une phrase interdite par la règle
+> 3.1.1 (« Les abonnements se souscrivent sur assokit.fr »), un questionnaire de
+> confidentialité incomplet et des captures « 6,7 pouces » vides. Gardé pour mémoire.
+
 Tout ce qu'il faut coller dans App Store Connect pour soumettre à l'examen.
 Les longueurs sont vérifiées contre les limites d'Apple (voir en fin de fichier).
 

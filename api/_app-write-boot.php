@@ -88,7 +88,7 @@ if ($uid <= 0) app_fail(401, 'auth');
 // lui ouvre pas (AK_GUARD_OPEN, AK_GUARD_MAIRIE_OPEN).
 $ak_boot_script = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
 $ak_boot_no_org = in_array($ak_boot_script, ['app-change-password.php', 'app-update-account.php', 'app-delete-account.php',
-                                             'app-notif-read.php', 'app-register-push.php'], true)
+                                             'app-notif-read.php', 'app-register-push.php', 'app-ai-consent.php'], true)
                   || strpos($ak_boot_script, 'app-founder-') === 0;
 if ($org_id <= 0 && !$ak_boot_no_org) {
     app_fail(400, 'org', 'Aucune association n’est rattachée à ce compte.');

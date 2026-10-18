@@ -67,6 +67,8 @@ try {
         500
     );
     $analysis = ($resp && !empty($resp['success'])) ? trim((string) ($resp['content'] ?? '')) : '';
+    // Accord pour l'IA manquant dans l'app (ai-consent-helper.php) : le motif, pas « indisponible »
+    if ($analysis === '' && !empty($resp['consent_required'])) $analysis = (string) $resp['error'];
     if ($analysis === '') $analysis = 'Analyse IA momentanément indisponible.';
 
     echo json_encode(['ok' => true, 'analysis' => $analysis, 'totals' => $totals], JSON_UNESCAPED_UNICODE);

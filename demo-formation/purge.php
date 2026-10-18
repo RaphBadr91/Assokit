@@ -196,6 +196,8 @@ function df_purge_plan(): array
         // Ce qui est rattaché aux personnes
         ['user_notifications',          'user_id',         'users'],
         ['today_suggestions',           'user_id',         'users'],
+        // Accord pour l'IA dans l'app (ai-consent-helper.php) : chaque examinateur revoit la question
+        ['user_ai_consent',             'user_id',         'users'],
         ['user_calendar_tokens',        'user_id',         'users'],
         ['asso_push_tokens',            'user_id',         'users'],
         ['user_password_tokens',        'user_id',         'users'],

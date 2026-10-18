@@ -61,7 +61,7 @@ render_sidebar('boite-mail');
             <?php foreach ([6 => '6 mois', 12 => '1 an', 24 => '2 ans', 36 => '3 ans', 60 => '5 ans'] as $v => $l): ?><option value="<?= $v ?>"<?= (int)$acc['retention_months'] === $v ? ' selected' : '' ?>><?= $l ?></option><?php endforeach; ?>
           </select></label>
         </div>
-        <label class="bp-check"><input type="checkbox" name="ai_sort" value="1"<?= (int)$acc['ai_sort'] ? ' checked' : '' ?>> Ranger par l’IA les e-mails qu’aucune règle ne reconnaît (objet, expéditeur et début du message envoyés à l’IA)</label>
+        <label class="bp-check"><input type="checkbox" name="ai_sort" value="1"<?= (int)$acc['ai_sort'] ? ' checked' : '' ?>> Ranger par l’IA les e-mails qu’aucune règle ne reconnaît (objet, expéditeur et début du message envoyés à Anthropic, États-Unis, notre sous-traitant d’IA, uniquement pour ce tri ; ils ne servent pas à entraîner ses modèles)</label>
         <p class="bp-muted">La copie locale des conversations plus anciennes que la durée de conservation est effacée chaque nuit ; les e-mails restent dans Gmail.</p>
         <div><button class="bp-btn primary" type="submit">Enregistrer</button></div>
       </form>
