@@ -109,8 +109,10 @@ Obligatoire pour être distribué dans l'UE (donc en France). App Store Connect 
 **Informations sur l'app** › **Digital Services Act** (ou **Business › Conformité DSA** pour
 le compte) : déclarer **« Je suis un professionnel »** (*trader*) — Assokit est un service
 commercial. Apple demande alors une **adresse, un téléphone et un e-mail**, vérifiés par
-code, et **les affiche sur la fiche App Store dans l'UE**. Utiliser des coordonnées
-professionnelles (celles de RBPS, `contact@assokit.fr`) plutôt que personnelles.
+code, et **les affiche sur la fiche App Store dans l'UE**. Le compte Apple Developer étant
+au nom de **FOCUS POINT AGENCY**, ce sont les coordonnées professionnelles de cette société
+(son adresse, son téléphone, `contact@assokit.fr` ou l'e-mail de l'agence) qui sont
+demandées, pas des coordonnées personnelles.
 
 ---
 
@@ -175,6 +177,9 @@ Plus > Paramètres > "Supprimer mon compte (RGPD)" at the bottom > password > "S
 
 USER-GENERATED CONTENT
 Messages and documents are only shared inside one organisation, between members its administrators invited. There are no public profiles and no contact with strangers. In Plus > Messages, long-press any message to report it or hide its author; admins can delete it. A report opens a support ticket that our team reviews. Administrators can also deactivate or remove a member. Our terms forbid unlawful content and spam.
+
+PUBLISHER
+Published by FOCUS POINT AGENCY (developer account holder) with the authorization of the Assokit rights holder, Raphaël Badr Pujol-Siwane (service operated by RBPS, see assokit.fr/mentions-legales). Written authorization available on request.
 
 PRIVACY
 No advertising, no tracking, no third-party analytics SDK in the app. AI features send only the content needed to Anthropic, after an in-app consent prompt (it can be changed in Paramètres > Fonctions IA). The web view only shows assokit.fr; other links open in Safari. Privacy policy: Paramètres > "Politique de confidentialité", and on the sign-in screen.

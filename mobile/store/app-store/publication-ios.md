@@ -243,7 +243,7 @@ Dans l'ordre de la page :
    (`fiche-app-store.md` § 6).
 4. **Build** : vérifier d'abord que le champ **Version** vaut `1.0.1` (étape 3, point 4),
    puis **+** (ou *Ajouter un build*) › choisir le build testé à l'étape 4 › **Terminé**.
-5. **Informations générales** : **Copyright** `2026 Raphaël Badr Pujol-Siwane`
+5. **Informations générales** : **Copyright** `2026 Raphaël Badr Pujol-Siwane` (titulaire des droits ; le vendeur affiché sera FOCUS POINT AGENCY, voir `attestation-autorisation.md`)
    (`fiche-app-store.md` § 8). L'icône vient du build, rien à importer.
 6. **Informations pour la vérification de l'app** : connexion requise, identifiant, mot de
    passe, coordonnées et **Notes** en anglais : copier-coller depuis `age-et-revue.md` § 6.

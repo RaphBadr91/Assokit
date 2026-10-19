@@ -195,9 +195,12 @@ Vérifié dans `mentions-legales.php` : **RBPS exploite** le site et le service,
 INPI n° 26 5259962) est **Raphaël Badr Pujol-Siwane**. Le champ Copyright d'Apple attend le
 titulaire des droits exclusifs : c'est lui.
 
-Variante : `2026 RBPS`, seulement si le compte Apple Developer est ouvert au nom de la
-société RBPS et que les droits lui ont été cédés. En cas de doute, garder le nom du
-titulaire des droits, qui est aussi celui qui figure sur les mentions légales.
+Le compte Apple Developer est au nom de **FOCUS POINT AGENCY** : c'est elle qui apparaîtra
+comme **vendeur** (« Seller ») sur la fiche. Le champ Copyright reste celui du **titulaire
+des droits**, Raphaël Badr Pujol-Siwane : vendeur et titulaire des droits peuvent être
+différents. Les notes de vérification le précisent (rubrique « PUBLISHER » de
+`age-et-revue.md`) et `attestation-autorisation.md` contient l'autorisation de publication
+à signer, à joindre si Apple la demande (règle 5.2.1).
 
 ## 9. Notes de version (« Nouveautés »)
 
