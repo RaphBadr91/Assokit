@@ -73,7 +73,12 @@ bloquer et un contact. Ce qui existe, vérifié dans le code et sur le banc le 1
     `delete`) ;
 - un administrateur peut aussi **désactiver ou retirer un membre** (`supprimer-adherent.php`) ;
 - tout utilisateur peut écrire au support (**Plus › Support**) ou à `contact@assokit.fr` ;
-- les CGU interdisent les contenus illicites et le spam (`cgu.php` § 7).
+- les CGU (`cgu.php` § 7, « Contenus inacceptables et signalements : tolérance zéro », depuis le
+  19/10/2026) interdisent les contenus illicites, haineux, de harcèlement, sexuels, violents,
+  diffamatoires et le spam, annoncent la tolérance zéro envers les utilisateurs abusifs, un
+  examen de chaque signalement **sous 24 heures**, le retrait du contenu et l'exclusion possible
+  de son auteur, et disent comment signaler (appui long › « Signaler ce message », ou support).
+  Engagement à tenir : traiter les tickets « Signalement d'un message » dans la journée.
 
 ---
 
@@ -147,42 +152,46 @@ minuit ne déconnecte personne.
 | Téléphone | `[+33 6 XX XX XX XX]` (format international, joignable en anglais aux heures de bureau américaines si possible) |
 | E-mail | `contact@assokit.fr` |
 
-### Notes (en anglais, 3713 caractères sur 4 000)
+### Notes (en anglais, 3730 caractères sur 4 000)
+
+Compté par programme le 19/10/2026 (caractères Unicode ; autant d'unités UTF-16, 3741 octets UTF-8). L'ancien total affiché, 3713, datait d'avant la rubrique « PUBLISHER » : le texte en faisait en réalité 3967.
 
 ```
-Assokit is the iPhone companion app of assokit.fr, a management service used by French non-profit associations and small businesses: members and membership fees, projects, calendar and general meetings, quotes and invoices, internal team messaging. The app is in French.
+Assokit is the iPhone companion app of assokit.fr, a management service for French non-profit associations and small businesses: members and fees, projects, calendar and general meetings, quotes and invoices, team messaging. The app is in French.
 
 SIGN-IN
-Use the account entered in Sign-In Information: admin@demo-f.assokit.fr / DemoFormation2026!
-Green welcome screen > "Se connecter" > e-mail and password > "Se connecter".
-It is the administrator of "DEMO F", a sample organisation with fictional data. E-mails and text messages sent from this demo are simulated: nothing leaves our server. The sample data is reset every night around midnight, Paris time.
+Use the account in Sign-In Information: admin@demo-f.assokit.fr / DemoFormation2026!
+Welcome screen > "Se connecter" > e-mail and password > "Se connecter".
+It is the administrator of "DEMO F", a sample organisation with fictional data, ready to use: no need to create an account. E-mails and text messages sent from the demo are simulated. The data is reset every night around midnight, Paris time.
 
 WHAT TO LOOK AT (native screens)
 - Home: key figures, today's events, quick actions.
-- Bottom tabs: Projets (project detail: steps, budget, team), Membres, the "+" button (new invoice, quote, client, member, membership fee received, event, project, grant), Plus.
-- Plus: Factures, Devis, Clients, Statistiques, Agenda, Cotisations, Subventions, Assemblées, Emargement, Messages (team channels), Boîte mail (shared mailbox sorted by AI), Notifications, Communication, Coach IA, Paramètres, Support.
-- "+" > "Scanner une facture": take a photo of a supplier invoice; the amounts are read by AI. Camera or photo access is asked only at that moment.
-- On Cotisations, "Enregistrer un paiement" only records a fee a member paid to the association offline (cash, cheque, bank transfer); nothing is paid in the app.
-- Face ID: after signing in, the next launch is unlocked with Face ID.
-- Push notifications: new messages, mentions, project steps assigned, being added to a team. They are optional.
-- Monetary amounts on screen are the organisation's own bookkeeping (its invoices to its clients, fees received from its members), not prices of our service.
+- Tabs: Projets, Membres, "+" (new invoice, quote, client, member, fee received, event, project, grant), Plus.
+- Plus: Factures, Devis, Clients, Statistiques, Agenda, Cotisations, Subventions, Assemblées, Emargement, Messages, Boîte mail (mailbox sorted by AI), Notifications, Coach IA, Paramètres, Support.
+- "+" > "Scanner une facture": photo of a supplier invoice, amounts read by AI. Camera access is asked only then.
+- Cotisations > "Enregistrer un paiement" only records a fee a member paid the association offline; nothing is paid in the app.
+- Face ID unlocks the next launch. Push notifications are optional.
+- Amounts on screen are the organisation's own bookkeeping, not prices of our service.
 
 NOTHING IS SOLD IN THE APP
-Assokit is sold to organisations (associations and small businesses), which subscribe outside the app. The iPhone app only signs in to existing accounts: it has no sign-up, offers no in-app purchase and shows no price, plan, trial or subscription status, and no link to a purchase page. It is a free companion app to our web service, in line with guidelines 3.1.3(f) and 3.1.3(c).
+Assokit is sold to organisations outside the app. The app offers no in-app purchase and shows no price, plan, trial or subscription status, and no link to a purchase page: a free companion app to our web service (3.1.3(f), 3.1.3(c)).
+
+NEW ORGANISATIONS: ACCOUNT REQUEST
+"Créer l'espace de ma structure" (welcome screen) or "Demander la création de mon espace" (sign-in screen) opens a request form, reviewed by our team within 48 hours. Nothing is active until we approve it; an e-mail confirms the activation. The app then shows "Demande envoyée"; signing in before approval shows "Votre espace est en cours de validation". Once approved, the account can be deleted in the app (below); a request not yet approved can be withdrawn via https://assokit.fr/suppression-compte
 
 ACCOUNT DELETION (5.1.1(v))
-Plus > Paramètres > "Supprimer mon compte (RGPD)" at the bottom > password > "Supprimer définitivement". Personal data is anonymised at once and the user is signed out. Also explained at https://assokit.fr/suppression-compte
-- The admin demo account cannot delete itself: it is the organisation's only administrator, and the reason is shown under the greyed button.
-- Member account membre@demo-f.assokit.fr / DemoFormation2026! shows the full flow; this shared demo account is protected at the last step (nothing is deleted, the message says so) so that the demo keeps working for the next reviewer.
+Plus > Paramètres > "Supprimer mon compte (RGPD)" at the bottom > password > "Supprimer définitivement": personal data is anonymised at once and the user is signed out.
+- The admin demo account cannot delete itself (only administrator; the reason is shown).
+- Member account membre@demo-f.assokit.fr / DemoFormation2026! shows the full flow; this shared account is protected at the last step (the message says so) so the demo keeps working.
 
 USER-GENERATED CONTENT
-Messages and documents are only shared inside one organisation, between members its administrators invited. There are no public profiles and no contact with strangers. In Plus > Messages, long-press any message to report it or hide its author; admins can delete it. A report opens a support ticket that our team reviews. Administrators can also deactivate or remove a member. Our terms forbid unlawful content and spam.
+Messages and documents are shared only inside one organisation, between invited members; no public profiles. In Plus > Messages, long-press a message to report it or hide its author; admins can delete it. A report opens a support ticket. Our terms have a zero-tolerance policy for objectionable content and abusive users: reports are reviewed within 24 hours, offending content is removed and its author can be excluded.
 
 PUBLISHER
 Published by FOCUS POINT AGENCY (developer account holder) with the authorization of the Assokit rights holder, Raphaël Badr Pujol-Siwane (service operated by RBPS, see assokit.fr/mentions-legales). Written authorization available on request.
 
 PRIVACY
-No advertising, no tracking, no third-party analytics SDK in the app. AI features send only the content needed to Anthropic, after an in-app consent prompt (it can be changed in Paramètres > Fonctions IA). The web view only shows assokit.fr; other links open in Safari. Privacy policy: Paramètres > "Politique de confidentialité", and on the sign-in screen.
+No advertising, no tracking, no analytics SDK. AI features send only the needed content to Anthropic, after an in-app consent prompt (Paramètres > Fonctions IA). The web view only shows assokit.fr; other links open in Safari. Privacy policy: Paramètres and the sign-in screen.
 
 Thank you for your review.
 ```
@@ -195,10 +204,14 @@ Facultative. Pas nécessaire : le compte de démonstration suffit.
 
 - [ ] Se connecter **depuis l'app** (build TestFlight) avec `admin@demo-f.assokit.fr`, puis
       avec `membre@demo-f.assokit.fr` : la démo répond, les écrans sont remplis.
-- [ ] Les fichiers PHP modifiés ou ajoutés le 18/10/2026 sont **en ligne** sur assokit.fr
-      (voir `publication-ios.md`, étape 0, et `conformite-ios.md` § C) : l'examinateur teste
-      l'app contre le serveur réel. Sans eux, l'appui long sur un message, l'accord pour l'IA
-      et le blocage de l'inscription sur iPhone ne fonctionnent pas.
+- [ ] Les fichiers PHP modifiés ou ajoutés les 18 et 19/10/2026 sont **en ligne** sur
+      assokit.fr (voir `publication-ios.md`, étape 0, et `conformite-ios.md` § C) : l'examinateur
+      teste l'app contre le serveur réel. Sans eux, l'appui long sur un message, l'accord pour
+      l'IA et la demande de création d'espace sur iPhone (validée sous 48 h, sans essai dans
+      l'app) ne fonctionnent pas : l'ancien serveur renverrait le formulaire vers la connexion.
+- [ ] Pendant l'examen, surveiller les e-mails « 🔔 Demande d'espace à valider » : un
+      examinateur peut essayer le formulaire. Répondre **sous 48 h** comme promis (« Valider »
+      ou « Refuser » dans l'e-mail, ou dans le cockpit) ; un rappel arrive au bout de 24 h.
 - [ ] `https://assokit.fr/suppression-compte` et `https://assokit.fr/confidentialite`
       répondent sans connexion.
 - [ ] La démo a été remise à zéro depuis votre propre essai (la remise à zéro de minuit efface

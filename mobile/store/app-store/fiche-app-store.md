@@ -115,12 +115,12 @@ VOS DONNÉES PROTÉGÉES
 • Aucune publicité, aucune revente de données
 
 UN COMPTE ASSOKIT EST NÉCESSAIRE
-L'application est réservée aux structures qui utilisent Assokit. Votre compte vous est créé par votre association ou votre entreprise.
+Votre compte vous est créé par votre association ou votre entreprise. Nouvelle structure ? Demandez la création de votre espace depuis l'application : notre équipe examine la demande sous 48 h et vous confirme l'activation par e-mail.
 
 Une question ? Écrivez-nous à contact@assokit.fr
 ```
 
-2930 caractères.
+3030 caractères.
 
 ### Ce qui a été écarté, et pourquoi
 
@@ -132,11 +132,15 @@ Une question ? Écrivez-nous à contact@assokit.fr
   devenus « une cotisation reçue » et « cotisations reçues ». C'est la même fonction
   (noter qu'un adhérent a payé sa cotisation à l'association), mais un examinateur qui
   survole le texte ne doit pas y voir un paiement dans l'application.
-- **« ou vous le créez depuis l'application »** (fin de la description) : retiré le 18/10/2026.
-  Sur iPhone, l'app sert seulement à se connecter : ni « Créer ma démo », ni inscription, ni
-  essai affiché (`conformite-ios.md` § B1). Un accès d'essai ouvert dans l'app puis
-  impossible à prolonger dans l'app est le motif de refus 3.1.1 le plus courant pour une app
-  B2B.
+- **« ou vous le créez depuis l'application »** (fin de la description) : retiré le 18/10/2026,
+  puis remplacé le 19/10/2026 par « Nouvelle structure ? Demandez la création de votre espace
+  depuis l'application : notre équipe examine la demande sous 48 h et vous confirme
+  l'activation par e-mail. » Sur iPhone, la création d'un compte est une **demande** examinée
+  par l'équipe : rien n'est actif avant la validation, aucun essai ne commence dans l'app,
+  aucun prix ni formule n'est affiché (`conformite-ios.md` § B1). Un accès d'essai ouvert
+  dans l'app puis impossible à prolonger dans l'app est le motif de refus 3.1.1 le plus
+  courant pour une app B2B : la phrase ne parle donc ni d'essai, ni de gratuité, ni
+  d'abonnement.
 - « empreinte digitale » : remplacé par **Face ID ou Touch ID** (vocabulaire iPhone ;
   `expo-local-authentication` gère les deux).
 - Ce que disait l'ancienne fiche `docs/app-store-fiche.md` et qui n'est plus permis ou
@@ -238,6 +242,6 @@ France »).
 | Nom | 30 | 28 |
 | Sous-titre | 30 | 30 |
 | Texte promotionnel | 170 | 132 |
-| Description | 4 000 | 2930 |
+| Description | 4 000 | 3030 |
 | Mots-clés | 100 | 94 caractères (97 octets) |
 | Notes de version | 4 000 | 286 |

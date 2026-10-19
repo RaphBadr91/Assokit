@@ -49,10 +49,12 @@ function ak_is_mobile_app(): bool
 /**
  * La requête vient-elle de l'app iPhone ? (agent « AssokitApp » sans « Android »)
  *
- * Sur iPhone, l'app sert seulement à se connecter à un espace existant
- * (règle 3.1.1 d'Apple) : pas d'inscription, donc pas d'essai qui
- * commencerait dans l'app (mobile/App.js, IOS_LOGIN_ONLY). L'app Android
- * garde l'inscription.
+ * Sur iPhone, rien n'est vendu ni essayé dans l'app (règle 3.1.1 d'Apple) :
+ * l'inscription y est une DEMANDE de création d'espace, examinée par notre
+ * équipe sous 48 h ; rien n'est actif avant la validation, et l'essai
+ * démarre seulement à ce moment-là (signup.php, signup-review-helpers.php ;
+ * mobile/App.js, IOS_SIGNUP_REQUEST). L'app Android garde l'inscription
+ * avec essai immédiat, comme le site.
  */
 function ak_is_ios_app(): bool
 {
@@ -109,7 +111,12 @@ function ak_block_billing_page(string $to = '/dashboard'): void
  *   - association suspendue à la main par le Fondateur (impayé, refus…) →
  *     seuls l'abonnement et le paiement, le support, les paramètres du
  *     compte et l'export RGPD restent ouverts ; le reste affiche l'avis
- *     de suspension (/connexion).
+ *     de suspension (/connexion) ;
+ *   - demande de création d'espace faite dans l'app iPhone, pas encore
+ *     validée par le Fondateur (ak_signup_review_pending) → aucune session :
+ *     la connexion affiche « Votre espace est en cours de validation… »,
+ *     comme une association fermée. Une association « à valider » créée par
+ *     un super-admin reste, elle, utilisable (cockpit : « fonctionnelle »).
  *
  * La fin d'essai n'est PAS une suspension : ak_trial_expire() passe
  * l'association en « suspended » SANS motif et sur le plan gratuit
@@ -132,6 +139,13 @@ if (!function_exists('ak_session_guard')) {
 /** Adresse donnée aux associations pour toute question d'accès. */
 define('AK_SUPPORT_EMAIL', 'contact@assokit.fr');
 
+/**
+ * Marque d'une demande de création d'espace faite dans l'app iPhone et pas encore validée :
+ * l'association est « suspended » avec ce motif exact et validation_status « pending_founder »
+ * (signup.php). Valider (ak_signup_review_validate) ou refuser (ak_signup_review_reject) l'efface.
+ */
+define('AK_SIGNUP_REVIEW_REASON', 'Demande de création d’espace en attente de validation');
+
 /** Toujours ouverts : connexion, déconnexion, changement de mot de passe, fin d'incarnation. */
 define('AK_GUARD_OPEN', [
     'connexion.php', 'connexion-2fa.php', 'deconnexion.php', 'changer-mot-de-passe.php',
@@ -139,8 +153,8 @@ define('AK_GUARD_OPEN', [
     'api/app-csrf.php', 'api/app-account.php', 'api/app-change-password.php',
 ]);
 
-/** Pages publiques à jeton (émargement, convocation d'AG) : jamais concernées par l'état de la session du navigateur. */
-define('AK_GUARD_PUBLIC', ['emarger.php', 'ag-public.php']);
+/** Pages publiques à jeton (émargement, convocation d'AG, validation d'une demande d'espace) : jamais concernées par l'état de la session du navigateur. */
+define('AK_GUARD_PUBLIC', ['emarger.php', 'ag-public.php', 'valider-inscription.php']);
 
 /** Ouverts en plus quand l'association est suspendue : régulariser, joindre le support, gérer son compte. */
 define('AK_GUARD_SUSPENDED_OPEN', [
@@ -174,8 +188,22 @@ define('AK_GUARD_MAIRIE_OPEN', [
 ]);
 
 /**
- * Accès d'une association : 'ok', 'suspended' (suspension manuelle, motif renseigné)
- * ou 'closed' (résiliée ou supprimée).
+ * Demande de création d'espace (app iPhone) qui attend la décision du Fondateur ?
+ * $org : ligne organizations complète. Une association « à valider » créée par un
+ * super-admin n'a pas ce motif : elle n'est pas concernée.
+ */
+function ak_signup_review_pending(array $org): bool
+{
+    return ($org['validation_status'] ?? '') === 'pending_founder'
+        && ($org['status'] ?? '') === 'suspended'
+        && trim((string)($org['suspended_reason'] ?? '')) === AK_SIGNUP_REVIEW_REASON
+        && empty($org['deleted_at']);
+}
+
+/**
+ * Accès d'une association : 'ok', 'pending' (demande de création d'espace pas encore
+ * validée), 'suspended' (suspension manuelle, motif renseigné) ou 'closed' (résiliée
+ * ou supprimée).
  */
 function ak_org_access(PDO $pdo, int $org_id): string
 {
@@ -190,6 +218,7 @@ function ak_org_access(PDO $pdo, int $org_id): string
     }
     if (!$o) return 'ok';
     if (!empty($o['deleted_at']) || ($o['status'] ?? '') === 'cancelled') return 'closed';
+    if (ak_signup_review_pending($o)) return 'pending';
     // Sans la colonne du motif, impossible de distinguer une fin d'essai : on ne coupe rien.
     if (($o['status'] ?? '') === 'suspended' && trim((string)($o['suspended_reason'] ?? '')) !== '') return 'suspended';
     return 'ok';
@@ -204,7 +233,7 @@ function ak_user_is_platform(array $u): bool
 
 /**
  * État de la session courante, relu en base :
- *   'anonymous', 'ok', 'account_closed', 'org_closed', 'must_change_password', 'org_suspended'.
+ *   'anonymous', 'ok', 'account_closed', 'org_closed', 'org_pending', 'must_change_password', 'org_suspended'.
  * @return array{state:string, user:?array}
  */
 function ak_session_access(PDO $pdo): array
@@ -228,6 +257,7 @@ function ak_session_access(PDO $pdo): array
         // L'association de la session (le compte de démonstration commercial en change)
         $org = ak_org_access($pdo, (int)($_SESSION['org_id'] ?? 0) ?: (int)($u['org_id'] ?? 0));
         if ($org === 'closed') return ['state' => 'org_closed', 'user' => $u];
+        if ($org === 'pending') return ['state' => 'org_pending', 'user' => $u];
     }
     if (!empty($u['must_change_password'])) return ['state' => 'must_change_password', 'user' => $u];
     if ($org === 'suspended') return ['state' => 'org_suspended', 'user' => $u];
@@ -243,6 +273,8 @@ function ak_session_access_message(string $state): string
             return 'Votre compte a été désactivé par un administrateur. Contactez l’administrateur de votre association ou de votre collectivité pour le réactiver.';
         case 'org_closed':
             return 'L’accès de votre association à Assokit est fermé. Pour toute question, écrivez à ' . AK_SUPPORT_EMAIL . '.';
+        case 'org_pending':
+            return 'Votre espace est en cours de validation par notre équipe (48 h maximum). Vous recevrez un e-mail dès son activation.';
         case 'org_suspended':
             return 'L’accès de votre association à Assokit est suspendu. Vos données sont conservées. Pour le rétablir, contactez ' . AK_SUPPORT_EMAIL . '.';
         case 'must_change_password':
@@ -384,9 +416,12 @@ function ak_session_guard(): void
     $script = ak_guard_script();
     $api = ak_guard_is_api($script);
 
-    if ($state === 'account_closed' || $state === 'org_closed') {
+    // Demande d'espace pas encore validée : comme une association fermée, aucune page ni API ; l'appli
+    // reçoit 401 'auth' avec le message et l'affiche sur son écran de connexion
+    if ($state === 'account_closed' || $state === 'org_closed' || $state === 'org_pending') {
         ak_session_end();
-        ak_guard_stop($api, 401, 'auth', $state, '/connexion?acces=' . ($state === 'org_closed' ? 'ferme' : 'desactive'));
+        $acces = ['org_closed' => 'ferme', 'org_pending' => 'attente'][$state] ?? 'desactive';
+        ak_guard_stop($api, 401, 'auth', $state, '/connexion?acces=' . $acces);
     }
     if (in_array($script, AK_GUARD_OPEN, true)) return;
     if ($state === 'must_change_password') {

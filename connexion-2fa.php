@@ -26,11 +26,12 @@ if (!$user || empty($user['totp_enabled'])) {
     header('Location: /connexion.php');
     exit;
 }
-// Association résiliée ou supprimée depuis la saisie du mot de passe : pas de session
+// Association résiliée ou supprimée depuis la saisie du mot de passe, ou demande d'espace pas
+// encore validée (app iPhone) : pas de session
 $org_access = ak_user_is_platform($user) ? 'ok' : ak_org_access($pdo, (int)($user['org_id'] ?? 0));
-if ($org_access === 'closed') {
+if ($org_access === 'closed' || $org_access === 'pending') {
     unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_time'], $_SESSION['pending_2fa_next']);
-    header('Location: /connexion?acces=ferme');
+    header('Location: /connexion?acces=' . ($org_access === 'pending' ? 'attente' : 'ferme'));
     exit;
 }
 

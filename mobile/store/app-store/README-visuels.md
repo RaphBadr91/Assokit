@@ -110,7 +110,10 @@ l'iPhone :
    8 écrans. Les retouches suivantes du même jour (appui long sur un message, accord
    pour l'IA, connexion seule sur iPhone, téléchargement des exports) ne changent rien de
    visible sur ces 8 écrans pour un compte qui n'a ni masqué de messages ni refusé l'IA,
-   et DEMO F n'est pas en essai : aucune pastille d'essai n'y apparaissait déjà.
+   et DEMO F n'est pas en essai : aucune pastille d'essai n'y apparaissait déjà. Celle du
+   19/10/2026 (demande de création d'espace sur iPhone : bouton « Créer l'espace de ma
+   structure » de l'écran d'accueil vert, lien de l'écran de connexion) ne touche que ces
+   deux écrans d'avant la connexion, qui ne figurent pas parmi les captures.
 2. **Données réelles du serveur.** La WebView est remplacée par une doublure qui exécute
    les requêtes `fetch('/api/app-*.php')` injectées par l'app. Elles partent vers un banc
    PHP local (base `assokit_t_ios`), peuplé par `seed-demo-formation.php` puis par les

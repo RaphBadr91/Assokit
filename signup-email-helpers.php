@@ -4,7 +4,9 @@
  * ASSOKIT — Emails du tunnel d'inscription DEMO
  * ============================================================
  *  - ak_signup_alert_founder() : previent le fondateur de CHAQUE demande
- *    d'essai (activee, a verifier, ou echouee -> prospect a rappeler).
+ *    d'essai (activee, a verifier, ou echouee -> prospect a rappeler), et de
+ *    chaque demande d'espace faite dans l'app iPhone, a valider (boutons
+ *    Valider / Refuser : signup-review-helpers.php).
  *  - send_demo_welcome_email() : bienvenue au prospect, essai actif
  *    jusqu'au JJ/MM, avec bouton de confirmation d'email.
  *  - ak_signup_ack_prospect() : accuse de reception si l'ouverture a echoue.
@@ -87,9 +89,13 @@ function ak_signup_h($v): string
 
 /**
  * Alerte le fondateur pour CHAQUE demande d'essai, quoi qu'il arrive.
- *   $kind : 'ok'         → essai activé automatiquement
- *           'incomplete' → compte créé mais un élément de l'essai a échoué ($warnings)
- *           'failed'     → la création a échoué : le prospect est à rappeler ($tech_error)
+ *   $kind : 'ok'              → essai activé automatiquement
+ *           'incomplete'      → compte créé mais un élément de l'essai a échoué ($warnings)
+ *           'failed'          → la création a échoué : le prospect est à rappeler ($tech_error)
+ *           'review'          → demande de création d'espace faite dans l'app iPhone, à valider
+ *                               ($org_id) : boutons « Valider » / « Refuser » (liens signés,
+ *                               signup-review-helpers.php) et lien vers le cockpit
+ *           'review_reminder' → la même, sans décision depuis 24 h (cron-trial-check.php)
  * Canaux, chacun indépendant (un échec n'empêche pas les autres) :
  *   1. e-mail à contact@assokit.fr et aux adresses fondateur (répondre = écrire au prospect) ;
  *   2. notification dans la cloche fondateur (site + appli) ;
@@ -105,8 +111,34 @@ function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_
     $email = (string)($lead['email'] ?? '');
     $end   = function_exists('ak_trial_end_label') ? ak_trial_end_label($lead['trial_end'] ?? null) : '';
     $days  = defined('AK_TRIAL_DAYS') ? AK_TRIAL_DAYS : 14;
+    $review = $kind === 'review' || $kind === 'review_reminder';
+    $buttons = '';
 
-    if ($kind === 'failed') {
+    if ($review) {
+        @require_once __DIR__ . '/signup-review-helpers.php';
+        $remind  = $kind === 'review_reminder';
+        $subject = ($remind ? '⏰ Rappel : demande d’espace à valider depuis 24 h : ' : '🔔 Demande d’espace à valider : ') . $org;
+        $title   = $remind ? 'Demande d’espace en attente depuis 24 h' : 'Nouvelle demande d’espace à valider';
+        $intro   = '<p>' . ($remind ? 'Cette demande attend votre décision depuis plus de 24 h. ' : '')
+                 . 'Une structure a demandé la création de son espace depuis l’<strong>application iPhone</strong>. '
+                 . 'Rien n’est actif tant que vous ne l’avez pas validée&nbsp;: l’administrateur ne peut pas se connecter, '
+                 . 'et l’essai PRO de ' . (int)$days . ' jours démarrera à la validation. Réponse promise au demandeur <strong>sous '
+                 . (int)(defined('AK_SIGNUP_REVIEW_HOURS') ? AK_SIGNUP_REVIEW_HOURS : 48) . '&nbsp;h</strong>.</p>';
+        $cta     = ['Ouvrir la demande dans le cockpit', 'https://assokit.fr/super-admin/associations?id=' . (int)$org_id];
+        // Deux boutons : chacun ouvre une page qui montre la demande et demande confirmation (rien ne
+        // se fait au simple clic, que les antivirus de messagerie déclenchent parfois tout seuls)
+        $ok_url = function_exists('ak_signup_review_url') && $org_id ? ak_signup_review_url($pdo, (int)$org_id, 'validate') : null;
+        $no_url = function_exists('ak_signup_review_url') && $org_id ? ak_signup_review_url($pdo, (int)$org_id, 'reject') : null;
+        if ($ok_url && $no_url) {
+            $btn = fn($url, $label, $bg) => '<td style="padding:0 10px 0 0"><a href="' . ak_signup_h($url) . '" target="_blank" style="display:inline-block;padding:12px 26px;background:'
+                 . $bg . ';color:#fff;text-decoration:none;font-family:Arial,sans-serif;font-size:14px;font-weight:600;border-radius:10px">' . $label . '</a></td>';
+            $buttons = '<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:18px 0 6px"><tr>'
+                     . $btn($ok_url, '✓ Valider', '#059669') . $btn($no_url, '✕ Refuser', '#B91C1C') . '</tr></table>'
+                     . '<p style="font-size:12px;color:#78716C;margin:0 0 6px;">Chaque bouton ouvre une page de confirmation. Liens personnels, valables 7 jours : ne les transférez pas.</p>';
+        } else {
+            $buttons = '<p style="font-size:13px;color:#78716C;">Validez ou refusez la demande depuis le cockpit (lien ci-dessous).</p>';
+        }
+    } elseif ($kind === 'failed') {
         $subject = '⚠️ Demande d’essai à rappeler : ' . $org;
         $title   = 'Demande d’essai &mdash; ouverture automatique impossible';
         $intro   = '<p>Un prospect a demandé un essai gratuit, mais son espace n’a pas pu être créé automatiquement. '
@@ -140,7 +172,13 @@ function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_
         if (in_array($k, ['Type', 'Téléphone'], true) || $v === '' || $v === null) continue;
         $rows[ak_signup_h($k)] = nl2br(ak_signup_h($v));
     }
-    $rows['Formule vue sur le site'] = ak_signup_h($lead['plan'] ?? '');
+    if ($review) {
+        $rows['Origine'] = 'Application iPhone (demande à valider)';
+        $when = function_exists('ak_signup_review_when') ? ak_signup_review_when($lead['requested_at'] ?? null) : '';
+        if ($when !== '') $rows['Demandée le'] = ak_signup_h($when);
+    } else {
+        $rows['Formule vue sur le site'] = ak_signup_h($lead['plan'] ?? '');
+    }
     if ($end !== '' && $kind !== 'failed') $rows['Fin de l’essai'] = ak_signup_h($end);
     if (!empty($lead['ip'])) $rows['Adresse IP'] = ak_signup_h($lead['ip']);
     if (!empty($lead['signup_id'])) $rows['Demande n°'] = (int)$lead['signup_id'];
@@ -156,15 +194,15 @@ function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_
     if ($tech_error) {
         $extra .= '<p style="margin-top:14px;font-size:12px;color:#78716C;">Détail technique : <code>' . ak_signup_h(mb_substr($tech_error, 0, 300)) . '</code></p>';
     }
-    $content = '<h1 style="font-size:20px;margin:0 0 14px;color:#1C1917">' . $title . '</h1>' . $intro . $tbl . $extra;
+    $content = '<h1 style="font-size:20px;margin:0 0 14px;color:#1C1917">' . $title . '</h1>' . $intro . $buttons . $tbl . $extra;
 
     // 1. E-mail
     $mail_ok = false;
     try {
         if (function_exists('send_transactional_email')) {
-            $html = function_exists('email_wrap') ? email_wrap('Demande d’essai Assokit', $content, $cta[0], $cta[1]) : $content;
+            $html = function_exists('email_wrap') ? email_wrap($review ? 'Demande d’espace Assokit' : 'Demande d’essai Assokit', $content, $cta[0], $cta[1]) : $content;
             $to = function_exists('ak_founder_emails') ? ak_founder_emails() : [AK_DEMO_NOTIFY_EMAIL];
-            $opts = ['tag' => 'demo_founder_notif'];
+            $opts = ['tag' => $review ? 'signup_review_founder' : 'demo_founder_notif'];
             if (filter_var($email, FILTER_VALIDATE_EMAIL)) $opts['reply_to'] = $email;
             foreach ($to as $dest) {
                 $res = send_transactional_email($dest, $subject, $html, $opts);
@@ -179,7 +217,8 @@ function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_
     try {
         @require_once __DIR__ . '/notification-helpers.php';
         if (function_exists('ak_notif_create') && function_exists('ak_founder_user_ids')) {
-            $titre = $kind === 'failed' ? '⚠️ Demande d’essai à rappeler : ' . $org : ($kind === 'incomplete' ? 'Nouvel essai (à vérifier) : ' . $org : 'Nouvel essai activé : ' . $org);
+            $titre = $review ? ($kind === 'review_reminder' ? '⏰ Demande d’espace à valider depuis 24 h : ' : '🔔 Demande d’espace à valider : ') . $org
+                   : ($kind === 'failed' ? '⚠️ Demande d’essai à rappeler : ' . $org : ($kind === 'incomplete' ? 'Nouvel essai (à vérifier) : ' . $org : 'Nouvel essai activé : ' . $org));
             $corps = $name . ' · ' . $email;
             $lien  = $org_id ? '/super-admin/associations?id=' . (int)$org_id : '/super-admin';
             foreach (ak_founder_user_ids($pdo) as $uid) ak_notif_create($pdo, $uid, 'signup', mb_substr($titre, 0, 190), mb_substr($corps, 0, 250), $lien);
@@ -190,7 +229,9 @@ function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_
 
     // 3. Trace dans les messages de contact du cockpit (échec, ou e-mail non parti)
     if ($kind === 'failed' || !$mail_ok) {
-        ak_signup_record_contact($pdo, $lead, $kind === 'failed' ? " — création automatique IMPOSSIBLE, à rappeler." : " — e-mail d'alerte non parti.", $warnings, $tech_error);
+        $note = $kind === 'failed' ? " — création automatique IMPOSSIBLE, à rappeler."
+              : ($review ? " — demande de création d'espace (app iPhone) à valider dans le cockpit ; e-mail d'alerte non parti." : " — e-mail d'alerte non parti.");
+        ak_signup_record_contact($pdo, $lead, $note, $warnings, $tech_error);
     }
 }
 

@@ -125,6 +125,8 @@ RewriteRule ^emarger/([a-f0-9]{32,64})/?$      emarger.php?t=$1 [L,QSA]
 # ============================================================
 
 RewriteRule ^signup/?$                       signup.php [L,QSA]
+# Validation d'une demande d'espace (app iPhone) depuis l'e-mail du Fondateur : lien signé ?t=…
+RewriteRule ^valider-inscription/?$          valider-inscription.php [L,QSA]
 RewriteRule ^mentions-legales/?$             mentions-legales.php [L,QSA]
 RewriteRule ^politique-confidentialite/?$    /confidentialite [R=301,L]
 RewriteRule ^cgu/?$                          cgu.php [L,QSA]

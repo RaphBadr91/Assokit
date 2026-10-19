@@ -222,8 +222,8 @@ try {
     } catch (Throwable $e) {
         error_log('[api/app-dashboard] plan: ' . get_class($e));
     }
-    // App iPhone : connexion seule, ni essai ni formule à l'écran (règle 3.1.1 d'Apple ;
-    // mobile/App.js, IOS_LOGIN_ONLY). Même vide côté serveur, quelle que soit la version de l'app.
+    // App iPhone : ni essai ni formule à l'écran (règle 3.1.1 d'Apple ; mobile/App.js,
+    // IOS_SIGNUP_REQUEST). Même vide côté serveur, quelle que soit la version de l'app.
     if (function_exists('ak_is_ios_app') && ak_is_ios_app()) {
         $plan_info = ['in_trial' => false, 'trial_expired' => false, 'trial_ends_at' => null, 'days_left' => null, 'plan_label' => '—'];
     }

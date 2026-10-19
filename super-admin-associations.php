@@ -24,6 +24,7 @@ require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-permissions.php';
 require_once __DIR__ . '/trial-helpers.php';
 require_once __DIR__ . '/sa-plan-state-helpers.php';
+require_once __DIR__ . '/signup-review-helpers.php';   // demandes d'espace de l'app iPhone : valider / refuser
 require_login();
 $user = sa_require_super_admin();
 $ctx = sa_get_permissions_context();
@@ -90,10 +91,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
             if (!$ctx['is_founder']) {
                 $error = '🏗️ Seul un Fondateur peut valider une association.';
             } else {
-                $stmt = $pdo->prepare("UPDATE organizations SET validation_status = 'validated', validated_by_user_id = ?, validated_at = NOW() WHERE id = ?");
-                $stmt->execute([(int) $user['id'], $target_id]);
-                sa_log_action((int) $user['id'], 'validate_org', $target_id);
-                $success = '✓ Association validée. Elle est maintenant pleinement active.';
+                // Demande de création d'espace faite dans l'app iPhone : l'essai démarre maintenant et
+                // l'administrateur est prévenu, exactement comme par le lien de l'e-mail et par l'appli
+                try {
+                    $rv = ak_signup_review_validate($pdo, $target_id, (int) $user['id']);
+                } catch (Throwable $e) {
+                    error_log('[super-admin-associations] validate_org: ' . get_class($e) . ' ' . $e->getMessage());
+                    $rv = ['state' => 'error'];
+                }
+                if ($rv['state'] === 'error') {
+                    $error = 'La validation n’a pas pu être enregistrée (erreur technique). Rien n’a été modifié.';
+                } elseif ($rv['state'] === 'validated') {
+                    sa_log_action((int) $user['id'], 'validate_org', $target_id, null, ['trial_ends_at' => $rv['trial_end'], 'demande' => 'app iPhone']);
+                    $success = '✓ Demande validée : l’essai PRO de ' . (int) AK_TRIAL_DAYS . ' jours court jusqu’au ' . ak_trial_end_label($rv['trial_end']) . '. '
+                             . ($rv['mailed'] ? 'L’administrateur a reçu l’e-mail « Votre espace Assokit est activé ».' : 'L’e-mail d’activation n’a pas pu partir : prévenez l’administrateur.')
+                             . ($rv['warnings'] ? ' À vérifier : ' . implode(' ', $rv['warnings']) : '');
+                } else {
+                    $stmt = $pdo->prepare("UPDATE organizations SET validation_status = 'validated', validated_by_user_id = ?, validated_at = NOW() WHERE id = ?");
+                    $stmt->execute([(int) $user['id'], $target_id]);
+                    sa_log_action((int) $user['id'], 'validate_org', $target_id);
+                    $success = '✓ Association validée. Elle est maintenant pleinement active.';
+                }
                 $view_id = $target_id;
             }
         }
@@ -103,12 +121,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 $error = '🏗️ Seul un Fondateur peut refuser une association.';
             } else {
                 $reason = trim($_POST['rejection_reason'] ?? '');
-                // Refusée ET suspendue (même règle que l'appli) ; en essai, plus aucun rappel d'essai
-                ak_org_reject($pdo, $target_id, $reason, (int) $user['id']);
+                // Demande de l'app iPhone : refusée ET suspendue, et e-mail poli au demandeur (comme le lien
+                // de l'e-mail et l'appli). Sinon : refusée ET suspendue (même règle que l'appli) ; en essai,
+                // plus aucun rappel d'essai
+                try {
+                    $rv = ak_signup_review_reject($pdo, $target_id, $reason, (int) $user['id']);
+                } catch (Throwable $e) {
+                    error_log('[super-admin-associations] reject_org: ' . get_class($e) . ' ' . $e->getMessage());
+                    $rv = ['state' => 'not_request'];   // refus habituel ci-dessous
+                }
+                if ($rv['state'] !== 'rejected') ak_org_reject($pdo, $target_id, $reason, (int) $user['id']);
                 sa_log_action((int) $user['id'], 'reject_org', $target_id, null, ['reason' => $reason]);
-                $success = '✕ Association refusée.';
+                $success = $rv['state'] === 'rejected'
+                    ? '✕ Demande refusée. ' . ($rv['mailed'] ? 'Le demandeur a reçu un e-mail l’en informant.' : 'L’e-mail au demandeur n’a pas pu partir.')
+                    : '✕ Association refusée.';
                 $view_id = $target_id;
             }
+        }
+        // Demande de l'app iPhone encore en attente : rien ne doit l'ouvrir (ni la dénaturer) sans décision
+        elseif (in_array($action, ['reactivate', 'suspend', 'trial_extend', 'set_plan'], true) && ak_signup_review_pending($org)) {
+            $error = ak_signup_review_block_message();
+            $view_id = $target_id;
         }
         // ---- UPDATE ----
         elseif ($action === 'update') {
@@ -125,6 +158,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 $plan_change = $new_plan_id > 0 && $new_plan_id !== (int) $before['plan_id'];
                 if ($plan_change && !$can_plan) {
                     $error = 'Vous n’avez pas le droit de changer le plan d’une association.';
+                } elseif ($plan_change && ak_signup_review_pending($org)) {
+                    // Demande de l'app iPhone en attente : un plan l'ouvrirait sans validation
+                    $error = ak_signup_review_block_message();
                 } else {
                     $stmt = $pdo->prepare("UPDATE organizations SET name = ?, notes_superadmin = ? WHERE id = ?");
                     $stmt->execute([$name, $notes, $target_id]);
@@ -582,17 +618,27 @@ if ($view_id > 0) {
     <?php
     // Banniere de validation si l'asso est pending
     $val_status = $org['validation_status'] ?? 'validated';
+    // Demande de création d'espace faite dans l'app iPhone (rien d'actif avant la décision) ou
+    // association créée par un super-admin (fonctionnelle, à approuver)
+    $is_request = ak_signup_review_pending($org);
     if ($val_status === 'pending_founder'):
     ?>
     <div class="sa-card" style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.06) 0%, rgba(245, 158, 11, 0.08) 100%); border-color:rgba(251, 191, 36, 0.35); margin-bottom:16px;">
         <div style="display:flex; align-items:flex-start; gap:14px;">
-            <div style="font-size:32px;">🏗️</div>
+            <div style="font-size:32px;"><?= $is_request ? '📱' : '🏗️' ?></div>
             <div style="flex:1;">
                 <div style="font-size:15px; font-weight:600; color:#FCD34D; margin-bottom:4px;">
-                    Association en attente de validation Fondateur
+                    <?= $is_request ? 'Demande de création d’espace (application iPhone) à valider' : 'Association en attente de validation Fondateur' ?>
                 </div>
                 <div style="font-size:13px; color:var(--sa-ink-2); margin-bottom:14px;">
+                    <?php if ($is_request): ?>
+                        Demandée le <?= h(ak_signup_review_when($org['created_at'] ?? null)) ?> — réponse promise sous <?= (int) AK_SIGNUP_REVIEW_HOURS ?> h.
+                        Rien n’est actif : l’administrateur ne peut pas se connecter. <strong>Valider</strong> démarre l’essai PRO de <?= (int) AK_TRIAL_DAYS ?> jours
+                        et lui envoie l’e-mail « Votre espace Assokit est activé » ; <strong>Refuser</strong> lui envoie un e-mail poli et garde l’espace fermé.
+                        La fiche saisie est plus bas (« Demande d’inscription »).
+                    <?php else: ?>
                     Cette asso a été créée par un Super Admin. Elle est fonctionnelle mais nécessite l'approbation d'un Fondateur pour être officiellement active sur la plateforme.
+                    <?php endif; ?>
                 </div>
 
                 <?php if ($ctx['is_founder']): ?>
@@ -614,8 +660,8 @@ if ($view_id > 0) {
                         <input type="hidden" name="action" value="reject_org">
                         <input type="hidden" name="org_id" value="<?= (int) $org['id'] ?>">
                         <div class="sa-group">
-                            <label>Motif du refus (optionnel)</label>
-                            <textarea name="rejection_reason" rows="2" placeholder="Ex: Doublon, infos manquantes..."></textarea>
+                            <label><?= $is_request ? 'Motif du refus (optionnel, repris dans l’e-mail au demandeur)' : 'Motif du refus (optionnel)' ?></label>
+                            <textarea name="rejection_reason" rows="2"<?= $is_request ? ' maxlength="250"' : '' ?> placeholder="Ex: Doublon, infos manquantes..."></textarea>
                         </div>
                         <button type="submit" class="sa-btn sa-btn-danger">Confirmer le refus</button>
                     </form>

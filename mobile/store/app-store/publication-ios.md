@@ -24,11 +24,12 @@ Fichiers de ce dossier utilisés en route :
 
 ## Étape 0 — Mettre le serveur à jour (avant tout)
 
-L'examinateur d'Apple utilise l'app contre **assokit.fr**. Les corrections du 18/10/2026
-côté serveur (textes sans « essai gratuit » dans l'app, suppression du compte seul de son
-association, **inscription bloquée pour l'iPhone, signalement et suppression d'un message,
-accord pour l'IA** — liste dans `conformite-ios.md` § C) doivent être en ligne. Sans elles,
-l'app iPhone 1.0.1 propose des actions que le serveur ne connaît pas.
+L'examinateur d'Apple utilise l'app contre **assokit.fr**. Les corrections des 18 et
+19/10/2026 côté serveur (textes sans « essai gratuit » dans l'app, suppression du compte seul
+de son association, **demande de création d'espace sur iPhone validée par l'équipe sous 48 h,
+signalement et suppression d'un message, accord pour l'IA, clause « tolérance zéro » des
+CGU** — liste dans `conformite-ios.md` § C) doivent être en ligne. Sans elles, l'app iPhone
+1.0.1 propose des actions que le serveur ne connaît pas.
 
 1. En SSH sur O2Switch, dans le dossier du site : `git pull`.
    Facultatif : `/usr/local/bin/php migrations/run.php 2026-10-18-accord-ia.sql` (la table
@@ -36,9 +37,18 @@ l'app iPhone 1.0.1 propose des actions que le serveur ne connaît pas.
 2. Vérifier, depuis un navigateur :
    - `https://assokit.fr/suppression-compte` s'affiche sans connexion, et son § 6 parle de
      « Plus › Paramètres › Supprimer mon compte » pour le seul compte d'une association ;
-   - `https://assokit.fr/confidentialite` s'affiche sans connexion.
+   - `https://assokit.fr/confidentialite` s'affiche sans connexion ;
+   - `https://assokit.fr/cgu` montre, au § 7, « Contenus inacceptables et signalements :
+     tolérance zéro » et la date « Version du 19/10/2026 ».
 3. Se connecter une fois sur le site avec `admin@demo-f.assokit.fr` / `DemoFormation2026!`
    pour vérifier que la démo DEMO F est là et remplie.
+4. Les demandes de création d'espace faites sur iPhone arrivent par e-mail (« 🔔 Demande
+   d'espace à valider ») avec deux boutons, **Valider** et **Refuser**, qui ouvrent une page de
+   confirmation (lien personnel, valable 7 jours) ; elles sont aussi dans le cockpit
+   (Associations › « à valider »). Rien n'est actif avant la validation ; l'essai PRO de
+   14 jours démarre à la validation et l'administrateur reçoit « Votre espace Assokit est
+   activé ». Promesse faite au demandeur : réponse **sous 48 h** (rappel automatique au bout
+   de 24 h, par `cron-trial-check.php`, déjà planifié).
 
 ## Étape 1 — Prérequis (une seule fois)
 
@@ -139,14 +149,22 @@ npx eas-cli@latest submit --platform ios --latest
 **À vérifier sur l'iPhone avant d'aller plus loin** (15 minutes) :
 
 - [ ] **Écran d'accueil vert** : trois atouts (« Projets, adhérents & cotisations »,
-      « Devis & factures », « Comptabilité analytique incluse »), un seul bouton,
-      « Se connecter », et la phrase « Accès réservé aux structures qui utilisent
-      Assokit. » (**pas** de « Créer ma démo » sur iPhone). « Confidentialité » et « Conditions générales » s'ouvrent **dans l'app**, sans
+      « Devis & factures », « Comptabilité analytique incluse »), « Se connecter » et
+      « Créer l'espace de ma structure » (**pas** « Créer ma démo » sur iPhone).
+      « Confidentialité » et « Conditions générales » s'ouvrent **dans l'app**, sans
       lien « Tarifs » ni « Essai gratuit » ; dans les Conditions générales, le § 4 s'appelle
-      « Conditions commerciales » et ne parle ni de carte bancaire ni de Stripe ; « Retour »
-      ramène à l'écran de connexion.
-- [ ] **Écran de connexion** : en bas, « Pas encore de compte ? Demandez-le à
-      l'administrateur de votre association ou de votre entreprise. », sans lien.
+      « Conditions commerciales » et ne parle ni de carte bancaire ni de Stripe, et le § 7
+      contient la clause « tolérance zéro » ; « Retour » ramène à l'écran de connexion.
+- [ ] **Écran de connexion** : en bas, « Pas encore d'espace ? Demander la création de mon
+      espace ».
+- [ ] **Demande d'espace** (« Créer l'espace de ma structure ») : la page dit « Validation par
+      notre équipe sous 48 h » et « Un e-mail vous confirme l'activation… » ; **aucun** prix,
+      « essai », « gratuit » ni abonnement ; bouton « Envoyer ma demande ». Après l'envoi :
+      page « Demande envoyée » (pas de connexion), e-mail « Demande reçue — validation sous
+      48 h » au demandeur, e-mail « 🔔 Demande d'espace à valider » chez vous. « Retour à la
+      connexion » ramène à l'écran de connexion natif ; s'y connecter avec le compte demandé
+      affiche « Votre espace est en cours de validation par notre équipe (48 h maximum)… ».
+      Refuser ensuite cette demande de test (bouton « Refuser » de l'e-mail).
 - [ ] **Connexion** avec `admin@demo-f.assokit.fr` / `DemoFormation2026!` : l'accueil
       ressemble à `captures-6.9/01-accueil.png` (bande vert foncé sous l'heure), la barre
       d'onglets reste au-dessus de la barre d'accueil de l'iPhone.
@@ -168,7 +186,7 @@ npx eas-cli@latest submit --platform ios --latest
       ne demanderait rien.
 - [ ] **Plus › Paramètres** : ni carte « Formule » ni « Essai » en haut ; rubrique
       **Fonctions IA** avec un interrupteur et la phrase qui nomme Anthropic. Tout en bas, la
-      ligne grise commence par `v1.0.1 (` et contient `2026-10-18-app-store` : c'est bien
+      ligne grise commence par `v1.0.1 (` et contient `2026-10-19-demande-ios` : c'est bien
       le code de ce build.
 - [ ] **Première fonction IA** (Factures › « Analyser via IA », ou + › Scanner une facture) :
       la fenêtre **« Fonctions IA »** nomme Anthropic (États-Unis), avec « Refuser » et
@@ -287,8 +305,10 @@ Dans l'ordre de la page :
 ```
 Thank you for your review. Assokit is a free companion app for the organisations
 (associations and small businesses) that use our web service. Nothing can be bought
-in the app: it has no sign-up, and shows no price, no plan or trial status, no
-purchase button and no link to a purchase page.
+in the app: it shows no price, no plan or trial status, no purchase button and no
+link to a purchase page. A new organisation can only send an account request from
+the app; our team reviews it within 48 hours, nothing is active before approval, and
+no trial or paid period starts in the app.
 Organisations arrange their Assokit plan with us outside the app, which we understand
 is allowed for free stand-alone companion apps (3.1.3(f)) and services sold to
 organisations (3.1.3(c)). Could you tell us which screen looked like a purchase flow?
@@ -315,7 +335,9 @@ Team messages are private to one organisation. In Plus > Messages, long-press an
 message: "Signaler ce message" reports it to our team (it opens a support ticket we
 review), "Masquer les messages de ..." hides everything that person writes, and an
 administrator can delete any message. Administrators can also deactivate or remove a
-member, and our terms forbid unlawful or abusive content.
+member. Our terms (section 7) have a zero-tolerance policy for objectionable content
+and abusive users: every report is reviewed within 24 hours, offending content is
+removed and its author can be excluded.
 ```
 
 *5.1.2(i) (IA)*

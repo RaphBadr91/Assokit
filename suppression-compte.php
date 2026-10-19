@@ -73,6 +73,7 @@ render_public_nav('');
         <li>Écrivez si possible depuis l'adresse e-mail de votre compte, et indiquez le nom de votre association ou de votre entreprise : cela nous permet de vérifier que la demande vient bien de vous.</li>
         <li>Nous vous répondons sous 30 jours maximum, comme pour toute demande liée à vos données personnelles (voir notre <a href="/confidentialite">politique de confidentialité</a>).</li>
       </ul>
+      <p><strong>Demande de création d’espace encore en cours de validation</strong> (faite depuis l’application iPhone) : tant qu’elle n’est pas validée, vous ne pouvez pas vous connecter. Pour la retirer, écrivez-nous de la même façon depuis l’adresse e-mail de la demande : nous la retirons et effaçons les informations transmises.</p>
 
       <h2 id="supprime">4. Ce qui est supprimé, tout de suite</h2>
       <ul>
@@ -113,7 +114,7 @@ render_public_nav('');
       <p>Voir aussi : <a href="/confidentialite">politique de confidentialité</a> · <a href="/cgu">conditions générales</a> · <a href="/mentions-legales">mentions légales</a>.</p>
 
       <?php /* Date de version : à changer seulement quand le texte change */ ?>
-      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 18/10/2026</p>
+      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 19/10/2026</p>
     </article>
   </div>
 </section>

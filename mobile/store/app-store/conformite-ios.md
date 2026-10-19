@@ -1,4 +1,4 @@
-# Conformité iOS — Assokit (vérifiée dans le code le 18/10/2026)
+# Conformité iOS — Assokit (vérifiée dans le code le 18/10/2026, mise à jour le 19/10/2026)
 
 Contrôle fait **avant le premier build iOS payant**, contre le code réel : `mobile/app.json`,
 `mobile/App.js`, les modules natifs aux versions exactes du `package-lock.json`, et les pages
@@ -15,14 +15,14 @@ ligne.
 | Notifications push iOS | ✅ prêt | Répondre **Yes** à EAS au premier build ; test à faire sur TestFlight (A3) |
 | Versions des dépendances | ✅ corrigé | React Native 0.86.0 → **0.86.3** (régression Hermes signalée par `expo-doctor`) (A4) |
 | Version de l'app et mises à jour OTA | ✅ corrigé | `expo.version` 1.0.0 → **1.0.1** : les binaires 1.0.0 déjà distribués ne reçoivent plus d'OTA incompatible (A4) |
-| 3.1.1 / 3.1.3 : rien à acheter dans l'app | ✅ corrigé | **iPhone : connexion seule** (ni inscription, ni essai, ni formule à l'écran) + 10 surfaces corrigées (B1) |
+| 3.1.1 / 3.1.3 : rien à acheter dans l'app | ✅ corrigé | **iPhone : création de compte sur demande**, examinée par l'équipe sous 48 h, rien d'actif avant la validation, aucun essai ni prix ni formule à l'écran (19/10/2026) + 10 surfaces corrigées (B1) |
 | 4.2 : fonctionnalités minimales | ✅ | Plus de 25 écrans natifs (B2) |
 | 5.1.1(v) : suppression du compte dans l'app | ✅ corrigé | Compte seul de son association supprimable dans l'app ; plus de suppression simulée pour les anciens comptes d'examen (B3) |
 | 4.8 : Se connecter avec Apple | ✅ non requis | Aucune connexion par un service tiers (B4) |
 | 2.1 : compte de démonstration | ✅ | DEMO F, deux comptes (B5) |
 | 5.1.2 : suivi, ATT | ✅ non requis | Aucun suivi, aucun IDFA (B6) |
 | 5.1.2(i) : envoi de données à une IA tierce | ✅ corrigé | Accord explicite, une fois, avant tout envoi à Anthropic ; contrôlé aussi par le serveur (B10) |
-| 1.2 : contenus des utilisateurs | ✅ corrigé | Appui long sur un message : signaler, masquer son auteur, supprimer (administrateur) (B7) |
+| 1.2 : contenus des utilisateurs | ✅ corrigé | Appui long sur un message : signaler, masquer son auteur, supprimer (administrateur) ; CGU « tolérance zéro », signalements examinés sous 24 h (B7) |
 | 2.1 : fonctions annoncées qui marchent | ✅ corrigé | Export FEC, Excel, ZIP enregistrables sur iPhone (`onFileDownload`) (B11) |
 | 2.3.3 : captures | ✅ | Écrans réels (dossier `captures-6.9/`) (B8) |
 
@@ -194,25 +194,40 @@ c'est l'application compagnon gratuite d'un service web payant (règle **3.1.3(f
 utilisée par les membres des structures clientes (**3.1.3(c)**). Cette position ne tient
 que si **aucune** surface de l'app n'invite à acheter, même indirectement.
 
-**Sur iPhone, l'app sert seulement à se connecter (décision du 18/10/2026).** Un essai de
-14 jours ouvert dans l'app, avec un compte à rebours, puis prolongeable seulement en payant
-hors de l'app, est le motif de refus 3.1.1 le plus fréquent pour une app B2B. Le test sur le
-banc le montrait : un compte créé dans l'app affichait « Essai PRO jusqu'au … · J-14 » sur
-l'accueil, dans « Plus » et dans les Paramètres. Désormais, quand `Platform.OS === 'ios'`
-(`IOS_LOGIN_ONLY`, `App.js`) :
+**Sur iPhone, la création d'un compte est une demande examinée par l'équipe (décision du
+19/10/2026, qui remplace « connexion seule » du 18/10/2026).** Un essai de 14 jours ouvert
+dans l'app, avec un compte à rebours, puis prolongeable seulement en payant hors de l'app,
+est le motif de refus 3.1.1 le plus fréquent pour une app B2B. Le test sur le banc le
+montrait : un compte créé dans l'app affichait « Essai PRO jusqu'au … · J-14 » sur l'accueil,
+dans « Plus » et dans les Paramètres. Désormais, quand `Platform.OS === 'ios'`
+(`IOS_SIGNUP_REQUEST`, `App.js`) et pour l'agent iPhone de l'app côté serveur
+(`ak_is_ios_app()`, `app-context.php`) :
 
-- l'écran d'accueil n'a plus « Créer ma démo » (phrase « Accès réservé aux structures qui
-  utilisent Assokit. ») ; l'écran de connexion dit « Pas encore de compte ? Demandez-le à
-  l'administrateur de votre association ou de votre entreprise. », sans lien ;
-- la WebView annule toute navigation vers `/signup` ; côté serveur, `signup.php` renvoie
-  l'agent iPhone de l'app vers `/connexion` (`ak_is_ios_app()`, `app-context.php`), et
-  `/connexion` n'y affiche plus le lien d'inscription ;
+- l'écran d'accueil propose « Créer l'espace de ma structure » ; l'écran de connexion dit
+  « Pas encore d'espace ? Demander la création de mon espace » ; `/connexion`, dans l'app
+  iPhone, a le même lien ;
+- `/signup` s'ouvre en **mode demande** (`signup.php`, `signup-review-helpers.php`) : même
+  formulaire et mêmes contrôles, mais la page dit « Validation par notre équipe sous 48 h »
+  et « Un e-mail vous confirme l'activation de votre espace » ; ni prix, ni « essai », ni
+  « gratuit », ni abonnement ; bouton « Envoyer ma demande ». L'association est créée « en
+  attente » (`validation_status = pending_founder`, statut `suspended` avec le motif
+  `AK_SIGNUP_REVIEW_REASON`), **sans** essai, plan ni abonnement, et le demandeur n'est pas
+  connecté : la page « Demande envoyée » s'affiche ;
+- tant que la demande attend, la connexion (site ou app) répond « Votre espace est en cours
+  de validation par notre équipe (48 h maximum). Vous recevrez un e-mail dès son
+  activation. » et aucune page ni API n'est accessible (`ak_org_access` → `pending`) ;
+- le Fondateur reçoit un e-mail (boutons « Valider » / « Refuser », liens signés valables
+  7 jours, et lien vers le cockpit) et une notification ; il peut aussi décider dans le
+  cockpit ou dans l'appli (mêmes effets). Un rappel part au bout de 24 h ;
+- l'essai PRO de 14 jours démarre **à la validation**, et l'administrateur reçoit « Votre
+  espace Assokit est activé » (e-mail, hors de l'app). Un refus envoie un e-mail poli ;
 - `orgTrialInfo()` renvoie `null` : ni pastille d'essai sur l'accueil, ni ligne d'essai dans
   « Plus » ; la carte « FORMULE » des Paramètres n'est plus affichée ;
 - `api/app-dashboard.php` renvoie aussi, pour l'agent iPhone, un essai vide et aucune
   formule (même avec une ancienne version du JavaScript).
 
-Android garde l'inscription dans l'app, comme décrit dans le dossier Google Play.
+Android garde l'inscription dans l'app avec essai immédiat, comme le site et comme décrit
+dans le dossier Google Play.
 
 **Contrôles.**
 
@@ -234,7 +249,7 @@ la page de suppression de compte, B3) :
 
 | # | Où | Ce que voyait l'app | Correction |
 |---|---|---|---|
-| 1 | `signup.php` (bouton « Créer ma démo ») | « Essai PRO gratuit 14 jours · sans carte bancaire », « Démarrez votre essai PRO gratuit », « Sans carte bancaire, sans engagement », « Activer mon essai PRO de 14 jours » | Dans l'app : « Aucun achat dans l'application », « Créez l'espace de votre structure », « Toutes les fonctionnalités sont ouvertes dès l'inscription, pendant 14 jours. », bouton « Créer mon espace ». La durée reste dite (honnêteté ; détail dans les CGU § 4, à accepter pour s'inscrire). **Depuis le 18/10/2026, cette page n'est plus accessible depuis l'app iPhone** (connexion seule, voir plus haut) : ces textes ne concernent plus que l'app Android. |
+| 1 | `signup.php` (bouton « Créer ma démo ») | « Essai PRO gratuit 14 jours · sans carte bancaire », « Démarrez votre essai PRO gratuit », « Sans carte bancaire, sans engagement », « Activer mon essai PRO de 14 jours » | Dans l'app : « Aucun achat dans l'application », « Créez l'espace de votre structure », « Toutes les fonctionnalités sont ouvertes dès l'inscription, pendant 14 jours. », bouton « Créer mon espace ». La durée reste dite (honnêteté ; détail dans les CGU § 4, à accepter pour s'inscrire). Ces textes ne concernent plus que l'app Android : **depuis le 19/10/2026, l'app iPhone ouvre cette page en mode demande** (voir plus haut), sans essai ni durée. |
 | 2 | `connexion.php` | « Créer mon compte gratuit » ; « Votre essai gratuit est terminé » | « Créer mon compte » ; « Votre période d'essai est terminée » |
 | 3 | `trial-limits-helpers.php`, `action-assemblee.php` | 9 messages de plafond d'essai finissant par « Passez à une formule Assokit pour lever la limite » (envois d'e-mails, imports d'adhérents, convocations), affichés tels quels par l'app | Nouvelle fonction `ak_trial_msg()` : dans l'app, la phrase d'achat et le mot « gratuit » disparaissent (« … Réessayez demain. »). Les 9 messages réels testés. |
 | 4 | `mon-asso-factures.php` (factures de l'abonnement Assokit) | Bouton « Régulariser » vers la page de paiement Stripe d'une facture impayée. Aucun lien n'y mène dans l'app, mais l'adresse restait ouverte. | `ak_block_billing_page()` en tête, comme `/abonnement` : renvoi vers le tableau de bord dans l'app. |
@@ -305,8 +320,11 @@ suppression → compte anonymisé, association `cancelled`, plan Démarrage. Com
 inchangés : l'administrateur garde le bouton grisé (« seul administrateur… nommez un autre
 administrateur »), le membre garde le message de démonstration protégée.
 
-Sur iPhone, l'inscription n'est plus proposée (B1) : ce correctif sert à Android et aux
-structures inscrites sur le site dont la personne est le seul compte.
+Sur iPhone, un compte demandé dans l'app (B1) ne peut pas se connecter avant la validation ;
+une fois l'espace activé, c'est le seul compte de sa structure et ce correctif s'applique :
+il se supprime dans l'app. Une demande pas encore validée se retire par écrit
+(`/suppression-compte` § 3, ou contact), comme le dit la page de connexion. Le correctif sert
+aussi à Android et aux structures inscrites sur le site dont la personne est le seul compte.
 
 **Comptes de démonstration.** `admin@demo-f` ne peut pas se supprimer (seule
 administratrice, raison affichée) ; `membre@demo-f` montre tout le parcours, mais la
@@ -360,10 +378,13 @@ S'y ajoutent : désactivation ou retrait d'un membre par un administrateur
 (`supprimer-adherent.php`), contact `contact@assokit.fr`, CGU § 7. Les signalements faits
 avec les comptes DEMO F sont effacés par la remise à zéro de minuit (tickets de l'org).
 
-À savoir : les CGU interdisent les contenus illicites et le spam, sans dire explicitement
-« aucune tolérance pour les contenus injurieux ou les utilisateurs abusifs », formule
-qu'Apple cite parfois dans ses refus 1.2. Si Apple le demande, compléter `cgu.php` § 7 (texte
-contractuel : décision du fondateur).
+**Ajouté le 19/10/2026 (décision du fondateur)** : `cgu.php` § 7, « Contenus inacceptables et
+signalements : tolérance zéro », dans la version du site comme dans celle de l'app : tolérance
+zéro envers les contenus illicites, haineux, de harcèlement, sexuels, violents, diffamatoires,
+le spam, et envers les utilisateurs abusifs ; chaque signalement est examiné **sous 24 heures**,
+le contenu contraire aux règles est retiré et son auteur peut être exclu ; pour signaler :
+appui long sur un message › « Signaler ce message », ou le support. C'est la formule qu'Apple
+cite dans ses refus 1.2. Engagement à tenir : traiter les signalements dans la journée.
 
 ### B8. 2.3.3 : captures d'écran
 
@@ -382,7 +403,7 @@ réponses du serveur pour DEMO F, sans prix Assokit (voir `README-visuels.md`).
 - **2.3.1** (fonctions annoncées réelles) : l'écran d'accueil de l'app annonçait « Factures &
   reçus fiscaux » ; Assokit n'émet pas de reçus fiscaux (l'IA rédige seulement la lettre qui
   accompagne un reçu). Remplacé le 18/10/2026 par « Devis & factures » (`FEATURES`, `App.js`).
-- **Repère de version** : `UI_REV` (`App.js`) vaut `2026-10-18-app-store` ; la ligne grise en
+- **Repère de version** : `UI_REV` (`App.js`) vaut `2026-10-19-demande-ios` ; la ligne grise en
   bas des Paramètres permet de vérifier sur TestFlight que le build exécute bien ce code.
 - **5.6.1** : aucune demande de note maison (pas de fenêtre « Notez-nous »).
 - **iPad** : l'app est réservée à l'iPhone, mais Apple peut l'ouvrir sur iPad en mode
@@ -442,9 +463,11 @@ Tous les exports du site sont des liens GET (vérifié : `export-fec.php`,
 | Fichier | Mise en ligne |
 |---|---|
 | `mobile/app.json` (version 1.0.1, manifeste à 16 types, `Info.plist` avec `CFBundleLocalizations`), `mobile/package.json`, `mobile/package-lock.json` | **Seulement par un build** (iOS et Android) |
-| `mobile/App.js` (liens légaux dans l'app, note de suppression ; puis connexion seule sur iPhone, appui long sur un message, accord pour l'IA, `onFileDownload`) | Inclus dans le build iOS 1.0.1. Pour Android : build 1.0.1 (la version change, l'OTA ne suffit pas) |
+| `mobile/App.js` (liens légaux dans l'app, note de suppression ; puis connexion seule sur iPhone — remplacée le 19/10/2026 par la demande d'espace, voir plus bas —, appui long sur un message, accord pour l'IA, `onFileDownload`) | Inclus dans le build iOS 1.0.1. Pour Android : build 1.0.1 (la version change, l'OTA ne suffit pas) |
 | Premier lot : `signup.php`, `connexion.php`, `trial-limits-helpers.php`, `action-assemblee.php`, `mon-asso-factures.php`, `today-ai-helper.php`, `app-context.php`, `api/app-account.php`, `api/app-delete-account.php`, `suppression-compte.php` | **Serveur** : `git pull` sur O2Switch **avant** d'envoyer l'app en vérification (l'examinateur teste contre assokit.fr) |
 | Second lot (18/10/2026, soir) — **nouveaux** : `ai-consent-helper.php`, `api/app-ai-consent.php`, `api/app-message-action.php`, `migrations/2026-10-18-accord-ia.sql` ; **modifiés** : `404.php`, `action-scan-facture.php`, `adherents-import.php`, `ai-helper.php`, `api/_app-write-boot.php`, `api/app-channel-messages.php`, `api/app-coach-generate.php`, `api/app-dashboard.php`, `api/app-delete-account.php`, `api/app-invoices-ai.php`, `api/app-stats-ai.php`, `app-context.php`, `asso-ai-helpers.php`, `boite-mail-parametres.php`, `cgu.php`, `communication-diffuser-nouveau.php`, `communication-generer.php`, `confidentialite.php`, `connexion.php`, `demo-formation/purge.php`, `mail-helpers.php`, `signup.php`, `today-ai-helper.php` | **Serveur**, même chose, **avant** la soumission. La migration est facultative (table créée à la première utilisation). |
+| Troisième lot (19/10/2026, demande d'espace sur iPhone et CGU) — **nouveaux** : `signup-review-helpers.php`, `valider-inscription.php` ; **modifiés** : `.htaccess` (route `/valider-inscription`), `app-context.php`, `signup.php`, `signup-email-helpers.php`, `trial-helpers.php`, `connexion.php`, `connexion-2fa.php`, `super-admin-associations.php`, `api/app-founder-action.php`, `api/app-dashboard.php` (commentaire), `cron-trial-check.php`, `cgu.php`, `suppression-compte.php` | **Serveur**, **avant** la soumission. Aucune migration : les colonnes utilisées existent déjà (`organizations.validation_status`, `status`, `suspended_reason`, `validated_at` ; carnet `cron_envois` pour le rappel). Le secret des liens de l'e-mail est dérivé d'une constante de `config.php` (`AK_CONTACT_SECRET`, sinon `RESEND_API_KEY`, sinon `CRON_TOKEN`) : rien à ajouter. |
+| `mobile/App.js` (19/10/2026 : « Créer l'espace de ma structure », lien « Demander la création de mon espace », retour à la connexion native depuis « Demande envoyée », alerte « Espace activé » de l'appli fondateur ; `UI_REV` `2026-10-19-demande-ios`) | JavaScript seul : build iOS 1.0.1 s'il n'est pas encore fait, sinon mise à jour OTA (`publication-ios.md`, étape 10). Avec l'ancien JavaScript, l'app iPhone bloque encore `/signup` : la demande n'y apparaît qu'avec ce JavaScript |
 
 ## D. Tests faits
 
@@ -504,6 +527,50 @@ Second lot (18/10/2026, soir) :
   l'interrupteur des Paramètres ; analyse IA ensuite sans nouvelle question.
 - Capture `05-cotisations.png` recomposée et revérifiée (1290 × 2796, RVB sans alpha) ; les 7
   autres, recomposées pour contrôle, identiques au pixel près.
+
+Troisième lot (19/10/2026, demande d'espace sur iPhone et CGU) — banc **`iv`** (base
+`assokit_t_iv`, copie de la démo DEMO F + migrations d'octobre), port **9800**, avec un faux
+Resend (port 9801) qui garde chaque e-mail envoyé :
+
+- `php -l` sur les 14 fichiers PHP modifiés ou ajoutés : aucune erreur ; `App.js` : analyse
+  Babel OK ; aucune alerte PHP dans le journal du banc.
+- Agent iPhone : `/signup` s'ouvre (plus de renvoi vers `/connexion`), sans aucun des mots
+  « essai », « gratuit », « abonnement », « prix », « € », « formule », « tarif », « paiement » ;
+  envoi → 303 vers « Demande envoyée » ; association `suspended` / `pending_founder`, sans
+  essai, plan, abonnement ni dossier ; e-mails « Demande reçue — validation sous 48 h » et
+  « 🔔 Demande d'espace à valider » (fiche complète, boutons Valider / Refuser, lien cockpit),
+  notification dans la cloche du Fondateur.
+- Connexion pendant l'attente (site et app) : pas de session, message « Votre espace est en
+  cours de validation… » ; une session déjà ouverte est fermée (API : 401 `auth` avec ce
+  message ; page : `/connexion?acces=attente`). Incarnation par le Fondateur : possible.
+  Association « à valider » créée par un super-admin : toujours utilisable.
+- Validation par le lien, par le cockpit et par l'appli fondateur : mêmes lignes en base
+  qu'une inscription sur le site (essai `pro-essai` de 14 jours **à partir de la
+  validation**, ancienne ligne `subscriptions`, mode « Offert », dossier « Projets
+  généraux ») et e-mail « Votre espace Assokit est activé » ; ensuite bandeau d'essai sur le
+  site, rien dans l'app iPhone (`api/app-dashboard.php` : `trial: false`), essai visible sur
+  Android. Une seconde validation ne rouvre rien et n'envoie rien.
+- Refus par le lien (avec motif contenant du HTML, échappé), par le cockpit et par l'appli :
+  refusée et suspendue, e-mail poli. Réactiver, suspendre, prolonger ou changer de formule une
+  demande en attente : refusé (cockpit, y compris « Modifier » avec un autre plan ; appli,
+  409 `pending_request`, y compris `edit` avec un plan ; le nom reste modifiable).
+- Incarnation du demandeur par le Fondateur avant la décision : la lecture du plan crée d'office
+  une ligne « Démarrage » ; à la validation, cette ligne devient la ligne d'essai
+  (`ak_org_set_plan`) au lieu d'en ajouter une seconde qui serait passée devant l'essai.
+- Lien : signature modifiée, association changée, action inversée, expiration modifiée,
+  jeton illisible → « Lien non valable » (403) ; jeton bien signé mais expiré → « Lien
+  expiré » ; POST sans jeton CSRF ou avec l'autre action → rien n'est fait ; rejeu →
+  « Demande déjà validée / refusée », rien n'est refait.
+- Rappel : demande vieille de 25 h → un rappel (2 e-mails, 1 notification) au premier passage
+  de `cron-trial-check.php`, aucun au second ; demande de moins de 24 h ignorée.
+- Site et app Android : `/signup` identique octet pour octet à la version précédente (hors
+  jeton CSRF) ; inscription → essai immédiat, comme avant.
+- Schéma incapable de marquer la demande (colonne `suspended_reason` retirée sur le banc) :
+  rien n'est créé, demande gardée, Fondateur alerté, message neutre au demandeur.
+- Compte demandé puis validé : « Supprimer mon compte » actif dans l'app, suppression OK
+  (association fermée). `/cgu` (navigateur et app) : clause « tolérance zéro » et « Version du
+  19/10/2026 ». Ces contrôles remplacent, pour l'agent iPhone, ceux du second lot
+  (`/signup` → `/connexion`).
 
 Non testable ici, à faire sur le build TestFlight : notifications push réelles, Face ID,
 appareil photo, appui long sur une image → « Enregistrer dans Photos », appui long sur un

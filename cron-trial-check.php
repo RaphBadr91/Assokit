@@ -12,6 +12,8 @@
  *   résiliée ou suspendue à la main
  * - J-7, J-3, J-1 et J-0 → e-mail de rappel (essais en cours seulement)
  * - abonnement résilié arrivé à échéance → plan gratuit Démarrage (ak_sub_expire_cancelled)
+ * - demande de création d'espace (app iPhone) sans décision depuis 24 h → un rappel au Fondateur
+ *   (signup-review-helpers.php)
  * Idempotent : chaque fin d'essai et chaque rappel ne part qu'une fois (cron_envois).
  */
 require_once __DIR__ . '/config.php';
@@ -214,6 +216,18 @@ foreach ([7, 3, 1, 0] as $days_left) {
             echo "  ! Org #" . $row['org_id'] . " : aucun e-mail parti, rappel reporté\n";
         }
     }
+}
+
+// 3. Demandes de création d'espace faites dans l'app iPhone, sans décision depuis 24 h : UN rappel au
+// Fondateur par demande (e-mail avec des liens Valider / Refuser neufs, et cloche). Le carnet
+// cron_envois (clé « rappel-24h ») garantit qu'il ne part qu'une fois, même toutes les 10 minutes.
+if (ak_lot_encore()) {
+    try {
+        require_once __DIR__ . '/signup-review-helpers.php';
+        $rappels = ak_signup_review_remind_due($pdo, max(1, (int) ak_lot_place()));
+        if ($rappels) ak_lot_fait($rappels);
+        echo "→ " . $rappels . " rappel(s) de demande d'espace à valider (24 h)\n";
+    } catch (Throwable $e) { error_log('[cron-trial-check] rappels demandes: ' . get_class($e)); }
 }
 
 echo $updated . " abonnement(s) bascule(s) en suspendu\n";

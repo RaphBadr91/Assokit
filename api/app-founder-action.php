@@ -15,6 +15,11 @@
  * 'notice' : association réactivée sur Démarrage parce que son essai était terminé ;
  * résilier annule aussi l'abonnement Stripe : 'stripe_cancelled' (identifiants annulés) et
  * 'stripe_warning' (null, ou message : abonnement encore actif, à annuler dans Stripe).
+ * Demande de création d'espace faite dans l'app iPhone (signup-review-helpers.php) : 'validate' ouvre
+ * l'essai MAINTENANT et prévient l'administrateur (réponse 'review' : { trial_ends, mailed, warnings,
+ * message }), 'reject' envoie aussi un e-mail poli au demandeur ; tant qu'elle attend, 'activate',
+ * 'suspend', 'extend_trial' et un changement de formule ('edit') sont refusés (409 'pending_request').
+ * Mêmes effets que le cockpit web et que les liens de l'e-mail du Fondateur.
  * Réservé Fondateur/Super Admin. NE MODIFIE PAS le site : dédié à l'application.
  */
 require __DIR__ . '/_app-write-boot.php';
@@ -52,18 +57,40 @@ try {
     $before = ak_org_plan_state($pdo, $target);
     $extra = [];
 
+    // Demande de création d'espace faite dans l'app iPhone, encore en attente : valider ou refuser
+    // seulement (rien d'autre ne doit l'ouvrir ni la dénaturer), comme le cockpit web
+    require_once __DIR__ . '/../signup-review-helpers.php';
+    $full = $pdo->prepare("SELECT * FROM organizations WHERE id = ?");
+    $full->execute([$target]);
+    $pending_request = ak_signup_review_pending($full->fetch(PDO::FETCH_ASSOC) ?: []);
+    if ($pending_request && in_array($action, ['activate', 'suspend', 'extend_trial'], true)) {
+        app_fail(409, 'pending_request', ak_signup_review_block_message());
+    }
+
     if ($action === 'validate') {
-        // Une association en essai gratuit reste en essai : la passer « active » rendait l'essai illimité.
-        // Une association suspendue ou résiliée le reste (le cockpit web ne touche pas au statut).
-        $status = fd_live_status($pdo, $before);
-        $keep = "CASE WHEN status IN ('suspended', 'cancelled') THEN status ELSE ? END";
-        try { $pdo->prepare("UPDATE organizations SET validation_status = 'validated', status = $keep WHERE id = ?")->execute([$status, $target]); }
-        catch (Throwable $e) { $pdo->prepare("UPDATE organizations SET status = $keep WHERE id = ?")->execute([$status, $target]); }
-        $log('validate_org', ['status' => $status]);
+        // Demande de l'app iPhone : l'essai démarre maintenant et l'administrateur est prévenu, exactement
+        // comme par le cockpit web et le lien de l'e-mail (ak_signup_review_validate)
+        $rv = ak_signup_review_validate($pdo, $target, (int) $uid);
+        if ($rv['state'] === 'validated') {
+            $log('validate_org', ['trial_ends_at' => $rv['trial_end'], 'demande' => 'app iPhone']);
+            $extra['review'] = ['trial_ends' => ak_trial_end_label($rv['trial_end']), 'mailed' => (bool) $rv['mailed'], 'warnings' => $rv['warnings'],
+                'message' => 'Essai PRO de ' . (int) AK_TRIAL_DAYS . ' jours ouvert jusqu’au ' . ak_trial_end_label($rv['trial_end']) . '. '
+                           . ($rv['mailed'] ? 'L’administrateur a reçu l’e-mail « Votre espace Assokit est activé ».' : 'L’e-mail d’activation n’a pas pu partir : prévenez l’administrateur.')];
+        } else {
+            // Une association en essai gratuit reste en essai : la passer « active » rendait l'essai illimité.
+            // Une association suspendue ou résiliée le reste (le cockpit web ne touche pas au statut).
+            $status = fd_live_status($pdo, $before);
+            $keep = "CASE WHEN status IN ('suspended', 'cancelled') THEN status ELSE ? END";
+            try { $pdo->prepare("UPDATE organizations SET validation_status = 'validated', status = $keep WHERE id = ?")->execute([$status, $target]); }
+            catch (Throwable $e) { $pdo->prepare("UPDATE organizations SET status = $keep WHERE id = ?")->execute([$status, $target]); }
+            $log('validate_org', ['status' => $status]);
+        }
     } elseif ($action === 'reject') {
-        // Comme le cockpit web (« Refuser ») : refusée ET suspendue, plus aucun rappel d'essai
+        // Comme le cockpit web (« Refuser ») : refusée ET suspendue, plus aucun rappel d'essai ; pour une
+        // demande de l'app iPhone, le demandeur reçoit en plus un e-mail poli (ak_signup_review_reject)
         $reason = trim((string) ($input['reason'] ?? ''));
-        ak_org_reject($pdo, $target, $reason, (int) $uid);
+        $rv = ak_signup_review_reject($pdo, $target, $reason, (int) $uid);
+        if ($rv['state'] !== 'rejected') ak_org_reject($pdo, $target, $reason, (int) $uid);
         $log('reject_org', ['reason' => $reason]);
     } elseif ($action === 'suspend') {
         // Comme le cockpit web (ak_org_suspend) : suspendue pendant son essai, l'ancienne table passe
@@ -169,6 +196,10 @@ try {
                 $new_plan = ['id' => (int) $row['id'], 'slug' => (string) $row['slug']];
             }
         }
+
+        // Demande de l'app iPhone en attente : un plan l'ouvrirait sans validation (le nom, l'e-mail et la
+        // note restent modifiables)
+        if ($new_plan && $pending_request) app_fail(409, 'pending_request', ak_signup_review_block_message());
 
         // Construit dynamiquement selon les colonnes présentes
         $ocols = ak_db_columns($pdo, 'organizations');

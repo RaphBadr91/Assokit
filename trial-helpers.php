@@ -283,6 +283,59 @@ if (!function_exists('ak_trial_end_label')) {
     }
 }
 
+if (!function_exists('ak_signup_trial_rows')) {
+    /**
+     * Éléments de l'essai d'une association venue de l'inscription en ligne : dossier « Projets
+     * généraux », ancienne ligne subscriptions (bandeau d'essai, rappels J-7 / J-3 / J-1 / J-0) et
+     * plan d'essai (asso_subscriptions, mode « Offert »). Chaque élément est indépendant : un échec
+     * devient un avertissement pour l'alerte au fondateur, jamais une exception (le compte reste).
+     * Appelée par signup.php (essai ouvert dès l'inscription) et par ak_signup_review_validate()
+     * (demande faite dans l'app iPhone : essai ouvert à la validation par le fondateur).
+     * @return string[] avertissements
+     */
+    function ak_signup_trial_rows(PDO $pdo, int $org_id, int $user_id, string $trial_end, ?array $trial_plan): array {
+        $warnings = [];
+        try {
+            ak_db_insert($pdo, 'folders', ['org_id' => $org_id, 'name' => 'Projets généraux', 'color_theme' => 'blue',
+                'icon' => 'folder', 'created_by' => $user_id], ['created_at' => 'NOW()']);
+        } catch (Throwable $e) {
+            $warnings[] = 'Dossier « Projets généraux » non créé (' . get_class($e) . ').';
+        }
+        // Abonnement « historique » : bandeau d'essai + rappels J-7 / J-3 / J-1 / J-0
+        try {
+            $sub_status = ak_db_pick($pdo, 'subscriptions', 'status', ['trial']);
+            if (!ak_db_columns($pdo, 'subscriptions')) {
+                $warnings[] = 'Table subscriptions absente : pas de bandeau d’essai ni de rappels.';
+            } elseif (!$sub_status) {
+                $warnings[] = 'subscriptions.status n’accepte pas « trial » : pas de bandeau d’essai ni de rappels.';
+            } else {
+                ak_db_insert($pdo, 'subscriptions', [
+                    'org_id' => $org_id,
+                    'plan' => ak_db_pick($pdo, 'subscriptions', 'plan', ['pro', 'association', 'essentiel']) ?? 'pro',
+                    'status' => $sub_status, 'billing_cycle' => ak_db_pick($pdo, 'subscriptions', 'billing_cycle', ['monthly']) ?? 'monthly',
+                    'price_ht' => 49.99, 'tva_rate' => 20.00, 'current_period_end' => $trial_end,
+                ], ['started_at' => 'NOW()', 'current_period_start' => 'NOW()', 'created_at' => 'NOW()']);
+            }
+        } catch (Throwable $e) {
+            $warnings[] = 'Abonnement d’essai (subscriptions) non créé : ' . get_class($e) . ' ' . mb_substr($e->getMessage(), 0, 160);
+        }
+        // Plan des fonctionnalités pendant l'essai
+        if ($trial_plan) {
+            try {
+                ak_db_insert($pdo, 'asso_subscriptions', [
+                    'org_id' => $org_id, 'plan_id' => $trial_plan['id'],
+                    'status' => ak_db_pick($pdo, 'asso_subscriptions', 'status', ['trial', 'active']) ?? 'trial',
+                    'payment_mode' => ak_db_pick($pdo, 'asso_subscriptions', 'payment_mode', ['free_grant', 'manual']),
+                    'current_period_end' => $trial_end,
+                ], ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
+            } catch (Throwable $e) {
+                $warnings[] = 'Plan d’essai (asso_subscriptions) non attribué : ' . get_class($e) . ' ' . mb_substr($e->getMessage(), 0, 160);
+            }
+        }
+        return $warnings;
+    }
+}
+
 // ============================================================
 // ÉTAT DU PLAN — une seule lecture pour tous les écrans
 // ============================================================
@@ -534,6 +587,26 @@ if (!function_exists('ak_legacy_sub_trial')) {
     }
 }
 
+if (!function_exists('ak_org_review_guard')) {
+    /**
+     * Demande de création d'espace faite dans l'app iPhone, encore en attente (signup-review-helpers.php) :
+     * rien ne doit l'ouvrir sans la décision du Fondateur. Un plan (essai ou payant), une prolongation
+     * d'essai ou une réactivation l'ouvrirait sans validation ni e-mail « Votre espace Assokit est
+     * activé » : RuntimeException, rien n'est écrit. Les pages qui changent un plan le vérifient déjà ;
+     * ce garde-fou couvre aussi les suivantes. ak_signup_review_validate() lève la marque de demande
+     * AVANT d'attribuer le plan d'essai : la validation n'est jamais bloquée.
+     */
+    function ak_org_review_guard(PDO $pdo, int $org_id): void {
+        if (!function_exists('ak_signup_review_pending')) require_once __DIR__ . '/app-context.php';
+        $st = $pdo->prepare('SELECT * FROM organizations WHERE id = ? LIMIT 1');
+        $st->execute([$org_id]);
+        if (ak_signup_review_pending($st->fetch(PDO::FETCH_ASSOC) ?: [])) {
+            throw new RuntimeException(function_exists('ak_signup_review_block_message') ? ak_signup_review_block_message()
+                : 'Demande de création d’espace en attente : validez-la ou refusez-la d’abord.');
+        }
+    }
+}
+
 if (!function_exists('ak_org_set_plan')) {
     /**
      * Change le plan d'une association PARTOUT à la fois : ligne courante d'asso_subscriptions
@@ -548,8 +621,10 @@ if (!function_exists('ak_org_set_plan')) {
      * (ak_stripe_left_on_free le signale). Un motif de suspension n'est pas gardé quand l'association
      * repart en essai ou active.
      * organizations.plan (ancien libellé, parfois un ENUM) n'est écrit que s'il accepte la valeur.
+     * Demande d'espace de l'app iPhone en attente : refusé (ak_org_review_guard).
      */
     function ak_org_set_plan(PDO $pdo, int $org_id, int $plan_id): void {
+        ak_org_review_guard($pdo, $org_id);
         $pcols = ak_db_columns($pdo, 'asso_plans');
         $p = $pdo->prepare("SELECT id, slug, COALESCE(price_cents, 0) AS price_cents"
                            . (isset($pcols['is_trial']) ? ", is_trial" : ", 0 AS is_trial")
@@ -642,9 +717,11 @@ if (!function_exists('ak_trial_extend')) {
      *     en attente ou refusé : celui-ci reste tel quel et l'essai a sa propre ligne ; si le schéma
      *     n'admet qu'une ligne par association, AkTrialBlocked (rien n'est écrit).
      * Une erreur SQL remonte à l'appelant (transaction) : jamais d'essai à moitié rouvert.
+     * Demande d'espace de l'app iPhone en attente : refusé (ak_org_review_guard).
      * @return string nouvelle date de fin (SQL)
      */
     function ak_trial_extend(PDO $pdo, int $org_id, int $days): string {
+        ak_org_review_guard($pdo, $org_id);
         $days = max(1, min(90, $days));
         $end = (string)$pdo->query("SELECT DATE_ADD(GREATEST(NOW(), COALESCE((SELECT trial_ends_at FROM organizations WHERE id = " . (int)$org_id . "), NOW())), INTERVAL " . $days . " DAY)")->fetchColumn();
         $trial = ak_trial_plan($pdo);
@@ -1032,9 +1109,11 @@ if (!function_exists('ak_org_reactivate')) {
      *     réactivation était défaite sans bruit. $trial_ended reçoit alors la date de fin d'essai ;
      *   - essai en cours → statut « trial », l'ancienne table rouvre l'essai jusqu'à sa fin ;
      *   - sinon (client, plan gratuit) → « active ».
+     * Demande d'espace de l'app iPhone en attente : refusé (ak_org_review_guard).
      * @return string statut écrit ('trial' ou 'active')
      */
     function ak_org_reactivate(PDO $pdo, int $org_id, ?string &$trial_ended = null): string {
+        ak_org_review_guard($pdo, $org_id);
         $trial_ended = null;
         $before = ak_org_plan_state($pdo, $org_id);
         if (($before['is_trial'] || $before['trial_expired']) && ak_trial_expire($pdo, $org_id)) {

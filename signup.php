@@ -14,6 +14,15 @@
  *      y compris si la création échoue : le prospect est alors
  *      enregistré et reçoit un accusé de réception, rien n'est perdu.
  *
+ * App iPhone (ak_is_ios_app) : mode DEMANDE (règle 3.1.1 d'Apple, rien
+ * ne s'essaie dans l'app). Même formulaire, mêmes contrôles, mais
+ * l'association est créée « en attente de validation » (rien d'actif,
+ * aucun essai), sans connexion : la page affiche « Demande envoyée », le
+ * demandeur reçoit « Demande reçue — validation sous 48 h » et le
+ * fondateur un e-mail avec les boutons Valider / Refuser. L'essai démarre
+ * à la validation (signup-review-helpers.php). Le site et l'app Android
+ * ne changent pas.
+ *
  * Les écritures passent par ak_db_insert()/ak_db_update() (trial-helpers.php),
  * qui n'écrivent que les colonnes existant réellement en base : c'est une
  * colonne inexistante (organizations.plan_type) qui faisait échouer toutes
@@ -34,12 +43,10 @@ if (!empty($_SESSION['user_id'])) {
     exit;
 }
 
-// App iPhone : connexion seule, aucune inscription dans l'app (règle 3.1.1 d'Apple ;
-// mobile/App.js, IOS_LOGIN_ONLY). Les structures s'inscrivent sur le site.
-if (ak_is_ios_app()) {
-    header('Location: /connexion');
-    exit;
-}
+// App iPhone : la demande est examinée par l'équipe, l'essai démarre à la validation (voir en tête ;
+// mobile/App.js, IOS_SIGNUP_REQUEST). Aucun mot d'essai, de gratuité, de prix ni d'abonnement à l'écran.
+$review = ak_is_ios_app();
+if ($review) require_once __DIR__ . '/signup-review-helpers.php';
 
 const AK_SIGNUP_PLANS = ['essentiel', 'association', 'organisation'];
 const AK_SIGNUP_TYPES = ['asso' => 'Association', 'tpe' => 'TPE / entreprise'];
@@ -172,12 +179,22 @@ function ak_signup_fallback(PDO $pdo, array $lead, ?int $signup_id, string $reas
             if (function_exists('ak_signup_digest_maybe')) ak_signup_digest_maybe($pdo);
         } else {
             if (function_exists('ak_signup_alert_founder')) ak_signup_alert_founder($pdo, $lead, 'failed', null, $reason);
-            if ($kind === 'incident' && function_exists('ak_signup_ack_prospect') && ak_signup_ack_due($pdo, $lead['email'], $signup_id)) {
-                ak_signup_ack_prospect($lead['email'], $lead['first_name'], $lead['org_name']);
+            if ($kind === 'incident' && ak_signup_ack_due($pdo, $lead['email'], $signup_id)) {
+                // App iPhone : le même accusé que pour une demande enregistrée (« validation sous 48 h »)
+                if (ak_is_ios_app() && function_exists('ak_signup_review_mail_received')) {
+                    ak_signup_review_mail_received($lead['email'], $lead['first_name'], $lead['org_name']);
+                } elseif (function_exists('ak_signup_ack_prospect')) {
+                    ak_signup_ack_prospect($lead['email'], $lead['first_name'], $lead['org_name']);
+                }
             }
         }
     } catch (Throwable $e) {
         error_log('[signup] fallback: ' . get_class($e));
+    }
+    // App iPhone : ni « essai » ni promesse d'ouverture automatique, la demande est examinée par l'équipe
+    if (ak_is_ios_app()) {
+        return 'Merci ' . $lead['first_name'] . ' ! Votre demande pour « ' . $lead['org_name'] . ' » est bien enregistrée. '
+             . 'Notre équipe l’examine et vous écrit à ' . $lead['email'] . ' sous 48 h. Inutile de recommencer.';
     }
     if ($kind === 'incident') {
         return 'Merci ' . $lead['first_name'] . ' ! Votre demande d’essai pour « ' . $lead['org_name'] . ' » est bien enregistrée. '
@@ -337,7 +354,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if ($limited !== null && (!ak_rate_limit('signup_limited', 3, 3600, ak_signup_ip_key($ip)) || !ak_rate_limit('signup_limited_all', 200, 3600, 'all'))) {
                 error_log('[signup] demande limitée non enregistrée (plafond horaire atteint)');
-                $error = 'Trop de demandes d’essai en peu de temps. Merci de réessayer dans une heure, ou écrivez-nous depuis la page Contact.';
+                $error = ($review ? 'Trop de demandes' : 'Trop de demandes d’essai') . ' en peu de temps. Merci de réessayer dans une heure, ou écrivez-nous depuis la page Contact.';
             }
         }
 
@@ -393,10 +410,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $warnings = [];
                 $org_id = 0; $user_id = 0;
                 try {
+                    // App iPhone : sans moyen de marquer la demande « en attente », rien n'est créé (incident
+                    // ci-dessous : demande gardée, fondateur prévenu) plutôt qu'un espace ouvert sans validation
+                    if ($review && !ak_signup_review_supported($pdo)) {
+                        throw new RuntimeException('Demande de l’app iPhone : organizations ne permet pas l’état « en attente de validation » (suspended_reason, validation_status, status).');
+                    }
                     $trial_end  = (string)$pdo->query("SELECT DATE_ADD(NOW(), INTERVAL " . (int)AK_TRIAL_DAYS . " DAY)")->fetchColumn();
-                    $lead['trial_end'] = $trial_end;
+                    if (!$review) $lead['trial_end'] = $trial_end;
                     $trial_plan = ak_trial_plan($pdo);
-                    if (!$trial_plan) $warnings[] = 'Aucun plan d’essai trouvé (asso_plans) : l’association a le plan par défaut.';
+                    if (!$trial_plan && !$review) $warnings[] = 'Aucun plan d’essai trouvé (asso_plans) : l’association a le plan par défaut.';
                     $slug = ak_signup_slug($pdo, $form['org_name']);
                     // Slug taillé sur la colonne réelle : jamais coupé en silence à l'écriture
                     // (un slug tronqué n'est plus celui dont on a vérifié l'unicité).
@@ -419,12 +441,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     if ($org_id <= 0) throw new RuntimeException('organizations: id introuvable après INSERT');
 
-                    // Essai actif tout de suite, sans validation manuelle
-                    $upd = ['trial_ends_at' => $trial_end];
-                    if ($trial_plan && ak_db_accepts($pdo, 'organizations', 'plan', $trial_plan['slug'])) $upd['plan'] = $trial_plan['slug'];
-                    if ($v = ak_db_pick($pdo, 'organizations', 'status', ['trial', 'active'])) $upd['status'] = $v;
-                    if ($v = ak_db_pick($pdo, 'organizations', 'validation_status', ['validated', 'approved'])) $upd['validation_status'] = $v;
-                    ak_db_update($pdo, 'organizations', $org_id, $upd, ['validated_at' => 'NOW()']);
+                    if ($review) {
+                        // App iPhone : demande en attente de validation, rien d'actif (ni essai, ni plan)
+                        ak_db_update($pdo, 'organizations', $org_id,
+                            ['status' => 'suspended', 'suspended_reason' => AK_SIGNUP_REVIEW_REASON, 'validation_status' => 'pending_founder']);
+                    } else {
+                        // Essai actif tout de suite, sans validation manuelle
+                        $upd = ['trial_ends_at' => $trial_end];
+                        if ($trial_plan && ak_db_accepts($pdo, 'organizations', 'plan', $trial_plan['slug'])) $upd['plan'] = $trial_plan['slug'];
+                        if ($v = ak_db_pick($pdo, 'organizations', 'status', ['trial', 'active'])) $upd['status'] = $v;
+                        if ($v = ak_db_pick($pdo, 'organizations', 'validation_status', ['validated', 'approved'])) $upd['validation_status'] = $v;
+                        ak_db_update($pdo, 'organizations', $org_id, $upd, ['validated_at' => 'NOW()']);
+                    }
 
                     // 2. Admin de l'association
                     $colors = ['#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6'];
@@ -440,6 +468,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($user_id <= 0) throw new RuntimeException('users: id introuvable après INSERT');
                     ak_db_update($pdo, 'organizations', $org_id, ['created_by_user_id' => $user_id]);
 
+                    // Demande relue avant d'être gardée : une valeur refusée ou coupée par la base ouvrirait
+                    // l'espace sans validation (ak_org_access ne le reconnaîtrait pas comme « en attente »)
+                    if ($review) {
+                        $chk = $pdo->prepare('SELECT * FROM organizations WHERE id = ?');
+                        $chk->execute([$org_id]);
+                        if (!ak_signup_review_pending($chk->fetch(PDO::FETCH_ASSOC) ?: [])) {
+                            throw new RuntimeException('organizations : la demande n’a pas pu être marquée « en attente de validation ».');
+                        }
+                    }
+
                     $pdo->commit();
                 } catch (Throwable $e) {
                     try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (Throwable $e0) {}
@@ -452,7 +490,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // 3a. Fiche de la structure (hors transaction : un format inattendu ne coûte jamais le compte)
                     try {
                         $is_pres = in_array($form['role'], ['Président(e)', 'Gérant(e) / dirigeant(e)'], true);
-                        $notes = "Inscription en ligne le " . date('d/m/Y H:i') . "\n";
+                        $notes = "Inscription en ligne le " . date('d/m/Y H:i') . ($review ? " (demande depuis l'app iPhone, à valider)" : '') . "\n";
                         foreach ($details as $k => $v) $notes .= $k . ' : ' . $v . "\n";
                         $fiche = [
                             'org_type' => $form['type'],
@@ -488,44 +526,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     try { ak_db_update($pdo, 'users', $user_id, ['phone' => mb_substr($form['phone'], 0, 30)]); } catch (Throwable $e) {}
 
-                    // 3. Éléments de l'essai, hors transaction : un échec ici ne coûte jamais le compte.
-                    try {
-                        ak_db_insert($pdo, 'folders', ['org_id' => $org_id, 'name' => 'Projets généraux', 'color_theme' => 'blue',
-                            'icon' => 'folder', 'created_by' => $user_id], ['created_at' => 'NOW()']);
-                    } catch (Throwable $e) {
-                        $warnings[] = 'Dossier « Projets généraux » non créé (' . get_class($e) . ').';
-                    }
-                    // Abonnement « historique » : bandeau d'essai + rappels J-7 / J-3 / J-1 / J-0
-                    try {
-                        $sub_status = ak_db_pick($pdo, 'subscriptions', 'status', ['trial']);
-                        if (!ak_db_columns($pdo, 'subscriptions')) {
-                            $warnings[] = 'Table subscriptions absente : pas de bandeau d’essai ni de rappels.';
-                        } elseif (!$sub_status) {
-                            $warnings[] = 'subscriptions.status n’accepte pas « trial » : pas de bandeau d’essai ni de rappels.';
-                        } else {
-                            ak_db_insert($pdo, 'subscriptions', [
-                                'org_id' => $org_id,
-                                'plan' => ak_db_pick($pdo, 'subscriptions', 'plan', ['pro', 'association', 'essentiel']) ?? 'pro',
-                                'status' => $sub_status, 'billing_cycle' => ak_db_pick($pdo, 'subscriptions', 'billing_cycle', ['monthly']) ?? 'monthly',
-                                'price_ht' => 49.99, 'tva_rate' => 20.00, 'current_period_end' => $trial_end,
-                            ], ['started_at' => 'NOW()', 'current_period_start' => 'NOW()', 'created_at' => 'NOW()']);
+                    // 3 bis. App iPhone : demande enregistrée, rien d'actif et pas de connexion. La page
+                    // « Demande envoyée » s'affiche (après redirection : recharger ne renvoie rien), puis
+                    // l'accusé de réception part au demandeur et l'alerte (Valider / Refuser) au fondateur.
+                    if ($review) {
+                        if ($signup_id) {
+                            try { ak_db_update($pdo, 'public_signups', $signup_id, ['org_id' => $org_id, 'user_id' => $user_id]); }
+                            catch (Throwable $e) { error_log('[signup] public_signups demande: ' . get_class($e)); }
                         }
-                    } catch (Throwable $e) {
-                        $warnings[] = 'Abonnement d’essai (subscriptions) non créé : ' . get_class($e) . ' ' . mb_substr($e->getMessage(), 0, 160);
-                    }
-                    // Plan des fonctionnalités pendant l'essai
-                    if ($trial_plan) {
+                        $_SESSION['signup_request_sent'] = ['first_name' => $form['first_name'], 'org_name' => $form['org_name'], 'email' => $form['email']];
+                        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+                        unset($_SESSION['signup_form_at']);
+                        session_write_close();
+
+                        header('Location: /signup?demande=envoyee', true, 303);
+                        ignore_user_abort(true);
+                        if (function_exists('litespeed_finish_request')) litespeed_finish_request();
+                        elseif (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
                         try {
-                            ak_db_insert($pdo, 'asso_subscriptions', [
-                                'org_id' => $org_id, 'plan_id' => $trial_plan['id'],
-                                'status' => ak_db_pick($pdo, 'asso_subscriptions', 'status', ['trial', 'active']) ?? 'trial',
-                                'payment_mode' => ak_db_pick($pdo, 'asso_subscriptions', 'payment_mode', ['free_grant', 'manual']),
-                                'current_period_end' => $trial_end,
-                            ], ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
+                            @require_once __DIR__ . '/signup-email-helpers.php';
+                            ak_signup_review_mail_received($form['email'], $form['first_name'], $form['org_name']);
+                            if (function_exists('ak_signup_alert_founder')) {
+                                $lead['requested_at'] = date('Y-m-d H:i:s');
+                                ak_signup_alert_founder($pdo, $lead, 'review', $org_id, null, $warnings);
+                            }
                         } catch (Throwable $e) {
-                            $warnings[] = 'Plan d’essai (asso_subscriptions) non attribué : ' . get_class($e) . ' ' . mb_substr($e->getMessage(), 0, 160);
+                            error_log('[signup] e-mails demande: ' . get_class($e));
                         }
+                        exit;
                     }
+
+                    // 3. Éléments de l'essai, hors transaction : un échec ici ne coûte jamais le compte.
+                    $warnings = array_merge($warnings, ak_signup_trial_rows($pdo, $org_id, $user_id, $trial_end, $trial_plan));
                     if ($signup_id) {
                         try {
                             ak_db_update($pdo, 'public_signups', $signup_id, ['org_id' => $org_id, 'user_id' => $user_id, 'status' => 'completed'], ['completed_at' => 'NOW()']);
@@ -578,6 +610,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // demande traitée, jeton neuf : un chargement de page ne sert qu'à un seul envoi.
 if ($notice !== null) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 $_SESSION['signup_form_at'] = time();
+// App iPhone, après l'envoi (redirection) : « Demande envoyée » à la place du formulaire
+$sent = ($review && ($_GET['demande'] ?? '') === 'envoyee' && is_array($_SESSION['signup_request_sent'] ?? null))
+    ? $_SESSION['signup_request_sent'] : null;
 ?><!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -585,7 +620,7 @@ $_SESSION['signup_form_at'] = time();
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
 <?php // Dans l'application (ak_billing_hidden) : ni « gratuit », ni « PRO », ni carte bancaire — rien qui évoque un achat (Apple 3.1.1 / 3.1.3 f) ?>
-<title><?= ak_billing_hidden() ? 'Créer votre espace' : 'Essai PRO gratuit ' . (int)AK_TRIAL_DAYS . ' jours' ?> — Assokit</title>
+<title><?= $review ? ($sent !== null ? 'Demande envoyée' : 'Demander la création de votre espace') : (ak_billing_hidden() ? 'Créer votre espace' : 'Essai PRO gratuit ' . (int)AK_TRIAL_DAYS . ' jours') ?> — Assokit</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%23059669'/%3E%3Ccircle cx='22' cy='22' r='4.5' fill='%23FFFFFF'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -724,7 +759,9 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
   <div class="card">
 
     <?php // Anciens liens ?plan= : « association » = formule Assokit, « organisation » = Sur-mesure ?>
-    <?php if (ak_billing_hidden()): ?>
+    <?php if ($review): // App iPhone : une demande, examinée par l'équipe (ni prix, ni essai, ni gratuité, ni abonnement) ?>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Validation par notre équipe sous <?= (int)AK_SIGNUP_REVIEW_HOURS ?> h</span>
+    <?php elseif (ak_billing_hidden()): ?>
       <span class="plan-pill"><span class="plan-pill-dot"></span>Aucun achat dans l’application</span>
     <?php elseif ($form['plan'] === 'association'): ?>
       <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Assokit · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
@@ -736,7 +773,13 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
 
     <?php // Dans l'application : aucun prix ni mot d'achat (règles de paiement Google Play, Apple 3.1.1 / 3.1.3 f).
           // La durée reste dite : l'utilisateur sait que l'accès complet dure AK_TRIAL_DAYS jours (CGU § 4). ?>
-    <?php if (ak_billing_hidden()): ?>
+    <?php if ($sent !== null): ?>
+    <h1>Demande envoyée</h1>
+    <p class="sub">Notre équipe l’examine sous <?= (int)AK_SIGNUP_REVIEW_HOURS ?> h. Vous recevrez un e-mail dès l’activation de votre espace.</p>
+    <?php elseif ($review): ?>
+    <h1>Demander la création de votre espace</h1>
+    <p class="sub">Votre demande est examinée par notre équipe sous <?= (int)AK_SIGNUP_REVIEW_HOURS ?> h. Un e-mail vous confirme l’activation de votre espace : vous pourrez alors vous connecter avec l’adresse e-mail et le mot de passe choisis ici.</p>
+    <?php elseif (ak_billing_hidden()): ?>
     <h1>Créez l’espace de votre structure</h1>
     <p class="sub">Toutes les fonctionnalités sont ouvertes dès l’inscription, pendant <?= (int)AK_TRIAL_DAYS ?> jours.</p>
     <?php else: ?>
@@ -745,7 +788,11 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
       Ensuite, si Assokit vous convient : <?= htmlspecialchars(ak_offer_price($pdo)['label']) ?>, résiliable à tout moment. Sinon, rien n’est prélevé.</p>
     <?php endif; ?>
 
-    <?php if ($notice): ?>
+    <?php if ($sent !== null): ?>
+      <div class="alert-ok" id="ak-demande-envoyee" style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.55;margin-bottom:14px;">✅ Merci <?= htmlspecialchars((string)($sent['first_name'] ?? '')) ?> ! La demande de création de l’espace « <?= htmlspecialchars((string)($sent['org_name'] ?? '')) ?> » est bien envoyée.</div>
+      <p class="sub">Un e-mail de confirmation vient de partir à <strong><?= htmlspecialchars((string)($sent['email'] ?? '')) ?></strong>. Dès que notre équipe a activé votre espace, vous recevez un second e-mail : connectez-vous alors avec cette adresse et le mot de passe choisi.</p>
+      <a href="/connexion" class="btn-submit" style="display:block;text-align:center;text-decoration:none;">Retour à la connexion</a>
+    <?php elseif ($notice): ?>
       <div class="alert-ok" style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.55;margin-bottom:6px;">✅ <?= htmlspecialchars($notice) ?></div>
     <?php else: ?>
     <?php if ($error): ?>
@@ -913,7 +960,7 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
         <span>J'accepte les <a href="/cgu" target="_blank">conditions générales d'utilisation</a> et la <a href="/confidentialite" target="_blank">politique de confidentialité</a>.</span>
       </label>
 
-      <button type="submit" class="btn-submit" id="signupBtn"><?= ak_billing_hidden() ? 'Créer mon espace' : 'Activer mon essai PRO de ' . (int)AK_TRIAL_DAYS . ' jours' ?> →</button>
+      <button type="submit" class="btn-submit" id="signupBtn"><?= $review ? 'Envoyer ma demande' : (ak_billing_hidden() ? 'Créer mon espace' : 'Activer mon essai PRO de ' . (int)AK_TRIAL_DAYS . ' jours') ?> →</button>
     </form>
     <script>
       // Association / TPE : libellés, listes et champs propres à chaque type
@@ -945,7 +992,7 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
     <script>
       // Un seul envoi : un double clic créait deux demandes
       (function(){ var f=document.getElementById('signupForm'), b=document.getElementById('signupBtn');
-        if(f&&b) f.addEventListener('submit', function(){ setTimeout(function(){ b.disabled=true; b.textContent='Création de votre espace…'; }, 0); }); })();
+        if(f&&b) f.addEventListener('submit', function(){ setTimeout(function(){ b.disabled=true; b.textContent=<?= $review ? "'Envoi de votre demande…'" : "'Création de votre espace…'" ?>; }, 0); }); })();
     </script>
     <?php endif; ?>
 

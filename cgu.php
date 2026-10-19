@@ -18,7 +18,7 @@ render_public_nav('');
     <div class="pub-breadcrumb"><a href="/">Accueil</a><span class="pub-breadcrumb-sep">›</span><strong style="color:var(--c-encre);">CGU / CGV</strong></div>
     <h1 class="pub-h1" style="font-size:36px;">Conditions générales</h1>
     <?php /* Date de version du texte (dernière modification) : à changer seulement quand le texte change */ ?>
-    <p class="pub-tagline">Version du 18/10/2026</p>
+    <p class="pub-tagline">Version du 19/10/2026</p>
   </div>
 </section>
 <section class="pub-section" style="padding-top:0;">
@@ -37,6 +37,7 @@ render_public_nav('');
 
       <h2>3. Inscription et compte</h2>
       <p>L'inscription est ouverte aux associations loi 1901, TPE, indépendants et autres structures professionnelles. L'Utilisateur s'engage à fournir des informations exactes et à les maintenir à jour.</p>
+      <p>La création d’un espace peut être soumise à la validation de notre équipe (c’est le cas d’une demande faite depuis l’application iPhone) : la demande est examinée sous 48 heures, l’espace n’est utilisable qu’après sa validation, et l’Utilisateur est prévenu par e-mail de l’activation comme d’un éventuel refus.</p>
 
 <?php if ($cgu_in_app): ?>
       <h2>4. Conditions commerciales</h2>
@@ -76,6 +77,11 @@ render_public_nav('');
         <li>L'envoi de spam ou de communications non sollicitées</li>
         <li>Les tentatives d'intrusion ou de surcharge du Service</li>
       </ul>
+
+      <h3 id="contenus-inacceptables">Contenus inacceptables et signalements : tolérance zéro</h3>
+      <p>RBPS applique une <strong>tolérance zéro</strong> envers les contenus inacceptables et les utilisateurs abusifs. Sont notamment interdits, dans les messages, les documents et tout contenu partagé sur le Service : les contenus illicites, haineux ou discriminatoires, le harcèlement et les menaces, les contenus à caractère sexuel, les contenus violents, les propos diffamatoires ou injurieux, ainsi que le spam.</p>
+      <p><strong>Signaler un contenu</strong> : dans l’application, appuyez longuement sur un message, puis touchez <strong>« Signaler ce message »</strong> ; vous pouvez aussi masquer les messages de son auteur. Sur le site comme dans l’application, vous pouvez également écrire au support (rubrique « Support ») ou à <a href="mailto:contact@assokit.fr?subject=Signalement">contact@assokit.fr</a>.</p>
+      <p>Tout signalement est <strong>examiné sous 24 heures</strong>. Un contenu contraire aux présentes conditions est <strong>retiré</strong>, et son auteur peut être <strong>exclu</strong> du Service (compte désactivé), sans préjudice des signalements aux autorités compétentes lorsque la loi l’impose.</p>
 
       <h2>8. Résiliation</h2>
       <p>L’abonnement est <strong>sans engagement de durée</strong>. L'Utilisateur peut le résilier à tout moment, sans frais, <?= $cgu_in_app ? 'depuis son espace sur le site' : 'depuis son espace (rubrique « Mon abonnement »)' ?> ou par e-mail. La résiliation prend effet à la <strong>fin de la période mensuelle en cours</strong>, déjà payée : l’accès à la formule est maintenu jusqu’à cette date et aucun nouveau prélèvement n’a lieu. Aucun remboursement au prorata n’est effectué pour la période entamée.</p>

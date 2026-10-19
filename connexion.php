@@ -12,8 +12,11 @@ $email_value = '';
 // Page demandée avant la connexion (?next=, posé lors de la redirection vers /connexion)
 $next = ak_login_next($_POST['next'] ?? ($_GET['next'] ?? ''));
 // Accès coupé pendant une session ouverte (ak_session_guard) : on dit pourquoi
-$acces_msgs = ['ferme' => ak_session_access_message('org_closed'), 'desactive' => ak_session_access_message('account_closed')];
+$acces_msgs = ['ferme' => ak_session_access_message('org_closed'), 'desactive' => ak_session_access_message('account_closed'),
+               'attente' => ak_session_access_message('org_pending')];
 if (isset($_GET['acces'], $acces_msgs[$_GET['acces']])) $error = $acces_msgs[$_GET['acces']];
+// Demande de création d'espace pas encore validée (app iPhone) : avis d'attente, et non une erreur
+$pending_notice = ($_GET['acces'] ?? '') === 'attente';
 $suspended_notice = null;
 // Retour de « Supprimer mon compte » (rgpd-supprimer-compte.php) : confirmation, texte fixe
 $success_msg = !empty($_GET['deleted']) ? 'Votre compte a bien été supprimé et vos données personnelles anonymisées.' : null;
@@ -27,11 +30,12 @@ if (!empty($_SESSION['impersonation_target_user_id'])) {
 // Déjà connecté → page d'accueil du rôle (ou page demandée), sauf si l'accès a été coupé entre-temps
 if (!empty($_SESSION['user_id'])) {
     $acc = ak_session_access($pdo);
-    if ($acc['state'] === 'account_closed' || $acc['state'] === 'org_closed') {
+    if ($acc['state'] === 'account_closed' || $acc['state'] === 'org_closed' || $acc['state'] === 'org_pending') {
         ak_session_end();
         session_id(session_create_id());
         session_start();
         $error = ak_session_access_message($acc['state']);
+        $pending_notice = $acc['state'] === 'org_pending';
     } elseif ($acc['state'] === 'must_change_password') {
         header('Location: /changer-mot-de-passe' . ($next !== '' ? '?next=' . rawurlencode($next) : ''));
         exit;
@@ -144,6 +148,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $suspended_notice === null) {
                     if (function_exists('activity_log_login_failed')) {
                         activity_log_login_failed($email, 'org_closed');
                     }
+                } elseif ($org_access === 'pending') {
+                    // Demande de création d'espace (app iPhone) pas encore validée : pas de session,
+                    // rien n'est accessible ; le message est le même sur le site et dans l'app.
+                    // Bon mot de passe : tracé à part, pas comme un échec (le demandeur qui vérifie
+                    // plusieurs fois si son espace est ouvert ne doit jamais être bloqué 15 minutes, ni
+                    // compter dans le plafond par adresse IP)
+                    $error = ak_session_access_message('org_pending');
+                    $pending_notice = true;
+                    if (function_exists('activity_log_action')) {
+                        activity_log_action('login_pending', ['org_id' => (int)($user['org_id'] ?? 0)], $email);
+                    }
                 } else {
                     // === 2FA : si activee, exiger le code TOTP avant d'ouvrir la session ===
                     if (!empty($user['totp_enabled'])) {
@@ -238,6 +253,7 @@ if (empty($_SESSION['csrf_token'])) {
     .btn-submit{width:100%;padding:12px;background:var(--acc);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;margin-top:8px;font-family:inherit}
     .btn-submit:hover{background:var(--acc-dark)}
     .error-box{background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px}
+    .error-box.is-pending{background:#FFFBEB;border-color:#FCD34D;color:#92400E;line-height:1.55}
     .success-box{background:#F0FDF4;border:1px solid #86EFAC;color:#166534;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px}
     .forgot-link{display:block;text-align:center;font-size:12.5px;color:var(--ink-3);margin-top:14px;text-decoration:none;transition:color .15s}
     .forgot-link:hover{color:var(--acc)}
@@ -312,7 +328,11 @@ if (empty($_SESSION['csrf_token'])) {
   <h1>Bienvenue</h1>
   <p class="subtitle">Connectez-vous à votre espace Assokit</p>
   <?php if ($success_msg && !$error): ?><div class="success-box">✓ <?= htmlspecialchars($success_msg) ?></div><?php endif; ?>
-  <?php if ($error): ?><div class="error-box">⚠️ <?= htmlspecialchars($error) ?></div><?php endif; ?>
+  <?php // Demande en attente : même boîte (l'app lit .error-box pour son écran de connexion), ton d'attente, sans ⚠️ ?>
+  <?php if ($error): ?><div class="error-box<?= $pending_notice ? ' is-pending' : '' ?>"><?= $pending_notice ? '' : '⚠️ ' ?><?= htmlspecialchars($error) ?></div><?php endif; ?>
+  <?php if ($error && $pending_notice): ?>
+  <p class="subtitle" style="margin:-6px 0 18px;font-size:12.5px;">Retirer votre demande et effacer vos données : <a href="/suppression-compte" style="color:var(--acc)">supprimer votre compte</a> · <a href="/contact" style="color:var(--acc)">nous écrire</a></p>
+  <?php endif; ?>
   <form method="POST" action="/connexion" novalidate>
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
     <?php if ($next !== ''): ?><input type="hidden" name="next" value="<?= htmlspecialchars($next) ?>"><?php endif; ?>
@@ -342,8 +362,8 @@ if (empty($_SESSION['csrf_token'])) {
   </form>
   <a href="/mot-de-passe-oublie" class="forgot-link">Mot de passe oublié ?</a>
   <?php // Dans l'application : pas de « gratuit » (Apple 3.1.1 / 3.1.3 f : rien qui évoque un achat) ?>
-  <?php if (ak_is_ios_app()): // App iPhone : connexion seule, pas d'inscription (règle 3.1.1 d'Apple) ?>
-  <div class="footer-note">Pas encore de compte ? Demandez-le à l’administrateur de votre association ou de votre entreprise.</div>
+  <?php if (ak_is_ios_app()): // App iPhone : une demande, examinée par l'équipe (signup.php), ni essai ni gratuité ?>
+  <div class="footer-note">Pas encore d’espace ? <a href="/signup">Demander la création de mon espace</a></div>
   <?php else: ?>
   <div class="footer-note">Pas encore de compte ? <a href="/signup"><?= ak_billing_hidden() ? 'Créer mon compte' : 'Créer mon compte gratuit' ?></a> · <a href="/contact">Parler à un conseiller</a></div>
   <?php endif; ?>

@@ -17,6 +17,7 @@ require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/plan-helpers.php';
 require_once __DIR__ . '/trial-helpers.php';
 require_once __DIR__ . '/sa-auth-helpers.php';
+require_once __DIR__ . '/signup-review-helpers.php';   // demandes d'espace de l'app iPhone : jamais ouvertes par un plan
 
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 
@@ -68,6 +69,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $st->execute([$org_id]);
         return (bool)$st->fetchColumn();
     };
+    // Demande de création d'espace faite dans l'app iPhone, encore en attente : un plan (même l'essai)
+    // l'ouvrirait sans la validation du Fondateur ni l'e-mail d'activation (valider / refuser depuis
+    // la fiche de l'association ou l'e-mail)
+    $is_request = function (int $org_id) use ($pdo): bool {
+        $st = $pdo->prepare("SELECT * FROM organizations WHERE id = ?");
+        $st->execute([$org_id]);
+        return ak_signup_review_pending($st->fetch(PDO::FETCH_ASSOC) ?: []);
+    };
     try {
         if ($action === 'change_plan') {
             $org_id = (int)($_POST['org_id'] ?? 0);
@@ -78,6 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $period_end = trim((string)($_POST['current_period_end'] ?? ''));
             if ($period_end !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $period_end)) throw new RuntimeException('Date de fin invalide.');
             if (!$org_exists($org_id)) throw new RuntimeException('Organisation introuvable.');
+            if ($is_request($org_id)) throw new RuntimeException("Org #{$org_id} : " . ak_signup_review_block_message());
             $pl = $pdo->prepare("SELECT slug" . (isset(ak_db_columns($pdo, 'asso_plans')['is_trial']) ? ", is_trial" : ", 0 AS is_trial") . " FROM asso_plans WHERE id = ?");
             $pl->execute([$plan_id]);
             $plan = $pl->fetch(PDO::FETCH_ASSOC);
@@ -125,6 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'mark_overdue') {
             $org_id = (int)($_POST['org_id'] ?? 0);
             if (!$org_exists($org_id)) throw new RuntimeException('Organisation introuvable.');
+            if ($is_request($org_id)) throw new RuntimeException("Org #{$org_id} : " . ak_signup_review_block_message());
             $state = ak_org_plan_state($pdo, $org_id);
             if ($state['is_trial'] || $state['trial_expired']) throw new RuntimeException("Org #{$org_id} est en essai gratuit : il n’y a pas de paiement en retard.");
             $cid = $current_sub_id($org_id);
@@ -136,6 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'downgrade_to_demarrage') {
             $org_id = (int)($_POST['org_id'] ?? 0);
             if (!$org_exists($org_id)) throw new RuntimeException('Organisation introuvable.');
+            if ($is_request($org_id)) throw new RuntimeException("Org #{$org_id} : " . ak_signup_review_block_message());
             $demarrage_id = (int)$pdo->query("SELECT id FROM asso_plans WHERE slug='demarrage' LIMIT 1")->fetchColumn();
             if ($demarrage_id <= 0) throw new RuntimeException('Plan Démarrage introuvable.');
             $pdo->beginTransaction();

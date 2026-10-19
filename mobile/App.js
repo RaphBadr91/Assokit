@@ -134,20 +134,21 @@ function sheetInset(base = 18) {
   return Platform.OS === 'android' ? { paddingBottom: base + SYS_INSETS.bottom } : null;
 }
 
-/* iPhone : l'app sert seulement à se connecter à un espace existant (règle 3.1.1 d'Apple). Les
-   structures s'inscrivent sur le site ; un accès qui commencerait dans l'app puis expirerait sans
-   pouvoir être prolongé dans l'app est le motif de refus le plus courant pour une app B2B. Sur iPhone,
-   donc : ni « Créer ma démo », ni page /signup (bloquée ici et renvoyée vers /connexion par
-   signup.php pour l'agent iOS), ni pastille d'essai, ni carte « Formule ». Android ne change pas. */
-const IOS_LOGIN_ONLY = Platform.OS === 'ios';
-const SIGNUP_URL_RE = /^https?:\/\/(?:[a-z0-9-]+\.)*assokit\.fr\/signup(?:\.php)?\/?(?:[?#]|$)/i;
+/* iPhone : rien ne se vend ni ne s'essaie dans l'app (règle 3.1.1 d'Apple). Un accès qui
+   commencerait dans l'app puis expirerait sans pouvoir être prolongé dans l'app est le motif de refus
+   le plus courant pour une app B2B. Sur iPhone, donc : « Créer l'espace de ma structure » ouvre
+   /signup en mode DEMANDE (signup.php reconnaît l'agent iOS) : la demande est examinée par l'équipe
+   sous 48 h, rien n'est actif avant la validation, un e-mail confirme l'activation, et la page
+   « Demande envoyée » remplace la connexion. Ni prix, ni « essai », ni « gratuit », ni pastille
+   d'essai, ni carte « Formule ». Android ne change pas (« Créer ma démo », essai immédiat). */
+const IOS_SIGNUP_REQUEST = Platform.OS === 'ios';
 
 // Pages de présentation du site (accueil, fonctionnalités, pages « logiciel-… », guides, comparatifs,
 // blog, modèles, dépliant) : elles annoncent le prix de la formule Assokit. Règles de paiement de
 // Google Play et règle 3.1.1 d'Apple : aucun prix dans l'application. Le serveur les renvoie déjà
 // vers /connexion pour l'agent « AssokitApp » (includes-public.php, AK_PUBLIC_APP_PAGES) ; l'app
-// ne les charge pas non plus (onShouldStartLoadWithRequest). Restent ouvertes : /signup (Android
-// seulement, voir IOS_LOGIN_ONLY), /connexion, /mot-de-passe-oublie, /confidentialite, /cgu, /cookies,
+// ne les charge pas non plus (onShouldStartLoadWithRequest). Restent ouvertes : /signup (demande à
+// valider sur iPhone, voir IOS_SIGNUP_REQUEST), /connexion, /mot-de-passe-oublie, /confidentialite, /cgu, /cookies,
 // /mentions-legales, /suppression-compte, /contact.
 const MARKETING_URL_RE = /^https?:\/\/(?:www\.)?assokit\.fr(?:\/(?:index\.php)?|\/(?:fonctionnalites|logiciel-[a-z-]+|comptabilite-analytique|alternative-helloasso|guide-association-loi-1901|guide-comptabilite-association|pour-associations|pour-tpe|pour-organismes|a-propos|avis|application|blog|modeles?-[a-z-]+|flyer)(?:\.php)?(?:\/[^?#]*)?)?(?:[?#]|$)/i;
 
@@ -452,10 +453,10 @@ function fmtDayFr(v) {
    trial (bool), trial_ends_at, trial_days_left, plan_label (+ trial_expired si présent).
    Champs absents (ancien serveur) → null : rien n'est affiché.
    Information seulement : aucun lien d'achat ni prix dans l'app (règles des stores).
-   Sur iPhone, rien n'est affiché (IOS_LOGIN_ONLY) : un compte à rebours d'essai sans moyen de
+   Sur iPhone, rien n'est affiché (IOS_SIGNUP_REQUEST) : un compte à rebours d'essai sans moyen de
    prolonger l'accès dans l'app est précisément ce que la règle 3.1.1 d'Apple sanctionne. */
 function orgTrialInfo(k) {
-  if (IOS_LOGIN_ONLY) return null;
+  if (IOS_SIGNUP_REQUEST) return null;
   if (!k || typeof k !== 'object') return null;
   const end = fmtDayFr(k.trial_ends_at);
   const raw = k.trial_days_left;
@@ -834,16 +835,12 @@ function WelcomeScreen({ onLogin, onSignup, onLegal }) {
             <Text style={styles.btnPrimaryTxt}>Se connecter</Text>
             <Ionicons name="arrow-forward" size={18} color="#047857" />
           </TouchableOpacity>
-          {IOS_LOGIN_ONLY ? (
-            // iPhone : connexion seule (voir IOS_LOGIN_ONLY)
-            <Text style={styles.wFooter}>Accès réservé aux structures qui utilisent Assokit.</Text>
-          ) : (
-            <TouchableOpacity accessibilityRole="button" activeOpacity={0.85} onPress={onSignup} style={styles.btnGlassWrap}>
-              <BlurView intensity={18} tint="light" style={styles.btnGlass}>
-                <Text style={styles.btnGhostTxt}>Créer ma démo</Text>
-              </BlurView>
-            </TouchableOpacity>
-          )}
+          {/* iPhone : une demande de création d'espace, examinée par l'équipe (voir IOS_SIGNUP_REQUEST) */}
+          <TouchableOpacity accessibilityRole="button" activeOpacity={0.85} onPress={onSignup} style={styles.btnGlassWrap}>
+            <BlurView intensity={18} tint="light" style={styles.btnGlass}>
+              <Text style={styles.btnGhostTxt}>{IOS_SIGNUP_REQUEST ? 'Créer l’espace de ma structure' : 'Créer ma démo'}</Text>
+            </BlurView>
+          </TouchableOpacity>
           <Text style={styles.wFooter}>🇫🇷 Hébergé en France · Conforme RGPD</Text>
           {/* Règles de Google Play et d'Apple : la politique de confidentialité doit être accessible dans l'app.
               Ouverte DANS l'app (onLegal) : la version « app » de la page n'a ni lien Tarifs ni « Essai gratuit »,
@@ -951,10 +948,10 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
               ) : null}
 
               <View style={styles.lgDivider} />
-              {IOS_LOGIN_ONLY ? (
-                // iPhone : connexion seule (voir IOS_LOGIN_ONLY). Le compte est créé par la structure.
+              {IOS_SIGNUP_REQUEST ? (
+                // iPhone : une demande, examinée par l'équipe sous 48 h (voir IOS_SIGNUP_REQUEST)
                 <Text style={styles.lgFooter}>
-                  Pas encore de compte ? Demandez-le à l’administrateur de votre association ou de votre entreprise.
+                  Pas encore d’espace ? <Text style={styles.lgLink} onPress={onDemo}>Demander la création de mon espace</Text>
                 </Text>
               ) : (
                 <Text style={styles.lgFooter}>
@@ -990,7 +987,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-18-app-store';
+const UI_REV = '2026-10-19-demande-ios';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -7122,8 +7119,8 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <DetailHeader title="Paramètres" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        {/* Formule de l'association : jamais sur iPhone (IOS_LOGIN_ONLY, règle 3.1.1 d'Apple) */}
-        {!IOS_LOGIN_ONLY && plan && (plan.trial || plan.label) ? (
+        {/* Formule de l'association : jamais sur iPhone (IOS_SIGNUP_REQUEST, règle 3.1.1 d'Apple) */}
+        {!IOS_SIGNUP_REQUEST && plan && (plan.trial || plan.label) ? (
           <View style={styles.setPlanCard} accessible accessibilityLabel={'Formule : ' + (plan.trial ? plan.trial.text : plan.label)}>
             <View style={[styles.setPlanIc, { backgroundColor: plan.trial ? (plan.trial.expired ? '#FEE2E2' : '#FEF3C7') : '#ECFDF5' }]}>
               <Ionicons name={plan.trial ? (plan.trial.expired ? 'alert-circle-outline' : 'hourglass-outline') : 'ribbon-outline'} size={18} color={plan.trial ? (plan.trial.expired ? '#B91C1C' : '#B45309') : BRAND} />
@@ -8322,7 +8319,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     const isPublicInfo = /\/(confidentialite|cgu|cookies|mentions-legales|suppression-compte|contact)(\.php)?\/?([?#]|$)/.test(u);
     if (isLogin) {
       setAuthed(false);
-      // Le motif d'un refus de connexion est lu sur la page une fois chargée (onLoadEnd → LOGIN_PAGE_JS)
+      // Le motif d'un refus de connexion est lu sur la page une fois chargée (onLoadEnd → LOGIN_PAGE_JS).
+      // /connexion atteinte depuis une page du site (« Retour à la connexion » de « Demande envoyée »,
+      // lien « Se connecter » de /signup) : l'écran de connexion natif reprend la main.
+      if (webMode && /\/connexion(\.php)?\/?([?#]|$)/.test(u)) setWebMode(false);
     } else if (isPublicInfo) {
       // rien
     } else if (isAssokitUrl(u)) {
@@ -8619,6 +8619,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           fetchFdOrgs(fdOrgsFilter); fetchFounder();
           if (r.action === 'extend_trial') Alert.alert('Essai prolongé', r.trial_ends ? 'Nouvelle fin d’essai : ' + r.trial_ends + '.' : 'C’est fait.');
           else if (r.action === 'resiliate') fdResiliated(r);
+          else if (r.action === 'validate' && r.review && r.review.message) Alert.alert('Espace activé', r.review.message);   // demande de l'app iPhone
           else if (r.notice) Alert.alert('Association réactivée', r.notice);
         } else { Alert.alert('Action impossible', r.message || 'Réessaie dans un instant.'); }
       }
@@ -8633,6 +8634,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           else if (r.action === 'resiliate') fdResiliated(r);
           else if (r.action === 'reset_2fa') Alert.alert('Double authentification réinitialisée', 'À la prochaine connexion, le mot de passe suffira ; elle pourra être réactivée dans Paramètres › Sécurité.');
           else if (r.plan_changed) Alert.alert('Formule mise à jour', (r.from || '—') + ' → ' + (r.to || '—') + (r.state && r.state.badge && (r.state.badge_tone === 'trial' || r.state.badge_tone === 'expired') ? '\n' + r.state.badge : '') + (r.warning ? '\n\n⚠️ ' + r.warning : ''));
+          else if (r.action === 'validate' && r.review && r.review.message) Alert.alert('Espace activé', r.review.message);   // demande de l'app iPhone
           else if (r.notice) Alert.alert('Association réactivée', r.notice);
         } else { Alert.alert('Action impossible', r.message || 'Réessaie dans un instant.'); }
       }
@@ -9113,9 +9115,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             if (/^(mailto:|tel:|sms:|geo:|maps:)/i.test(u)) { Linking.openURL(u).catch(() => {}); return false; }
             // Lien externe (hors assokit.fr) -> navigateur systeme, pas dans la WebView applicative
             if (/^https?:\/\//i.test(u) && !isAssokitUrl(u)) { Linking.openURL(u).catch(() => {}); return false; }
-            // iPhone : pas d'inscription dans l'app (IOS_LOGIN_ONLY, règle 3.1.1 d'Apple). La
-            // navigation est simplement annulée ; signup.php renvoie aussi l'agent iOS vers /connexion.
-            if (IOS_LOGIN_ONLY && SIGNUP_URL_RE.test(u)) return false;
+            // /signup reste ouverte sur iPhone : signup.php y sert la demande de création d'espace
+            // (IOS_SIGNUP_REQUEST), sans essai ni prix.
             // Conformité stores (Apple 3.1.1 / Google) : on ne charge JAMAIS une page
             // de tarifs / d'abonnement Assokit dans l'app -> redirection vers le dashboard.
             // /abonnement manquait : la page existe, elle est liée depuis la barre
