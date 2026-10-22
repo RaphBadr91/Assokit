@@ -59,20 +59,6 @@ if (!empty($_SESSION['user_id'])) {
     }
 }
 
-/**
- * Tentatives de connexion échouées des 15 dernières minutes, d'après le journal
- * (assokit_activity_log, rempli par activity_log_login_failed).
- */
-$login_failures = function (string $where, array $params) use ($pdo): int {
-    try {
-        $s = $pdo->prepare("SELECT COUNT(*) FROM assokit_activity_log WHERE event_type = 'login_failed' AND $where AND created_at > (NOW() - INTERVAL 15 MINUTE)");
-        $s->execute($params);
-        return (int)$s->fetchColumn();
-    } catch (Throwable $e) {
-        return 0;
-    }
-};
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $suspended_notice === null) {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -115,21 +101,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $suspended_notice === null) {
                 $stmt->execute([$email]);
                 $user = $stmt->fetch();
 
-                // Blocage par compte : 10 échecs en 15 minutes, même avec le bon mot de passe ensuite.
-                // Comptes de démo partagés : comptés pour cette adresse IP seulement, sinon n'importe
-                // qui bloquerait la démo en se trompant 10 fois.
-                $is_demo = (bool)preg_match('/@demo-f\.assokit\.fr$/i', $email);
-                $account_fails = $is_demo
-                    ? $login_failures('user_email = ? AND ip = ?', [$email, $ip])
-                    : $login_failures('user_email = ?', [$email]);
-
-                if ($account_fails >= 10) {
-                    $error = 'Trop de tentatives de connexion échouées. Pour votre sécurité, patientez 15 minutes avant de réessayer.';
-                } elseif ($login_failures('ip = ?', [$ip]) >= 50) {
-                    // Plafond par IP, bon mot de passe compris : bloque l'essai d'un mot de passe sur
-                    // beaucoup de comptes. Bien plus haut que le blocage par compte, pour que quelques
-                    // erreurs de collègues derrière la même box ne gênent pas les autres.
-                    $error = 'Trop de tentatives de connexion échouées depuis votre connexion internet. Patientez 15 minutes avant de réessayer.';
+                // Blocage après des échecs (10 par compte, 50 par adresse IP, en 15 minutes), même avec
+                // le bon mot de passe ensuite : ak_login_lockout (app-context.php), partagé avec
+                // /retirer-demande, qui demande aussi le mot de passe
+                if (($lockout = ak_login_lockout($pdo, $email, $ip)) !== '') {
+                    $error = $lockout;
                 } elseif (!$user || !password_verify($password, $user['password_hash'])) {
                     $error = 'Email ou mot de passe incorrect.';
                     // Track login failed
@@ -302,12 +278,20 @@ if (empty($_SESSION['csrf_token'])) {
         require_once __DIR__ . '/trial-helpers.php';
         $trial_ended = function_exists('ak_org_is_trial') && ak_org_is_trial($pdo, (int)($susp_org['id'] ?? 0));
     }
-    $show_billing = $is_org_admin && !ak_billing_hidden();
+    // Demande d'espace de l'app iPhone refusée par le Fondateur (signup-review-helpers.php) : ni « suspension »
+    // à régulariser ni paiement ; le demandeur peut retirer sa demande et effacer ses informations
+    require_once __DIR__ . '/signup-review-helpers.php';
+    $refused_request = $susp_org && ak_signup_review_refused($pdo, $susp_org);
+    if ($refused_request) $trial_ended = false;
+    $show_billing = $is_org_admin && !ak_billing_hidden() && !$refused_request;
 ?>
   <div id="ak-acces-suspendu">
-    <h1><?= $trial_ended ? (ak_billing_hidden() ? 'Votre période d’essai est terminée' : 'Votre essai gratuit est terminé') : 'Accès suspendu' ?></h1>
+    <h1><?= $refused_request ? 'Demande non validée' : ($trial_ended ? (ak_billing_hidden() ? 'Votre période d’essai est terminée' : 'Votre essai gratuit est terminé') : 'Accès suspendu') ?></h1>
     <p class="subtitle"><?= htmlspecialchars(trim(($suspended_notice['first_name'] ?? '') . ' ' . ($suspended_notice['last_name'] ?? ''))) ?> · <?= htmlspecialchars($suspended_notice['email'] ?? '') ?></p>
-    <?php if ($trial_ended): ?>
+    <?php if ($refused_request): ?>
+    <div class="notice-box">Votre demande de création d’espace n’a pas été validée par notre équipe. Pour toute question, écrivez à <?= AK_SUPPORT_EMAIL ?>.</div>
+    <a href="/retirer-demande" class="btn-ghost" id="ak-retirer-demande-lien">Retirer ma demande et effacer mes informations</a>
+    <?php elseif ($trial_ended): ?>
     <div class="notice-box">Vos données sont conservées.
       <?php if ($show_billing): ?>Choisissez votre formule pour retrouver votre espace.<?php elseif (!$is_org_admin): ?><?= ak_billing_hidden() ? 'Vous pouvez en parler à l’administrateur de votre association.' : 'L’administrateur de votre association peut choisir la formule qui vous redonnera accès à votre espace.' ?><?php else: ?>Pour toute question, écrivez à <?= AK_SUPPORT_EMAIL ?>.<?php endif; ?></div>
     <?php else: ?>
@@ -330,8 +314,9 @@ if (empty($_SESSION['csrf_token'])) {
   <?php if ($success_msg && !$error): ?><div class="success-box">✓ <?= htmlspecialchars($success_msg) ?></div><?php endif; ?>
   <?php // Demande en attente : même boîte (l'app lit .error-box pour son écran de connexion), ton d'attente, sans ⚠️ ?>
   <?php if ($error): ?><div class="error-box<?= $pending_notice ? ' is-pending' : '' ?>"><?= $pending_notice ? '' : '⚠️ ' ?><?= htmlspecialchars($error) ?></div><?php endif; ?>
+  <?php // Retrait par le demandeur, sans session (Apple 5.1.1 v) : /retirer-demande ; l'app iPhone affiche le même lien sous l'avis ?>
   <?php if ($error && $pending_notice): ?>
-  <p class="subtitle" style="margin:-6px 0 18px;font-size:12.5px;">Retirer votre demande et effacer vos données : <a href="/suppression-compte" style="color:var(--acc)">supprimer votre compte</a> · <a href="/contact" style="color:var(--acc)">nous écrire</a></p>
+  <p class="subtitle" id="ak-retirer-demande-lien" style="margin:-6px 0 18px;font-size:12.5px;">Vous ne souhaitez plus de cet espace&nbsp;? <a href="/retirer-demande" style="color:var(--acc)">Retirer ma demande</a> · <a href="/contact" style="color:var(--acc)">nous écrire</a></p>
   <?php endif; ?>
   <form method="POST" action="/connexion" novalidate>
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">

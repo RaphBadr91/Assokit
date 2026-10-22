@@ -30,7 +30,7 @@ $t = $is_post ? ($_POST['t'] ?? '') : ($_GET['t'] ?? '');
 $t = is_string($t) ? trim($t) : '';
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
-// Vue : flood | invalid | expired | no_secret | form | validated | rejected | already_validated | already_rejected | not_request | error
+// Vue : flood | invalid | expired | no_secret | form | validated | rejected | already_validated | already_rejected | withdrawn | not_request | error
 $view = '';
 $org = null;
 $action = null;
@@ -80,6 +80,8 @@ if (!ak_rate_limit('signup_review_link', 60, 900)) {
             $st->execute([(int)$org['id']]);
             $org = $st->fetch(PDO::FETCH_ASSOC) ?: $org;
             if (ak_signup_review_pending($org)) $view = 'form';
+            // Retirée par le demandeur (/retirer-demande) avant ou après un refus : plus rien à décider
+            elseif (ak_signup_review_withdrawn($org)) $view = 'withdrawn';
             elseif (($org['validation_status'] ?? '') === 'rejected') $view = 'already_rejected';
             elseif (in_array($org['validation_status'] ?? '', ['validated', 'approved'], true)) $view = 'already_validated';
             else $view = 'not_request';
@@ -172,6 +174,11 @@ elseif (in_array($view, ['invalid', 'expired', 'no_secret'], true)) http_respons
 <?php elseif ($view === 'already_rejected'): ?>
   <h1>Demande déjà refusée</h1>
   <p>La demande de <strong><?= $h($org_name) ?></strong> a déjà été refusée<?= $validated_on !== '' ? ' le ' . $h($validated_on) : '' ?>. Rien n’a été refait.</p>
+  <p class="small"><a href="<?= $h($cockpit) ?>">Ouvrir l’association dans le cockpit</a></p>
+
+<?php elseif ($view === 'withdrawn'): ?>
+  <h1>Demande retirée</h1>
+  <p>Le demandeur a retiré sa demande pour « <?= $h($org_name) ?> » : l’espace est fermé et les informations transmises sont effacées. Ce lien ne permet plus aucune action.</p>
   <p class="small"><a href="<?= $h($cockpit) ?>">Ouvrir l’association dans le cockpit</a></p>
 
 <?php elseif ($view === 'not_request'): ?>

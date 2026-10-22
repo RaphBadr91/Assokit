@@ -245,6 +245,8 @@ RewriteRule ^confidentialite/?$ confidentialite.php [L,QSA]
 RewriteRule ^cookies/?$ cookies.php [L,QSA]
 # Suppression de compte : page publique exigée par Google Play (déclarée dans la Play Console)
 RewriteRule ^suppression-compte/?$ suppression-compte.php [L,QSA]
+# Retrait d'une demande de création d'espace (app iPhone) par le demandeur, sans session : Apple 5.1.1 v
+RewriteRule ^retirer-demande/?$ retirer-demande.php [L,QSA]
 
 # Redirections 301 des anciennes URLs sans page (SEO — evite les 404 connues de Google)
 RewriteRule ^plans/?$              /tarifs                     [R=301,L]
@@ -259,7 +261,7 @@ RewriteRule ^facturation/?$        /mon-asso-plan              [R=301,L]
 # Existait déjà en lignes 214-215 du htaccess actuel pour le dashboard.
 # Compléter avec ces redirections publiques :
 RewriteCond %{REQUEST_METHOD} !=POST
-RewriteCond %{THE_REQUEST} \s/+(fonctionnalites|tarifs|a-propos|contact|mentions-legales|cgu|confidentialite|cookies|suppression-compte|blog|logiciel-association|logiciel-adherents|logiciel-comptabilite-association|logiciel-cotisation-association|logiciel-facturation|logiciel-gestion-tpe|pour-associations|pour-tpe|pour-organismes|comptabilite-analytique|avis|application)\.php[\s?] [NC]
+RewriteCond %{THE_REQUEST} \s/+(fonctionnalites|tarifs|a-propos|contact|mentions-legales|cgu|confidentialite|cookies|suppression-compte|retirer-demande|blog|logiciel-association|logiciel-adherents|logiciel-comptabilite-association|logiciel-cotisation-association|logiciel-facturation|logiciel-gestion-tpe|pour-associations|pour-tpe|pour-organismes|comptabilite-analytique|avis|application)\.php[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
 
 RewriteRule ^mon-asso-plan/?$ mon-asso-plan.php [L,QSA]

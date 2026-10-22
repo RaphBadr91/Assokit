@@ -673,6 +673,14 @@ if ($view_id > 0) {
             </div>
         </div>
     </div>
+    <?php elseif ($val_status === 'rejected' && ak_signup_review_withdrawn($org)): ?>
+    <div class="sa-alert sa-alert-error">
+        <span style="font-size:18px">↩</span>
+        <div>
+            <strong>Demande d’espace retirée par le demandeur</strong>
+            <br><span style="font-size:12.5px;">Espace fermé, compte anonymisé et informations transmises effacées (/retirer-demande). Rien n’est à décider.</span>
+        </div>
+    </div>
     <?php elseif ($val_status === 'rejected'): ?>
     <div class="sa-alert sa-alert-error">
         <span style="font-size:18px">✕</span>
@@ -1214,6 +1222,8 @@ sa_render_sidebar('associations');
                         <td>
                             <?php if ($val_status === 'pending_founder'): ?>
                                 <span class="sa-badge sa-badge-gold">🏗️ En attente</span>
+                            <?php elseif ($val_status === 'rejected' && ak_signup_review_withdrawn($o)): ?>
+                                <span class="sa-badge sa-badge-gray">↩ Retirée</span>
                             <?php elseif ($val_status === 'rejected'): ?>
                                 <span class="sa-badge sa-badge-red">✕ Refusée</span>
                             <?php else: ?>

@@ -16,6 +16,9 @@
  *     seul compte de l'association) ;
  *   - cron-rgpd-purge.php (corbeille 30 jours puis anonymisation, journaux
  *     12 mois) ;
+ *   - ak_signup_review_withdraw() dans signup-review-helpers.php, appelée par
+ *     retirer-demande.php (§ 3 : retrait d'une demande d'espace en attente ou
+ *     refusée, sans session) ;
  *   - cgu.php § 8 et confidentialite.php § 4 (trois cas : suppression par la
  *     personne, retrait par un administrateur, fermeture de l'association ;
  *     10 ans, 12 mois).
@@ -73,7 +76,7 @@ render_public_nav('');
         <li>Écrivez si possible depuis l'adresse e-mail de votre compte, et indiquez le nom de votre association ou de votre entreprise : cela nous permet de vérifier que la demande vient bien de vous.</li>
         <li>Nous vous répondons sous 30 jours maximum, comme pour toute demande liée à vos données personnelles (voir notre <a href="/confidentialite">politique de confidentialité</a>).</li>
       </ul>
-      <p><strong>Demande de création d’espace encore en cours de validation</strong> (faite depuis l’application iPhone) : tant qu’elle n’est pas validée, vous ne pouvez pas vous connecter. Pour la retirer, écrivez-nous de la même façon depuis l’adresse e-mail de la demande : nous la retirons et effaçons les informations transmises.</p>
+      <p><strong>Demande de création d’espace en cours de validation, ou refusée</strong> (faite depuis l’application iPhone) : tant qu’elle n’est pas validée, vous ne pouvez pas vous connecter. Retirez-la vous-même sur la page <a href="/retirer-demande">Retirer ma demande</a>, avec l’adresse e-mail et le mot de passe de la demande ; dans l’application, touchez <strong>« Retirer ma demande »</strong> sous le message « en cours de validation » de l’écran de connexion. Votre compte est supprimé, l’espace demandé est fermé et les informations transmises sont effacées immédiatement ; un e-mail vous le confirme. Plus accès à l’adresse ou au mot de passe ? Écrivez-nous de la même façon depuis l’adresse e-mail de la demande : nous la retirons pour vous.</p>
 
       <h2 id="supprime">4. Ce qui est supprimé, tout de suite</h2>
       <ul>

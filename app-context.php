@@ -153,8 +153,12 @@ define('AK_GUARD_OPEN', [
     'api/app-csrf.php', 'api/app-account.php', 'api/app-change-password.php',
 ]);
 
-/** Pages publiques à jeton (émargement, convocation d'AG, validation d'une demande d'espace) : jamais concernées par l'état de la session du navigateur. */
-define('AK_GUARD_PUBLIC', ['emarger.php', 'ag-public.php', 'valider-inscription.php']);
+/**
+ * Pages publiques à jeton (émargement, convocation d'AG, validation d'une demande d'espace) ou à
+ * mot de passe (retrait d'une demande d'espace, ouvert aussi au demandeur refusé dont la session
+ * est suspendue) : jamais concernées par l'état de la session du navigateur.
+ */
+define('AK_GUARD_PUBLIC', ['emarger.php', 'ag-public.php', 'valider-inscription.php', 'retirer-demande.php']);
 
 /** Ouverts en plus quand l'association est suspendue : régulariser, joindre le support, gérer son compte. */
 define('AK_GUARD_SUSPENDED_OPEN', [
@@ -281,6 +285,44 @@ function ak_session_access_message(string $state): string
             return 'Votre mot de passe est provisoire : choisissez-en un nouveau (Paramètres › Mot de passe) pour continuer.';
         case 'mairie_space':
             return 'Cette fonctionnalité est réservée aux associations. Votre compte donne accès à l’espace collectivité (associations suivies, messagerie, emailing), sur le site.';
+    }
+    return '';
+}
+
+/**
+ * Blocage après des échecs de connexion : '' si l'essai est permis, sinon le message à afficher.
+ * Vérifié AVANT le mot de passe par /connexion et par /retirer-demande (qui demande aussi le mot de
+ * passe) : mêmes compteurs, mêmes seuils, une page ne sert jamais à contourner le blocage de l'autre.
+ * Compteur : événements « login_failed » des 15 dernières minutes (assokit_activity_log, rempli par
+ * activity_log_login_failed), par compte puis par adresse IP ($ip : activity_get_ip, la même que
+ * celle enregistrée avec l'échec).
+ */
+function ak_login_lockout(PDO $pdo, string $email, string $ip): string
+{
+    $fails = function (string $where, array $params) use ($pdo): int {
+        try {
+            $s = $pdo->prepare("SELECT COUNT(*) FROM assokit_activity_log WHERE event_type = 'login_failed' AND $where AND created_at > (NOW() - INTERVAL 15 MINUTE)");
+            $s->execute($params);
+            return (int)$s->fetchColumn();
+        } catch (Throwable $e) {
+            return 0;
+        }
+    };
+    // Blocage par compte : 10 échecs en 15 minutes, même avec le bon mot de passe ensuite.
+    // Comptes de démo partagés : comptés pour cette adresse IP seulement, sinon n'importe
+    // qui bloquerait la démo en se trompant 10 fois.
+    $is_demo = (bool)preg_match('/@demo-f\.assokit\.fr$/i', $email);
+    $account_fails = $is_demo
+        ? $fails('user_email = ? AND ip = ?', [$email, $ip])
+        : $fails('user_email = ?', [$email]);
+    if ($account_fails >= 10) {
+        return 'Trop de tentatives de connexion échouées. Pour votre sécurité, patientez 15 minutes avant de réessayer.';
+    }
+    // Plafond par IP, bon mot de passe compris : bloque l'essai d'un mot de passe sur beaucoup de
+    // comptes. Bien plus haut que le blocage par compte, pour que quelques erreurs de collègues
+    // derrière la même box ne gênent pas les autres.
+    if ($fails('ip = ?', [$ip]) >= 50) {
+        return 'Trop de tentatives de connexion échouées depuis votre connexion internet. Patientez 15 minutes avant de réessayer.';
     }
     return '';
 }
@@ -561,6 +603,57 @@ function ak_account_sole_org(PDO $pdo, int $uid): int
         error_log('[ak_account_sole_org] ' . $e->getMessage());
         return 0;
     }
+}
+
+/**
+ * Fermeture de l'espace d'une association quand son seul compte se supprime (ak_account_sole_org) :
+ * dans l'app (api/app-delete-account.php) et au retrait d'une demande de création d'espace
+ * (ak_signup_review_withdraw, signup-review-helpers.php). Comme une résiliation du Fondateur
+ * (api/app-founder-action.php) :
+ *   1. abonnements Stripe arrêtés D'ABORD (sa_stripe_cancel_for_org) : un échec n'efface rien
+ *      (pas de carte prélevée pour un espace fermé) et la fonction renvoie false ;
+ *   2. fin d'essai (plan Démarrage) et association « cancelled », dans une transaction (celle de
+ *      l'appelant s'il en a ouvert une) ;
+ *   3. libellé du plan resynchronisé, journal « self_delete_close_org ».
+ * Les données de l'association suivent la règle de fermeture (CGU § 8, /suppression-compte § 6) :
+ * 30 jours, puis suppression. Une erreur SQL remonte (compte et association intacts).
+ */
+function ak_account_close_sole_org(PDO $pdo, int $org_id): bool
+{
+    require_once __DIR__ . '/trial-helpers.php';
+    if (is_file(__DIR__ . '/sa-plan-state-helpers.php')) require_once __DIR__ . '/sa-plan-state-helpers.php';
+    $stripe = ['cancelled' => [], 'failed' => []];
+    if (function_exists('sa_stripe_cancel_for_org')) {
+        try { $stripe = sa_stripe_cancel_for_org($pdo, $org_id); }
+        catch (Throwable $e) {
+            error_log('[ak_account_close_sole_org] Stripe org #' . $org_id . ' : ' . get_class($e) . ' ' . $e->getMessage());
+            $stripe['failed']['?'] = 'erreur technique';
+        }
+    }
+    if ($stripe['failed']) {
+        error_log('[ak_account_close_sole_org] org #' . $org_id . ' : abonnement Stripe non annulé, fermeture refusée');
+        return false;
+    }
+    $own_tx = !$pdo->inTransaction();
+    try {
+        if ($own_tx) $pdo->beginTransaction();
+        $st = function_exists('ak_org_plan_state') ? ak_org_plan_state($pdo, $org_id) : [];
+        if (!empty($st['is_trial']) || !empty($st['trial_expired'])) {
+            $free_id = (int) $pdo->query("SELECT id FROM asso_plans WHERE slug = 'demarrage' LIMIT 1")->fetchColumn();
+            if ($free_id > 0 && function_exists('ak_org_set_plan')) ak_org_set_plan($pdo, $org_id, $free_id);
+        }
+        $pdo->prepare("UPDATE organizations SET status = 'cancelled' WHERE id = ?")->execute([$org_id]);
+        if ($own_tx) $pdo->commit();
+    } catch (Throwable $e) {
+        if ($own_tx && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;   // compte intact : l'utilisateur peut réessayer (Stripe déjà arrêté n'est pas relancé)
+    }
+    if (function_exists('ak_org_sync_plan_label')) { try { ak_org_sync_plan_label($pdo, $org_id); } catch (Throwable $e) {} }
+    try {
+        $pdo->prepare("INSERT INTO assokit_activity_log (organization_id, event_type, event_action, ip, created_at) VALUES (?, 'account', 'self_delete_close_org', ?, NOW())")
+            ->execute([$org_id, $_SERVER['REMOTE_ADDR'] ?? '']);
+    } catch (Throwable $e) {}
+    return true;
 }
 
 }

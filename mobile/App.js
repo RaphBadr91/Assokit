@@ -149,7 +149,7 @@ const IOS_SIGNUP_REQUEST = Platform.OS === 'ios';
 // vers /connexion pour l'agent « AssokitApp » (includes-public.php, AK_PUBLIC_APP_PAGES) ; l'app
 // ne les charge pas non plus (onShouldStartLoadWithRequest). Restent ouvertes : /signup (demande à
 // valider sur iPhone, voir IOS_SIGNUP_REQUEST), /connexion, /mot-de-passe-oublie, /confidentialite, /cgu, /cookies,
-// /mentions-legales, /suppression-compte, /contact.
+// /mentions-legales, /suppression-compte, /retirer-demande (retrait d'une demande d'espace, sans session), /contact.
 const MARKETING_URL_RE = /^https?:\/\/(?:www\.)?assokit\.fr(?:\/(?:index\.php)?|\/(?:fonctionnalites|logiciel-[a-z-]+|comptabilite-analytique|alternative-helloasso|guide-association-loi-1901|guide-comptabilite-association|pour-associations|pour-tpe|pour-organismes|a-propos|avis|application|blog|modeles?-[a-z-]+|flyer)(?:\.php)?(?:\/[^?#]*)?)?(?:[?#]|$)/i;
 
 const APP_ONLY_CSS = `
@@ -301,13 +301,17 @@ const CAPTURE_CREDS_JS = "(function(){ try {"
 /* Lit la page /connexion après une tentative de connexion : le serveur y affiche le
    motif réel du refus (.error-box : identifiants, compte désactivé, association fermée,
    trop de tentatives) ou, pour une association suspendue, l'avis #ak-acces-suspendu
-   (la session est alors ouverte). L'app reprend ce texte au lieu d'un message figé. */
+   (la session est alors ouverte). L'app reprend ce texte au lieu d'un message figé.
+   « pending » : avis « Votre espace est en cours de validation » (.error-box.is-pending,
+   demande de création d'espace pas encore validée) ; l'écran de connexion propose alors
+   « Retirer ma demande » (/retirer-demande, Apple 5.1.1 v). « refused » : demande refusée
+   (avis « Demande non validée », avec le lien /retirer-demande) ; l'avis natif le propose aussi. */
 const LOGIN_PAGE_JS = "(function(){ try {"
   + " var t=function(el){ return el ? String(el.innerText||el.textContent||'').replace(/^[\\s\\u26A0\\uFE0F]+/,'').replace(/\\s+/g,' ').trim() : ''; };"
   + " var s=document.getElementById('ak-acces-suspendu');"
   + " var nb=s ? s.querySelector('.notice-box') : null;"
   + " var eb=document.querySelector('.error-box');"
-  + " window.ReactNativeWebView.postMessage(JSON.stringify({__akloginpage:{ suspended: !!s, notice: t(nb), error: s ? '' : t(eb) }}));"
+  + " window.ReactNativeWebView.postMessage(JSON.stringify({__akloginpage:{ suspended: !!s, notice: t(nb), error: s ? '' : t(eb), pending: !s && !!document.querySelector('.error-box.is-pending'), refused: !!(s && s.querySelector('a[href=\"/retirer-demande\"]')) }}));"
   + " } catch(x){} })(); true;";
 
 /* Page « mot de passe provisoire » (/changer-mot-de-passe) : retient le nouveau mot de
@@ -860,7 +864,7 @@ function WelcomeScreen({ onLogin, onSignup, onLegal }) {
 /* ================================================================== */
 /*  CONNEXION NATIVE (formulaire natif — conforme App Store)           */
 /* ================================================================== */
-function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId, hasFaceId, onLegal }) {
+function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId, hasFaceId, onLegal, onWithdraw }) {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [show, setShow] = useState(false);
@@ -929,6 +933,14 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
                   <Text style={styles.lgErrorTxt}>{error}</Text>
                 </View>
               ) : null}
+              {/* Demande d'espace en cours de validation : le demandeur ne peut pas se connecter, il la
+                  retire ici, sans session (règle 5.1.1 v d'Apple : suppression dans l'app) */}
+              {error && onWithdraw ? (
+                <TouchableOpacity accessibilityRole="button" onPress={onWithdraw} activeOpacity={0.7} style={{ alignSelf: 'center', paddingVertical: 4 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
+                  <Text style={styles.lgWithdraw}>Retirer ma demande</Text>
+                </TouchableOpacity>
+              ) : null}
 
               <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSubmit && styles.lgBtnOff]} activeOpacity={0.9}
                 onPress={() => canSubmit && onSubmit(email.trim(), pass)} disabled={!canSubmit}>
@@ -987,7 +999,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-19-demande-ios';
+const UI_REV = '2026-10-19-retrait-demande';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -7060,14 +7072,14 @@ function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack,
 /* Association suspendue (403 'org_suspended' d'une API, ou avis #ak-acces-suspendu de
    /connexion) : l'app ne garde que le compte personnel (paramètres, mot de passe,
    suppression RGPD) et la déconnexion. Aucun lien de paiement (règles des stores). */
-function SuspendedScreen({ message, onAccount, onLogout, onRetry }) {
+function SuspendedScreen({ message, refused, onAccount, onLogout, onRetry, onWithdraw }) {
   return (
     <View style={[styles.detailWrap, { justifyContent: 'center', paddingHorizontal: 24 }]}>
       <View style={{ alignItems: 'center' }} accessible accessibilityRole="alert">
         <View style={[styles.setPlanIc, { width: 58, height: 58, borderRadius: 18, backgroundColor: '#FEE2E2' }]}>
           <Ionicons name="pause-circle-outline" size={32} color="#B91C1C" />
         </View>
-        <Text style={[styles.dName, { textAlign: 'center', marginTop: 14 }]}>Accès suspendu</Text>
+        <Text style={[styles.dName, { textAlign: 'center', marginTop: 14 }]}>{refused ? 'Demande non validée' : 'Accès suspendu'}</Text>
         <Text style={[styles.dMuted, { textAlign: 'center', marginTop: 10, fontSize: 14, lineHeight: 21 }]}>
           {message || 'L’accès de votre association à Assokit est suspendu. Vos données sont conservées.'}
         </Text>
@@ -7076,6 +7088,13 @@ function SuspendedScreen({ message, onAccount, onLogout, onRetry }) {
         <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={onAccount}>
           <Ionicons name="person-circle-outline" size={19} color="#fff" />
           <Text style={styles.dPrimaryBtnTxt}>Mon compte</Text>
+        </TouchableOpacity>
+      ) : null}
+      {/* Demande d'espace refusée : retrait et effacement des informations (/retirer-demande) */}
+      {onWithdraw ? (
+        <TouchableOpacity accessibilityRole="button" style={styles.dWebBtn} activeOpacity={0.85} onPress={onWithdraw}>
+          <Ionicons name="trash-outline" size={17} color={BRAND} />
+          <Text style={styles.dWebBtnTxt}>Retirer ma demande</Text>
         </TouchableOpacity>
       ) : null}
       {onRetry ? (
@@ -7283,6 +7302,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const lastUrl = useRef('');
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginErr, setLoginErr] = useState('');
+  // Avis « en cours de validation » lu sur /connexion (LOGIN_PAGE_JS) : « Retirer ma demande » ne
+  // s'affiche que tant que le message à l'écran est exactement celui-là
+  const [pendingNotice, setPendingNotice] = useState('');
   const [pdfBusy, setPdfBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -7457,6 +7479,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const authPageRef = useRef(null);
   // Association suspendue : message du serveur (403 'org_suspended' ou avis de /connexion)
   const [orgSuspended, setOrgSuspended] = useState(null);
+  const [orgRefused, setOrgRefused] = useState(false);   // avis de suspension = demande d'espace refusée (LOGIN_PAGE_JS)
   // Droits renvoyés par les listes (null = inconnu ou ancien serveur → comportement d'avant)
   const [evCanCreate, setEvCanCreate] = useState(null);      // app-events.php can_create
   const evCapsAsked = useRef(false);
@@ -8315,8 +8338,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     }
     const isLogin = /\/(connexion(?!-2fa)|signup|deconnexion|login|mot-de-passe|verifier-email)/.test(u);
     // Pages publiques ouvertes sans être connecté (liens CGU / confidentialité de /signup, aide à la
-    // suppression de compte, contact) : elles ne disent rien de la session, l'état reste celui d'avant
-    const isPublicInfo = /\/(confidentialite|cgu|cookies|mentions-legales|suppression-compte|contact)(\.php)?\/?([?#]|$)/.test(u);
+    // suppression de compte, retrait d'une demande d'espace, contact) : elles ne disent rien de la
+    // session, l'état reste celui d'avant. Leur lien « Retour à la connexion » mène à /connexion, qui
+    // rend la main à l'écran de connexion natif (isLogin ci-dessus).
+    const isPublicInfo = /\/(confidentialite|cgu|cookies|mentions-legales|suppression-compte|retirer-demande|contact)(\.php)?\/?([?#]|$)/.test(u);
     if (isLogin) {
       setAuthed(false);
       // Le motif d'un refus de connexion est lu sur la page une fois chargée (onLoadEnd → LOGIN_PAGE_JS).
@@ -8546,13 +8571,15 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       // Page /connexion lue après chargement (LOGIN_PAGE_JS)
       if (msg && msg.__akloginpage) {
         const lp = msg.__akloginpage;
+        setPendingNotice(!lp.suspended && lp.pending && lp.error ? String(lp.error) : '');
         if (lp.suspended) {
           // Identifiants acceptés, association suspendue : la session est ouverte, on affiche l'avis
           loginAttempted.current = false; pendingLogin.current = null;
           setLoginBusy(false); setLoginErr('');
           setOrgSuspended(lp.notice || 'L’accès de votre association à Assokit est suspendu. Vos données sont conservées.');
+          setOrgRefused(!!lp.refused);
         } else {
-          setOrgSuspended(null);
+          setOrgSuspended(null); setOrgRefused(false);
           if (lp.error) {
             loginAttempted.current = false;
             setLoginBusy(false); setLoginErr(String(lp.error));
@@ -9501,6 +9528,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               onForgot={() => { setLoginErr(''); openWeb('/mot-de-passe-oublie'); }}
               onDemo={() => { setLoginErr(''); openWeb('/signup'); }}
               onLegal={(p) => { setLoginErr(''); openWeb(p); }}
+              onWithdraw={loginErr && loginErr === pendingNotice ? () => { setLoginErr(''); setPendingNotice(''); openWeb('/retirer-demande'); } : null}
               hasFaceId={!!autoCreds}
               onFaceId={() => autoCreds && submitLogin(autoCreds.email, autoCreds.password)}
             />
@@ -9508,7 +9536,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         )}
         {showSuspended && (
           <View style={styles.homeOverlay}>
-            <SuspendedScreen message={orgSuspended}
+            <SuspendedScreen message={orgSuspended} refused={orgRefused}
+              onWithdraw={orgRefused ? () => { setOrgSuspended(null); setOrgRefused(false); openWeb('/retirer-demande'); } : null}
               onAccount={() => { if (!authed) setAuthed(true); openMenuScreen('settings'); }}
               onRetry={() => {
                 setOrgSuspended(null);
@@ -10628,6 +10657,7 @@ const styles = StyleSheet.create({
   lgBtnOff: { opacity: 0.55 },
   lgBtnTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
   lgForgot: { color: '#059669', fontSize: 14, fontWeight: '700', marginTop: 12 },
+  lgWithdraw: { color: '#5F6D66', fontSize: 13, fontWeight: '600', textDecorationLine: 'underline', marginTop: 10 },
   lgFace: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6, paddingVertical: 13, borderRadius: 13, borderWidth: 1, borderColor: '#D1FAE5', backgroundColor: '#F0FDF9' },
   lgFaceTxt: { color: '#059669', fontSize: 14.5, fontWeight: '700' },
   lgDivider: { height: 1, backgroundColor: '#EEF2F1', marginVertical: 18 },

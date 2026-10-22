@@ -27,6 +27,13 @@
  * traitée n'est jamais retraitée (ni second e-mail).
  * Sans décision au bout de 24 h, cron-trial-check.php envoie UN rappel au Fondateur
  * (ak_signup_review_remind_due, carnet cron_envois).
+ *
+ * Retrait par le demandeur (règle 5.1.1 v d'Apple : un compte créé dans l'app se supprime dans
+ * l'app) : /retirer-demande (retirer-demande.php), avec l'adresse e-mail et le mot de passe de la
+ * demande, tant qu'elle est en attente OU après un refus. ak_signup_review_withdraw() ferme l'espace
+ * et anonymise le compte exactement comme la suppression du seul compte dans l'app
+ * (ak_account_close_sole_org, ak_account_self_anonymise), efface les informations transmises
+ * (fiche de la structure, public_signups), confirme par e-mail et prévient le Fondateur.
  * ============================================================
  */
 
@@ -37,6 +44,13 @@ require_once __DIR__ . '/app-context.php';   // AK_SIGNUP_REVIEW_REASON, ak_sign
 if (!defined('AK_SIGNUP_REVIEW_TTL')) define('AK_SIGNUP_REVIEW_TTL', 7 * 86400);
 /** Délai de réponse annoncé au demandeur (page, e-mails, message de connexion). */
 if (!defined('AK_SIGNUP_REVIEW_HOURS')) define('AK_SIGNUP_REVIEW_HOURS', 48);
+/** Début de la note écrite dans public_signups.error_message au refus (ak_signup_review_reject) : trace durable d'un refus. */
+if (!defined('AK_SIGNUP_REFUSED_NOTE')) define('AK_SIGNUP_REFUSED_NOTE', 'Demande refusée le ');
+/**
+ * Marque d'une demande retirée par le demandeur (ak_signup_review_withdraw) : motif de l'association
+ * fermée (« cancelled »). Elle remplace AK_SIGNUP_REVIEW_REASON : la demande n'est plus en attente nulle part.
+ */
+if (!defined('AK_SIGNUP_WITHDRAWN_REASON')) define('AK_SIGNUP_WITHDRAWN_REASON', 'Demande retirée par le demandeur');
 
 /** Texte sûr pour un e-mail ou une page : UTF-8 valide, échappé. */
 function ak_signup_review_h($v): string
@@ -314,8 +328,9 @@ function ak_signup_review_reject(PDO $pdo, int $org_id, string $reason, int $by_
         ak_org_reject($pdo, $org_id, $reason, $by_user_id);
         try {
             if (isset(ak_db_columns($pdo, 'public_signups')['error_message'])) {
+                // Note lue par ak_signup_review_refused (retrait d'une demande refusée) : garder son début
                 $pdo->prepare("UPDATE public_signups SET error_message = ? WHERE org_id = ?")
-                    ->execute(['Demande refusée le ' . date('d/m/Y H:i') . ($reason !== '' ? ' : ' . $reason : ''), $org_id]);
+                    ->execute([AK_SIGNUP_REFUSED_NOTE . date('d/m/Y H:i') . ($reason !== '' ? ' : ' . $reason : ''), $org_id]);
             }
         } catch (Throwable $e) {
             error_log('[signup-review] public_signups: ' . get_class($e));
@@ -339,6 +354,186 @@ function ak_signup_review_reject(PDO $pdo, int $org_id, string $reason, int $by_
 function ak_signup_review_block_message(): string
 {
     return 'Demande de création d’espace en attente : validez-la (l’essai démarre à la validation) ou refusez-la d’abord.';
+}
+
+/* ------------------------------------------------------------------
+ * Retrait par le demandeur (/retirer-demande)
+ * ------------------------------------------------------------------ */
+
+/** Demande retirée par le demandeur (ak_signup_review_withdraw) : association fermée avec la marque de retrait. */
+function ak_signup_review_withdrawn(array $org): bool
+{
+    return ($org['status'] ?? '') === 'cancelled'
+        && trim((string)($org['suspended_reason'] ?? '')) === AK_SIGNUP_WITHDRAWN_REASON;
+}
+
+/**
+ * Demande de l'app iPhone REFUSÉE par le Fondateur (ak_signup_review_reject), toujours fermée ?
+ * Le refus efface la marque de demande (ak_org_reject : « rejected » et suspendue avec le motif du
+ * Fondateur) ; la trace durable est dans public_signups : la ligne de l'association est restée
+ * « pending » (seule la validation la passe en « completed », une inscription sur le site l'y passe
+ * dès la création) et porte la note de refus (AK_SIGNUP_REFUSED_NOTE), que seul
+ * ak_signup_review_reject écrit. Une association refusée depuis le cockpit sans être une demande
+ * (créée par un super-admin, ou inscrite sur le site) n'a ni l'une ni l'autre.
+ * $org : ligne organizations complète.
+ */
+function ak_signup_review_refused(PDO $pdo, array $org): bool
+{
+    if (($org['validation_status'] ?? '') !== 'rejected' || ($org['status'] ?? '') !== 'suspended' || !empty($org['deleted_at'])) return false;
+    $cols = ak_db_columns($pdo, 'public_signups');
+    if (!isset($cols['org_id'], $cols['status'])) return false;
+    try {
+        $sql = "SELECT COUNT(*) FROM public_signups WHERE org_id = ? AND status = 'pending'";
+        $args = [(int)$org['id']];
+        if (isset($cols['error_message'])) {
+            $sql .= " AND error_message LIKE ?";
+            $args[] = AK_SIGNUP_REFUSED_NOTE . '%';
+        }
+        $st = $pdo->prepare($sql);
+        $st->execute($args);
+        return (int)$st->fetchColumn() > 0;
+    } catch (Throwable $e) {
+        error_log('[signup-review] refus: ' . get_class($e));
+        return false;
+    }
+}
+
+/**
+ * Retire une demande d'espace à la demande du demandeur (/retirer-demande, mot de passe vérifié par
+ * l'appelant) : en attente (ak_signup_review_pending) ou refusée (ak_signup_review_refused), et
+ * $user_id en est le seul compte (ak_account_sole_org). Une seule transaction, ligne de
+ * l'association verrouillée, état relu sous le verrou : si le Fondateur vient de valider, rien n'est
+ * fait. Effets, dans l'ordre :
+ *   1. marque de retrait (validation « rejected », motif AK_SIGNUP_WITHDRAWN_REASON) : la demande
+ *      n'est plus en attente nulle part (cockpit, compteurs, appli du Fondateur, liens signés, rappel) ;
+ *   2. espace fermé comme la suppression du seul compte dans l'app (ak_account_close_sole_org) ;
+ *   3. informations transmises effacées : fiche de la structure (seul son nom reste), notes internes,
+ *      ligne public_signups, nom et adresse dans les alertes de la cloche du Fondateur ;
+ *   4. e-mail « Votre demande a été retirée », AVANT l'anonymisation (l'adresse disparaît ensuite) ;
+ *   5. compte anonymisé comme une suppression de compte (ak_account_self_anonymise), journal ;
+ * puis, la transaction validée, cloche du Fondateur « Demande retirée par le demandeur » (nom de
+ * la structure seulement).
+ *   ['state' => 'withdrawn', 'was' => 'pending'|'refused', 'org' => array, 'mailed' => bool]
+ *   ['state' => 'already', 'org' => array]        demande déjà retirée : rien n'est refait
+ *   ['state' => 'not_request', 'org' => ?array]   pas (plus) une demande : espace validé (même à
+ *                                                 l'instant), actif, fermé autrement… rien n'est fait
+ *   ['state' => 'not_applicant', 'org' => array]  ce compte n'est pas le seul compte de la demande
+ *   ['state' => 'billing', 'org' => array]        abonnement Stripe non arrêté : rien n'est fait
+ * Une erreur SQL remonte (tout est annulé).
+ */
+function ak_signup_review_withdraw(PDO $pdo, int $org_id, int $user_id): array
+{
+    $own_tx = !$pdo->inTransaction();
+    $mailed = false;
+    try {
+        if ($own_tx) $pdo->beginTransaction();
+        // Verrou de la ligne : un « Valider » du Fondateur au même moment attend, puis trouve la demande retirée
+        $st = $pdo->prepare('SELECT * FROM organizations WHERE id = ? FOR UPDATE');
+        $st->execute([$org_id]);
+        $org = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+        $was = !$org ? '' : (ak_signup_review_pending($org) ? 'pending' : (ak_signup_review_refused($pdo, $org) ? 'refused' : ''));
+        $u = null;
+        if ($was !== '' && ak_account_sole_org($pdo, $user_id) === $org_id) {
+            $q = $pdo->prepare('SELECT * FROM users WHERE id = ? AND org_id = ? AND deleted_at IS NULL LIMIT 1');
+            $q->execute([$user_id, $org_id]);
+            $u = $q->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+        if ($was === '' || !$u) {
+            if ($own_tx) $pdo->rollBack();
+            if ($was !== '') return ['state' => 'not_applicant', 'org' => $org];
+            return ['state' => $org && ak_signup_review_withdrawn($org) ? 'already' : 'not_request', 'org' => $org];
+        }
+
+        // 1. Plus une demande : la marque de retrait remplace celle de l'attente (ou le motif du refus)
+        $mark = ['suspended_reason' => AK_SIGNUP_WITHDRAWN_REASON];
+        if ($was === 'pending') {
+            $mark['validation_status'] = ak_db_pick($pdo, 'organizations', 'validation_status', ['rejected']) ?? 'rejected';
+            $mark['rejection_reason'] = AK_SIGNUP_WITHDRAWN_REASON;
+        }
+        ak_db_update($pdo, 'organizations', $org_id, $mark);
+
+        // 2. Espace fermé exactement comme quand le seul compte se supprime dans l'app
+        if (!ak_account_close_sole_org($pdo, $org_id)) {
+            if ($own_tx) $pdo->rollBack();
+            return ['state' => 'billing', 'org' => $org];
+        }
+
+        // 3. Informations transmises avec la demande (signup.php) : seuls le nom et le type de la
+        //    structure restent, pour le cockpit. Colonnes absentes ou qui refusent NULL : ignorées.
+        $when = date('d/m/Y à H:i');
+        $ocols = ak_db_columns($pdo, 'organizations');
+        $fiche = [];
+        foreach (['legal_name', 'legal_form', 'rna_number', 'siren', 'siret', 'vat_number', 'billing_address_street',
+                  'billing_address_complement', 'billing_address_zip', 'billing_address_city', 'billing_email',
+                  'billing_phone', 'president_first_name', 'president_last_name', 'president_role'] as $c) {
+            if (!empty($ocols[$c]['null'])) $fiche[$c] = null;
+        }
+        // Notes internes : la colonne où signup.php a écrit la fiche complète
+        $note_col = isset($ocols['internal_notes']) ? 'internal_notes' : (isset($ocols['notes_superadmin']) ? 'notes_superadmin' : null);
+        if ($note_col) $fiche[$note_col] = AK_SIGNUP_WITHDRAWN_REASON . ' le ' . $when . ' : informations transmises effacées.';
+        if ($fiche) ak_db_update($pdo, 'organizations', $org_id, $fiche);
+
+        $pcols = ak_db_columns($pdo, 'public_signups');
+        if (isset($pcols['org_id'])) {
+            $sets = [];
+            $args = [];
+            foreach (['admin_email', 'admin_first_name', 'admin_last_name', 'phone', 'details_json', 'ip_address', 'user_agent', 'referer'] as $c) {
+                if (!empty($pcols[$c]['null'])) $sets[] = "`$c` = NULL";
+            }
+            if (isset($pcols['error_message'])) {
+                $sets[] = 'error_message = ?';
+                $args[] = AK_SIGNUP_WITHDRAWN_REASON . ' le ' . $when . ($was === 'refused' ? ' (après refus)' : '');
+            }
+            // Statut admis par la colonne (ENUM pending / completed / blocked en production) : « completed »
+            // (demande close). Jamais « blocked » : le résumé horaire anti-abus la compterait comme non ouverte.
+            if ($s = ak_db_pick($pdo, 'public_signups', 'status', ['withdrawn', 'completed'])) {
+                $sets[] = 'status = ?';
+                $args[] = $s;
+                if (isset($pcols['completed_at'])) $sets[] = 'completed_at = NOW()';
+            }
+            if ($sets) {
+                $args[] = $org_id;
+                $pdo->prepare('UPDATE public_signups SET ' . implode(', ', $sets) . ' WHERE org_id = ?')->execute($args);
+            }
+        }
+        // Alertes de la cloche (« Demande d'espace à valider ») : nom et adresse du demandeur effacés,
+        // marquées lues (plus rien n'attend de décision)
+        foreach (["UPDATE user_notifications SET body = NULL WHERE notification_type = 'signup' AND link_url = ?",
+                  "UPDATE user_notifications SET is_read = 1 WHERE notification_type = 'signup' AND link_url = ?"] as $q) {
+            try { $pdo->prepare($q)->execute(['/super-admin/associations?id=' . $org_id]); }
+            catch (Throwable $e) { error_log('[signup-review] cloche: ' . get_class($e)); }
+        }
+
+        // 4. Confirmation au demandeur, avant que son adresse ne soit effacée
+        if (filter_var((string)$u['email'], FILTER_VALIDATE_EMAIL)) {
+            $mailed = ak_signup_review_mail_withdrawn((string)$u['email'], (string)$u['first_name'], (string)$org['name']);
+        }
+
+        // 5. Compte : la même anonymisation qu'une suppression de compte (site ou app)
+        ak_account_self_anonymise($pdo, $user_id);
+        try {
+            $pdo->prepare("INSERT INTO assokit_activity_log (organization_id, event_type, event_action, event_meta, ip, created_at) VALUES (?, 'account', 'signup_request_withdrawn', ?, ?, NOW())")
+                ->execute([$org_id, json_encode(['was' => $was]), $_SERVER['REMOTE_ADDR'] ?? '']);
+        } catch (Throwable $e) {}
+        if ($own_tx) $pdo->commit();
+    } catch (Throwable $e) {
+        if ($own_tx && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+
+    // Cloche du Fondateur, après le retrait enregistré : nom de la structure seulement
+    try {
+        @require_once __DIR__ . '/notification-helpers.php';
+        if (function_exists('ak_notif_create') && function_exists('ak_founder_user_ids')) {
+            foreach (ak_founder_user_ids($pdo) as $fid) {
+                ak_notif_create($pdo, (int)$fid, 'signup', mb_substr('Demande retirée par le demandeur : ' . (string)$org['name'], 0, 190),
+                    'L’espace demandé est fermé et les informations transmises sont effacées.', '/super-admin/associations?id=' . $org_id);
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[signup-review] cloche retrait: ' . get_class($e));
+    }
+    return ['state' => 'withdrawn', 'was' => $was, 'org' => $org, 'mailed' => $mailed];
 }
 
 /* ------------------------------------------------------------------
@@ -409,6 +604,8 @@ function ak_signup_review_mail_received(string $email, string $first_name, strin
              . '<p>Notre équipe l’examine <strong>sous ' . $h . '&nbsp;h</strong>. Vous recevrez un e-mail dès l’activation de votre espace&nbsp;: '
              . 'vous pourrez alors vous connecter, sur le site ou dans l’application, avec l’adresse e-mail et le mot de passe que vous avez choisis.</p>'
              . '<p>Une question en attendant&nbsp;? Répondez simplement à cet e-mail.</p>'
+             . '<p style="font-size:13px;">Vous pouvez retirer votre demande à tout moment, avec votre adresse e-mail et votre mot de passe&nbsp;: '
+             . '<a href="https://assokit.fr/retirer-demande" style="color:#059669;">assokit.fr/retirer-demande</a>.</p>'
              . '<p style="font-size:12px;color:#78716C;margin-top:18px;">Si vous n’êtes pas à l’origine de cette demande, ignorez ce message ou répondez-nous&nbsp;: elle sera supprimée.</p>';
     return ak_signup_review_send($email, 'Demande reçue — validation sous ' . $h . ' h', 'Demande reçue', $content, null, null, 'signup_review_ack');
 }
@@ -440,7 +637,21 @@ function ak_signup_review_mail_refused(string $email, string $first_name, string
              . ak_signup_review_h($org_name) . '</strong>.</p>'
              . ($reason !== '' ? '<p><strong>Motif&nbsp;:</strong> ' . nl2br(ak_signup_review_h($reason)) . '</p>' : '')
              . '<p>S’il s’agit d’une erreur, ou si vous souhaitez nous apporter des précisions, répondez simplement à cet e-mail&nbsp;: nous reprendrons volontiers votre demande.</p>'
-             . '<p>Vous pouvez aussi demander la suppression des informations transmises&nbsp;: <a href="https://assokit.fr/suppression-compte" style="color:#059669;">assokit.fr/suppression-compte</a>.</p>'
+             . '<p>Vous pouvez aussi retirer votre demande et effacer les informations transmises, avec l’adresse e-mail et le mot de passe de la demande&nbsp;: '
+             . '<a href="https://assokit.fr/retirer-demande" style="color:#059669;">assokit.fr/retirer-demande</a>.</p>'
              . '<p>Bien cordialement,<br>L’équipe Assokit</p>';
     return ak_signup_review_send($email, 'Votre demande d’espace Assokit', 'Votre demande d’espace Assokit', $content, null, null, 'signup_review_refused');
+}
+
+/** Demande retirée par le demandeur (/retirer-demande) : confirmation, envoyée avant l'effacement de l'adresse. */
+function ak_signup_review_mail_withdrawn(string $email, string $first_name, string $org_name): bool
+{
+    $content = '<h1 style="font-size:20px;margin:0 0 14px;color:#1C1917">Votre demande a été retirée</h1>'
+             . '<p>Bonjour ' . ak_signup_review_h($first_name) . ',</p>'
+             . '<p>Comme vous l’avez demandé, votre demande de création de l’espace Assokit de <strong>' . ak_signup_review_h($org_name) . '</strong> est retirée.</p>'
+             . '<p>Votre compte est supprimé et les informations transmises avec la demande sont effacées. Vous n’avez rien d’autre à faire.</p>'
+             . '<p>Vous pourrez faire une nouvelle demande à tout moment.</p>'
+             . '<p style="font-size:12px;color:#78716C;margin-top:18px;">Si vous n’êtes pas à l’origine de ce retrait, répondez à cet e-mail.</p>'
+             . '<p>Bien cordialement,<br>L’équipe Assokit</p>';
+    return ak_signup_review_send($email, 'Votre demande a été retirée', 'Votre demande a été retirée', $content, null, null, 'signup_review_withdrawn');
 }

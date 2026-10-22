@@ -17,7 +17,7 @@ ligne.
 | Version de l'app et mises à jour OTA | ✅ corrigé | `expo.version` 1.0.0 → **1.0.1** : les binaires 1.0.0 déjà distribués ne reçoivent plus d'OTA incompatible (A4) |
 | 3.1.1 / 3.1.3 : rien à acheter dans l'app | ✅ corrigé | **iPhone : création de compte sur demande**, examinée par l'équipe sous 48 h, rien d'actif avant la validation, aucun essai ni prix ni formule à l'écran (19/10/2026) + 10 surfaces corrigées (B1) |
 | 4.2 : fonctionnalités minimales | ✅ | Plus de 25 écrans natifs (B2) |
-| 5.1.1(v) : suppression du compte dans l'app | ✅ corrigé | Compte seul de son association supprimable dans l'app ; plus de suppression simulée pour les anciens comptes d'examen (B3) |
+| 5.1.1(v) : suppression du compte dans l'app | ✅ corrigé | Compte seul de son association supprimable dans l'app ; plus de suppression simulée pour les anciens comptes d'examen ; demande d'espace en attente ou refusée retirée dans l'app, sans session (« Retirer ma demande », 19/10/2026) (B3) |
 | 4.8 : Se connecter avec Apple | ✅ non requis | Aucune connexion par un service tiers (B4) |
 | 2.1 : compte de démonstration | ✅ | DEMO F, deux comptes (B5) |
 | 5.1.2 : suivi, ATT | ✅ non requis | Aucun suivi, aucun IDFA (B6) |
@@ -322,9 +322,41 @@ administrateur »), le membre garde le message de démonstration protégée.
 
 Sur iPhone, un compte demandé dans l'app (B1) ne peut pas se connecter avant la validation ;
 une fois l'espace activé, c'est le seul compte de sa structure et ce correctif s'applique :
-il se supprime dans l'app. Une demande pas encore validée se retire par écrit
-(`/suppression-compte` § 3, ou contact), comme le dit la page de connexion. Le correctif sert
-aussi à Android et aux structures inscrites sur le site dont la personne est le seul compte.
+il se supprime dans l'app. Le correctif sert aussi à Android et aux structures inscrites sur
+le site dont la personne est le seul compte.
+
+**Demande en attente ou refusée : retrait dans l'app (19/10/2026).** Jusque-là, une demande
+pas encore validée (ou refusée) ne se retirait que par e-mail : le demandeur ne peut pas ouvrir
+de session, donc pas atteindre les Paramètres. Apple demande que la suppression d'un compte créé
+dans l'app se fasse dans l'app. Désormais :
+
+- **écran de connexion natif** : sous l'avis « Votre espace est en cours de validation… »,
+  un bouton discret **« Retirer ma demande »** (`NativeLogin`, `onWithdraw` ; `LOGIN_PAGE_JS`
+  lit `.error-box.is-pending` sur `/connexion`) ouvre `/retirer-demande` dans l'app ; pour une
+  demande **refusée** (la connexion ouvre alors l'avis « Demande non validée »), le même bouton
+  est sur l'avis natif (`SuspendedScreen`), et « Mon compte › Supprimer mon compte » fait le
+  même retrait (`api/app-delete-account.php`) ;
+- **page `/retirer-demande`** (`retirer-demande.php`, sans session, dans l'app avec l'en-tête
+  et le pied de page de l'app, hors du plan du site) : adresse e-mail, mot de passe, case « Je
+  confirme le retrait de ma demande et l'effacement des informations transmises ». **Même
+  blocage que la connexion** (`ak_login_lockout`, `app-context.php`, vérifié avant le mot de
+  passe : 10 échecs par compte, 50 par adresse IP, en 15 minutes ; une erreur est notée
+  `login_failed` et compte pour les deux pages) ; adresse inconnue ou mot de passe faux : le
+  message de la connexion, sans dire lequel ;
+- **effet** (`ak_signup_review_withdraw`, `signup-review-helpers.php`, une transaction, ligne de
+  l'association verrouillée et état relu sous le verrou) : celui de la suppression du seul
+  compte dans l'app (fermeture de l'espace par `ak_account_close_sole_org`, désormais commune
+  avec `api/app-delete-account.php` ; anonymisation par `ak_account_self_anonymise`), plus
+  l'effacement des informations de la demande (fiche de la structure sauf son nom, notes
+  internes, ligne `public_signups`, nom et adresse dans les alertes de la cloche) ; e-mail
+  « Votre demande a été retirée » envoyé avant l'anonymisation ; cloche du Fondateur « Demande
+  retirée par le demandeur » (nom de la structure seulement). La demande n'est plus en attente
+  nulle part (cockpit et ses compteurs, appli du Fondateur, rappel de 24 h) ; les liens
+  « Valider » / « Refuser » de l'e-mail affichent « Demande retirée » ;
+- un espace **validé** (même pendant le retrait : le Fondateur qui valide au même instant passe
+  en premier, rien n'est supprimé), une association à plusieurs comptes ou un compte inscrit sur
+  le site : rien n'est fait, la page dit comment supprimer un compte actif (Plus › Paramètres ›
+  Supprimer mon compte, ou Paramètres › Compte sur le site).
 
 **Comptes de démonstration.** `admin@demo-f` ne peut pas se supprimer (seule
 administratrice, raison affichée) ; `membre@demo-f` montre tout le parcours, mais la
@@ -403,7 +435,7 @@ réponses du serveur pour DEMO F, sans prix Assokit (voir `README-visuels.md`).
 - **2.3.1** (fonctions annoncées réelles) : l'écran d'accueil de l'app annonçait « Factures &
   reçus fiscaux » ; Assokit n'émet pas de reçus fiscaux (l'IA rédige seulement la lettre qui
   accompagne un reçu). Remplacé le 18/10/2026 par « Devis & factures » (`FEATURES`, `App.js`).
-- **Repère de version** : `UI_REV` (`App.js`) vaut `2026-10-19-demande-ios` ; la ligne grise en
+- **Repère de version** : `UI_REV` (`App.js`) vaut `2026-10-19-retrait-demande` ; la ligne grise en
   bas des Paramètres permet de vérifier sur TestFlight que le build exécute bien ce code.
 - **5.6.1** : aucune demande de note maison (pas de fenêtre « Notez-nous »).
 - **iPad** : l'app est réservée à l'iPhone, mais Apple peut l'ouvrir sur iPad en mode
@@ -468,6 +500,8 @@ Tous les exports du site sont des liens GET (vérifié : `export-fec.php`,
 | Second lot (18/10/2026, soir) — **nouveaux** : `ai-consent-helper.php`, `api/app-ai-consent.php`, `api/app-message-action.php`, `migrations/2026-10-18-accord-ia.sql` ; **modifiés** : `404.php`, `action-scan-facture.php`, `adherents-import.php`, `ai-helper.php`, `api/_app-write-boot.php`, `api/app-channel-messages.php`, `api/app-coach-generate.php`, `api/app-dashboard.php`, `api/app-delete-account.php`, `api/app-invoices-ai.php`, `api/app-stats-ai.php`, `app-context.php`, `asso-ai-helpers.php`, `boite-mail-parametres.php`, `cgu.php`, `communication-diffuser-nouveau.php`, `communication-generer.php`, `confidentialite.php`, `connexion.php`, `demo-formation/purge.php`, `mail-helpers.php`, `signup.php`, `today-ai-helper.php` | **Serveur**, même chose, **avant** la soumission. La migration est facultative (table créée à la première utilisation). |
 | Troisième lot (19/10/2026, demande d'espace sur iPhone et CGU) — **nouveaux** : `signup-review-helpers.php`, `valider-inscription.php` ; **modifiés** : `.htaccess` (route `/valider-inscription`), `app-context.php`, `signup.php`, `signup-email-helpers.php`, `trial-helpers.php`, `connexion.php`, `connexion-2fa.php`, `super-admin-associations.php`, `api/app-founder-action.php`, `api/app-dashboard.php` (commentaire), `cron-trial-check.php`, `cgu.php`, `suppression-compte.php` | **Serveur**, **avant** la soumission. Aucune migration : les colonnes utilisées existent déjà (`organizations.validation_status`, `status`, `suspended_reason`, `validated_at` ; carnet `cron_envois` pour le rappel). Le secret des liens de l'e-mail est dérivé d'une constante de `config.php` (`AK_CONTACT_SECRET`, sinon `RESEND_API_KEY`, sinon `CRON_TOKEN`) : rien à ajouter. |
 | `mobile/App.js` (19/10/2026 : « Créer l'espace de ma structure », lien « Demander la création de mon espace », retour à la connexion native depuis « Demande envoyée », alerte « Espace activé » de l'appli fondateur ; `UI_REV` `2026-10-19-demande-ios`) | JavaScript seul : build iOS 1.0.1 s'il n'est pas encore fait, sinon mise à jour OTA (`publication-ios.md`, étape 10). Avec l'ancien JavaScript, l'app iPhone bloque encore `/signup` : la demande n'y apparaît qu'avec ce JavaScript |
+| Quatrième lot (19/10/2026, retrait d'une demande d'espace, Apple 5.1.1 v) — **nouveau** : `retirer-demande.php` ; **modifiés** : `.htaccess` (route `/retirer-demande`), `app-context.php` (`ak_login_lockout`, `ak_account_close_sole_org`, `AK_GUARD_PUBLIC`), `connexion.php`, `includes-public.php` (`AK_PUBLIC_APP_PAGES`), `signup-review-helpers.php`, `valider-inscription.php`, `super-admin-associations.php`, `api/app-delete-account.php`, `api/app-account.php`, `suppression-compte.php` | **Serveur**, **avant** la soumission. Aucune migration. |
+| `mobile/App.js` (19/10/2026 : « Retirer ma demande » sous l'avis « en cours de validation » et sur l'avis « Demande non validée », `/retirer-demande` ouverte dans l'app ; `UI_REV` `2026-10-19-retrait-demande`) | JavaScript seul : dans le build iOS 1.0.1 s'il n'est pas encore fait, sinon mise à jour OTA. Le serveur suffit pour le lien de la page `/connexion` ; le bouton natif demande ce JavaScript |
 
 ## D. Tests faits
 
@@ -571,6 +605,55 @@ Resend (port 9801) qui garde chaque e-mail envoyé :
   (association fermée). `/cgu` (navigateur et app) : clause « tolérance zéro » et « Version du
   19/10/2026 ». Ces contrôles remplacent, pour l'agent iPhone, ceux du second lot
   (`/signup` → `/connexion`).
+
+Quatrième lot (19/10/2026, retrait d'une demande d'espace) — banc **`rd`** (base
+`assokit_t_rd`, migrations d'octobre + DEMO F), port **9830**, faux Resend sur le port 9831 :
+
+- `php -l` sur les fichiers PHP modifiés ou ajoutés : aucune erreur ; `App.js` : analyse Babel
+  OK (et le script injecté `LOGIN_PAGE_JS` aussi) ; aucune alerte PHP ni erreur SQL venant de
+  ces fichiers dans les journaux du banc ; tour des pages de DEMO F (administrateur, membre)
+  sans erreur.
+- Agent iPhone : demande → connexion → avis « en cours de validation » avec « Retirer ma
+  demande » (`/connexion`, aussi avec l'agent du site). `/retirer-demande` : en-tête de l'app,
+  `noindex`, aucun des mots « essai », « gratuit », « abonnement », « offre », « formule »,
+  « tarif », « paiement », « prix », « € ».
+- Case non cochée : refus, mot de passe non vérifié. Adresse inconnue et mauvais mot de passe :
+  « Email ou mot de passe incorrect. », notés `login_failed` (`unknown_email`,
+  `wrong_password`). 4 échecs sur `/connexion` + 5 sur `/retirer-demande` + 1 = 10 : le bon mot de
+  passe est ensuite refusé sur les **deux** pages (« Trop de tentatives… 15 minutes »), rien
+  n'est retiré ; avec 9 échecs récents, le bon mot de passe passe. 50 échecs depuis l'adresse
+  IP : blocage par IP sur les deux pages.
+- Bon mot de passe : redirection 303 vers « Demande retirée » ; compte anonymisé
+  (`deleted_…@anonyme.assokit.local`, mot de passe vidé, désactivé) ; association `cancelled`,
+  validation `rejected`, motif « Demande retirée par le demandeur », fiche vidée sauf le nom ;
+  `public_signups` : coordonnées, IP et fiche effacées, statut `completed` (ENUM du banc) ;
+  journaux `self_delete_close_org` et `signup_request_withdrawn` ; un e-mail « Votre demande a
+  été retirée » ; cloche du Fondateur « Demande retirée par le demandeur : … », anciennes
+  alertes sans nom ni adresse et lues. Cockpit : plus dans « à valider », badge doré du menu
+  à 0 (puis 2 avec deux nouvelles demandes), ligne « ↩ Retirée » ; appli du Fondateur :
+  `signals.pending` 0, liste « à valider » vide. Liens « Valider » / « Refuser » de l'e-mail :
+  « Demande retirée » en GET et en POST, rien n'est fait. Rappel de 24 h : envoyé pour les
+  deux demandes en attente, pas pour la demande retirée.
+- Rejeu du même envoi : « Email ou mot de passe incorrect. », rien de plus (ni e-mail ni
+  cloche) ; second appel direct de `ak_signup_review_withdraw` : `already`.
+- Course : le Fondateur valide en gardant le verrou 4 s pendant l'envoi du retrait ; la page
+  attend, puis répond « Votre espace est actif… rien n'a été modifié » : essai ouvert, compte
+  intact, seul l'e-mail « Votre espace Assokit est activé » est parti.
+- Demande refusée (cockpit, avec motif) : connexion → « Demande non validée » avec « Retirer
+  ma demande et effacer mes informations », sans bouton de paiement ; retrait depuis ce
+  navigateur (session suspendue ouverte, page non renvoyée vers `/connexion`) → retrait
+  complet, session fermée (`/connexion` ensuite sans message d'erreur). Autre demande refusée,
+  supprimée par l'API de l'app (`api/app-delete-account.php`, « Mon compte › Supprimer mon
+  compte ») : même retrait complet, message « Votre demande a été retirée et votre compte
+  supprimé. ».
+- Comptes actifs (DEMO F administrateur, Fondateur, espace validé, inscription sur le site) :
+  rien n'est fait, message « Votre espace est actif… » avec le chemin de suppression. Double
+  authentification sans session : rien n'est fait, explication ; avec une session ouverte du
+  même compte : retrait possible.
+- Suppression dans l'app d'un compte seul de son association (inscription Android, essai) :
+  inchangée après la mise en commun (`cancelled`, plan Démarrage, journaux). Connexion sur le
+  site et sur Android, inscription sur le site et sur Android (essai immédiat) : inchangées ;
+  avis de suspension ordinaire (impayé) inchangé.
 
 Non testable ici, à faire sur le build TestFlight : notifications push réelles, Face ID,
 appareil photo, appui long sur une image → « Enregistrer dans Photos », appui long sur un

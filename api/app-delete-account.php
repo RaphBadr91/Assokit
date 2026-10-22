@@ -56,49 +56,40 @@ try {
         }
     }
 
+    // Demande d'espace de l'app iPhone refusée par le Fondateur (son seul compte peut se connecter :
+    // association suspendue) : le retrait complet de /retirer-demande (ak_signup_review_withdraw,
+    // signup-review-helpers.php). Même fermeture et même anonymisation que ci-dessous, plus
+    // l'effacement des informations de la demande, l'e-mail de confirmation et la cloche du Fondateur.
+    $withdrawn = false;
     if ($close_org > 0) {
-        // Fermeture de l'espace, comme une résiliation du Fondateur (api/app-founder-action.php) :
-        // abonnement Stripe arrêté D'ABORD (un échec n'efface rien : pas de carte prélevée pour un
-        // espace fermé), fin d'essai (plan Démarrage), association « cancelled ». Ses données suivent
-        // la règle de fermeture (CGU § 8, /suppression-compte § 6) : 30 jours, puis suppression.
-        require_once __DIR__ . '/../trial-helpers.php';
-        if (is_file(__DIR__ . '/../sa-plan-state-helpers.php')) require_once __DIR__ . '/../sa-plan-state-helpers.php';
-        $stripe = ['cancelled' => [], 'failed' => []];
-        if (function_exists('sa_stripe_cancel_for_org')) {
-            try { $stripe = sa_stripe_cancel_for_org($pdo, $close_org); }
-            catch (Throwable $e) {
-                error_log('[app-delete-account] Stripe org #' . $close_org . ' : ' . get_class($e) . ' ' . $e->getMessage());
-                $stripe['failed']['?'] = 'erreur technique';
+        require_once __DIR__ . '/../signup-review-helpers.php';
+        $o = $pdo->prepare('SELECT * FROM organizations WHERE id = ? LIMIT 1');
+        $o->execute([$close_org]);
+        if (ak_signup_review_refused($pdo, $o->fetch(PDO::FETCH_ASSOC) ?: [])) {
+            $rv = ak_signup_review_withdraw($pdo, $close_org, $uid);
+            if ($rv['state'] === 'billing') {
+                app_fail(502, 'billing', 'L’abonnement de l’association n’a pas pu être arrêté : rien n’a été supprimé. Réessayez dans quelques minutes.');
             }
+            // Autre réponse (validée à l'instant…) : la suppression de compte habituelle, ci-dessous
+            $withdrawn = $rv['state'] === 'withdrawn';
         }
-        if ($stripe['failed']) {
-            error_log('[app-delete-account] org #' . $close_org . ' : abonnement Stripe non annulé, suppression refusée');
+    }
+
+    if ($close_org > 0 && !$withdrawn) {
+        // Fermeture de l'espace, comme une résiliation du Fondateur (ak_account_close_sole_org,
+        // app-context.php, commune avec le retrait d'une demande d'espace) : abonnement Stripe arrêté
+        // D'ABORD (un échec n'efface rien : pas de carte prélevée pour un espace fermé), fin d'essai
+        // (plan Démarrage), association « cancelled ». Ses données suivent la règle de fermeture
+        // (CGU § 8, /suppression-compte § 6) : 30 jours, puis suppression.
+        if (!ak_account_close_sole_org($pdo, $close_org)) {
             app_fail(502, 'billing', 'L’abonnement de l’association n’a pas pu être arrêté : rien n’a été supprimé. Réessayez dans quelques minutes.');
         }
-        try {
-            $pdo->beginTransaction();
-            $st = function_exists('ak_org_plan_state') ? ak_org_plan_state($pdo, $close_org) : [];
-            if (!empty($st['is_trial']) || !empty($st['trial_expired'])) {
-                $free_id = (int) $pdo->query("SELECT id FROM asso_plans WHERE slug = 'demarrage' LIMIT 1")->fetchColumn();
-                if ($free_id > 0 && function_exists('ak_org_set_plan')) ak_org_set_plan($pdo, $close_org, $free_id);
-            }
-            $pdo->prepare("UPDATE organizations SET status = 'cancelled' WHERE id = ?")->execute([$close_org]);
-            $pdo->commit();
-        } catch (Throwable $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
-            throw $e;   // compte intact : l'utilisateur peut réessayer (Stripe déjà arrêté n'est pas relancé)
-        }
-        if (function_exists('ak_org_sync_plan_label')) { try { ak_org_sync_plan_label($pdo, $close_org); } catch (Throwable $e) {} }
-        try {
-            $pdo->prepare("INSERT INTO assokit_activity_log (organization_id, event_type, event_action, ip, created_at) VALUES (?, 'account', 'self_delete_close_org', ?, NOW())")
-                ->execute([$close_org, $_SERVER['REMOTE_ADDR'] ?? '']);
-        } catch (Throwable $e) {}
     }
 
     // Anonymisation immédiate, la même que sur le site (ak_account_self_anonymise, app-context.php) :
     // identité, coordonnées, mot de passe, double authentification, notes d'administrateur, contrat,
-    // dates d'adhésion, jetons de notification, liens d'agenda et de mot de passe
-    ak_account_self_anonymise($pdo, $uid);
+    // dates d'adhésion, jetons de notification, liens d'agenda et de mot de passe (déjà faite par le retrait)
+    if (!$withdrawn) ak_account_self_anonymise($pdo, $uid);
 
     try {
         $pdo->prepare("INSERT INTO assokit_activity_log (event_type, event_action, ip, created_at) VALUES ('account','self_delete', ?, NOW())")
@@ -113,9 +104,9 @@ try {
     }
     @session_destroy();
 
-    echo json_encode(['ok' => true, 'message' => $close_org > 0
-        ? 'Votre compte a été supprimé et l’espace de l’association est fermé.'
-        : 'Votre compte a été supprimé.'], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'message' => $withdrawn
+        ? 'Votre demande a été retirée et votre compte supprimé.'
+        : ($close_org > 0 ? 'Votre compte a été supprimé et l’espace de l’association est fermé.' : 'Votre compte a été supprimé.')], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[app-delete-account] ' . $e->getMessage());
     app_fail(500, 'server', 'Une erreur est survenue.');

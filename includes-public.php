@@ -118,7 +118,8 @@ if (!function_exists('pub_customer_reviews')) {
 if (!defined('AK_PUBLIC_APP_PAGES')) {
     /**
      * Pages publiques qui s'affichent dans l'application mobile (WebView, agent « AssokitApp ») :
-     * textes légaux, suppression de compte, contact. Aucune ne montre de prix.
+     * textes légaux, suppression de compte, retrait d'une demande de création d'espace (écran de
+     * connexion de l'app iPhone, « Retirer ma demande »), contact. Aucune ne montre de prix.
      * Les autres (accueil, fonctionnalités, pages « logiciel-… », guides, comparatifs, blog…)
      * annoncent le prix de la formule Assokit (ak_offer_price) : dans l'application, elles
      * renvoient vers /connexion. Règles de paiement de Google Play et règle 3.1.1 d'Apple :
@@ -127,7 +128,7 @@ if (!defined('AK_PUBLIC_APP_PAGES')) {
      */
     define('AK_PUBLIC_APP_PAGES', [
         'confidentialite.php', 'cgu.php', 'cookies.php', 'mentions-legales.php',
-        'suppression-compte.php', 'contact.php',
+        'suppression-compte.php', 'retirer-demande.php', 'contact.php',
     ]);
 }
 

@@ -34,6 +34,16 @@ try {
             . 'supprimer votre compte ferme aussi son espace Assokit. Ses données sont conservées 30 jours '
             . '(export sur demande à ' . (defined('AK_SUPPORT_EMAIL') ? AK_SUPPORT_EMAIL : 'contact@assokit.fr') . '), '
             . 'puis supprimées, sauf les pièces comptables (10 ans).';
+        // Demande d'espace de l'app iPhone refusée : la suppression la retire (ak_signup_review_withdraw)
+        try {
+            require_once __DIR__ . '/../signup-review-helpers.php';
+            $st = $pdo->prepare('SELECT * FROM organizations WHERE id = ? LIMIT 1');
+            $st->execute([ak_account_sole_org($pdo, $uid)]);
+            if (ak_signup_review_refused($pdo, $st->fetch(PDO::FETCH_ASSOC) ?: [])) {
+                $delete_note = 'Votre demande de création d’espace n’a pas été validée : supprimer votre compte la retire, '
+                    . 'et les informations transmises avec la demande sont effacées.';
+            }
+        } catch (Throwable $e) {}
     }
     if ($delete_blocked === '' && !empty($_SESSION['impersonation_target_user_id'])) {
         $delete_blocked = 'Suppression impossible pendant une incarnation.';

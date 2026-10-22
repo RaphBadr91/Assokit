@@ -37,6 +37,8 @@ CGU** — liste dans `conformite-ios.md` § C) doivent être en ligne. Sans elle
 2. Vérifier, depuis un navigateur :
    - `https://assokit.fr/suppression-compte` s'affiche sans connexion, et son § 6 parle de
      « Plus › Paramètres › Supprimer mon compte » pour le seul compte d'une association ;
+   - `https://assokit.fr/retirer-demande` s'affiche sans connexion (e-mail, mot de passe, case
+     « Je confirme le retrait de ma demande… », bouton « Retirer ma demande ») ;
    - `https://assokit.fr/confidentialite` s'affiche sans connexion ;
    - `https://assokit.fr/cgu` montre, au § 7, « Contenus inacceptables et signalements :
      tolérance zéro » et la date « Version du 19/10/2026 ».
@@ -163,8 +165,19 @@ npx eas-cli@latest submit --platform ios --latest
       page « Demande envoyée » (pas de connexion), e-mail « Demande reçue — validation sous
       48 h » au demandeur, e-mail « 🔔 Demande d'espace à valider » chez vous. « Retour à la
       connexion » ramène à l'écran de connexion natif ; s'y connecter avec le compte demandé
-      affiche « Votre espace est en cours de validation par notre équipe (48 h maximum)… ».
-      Refuser ensuite cette demande de test (bouton « Refuser » de l'e-mail).
+      affiche « Votre espace est en cours de validation par notre équipe (48 h maximum)… »,
+      avec dessous **« Retirer ma demande »**.
+- [ ] **Retrait d'une demande** (règle 5.1.1 v) : toucher « Retirer ma demande » → la page
+      « Retirer ma demande de création d'espace » s'ouvre **dans l'app** (en-tête de l'app,
+      aucun prix ni « essai »). Un mauvais mot de passe → « Email ou mot de passe incorrect. » ;
+      le bon mot de passe, la case cochée, « Retirer ma demande » → « Demande retirée » ;
+      e-mail « Votre demande a été retirée » au demandeur ; chez vous, notification « Demande
+      retirée par le demandeur : … », l'association apparaît « ↩ Retirée » dans le cockpit et
+      ne compte plus dans « à valider » ; les boutons Valider / Refuser de l'e-mail d'alerte
+      affichent « Demande retirée ». « Retour à la connexion » ramène à l'écran natif ; se
+      reconnecter avec ce compte → « Email ou mot de passe incorrect. ».
+      Facultatif : une seconde demande, refusée (bouton « Refuser » de l'e-mail) ; s'y connecter
+      affiche « Demande non validée » avec « Retirer ma demande » : même retrait.
 - [ ] **Connexion** avec `admin@demo-f.assokit.fr` / `DemoFormation2026!` : l'accueil
       ressemble à `captures-6.9/01-accueil.png` (bande vert foncé sous l'heure), la barre
       d'onglets reste au-dessus de la barre d'accueil de l'iPhone.
@@ -186,7 +199,7 @@ npx eas-cli@latest submit --platform ios --latest
       ne demanderait rien.
 - [ ] **Plus › Paramètres** : ni carte « Formule » ni « Essai » en haut ; rubrique
       **Fonctions IA** avec un interrupteur et la phrase qui nomme Anthropic. Tout en bas, la
-      ligne grise commence par `v1.0.1 (` et contient `2026-10-19-demande-ios` : c'est bien
+      ligne grise commence par `v1.0.1 (` et contient `2026-10-19-retrait-demande` : c'est bien
       le code de ce build.
 - [ ] **Première fonction IA** (Factures › « Analyser via IA », ou + › Scanner une facture) :
       la fenêtre **« Fonctions IA »** nomme Anthropic (États-Unis), avec « Refuser » et
@@ -321,6 +334,10 @@ We will remove it right away.
 Account deletion is in the app: Plus > Paramètres > "Supprimer mon compte (RGPD)" at the
 bottom of the screen > password > "Supprimer définitivement". Personal data is
 anonymised immediately and the user is signed out.
+An account request made in the app that is still pending (or was refused) can be
+withdrawn in the app too: sign-in screen > "Retirer ma demande" (Withdraw my request)
+> e-mail, password, confirmation box. The account is deleted and the data sent with the
+request is erased at once.
 The admin demo account is the organisation's only administrator, so the button is
 disabled with the reason shown. The member demo account membre@demo-f.assokit.fr
 (password DemoFormation2026!) shows the whole flow, but its last step is disabled
