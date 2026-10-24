@@ -2,33 +2,21 @@
 /**
  * api/app-notifications.php — Notifications de l'utilisateur pour l'ecran natif.
  * JSON, scope user. NE MODIFIE PAS le site.
+ * Chaque notification (cloche de l'association comme cloche de la plateforme) porte sa cible
+ * « target », calculée côté serveur (notification-targets.php, la même pour les notifications
+ * push) : écran natif, page du site, ou fiche de la notification. Les cibles du cockpit ne sont
+ * données qu'au Fondateur et aux super-admins. « body » : texte entier ; « date » : date lisible
+ * (« Aujourd’hui à 14 h 05 ») pour la fiche de la notification.
  */
 require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
 require_once __DIR__ . '/../platform-flags.php';
+require_once __DIR__ . '/../notification-targets.php';
 
-$ICON = ['message' => 'chatbubble', 'mention' => 'at', 'team_added' => 'people', 'step_assigned' => 'checkmark-circle', 'support' => 'help-buoy'];
+$ICON = ['message' => 'chatbubble', 'mention' => 'at', 'team_added' => 'people', 'step_assigned' => 'checkmark-circle', 'support' => 'help-buoy',
+         'signup' => 'person-add', 'grant_radar' => 'telescope', 'mairie_message' => 'chatbubbles', 'expense_report' => 'receipt'];
 // Notifications de la plateforme (cloche du cockpit fondateur)
 $PICON = ['new_org_pending' => 'business', 'new_ticket' => 'help-buoy', 'new_ticket_message' => 'help-buoy',
           'payment_received' => 'cash', 'invoice_overdue' => 'warning', 'super_admin_action' => 'shield-checkmark'];
-
-/**
- * Écran natif de l'appli fondateur correspondant au lien d'une notification plateforme :
- * ticket de support → 'fdsupport' (+ ticket_id), association à valider → 'fdorgs' ; null sinon
- * (le lien web reste dans 'link').
- */
-function platform_notif_target(array $r): ?array {
-    $url = (string) ($r['target_url'] ?? '');
-    if (preg_match('#^/super-admin/support(?:/(\d+)|\?id=(\d+))?(?:[/?\#]|$)#', $url, $m)) {
-        $tid = (int) (($m[1] ?? '') !== '' ? $m[1] : ($m[2] ?? 0));
-        return ['screen' => 'fdsupport', 'ticket_id' => $tid > 0 ? $tid : null];
-    }
-    if (($r['type'] ?? '') === 'new_org_pending' || strpos($url, '/super-admin/associations') === 0) {
-        $oid = (int) ($r['target_org_id'] ?? 0);
-        if ($oid <= 0 && preg_match('#[?&]id=(\d+)#', $url, $m)) $oid = (int) $m[1];
-        return ['screen' => 'fdorgs', 'org_id' => $oid > 0 ? $oid : null];
-    }
-    return null;
-}
 
 function nago($v) {
     $ts = strtotime((string) $v);
@@ -44,6 +32,7 @@ function nago($v) {
 try {
     $stmt = $pdo->prepare("
         SELECT n.id, n.notification_type, n.title, n.body, n.link_url, n.is_read, n.created_at,
+               n.project_id, n.message_id, n.step_id,
                u.first_name AS actor_first, u.last_name AS actor_last, u.avatar_color AS actor_color
         FROM user_notifications n
         LEFT JOIN users u ON n.actor_id = u.id
@@ -60,19 +49,25 @@ try {
     $cst->execute([$uid]);
     $unread = (int) $cst->fetchColumn();
 
+    // Ce que ce compte peut ouvrir (cockpit : Fondateur / super-admin ; agent de collectivité : le site)
+    $viewer = ak_notif_viewer($pdo, $user);
+
     $items = [];
     foreach ($rows as $r) {
         $isr = !empty($r['is_read']);
         $items[] = [
             'id'      => (int) $r['id'],
             'source'  => 'user',
+            'type'    => (string) ($r['notification_type'] ?? ''),
             'title'   => (string) ($r['title'] ?? ''),
             'body'    => (string) ($r['body'] ?? ''),
             'link'    => (string) ($r['link_url'] ?? ''),
-            'target'  => null,
+            'target'  => ak_notif_target($pdo, $r, $viewer),
+            'actor'   => trim(($r['actor_first'] ?? '') . ' ' . ($r['actor_last'] ?? '')),
             'icon'    => $ICON[$r['notification_type'] ?? ''] ?? 'notifications',
             'read'    => $isr,
             'ago'     => nago($r['created_at'] ?? null),
+            'date'    => ak_notif_date_label($r['created_at'] ?? null),
             'created_at' => (string) ($r['created_at'] ?? ''),
         ];
     }
@@ -81,8 +76,7 @@ try {
     // association à valider…), celles de la cloche du cockpit web. Identifiant préfixé « p » :
     // distinct de celui des notifications de l'association (api/app-notif-read.php le reconnaît).
     $platform_unread = 0;
-    $pf = ak_platform_flags($user ?: ['id' => $uid]) ?: [];
-    if ($uid > 0 && (app_is_founder($pdo, $user) || !empty($pf['is_super_admin']))) {
+    if ($uid > 0 && $viewer['platform']) {
         try {
             $pst = $pdo->prepare("
                 SELECT * FROM platform_notifications
@@ -96,13 +90,15 @@ try {
                     'id'          => 'p' . (int) $r['id'],
                     'platform_id' => (int) $r['id'],
                     'source'      => 'platform',
+                    'type'        => (string) ($r['type'] ?? ''),
                     'title'       => (string) ($r['title'] ?? ''),
                     'body'        => (string) ($r['message'] ?? ''),
                     'link'        => (string) ($r['target_url'] ?? ''),
-                    'target'      => platform_notif_target($r),
+                    'target'      => ak_notif_platform_target($pdo, $r),
                     'icon'        => $PICON[$r['type'] ?? ''] ?? 'notifications',
                     'read'        => !empty($r['is_read']),
                     'ago'         => nago($r['created_at'] ?? null),
+                    'date'        => ak_notif_date_label($r['created_at'] ?? null),
                     'created_at'  => (string) ($r['created_at'] ?? ''),
                 ];
             }

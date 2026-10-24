@@ -3,9 +3,13 @@
  * cron-push-notifications.php — Envoie les notifications push (Expo) vers l'app mobile.
  * A lancer regulierement (ex: toutes les 5 minutes) via cron O2switch.
  * App-only : lit user_notifications + asso_push_tokens, envoie via l'API push Expo.
+ * Données de chaque push : url (lien de la notification), notif_id (l'appli la marque lue au tap)
+ * et target, la même cible que la liste de l'appli (notification-targets.php). Push regroupée :
+ * target « notifications » (la liste).
  * NE MODIFIE PAS le site (aucune ecriture dans les tables du site).
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/notification-targets.php';
 
 // php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
 if (PHP_SAPI !== 'cli' && isset($_SERVER['REQUEST_METHOD']) && !(defined('CRON_TOKEN') && CRON_TOKEN !== '' && is_string($_GET['cron_key'] ?? null) && hash_equals((string)CRON_TOKEN, $_GET['cron_key']))) {
@@ -57,7 +61,7 @@ foreach ($tokens as $tk) {
 
     // Nouvelles notifications non lues depuis le dernier envoi
     $st = $pdo->prepare("
-        SELECT id, title, body, link_url
+        SELECT id, notification_type, title, body, link_url, created_at
         FROM user_notifications
         WHERE user_id = ? AND id > ? AND is_read = 0
         ORDER BY id ASC LIMIT 10
@@ -73,22 +77,25 @@ foreach ($tokens as $tk) {
     if ($rows) {
         $messages = [];
         if (count($rows) <= 3) {
+            // Cible calculée pour CE compte (cockpit : Fondateur / super-admin seulement)
+            $viewer = ak_notif_viewer_by_id($pdo, $uid);
             foreach ($rows as $r) {
                 $messages[] = [
                     'to'    => $tk['token'],
                     'title' => (string) ($r['title'] ?: 'Assokit'),
                     'body'  => (string) ($r['body'] ?: ''),
                     'sound' => 'default',
-                    'data'  => ['url' => (string) ($r['link_url'] ?? '')],
+                    'data'  => ak_notif_push_data($pdo, $r, $viewer),
                 ];
             }
         } else {
-            // Regroupe si beaucoup
+            // Regroupe si beaucoup : le tap ouvre la liste des notifications
             $messages[] = [
                 'to'    => $tk['token'],
                 'title' => 'Assokit',
                 'body'  => count($rows) . ' nouvelles notifications',
                 'sound' => 'default',
+                'data'  => ['url' => '/notifications', 'target' => ['screen' => 'notifications', 'label' => 'Voir les notifications']],
             ];
         }
         $resp = expo_push_send($messages);

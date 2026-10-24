@@ -2,6 +2,7 @@
 /**
  * api/app-founder-support-thread.php — Fil d'un ticket support (Fondateur, natif).
  * GET ?id=  → ticket + messages. Marque les messages de l'org comme lus côté support.
+ * ticket.org_id : l'association du ticket (bouton « Voir l’association » → sa fiche native).
  * NE MODIFIE PAS le site : dédié à l'application.
  */
 ob_start();
@@ -61,6 +62,7 @@ try {
             'id' => (int) $t['id'],
             'title' => (string) $t['title'],
             'org' => (string) ($t['org_name'] ?? '—'),
+            'org_id' => !empty($t['org_id']) && $t['org_name'] !== null ? (int) $t['org_id'] : null,
             'category' => (string) ($t['category'] ?? ''),
             'priority' => (string) ($t['priority'] ?? 'normal'),
             'status' => (string) ($t['status'] ?? 'open'),

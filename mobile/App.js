@@ -999,7 +999,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-19-retrait-demande';
+const UI_REV = '2026-10-23-notifications';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -4936,12 +4936,50 @@ function NativeFounderOrgs({ data, loading, filter, onFilter, onRefresh, onBack,
   );
 }
 
-/* Fondateur — Fiche détaillée d'une association : éditer, changer de plan, prolonger l'essai, résilier, note */
-function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit, onAction }) {
+/* Fondateur — Fiche détaillée d'une association : toutes ses informations (demande d'inscription,
+   contact, structure, formulaire, activité ; api/app-founder-org-detail.php), valider / refuser une
+   demande en attente, éditer, changer de plan, prolonger l'essai, résilier, note */
+// Lignes « libellé / valeur » d'une section de la fiche ; kind tel / mail / url : valeur cliquable
+function OdRows({ rows, onWeb }) {
+  const list = (rows || []).filter((r) => r && r.value !== undefined && r.value !== null && String(r.value) !== '');
+  if (!list.length) return null;
+  const href = (r) => r.kind === 'tel' ? 'tel:' + String(r.value).replace(/[^0-9+]/g, '')
+    : r.kind === 'mail' ? 'mailto:' + r.value : r.kind === 'url' ? String(r.value) : null;
+  return (
+    <View style={styles.odPanel}>
+      {list.map((r, i) => {
+        const h = onWeb ? href(r) : null;
+        const Row = h ? TouchableOpacity : View;
+        return (
+          <Row key={(r.key || r.label) + i} style={[styles.odKv, i > 0 && styles.odMemberBorder]} activeOpacity={0.7}
+            onPress={h ? () => onWeb(h) : undefined} accessibilityRole={h ? 'link' : undefined}>
+            <Text style={styles.odKvLbl}>{r.label}</Text>
+            <Text style={[styles.odKvVal, h ? { color: BRAND } : null]} selectable={!h}>{String(r.value)}</Text>
+          </Row>
+        );
+      })}
+    </View>
+  );
+}
+const OD_REVIEW_TONE = {
+  request:   { bg: '#FFFBEB', border: '#FDE68A', color: '#92400E', icon: 'phone-portrait-outline' },
+  pending:   { bg: '#FFFBEB', border: '#FDE68A', color: '#92400E', icon: 'hourglass-outline' },
+  rejected:  { bg: '#FEF2F2', border: '#FECACA', color: '#B91C1C', icon: 'close-circle-outline' },
+  withdrawn: { bg: '#F1F5F4', border: '#E2E8E5', color: '#5F6D66', icon: 'arrow-undo-outline' },
+};
+function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit, onAction, onWeb }) {
   const o = data ? data.org : null;
   const plans = (data && data.plans) || [];
   const members = (data && data.members) || [];
   const canNote = !!(data && data.can_note);
+  // Fiche complète (serveur récent) ; absente d'un ancien serveur : sections masquées
+  const fiche = (data && data.fiche) || [];
+  const contact = (data && data.contact) || null;
+  const signup = (data && data.signup) || null;
+  const review = (data && data.review) || null;
+  const activity = (data && data.activity) || null;
+  // Demande de l'app iPhone en attente : seuls Valider / Refuser (le serveur refuse le reste, 409)
+  const locked = !!(review && review.locked);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [plan, setPlan] = useState('');
@@ -4990,6 +5028,44 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
     : o.status === 'trial' ? 'En essai' : o.status === 'active' ? 'Active' : o.status === 'suspended' ? 'Suspendue' : o.status;
   // « Essai suspendu · fin prévue le … » : suspendue à la main pendant l'essai (trial_paused)
   const showBadge = !!o.badge && (['trial', 'expired', 'pending'].includes(o.badge_tone) || !!o.trial_paused);
+  const withdrawn = !!(review && review.withdrawn);
+  const rTone = review ? OD_REVIEW_TONE[review.state] : null;
+  const typeLbl = o.org_type === 'tpe' ? 'Entreprise' : o.org_type === 'asso' ? 'Association' : '';
+  const validate = () => Alert.alert('Valider la demande ?', review && review.is_request
+    ? 'L’essai PRO de ' + trialDays + ' jours démarre maintenant et l’administrateur reçoit l’e-mail « Votre espace Assokit est activé ».'
+    : o.name + ' pourra utiliser Assokit.',
+    [{ text: 'Annuler', style: 'cancel' }, { text: 'Valider', onPress: () => onAction(o.id, 'validate') }]);
+  const reject = () => Alert.alert('Refuser la demande ?', review && review.is_request
+    ? 'Le demandeur reçoit un e-mail poli ; l’espace reste fermé. Il pourra retirer sa demande.'
+    : o.name + ' sera refusée et suspendue.',
+    [{ text: 'Annuler', style: 'cancel' }, { text: 'Refuser', style: 'destructive', onPress: () => onAction(o.id, 'reject') }]);
+  // Sections en lecture seule
+  const signupRows = signup ? [
+    { label: 'Origine', value: signup.source_label },
+    { label: 'Demandée le', value: signup.requested },
+    { label: 'Espace ouvert le', value: signup.completed },
+    { label: 'Formule vue sur le site', value: signup.plan_choice },
+    { label: 'Demande n°', value: signup.id },
+    { label: 'Statut de la demande', value: signup.status_label },
+    { label: 'Adresse IP', value: signup.ip },
+    review && review.state === 'validated' && review.at ? { label: 'Validée le', value: review.at + (review.by ? ' par ' + review.by : '') } : null,
+    { label: 'Note', value: signup.note },
+  ] : (review && review.state === 'validated' && review.at ? [{ label: 'Validée le', value: review.at + (review.by ? ' par ' + review.by : '') }] : []);
+  const contactRows = contact ? [
+    { label: 'Nom', value: contact.name + (contact.function ? ' · ' + contact.function : '') },
+    { label: 'E-mail', value: contact.email, kind: 'mail' },
+    { label: 'Téléphone', value: contact.phone, kind: 'tel' },
+    { label: 'E-mail confirmé', value: contact.email_verified === true ? 'Oui' : contact.email_verified === false ? 'Pas encore' : '' },
+    { label: 'Dernière connexion', value: contact.last_login || (contact.user_id ? 'Jamais' : '') },
+    { label: 'Compte créé le', value: contact.account_created },
+  ] : [];
+  const activityRows = activity ? [
+    { label: 'Utilisateurs actifs', value: typeof o.nb_users === 'number' ? String(o.nb_users) : '' },
+    { label: 'Dernière activité', value: activity.last_activity || 'Aucune connexion' },
+    { label: 'Projets', value: typeof activity.nb_projects === 'number' ? String(activity.nb_projects) : '' },
+    { label: 'Application installée', value: (activity.apps || []).length ? activity.apps.join(' et ') : 'Non' },
+    activity.unpaid_nb > 0 ? { label: 'Impayés', value: activity.unpaid_nb + ' facture' + (activity.unpaid_nb > 1 ? 's' : '') + ' · ' + fmtEuro(activity.unpaid_total) } : null,
+  ] : [];
   // Prix de la formule (mêmes textes que le sélecteur : « 49,99 €/mois », « Gratuit », « Sur devis ») ; rien pendant un essai
   const curPlan = o.plan_id ? (plans.find((p) => p.id === o.plan_id) || null) : null;
   const priceTxt = o.is_trial || o.trial_expired ? ''
@@ -4997,7 +5073,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
     : (o.price_cents > 0 ? fmtEuro2(o.price_cents / 100) + '/mois' : '');
   return (
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
-      <DetailHeader title="Association" onBack={onBack} />
+      <DetailHeader title={o.org_type === 'tpe' ? 'Entreprise' : 'Association'} onBack={onBack} />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
 
@@ -5005,9 +5081,32 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
           <View style={styles.fcOrgAv}><Text style={styles.fcOrgAvTxt}>{(o.name || '?').slice(0, 2).toUpperCase()}</Text></View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.odTitle} numberOfLines={1}>{o.name}</Text>
-            <Text style={styles.odMeta}>{statusLabel} · {o.nb_users} membre{o.nb_users > 1 ? 's' : ''}{o.created ? ' · créée le ' + o.created : ''}</Text>
+            <Text style={styles.odMeta}>{typeLbl ? typeLbl + ' · ' : ''}{statusLabel} · {o.nb_users} membre{o.nb_users > 1 ? 's' : ''}{o.created ? ' · créée le ' + o.created : ''}</Text>
           </View>
         </View>
+
+        {/* Validation : demande iPhone ou association à valider (Valider / Refuser), refus, retrait */}
+        {review && rTone ? (
+          <View style={[styles.odReview, { backgroundColor: rTone.bg, borderColor: rTone.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name={rTone.icon} size={17} color={rTone.color} />
+              <Text style={[styles.odReviewTitle, { color: rTone.color }]}>{review.label}</Text>
+            </View>
+            {review.state === 'request' ? <Text style={[styles.odReviewTxt, { color: rTone.color }]}>Rien n’est actif tant que la demande n’est pas validée : l’administrateur ne peut pas se connecter, l’essai démarre à la validation.{signup && signup.requested ? ' Demandée le ' + signup.requested + '.' : ''}</Text> : null}
+            {review.state === 'withdrawn' ? <Text style={[styles.odReviewTxt, { color: rTone.color }]}>L’espace est fermé et les informations transmises ont été effacées à la demande du demandeur.</Text> : null}
+            {review.state === 'rejected' && (review.reason || review.at) ? <Text style={[styles.odReviewTxt, { color: rTone.color }]}>{review.at ? 'Le ' + review.at + '. ' : ''}{review.reason ? 'Motif : ' + review.reason : ''}</Text> : null}
+            {review.can_decide ? (
+              <View style={[styles.fcOrgActions, { marginTop: 12 }]}>
+                {busy ? <ActivityIndicator size="small" color={BRAND} style={{ paddingVertical: 6 }} /> : (
+                  <>
+                    <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActGo]} activeOpacity={0.85} onPress={validate}><Ionicons name="checkmark" size={15} color="#fff" /><Text style={styles.fcActGoTxt}>Valider</Text></TouchableOpacity>
+                    <TouchableOpacity accessibilityRole="button" style={[styles.fcAct, styles.fcActNo]} activeOpacity={0.85} onPress={reject}><Text style={styles.fcActNoTxt}>Refuser</Text></TouchableOpacity>
+                  </>
+                )}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Formule actuelle + essai : mêmes textes que le cockpit web (serveur) */}
         <View style={[styles.odPlanCard, { borderColor: tone.bg }]}>
@@ -5021,7 +5120,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
           </View>
           {showBadge ? <Text style={[styles.odPlanBadge, { color: tone.color }]}>{o.badge}</Text>
             : (o.badge_tone === undefined && o.trial_ends ? <Text style={[styles.odPlanBadge, { color: PLAN_TONE.trial.color }]}>ESSAI · fin {o.trial_ends}</Text> : null)}
-          {o.can_extend_trial ? (
+          {o.can_extend_trial && !locked ? (
             <View style={styles.odExtendRow}>
               {[7, 14].map((d) => (
                 <TouchableOpacity accessibilityRole="button" key={d} style={[styles.odExtendBtn, busy && { opacity: 0.5 }]} activeOpacity={0.85} disabled={!!busy} onPress={() => extend(d)}>
@@ -5033,12 +5132,44 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
           ) : null}
         </View>
 
-        <Text style={styles.blogLabel}>Nom de l'organisation</Text>
+        {signupRows.some((r) => r && r.value) ? (
+          <>
+            <Text style={[styles.blogLabel, { marginTop: 18 }]}>Demande d’inscription</Text>
+            <OdRows rows={signupRows} onWeb={onWeb} />
+          </>
+        ) : null}
+        {contactRows.some((r) => r && r.value) ? (
+          <>
+            <Text style={[styles.blogLabel, { marginTop: 18 }]}>Contact</Text>
+            <OdRows rows={contactRows} onWeb={onWeb} />
+          </>
+        ) : null}
+        {fiche.length > 0 ? (
+          <>
+            <Text style={[styles.blogLabel, { marginTop: 18 }]}>{o.org_type === 'tpe' ? 'Entreprise' : 'Structure'}</Text>
+            <OdRows rows={fiche} onWeb={onWeb} />
+          </>
+        ) : null}
+        {signup && ((signup.details || []).length > 0 || signup.notes) ? (
+          <>
+            <Text style={[styles.blogLabel, { marginTop: 18 }]}>Formulaire d’inscription</Text>
+            {(signup.details || []).length > 0 ? <OdRows rows={signup.details} /> : null}
+            {signup.notes ? <View style={[styles.odPanel, { paddingVertical: 12 }]}><Text style={styles.odKvVal} selectable>{signup.notes}</Text></View> : null}
+          </>
+        ) : null}
+        {activityRows.some((r) => r && r.value) ? (
+          <>
+            <Text style={[styles.blogLabel, { marginTop: 18 }]}>Activité</Text>
+            <OdRows rows={activityRows} />
+          </>
+        ) : null}
+
+        <Text style={[styles.blogLabel, { marginTop: 22 }]}>Nom de l'organisation</Text>
         <TextInput style={styles.blogInput} value={name} onChangeText={setName} placeholder="Nom" placeholderTextColor="#9AA7A1" />
         <Text style={styles.blogLabel}>Email de facturation</Text>
         <TextInput style={styles.blogInput} value={email} onChangeText={setEmail} placeholder="contact@asso.fr" placeholderTextColor="#9AA7A1" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
 
-        {plans.length > 0 && (
+        {plans.length > 0 && !locked && !withdrawn && (
           <>
             <Text style={styles.blogLabel}>Formule</Text>
             {o.plan_known === false && o.plan ? (
@@ -5071,7 +5202,8 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
           {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>Enregistrer</Text></>}
         </TouchableOpacity>
 
-        {/* Actions rapides */}
+        {/* Actions rapides (aucune pendant une demande iPhone en attente : Valider / Refuser ci-dessus) */}
+        {!locked ? (
         <View style={styles.odActions}>
           {o.status === 'suspended' ? (
             <TouchableOpacity accessibilityRole="button" style={[styles.odBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]} activeOpacity={0.85} onPress={() => confirmReactivate(o, () => onAction(o.id, 'activate'))}>
@@ -5089,6 +5221,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
             </TouchableOpacity>
           )}
         </View>
+        ) : null}
 
         {members.length > 0 && (
           <>
@@ -5099,7 +5232,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
                 <View key={m.id || i} style={[styles.odMember, i > 0 && styles.odMemberBorder]}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.odMemberName} numberOfLines={1}>{m.name}</Text>
-                    <Text style={styles.odMemberMail} numberOfLines={1}>{m.email}</Text>
+                    <Text style={styles.odMemberMail} numberOfLines={1}>{m.email}{m.last_login ? ' · vu le ' + m.last_login : ''}</Text>
                   </View>
                   {m.role === 'admin' && <View style={[styles.fcChip, { backgroundColor: '#EDE9FE' }]}><Text style={[styles.fcChipTxt, { color: '#6D28D9' }]}>Admin</Text></View>}
                   {/* Téléphone perdu : le Fondateur retire la double authentification (action reset_2fa) */}
@@ -6003,7 +6136,8 @@ function NativeFounderSupport({ data, loading, filter, onFilter, onBack, onRefre
 }
 
 /* Fondateur — Fil d'un ticket support + réponse native */
-function NativeFounderSupportThread({ data, loading, onBack, onRefresh, onReply, replyBusy }) {
+// onOpenOrg : « Voir l’association » du ticket (ticket.org_id, serveur récent) → sa fiche native
+function NativeFounderSupportThread({ data, loading, onBack, onRefresh, onReply, replyBusy, onOpenOrg }) {
   const t = data ? data.ticket : null;
   const msgs = (data && data.messages) || [];
   const [body, setBody] = useState('');
@@ -6021,6 +6155,12 @@ function NativeFounderSupportThread({ data, loading, onBack, onRefresh, onReply,
             <View style={styles.supHead}>
               <Text style={styles.supTitle}>{t.title}</Text>
               <Text style={styles.supMeta}>{t.org} · {t.category} · {t.date}</Text>
+              {t.org_id && onOpenOrg ? (
+                <TouchableOpacity accessibilityRole="button" style={[styles.dWebBtn, { marginTop: 12 }]} activeOpacity={0.85} onPress={() => onOpenOrg(t.org_id)}>
+                  <Ionicons name="business-outline" size={17} color={INK_2} />
+                  <Text style={styles.dWebBtnTxt}>Voir l’association</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
             {msgs.map((m) => (
               <View key={m.id} style={[styles.supMsgRow, m.side === 'support' ? styles.supMsgRight : styles.supMsgLeft]}>
@@ -6397,9 +6537,53 @@ function NativeStats({ data, loading, onRefresh, onBack, cockpit, cockpitLoading
   );
 }
 
+// Cible d'une notification d'après son seul lien, quand le serveur n'en donne pas (serveur d'avant
+// les cibles, notification push d'avant la mise à jour) : mêmes règles que notification-targets.php,
+// sans la base. Liens du cockpit (/super-admin…) : seulement pour le Fondateur ou un super-admin
+// (platform). null : aucune destination, la fiche de la notification s'ouvre.
+function notifLinkTarget(link, platform) {
+  const path = String(link || '').trim().replace(/^https?:\/\/(www\.)?assokit\.fr/i, '');
+  if (!path || path[0] !== '/' || path.indexOf('//') === 0) return null;
+  const q = (k) => {
+    const m = new RegExp('[?&]' + k + '=([^&#]*)').exec(path);
+    if (!m) return '';
+    try { return decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch (e) { return m[1]; }
+  };
+  if (/^\/super-admin(?:[/?#-]|$)/.test(path)) {
+    if (!platform) return null;
+    if (/^\/super-admin\/associations(?:[/?#]|$)/.test(path)) {
+      const id = Number(q('id')) || null;
+      return { screen: 'fdorgs', org_id: id, label: id ? 'Voir l’association' : 'Voir les associations' };
+    }
+    const sp = /^\/super-admin\/support(?:\/(\d+))?(?:[/?#]|$)/.exec(path);
+    if (sp) return { screen: 'fdsupport', ticket_id: Number(sp[1] || q('id')) || null, label: 'Ouvrir le ticket' };
+    if (/^\/super-admin\/?(?:[?#]|$)/.test(path)) {
+      const c = Number(q('contact')) || 0;
+      return c ? { screen: 'fdcontacts', contact_id: c, label: 'Voir la demande' } : { screen: 'founder', label: 'Ouvrir le cockpit' };
+    }
+    return { screen: 'web', path, label: 'Ouvrir dans le cockpit' };
+  }
+  if (/^\/mairie-/.test(path)) return { screen: 'web', path, label: 'Ouvrir' };
+  const pj = /^\/projet\/(\d+)(\/messages)?/.exec(path);
+  if (pj) return pj[2] ? { screen: 'web', path: '/projet/' + pj[1] + '/messages', label: 'Ouvrir la discussion du projet' } : { screen: 'project', project_id: Number(pj[1]), label: 'Voir le projet' };
+  if (/^\/messages(?:[/?#.]|$)/.test(path)) {
+    const slug = q('c'); const id = Number(q('channel')) || 0;
+    return (slug || id) ? { screen: 'channel', slug, channel_id: id || null, label: 'Ouvrir la conversation' } : { screen: 'messages', label: 'Ouvrir la messagerie' };
+  }
+  const tk = /^\/support(?:\/ticket\/(\d+)|[^#]*[?&]id=(\d+))/.exec(path);
+  if (tk) return { screen: 'ticket', ticket_id: Number(tk[1] || tk[2]), label: 'Ouvrir le ticket' };
+  if (/^\/support(?:[/?#.-]|$)/.test(path)) return { screen: 'menu', menu: 'tickets', label: 'Voir mes demandes de support' };
+  if (/^\/notifications(?:[/?#.]|$)/.test(path)) return { screen: 'notifications', label: 'Voir les notifications' };
+  // Pages jamais chargées dans l'appli (tarifs, abonnement : onShouldStartLoadWithRequest)
+  if (/^\/(tarifs|abonnement|mon-asso-plan|mon-asso-paiement|mon-asso-abonnement|mon-asso-annuler-abonnement)(?:[/?#.]|$)/i.test(path)) return null;
+  return { screen: 'web', path, label: 'Ouvrir la page' };
+}
+
 // platformWeb : notifications de la plateforme non lues (fondateur) qu'un ancien serveur ne met pas
 // dans cette liste → lien vers la cloche du cockpit web (/super-admin/notifications), qui les solde.
-function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead, onBack, platformWeb, onPlatformWeb }) {
+// Chaque notification s'ouvre (chevron) : écran natif, page du site ou, à défaut, sa fiche
+// (NativeNotifDetail) ; un appui long ouvre toujours la fiche (texte entier).
+function NativeNotifications({ data, loading, onRefresh, onPress, onDetail, onMarkAllRead, onBack, platformWeb, onPlatformWeb }) {
   const list = data ? (data.items || []) : null;
   const unread = data ? (data.unread || 0) : 0;
   return (
@@ -6425,7 +6609,9 @@ function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead,
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
           {list.map((n) => (
-            <TouchableOpacity accessibilityRole="button" key={n.id} style={[styles.notifCard, !n.read ? styles.notifUnread : null]} activeOpacity={0.85} onPress={() => onPress(n)}>
+            <TouchableOpacity accessibilityRole="button" accessibilityHint="Ouvre la notification ; appui long : son texte entier"
+              key={n.id} style={[styles.notifCard, !n.read ? styles.notifUnread : null]} activeOpacity={0.85}
+              onPress={() => onPress(n)} onLongPress={onDetail ? () => onDetail(n) : undefined}>
               <View style={[styles.notifIcon, !n.read ? { backgroundColor: '#ECFDF5' } : null]}><Ionicons name={n.icon} size={18} color={!n.read ? BRAND : '#8A968F'} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.notifTitle, !n.read ? { fontWeight: '700' } : null]} numberOfLines={2}>{n.title}</Text>
@@ -6433,10 +6619,59 @@ function NativeNotifications({ data, loading, onRefresh, onPress, onMarkAllRead,
                 <Text style={styles.notifAgo}>{n.ago}</Text>
               </View>
               {!n.read ? <View style={styles.chanDot} /> : null}
+              <Ionicons name="chevron-forward" size={16} color="#CBD5D1" style={styles.notifChevron} />
             </TouchableOpacity>
           ))}
         </ScrollView>
       )}
+    </View>
+  );
+}
+
+// Fiche d'une notification : titre et texte entiers, date ; bouton « Ouvrir » quand elle mène
+// quelque part (cible du serveur, target.open d'une fiche) ; e-mails et téléphones du texte cliquables.
+// Affichée quand aucun écran ne correspond (un appui ne reste jamais sans effet), ou par un appui long.
+const NOTIF_MAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const NOTIF_TEL_RE = /(?:\+33\s?|\b0)[1-9](?:[ .-]?\d{2}){4}\b/g;
+function NativeNotifDetail({ n, onBack, onOpen, onWeb }) {
+  if (!n) return <DetailLoading title="Notification" onBack={onBack} />;
+  const t = n.target && typeof n.target === 'object' ? n.target : null;
+  const open = !t ? null : t.screen === 'detail' ? (t.open || null) : t;
+  const text = String(n.body || '');
+  const mails = Array.from(new Set(text.match(NOTIF_MAIL_RE) || [])).slice(0, 3);
+  const tels = Array.from(new Set(text.match(NOTIF_TEL_RE) || [])).slice(0, 2);
+  return (
+    <View style={styles.detailWrap}>
+      <DetailHeader title="Notification" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.ndHead}>
+          <View style={[styles.notifIcon, { backgroundColor: '#ECFDF5' }]}><Ionicons name={n.icon || 'notifications'} size={18} color={BRAND} /></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.ndTitle} selectable>{n.title}</Text>
+            {n.date || n.ago ? <Text style={styles.ndDate}>{n.date || n.ago}</Text> : null}
+            {n.actor ? <Text style={styles.ndDate}>De {n.actor}</Text> : null}
+          </View>
+        </View>
+        {text ? <View style={styles.dCard}><Text style={styles.ndBody} selectable>{text}</Text></View> : null}
+        {t && t.note ? (
+          <View style={styles.dLockCard}>
+            <Ionicons name="information-circle-outline" size={18} color="#8A968F" />
+            <Text style={styles.dLockTxt}>{t.note}</Text>
+          </View>
+        ) : null}
+        {mails.length || tels.length ? (
+          <View style={styles.dCard}>
+            {mails.map((m) => <InfoRow key={m} icon="mail" label="Écrire" value={m} onPress={() => onWeb('mailto:' + m)} />)}
+            {tels.map((p) => <InfoRow key={p} icon="call" label="Appeler" value={p} onPress={() => onWeb('tel:' + p.replace(/[^0-9+]/g, ''))} />)}
+          </View>
+        ) : null}
+        {open ? (
+          <TouchableOpacity accessibilityRole="button" style={styles.dPrimaryBtn} activeOpacity={0.85} onPress={() => onOpen(open)}>
+            <Text style={styles.dPrimaryBtnTxt}>{open.label || 'Ouvrir'}</Text>
+            <Ionicons name="arrow-forward" size={18} color="#fff" />
+          </TouchableOpacity>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }
@@ -7280,6 +7515,9 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
 /* ================================================================== */
 /*  SHELL (WebView + nav native + accueil natif)                       */
 /* ================================================================== */
+// Dernière réponse à une notification push déjà traitée (identifiant) : une même réponse, rendue de
+// nouveau par getLastNotificationResponseAsync (nouvel abonnement, remontage), n'est jamais rejouée.
+let lastPushTap = '';
 function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, onLogout, onExitToWelcome }) {
   const webRef = useRef(null);
   const pushRegistered = useRef(false);
@@ -7298,7 +7536,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const finishLogoutRef = useRef(null);
   const loginAttempted = useRef(false);
   const authedRef = useRef(false);
-  const pendingNotifLink = useRef(null); // lien d'une notification tapee, consomme une fois authentifie
+  // Notifications : écran ouvert depuis leur liste ({ screen, id } : son « Retour » y ramène), écran
+  // d'où la liste a été ouverte ('founder' : le cockpit), tap sur une notification push en attente de
+  // la session, notification à marquer lue dès le jeton CSRF reçu, conversation à ouvrir dès la liste
+  // des canaux reçue, ticket d'où la fiche d'une association a été ouverte (son « Retour » y revient)
+  const notifReturn = useRef(null);
+  const notifsBack = useRef(null);
+  const pendingPush = useRef(null);
+  const pendingNotifRead = useRef(0);
+  const pendingChan = useRef(null);
+  const orgFromThread = useRef(0);
   const lastUrl = useRef('');
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginErr, setLoginErr] = useState('');
@@ -7386,6 +7633,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [notifs, setNotifs] = useState(null);
+  const [notifDetail, setNotifDetail] = useState(null);   // notification affichée seule (NativeNotifDetail)
   const [founderData, setFounderData] = useState(null);
   const [founderLoading, setFounderLoading] = useState(false);
   const [fdOrgs, setFdOrgs] = useState(null);
@@ -7751,6 +7999,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   }, [inject]);
   const openFdOrgs = useCallback((filter) => {
     const f = filter || 'all';
+    notifReturn.current = null;
     setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null);
     setFdOrgs(null); setFdOrgsFilter(f); setMenuScreen('fdorgs'); fetchFdOrgs(f);
   }, [clearDetail, closeForm, fetchFdOrgs]);
@@ -7761,6 +8010,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   }, [csrf, inject]);
   const fetchFdOrgDetail = useCallback((id) => { setFdOrgDetailLoading(true); inject(fetchJS('/api/app-founder-org-detail.php?id=' + id, '__akfdorgdet')); }, [inject]);
   const openFdOrgDetail = useCallback((id) => {
+    orgFromThread.current = 0;
     setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null);
     fdOrgDetailIdRef.current = id; setFdOrgDetail(null); setMenuScreen('fdorgdetail'); fetchFdOrgDetail(id);
   }, [clearDetail, closeForm, fetchFdOrgDetail]);
@@ -7828,7 +8078,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const doBlogProgram = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setBlogTopicBusy(true); inject(postJS('/api/app-founder-blog-topic.php', { action: 'add', ...payload, csrf }, '__akfdblogtopic')); }, [csrf, inject]);
   const doBlogDeleteTopic = useCallback((id) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } inject(postJS('/api/app-founder-blog-topic.php', { action: 'delete', id, csrf }, '__akfdblogtopic')); }, [csrf, inject]);
   const fetchFdSupport = useCallback((filter) => { setFdSupportLoading(true); inject(fetchJS('/api/app-founder-support.php?filter=' + encodeURIComponent(filter || 'open'), '__akfdsup')); }, [inject]);
-  const openFdSupport = useCallback((filter) => { const f = filter || 'open'; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdSupport(null); setFdSupportFilter(f); setMenuScreen('fdsupport'); fetchFdSupport(f); }, [clearDetail, closeForm, fetchFdSupport]);
+  const openFdSupport = useCallback((filter) => { const f = filter || 'open'; notifReturn.current = null; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdSupport(null); setFdSupportFilter(f); setMenuScreen('fdsupport'); fetchFdSupport(f); }, [clearDetail, closeForm, fetchFdSupport]);
   const fetchFdThread = useCallback((id) => { setFdTicketLoading(true); inject(fetchJS('/api/app-founder-support-thread.php?id=' + id, '__akfdthread')); }, [inject]);
   const openFdThread = useCallback((ticket) => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setFdTicket(null); setMenuScreen('fdthread'); fetchFdThread(ticket.id); }, [clearDetail, closeForm, fetchFdThread]);
   const doSupportReply = useCallback((ticketId, body) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdReplyBusy(true); inject(postJS('/api/app-founder-support-reply.php', { ticket_id: ticketId, body, csrf }, '__akfdreply')); }, [csrf, inject]);
@@ -7836,7 +8086,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const openFdCreateOrg = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdCreateResult(null); setFdCreateErr(''); setMenuScreen('fdcreateorg'); if (!fdPlans) fetchFdPlans(); }, [clearDetail, closeForm, fetchFdPlans, fdPlans]);
   const doCreateOrg = useCallback((payload) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdCreateBusy(true); setFdCreateErr(''); inject(postJS('/api/app-founder-create-org.php', { ...payload, csrf }, '__akfdcreate')); }, [csrf, inject]);
   const fetchFdContacts = useCallback(() => { setFdContactsLoading(true); inject(fetchJS('/api/app-founder-contacts.php', '__akfdcontacts')); }, [inject]);
-  const openFdContacts = useCallback(() => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdContacts(null); setMenuScreen('fdcontacts'); fetchFdContacts(); }, [clearDetail, closeForm, fetchFdContacts]);
+  const openFdContacts = useCallback(() => { notifReturn.current = null; setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setFdContacts(null); setMenuScreen('fdcontacts'); fetchFdContacts(); }, [clearDetail, closeForm, fetchFdContacts]);
   const fetchFdCtcThread = useCallback((id) => { setFdCtcThreadLoading(true); inject(fetchJS('/api/app-founder-contact-thread.php?id=' + id, '__akfdctcthread')); }, [inject]);
   const openFdCtcThread = useCallback((contact) => { setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setFdCtcThread(null); setMenuScreen('fdctcthread'); fetchFdCtcThread(contact.id); }, [clearDetail, closeForm, fetchFdCtcThread]);
   const doContactReply = useCallback((contactId, body) => { if (!csrf) { inject(FETCH_CSRF_JS); return; } setFdCtcReplyBusy(true); inject(postJS('/api/app-founder-contact-reply.php', { contact_id: contactId, body, csrf }, '__akfdctcreply')); }, [csrf, inject]);
@@ -7889,6 +8139,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const fetchAccount = useCallback(() => { inject(fetchJS('/api/app-account.php', '__akaccount')); }, [inject]);
 
   const openMenuScreen = useCallback((screen) => {
+    notifReturn.current = null;   // navigation ordinaire : plus de retour vers la liste des notifications
     setActive('menu'); setWebMode(false); clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(screen);
     if (screen === 'agenda') fetchEvents();
     else if (screen === 'messages') { setChannels(null); fetchChannels(); }
@@ -7955,90 +8206,170 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     if (csrf) inject(postJS('/api/app-notif-read.php', { channel_id: c.id, type: 'message', csrf }, '__aknotifread'));
   }, [fetchChanMsgs, csrf, inject]);
 
-  // --- Notifications : navigation 100% native + marquer lu ---
-  const routeNotif = useCallback((link) => {
-    const l = (link || '').toLowerCase();
-    if (!l) return;
-    // Espace collectivité (/mairie-messages, /mairie-dashboard…) : pages du site, pas d'écran natif
-    const path = String(link).replace(/^https?:\/\/(www\.)?assokit\.fr/i, '');
-    if (/^\/mairie-/i.test(path)) {
-      clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(null);
-      setWebMode(true); inject(gotoJS(path));
-      return;
-    }
-    // Fil d'un ticket (/support/ticket/42, ancien lien /support?id=42) : sa page, puis retour à la liste
-    const tk = /^\/support(?:\/ticket\/|\?id=)(\d+)/i.exec(path);
-    if (tk) { openSupportWeb('/support/ticket/' + tk[1]); return; }
-    if (l.indexOf('support') !== -1) { openMenuScreen('tickets'); return; }
-    // Discussion d'un projet (/projet/1519/messages) : c'est un projet, pas la messagerie interne
-    // (réservée aux membres : un suiveur y trouvait un écran fermé). La fiche native n'a pas le fil,
-    // on ouvre donc la page de la discussion ; les autres liens d'un projet ouvrent sa fiche.
-    const pj = /^\/projet\/(\d+)(\/messages)?/i.exec(path);
-    if (pj) {
-      clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(null);
-      if (pj[2]) { setWebMode(true); inject(gotoJS('/projet/' + pj[1] + '/messages')); return; }
-      setActive('projets'); setWebMode(false); pushDetail('project', Number(pj[1]));
-      return;
-    }
-    if (l.indexOf('/messages') !== -1) { openMenuScreen('messages'); return; }
-    if (l.indexOf('/projet') !== -1) { setMenuScreen(null); setActive('projets'); setWebMode(false); return; }
-    // par défaut : on reste dans l'app (jamais de bascule web)
-  }, [openMenuScreen, openSupportWeb, clearDetail, closeForm, inject, pushDetail]);
+  // --- Notifications : une cible → son écran (liste, notification push, « Ouvrir » de la fiche) ---
+  // La cible vient du serveur (target, notification-targets.php : mêmes règles pour la liste et les
+  // push) ; à défaut (serveur ou push d'avant la mise à jour), du lien (notifLinkTarget). Depuis la
+  // liste, l'écran ouvert y ramène (notifReturn). Un écran du cockpit n'est jamais proposé à un compte
+  // qui n'est ni Fondateur ni super-admin (le serveur ne lui en donne pas ; ses API refusent aussi).
+  const backToNotifs = useCallback(() => { openMenuScreen('notifications'); }, [openMenuScreen]);
+  const fromNotifs = (screen, id) => {
+    const r = notifReturn.current;
+    return !!r && r.screen === screen && (!r.id || !id || r.id === id);
+  };
+  // Fiche native de la notification : titre et texte entiers, date, « Ouvrir » (NativeNotifDetail)
+  const showNotifDetail = useCallback((n) => {
+    clearDetail(); closeForm(); setOpenChannel(null); setWebMode(false); setActive('menu');
+    setNotifDetail(n); setMenuScreen('notifdetail');
+  }, [clearDetail, closeForm]);
+  // Page du site dans l'appli ; depuis la liste, « Retour » y revient (leaveWebReturn)
+  const openNotifWeb = useCallback((path, back) => {
+    if (/^https?:\/\//i.test(path) && !isAssokitUrl(path)) { Linking.openURL(path).catch(() => {}); return; }
+    clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(null); setWebMode(true);
+    webReturnRef.current = back ? 'notifications' : null;
+    inject(gotoJS(String(path).replace(/^https?:\/\/(www\.)?assokit\.fr/i, '') || '/dashboard'));
+  }, [clearDetail, closeForm, inject]);
 
-  // Notification de la plateforme (fondateur, source 'platform' d'api/app-notifications.php) :
-  // écran natif du cockpit désigné par `target`. Sans cible : rien (son lien est une page du cockpit
-  // web ; routeNotif l'aurait pris pour le Support de l'association).
-  const routePlatformNotif = useCallback((t) => {
-    if (!t || typeof t !== 'object') return;
-    if (t.screen === 'fdsupport') { if (t.ticket_id) openFdThread({ id: t.ticket_id }); else openFdSupport('open'); return; }
-    if (t.screen === 'fdorgs') { if (t.org_id) openFdOrgDetail(t.org_id); else openFdOrgs('all'); }
-  }, [openFdThread, openFdSupport, openFdOrgDetail, openFdOrgs]);
+  // from : 'list' (liste ou fiche de la notification : Retour = la liste) | 'push'. false : cible inconnue.
+  const openNotifTarget = useCallback((t, from) => {
+    if (!t || typeof t !== 'object') return false;
+    const back = from === 'list';
+    const mark = (screen, id) => { if (back) notifReturn.current = { screen, id: id || 0 }; };
+    // Fiche native par-dessus la liste (son Retour y ramène) ; depuis une push, par-dessus l'onglet
+    const pushOver = (type, id, tab) => {
+      clearDetail(); closeForm(); setOpenChannel(null); setWebMode(false);
+      if (back) { setActive('menu'); setMenuScreen('notifications'); } else { setMenuScreen(null); setActive(tab); }
+      pushDetail(type, id);
+    };
+    switch (t.screen) {
+      case 'fdorgs':
+        if (t.org_id) { openFdOrgDetail(Number(t.org_id)); mark('fdorgdetail', Number(t.org_id)); } else { openFdOrgs('all'); mark('fdorgs'); }
+        return true;
+      case 'fdsupport':
+        if (t.ticket_id) { openFdThread({ id: Number(t.ticket_id) }); mark('fdthread', Number(t.ticket_id)); } else { openFdSupport('open'); mark('fdsupport'); }
+        return true;
+      case 'fdcontacts':
+        if (t.contact_id) { openFdCtcThread({ id: Number(t.contact_id) }); mark('fdctcthread', Number(t.contact_id)); } else { openFdContacts(); mark('fdcontacts'); }
+        return true;
+      case 'founder': openMenuScreen('founder'); return true;
+      case 'project': if (!t.project_id) return false; pushOver('project', Number(t.project_id), 'projets'); return true;
+      case 'item': if (!t.kind || !t.id) return false; pushOver(String(t.kind), Number(t.id), 'menu'); return true;
+      case 'channel':
+        // Conversation du canal ; nom inconnu (lien seul) : ouverte dès la liste des canaux reçue (__akchannels)
+        openMenuScreen('messages'); mark('messages');
+        if (t.channel_id && t.name) { pendingChan.current = null; openChannelFn({ id: Number(t.channel_id), name: String(t.name), slug: String(t.slug || '') }); }
+        else pendingChan.current = { slug: String(t.slug || ''), id: Number(t.channel_id) || 0 };
+        return true;
+      case 'messages': openMenuScreen('messages'); mark('messages'); return true;
+      case 'notifications': openMenuScreen('notifications'); return true;
+      case 'menu': if (!t.menu) return false; openMenuScreen(String(t.menu)); mark(String(t.menu)); return true;
+      case 'tab': clearDetail(); closeForm(); setOpenChannel(null); setMenuScreen(null); setWebMode(false); setActive(String(t.tab || 'accueil')); return true;
+      case 'ticket':
+        if (!t.ticket_id) return false;
+        openSupportWeb('/support/ticket/' + Number(t.ticket_id));
+        if (back) webReturnRef.current = 'notifications';
+        return true;
+      case 'web': if (!t.path) return false; openNotifWeb(String(t.path), back); return true;
+      default: return false;
+    }
+  }, [openFdOrgDetail, openFdOrgs, openFdThread, openFdSupport, openFdCtcThread, openFdContacts, openMenuScreen, openChannelFn, openSupportWeb, openNotifWeb, pushDetail, clearDetail, closeForm]);
 
-  // Tap sur une notification push : router vers le bon ecran (le token etait enregistre
-  // mais aucun listener ne consommait la reponse -> le tap n'ouvrait rien).
+  // Une notification (liste ou push) : l'écran de sa cible, sinon sa fiche — jamais rien
+  const openNotif = useCallback((n, from) => {
+    if (!n) return;
+    const k = kpiRef.current;
+    const platform = !!(k && (k.is_founder || k.is_super_admin)) || n.source === 'platform';
+    const t = n.target && typeof n.target === 'object' ? n.target : notifLinkTarget(n.link, platform);
+    if (t && t.screen !== 'detail' && openNotifTarget(t, from)) return;
+    showNotifDetail({ ...n, target: t });
+  }, [openNotifTarget, showNotifDetail]);
+
+  // Marquer lue (id « p<N> » d'une notification de la plateforme : reconnu par api/app-notif-read.php) ;
+  // sans jeton CSRF encore : dès qu'il arrive
+  const markNotifRead = useCallback((id) => {
+    if (!id) return;
+    if (csrf) inject(postJS('/api/app-notif-read.php', { id, csrf }, '__aknotifread'));
+    else { pendingNotifRead.current = id; inject(FETCH_CSRF_JS); }
+  }, [csrf, inject]);
+  useEffect(() => {
+    if (!csrf || !pendingNotifRead.current) return;
+    const id = pendingNotifRead.current;
+    pendingNotifRead.current = 0;
+    inject(postJS('/api/app-notif-read.php', { id, csrf }, '__aknotifread'));
+  }, [csrf, inject]);
+
+  // Tap sur une notification push : le même routeur que la liste. Données (cron-push-notifications.php) :
+  // url, notif_id (marquée lue ici) et target ; une push d'avant la mise à jour n'a que url (ou link).
+  // Un seul abonnement : le routeur est lu par une référence (pushRouteRef) ; une réponse n'est traitée
+  // qu'une fois (lastPushTap), même rendue de nouveau par getLastNotificationResponseAsync.
+  const pushRouteRef = useRef(null);
   useEffect(() => {
     const consume = (resp) => {
-      const link = resp?.notification?.request?.content?.data?.link
-        || resp?.notification?.request?.content?.data?.url || '';
-      if (!link) return;
-      if (authedRef.current) routeNotif(link);
-      else pendingNotifLink.current = link; // sera consomme une fois authentifie
+      const req = resp && resp.notification && resp.notification.request;
+      const content = (req && req.content) || {};
+      const data = content.data || {};
+      const ident = (req && req.identifier) || '';
+      if (ident && ident === lastPushTap) return;
+      if (ident) lastPushTap = ident;
+      const target = data.target && typeof data.target === 'object' ? data.target : null;
+      const link = String(data.link || data.url || '');
+      if (!target && !link) return;
+      // Le Fondateur n'atterrit plus sur son cockpit par-dessus l'écran de la notification
+      founderInit.current = true;
+      pendingPush.current = { id: Number(data.notif_id) || 0, link, target, title: String(content.title || ''), body: String(content.body || '') };
+      if (pushRouteRef.current) pushRouteRef.current();
+      try { if (Notifications.clearLastNotificationResponseAsync) Notifications.clearLastNotificationResponseAsync().catch(() => {}); } catch (e) {}
     };
     const sub = Notifications.addNotificationResponseReceivedListener(consume);
     // App demarree a froid par un tap sur notification :
     Notifications.getLastNotificationResponseAsync().then((r) => { if (r) consume(r); }).catch(() => {});
     return () => { try { sub.remove(); } catch (e) {} };
-  }, [routeNotif]);
+  }, []);
 
-  // Des que la session est prete, on consomme un eventuel lien de notification en attente.
-  useEffect(() => {
-    if (authed && pendingNotifLink.current) {
-      const link = pendingNotifLink.current;
-      pendingNotifLink.current = null;
-      routeNotif(link);
+  // Push en attente : ouverte dès la session prête ; un lien du cockpit sans cible (push d'avant la
+  // mise à jour) attend aussi l'accueil, qui dit si le compte est Fondateur
+  const runPendingPush = useCallback(() => {
+    const p = pendingPush.current;
+    if (!p || !authed) return;
+    if (!p.target && /^(https?:\/\/(www\.)?assokit\.fr)?\/super-admin/i.test(p.link) && !kpiRef.current) return;
+    pendingPush.current = null;
+    if (p.id) markNotifRead(p.id);
+    openNotif({ id: p.id, source: 'user', link: p.link, target: p.target, title: p.title, body: p.body, icon: 'notifications', read: true }, 'push');
+  }, [authed, markNotifRead, openNotif]);
+  useEffect(() => { pushRouteRef.current = runPendingPush; }, [runPendingPush]);
+  useEffect(() => { if (authed) runPendingPush(); }, [authed, kpi, runPendingPush]);
+
+  // Lue : compteurs mis à jour tout de suite (la réponse __aknotifread apporte les vrais)
+  const readNotif = useCallback((n) => {
+    if (!n || n.read) return;
+    const isPlatform = n.source === 'platform';
+    setNotifs((prev) => prev ? { ...prev, unread: Math.max(0, (prev.unread || 0) - 1), platform_unread: isPlatform && prev.platform_unread > 0 ? prev.platform_unread - 1 : prev.platform_unread, items: (prev.items || []).map((it) => it.id === n.id ? { ...it, read: true } : it) } : prev);
+    if (isPlatform) {
+      // Notification de la plateforme : comptée dans notif_unread (et platform_unread) seulement
+      setKpi((k) => k ? { ...k, notif_unread: Math.max(0, (k.notif_unread || 0) - 1), platform_unread: Math.max(0, (k.platform_unread || 0) - 1) } : k);
+    } else {
+      // Badge Messages (msg_unread) : notifications de message et de mention seulement, comme le serveur
+      // (une inscription, le radar ou un projet ne le changent pas ; le badge Support compte les tickets)
+      const isMsg = n.type ? (n.type === 'message' || n.type === 'mention') : (n.icon === 'chatbubble' || n.icon === 'at');
+      setKpi((k) => k ? { ...k, notif_unread: Math.max(0, (k.notif_unread || 0) - 1), msg_unread: isMsg ? Math.max(0, (k.msg_unread || 0) - 1) : k.msg_unread } : k);
     }
-  }, [authed, routeNotif]);
+    markNotifRead(n.id);
+  }, [markNotifRead]);
 
   const onNotifPress = useCallback((n) => {
     if (!n) return;
-    const isPlatform = n.source === 'platform';
-    if (!n.read) {
-      setNotifs((prev) => prev ? { ...prev, unread: Math.max(0, (prev.unread || 0) - 1), platform_unread: isPlatform && prev.platform_unread > 0 ? prev.platform_unread - 1 : prev.platform_unread, items: (prev.items || []).map((it) => it.id === n.id ? { ...it, read: true } : it) } : prev);
-      if (isPlatform) {
-        // Notification de la plateforme : comptée dans notif_unread (et platform_unread) seulement
-        setKpi((k) => k ? { ...k, notif_unread: Math.max(0, (k.notif_unread || 0) - 1), platform_unread: Math.max(0, (k.platform_unread || 0) - 1) } : k);
-      } else {
-        // Le badge Support compte les tickets dont une réponse n'est pas lue (comme le site) : lire
-        // une notification ne le change pas, seul le fil du ticket ouvert le fait.
-        const isSupport = ((n.link || '').toLowerCase().indexOf('support') !== -1) || n.icon === 'help-buoy';
-        setKpi((k) => k ? { ...k, notif_unread: Math.max(0, (k.notif_unread || 0) - 1), msg_unread: !isSupport ? Math.max(0, (k.msg_unread || 0) - 1) : k.msg_unread } : k);
-      }
-      // id « p<N> » d'une notification de la plateforme : reconnu par api/app-notif-read.php
-      if (csrf) inject(postJS('/api/app-notif-read.php', { id: n.id, csrf }, '__aknotifread'));
-    }
-    if (isPlatform) routePlatformNotif(n.target);
-    else routeNotif(n.link);
-  }, [csrf, inject, routeNotif, routePlatformNotif]);
+    readNotif(n);
+    openNotif(n, 'list');
+  }, [readNotif, openNotif]);
+
+  // Retour de la fiche d'une association : au ticket d'où elle a été ouverte, à la liste des
+  // notifications, sinon à la liste des associations
+  const orgDetailBack = () => {
+    if (orgFromThread.current) { const id = orgFromThread.current; orgFromThread.current = 0; openFdThread({ id }); return; }
+    if (fromNotifs('fdorgdetail', fdOrgDetailIdRef.current)) { backToNotifs(); return; }
+    openFdOrgs(fdOrgsFilter);
+  };
+  // Retour d'un écran du menu : vers la liste des notifications s'il a été ouvert depuis elle
+  const menuBack = () => { if (fromNotifs(menuScreen)) backToNotifs(); else setMenuScreen(null); };
 
   const onMarkAllRead = useCallback(() => {
     // Liste avec les notifications de la plateforme (platform_unread présent) : « all » les solde aussi
@@ -8097,7 +8428,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
   const onMoreNav = useCallback((nav) => {
     if (!nav) return;
     if (nav.founder) { if (nav.founder === 'cockpit') openMenuScreen('founder'); else onFounderTile(nav.founder); return; }
-    if (nav.screen) { openMenuScreen(nav.screen); return; }
+    if (nav.screen) { if (nav.screen === 'notifications') notifsBack.current = null; openMenuScreen(nav.screen); return; }
     if (nav.tab) {
       clearDetail(); closeForm(); setMenuScreen(null);
       if (nav.tab === 'factures') { setActive('factures'); setWebMode(false); return; }
@@ -8295,6 +8626,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
       if (webMode && leaveWebReturn()) return true;
       if (webMode && canGoBack && webRef.current) { webRef.current.goBack(); return true; }
       if (webMode) { setWebMode(false); return true; }
+      // Notifications : fiche → liste ; écran ouvert depuis la liste → la liste ; liste ouverte du cockpit → le cockpit
+      if (active === 'menu' && menuScreen === 'notifdetail') { setMenuScreen('notifications'); return true; }
+      if (active === 'menu' && menuScreen === 'fdorgdetail') { orgDetailBack(); return true; }
+      if (active === 'menu' && menuScreen && fromNotifs(menuScreen)) { backToNotifs(); return true; }
+      if (active === 'menu' && menuScreen === 'notifications' && notifsBack.current === 'founder') { openMenuScreen('founder'); return true; }
       if (active === 'menu' && openChannel) { setOpenChannel(null); return true; }
       if (active === 'menu' && menuScreen === 'mail' && mailOpenId) { mailClose(); return true; }
       // Écrans du cockpit Fondateur (fd…) : retour vers le cockpit, comme les boutons de l'interface
@@ -8306,7 +8642,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
     // eslint-disable-next-line
-  }, [canGoBack, quickOpen, active, webMode, stack.length, form, submitting, menuScreen, openChannel, mailOpenId, mailClose, popDetail, closeForm, onExitToWelcome, authPage, leaveWebReturn]);
+  }, [canGoBack, quickOpen, active, webMode, stack.length, form, submitting, menuScreen, openChannel, mailOpenId, mailClose, popDetail, closeForm, onExitToWelcome, authPage, leaveWebReturn, backToNotifs, openMenuScreen, openFdThread, openFdOrgs, fdOrgsFilter]);
 
   // Quitte l'étape web de la connexion (2FA abandonnée) : retour à l'écran de connexion natif
   const leaveAuthPage = () => {
@@ -8594,7 +8930,17 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         const em = (pendingCreds.current && pendingCreds.current.email) || (autoCreds && autoCreds.email) || '';
         if (em) pendingCreds.current = { email: em, password: msg.__aknewpw.password };
       }
-      if (msg && msg.__akchannels) { setChannels(msg.__akchannels); setChannelsLoading(false); }
+      if (msg && msg.__akchannels) {
+        setChannels(msg.__akchannels); setChannelsLoading(false);
+        // Conversation demandée par une notification (lien ?c=<slug>, ancien ?channel=<id>) ; introuvable
+        // (canal privé, archivé) : la liste des canaux reste affichée
+        const pc = pendingChan.current;
+        if (pc) {
+          pendingChan.current = null;
+          const c = ((msg.__akchannels && msg.__akchannels.channels) || []).find((x) => (pc.id && x.id === pc.id) || (pc.slug && x.slug === pc.slug));
+          if (c) openChannelFn(c);
+        }
+      }
       if (msg && msg.__akchanmsgs) { setChanMsgs(msg.__akchanmsgs); setChanLoading(false); }
       if (msg && msg.__akmail) {
         const d = msg.__akmail;
@@ -8650,7 +8996,14 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           else if (r.notice) Alert.alert('Association réactivée', r.notice);
         } else { Alert.alert('Action impossible', r.message || 'Réessaie dans un instant.'); }
       }
-      if (msg && msg.__akfdorgdet) { setFdOrgDetailLoading(false); if (msg.__akfdorgdet.ok === false) setMenuScreen('founder'); else setFdOrgDetail(msg.__akfdorgdet); }
+      if (msg && msg.__akfdorgdet) {
+        const d = msg.__akfdorgdet;
+        setFdOrgDetailLoading(false);
+        // Échec (association supprimée, accès refusé : le message du serveur s'affiche) : retour d'où
+        // l'on venait ; réponse d'une fiche quittée entre-temps pour une autre : ignorée
+        if (d.ok === false) { if (fromNotifs('fdorgdetail')) backToNotifs(); else setMenuScreen('founder'); }
+        else if (!(d.org && fdOrgDetailIdRef.current && Number(d.org.id) !== Number(fdOrgDetailIdRef.current))) setFdOrgDetail(d);
+      }
       if (msg && msg.__akfdorgedit) {
         setFdOrgEditBusy(false);
         const r = msg.__akfdorgedit;
@@ -8735,7 +9088,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         else { Alert.alert('Programmation', (r && r.message) || 'Action impossible.'); }
       }
       if (msg && msg.__akfdsup) { setFdSupport(msg.__akfdsup); setFdSupportLoading(false); }
-      if (msg && msg.__akfdthread) { setFdTicketLoading(false); if (msg.__akfdthread.ok === false) setMenuScreen('founder'); else setFdTicket(msg.__akfdthread); }
+      if (msg && msg.__akfdthread) { setFdTicketLoading(false); if (msg.__akfdthread.ok === false) { if (fromNotifs('fdthread')) backToNotifs(); else setMenuScreen('founder'); } else setFdTicket(msg.__akfdthread); }
       if (msg && msg.__akfdreply) {
         setFdReplyBusy(false);
         const r = msg.__akfdreply;
@@ -8743,7 +9096,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         else { Alert.alert('Support', (r && r.message) || 'Envoi impossible.'); }
       }
       if (msg && msg.__akfdcontacts) { setFdContacts(msg.__akfdcontacts); setFdContactsLoading(false); }
-      if (msg && msg.__akfdctcthread) { setFdCtcThreadLoading(false); if (msg.__akfdctcthread.ok === false) setMenuScreen('founder'); else setFdCtcThread(msg.__akfdctcthread); }
+      if (msg && msg.__akfdctcthread) { setFdCtcThreadLoading(false); if (msg.__akfdctcthread.ok === false) { if (fromNotifs('fdctcthread')) backToNotifs(); else setMenuScreen('founder'); } else setFdCtcThread(msg.__akfdctcthread); }
       if (msg && msg.__akfdctcreply) {
         setFdCtcReplyBusy(false);
         const r = msg.__akfdctcreply;
@@ -8977,6 +9330,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
 
   const goTab = (tab) => {
     if (tab.key === 'add') { if (canQuickCreate) setQuickOpen(true); return; }
+    notifReturn.current = null;
     clearDetail();
     closeForm();
     if (tab.key === 'menu') { setActive('menu'); setWebMode(false); setMenuScreen(null); setOpenChannel(null); return; }
@@ -9184,11 +9538,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           <View style={styles.homeOverlay}>
             {isMairie ? (
               <NativeMairieHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} notifCount={notifCount}
-                onNotifs={() => openMenuScreen('notifications')} onAccount={() => openMenuScreen('settings')} onLogout={doLogout}
+                onNotifs={() => { notifsBack.current = null; openMenuScreen('notifications'); }} onAccount={() => openMenuScreen('settings')} onLogout={doLogout}
                 onOpenSpace={(p) => { clearDetail(); closeForm(); setMenuScreen(null); setWebMode(true); inject(gotoJS(/^\/[A-Za-z0-9]/.test(String(p)) ? p : '/mairie-dashboard')); }} />
             ) : (
               <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} profile={profile} error={kpiError}
-                onQuick={onQuick} quickActions={QUICK_ACTIONS} onNotifs={() => openMenuScreen('notifications')}
+                onQuick={onQuick} quickActions={QUICK_ACTIONS} onNotifs={() => { notifsBack.current = null; openMenuScreen('notifications'); }}
                 notifCount={notifCount}
                 showMail={!!kpi && (kpi.mail_access === true || (kpi.mail_access === undefined && canManageOrg))}
                 onMail={() => openMenuScreen('mail')} />
@@ -9263,28 +9617,32 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           <View style={styles.homeOverlay}>
             {menuScreen === 'agenda' ? (
               <NativeAgenda data={events} loading={eventsLoading} onRefresh={fetchEvents} onOpen={(id) => pushDetail('event', id)}
-                onNew={canCreateEvent ? () => openForm('event') : undefined} onBack={() => setMenuScreen(null)}
+                onNew={canCreateEvent ? () => openForm('event') : undefined} onBack={menuBack}
                 onMore={fetchEventsMore} moreLoading={eventsMoreLoading} />
             ) : menuScreen === 'subinvoices' ? (
-              <NativeSubInvoices data={subInv} loading={subInvLoading} onRefresh={fetchSubInv} onBack={() => setMenuScreen(null)} onWeb={openWeb} trial={orgTrialInfo(kpi)} />
+              <NativeSubInvoices data={subInv} loading={subInvLoading} onRefresh={fetchSubInv} onBack={menuBack} onWeb={openWeb} trial={orgTrialInfo(kpi)} />
             ) : menuScreen === 'devis' ? (
-              <NativeQuotes data={quotes} loading={quotesLoading} onRefresh={fetchQuotes} onOpen={(id) => pushDetail('quote', id)} onNew={canBillQuotes ? () => openForm('quote') : undefined} onBack={() => setMenuScreen(null)} />
+              <NativeQuotes data={quotes} loading={quotesLoading} onRefresh={fetchQuotes} onOpen={(id) => pushDetail('quote', id)} onNew={canBillQuotes ? () => openForm('quote') : undefined} onBack={menuBack} />
             ) : menuScreen === 'stats' ? (
-              <NativeStats data={stats} loading={statsLoading} onRefresh={fetchStats} onBack={() => setMenuScreen(null)}
+              <NativeStats data={stats} loading={statsLoading} onRefresh={fetchStats} onBack={menuBack}
                 cockpit={statsCockpit} cockpitLoading={statsCockpitLoading} onCockpit={() => withAi('analyser vos chiffres', onCockpit)} aiOff={aiOff} />
             ) : menuScreen === 'members' ? (
               <NativePeople mode="members" data={people} loading={peopleLoading} onRefresh={() => fetchPeople(false)}
-                onOpen={(id) => pushDetail('member', id)} onNew={canAddMember ? () => openForm('member') : undefined} onBack={() => setMenuScreen(null)} />
+                onOpen={(id) => pushDetail('member', id)} onNew={canAddMember ? () => openForm('member') : undefined} onBack={menuBack} />
             ) : menuScreen === 'clients' ? (
               <NativePeople mode="clients" data={people} loading={peopleLoading} onRefresh={() => fetchPeople(true)}
-                onOpen={(id) => pushDetail('client', id)} onNew={canBill ? () => openForm('client') : undefined} onBack={() => setMenuScreen(null)} />
+                onOpen={(id) => pushDetail('client', id)} onNew={canBill ? () => openForm('client') : undefined} onBack={menuBack} />
             ) : menuScreen === 'notifications' ? (
               <NativeNotifications data={notifs} loading={notifsLoading} onRefresh={fetchNotifs} onPress={onNotifPress} onMarkAllRead={onMarkAllRead}
-                onBack={() => setMenuScreen(null)}
+                onDetail={(n) => { readNotif(n); showNotifDetail(n); }}
+                onBack={() => { if (notifsBack.current === 'founder') openMenuScreen('founder'); else setMenuScreen(null); }}
                 platformWeb={notifs && notifs.ok !== false && notifs.platform_unread === undefined && kpi ? (kpi.platform_unread || 0) : 0}
                 onPlatformWeb={() => openWeb('/super-admin/notifications')} />
+            ) : menuScreen === 'notifdetail' ? (
+              <NativeNotifDetail n={notifDetail} onBack={() => setMenuScreen('notifications')} onWeb={openWeb}
+                onOpen={(t) => { if (!openNotifTarget(t, 'list')) Alert.alert('Notification', 'Cet élément ne s’ouvre pas dans l’application.'); }} />
             ) : menuScreen === 'cotisations' ? (
-              <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={() => setMenuScreen(null)}
+              <NativeCotisations data={coti} loading={cotiLoading} onRefresh={fetchCoti} onBack={menuBack}
                 onNew={() => openForm('payment')} onNewCampaign={() => openForm('campaign')} canManage={canManageOrg} onOpen={(id) => pushDetail('cotisation', id)} />
             ) : menuScreen === 'organization' ? (
               <NativeOrgSettings data={orgSettings} onBack={() => openMenuScreen('settings')} onSubmit={saveOrgSettings}
@@ -9293,28 +9651,28 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeSecurity onBack={() => openMenuScreen('settings')} onSubmit={changePassword}
                 busy={pwBusy} error={pwErr} done={pwDone} />
             ) : menuScreen === 'dashboard' ? (
-              <NativeDashboard data={dashData} loading={dashLoading} onRefresh={fetchDash} onBack={() => setMenuScreen(null)}
+              <NativeDashboard data={dashData} loading={dashLoading} onRefresh={fetchDash} onBack={menuBack}
                 onOpenProject={(id) => pushDetail('project', id)} onOpenGrant={(id) => pushDetail('grant', id)} onGoto={onGoto} />
             ) : menuScreen === 'subventions' ? (
-              <NativeGrants data={grantsData} loading={grantsLoading} onRefresh={fetchGrants} onBack={() => setMenuScreen(null)}
+              <NativeGrants data={grantsData} loading={grantsLoading} onRefresh={fetchGrants} onBack={menuBack}
                 onNew={() => openForm('grant')} canManage={canManageOrg} onOpen={(id) => pushDetail('grant', id)} />
             ) : menuScreen === 'assemblies' ? (
-              <GatedList title="Assemblées" data={assemblies} loading={secLoading} onRefresh={fetchAssemblies} onBack={() => setMenuScreen(null)}
+              <GatedList title="Assemblées" data={assemblies} loading={secLoading} onRefresh={fetchAssemblies} onBack={menuBack}
                 itemsKey="items" emptyIcon="clipboard-outline" emptyLabel="Aucune assemblée"
                 renderStats={(s) => (<View style={styles.miniKpiRow}><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.total || 0}</Text><Text style={styles.miniKpiLbl}>Total</Text></View><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.upcoming || 0}</Text><Text style={styles.miniKpiLbl}>À venir</Text></View></View>)}
                 renderItem={(it) => (<StatusItemCard key={it.id} title={it.title} sub={[it.type, it.date, it.location].filter(Boolean).join(' · ')} statusLabel={it.status_label} kind={it.status_kind} />)} />
             ) : menuScreen === 'attendance' ? (
-              <GatedList title="Émargement" data={attendance} loading={secLoading} onRefresh={fetchAttendance} onBack={() => setMenuScreen(null)}
+              <GatedList title="Émargement" data={attendance} loading={secLoading} onRefresh={fetchAttendance} onBack={menuBack}
                 itemsKey="items" emptyIcon="checkbox-outline" emptyLabel="Aucune session"
                 renderStats={(s) => (<View style={styles.miniKpiRow}><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.open || 0}</Text><Text style={styles.miniKpiLbl}>Ouvertes</Text></View><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.records || 0}</Text><Text style={styles.miniKpiLbl}>Signatures</Text></View></View>)}
                 renderItem={(it) => (<StatusItemCard key={it.id} title={it.title} sub={[it.date, it.location, it.nb_signed + ' signature' + (it.nb_signed > 1 ? 's' : '')].filter(Boolean).join(' · ')} statusLabel={it.is_open ? 'Ouverte' : 'Fermée'} kind={it.is_open ? 'done' : 'off'} />)} />
             ) : menuScreen === 'broadcasts' ? (
-              <GatedList title="Communication" data={broadcasts} loading={secLoading} onRefresh={fetchBroadcasts} onBack={() => setMenuScreen(null)}
+              <GatedList title="Communication" data={broadcasts} loading={secLoading} onRefresh={fetchBroadcasts} onBack={menuBack}
                 itemsKey="items" emptyIcon="mail-outline" emptyLabel="Aucune diffusion"
                 renderStats={(s) => (<View style={styles.miniKpiRow}><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.sent || 0}</Text><Text style={styles.miniKpiLbl}>Envoyées</Text></View><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.nb || 0}</Text><Text style={styles.miniKpiLbl}>Total</Text></View></View>)}
                 renderItem={(it) => (<StatusItemCard key={it.id} title={it.subject} sub={[it.date, it.nb_sent ? it.nb_sent + ' envoyé' + (it.nb_sent > 1 ? 's' : '') : ''].filter(Boolean).join(' · ')} statusLabel={it.status_label} kind={it.status_kind} />)} />
             ) : menuScreen === 'tickets' ? (
-              <GatedList title="Support" data={tickets} loading={secLoading} onRefresh={fetchTickets} onBack={() => setMenuScreen(null)}
+              <GatedList title="Support" data={tickets} loading={secLoading} onRefresh={fetchTickets} onBack={menuBack}
                 itemsKey="items" emptyIcon="help-buoy-outline" emptyLabel="Aucun ticket"
                 renderStats={(s) => (<View style={styles.miniKpiRow}><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.open || 0}</Text><Text style={styles.miniKpiLbl}>Ouverts</Text></View><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.nb || 0}</Text><Text style={styles.miniKpiLbl}>Total</Text></View></View>)}
                 renderTop={() => (
@@ -9327,9 +9685,9 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                   statusLabel={it.status_label} kind={it.status_kind} unread={!!it.unread}
                   onPress={() => openSupportWeb('/support/ticket/' + it.id, it)} />)} />
             ) : menuScreen === 'coach' ? (
-              <NativeCoach data={coach} loading={secLoading} generating={coachGen} onGenerate={() => withAi('rédiger le bilan du coach', generateCoach)} aiOff={aiOff} onRefresh={fetchCoach} onBack={() => setMenuScreen(null)} />
+              <NativeCoach data={coach} loading={secLoading} generating={coachGen} onGenerate={() => withAi('rédiger le bilan du coach', generateCoach)} aiOff={aiOff} onRefresh={fetchCoach} onBack={menuBack} />
             ) : menuScreen === 'settings' ? (
-              <NativeSettings data={account} onBack={() => setMenuScreen(null)} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
+              <NativeSettings data={account} onBack={menuBack} onSave={saveAccount} saving={settingsBusy} error={settingsErr}
                 onLogo={uploadLogo} logoBusy={logoBusy} onDelete={deleteAccount} onWeb={openWeb} onNav={openMenuScreen}
                 onLegal={(p) => { openWeb(p); webReturnRef.current = 'settings'; }}
                 onLogout={doLogout} plan={kpi ? { label: kpi.plan_label || '', trial: orgTrialInfo(kpi) } : null}
@@ -9353,31 +9711,31 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                     mailSyncTries.current = 0; mailAct('sync', { action: 'sync' });
                   }}
                   onConnect={(url) => Linking.openURL(url)}
-                  onBack={() => setMenuScreen(null)} />
+                  onBack={menuBack} />
               )
             ) : menuScreen === 'messages' ? (
               openChannel ? (
                 <NativeChat channel={openChannel} data={chanMsgs} loading={chanLoading} sending={sendingMsg} sendResult={msgSendResult}
-                  onBack={() => { setOpenChannel(null); }} onSend={sendMessage} onRefresh={() => fetchChanMsgs(openChannel.id)}
+                  onBack={() => { if (fromNotifs('messages')) backToNotifs(); else setOpenChannel(null); }} onSend={sendMessage} onRefresh={() => fetchChanMsgs(openChannel.id)}
                   onMsgAction={msgAction} msgActBusy={msgActBusy} />
               ) : (
-                <NativeChannels data={channels} loading={channelsLoading} onRefresh={fetchChannels} onOpen={openChannelFn} onBack={() => setMenuScreen(null)} />
+                <NativeChannels data={channels} loading={channelsLoading} onRefresh={fetchChannels} onOpen={openChannelFn} onBack={menuBack} />
               )
             ) : menuScreen === 'founder' ? (
               <NativeFounder data={founderData} loading={founderLoading} onRefresh={fetchFounder}
                 onBack={() => { setMenuScreen(null); setActive('accueil'); }}
                 hasAsso={!!(kpi && kpi.org_name)} onGotoAsso={() => { setMenuScreen(null); setActive('accueil'); }}
-                onLogout={doLogout} onTile={onFounderTile} onNotifs={() => openMenuScreen('notifications')}
+                onLogout={doLogout} onTile={onFounderTile} onNotifs={() => { openMenuScreen('notifications'); notifsBack.current = 'founder'; }}
                 notifCount={notifCount} onOpenOrg={openFdOrgDetail} />
             ) : menuScreen === 'fdorgs' ? (
               <NativeFounderOrgs data={fdOrgs} loading={fdOrgsLoading} filter={fdOrgsFilter}
                 onFilter={(f) => { setFdOrgs(null); setFdOrgsFilter(f); fetchFdOrgs(f); }}
-                onRefresh={() => fetchFdOrgs(fdOrgsFilter)} onBack={() => openMenuScreen('founder')}
+                onRefresh={() => fetchFdOrgs(fdOrgsFilter)} onBack={() => (fromNotifs('fdorgs') ? backToNotifs() : openMenuScreen('founder'))}
                 onAction={doFounderAction} onOpen={openFdOrgDetail} busyId={fdBusyId} />
             ) : menuScreen === 'fdorgdetail' ? (
               <NativeFounderOrgDetail data={fdOrgDetail} loading={fdOrgDetailLoading} busy={fdOrgEditBusy}
-                onBack={() => openFdOrgs(fdOrgsFilter)} onRefresh={() => fdOrgDetailIdRef.current && fetchFdOrgDetail(fdOrgDetailIdRef.current)}
-                onEdit={doOrgEdit} onAction={(id, action, extra) => doOrgEdit({ ...(extra || {}), org_id: id, action })} />
+                onBack={orgDetailBack} onRefresh={() => fdOrgDetailIdRef.current && fetchFdOrgDetail(fdOrgDetailIdRef.current)}
+                onEdit={doOrgEdit} onAction={(id, action, extra) => doOrgEdit({ ...(extra || {}), org_id: id, action })} onWeb={openWeb} />
             ) : menuScreen === 'fdbilling' ? (
               <NativeFounderBilling data={fdBilling} loading={fdBillingLoading} filter={fdBillingFilter}
                 onFilter={(f) => { setFdBilling(null); setFdBillingFilter(f); fetchFdBilling(f); }}
@@ -9393,11 +9751,12 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             ) : menuScreen === 'fdsupport' ? (
               <NativeFounderSupport data={fdSupport} loading={fdSupportLoading} filter={fdSupportFilter}
                 onFilter={(f) => { setFdSupport(null); setFdSupportFilter(f); fetchFdSupport(f); }}
-                onRefresh={() => fetchFdSupport(fdSupportFilter)} onBack={() => openMenuScreen('founder')}
+                onRefresh={() => fetchFdSupport(fdSupportFilter)} onBack={() => (fromNotifs('fdsupport') ? backToNotifs() : openMenuScreen('founder'))}
                 onOpen={(t) => openFdThread(t)} />
             ) : menuScreen === 'fdthread' ? (
               <NativeFounderSupportThread data={fdTicket} loading={fdTicketLoading} onRefresh={() => fdTicket && fetchFdThread(fdTicket.ticket.id)}
-                onBack={() => openFdSupport(fdSupportFilter)} onReply={doSupportReply} replyBusy={fdReplyBusy} />
+                onBack={() => (fromNotifs('fdthread') ? backToNotifs() : openFdSupport(fdSupportFilter))} onReply={doSupportReply} replyBusy={fdReplyBusy}
+                onOpenOrg={(oid) => { const tid = fdTicket && fdTicket.ticket ? fdTicket.ticket.id : 0; openFdOrgDetail(oid); orgFromThread.current = tid; }} />
             ) : menuScreen === 'fdplans' ? (
               <NativeFounderPlans data={fdPlansM} loading={fdPlansMLoading} busy={fdPlansMBusy}
                 onRefresh={fetchFdPlansM} onBack={() => openMenuScreen('founder')}
@@ -9431,10 +9790,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 onCopy={(txt) => Alert.alert('Identifiants', txt + '\n\n(Maintiens appuyé sur le texte pour le copier.)')}
                 onDone={() => { setFdCreateResult(null); openFdOrgs('all'); }} />
             ) : menuScreen === 'fdcontacts' ? (
-              <NativeFounderContacts data={fdContacts} loading={fdContactsLoading} onRefresh={fetchFdContacts} onBack={() => openMenuScreen('founder')} onOpen={openFdCtcThread} />
+              <NativeFounderContacts data={fdContacts} loading={fdContactsLoading} onRefresh={fetchFdContacts} onBack={() => (fromNotifs('fdcontacts') ? backToNotifs() : openMenuScreen('founder'))} onOpen={openFdCtcThread} />
             ) : menuScreen === 'fdctcthread' ? (
               <NativeFounderContactThread data={fdCtcThread} loading={fdCtcThreadLoading} onRefresh={() => fdCtcThread && fetchFdCtcThread(fdCtcThread.contact.id)}
-                onBack={openFdContacts} onReply={doContactReply} replyBusy={fdCtcReplyBusy} />
+                onBack={() => (fromNotifs('fdctcthread') ? backToNotifs() : openFdContacts())} onReply={doContactReply} replyBusy={fdCtcReplyBusy} />
             ) : (
               <NativeMore
                 orgName={kpi && kpi.org_name}
@@ -10156,6 +10515,11 @@ const styles = StyleSheet.create({
   notifTitle: { fontSize: 14, fontWeight: '600', color: INK, lineHeight: 19 },
   notifBody: { fontSize: 12.5, color: '#5F6D66', marginTop: 2 },
   notifAgo: { fontSize: 11, color: MUTE, marginTop: 4 },
+  notifChevron: { alignSelf: 'center', marginLeft: 6 },
+  ndHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 2 },
+  ndTitle: { fontSize: 17, fontWeight: '800', color: INK, lineHeight: 23 },
+  ndDate: { fontSize: 12, color: MUTE, marginTop: 4 },
+  ndBody: { fontSize: 14.5, color: INK_2, lineHeight: 21 },
 
   /* Coach IA */
   coachWeek: { fontSize: 13, fontWeight: '700', color: BRAND, marginBottom: 10 },
@@ -10514,6 +10878,12 @@ const styles = StyleSheet.create({
   odBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5 },
   odBtnTxt: { fontSize: 13.5, fontWeight: '700' },
   odPanel: { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E7EDEA', paddingHorizontal: 14 },
+  odKv: { paddingVertical: 10 },
+  odKvLbl: { fontSize: 11.5, fontWeight: '600', color: '#8A968F' },
+  odKvVal: { fontSize: 14, fontWeight: '600', color: INK, marginTop: 2, lineHeight: 19 },
+  odReview: { borderRadius: 14, borderWidth: 1.5, padding: 14, marginTop: 8, marginBottom: 6 },
+  odReviewTitle: { fontSize: 14.5, fontWeight: '800', flex: 1 },
+  odReviewTxt: { fontSize: 12.5, lineHeight: 18, marginTop: 6 },
   odMember: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
   odMemberBorder: { borderTopWidth: 1, borderTopColor: '#F1F5F4' },
   odMemberName: { fontSize: 14, fontWeight: '700', color: INK },

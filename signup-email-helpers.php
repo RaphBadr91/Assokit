@@ -99,9 +99,12 @@ function ak_signup_h($v): string
  * Canaux, chacun indépendant (un échec n'empêche pas les autres) :
  *   1. e-mail à contact@assokit.fr et aux adresses fondateur (répondre = écrire au prospect, sauf
  *      pour une demande à valider : la réponse citerait les liens signés, voir plus bas) ;
- *   2. notification dans la cloche fondateur (site + appli) ;
- *   3. en cas d'échec, ou si l'e-mail n'est pas parti : copie dans les messages de contact
- *      du cockpit, pour qu'aucune demande ne soit jamais perdue.
+ *   2. en cas d'échec, ou si l'e-mail n'est pas parti : copie dans les messages de contact
+ *      du cockpit, pour qu'aucune demande ne soit jamais perdue ;
+ *   3. notification dans la cloche fondateur (site + appli). Son lien porte toujours de quoi
+ *      ouvrir la demande : /super-admin/associations?id=<structure> dès qu'un espace existe,
+ *      sinon (« à rappeler ») /super-admin?contact=<copie de l'étape 2> (l'appli ouvre ce message
+ *      de contact ; le site, l'accueil du cockpit).
  * Jamais de mot de passe ni de donnée sensible.
  */
 function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_id = null, ?string $tech_error = null, array $warnings = []): void
@@ -218,33 +221,38 @@ function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_
         error_log('[signup alert] e-mail: ' . get_class($e));
     }
 
-    // 2. Cloche fondateur (site + appli)
+    // 2. Trace dans les messages de contact du cockpit (échec, ou e-mail non parti), avant la
+    //    cloche : une demande sans espace (« à rappeler ») y renvoie
+    $contact_id = null;
+    if ($kind === 'failed' || !$mail_ok) {
+        $note = $kind === 'failed' ? " — création automatique IMPOSSIBLE, à rappeler."
+              : ($review ? " — demande de création d'espace (app iPhone) à valider dans le cockpit ; e-mail d'alerte non parti." : " — e-mail d'alerte non parti.");
+        $contact_id = ak_signup_record_contact($pdo, $lead, $note, $warnings, $tech_error);
+    }
+
+    // 3. Cloche fondateur (site + appli)
     try {
         @require_once __DIR__ . '/notification-helpers.php';
         if (function_exists('ak_notif_create') && function_exists('ak_founder_user_ids')) {
             $titre = $review ? ($kind === 'review_reminder' ? '⏰ Demande d’espace à valider depuis 24 h : ' : '🔔 Demande d’espace à valider : ') . $org
                    : ($kind === 'failed' ? '⚠️ Demande d’essai à rappeler : ' . $org : ($kind === 'incomplete' ? 'Nouvel essai (à vérifier) : ' . $org : 'Nouvel essai activé : ' . $org));
             $corps = $name . ' · ' . $email;
-            $lien  = $org_id ? '/super-admin/associations?id=' . (int)$org_id : '/super-admin';
+            $lien  = $org_id ? '/super-admin/associations?id=' . (int)$org_id : ('/super-admin' . ($contact_id ? '?contact=' . (int)$contact_id : ''));
             foreach (ak_founder_user_ids($pdo) as $uid) ak_notif_create($pdo, $uid, 'signup', mb_substr($titre, 0, 190), mb_substr($corps, 0, 250), $lien);
         }
     } catch (Throwable $e) {
         error_log('[signup alert] cloche: ' . get_class($e));
     }
-
-    // 3. Trace dans les messages de contact du cockpit (échec, ou e-mail non parti)
-    if ($kind === 'failed' || !$mail_ok) {
-        $note = $kind === 'failed' ? " — création automatique IMPOSSIBLE, à rappeler."
-              : ($review ? " — demande de création d'espace (app iPhone) à valider dans le cockpit ; e-mail d'alerte non parti." : " — e-mail d'alerte non parti.");
-        ak_signup_record_contact($pdo, $lead, $note, $warnings, $tech_error);
-    }
 }
 
-/** Copie d'une demande d'essai dans les messages de contact du cockpit (aucune demande ne se perd). */
-function ak_signup_record_contact(PDO $pdo, array $lead, string $note, array $warnings = [], ?string $tech_error = null): void
+/**
+ * Copie d'une demande d'essai dans les messages de contact du cockpit (aucune demande ne se perd).
+ * Renvoie l'identifiant du message (lien de la cloche du Fondateur), null si rien n'a été écrit.
+ */
+function ak_signup_record_contact(PDO $pdo, array $lead, string $note, array $warnings = [], ?string $tech_error = null): ?int
 {
     try {
-        if (!function_exists('ak_db_insert') || !ak_db_columns($pdo, 'asso_contact_messages')) return;
+        if (!function_exists('ak_db_insert') || !ak_db_columns($pdo, 'asso_contact_messages')) return null;
         $org   = (string)($lead['org_name'] ?? '');
         $name  = trim(($lead['first_name'] ?? '') . ' ' . ($lead['last_name'] ?? ''));
         $email = (string)($lead['email'] ?? '');
@@ -254,7 +262,7 @@ function ak_signup_record_contact(PDO $pdo, array $lead, string $note, array $wa
              . implode('', array_map(fn($k, $v) => "\n" . $k . ' : ' . $v, array_keys((array)($lead['details'] ?? [])), (array)($lead['details'] ?? [])))
              . ($warnings ? "\nPoints à vérifier : " . implode(' | ', $warnings) : '')
              . ($tech_error ? "\nDétail technique : " . mb_substr($tech_error, 0, 300) : '');
-        ak_db_insert($pdo, 'asso_contact_messages', [
+        $id = ak_db_insert($pdo, 'asso_contact_messages', [
             'firstname' => mb_substr((string)($lead['first_name'] ?? ''), 0, 100),
             'lastname' => mb_substr((string)($lead['last_name'] ?? ''), 0, 100),
             'email' => mb_substr($email, 0, 190),
@@ -265,8 +273,10 @@ function ak_signup_record_contact(PDO $pdo, array $lead, string $note, array $wa
             'ip' => (string)($lead['ip'] ?? ''),
             'user_agent' => mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
         ], ['created_at' => 'NOW()']);
+        return (int)$id > 0 ? (int)$id : null;
     } catch (Throwable $e) {
         error_log('[signup alert] contact: ' . get_class($e));
+        return null;
     }
 }
 
@@ -400,20 +410,11 @@ function ak_signup_digest_maybe(PDO $pdo): bool
     } catch (Throwable $e) {
         error_log('[signup digest] e-mail: ' . get_class($e));
     }
-    try {
-        @require_once __DIR__ . '/notification-helpers.php';
-        if (function_exists('ak_notif_create') && function_exists('ak_founder_user_ids')) {
-            foreach (ak_founder_user_ids($pdo) as $uid) {
-                ak_notif_create($pdo, $uid, 'signup', mb_substr($subject, 0, 190), 'Résumé horaire : demandes enregistrées, à vérifier.', '/super-admin');
-            }
-        }
-    } catch (Throwable $e) {
-        error_log('[signup digest] cloche: ' . get_class($e));
-    }
-    // Copie dans les messages de contact (et repère du prochain résumé)
+    // Copie dans les messages de contact (et repère du prochain résumé), avant la cloche qui y renvoie
+    $contact_id = 0;
     try {
         if ($has_contact) {
-            ak_db_insert($pdo, 'asso_contact_messages', [
+            $contact_id = (int)ak_db_insert($pdo, 'asso_contact_messages', [
                 'firstname' => 'Inscription', 'lastname' => 'Résumé', 'email' => '', 'organization' => '',
                 'type' => '', 'subject' => mb_substr(AK_SIGNUP_DIGEST_SUBJECT . ' ' . $total . ' demande(s) non ouverte(s)', 0, 200),
                 'message' => "Demandes d'essai non ouvertes automatiquement, depuis le résumé précédent :" . $lines_txt
@@ -424,6 +425,18 @@ function ak_signup_digest_maybe(PDO $pdo): bool
         }
     } catch (Throwable $e) {
         error_log('[signup digest] contact: ' . get_class($e));
+    }
+    // Cloche : le lien ouvre la copie du résumé dans l'appli (l'accueil du cockpit sur le site)
+    try {
+        @require_once __DIR__ . '/notification-helpers.php';
+        if (function_exists('ak_notif_create') && function_exists('ak_founder_user_ids')) {
+            foreach (ak_founder_user_ids($pdo) as $uid) {
+                ak_notif_create($pdo, $uid, 'signup', mb_substr($subject, 0, 190), 'Résumé horaire : demandes enregistrées, à vérifier.',
+                                '/super-admin' . ($contact_id > 0 ? '?contact=' . $contact_id : ''));
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[signup digest] cloche: ' . get_class($e));
     }
     @file_put_contents(rtrim(sys_get_temp_dir(), '/') . '/ak_signup_digest_last_id', (string)$max_id, LOCK_EX);
     // Demandes arrivées pendant l'envoi (ou laissées pour le prochain) : le drapeau reste
@@ -439,13 +452,23 @@ function ak_signup_digest_maybe(PDO $pdo): bool
     return true;
 }
 
-/** Compatibilité : ancienne alerte (même canal que l'alerte complète). */
-function send_demo_founder_notification(string $org_name, string $admin_name, string $admin_email): bool
+/**
+ * Compatibilité : ancienne alerte (même canal que l'alerte complète). Sans $org_id, la structure
+ * est retrouvée par son nom (la plus récente) : la cloche ouvre sa fiche, jamais l'accueil du cockpit.
+ */
+function send_demo_founder_notification(string $org_name, string $admin_name, string $admin_email, ?int $org_id = null): bool
 {
     global $pdo;
     if (!($pdo instanceof PDO)) return false;
+    if (!$org_id && $org_name !== '') {
+        try {
+            $st = $pdo->prepare("SELECT id FROM organizations WHERE name = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1");
+            $st->execute([$org_name]);
+            $org_id = (int)$st->fetchColumn() ?: null;
+        } catch (Throwable $e) {}
+    }
     $parts = explode(' ', $admin_name, 2);
-    ak_signup_alert_founder($pdo, ['org_name' => $org_name, 'first_name' => $parts[0] ?? '', 'last_name' => $parts[1] ?? '', 'email' => $admin_email], 'ok');
+    ak_signup_alert_founder($pdo, ['org_name' => $org_name, 'first_name' => $parts[0] ?? '', 'last_name' => $parts[1] ?? '', 'email' => $admin_email], 'ok', $org_id);
     return true;
 }
 
