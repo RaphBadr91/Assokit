@@ -62,6 +62,7 @@ render_public_nav('');
         <li><strong>Compte actif</strong> : tant que le compte existe (essai, abonnement, ou accès limité après résiliation de l'abonnement)</li>
         <li><strong>Compte que vous supprimez vous-même</strong> (dans l'application ou sur le site) : votre identité (nom, e-mail, téléphone, ville), votre mot de passe, votre double authentification, votre lien d'agenda et vos jetons de notification sont effacés ou anonymisés <strong>immédiatement</strong>, et la connexion n'est plus possible (pensez à exporter vos données avant). Ce que vous avez partagé dans votre association (messages, comptes rendus, fichiers…) y reste, signé « Compte supprimé », tant que l'association utilise Assokit. Détails sur la page <a href="/suppression-compte">Supprimer votre compte</a>.</li>
         <li><strong>Compte retiré par un administrateur de l'association</strong> : 30 jours dans la corbeille de l'association, où il peut encore être restauré, puis anonymisation de la même façon</li>
+        <li><strong>Demande de création d’espace</strong> (application iPhone)&nbsp;: refusée, elle est conservée jusqu’à ce que vous la retiriez (page <a href="/retirer-demande">Retirer ma demande</a>) ou nous demandiez son effacement&nbsp;; retirée, en attente ou après un refus, le compte est anonymisé et les informations transmises sont effacées <strong>immédiatement</strong></li>
         <li><strong>Fermeture de l'espace d'une association</strong> (sur demande à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>, ou depuis l'application, Paramètres › Supprimer mon compte, quand votre compte est le seul de l'association) : 30 jours pour exporter les données, puis suppression définitive, sauf les pièces comptables (ligne suivante)</li>
         <li><strong>Factures et obligations légales</strong> : 10 ans (obligation comptable française)</li>
         <li><strong>Logs techniques</strong> : 12 mois maximum</li>
@@ -173,7 +174,7 @@ render_public_nav('');
       <p>Cette politique peut évoluer. Toute modification substantielle vous sera notifiée par email avec un préavis de 30 jours.</p>
 
       <?php /* Date de version : à changer seulement quand le texte change */ ?>
-      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 18/10/2026</p>
+      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 23/10/2026</p>
     </article>
   </div>
 </section>

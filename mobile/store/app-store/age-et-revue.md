@@ -152,9 +152,9 @@ minuit ne déconnecte personne.
 | Téléphone | `[+33 6 XX XX XX XX]` (format international, joignable en anglais aux heures de bureau américaines si possible) |
 | E-mail | `contact@assokit.fr` |
 
-### Notes (en anglais, 3852 caractères sur 4 000)
+### Notes (en anglais, 3932 caractères sur 4 000)
 
-Compté par programme le 19/10/2026, après l'ajout du retrait d'une demande dans l'app (« Retirer ma demande ») : 3852 caractères Unicode, autant d'unités UTF-16 (aucun caractère hors du plan de base), 3864 octets UTF-8 ; texte du bloc ci-dessous seul, sans ses lignes de délimitation ni le retour à la ligne final. Avant cet ajout : 3730.
+Compté par programme le 23/10/2026, après la précision des endroits où se trouve « Retirer ma demande » (page « Demande envoyée », sous le message « en cours de validation », écran « Demande non validée » après un refus) : 3932 caractères Unicode, autant d'unités UTF-16 (aucun caractère hors du plan de base), 3946 octets UTF-8 ; texte du bloc ci-dessous seul, sans ses lignes de délimitation ni le retour à la ligne final. Ses 36 retours à la ligne comptés double (CR LF) : 3968, encore sous la limite. Avant : 3852 (19/10/2026, ajout du retrait), 3730.
 
 ```
 Assokit is the iPhone companion app of assokit.fr, a management service for French non-profit associations and small businesses: members and fees, projects, calendar and general meetings, quotes and invoices, team messaging. The app is in French.
@@ -167,7 +167,7 @@ It is the administrator of "DEMO F", a sample organisation with fictional data, 
 WHAT TO LOOK AT (native screens)
 - Home: key figures, today's events, quick actions.
 - Tabs: Projets, Membres, "+" (new invoice, quote, client, member, fee received, event, project, grant), Plus.
-- Plus: Factures, Devis, Clients, Statistiques, Agenda, Cotisations, Subventions, Assemblées, Emargement, Messages, Boîte mail (mailbox sorted by AI), Notifications, Coach IA, Paramètres, Support.
+- Plus: Factures, Devis, Clients, Statistiques, Agenda, Cotisations, Subventions, Assemblées, Émargement, Messages, Boîte mail (mailbox sorted by AI), Notifications, Coach IA, Paramètres, Support.
 - "+" > "Scanner une facture": photo of a supplier invoice, amounts read by AI. Camera access is asked only then.
 - Cotisations > "Enregistrer un paiement" only records a fee a member paid the association offline; nothing is paid in the app.
 - Face ID unlocks the next launch. Push notifications are optional.
@@ -177,7 +177,7 @@ NOTHING IS SOLD IN THE APP
 Assokit is sold to organisations outside the app. The app offers no in-app purchase and shows no price, plan, trial or subscription status, and no link to a purchase page: a free companion app to our web service (3.1.3(f), 3.1.3(c)).
 
 NEW ORGANISATIONS: ACCOUNT REQUEST
-"Créer l'espace de ma structure" (welcome screen) or "Demander la création de mon espace" (sign-in screen) opens a request form, reviewed by our team within 48 hours. Nothing is active until we approve it; an e-mail confirms the activation. The app then shows "Demande envoyée"; signing in before approval shows "Votre espace est en cours de validation". A pending or refused request can be withdrawn and its data erased from inside the app: sign-in screen > "Retirer ma demande" (Withdraw my request) > e-mail, password, confirmation box. Approved accounts are deleted in Plus > Paramètres > "Supprimer mon compte" (below).
+"Créer l'espace de ma structure" (welcome screen) or "Demander la création de mon espace" (sign-in screen) opens a request form, reviewed by our team within 48 hours. Nothing is active until we approve it; an e-mail confirms the activation. The app then shows "Demande envoyée"; signing in before approval shows "Votre espace est en cours de validation". A pending or refused request can be withdrawn and its data erased in the app: "Retirer ma demande" (Withdraw my request) on that page, under that message, or on the "Demande non validée" screen shown at sign-in after a refusal > e-mail, password, confirmation box. Approved accounts are deleted in Plus > Paramètres > "Supprimer mon compte" (below).
 
 ACCOUNT DELETION (5.1.1(v))
 Plus > Paramètres > "Supprimer mon compte (RGPD)" at the bottom > password > "Supprimer définitivement": personal data is anonymised at once and the user is signed out.
@@ -204,7 +204,7 @@ Facultative. Pas nécessaire : le compte de démonstration suffit.
 
 - [ ] Se connecter **depuis l'app** (build TestFlight) avec `admin@demo-f.assokit.fr`, puis
       avec `membre@demo-f.assokit.fr` : la démo répond, les écrans sont remplis.
-- [ ] Les fichiers PHP modifiés ou ajoutés les 18 et 19/10/2026 sont **en ligne** sur
+- [ ] Les fichiers PHP modifiés ou ajoutés du 18 au 23/10/2026 sont **en ligne** sur
       assokit.fr (voir `publication-ios.md`, étape 0, et `conformite-ios.md` § C) : l'examinateur
       teste l'app contre le serveur réel. Sans eux, l'appui long sur un message, l'accord pour
       l'IA, la demande de création d'espace sur iPhone (validée sous 48 h, sans essai dans
@@ -213,6 +213,8 @@ Facultative. Pas nécessaire : le compte de démonstration suffit.
 - [ ] Pendant l'examen, surveiller les e-mails « 🔔 Demande d'espace à valider » : un
       examinateur peut essayer le formulaire. Répondre **sous 48 h** comme promis (« Valider »
       ou « Refuser » dans l'e-mail, ou dans le cockpit) ; un rappel arrive au bout de 24 h.
+      Ne pas répondre à cet e-mail (il contient les liens « Valider » / « Refuser ») : pour
+      écrire au demandeur, utiliser son adresse dans le tableau de l'e-mail.
 - [ ] `https://assokit.fr/suppression-compte`, `https://assokit.fr/retirer-demande` et
       `https://assokit.fr/confidentialite` répondent sans connexion.
 - [ ] La démo a été remise à zéro depuis votre propre essai (la remise à zéro de minuit efface

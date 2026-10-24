@@ -1,4 +1,4 @@
-# Conformité iOS — Assokit (vérifiée dans le code le 18/10/2026, mise à jour le 19/10/2026)
+# Conformité iOS — Assokit (vérifiée dans le code le 18/10/2026, mise à jour le 23/10/2026)
 
 Contrôle fait **avant le premier build iOS payant**, contre le code réel : `mobile/app.json`,
 `mobile/App.js`, les modules natifs aux versions exactes du `package-lock.json`, et les pages
@@ -15,7 +15,7 @@ ligne.
 | Notifications push iOS | ✅ prêt | Répondre **Yes** à EAS au premier build ; test à faire sur TestFlight (A3) |
 | Versions des dépendances | ✅ corrigé | React Native 0.86.0 → **0.86.3** (régression Hermes signalée par `expo-doctor`) (A4) |
 | Version de l'app et mises à jour OTA | ✅ corrigé | `expo.version` 1.0.0 → **1.0.1** : les binaires 1.0.0 déjà distribués ne reçoivent plus d'OTA incompatible (A4) |
-| 3.1.1 / 3.1.3 : rien à acheter dans l'app | ✅ corrigé | **iPhone : création de compte sur demande**, examinée par l'équipe sous 48 h, rien d'actif avant la validation, aucun essai ni prix ni formule à l'écran (19/10/2026) + 10 surfaces corrigées (B1) |
+| 3.1.1 / 3.1.3 : rien à acheter dans l'app | ✅ corrigé | **iPhone : création de compte sur demande**, examinée par l'équipe sous 48 h, rien d'actif avant la validation, aucun essai ni prix ni formule à l'écran (19/10/2026) + 13 surfaces corrigées (B1) |
 | 4.2 : fonctionnalités minimales | ✅ | Plus de 25 écrans natifs (B2) |
 | 5.1.1(v) : suppression du compte dans l'app | ✅ corrigé | Compte seul de son association supprimable dans l'app ; plus de suppression simulée pour les anciens comptes d'examen ; demande d'espace en attente ou refusée retirée dans l'app, sans session (« Retirer ma demande », 19/10/2026) (B3) |
 | 4.8 : Se connecter avec Apple | ✅ non requis | Aucune connexion par un service tiers (B4) |
@@ -259,6 +259,9 @@ la page de suppression de compte, B3) :
 | 8 | `adherents-import.php`, `communication-diffuser-nouveau.php` | « ⏳ Pendant l'essai gratuit : 200 … » (avis écrits en dur, hors `ak_trial_msg()`) | Passés par `ak_trial_msg()` : « Pendant l'essai : … » dans l'app, texte d'origine sur le site. |
 | 9 | `cgu.php` (ouvert dans l'app avant connexion) | Lien « Tarifs » masqué par l'app, d'où « décrites sur la page  : » ; § 4 décrivant l'abonnement mensuel, la carte bancaire via Stripe ; § 8 « Mon abonnement » | Dans l'app (`ak_billing_hidden()`) : § 4 « Conditions commerciales » (convenues avec la structure lors de sa souscription, décrites sur notre site), sans mode de paiement ; § 8 « depuis son espace sur le site ». Site inchangé. |
 | 10 | `404.php` (toute adresse inconnue ouverte dans l'app) | Liens « Tarifs » et **« Essai gratuit 14 jours »** | Dans l'app : « Retour à mon espace » et « Nous contacter » seulement. |
+| 11 | `contact.php` (ouvert dans l'app depuis `/signup`, `/retirer-demande` et le pied des pages légales) — 23/10/2026 | Objets « 💰 Devis sur-mesure » et « 💼 Facturation » (« Question facturation / abonnement »), « devis sur-mesure » dans le chapeau, encadré « Offre Sur-mesure » avec `?plan=sur-mesure` | Dans l'app (`pub_in_app()`) : ces deux objets retirés (un envoi qui les cite est refusé), chapeau « Démo, question, partenariat… », `?plan=` ignoré. Site inchangé. |
+| 12 | `parametres.php`, onglet Organisation — 23/10/2026 | Carte « FORMULE — Essai PRO — jusqu'au … (J-14) » (seul le bouton « Choisir une formule » était masqué). Aucun lien de l'app n'y mène, mais l'adresse restait ouverte | Carte absente sous l'agent iPhone (`ak_is_ios_app()`), comme la carte native (`IOS_SIGNUP_REQUEST`). Android et site inchangés. |
+| 13 | `api/app-delete-account.php` — 23/10/2026 | Échec de l'arrêt Stripe à la suppression du seul compte : alerte native « L'abonnement de l'association n'a pas pu être arrêté… » | « La suppression n'a pas pu aboutir : rien n'a été supprimé. Réessayez dans quelques minutes, ou écrivez à contact@assokit.fr. » (même règle que `/retirer-demande`). |
 
 **Restes acceptés, et pourquoi.**
 
@@ -269,6 +272,15 @@ la page de suppression de compte, B3) :
   3.1.3(f) pour un service vendu hors de l'app).
 - La politique de confidentialité (§ 3) mentionne les e-mails de fin d'essai et le § 5 cite
   Stripe : ce sont des informations légales, sans lien ni appel à acheter.
+- **Textes légaux ouverts dans l'app** (exception assumée à la règle « aucun mot d'achat »,
+  23/10/2026) : les CGU (§ 4 « Conditions commerciales », § 8 « Résiliation », § 9, libellé
+  « CGU / CGV » du pied de page), la politique de confidentialité (§ 3, § 4, § 5) et
+  `/suppression-compte` (§ 6) gardent les mots « abonnement », « prix », « formule »,
+  « paiement », « essai ». Ce sont les conditions du contrat et les informations exigées par
+  le RGPD : elles doivent être les mêmes que sur le site, sans montant, sans lien vers un
+  achat, sans bouton ni invitation à acheter (la règle 3.1.3 vise les appels à acheter, pas
+  le texte du contrat). Les surfaces d'achat de ces pages (lien « Tarifs », mode de
+  paiement, rubrique « Mon abonnement ») sont déjà retirées dans l'app (ligne 9).
 - `NativeSubInvoices` (`App.js`) affichait les factures de l'abonnement avec un lien vers la
   page Stripe ; **aucun écran ne l'ouvre** (code mort, vérifié). Ne pas le rebrancher.
 - E-mails de fin d'essai avec « Choisir une formule » : envoyés hors de l'app, ce que la
@@ -335,14 +347,19 @@ dans l'app se fasse dans l'app. Désormais :
   lit `.error-box.is-pending` sur `/connexion`) ouvre `/retirer-demande` dans l'app ; pour une
   demande **refusée** (la connexion ouvre alors l'avis « Demande non validée »), le même bouton
   est sur l'avis natif (`SuspendedScreen`), et « Mon compte › Supprimer mon compte » fait le
-  même retrait (`api/app-delete-account.php`) ;
+  même retrait (`api/app-delete-account.php`) ; la page « Demande envoyée », juste après la
+  demande, porte aussi le lien « Vous ne souhaitez plus de cet espace ? Retirer ma demande »
+  (23/10/2026 : c'est le premier endroit où l'examinateur qui vient de créer un compte le
+  cherche) ;
 - **page `/retirer-demande`** (`retirer-demande.php`, sans session, dans l'app avec l'en-tête
   et le pied de page de l'app, hors du plan du site) : adresse e-mail, mot de passe, case « Je
   confirme le retrait de ma demande et l'effacement des informations transmises ». **Même
   blocage que la connexion** (`ak_login_lockout`, `app-context.php`, vérifié avant le mot de
   passe : 10 échecs par compte, 50 par adresse IP, en 15 minutes ; une erreur est notée
   `login_failed` et compte pour les deux pages) ; adresse inconnue ou mot de passe faux : le
-  message de la connexion, sans dire lequel ;
+  message de la connexion, sans dire lequel, ni par le texte ni par le temps de réponse
+  (`ak_login_password_ok`, 23/10/2026, aussi pour `/connexion` : une adresse inconnue fait le
+  même calcul bcrypt qu'un mauvais mot de passe) ;
 - **effet** (`ak_signup_review_withdraw`, `signup-review-helpers.php`, une transaction, ligne de
   l'association verrouillée et état relu sous le verrou) : celui de la suppression du seul
   compte dans l'app (fermeture de l'espace par `ak_account_close_sole_org`, désormais commune
@@ -352,7 +369,12 @@ dans l'app se fasse dans l'app. Désormais :
   « Votre demande a été retirée » envoyé avant l'anonymisation ; cloche du Fondateur « Demande
   retirée par le demandeur » (nom de la structure seulement). La demande n'est plus en attente
   nulle part (cockpit et ses compteurs, appli du Fondateur, rappel de 24 h) ; les liens
-  « Valider » / « Refuser » de l'e-mail affichent « Demande retirée » ;
+  « Valider » / « Refuser » de l'e-mail affichent « Demande retirée » ; « Valider » ou
+  « Refuser » envoyé depuis une page du cockpit ou une liste de l'appli du Fondateur ouverte
+  avant le retrait ne fait rien (« Demande retirée par le demandeur… rien n'a été modifié »,
+  état relu sous le verrou, 23/10/2026) : avant, il rouvrait l'espace fermé (refus = suspendu)
+  ou le marquait « validé » ; réactiver, suspendre, prolonger ou changer de formule sont
+  refusés de même ;
 - un espace **validé** (même pendant le retrait : le Fondateur qui valide au même instant passe
   en premier, rien n'est supprimé), une association à plusieurs comptes ou un compte inscrit sur
   le site : rien n'est fait, la page dit comment supprimer un compte actif (Plus › Paramètres ›
@@ -498,10 +520,11 @@ Tous les exports du site sont des liens GET (vérifié : `export-fec.php`,
 | `mobile/App.js` (liens légaux dans l'app, note de suppression ; puis connexion seule sur iPhone — remplacée le 19/10/2026 par la demande d'espace, voir plus bas —, appui long sur un message, accord pour l'IA, `onFileDownload`) | Inclus dans le build iOS 1.0.1. Pour Android : build 1.0.1 (la version change, l'OTA ne suffit pas) |
 | Premier lot : `signup.php`, `connexion.php`, `trial-limits-helpers.php`, `action-assemblee.php`, `mon-asso-factures.php`, `today-ai-helper.php`, `app-context.php`, `api/app-account.php`, `api/app-delete-account.php`, `suppression-compte.php` | **Serveur** : `git pull` sur O2Switch **avant** d'envoyer l'app en vérification (l'examinateur teste contre assokit.fr) |
 | Second lot (18/10/2026, soir) — **nouveaux** : `ai-consent-helper.php`, `api/app-ai-consent.php`, `api/app-message-action.php`, `migrations/2026-10-18-accord-ia.sql` ; **modifiés** : `404.php`, `action-scan-facture.php`, `adherents-import.php`, `ai-helper.php`, `api/_app-write-boot.php`, `api/app-channel-messages.php`, `api/app-coach-generate.php`, `api/app-dashboard.php`, `api/app-delete-account.php`, `api/app-invoices-ai.php`, `api/app-stats-ai.php`, `app-context.php`, `asso-ai-helpers.php`, `boite-mail-parametres.php`, `cgu.php`, `communication-diffuser-nouveau.php`, `communication-generer.php`, `confidentialite.php`, `connexion.php`, `demo-formation/purge.php`, `mail-helpers.php`, `signup.php`, `today-ai-helper.php` | **Serveur**, même chose, **avant** la soumission. La migration est facultative (table créée à la première utilisation). |
-| Troisième lot (19/10/2026, demande d'espace sur iPhone et CGU) — **nouveaux** : `signup-review-helpers.php`, `valider-inscription.php` ; **modifiés** : `.htaccess` (route `/valider-inscription`), `app-context.php`, `signup.php`, `signup-email-helpers.php`, `trial-helpers.php`, `connexion.php`, `connexion-2fa.php`, `super-admin-associations.php`, `api/app-founder-action.php`, `api/app-dashboard.php` (commentaire), `cron-trial-check.php`, `cgu.php`, `suppression-compte.php` | **Serveur**, **avant** la soumission. Aucune migration : les colonnes utilisées existent déjà (`organizations.validation_status`, `status`, `suspended_reason`, `validated_at` ; carnet `cron_envois` pour le rappel). Le secret des liens de l'e-mail est dérivé d'une constante de `config.php` (`AK_CONTACT_SECRET`, sinon `RESEND_API_KEY`, sinon `CRON_TOKEN`) : rien à ajouter. |
+| Troisième lot (19/10/2026, demande d'espace sur iPhone et CGU) — **nouveaux** : `signup-review-helpers.php`, `valider-inscription.php` ; **modifiés** : `.htaccess` (route `/valider-inscription`), `app-context.php`, `signup.php`, `signup-email-helpers.php`, `trial-helpers.php`, `connexion.php`, `connexion-2fa.php`, `super-admin-associations.php`, `api/app-founder-action.php`, `api/app-dashboard.php` (commentaire), `cron-trial-check.php`, `cgu.php`, `suppression-compte.php` | **Serveur**, **avant** la soumission. Aucune migration : les colonnes utilisées existent déjà (`organizations.validation_status`, `status`, `suspended_reason`, `validated_at` ; carnet `cron_envois` pour le rappel). Le secret des liens de l'e-mail est dérivé d'une constante de `config.php` (`AK_CONTACT_SECRET`, sinon `RESEND_API_KEY` ; plus `CRON_TOKEN` depuis le 23/10/2026, il passe dans l'adresse des crons) : rien à ajouter, puisque `RESEND_API_KEY` sert déjà aux e-mails. |
 | `mobile/App.js` (19/10/2026 : « Créer l'espace de ma structure », lien « Demander la création de mon espace », retour à la connexion native depuis « Demande envoyée », alerte « Espace activé » de l'appli fondateur ; `UI_REV` `2026-10-19-demande-ios`) | JavaScript seul : build iOS 1.0.1 s'il n'est pas encore fait, sinon mise à jour OTA (`publication-ios.md`, étape 10). Avec l'ancien JavaScript, l'app iPhone bloque encore `/signup` : la demande n'y apparaît qu'avec ce JavaScript |
 | Quatrième lot (19/10/2026, retrait d'une demande d'espace, Apple 5.1.1 v) — **nouveau** : `retirer-demande.php` ; **modifiés** : `.htaccess` (route `/retirer-demande`), `app-context.php` (`ak_login_lockout`, `ak_account_close_sole_org`, `AK_GUARD_PUBLIC`), `connexion.php`, `includes-public.php` (`AK_PUBLIC_APP_PAGES`), `signup-review-helpers.php`, `valider-inscription.php`, `super-admin-associations.php`, `api/app-delete-account.php`, `api/app-account.php`, `suppression-compte.php` | **Serveur**, **avant** la soumission. Aucune migration. |
 | `mobile/App.js` (19/10/2026 : « Retirer ma demande » sous l'avis « en cours de validation » et sur l'avis « Demande non validée », `/retirer-demande` ouverte dans l'app ; `UI_REV` `2026-10-19-retrait-demande`) | JavaScript seul : dans le build iOS 1.0.1 s'il n'est pas encore fait, sinon mise à jour OTA. Le serveur suffit pour le lien de la page `/connexion` ; le bouton natif demande ce JavaScript |
+| Cinquième lot (23/10/2026, corrections après la vérification adversariale du retrait) — **modifiés** : `signup-email-helpers.php` (e-mail d'alerte d'une demande : plus de « répondre » au demandeur), `signup-review-helpers.php` (secret des liens sans `CRON_TOKEN` ; « Valider » / « Refuser » d'une demande retirée : état `withdrawn` ; e-mails au demandeur), `valider-inscription.php`, `super-admin-associations.php`, `api/app-founder-action.php`, `app-context.php` (`ak_login_password_ok`), `connexion.php`, `retirer-demande.php`, `api/app-delete-account.php`, `contact.php`, `parametres.php`, `signup.php`, `suppression-compte.php`, `cgu.php`, `confidentialite.php` (« Version du 23/10/2026 » pour les trois) | **Serveur**, **avant** la soumission. Aucune migration, aucun changement de `App.js` (le lien de « Demande envoyée » est une page du site) |
 
 ## D. Tests faits
 

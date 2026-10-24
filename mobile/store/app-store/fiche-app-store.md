@@ -180,6 +180,16 @@ un achat hors de l'App Store (règle 3.1.1). Le champ est facultatif ; on pourra
 remplir après la première validation. L'URL d'assistance, obligatoire, pointe vers la
 page Contact.
 
+**Risque accepté sur l'URL d'assistance (23/10/2026).** Ouverte dans Safari, `/contact`
+porte l'en-tête et le pied de page du site, donc les mêmes liens « Tarifs » et « Essai
+gratuit » que la page d'accueil, et ses objets « Devis sur-mesure » et « Facturation ». Le
+site n'a aucune page de contact sans cet en-tête, et Apple exige une URL d'assistance : on
+garde `/contact`, page d'assistance (formulaire et adresse `contact@assokit.fr`), ouverte
+hors de l'app. Dans l'app, la même page n'a ni ces liens ni ces objets (`conformite-ios.md`,
+B1, ligne 11). Si l'examen la conteste, répondre que c'est la page de contact du service, et,
+en dernier recours, créer une page d'assistance sans l'en-tête commercial avant de renvoyer
+le build.
+
 ## 7. Catégories — *Informations sur l'app*
 
 - **Catégorie principale : Économie et entreprise** (*Business*)

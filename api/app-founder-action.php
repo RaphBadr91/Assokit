@@ -19,6 +19,8 @@
  * l'essai MAINTENANT et prévient l'administrateur (réponse 'review' : { trial_ends, mailed, warnings,
  * message }), 'reject' envoie aussi un e-mail poli au demandeur ; tant qu'elle attend, 'activate',
  * 'suspend', 'extend_trial' et un changement de formule ('edit') sont refusés (409 'pending_request').
+ * Demande retirée par le demandeur (/retirer-demande) : les mêmes, plus 'validate' et 'reject', sont
+ * refusés (409 'withdrawn') : l'espace reste fermé.
  * Mêmes effets que le cockpit web et que les liens de l'e-mail du Fondateur.
  * Réservé Fondateur/Super Admin. NE MODIFIE PAS le site : dédié à l'application.
  */
@@ -62,15 +64,23 @@ try {
     require_once __DIR__ . '/../signup-review-helpers.php';
     $full = $pdo->prepare("SELECT * FROM organizations WHERE id = ?");
     $full->execute([$target]);
-    $pending_request = ak_signup_review_pending($full->fetch(PDO::FETCH_ASSOC) ?: []);
+    $full_row = $full->fetch(PDO::FETCH_ASSOC) ?: [];
+    $pending_request = ak_signup_review_pending($full_row);
     if ($pending_request && in_array($action, ['activate', 'suspend', 'extend_trial'], true)) {
         app_fail(409, 'pending_request', ak_signup_review_block_message());
+    }
+    // Demande retirée par le demandeur (espace fermé, seul compte anonymisé) : rien ne la rouvre ni ne
+    // la dénature. 'validate' / 'reject' le revérifient sous verrou (retrait à l'instant) : 'withdrawn'.
+    $withdrawn_request = ak_signup_review_withdrawn($full_row);
+    if ($withdrawn_request && in_array($action, ['validate', 'reject', 'activate', 'suspend', 'extend_trial'], true)) {
+        app_fail(409, 'withdrawn', ak_signup_review_withdrawn_message());
     }
 
     if ($action === 'validate') {
         // Demande de l'app iPhone : l'essai démarre maintenant et l'administrateur est prévenu, exactement
         // comme par le cockpit web et le lien de l'e-mail (ak_signup_review_validate)
         $rv = ak_signup_review_validate($pdo, $target, (int) $uid);
+        if ($rv['state'] === 'withdrawn') app_fail(409, 'withdrawn', ak_signup_review_withdrawn_message());
         if ($rv['state'] === 'validated') {
             $log('validate_org', ['trial_ends_at' => $rv['trial_end'], 'demande' => 'app iPhone']);
             $extra['review'] = ['trial_ends' => ak_trial_end_label($rv['trial_end']), 'mailed' => (bool) $rv['mailed'], 'warnings' => $rv['warnings'],
@@ -90,6 +100,7 @@ try {
         // demande de l'app iPhone, le demandeur reçoit en plus un e-mail poli (ak_signup_review_reject)
         $reason = trim((string) ($input['reason'] ?? ''));
         $rv = ak_signup_review_reject($pdo, $target, $reason, (int) $uid);
+        if ($rv['state'] === 'withdrawn') app_fail(409, 'withdrawn', ak_signup_review_withdrawn_message());
         if ($rv['state'] !== 'rejected') ak_org_reject($pdo, $target, $reason, (int) $uid);
         $log('reject_org', ['reason' => $reason]);
     } elseif ($action === 'suspend') {
@@ -200,6 +211,7 @@ try {
         // Demande de l'app iPhone en attente : un plan l'ouvrirait sans validation (le nom, l'e-mail et la
         // note restent modifiables)
         if ($new_plan && $pending_request) app_fail(409, 'pending_request', ak_signup_review_block_message());
+        if ($new_plan && $withdrawn_request) app_fail(409, 'withdrawn', ak_signup_review_withdrawn_message());
 
         // Construit dynamiquement selon les colonnes présentes
         $ocols = ak_db_columns($pdo, 'organizations');

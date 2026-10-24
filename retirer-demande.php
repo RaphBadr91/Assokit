@@ -12,7 +12,8 @@
  *   - mot de passe : MÊME blocage que /connexion (ak_login_lockout, vérifié avant le mot de passe :
  *     10 échecs par compte, 50 par adresse IP, en 15 minutes) ; une erreur est notée « login_failed »
  *     comme sur /connexion et compte donc pour les deux pages. Adresse inconnue ou mot de passe faux :
- *     le message de /connexion, sans dire lequel des deux (aucune liste d'adresses à deviner) ;
+ *     le message de /connexion, sans dire lequel des deux, ni par le texte ni par le temps de réponse
+ *     (ak_login_password_ok) : aucune liste d'adresses à deviner ;
  *   - demande en attente ou refusée, ce compte en étant le seul : ak_signup_review_withdraw (compte
  *     anonymisé et espace fermé comme une suppression dans l'app, informations effacées, e-mail de
  *     confirmation, Fondateur prévenu) ;
@@ -78,8 +79,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
             if (($lockout = ak_login_lockout($pdo, $email, $ip)) !== '') {
                 $error = $lockout;
-            } elseif (!$user || !password_verify($password, (string)$user['password_hash'])) {
-                // Le message de /connexion, et le même journal : l'échec compte pour le blocage des deux pages
+            } elseif (!ak_login_password_ok($user, $password)) {
+                // Le message de /connexion, et le même journal : l'échec compte pour le blocage des deux pages.
+                // Adresse inconnue : même durée de calcul qu'un mauvais mot de passe (ak_login_password_ok)
                 $error = 'Email ou mot de passe incorrect.';
                 if (function_exists('activity_log_login_failed')) {
                     activity_log_login_failed($email, $user ? 'wrong_password' : 'unknown_email');

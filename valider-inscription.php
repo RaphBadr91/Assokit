@@ -56,7 +56,8 @@ if (!ak_rate_limit('signup_review_link', 60, 900)) {
                     $res = $action === 'reject'
                         ? ak_signup_review_reject($pdo, (int)$org['id'], is_string($_POST['reason'] ?? null) ? $_POST['reason'] : '', 0)
                         : ak_signup_review_validate($pdo, (int)$org['id'], 0);
-                    if ($res['state'] !== 'not_request') {
+                    // Décision enregistrée seulement ; demande retirée ou plus en attente : l'état relu ci-dessous
+                    if (in_array($res['state'], ['validated', 'rejected'], true)) {
                         $view = $res['state'];
                         // Journal du cockpit (/super-admin/logs), comme « Valider » / « Refuser » du cockpit et de l'appli
                         try {

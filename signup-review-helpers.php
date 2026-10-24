@@ -88,13 +88,15 @@ function ak_signup_review_supported(PDO $pdo): bool
 
 /**
  * Secret serveur des liens, dérivé d'une constante déjà secrète de config.php (jamais dans le
- * dépôt) : AK_CONTACT_SECRET, à défaut RESEND_API_KEY, à défaut CRON_TOKEN. Préfixe propre à cet
- * usage : la signature d'un autre lien du site ne vaut jamais ici. '' si aucun n'est défini :
- * aucun lien n'est alors produit ni accepté (le Fondateur décide depuis le cockpit).
+ * dépôt) : AK_CONTACT_SECRET, à défaut RESEND_API_KEY, comme les autres jetons du site
+ * (api/_app-contact-token.php). Jamais CRON_TOKEN : il passe dans l'adresse des crons HTTP
+ * (journaux d'accès, réglages de l'hébergeur), il suffirait à fabriquer un lien « Valider ».
+ * Préfixe propre à cet usage : la signature d'un autre lien du site ne vaut jamais ici. '' si aucun
+ * n'est défini : aucun lien n'est alors produit ni accepté (le Fondateur décide depuis le cockpit).
  */
 function ak_signup_review_secret(): string
 {
-    foreach (['AK_CONTACT_SECRET', 'RESEND_API_KEY', 'CRON_TOKEN'] as $c) {
+    foreach (['AK_CONTACT_SECRET', 'RESEND_API_KEY'] as $c) {
         if (defined($c) && is_string(constant($c)) && constant($c) !== '') {
             return hash('sha256', 'akreview-v1|' . $c . '|' . constant($c));
         }
@@ -233,6 +235,9 @@ function ak_signup_review_when(?string $sql): string
 /**
  * Valide une demande d'espace : l'essai PRO démarre maintenant, l'administrateur est prévenu.
  *   ['state' => 'validated', 'trial_end' => SQL, 'warnings' => string[], 'admin' => ?array, 'mailed' => bool]
+ *   ['state' => 'withdrawn', 'org' => array] : demande retirée par le demandeur (même à l'instant,
+ *     page ouverte avant le retrait) : rien n'est modifié, et l'appelant ne doit rien faire d'autre
+ *     (sa règle habituelle rouvrirait l'espace fermé) ;
  *   ['state' => 'not_request', 'org' => ?array] : association introuvable, ou pas (plus) une demande
  *     en attente (déjà validée ou refusée, ou association « à valider » créée par un super-admin) ;
  *     rien n'est modifié, l'appelant applique sa règle habituelle.
@@ -249,7 +254,7 @@ function ak_signup_review_validate(PDO $pdo, int $org_id, int $by_user_id = 0): 
         $org = $st->fetch(PDO::FETCH_ASSOC) ?: null;
         if (!$org || !ak_signup_review_pending($org)) {
             if ($own_tx) $pdo->rollBack();
-            return ['state' => 'not_request', 'org' => $org];
+            return ['state' => $org && ak_signup_review_withdrawn($org) ? 'withdrawn' : 'not_request', 'org' => $org];
         }
         $adm = ak_signup_review_admin($pdo, $org);
         $trial_end  = (string)$pdo->query("SELECT DATE_ADD(NOW(), INTERVAL " . (int)AK_TRIAL_DAYS . " DAY)")->fetchColumn();
@@ -309,7 +314,8 @@ function ak_signup_review_validate(PDO $pdo, int $org_id, int $by_user_id = 0): 
 /**
  * Refuse une demande d'espace : refusée ET suspendue (ak_org_reject, comme le cockpit), le motif
  * remplace la marque de demande, et le demandeur reçoit un e-mail poli (avec le motif, s'il y en a).
- *   ['state' => 'rejected', 'mailed' => bool] ou ['state' => 'not_request', 'org' => ?array].
+ *   ['state' => 'rejected', 'mailed' => bool], ['state' => 'withdrawn', 'org' => array] (retirée par le
+ *   demandeur : rien n'est fait, voir ak_signup_review_validate) ou ['state' => 'not_request', 'org' => ?array].
  */
 function ak_signup_review_reject(PDO $pdo, int $org_id, string $reason, int $by_user_id = 0): array
 {
@@ -322,7 +328,7 @@ function ak_signup_review_reject(PDO $pdo, int $org_id, string $reason, int $by_
         $org = $st->fetch(PDO::FETCH_ASSOC) ?: null;
         if (!$org || !ak_signup_review_pending($org)) {
             if ($own_tx) $pdo->rollBack();
-            return ['state' => 'not_request', 'org' => $org];
+            return ['state' => $org && ak_signup_review_withdrawn($org) ? 'withdrawn' : 'not_request', 'org' => $org];
         }
         $adm = ak_signup_review_admin($pdo, $org);
         ak_org_reject($pdo, $org_id, $reason, $by_user_id);
@@ -356,6 +362,16 @@ function ak_signup_review_block_message(): string
     return 'Demande de création d’espace en attente : validez-la (l’essai démarre à la validation) ou refusez-la d’abord.';
 }
 
+/**
+ * Message du cockpit et de l'appli quand une action viserait une demande retirée par le demandeur
+ * (ak_signup_review_withdrawn) : valider, refuser, réactiver, suspendre, prolonger, changer de formule
+ * rouvriraient ou dénatureraient un espace fermé dont le seul compte est anonymisé.
+ */
+function ak_signup_review_withdrawn_message(): string
+{
+    return 'Demande retirée par le demandeur : l’espace est fermé et son compte supprimé, rien n’a été modifié.';
+}
+
 /* ------------------------------------------------------------------
  * Retrait par le demandeur (/retirer-demande)
  * ------------------------------------------------------------------ */
@@ -380,6 +396,12 @@ function ak_signup_review_withdrawn(array $org): bool
 function ak_signup_review_refused(PDO $pdo, array $org): bool
 {
     if (($org['validation_status'] ?? '') !== 'rejected' || ($org['status'] ?? '') !== 'suspended' || !empty($org['deleted_at'])) return false;
+    // Toujours suspendue PAR le refus : ak_org_reject écrit le même motif dans les deux colonnes. Un
+    // refus annulé par le Fondateur (« Réactiver », changement de formule) vide suspended_reason, et
+    // une suspension plus tardive (impayé, fin d'essai, à la main) le remplace : ce n'est plus une
+    // demande refusée, c'est un espace qui a servi (le retrait l'effacerait sans délai).
+    $susp = trim((string)($org['suspended_reason'] ?? ''));
+    if ($susp === '' || $susp !== trim((string)($org['rejection_reason'] ?? ''))) return false;
     $cols = ak_db_columns($pdo, 'public_signups');
     if (!isset($cols['org_id'], $cols['status'])) return false;
     try {
@@ -600,13 +622,14 @@ function ak_signup_review_mail_received(string $email, string $first_name, strin
     $h = (int)AK_SIGNUP_REVIEW_HOURS;
     $content = '<h1 style="font-size:20px;margin:0 0 14px;color:#1C1917">Votre demande est bien reçue</h1>'
              . '<p>Bonjour ' . ak_signup_review_h($first_name) . ',</p>'
-             . '<p>Merci ! Votre demande de création de l’espace Assokit de <strong>' . ak_signup_review_h($org_name) . '</strong> nous est bien parvenue.</p>'
+             . '<p>Merci&nbsp;! Votre demande de création de l’espace Assokit de <strong>' . ak_signup_review_h($org_name) . '</strong> nous est bien parvenue.</p>'
              . '<p>Notre équipe l’examine <strong>sous ' . $h . '&nbsp;h</strong>. Vous recevrez un e-mail dès l’activation de votre espace&nbsp;: '
              . 'vous pourrez alors vous connecter, sur le site ou dans l’application, avec l’adresse e-mail et le mot de passe que vous avez choisis.</p>'
              . '<p>Une question en attendant&nbsp;? Répondez simplement à cet e-mail.</p>'
              . '<p style="font-size:13px;">Vous pouvez retirer votre demande à tout moment, avec votre adresse e-mail et votre mot de passe&nbsp;: '
              . '<a href="https://assokit.fr/retirer-demande" style="color:#059669;">assokit.fr/retirer-demande</a>.</p>'
-             . '<p style="font-size:12px;color:#78716C;margin-top:18px;">Si vous n’êtes pas à l’origine de cette demande, ignorez ce message ou répondez-nous&nbsp;: elle sera supprimée.</p>';
+             . '<p>Bien cordialement,<br>L’équipe Assokit</p>'
+             . '<p style="font-size:12px;color:#78716C;margin-top:18px;">Si vous n’êtes pas à l’origine de cette demande, répondez simplement à cet e-mail&nbsp;: nous la supprimerons.</p>';
     return ak_signup_review_send($email, 'Demande reçue — validation sous ' . $h . ' h', 'Demande reçue', $content, null, null, 'signup_review_ack');
 }
 
@@ -651,7 +674,8 @@ function ak_signup_review_mail_withdrawn(string $email, string $first_name, stri
              . '<p>Comme vous l’avez demandé, votre demande de création de l’espace Assokit de <strong>' . ak_signup_review_h($org_name) . '</strong> est retirée.</p>'
              . '<p>Votre compte est supprimé et les informations transmises avec la demande sont effacées. Vous n’avez rien d’autre à faire.</p>'
              . '<p>Vous pourrez faire une nouvelle demande à tout moment.</p>'
-             . '<p style="font-size:12px;color:#78716C;margin-top:18px;">Si vous n’êtes pas à l’origine de ce retrait, répondez à cet e-mail.</p>'
-             . '<p>Bien cordialement,<br>L’équipe Assokit</p>';
+             . '<p>Bien cordialement,<br>L’équipe Assokit</p>'
+             . '<p style="font-size:12px;color:#78716C;margin-top:18px;">Si vous n’êtes pas à l’origine de ce retrait, prévenez-nous en répondant à cet e-mail '
+             . '(la demande retirée ne peut pas être rétablie&nbsp;: il faudra en faire une nouvelle).</p>';
     return ak_signup_review_send($email, 'Votre demande a été retirée', 'Votre demande a été retirée', $content, null, null, 'signup_review_withdrawn');
 }

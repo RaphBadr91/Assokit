@@ -18,7 +18,7 @@ render_public_nav('');
     <div class="pub-breadcrumb"><a href="/">Accueil</a><span class="pub-breadcrumb-sep">›</span><strong style="color:var(--c-encre);">CGU / CGV</strong></div>
     <h1 class="pub-h1" style="font-size:36px;">Conditions générales</h1>
     <?php /* Date de version du texte (dernière modification) : à changer seulement quand le texte change */ ?>
-    <p class="pub-tagline">Version du 19/10/2026</p>
+    <p class="pub-tagline">Version du 23/10/2026</p>
   </div>
 </section>
 <section class="pub-section" style="padding-top:0;">
@@ -37,7 +37,7 @@ render_public_nav('');
 
       <h2>3. Inscription et compte</h2>
       <p>L'inscription est ouverte aux associations loi 1901, TPE, indépendants et autres structures professionnelles. L'Utilisateur s'engage à fournir des informations exactes et à les maintenir à jour.</p>
-      <p>La création d’un espace peut être soumise à la validation de notre équipe (c’est le cas d’une demande faite depuis l’application iPhone) : la demande est examinée sous 48 heures, l’espace n’est utilisable qu’après sa validation, et l’Utilisateur est prévenu par e-mail de l’activation comme d’un éventuel refus.</p>
+      <p>La création d’un espace peut être soumise à la validation de notre équipe (c’est le cas d’une demande faite depuis l’application iPhone) : la demande est examinée sous 48 heures, l’espace n’est utilisable qu’après sa validation, et l’Utilisateur est prévenu par e-mail de l’activation comme d’un éventuel refus. Tant qu’elle n’est pas validée, ou après un refus, l’Utilisateur peut retirer sa demande à tout moment (page <a href="/retirer-demande">Retirer ma demande</a>, aussi accessible dans l’application)&nbsp;: son compte est supprimé et les informations transmises sont effacées immédiatement.</p>
 
 <?php if ($cgu_in_app): ?>
       <h2>4. Conditions commerciales</h2>

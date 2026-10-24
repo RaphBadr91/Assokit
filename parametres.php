@@ -167,9 +167,10 @@ render_sidebar('parametres');
         </div>
       <?php else: ?>
         <?php
-          // Formule de l'association : même texte que « Mon abonnement », l'appli et le cockpit fondateur
+          // Formule de l'association : même texte que « Mon abonnement », l'appli et le cockpit fondateur.
+          // Jamais dans l'app iPhone (règle 3.1.1 d'Apple), comme la carte native de l'app (IOS_SIGNUP_REQUEST)
           @require_once __DIR__ . '/plan-helpers.php';
-          $plan_ti = function_exists('ak_plan_trial_info') ? ak_plan_trial_info($pdo, $org_id) : null;
+          $plan_ti = (!ak_is_ios_app() && function_exists('ak_plan_trial_info')) ? ak_plan_trial_info($pdo, $org_id) : null;
         ?>
         <?php if ($plan_ti && $plan_ti['label'] !== '' && $plan_ti['label'] !== '—'):
           $plan_tone = $plan_ti['trial_expired'] ? ['#FEF2F2', '#FECACA', '#991B1B'] : ($plan_ti['in_trial'] ? ['#FFFBEB', '#FCD34D', '#92400E'] : null);

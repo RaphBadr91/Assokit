@@ -38,6 +38,10 @@ $subjects_list = [
     'billing'     => ['icon' => '💼', 'label' => 'Facturation',                'full' => 'Question facturation / abonnement'],
     'other'       => ['icon' => '✏️', 'label' => 'Autre',                      'full' => 'Autre demande'],
 ];
+// Dans l'application (règle 3.1.1 d'Apple, règles de paiement de Google Play) : ni devis, ni question
+// de facturation ou d'abonnement, rien qui mène à un achat. Un objet absent est refusé à l'envoi.
+$ct_in_app = pub_in_app();
+if ($ct_in_app) unset($subjects_list['quote'], $subjects_list['billing']);
 
 // Longueurs maximales (contrôlées côté serveur, rappelées par maxlength dans le formulaire)
 $ct_max = ['name' => 100, 'email' => 190, 'phone' => 30, 'subject_other' => 150, 'message' => 5000];
@@ -52,7 +56,7 @@ $prefill_subject_key = $ct_str($_GET['subject'] ?? '');
 // Offre publique : Essai PRO, Assokit, Sur-mesure (Démarrage n'est plus proposée)
 $ct_plans = ['pro-essai' => 'Essai PRO', 'assokit' => 'Assokit', 'sur-mesure' => 'Sur-mesure'];
 $prefill_plan = $ct_str($_GET['plan'] ?? '');
-if (!isset($ct_plans[$prefill_plan])) $prefill_plan = '';
+if (!isset($ct_plans[$prefill_plan]) || $ct_in_app) $prefill_plan = '';   // dans l'app : aucune offre
 
 $selected_subject_key = '';
 if (isset($subjects_list[$prefill_subject_key])) {
@@ -263,7 +267,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <span class="pub-eyebrow">💬 On vous répond toujours</span>
     <h1 class="pub-h1" style="max-width:780px;">Une équipe humaine, <em>derrière l'écran</em>.</h1>
     <p class="pub-tagline" style="max-width:680px;">
-      Démo, question, partenariat, devis sur-mesure… <strong>Pas de bot, pas de FAQ qui tourne en rond.</strong> On vous répond personnellement, en moins de 24h.
+      <?= $ct_in_app ? 'Démo, question, partenariat…' : 'Démo, question, partenariat, devis sur-mesure…' ?> <strong>Pas de bot, pas de FAQ qui tourne en rond.</strong> On vous répond personnellement, en moins de 24h.
     </p>
   </div>
 </section>

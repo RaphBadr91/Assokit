@@ -17,7 +17,8 @@
  * App iPhone (ak_is_ios_app) : mode DEMANDE (règle 3.1.1 d'Apple, rien
  * ne s'essaie dans l'app). Même formulaire, mêmes contrôles, mais
  * l'association est créée « en attente de validation » (rien d'actif,
- * aucun essai), sans connexion : la page affiche « Demande envoyée », le
+ * aucun essai), sans connexion : la page affiche « Demande envoyée » (avec
+ * le lien « Retirer ma demande », /retirer-demande), le
  * demandeur reçoit « Demande reçue — validation sous 48 h » et le
  * fondateur un e-mail avec les boutons Valider / Refuser. L'essai démarre
  * à la validation (signup-review-helpers.php). Le site et l'app Android
@@ -789,9 +790,11 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
     <?php endif; ?>
 
     <?php if ($sent !== null): ?>
-      <div class="alert-ok" id="ak-demande-envoyee" style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.55;margin-bottom:14px;">✅ Merci <?= htmlspecialchars((string)($sent['first_name'] ?? '')) ?> ! La demande de création de l’espace « <?= htmlspecialchars((string)($sent['org_name'] ?? '')) ?> » est bien envoyée.</div>
+      <div class="alert-ok" id="ak-demande-envoyee" style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.55;margin-bottom:14px;">✅ Merci <?= htmlspecialchars((string)($sent['first_name'] ?? '')) ?>&nbsp;! La demande de création de l’espace « <?= htmlspecialchars((string)($sent['org_name'] ?? '')) ?> » est bien envoyée.</div>
       <p class="sub">Un e-mail de confirmation vient de partir à <strong><?= htmlspecialchars((string)($sent['email'] ?? '')) ?></strong>. Dès que notre équipe a activé votre espace, vous recevez un second e-mail : connectez-vous alors avec cette adresse et le mot de passe choisi.</p>
       <a href="/connexion" class="btn-submit" style="display:block;text-align:center;text-decoration:none;">Retour à la connexion</a>
+      <?php // Retrait de la demande et effacement des informations, dans l'app (règle 5.1.1 v d'Apple) ?>
+      <p class="sub" style="font-size:12.5px;margin:12px 0 0;text-align:center;">Vous ne souhaitez plus de cet espace&nbsp;? <a href="/retirer-demande" style="color:var(--acc);font-weight:500;text-decoration:none;">Retirer ma demande</a></p>
     <?php elseif ($notice): ?>
       <div class="alert-ok" style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.55;margin-bottom:6px;">✅ <?= htmlspecialchars($notice) ?></div>
     <?php else: ?>

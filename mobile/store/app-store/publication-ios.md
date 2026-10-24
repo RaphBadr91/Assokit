@@ -41,7 +41,8 @@ CGU** — liste dans `conformite-ios.md` § C) doivent être en ligne. Sans elle
      « Je confirme le retrait de ma demande… », bouton « Retirer ma demande ») ;
    - `https://assokit.fr/confidentialite` s'affiche sans connexion ;
    - `https://assokit.fr/cgu` montre, au § 7, « Contenus inacceptables et signalements :
-     tolérance zéro » et la date « Version du 19/10/2026 ».
+     tolérance zéro », au § 3 le retrait d'une demande (« Retirer ma demande ») et la date
+     « Version du 23/10/2026 ».
 3. Se connecter une fois sur le site avec `admin@demo-f.assokit.fr` / `DemoFormation2026!`
    pour vérifier que la démo DEMO F est là et remplie.
 4. Les demandes de création d'espace faites sur iPhone arrivent par e-mail (« 🔔 Demande
@@ -50,7 +51,10 @@ CGU** — liste dans `conformite-ios.md` § C) doivent être en ligne. Sans elle
    (Associations › « à valider »). Rien n'est actif avant la validation ; l'essai PRO de
    14 jours démarre à la validation et l'administrateur reçoit « Votre espace Assokit est
    activé ». Promesse faite au demandeur : réponse **sous 48 h** (rappel automatique au bout
-   de 24 h, par `cron-trial-check.php`, déjà planifié).
+   de 24 h, par `cron-trial-check.php`, déjà planifié). **Ne répondez pas à cet e-mail** et ne
+   le transférez pas : il contient les liens « Valider » / « Refuser », qui suffisent à
+   décider. Pour écrire au demandeur, cliquez sur son adresse dans le tableau de l'e-mail
+   (message neuf, sans les liens).
 
 ## Étape 1 — Prérequis (une seule fois)
 
@@ -162,7 +166,8 @@ npx eas-cli@latest submit --platform ios --latest
 - [ ] **Demande d'espace** (« Créer l'espace de ma structure ») : la page dit « Validation par
       notre équipe sous 48 h » et « Un e-mail vous confirme l'activation… » ; **aucun** prix,
       « essai », « gratuit » ni abonnement ; bouton « Envoyer ma demande ». Après l'envoi :
-      page « Demande envoyée » (pas de connexion), e-mail « Demande reçue — validation sous
+      page « Demande envoyée » (pas de connexion), avec en bas « Vous ne souhaitez plus de cet
+      espace ? Retirer ma demande », e-mail « Demande reçue — validation sous
       48 h » au demandeur, e-mail « 🔔 Demande d'espace à valider » chez vous. « Retour à la
       connexion » ramène à l'écran de connexion natif ; s'y connecter avec le compte demandé
       affiche « Votre espace est en cours de validation par notre équipe (48 h maximum)… »,
@@ -335,9 +340,11 @@ Account deletion is in the app: Plus > Paramètres > "Supprimer mon compte (RGPD
 bottom of the screen > password > "Supprimer définitivement". Personal data is
 anonymised immediately and the user is signed out.
 An account request made in the app that is still pending (or was refused) can be
-withdrawn in the app too: sign-in screen > "Retirer ma demande" (Withdraw my request)
-> e-mail, password, confirmation box. The account is deleted and the data sent with the
-request is erased at once.
+withdrawn in the app too: "Retirer ma demande" (Withdraw my request) > e-mail, password,
+confirmation box. The link is on the "Demande envoyée" page shown after the request,
+under the "en cours de validation" message shown when signing in with the request's
+e-mail and password, and, after a refusal, on the "Demande non validée" screen shown at
+sign-in. The account is deleted and the data sent with the request is erased at once.
 The admin demo account is the organisation's only administrator, so the button is
 disabled with the reason shown. The member demo account membre@demo-f.assokit.fr
 (password DemoFormation2026!) shows the whole flow, but its last step is disabled

@@ -328,6 +328,24 @@ function ak_login_lockout(PDO $pdo, string $email, string $ip): string
 }
 
 /**
+ * Mot de passe d'un compte ($user : ligne users, ou null si l'adresse est inconnue), vérifié par
+ * /connexion et /retirer-demande. Sans compte (ou sans mot de passe), un calcul bcrypt factice du
+ * même coût est fait quand même : sinon une adresse inconnue répondait aussitôt, et le temps de
+ * réponse disait quelles adresses ont un compte (même message, même code HTTP).
+ */
+function ak_login_password_ok(?array $user, string $password): bool
+{
+    $hash = (string)($user['password_hash'] ?? '');
+    if ($hash === '') {
+        // Empreinte bcrypt au coût par défaut du serveur (celui des mots de passe enregistrés) : jamais égale
+        $cost = defined('PASSWORD_BCRYPT_DEFAULT_COST') ? (int)PASSWORD_BCRYPT_DEFAULT_COST : 10;
+        password_verify($password, '$2y$' . sprintf('%02d', $cost) . '$' . str_repeat('A', 22) . str_repeat('B', 31));
+        return false;
+    }
+    return password_verify($password, $hash);
+}
+
+/**
  * Adresse de retour après connexion (?next=) : un chemin du site seulement, jamais
  * une autre adresse ni une page du parcours de connexion. Renvoie '' si refusée.
  */

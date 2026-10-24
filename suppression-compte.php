@@ -21,7 +21,8 @@
  *     refusée, sans session) ;
  *   - cgu.php § 8 et confidentialite.php § 4 (trois cas : suppression par la
  *     personne, retrait par un administrateur, fermeture de l'association ;
- *     10 ans, 12 mois).
+ *     10 ans, 12 mois ; plus, dans confidentialite.php § 4 et cgu.php § 3, la
+ *     demande d'espace retirée ou refusée).
  * Si l'un change, changer aussi cette page.
  * --------------------------------------------------------------
  */
@@ -76,7 +77,7 @@ render_public_nav('');
         <li>Écrivez si possible depuis l'adresse e-mail de votre compte, et indiquez le nom de votre association ou de votre entreprise : cela nous permet de vérifier que la demande vient bien de vous.</li>
         <li>Nous vous répondons sous 30 jours maximum, comme pour toute demande liée à vos données personnelles (voir notre <a href="/confidentialite">politique de confidentialité</a>).</li>
       </ul>
-      <p><strong>Demande de création d’espace en cours de validation, ou refusée</strong> (faite depuis l’application iPhone) : tant qu’elle n’est pas validée, vous ne pouvez pas vous connecter. Retirez-la vous-même sur la page <a href="/retirer-demande">Retirer ma demande</a>, avec l’adresse e-mail et le mot de passe de la demande ; dans l’application, touchez <strong>« Retirer ma demande »</strong> sous le message « en cours de validation » de l’écran de connexion. Votre compte est supprimé, l’espace demandé est fermé et les informations transmises sont effacées immédiatement ; un e-mail vous le confirme. Plus accès à l’adresse ou au mot de passe ? Écrivez-nous de la même façon depuis l’adresse e-mail de la demande : nous la retirons pour vous.</p>
+      <p><strong>Demande de création d’espace en cours de validation, ou refusée</strong> (faite depuis l’application iPhone)&nbsp;: tant qu’elle n’est pas validée, l’espace demandé n’est pas accessible. Retirez-la vous-même sur la page <a href="/retirer-demande">Retirer ma demande</a>, avec l’adresse e-mail et le mot de passe de la demande. Dans l’application, saisissez-les sur l’écran de connexion, puis touchez <strong>«&nbsp;Retirer ma demande&nbsp;»</strong> sous le message «&nbsp;en cours de validation&nbsp;» ou, après un refus, sur l’écran «&nbsp;Demande non validée&nbsp;» (le lien figure aussi sur la page «&nbsp;Demande envoyée&nbsp;», juste après la demande). Votre compte est supprimé, l’espace demandé est fermé et les informations transmises sont effacées immédiatement&nbsp;; un e-mail vous le confirme. Plus accès à l’adresse ou au mot de passe&nbsp;? Écrivez-nous de la même façon depuis l’adresse e-mail de la demande&nbsp;: nous la retirons pour vous.</p>
 
       <h2 id="supprime">4. Ce qui est supprimé, tout de suite</h2>
       <ul>
@@ -117,7 +118,7 @@ render_public_nav('');
       <p>Voir aussi : <a href="/confidentialite">politique de confidentialité</a> · <a href="/cgu">conditions générales</a> · <a href="/mentions-legales">mentions légales</a>.</p>
 
       <?php /* Date de version : à changer seulement quand le texte change */ ?>
-      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 19/10/2026</p>
+      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 23/10/2026</p>
     </article>
   </div>
 </section>

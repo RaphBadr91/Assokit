@@ -106,7 +106,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $suspended_notice === null) {
                 // /retirer-demande, qui demande aussi le mot de passe
                 if (($lockout = ak_login_lockout($pdo, $email, $ip)) !== '') {
                     $error = $lockout;
-                } elseif (!$user || !password_verify($password, $user['password_hash'])) {
+                } elseif (!ak_login_password_ok($user ?: null, $password)) {
+                    // Adresse inconnue : même durée de calcul qu'un mauvais mot de passe (ak_login_password_ok)
                     $error = 'Email ou mot de passe incorrect.';
                     // Track login failed
                     if (function_exists('activity_log_login_failed')) {

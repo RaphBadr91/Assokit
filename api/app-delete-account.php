@@ -61,15 +61,16 @@ try {
     // signup-review-helpers.php). Même fermeture et même anonymisation que ci-dessous, plus
     // l'effacement des informations de la demande, l'e-mail de confirmation et la cloche du Fondateur.
     $withdrawn = false;
+    // Arrêt de l'abonnement Stripe impossible : rien n'est supprimé. Message neutre, affiché tel quel par
+    // l'app (sur iPhone, aucun mot d'achat ni d'abonnement : règle 3.1.1 d'Apple)
+    $billing_msg = 'La suppression n’a pas pu aboutir : rien n’a été supprimé. Réessayez dans quelques minutes, ou écrivez à ' . AK_SUPPORT_EMAIL . '.';
     if ($close_org > 0) {
         require_once __DIR__ . '/../signup-review-helpers.php';
         $o = $pdo->prepare('SELECT * FROM organizations WHERE id = ? LIMIT 1');
         $o->execute([$close_org]);
         if (ak_signup_review_refused($pdo, $o->fetch(PDO::FETCH_ASSOC) ?: [])) {
             $rv = ak_signup_review_withdraw($pdo, $close_org, $uid);
-            if ($rv['state'] === 'billing') {
-                app_fail(502, 'billing', 'L’abonnement de l’association n’a pas pu être arrêté : rien n’a été supprimé. Réessayez dans quelques minutes.');
-            }
+            if ($rv['state'] === 'billing') app_fail(502, 'billing', $billing_msg);
             // Autre réponse (validée à l'instant…) : la suppression de compte habituelle, ci-dessous
             $withdrawn = $rv['state'] === 'withdrawn';
         }
@@ -81,9 +82,7 @@ try {
         // D'ABORD (un échec n'efface rien : pas de carte prélevée pour un espace fermé), fin d'essai
         // (plan Démarrage), association « cancelled ». Ses données suivent la règle de fermeture
         // (CGU § 8, /suppression-compte § 6) : 30 jours, puis suppression.
-        if (!ak_account_close_sole_org($pdo, $close_org)) {
-            app_fail(502, 'billing', 'L’abonnement de l’association n’a pas pu être arrêté : rien n’a été supprimé. Réessayez dans quelques minutes.');
-        }
+        if (!ak_account_close_sole_org($pdo, $close_org)) app_fail(502, 'billing', $billing_msg);
     }
 
     // Anonymisation immédiate, la même que sur le site (ak_account_self_anonymise, app-context.php) :

@@ -101,6 +101,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 }
                 if ($rv['state'] === 'error') {
                     $error = 'La validation n’a pas pu être enregistrée (erreur technique). Rien n’a été modifié.';
+                } elseif ($rv['state'] === 'withdrawn') {
+                    // Retirée par le demandeur pendant que la page était ouverte : l'espace reste fermé
+                    $error = ak_signup_review_withdrawn_message();
                 } elseif ($rv['state'] === 'validated') {
                     sa_log_action((int) $user['id'], 'validate_org', $target_id, null, ['trial_ends_at' => $rv['trial_end'], 'demande' => 'app iPhone']);
                     $success = '✓ Demande validée : l’essai PRO de ' . (int) AK_TRIAL_DAYS . ' jours court jusqu’au ' . ak_trial_end_label($rv['trial_end']) . '. '
@@ -130,17 +133,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                     error_log('[super-admin-associations] reject_org: ' . get_class($e) . ' ' . $e->getMessage());
                     $rv = ['state' => 'not_request'];   // refus habituel ci-dessous
                 }
-                if ($rv['state'] !== 'rejected') ak_org_reject($pdo, $target_id, $reason, (int) $user['id']);
-                sa_log_action((int) $user['id'], 'reject_org', $target_id, null, ['reason' => $reason]);
-                $success = $rv['state'] === 'rejected'
-                    ? '✕ Demande refusée. ' . ($rv['mailed'] ? 'Le demandeur a reçu un e-mail l’en informant.' : 'L’e-mail au demandeur n’a pas pu partir.')
-                    : '✕ Association refusée.';
+                if ($rv['state'] === 'withdrawn') {
+                    // Retirée par le demandeur entre-temps : ak_org_reject rouvrirait l'espace fermé (suspendu)
+                    $error = ak_signup_review_withdrawn_message();
+                } else {
+                    if ($rv['state'] !== 'rejected') ak_org_reject($pdo, $target_id, $reason, (int) $user['id']);
+                    sa_log_action((int) $user['id'], 'reject_org', $target_id, null, ['reason' => $reason]);
+                    $success = $rv['state'] === 'rejected'
+                        ? '✕ Demande refusée. ' . ($rv['mailed'] ? 'Le demandeur a reçu un e-mail l’en informant.' : 'L’e-mail au demandeur n’a pas pu partir.')
+                        : '✕ Association refusée.';
+                }
                 $view_id = $target_id;
             }
         }
         // Demande de l'app iPhone encore en attente : rien ne doit l'ouvrir (ni la dénaturer) sans décision
         elseif (in_array($action, ['reactivate', 'suspend', 'trial_extend', 'set_plan'], true) && ak_signup_review_pending($org)) {
             $error = ak_signup_review_block_message();
+            $view_id = $target_id;
+        }
+        // Demande retirée par le demandeur : espace fermé, seul compte anonymisé ; rien ne la rouvre
+        elseif (in_array($action, ['reactivate', 'suspend', 'trial_extend', 'set_plan'], true) && ak_signup_review_withdrawn($org)) {
+            $error = ak_signup_review_withdrawn_message();
             $view_id = $target_id;
         }
         // ---- UPDATE ----
@@ -161,6 +174,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 } elseif ($plan_change && ak_signup_review_pending($org)) {
                     // Demande de l'app iPhone en attente : un plan l'ouvrirait sans validation
                     $error = ak_signup_review_block_message();
+                } elseif ($plan_change && ak_signup_review_withdrawn($org)) {
+                    // Demande retirée par le demandeur : un plan rouvrirait l'espace fermé
+                    $error = ak_signup_review_withdrawn_message();
                 } else {
                     $stmt = $pdo->prepare("UPDATE organizations SET name = ?, notes_superadmin = ? WHERE id = ?");
                     $stmt->execute([$name, $notes, $target_id]);

@@ -97,7 +97,8 @@ function ak_signup_h($v): string
  *                               signup-review-helpers.php) et lien vers le cockpit
  *           'review_reminder' → la même, sans décision depuis 24 h (cron-trial-check.php)
  * Canaux, chacun indépendant (un échec n'empêche pas les autres) :
- *   1. e-mail à contact@assokit.fr et aux adresses fondateur (répondre = écrire au prospect) ;
+ *   1. e-mail à contact@assokit.fr et aux adresses fondateur (répondre = écrire au prospect, sauf
+ *      pour une demande à valider : la réponse citerait les liens signés, voir plus bas) ;
  *   2. notification dans la cloche fondateur (site + appli) ;
  *   3. en cas d'échec, ou si l'e-mail n'est pas parti : copie dans les messages de contact
  *      du cockpit, pour qu'aucune demande ne soit jamais perdue.
@@ -134,7 +135,8 @@ function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_
                  . $bg . ';color:#fff;text-decoration:none;font-family:Arial,sans-serif;font-size:14px;font-weight:600;border-radius:10px">' . $label . '</a></td>';
             $buttons = '<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:18px 0 6px"><tr>'
                      . $btn($ok_url, '✓ Valider', '#059669') . $btn($no_url, '✕ Refuser', '#B91C1C') . '</tr></table>'
-                     . '<p style="font-size:12px;color:#78716C;margin:0 0 6px;">Chaque bouton ouvre une page de confirmation. Liens personnels, valables 7 jours : ne les transférez pas.</p>';
+                     . '<p style="font-size:12px;color:#78716C;margin:0 0 6px;">Chaque bouton ouvre une page de confirmation. Liens personnels, valables 7 jours&nbsp;: ne transférez pas cet e-mail et n’y répondez pas. '
+                     . 'Pour écrire au demandeur, utilisez son adresse ci-dessous.</p>';
         } else {
             $buttons = '<p style="font-size:13px;color:#78716C;">Validez ou refusez la demande depuis le cockpit (lien ci-dessous).</p>';
         }
@@ -203,7 +205,10 @@ function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_
             $html = function_exists('email_wrap') ? email_wrap($review ? 'Demande d’espace Assokit' : 'Demande d’essai Assokit', $content, $cta[0], $cta[1]) : $content;
             $to = function_exists('ak_founder_emails') ? ak_founder_emails() : [AK_DEMO_NOTIFY_EMAIL];
             $opts = ['tag' => $review ? 'signup_review_founder' : 'demo_founder_notif'];
-            if (filter_var($email, FILTER_VALIDATE_EMAIL)) $opts['reply_to'] = $email;
+            // Demande de l'app iPhone : jamais de réponse directe au demandeur. Une réponse cite l'e-mail,
+            // boutons « Valider » / « Refuser » compris : le demandeur pourrait valider sa propre demande.
+            // Le Fondateur lui écrit par le lien « E-mail » du tableau (message neuf, sans les liens).
+            if (!$review && filter_var($email, FILTER_VALIDATE_EMAIL)) $opts['reply_to'] = $email;
             foreach ($to as $dest) {
                 $res = send_transactional_email($dest, $subject, $html, $opts);
                 if (!empty($res['success'])) $mail_ok = true;
