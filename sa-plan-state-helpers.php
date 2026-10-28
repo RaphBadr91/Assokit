@@ -59,7 +59,7 @@ if (!function_exists('sa_org_plan_states')) {
                 $in = implode(',', $chunk); // entiers uniquement
                 // Ligne courante : même ordre que ak_get_current_plan / ak_org_plan_state (ak_sub_order)
                 $rows = $pdo->query("
-                    SELECT o.id AS org_id, o.status AS org_status, o.plan AS org_plan, o.trial_ends_at,
+                    SELECT o.id AS org_id, o.status AS org_status, o.plan AS org_plan, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . ",
                            " . ak_sub_state_cols($pdo) . ", $pay AS payment_mode, " . implode(', ', $extra) . "
                     FROM organizations o
                     LEFT JOIN asso_subscriptions s ON s.id = (
@@ -256,6 +256,44 @@ if (!function_exists('sa_stripe_live_subs')) {
     }
 }
 
+if (!function_exists('sa_stripe_cancel_pending_attempts')) {
+    /**
+     * Abonnements Stripe du client de l'association qui n'ont pas (encore) de ligne locale : premier
+     * paiement en attente (« incomplete », prélèvement SEPA en cours de vérification pendant plusieurs
+     * jours) ou payé sans être encore connu ici. Fermer l'espace les arrête aussi : sinon le prélèvement
+     * confirmé plus tard démarrerait un abonnement mensuel sur un espace fermé. Une erreur de lecture
+     * (Stripe non configuré, client de l'autre mode) ne bloque pas la fermeture : le webhook arrête de
+     * toute façon un abonnement payé pour une association fermée (ak_stripe_apply_subscription).
+     */
+    function sa_stripe_cancel_pending_attempts(PDO $pdo, int $org_id, array &$out): void {
+        if (!isset(ak_db_columns($pdo, 'organizations')['stripe_customer_id'])) return;
+        try {
+            $q = $pdo->prepare("SELECT stripe_customer_id FROM organizations WHERE id = ?");
+            $q->execute([$org_id]);
+            $cid = trim((string)$q->fetchColumn());
+        } catch (Throwable $e) {
+            return;
+        }
+        if ($cid === '') return;
+        if (!function_exists('ak_stripe_api_call') && is_file(__DIR__ . '/stripe-helpers.php')) require_once __DIR__ . '/stripe-helpers.php';
+        if (!function_exists('ak_stripe_api_call') || !function_exists('ak_stripe_get_secret_key') || !ak_stripe_get_secret_key($pdo)) return;
+        $known = array_values(sa_stripe_live_subs($pdo, $org_id));
+        $r = ak_stripe_api_call($pdo, 'GET', '/subscriptions', ['customer' => $cid, 'status' => 'all', 'limit' => 20]);
+        if (empty($r['ok'])) {
+            error_log('[sa_stripe_cancel_pending_attempts] org #' . $org_id . ' : ' . ($r['error'] ?? '?'));
+            return;
+        }
+        foreach (($r['data']['data'] ?? []) as $s) {
+            $sid = (string)($s['id'] ?? '');
+            if ($sid === '' || in_array($sid, $known, true)) continue;   // lignes locales : traitées par l'appelant
+            if (!in_array((string)($s['status'] ?? ''), ['incomplete', 'active', 'trialing', 'past_due', 'unpaid'], true)) continue;
+            $d = ak_stripe_api_call($pdo, 'DELETE', '/subscriptions/' . rawurlencode($sid));
+            if (!empty($d['ok']) || (int)($d['http_code'] ?? 0) === 404) $out['cancelled'][] = $sid;
+            else $out['failed'][$sid] = trim((string)($d['error'] ?? '')) !== '' ? (string)$d['error'] : 'refus de Stripe';
+        }
+    }
+}
+
 if (!function_exists('sa_stripe_cancel_for_org')) {
     /**
      * Association résiliée ou supprimée depuis le cockpit (ou l'appli) : ses abonnements Stripe ne
@@ -269,6 +307,7 @@ if (!function_exists('sa_stripe_cancel_for_org')) {
      */
     function sa_stripe_cancel_for_org(PDO $pdo, int $org_id, bool $only_mark = false): array {
         $out = ['cancelled' => [], 'failed' => []];
+        if (!$only_mark) sa_stripe_cancel_pending_attempts($pdo, $org_id, $out);
         $subs = sa_stripe_live_subs($pdo, $org_id);
         if (!$subs) return $out;
         if (!$only_mark && !function_exists('ak_stripe_api_call') && is_file(__DIR__ . '/stripe-helpers.php')) {

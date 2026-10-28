@@ -776,6 +776,17 @@ function ak_render_overdue_overlay(PDO $pdo, int $org_id): string {
     $status = ak_get_subscription_status($pdo, $org_id);
     if (!$status['show_overlay']) return '';
 
+    // Application mobile (Apple 3.1.1, règles de paiement de Google Play) : la fonctionnalité reste
+    // bloquée, mais sans aucun mot ni lien de paiement
+    if (function_exists('ak_billing_hidden') && ak_billing_hidden()) {
+        return '<div id="ak-overdue-overlay" style="position:fixed;inset:0;background:rgba(15,23,42,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;">'
+             . '<div style="background:white;max-width:480px;width:100%;border-radius:20px;padding:32px 26px;text-align:center;">'
+             . '<div style="font-size:48px;margin-bottom:12px;">🔒</div>'
+             . '<h2 style="margin:0 0 10px;font-size:20px;color:#0F172A;">Fonctionnalité indisponible</h2>'
+             . '<p style="color:#475569;line-height:1.6;margin:0;font-size:15px;">Cette fonctionnalité est momentanément indisponible pour votre association. Vos données sont en sécurité et le reste de votre espace reste accessible. L’administrateur de votre association peut nous contacter.</p>'
+             . '</div></div>';
+    }
+
     $html = '<div id="ak-overdue-overlay" style="position:fixed;inset:0;background:rgba(15,23,42,0.85);backdrop-filter:blur(8px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;">';
     $html .= '<div style="background:white;max-width:560px;width:100%;border-radius:20px;padding:40px 32px;box-shadow:0 25px 60px rgba(0,0,0,0.4);text-align:center;">';
     $html .= '<div style="font-size:64px;margin-bottom:16px;">⚠️</div>';
@@ -811,6 +822,8 @@ function ak_render_overdue_overlay(PDO $pdo, int $org_id): string {
 function ak_render_grace_banner(PDO $pdo, int $org_id): string {
     $status = ak_get_subscription_status($pdo, $org_id);
     if (!$status['in_grace_period']) return '';
+    // Application mobile : aucun rappel de paiement (Apple 3.1.1, règles de paiement de Google Play)
+    if (function_exists('ak_billing_hidden') && ak_billing_hidden()) return '';
 
     $days = max(1, (int)$status['days_remaining']);
     $is_pending = !empty($status['is_pending']);

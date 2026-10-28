@@ -20,6 +20,8 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
+// Confirmation de la résiliation par e-mail (ak_stripe_notify_resiliation / ak_stripe_notify_stop)
+require_once __DIR__ . '/stripe-sync-helpers.php';
 
 require_login();
 // Apple 3.1.1 : aucun tunnel d'achat ne doit s'ouvrir dans l'app.
@@ -121,6 +123,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 ak_db_update($pdo, 'asso_subscriptions', (int)$active_sub['id'], ['status' => 'cancelled'], ['cancelled_at' => 'NOW()', 'updated_at' => 'NOW()']);
                 ak_sub_downgrade_free($pdo, (int)$active_sub['id'], $stripe_ended);
+                // Confirmation sur un support durable (le webhook ne la renvoie pas : la ligne est déjà arrêtée)
+                ak_stripe_notify_stop($pdo, $org_id, $is_stripe_sub ? $stripe_sub_id : 'manuel-' . (int)$active_sub['id'], null, false);
                 $flash_msg = 'L’abonnement impayé est arrêté : plus aucun prélèvement. Votre association passe en accès limité (Démarrage) et vos données sont conservées. Vous pouvez reprendre Assokit à tout moment.';
             } elseif ($is_stripe_sub) {
                 // Annulation via API Stripe (à fin de période)
@@ -138,12 +142,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ['cancel_at_period_end' => 1] + ($stripe_end ? ['current_period_end' => $stripe_end] : []),
                     ['cancelled_at' => 'NOW()', 'updated_at' => 'NOW()']);
                 $end = $stripe_end ? date('d/m/Y', strtotime($stripe_end)) : $access_until_fr;
+                // Confirmation par e-mail tout de suite (le webhook customer.subscription.updated, qui arrive
+                // ensuite, ne la renvoie pas : même clé, même échéance)
+                ak_stripe_notify_resiliation($pdo, $org_id, $stripe_sub_id, $stripe_end ?: ($active_sub['current_period_end'] ?? null));
                 $flash_msg = 'Résiliation enregistrée. Vous gardez votre formule ' . $plan_label . ($end !== '' ? ' jusqu’au ' . $end : ' jusqu’à la fin de la période payée')
                            . ', puis votre association passe en accès limité (Démarrage). Aucun nouveau prélèvement.';
             } else {
                 // Annulation manuelle (mode manual / wire_transfer / free_grant) : la formule reste jusqu'à
                 // la fin de la période, puis Démarrage (ak_sub_expire_cancelled)
                 $end = ak_sub_cancel_manual($pdo, $active_sub, $org_id);
+                ak_stripe_notify_resiliation($pdo, $org_id, 'manuel-' . (int)$active_sub['id'], $end);
                 $flash_msg = 'Résiliation enregistrée. Vous gardez votre formule ' . $plan_label . ' jusqu’au ' . date('d/m/Y', strtotime($end))
                            . ', puis votre association passe en accès limité (Démarrage).';
             }

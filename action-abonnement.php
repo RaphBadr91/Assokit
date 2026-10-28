@@ -133,6 +133,19 @@ if ($action === 'delete_account') {
         exit;
     }
 
+    // Abonnement Stripe arrêté D'ABORD (comme la fermeture depuis l'appli ou le cockpit) : sinon Stripe
+    // continuait de prélever la carte d'un compte supprimé. Échec → rien n'est supprimé.
+    if (is_file(__DIR__ . '/sa-plan-state-helpers.php')) require_once __DIR__ . '/sa-plan-state-helpers.php';
+    if (function_exists('sa_stripe_cancel_for_org')) {
+        try { $stripe_stop = sa_stripe_cancel_for_org($pdo, $org_id); }
+        catch (Throwable $e) { $stripe_stop = ['cancelled' => [], 'failed' => ['?' => get_class($e)]]; }
+        if (!empty($stripe_stop['failed'])) {
+            error_log('[ACTION-ABONNEMENT delete] org #' . $org_id . ' : abonnement Stripe non arrêté, suppression refusée');
+            header('Location: /abonnement?tab=danger&flash=' . urlencode('Votre abonnement par carte n’a pas pu être arrêté : rien n’a été supprimé. Réessayez ou contactez-nous.') . '&ft=error');
+            exit;
+        }
+    }
+
     try {
         $pdo->beginTransaction();
 

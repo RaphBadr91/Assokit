@@ -721,6 +721,12 @@ if ($view_id > 0) {
                         L’accès est suspendu, les données sont conservées. «&nbsp;Réactiver&nbsp;» rouvre l’essai jusqu’au <?= h($trial_end_fr) ?>
                         (plan <?= h($plan_state['plan_label']) ?>, 0 €) ; vous pouvez aussi prolonger l’essai ou passer l’association en abonnement.
                     </div>
+                <?php elseif (!empty($plan_state['payment_pending'])): ?>
+                    <div class="sa-trial-title">Paiement SEPA en cours de vérification</div>
+                    <div class="sa-trial-text">
+                        L’association a souscrit et payé par prélèvement SEPA : sa banque le confirme sous quelques jours ouvrés.
+                        L’essai ne se termine pas d’ici là ; l’abonnement s’active seul à la confirmation. Rien à faire.
+                    </div>
                 <?php elseif ($plan_state['trial_expired']): ?>
                     <div class="sa-trial-title"><?= h($plan_state['badge']) ?></div>
                     <div class="sa-trial-text">
@@ -757,7 +763,7 @@ if ($view_id > 0) {
             </div>
         </div>
 
-        <?php if ($can_plan): ?>
+        <?php if ($can_plan && empty($plan_state['payment_pending'])): ?>
         <div class="sa-trial-actions">
             <?php foreach ([7, 14] as $d): ?>
             <form method="POST" action="/super-admin/associations">

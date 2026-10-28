@@ -136,7 +136,7 @@ render_sidebar('mon-asso-factures');
         </thead>
         <tbody>
           <?php foreach ($invoices as $inv):
-            $st_color = '#94A3B8'; $st_bg = '#F1F5F9'; $st_label = ucfirst($inv['status']);
+            $st_color = '#94A3B8'; $st_bg = '#F1F5F9'; $st_label = ['draft' => 'Brouillon'][$inv['status']] ?? ucfirst($inv['status']);
             if ($inv['status'] === 'paid') { $st_color = '#065F46'; $st_bg = '#D1FAE5'; $st_label = 'Payée'; }
             elseif ($inv['status'] === 'open') { $st_color = '#92400E'; $st_bg = '#FEF3C7'; $st_label = 'En attente'; }
             elseif ($inv['status'] === 'void') { $st_color = '#475569'; $st_bg = '#F1F5F9'; $st_label = 'Annulée'; }
@@ -144,7 +144,7 @@ render_sidebar('mon-asso-factures');
           ?>
           <tr style="border-top:1px solid #F1F5F9;">
             <td style="padding:14px 16px;font-family:monospace;font-size:13px;">
-              <div style="font-weight:600;"><?= htmlspecialchars($inv['invoice_number'] ?? 'INV-' . $inv['id']) ?></div>
+              <div style="font-weight:600;"><?= htmlspecialchars(($inv['invoice_number'] ?? '') !== '' ? (string)$inv['invoice_number'] : 'En préparation') ?></div>
               <?php $_src = $inv['source'] ?? 'stripe'; ?>
               <div style="font-size:10px;font-weight:500;color:<?= $_src === 'stripe' ? '#1E40AF' : '#92400E' ?>;background:<?= $_src === 'stripe' ? '#DBEAFE' : '#FEF3C7' ?>;display:inline-block;padding:1px 6px;border-radius:4px;margin-top:3px;font-family:inherit;">
                 <?= $_src === 'stripe' ? '💳 Stripe' : '🔧 Manuelle' ?>

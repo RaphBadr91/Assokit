@@ -389,6 +389,34 @@ if (!function_exists('ak_paid_sub_sql')) {
     }
 }
 
+if (!function_exists('ak_org_not_payment_pending_sql')) {
+    /**
+     * Condition SQL « pas de premier paiement en cours de vérification » sur l'alias d'organizations :
+     * un prélèvement SEPA pris pendant l'essai met plusieurs jours à être confirmé par la banque
+     * (organizations.stripe_payment_pending_until, posé par stripe-sync-helpers.php pour 16 jours au
+     * plus, retiré au paiement réussi ou refusé). Pendant ce temps l'essai ne se termine pas : sinon
+     * l'association était rétrogradée et recevait « votre essai a pris fin » en plein paiement.
+     * Sans la colonne (migration 2026-10-28 pas encore passée) : « 1 » (aucun effet).
+     */
+    function ak_org_not_payment_pending_sql(PDO $pdo, string $o = 'o'): string {
+        if (!preg_match('/^[a-z0-9_]+$/i', $o)) $o = 'o';
+        return isset(ak_db_columns($pdo, 'organizations')['stripe_payment_pending_until'])
+            ? "($o.stripe_payment_pending_until IS NULL OR $o.stripe_payment_pending_until < NOW())" : "1";
+    }
+}
+
+if (!function_exists('ak_org_payment_pending_col')) {
+    /**
+     * Colonne « payment_pending_until » (premier prélèvement SEPA en cours de vérification,
+     * organizations.stripe_payment_pending_until) pour les requêtes lues par ak_plan_state_compute().
+     * Sans la colonne (migration 2026-10-28 pas encore passée) : NULL.
+     */
+    function ak_org_payment_pending_col(PDO $pdo, string $o = 'o'): string {
+        if (!preg_match('/^[a-z0-9_]+$/i', $o)) $o = 'o';
+        return (isset(ak_db_columns($pdo, 'organizations')['stripe_payment_pending_until']) ? "$o.stripe_payment_pending_until" : "NULL") . " AS payment_pending_until";
+    }
+}
+
 if (!function_exists('ak_plan_off_stripe_sql')) {
     /**
      * Condition SQL « plan qui n'est pas facturé par Stripe » (alias $p = asso_plans) : plan d'essai,
@@ -453,8 +481,9 @@ if (!function_exists('ak_plan_label')) {
 if (!function_exists('ak_plan_state_compute')) {
     /**
      * État du plan à partir d'une ligne déjà lue — LE calcul commun (fiche, listes du cockpit, appli).
-     * Clés lues : org_status, org_plan, trial_ends_at (organizations) ; plan_id, slug, name, is_trial,
-     * price_cents, sub_status, stripe_subscription_id (ligne courante, plan_id null s'il n'y en a pas).
+     * Clés lues : org_status, org_plan, trial_ends_at, payment_pending_until (organizations, facultative) ;
+     * plan_id, slug, name, is_trial, price_cents, sub_status, stripe_subscription_id (ligne courante,
+     * plan_id null s'il n'y en a pas).
      *
      * Règles, dans l'ordre :
      *   - is_paid : ligne active hors essai, payante, Sur-mesure ou Stripe. Un client payant n'est
@@ -463,8 +492,10 @@ if (!function_exists('ak_plan_state_compute')) {
      *   - trial_expired : date de fin PASSÉE (à l'instant près, comme les crons) et association en
      *     essai ou suspendue par la fin d'essai ;
      *   - trial_paused : essai suspendu à la main avant sa fin (pas « Essai terminé le <date future> ») ;
-     *   - badge : Résiliée (association ou abonnement résilié) > Essai terminé > Essai suspendu >
-     *     ESSAI > Suspendue > Paiement en attente / en retard > Active.
+     *   - payment_pending : premier prélèvement SEPA en cours de vérification (payment_pending_until à
+     *     venir) : l'essai n'est pas terminé (le cron ne le termine pas non plus), badge « Paiement SEPA en cours » ;
+     *   - badge : Résiliée (association ou abonnement résilié) > Paiement SEPA en cours > Essai terminé >
+     *     Essai suspendu > ESSAI > Suspendue > Paiement en attente / en retard > Active.
      * @return array{plan_id:?int, plan_slug:string, plan_label:string, sub_status:string, org_status:string,
      *               is_trial:bool, trial_expired:bool, trial_paused:bool, is_paid:bool, trial_ends_at:?string,
      *               days_left:?int, price_cents:int, badge:string, badge_tone:string}
@@ -473,7 +504,7 @@ if (!function_exists('ak_plan_state_compute')) {
     function ak_plan_state_compute(array $r): array {
         $st = ['plan_id' => null, 'plan_slug' => '', 'plan_label' => '—', 'sub_status' => '', 'org_status' => '',
                'is_trial' => false, 'trial_expired' => false, 'trial_paused' => false, 'is_paid' => false,
-               'trial_ends_at' => null, 'days_left' => null, 'price_cents' => 0,
+               'trial_ends_at' => null, 'days_left' => null, 'price_cents' => 0, 'payment_pending' => false,
                'badge' => '—', 'badge_tone' => 'gray'];
         $st['org_status'] = (string)($r['org_status'] ?? '');
         $st['trial_ends_at'] = $r['trial_ends_at'] ?? null;
@@ -499,12 +530,20 @@ if (!function_exists('ak_plan_state_compute')) {
         if ($end && $end <= time() && !$st['is_paid'] && ($st['org_status'] === 'suspended' || $st['is_trial'])) {
             $st['trial_expired'] = true;
         }
+        // Premier prélèvement SEPA en cours de vérification : l'association a payé, la banque confirme
+        $pp = !empty($r['payment_pending_until']) ? strtotime((string)$r['payment_pending_until']) : false;
+        if ($pp && $pp > time() && !$st['is_paid']) {
+            $st['payment_pending'] = true;
+            $st['trial_expired'] = false;
+        }
         // Suspendue à la main PENDANT l'essai (fin encore à venir) : l'essai est en pause, pas terminé
         $st['trial_paused'] = $st['is_trial'] && !$st['trial_expired'] && $st['org_status'] === 'suspended';
         $end_fr = $end ? date('d/m/Y', $end) : '';
 
         if ($st['org_status'] === 'cancelled' || $st['sub_status'] === 'cancelled') {
             $st['badge'] = 'Résiliée'; $st['badge_tone'] = 'cancelled';
+        } elseif ($st['payment_pending']) {
+            $st['badge'] = 'Paiement SEPA en cours'; $st['badge_tone'] = 'pending';
         } elseif ($st['trial_expired']) {
             $st['badge'] = 'Essai terminé' . ($end_fr !== '' ? ' le ' . $end_fr : '');
             $st['badge_tone'] = 'expired';
@@ -534,10 +573,11 @@ if (!function_exists('ak_org_plan_state')) {
     function ak_org_plan_state(PDO $pdo, int $org_id): array {
         $r = [];
         try {
-            $o = $pdo->prepare("SELECT status, plan, trial_ends_at FROM organizations WHERE id = ?");
+            $o = $pdo->prepare("SELECT o.status, o.plan, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . " FROM organizations o WHERE o.id = ?");
             $o->execute([$org_id]);
             $org = $o->fetch(PDO::FETCH_ASSOC) ?: [];
-            $r = ['org_status' => $org['status'] ?? '', 'org_plan' => $org['plan'] ?? '', 'trial_ends_at' => $org['trial_ends_at'] ?? null];
+            $r = ['org_status' => $org['status'] ?? '', 'org_plan' => $org['plan'] ?? '', 'trial_ends_at' => $org['trial_ends_at'] ?? null,
+                  'payment_pending_until' => $org['payment_pending_until'] ?? null];
             $s = $pdo->prepare("SELECT " . ak_sub_state_cols($pdo) . "
                                 FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
                                 WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1");
@@ -1040,6 +1080,7 @@ if (!function_exists('ak_trial_expired_org_ids')) {
             WHERE o.trial_ends_at IS NOT NULL AND o.trial_ends_at < NOW()
               AND o.deleted_at IS NULL
               AND (o.slug IS NULL OR o.slug NOT LIKE 'demo-%')
+              AND " . ak_org_not_payment_pending_sql($pdo) . "
               AND (o.status = 'trial' OR EXISTS (
                     SELECT 1 FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
                     WHERE s.org_id = o.id
@@ -1066,6 +1107,7 @@ if (!function_exists('ak_trial_expire')) {
         $q = $pdo->prepare("SELECT o.id FROM organizations o
                             WHERE o.id = ? AND o.trial_ends_at IS NOT NULL AND o.trial_ends_at < NOW()
                               AND o.deleted_at IS NULL AND (o.slug IS NULL OR o.slug NOT LIKE 'demo-%')
+                              AND " . ak_org_not_payment_pending_sql($pdo) . "
                               AND NOT EXISTS (SELECT 1 FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
                                               WHERE s.org_id = o.id AND " . ak_paid_sub_sql($pdo) . ")");
         $q->execute([$org_id]);

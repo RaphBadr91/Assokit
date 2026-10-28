@@ -39,6 +39,11 @@ try {
         $cents = (int) ($r['amount_cents'] ?? 0);
         if ($status === 'paid') { $total_paid += $cents; $nb_paid++; }
         elseif ($status === 'open') { $nb_pending++; }
+        // Jamais une page de paiement Stripe dans l'appli (Apple 3.1.1, règles de paiement de Google Play) :
+        // ni la page de la facture hébergée par Stripe (hosted_invoice_url, « Payer »), ni le PDF d'une
+        // facture Stripe qui n'est pas payée (ouverte, irrécouvrable : il porte un lien « Payer en ligne »)
+        $pdf = (string) ($r['invoice_pdf_url'] ?? '');
+        if (($r['source'] ?? '') === 'stripe' && $status !== 'paid') $pdf = '';
         $ps = sfd($r['period_start'] ?? null);
         $pe = sfd($r['period_end'] ?? null);
         $invoices[] = [
@@ -51,7 +56,7 @@ try {
             'status_kind'  => $meta['kind'],
             'date'         => sfd($r['paid_at'] ?? ($r['created_at'] ?? null)),
             'period'       => ($ps && $pe) ? ($ps . ' → ' . $pe) : '',
-            'pdf'          => (string) ($r['invoice_pdf_url'] ?? ($r['hosted_invoice_url'] ?? '')),
+            'pdf'          => $pdf,
         ];
     }
 

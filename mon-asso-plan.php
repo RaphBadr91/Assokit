@@ -20,6 +20,7 @@ require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/plan-helpers.php';
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
+@require_once __DIR__ . '/stripe-sync-helpers.php';
 require_once __DIR__ . '/includes-pricing.php';
 
 require_login();
@@ -131,6 +132,12 @@ if ($cur_slug === 'demarrage' && !$trial_lineage && $active_sub && !empty($activ
 
 // URL "Régulariser" dynamique
 $regularize_url = function_exists('ak_get_regularize_url') ? ak_get_regularize_url($pdo, $org_id) : '/contact?subject=billing';
+// Premier prélèvement SEPA en cours de vérification par la banque : ni « Passer à Assokit », ni second paiement
+$sepa_pending_until = function_exists('ak_stripe_payment_pending_until') ? ak_stripe_payment_pending_until($pdo, $org_id) : null;
+// Prochain prélèvement d'un abonnement par carte en cours (échéance donnée par Stripe)
+$next_charge_fr = ($live_stripe && $live_stripe['status'] === 'active' && empty($live_stripe['cancel_at_period_end'])
+    && !empty($live_stripe['current_period_end']) && strtotime((string)$live_stripe['current_period_end']) > time())
+    ? date('d/m/Y', strtotime((string)$live_stripe['current_period_end'])) : '';
 
 render_head('Mon abonnement');
 render_sidebar('mon-asso-plan');
@@ -193,6 +200,8 @@ render_sidebar('mon-asso-plan');
   if ($after_paid && !$trial_over) { $bg_color = '#FEF3C7'; $border_color = '#FCD34D'; $accent_color = '#92400E'; $emoji = '🔒'; }
   // Essai terminé (cron passé ou non) : aucune formule choisie, Démarrage n'est pas une offre
   $plan_title = $trial_over ? 'Essai terminé' : ($after_paid ? 'Accès limité' : ($subscription_status['plan_name'] ?? 'Démarrage'));
+  // Premier prélèvement SEPA en cours de vérification : ni « Essai terminé, choisissez votre formule », ni offre à souscrire
+  if ($sepa_pending_until) { $plan_title = 'Assokit · paiement en cours'; $bg_color = '#FEF3C7'; $border_color = '#FCD34D'; $accent_color = '#92400E'; $emoji = '⏳'; }
   // Formule gratuite (Démarrage) : rien ne se renouvelle ni ne se prélève (Sur-mesure, facturé à part, n'en est pas une)
   $is_free_plan = $cur_plan && (int)($cur_plan['price_cents'] ?? 0) <= 0 && ($cur_plan['slug'] ?? '') !== 'sur-mesure' && empty($cur_plan['is_custom_quote']);
   // Résiliation en cours (ak_plan_trial_info, même texte que Paramètres) : la formule reste jusqu'à
@@ -214,7 +223,9 @@ render_sidebar('mon-asso-plan');
         <?php endif; ?>
       </div>
       <div style="font-size:13px;color:<?= $accent_color ?>;margin-top:4px;opacity:0.9;">
-        <?php if ($is_cancel_scheduled && $sub_cancelled): ?>
+        <?php if ($sepa_pending_until): ?>
+          ⏳ Prélèvement SEPA en cours de vérification par votre banque · l’abonnement s’active dès sa confirmation
+        <?php elseif ($is_cancel_scheduled && $sub_cancelled): ?>
           🛑 Résiliée<?= $access_until_fr !== '' ? ' · accès jusqu’au ' . htmlspecialchars($access_until_fr) : '' ?> · puis accès limité (Démarrage), vos données sont conservées
         <?php elseif ($is_cancel_scheduled): ?>
           🛑 Résiliation programmée<?= $access_until_fr !== '' ? ' le ' . htmlspecialchars($access_until_fr) : '' ?> · aucun nouveau prélèvement · puis accès limité (Démarrage)
@@ -225,7 +236,7 @@ render_sidebar('mon-asso-plan');
         <?php elseif ($is_active && $stripe_on_free): ?>
           ✅ Abonnement actif
         <?php elseif ($is_active && $payment_mode === 'stripe'): ?>
-          ✅ Abonnement actif · Renouvellement automatique
+          ✅ Abonnement actif · Renouvellement automatique<?= $next_charge_fr !== '' ? ' · Prochain prélèvement le ' . htmlspecialchars($next_charge_fr) : '' ?>
         <?php elseif ($is_active && $payment_mode === 'free_grant'): ?>
           ✅ Abonnement actif · offert
         <?php elseif ($is_active && $payment_mode === 'wire_transfer'): ?>
@@ -253,7 +264,7 @@ render_sidebar('mon-asso-plan');
       <?php if ($is_grace || $is_pending || $is_overdue): ?>
         <a href="<?= htmlspecialchars($regularize_url) ?>" style="display:inline-flex;align-items:center;gap:7px;background:#EA580C;color:white;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('credit-card',14) ?>Régulariser</a>
       <?php endif; ?>
-      <?php if ($st === 'none' || $is_trial || $trial_over || ($is_free_plan && !$stripe_on_free && !$is_cancel_scheduled) || ($is_cancel_scheduled && ($cur_plan['slug'] ?? '') !== 'assokit')): ?>
+      <?php if (!$sepa_pending_until && ($st === 'none' || $is_trial || $trial_over || ($is_free_plan && !$stripe_on_free && !$is_cancel_scheduled) || ($is_cancel_scheduled && ($cur_plan['slug'] ?? '') !== 'assokit'))): ?>
         <a href="/mon-asso-paiement?plan=assokit" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(180deg,#059669 0%,#047857 100%);color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('star-fill',14) ?><?= $trial_over ? 'Choisir Assokit' : ($after_paid ? 'Reprendre Assokit' : 'Passer à Assokit') ?></a>
       <?php endif; ?>
       <?php if ($trial_over): ?>
@@ -261,6 +272,13 @@ render_sidebar('mon-asso-plan');
       <?php endif; ?>
     </div>
   </div>
+
+  <?php if ($sepa_pending_until): ?>
+  <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:12px;padding:14px 18px;margin:-8px 0 24px;color:#92400E;font-size:14px;line-height:1.55;">
+    ⏳ <strong>Prélèvement SEPA en cours de vérification</strong> — votre banque confirme le paiement de votre abonnement sous quelques jours ouvrés.
+    Inutile de payer une seconde fois : l’abonnement s’active automatiquement dès la confirmation, et vous gardez l’accès à Assokit d’ici là.
+  </div>
+  <?php endif; ?>
 
   <!-- ======= GRILLE PRINCIPALE ======= -->
   <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start;">
@@ -298,6 +316,13 @@ render_sidebar('mon-asso-plan');
           <div>Total mensuel<?= $ht_suffix !== '' ? ' TTC' : '' ?></div>
           <div style="color:#059669;font-size:18px;"><?= htmlspecialchars($total_split['ttc']) ?></div>
         </div>
+        <?php if ($ht_suffix === '' && $vat_rate <= 0): ?>
+        <div style="font-size:11.5px;color:#64748B;margin-top:4px;">TVA non applicable, art. 293 B du CGI</div>
+        <?php endif; ?>
+        <div style="font-size:12px;color:#64748B;margin-top:12px;line-height:1.55;">
+          <?php if ($next_charge_fr !== ''): ?>Prochain prélèvement le <?= htmlspecialchars($next_charge_fr) ?>, puis chaque mois à la même date. <?php endif; ?>
+          Sans engagement : résiliation à tout moment, effet à la fin du mois payé. <a href="/cgu#paiement" style="color:#059669;">Conditions générales</a>
+        </div>
       </div>
       <?php endif; ?>
 
@@ -312,7 +337,7 @@ render_sidebar('mon-asso-plan');
           <?php foreach ($recent_invoices as $inv): ?>
           <tr style="border-top:1px solid #F1F5F9;">
             <td style="padding:10px 0;">
-              <div style="font-weight:600;"><?= htmlspecialchars($inv['invoice_number'] ?? 'INV-' . $inv['id']) ?></div>
+              <div style="font-weight:600;"><?= htmlspecialchars(($inv['invoice_number'] ?? '') !== '' ? (string)$inv['invoice_number'] : 'Facture en préparation') ?></div>
               <div style="font-size:12px;color:#64748B;"><?= htmlspecialchars(date('d/m/Y', strtotime($inv['created_at']))) ?></div>
             </td>
             <td style="padding:10px 0;text-align:right;">
@@ -321,7 +346,8 @@ render_sidebar('mon-asso-plan');
               $st_color = '#94A3B8'; $st_bg = '#F1F5F9'; $st_label = $inv['status'];
               if ($inv['status'] === 'paid') { $st_color = '#065F46'; $st_bg = '#D1FAE5'; $st_label = 'Payée'; }
               elseif ($inv['status'] === 'open') { $st_color = '#92400E'; $st_bg = '#FEF3C7'; $st_label = 'En attente'; }
-              elseif ($inv['status'] === 'void' || $inv['status'] === 'uncollectible') { $st_color = '#991B1B'; $st_bg = '#FEE2E2'; $st_label = 'Annulée'; }
+              elseif ($inv['status'] === 'void') { $st_color = '#475569'; $st_bg = '#F1F5F9'; $st_label = 'Annulée'; }
+              elseif ($inv['status'] === 'uncollectible') { $st_color = '#991B1B'; $st_bg = '#FEE2E2'; $st_label = 'Impayée'; }
               ?>
               <span style="background:<?= $st_bg ?>;color:<?= $st_color ?>;font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600;"><?= htmlspecialchars($st_label) ?></span>
             </td>
@@ -377,6 +403,8 @@ render_sidebar('mon-asso-plan');
               <a href="/contact?plan=sur-mesure" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F1F5F9;color:#475569;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('phone',14) ?>Être recontacté</a>
             <?php elseif ((int)$p['price_cents'] <= 0): ?>
               <?php // Formule à 0 € (filtrée plus haut sauf formule actuelle) : ni achat ni résiliation depuis cette carte ?>
+            <?php elseif ($sepa_pending_until): ?>
+              <div style="background:#FEF3C7;color:#92400E;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;">⏳ Paiement en cours</div>
             <?php elseif ($trial_over || ((int)$p['price_cents'] > (int)($current_plan_id ? $pricing['plan_cents'] : 0) && !$cur_is_quote)): ?>
               <a href="/mon-asso-paiement?plan=<?= htmlspecialchars($p['slug']) ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#059669;color:white;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('upload',14) ?><?= ($trial_over || $is_trial || $trial_paused || $after_paid) ? 'Choisir' : 'Upgrade' ?></a>
             <?php elseif ((int)$p['price_cents'] > 0): ?>
@@ -402,6 +430,14 @@ render_sidebar('mon-asso-plan');
             <div style="flex:1;font-size:13px;line-height:1.4;">
               <div style="font-weight:700;color:#92400E;">Prélèvement par carte à arrêter</div>
               <div style="color:#64748B;"><?= $stripe_on_free_plan ? 'Votre formule actuelle est gratuite' : 'Votre formule actuelle n’est pas réglée par carte' ?> : l’abonnement par carte (Stripe) de votre ancienne formule n’a plus lieu d’être. Si votre carte est encore débitée, contactez-nous.</div>
+            </div>
+          </div>
+        <?php elseif ($sepa_pending_until): ?>
+          <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:10px;margin-bottom:14px;">
+            <div style="font-size:24px;">🏦</div>
+            <div style="flex:1;font-size:13px;line-height:1.4;">
+              <div style="font-weight:700;color:#92400E;">Prélèvement SEPA</div>
+              <div style="color:#64748B;">En cours de vérification par votre banque</div>
             </div>
           </div>
         <?php elseif (($is_trial || $trial_over || $trial_paused) && $payment_mode !== 'stripe'): ?>

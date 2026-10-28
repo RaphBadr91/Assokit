@@ -16,13 +16,13 @@
  * « Erreurs » et l'e-mail est retenté au passage suivant (étape 1 : note « overdue_mail_retry »
  * sur la ligne, tant que la période de tolérance court ; étape 2 : note posée seulement si parti).
  *
- * Sécurité : protégé par CRON_TOKEN dans l'URL
+ * Paiement par carte refusé (Stripe) : l'e-mail du jour J part du webhook (stripe-sync-helpers.php,
+ * ak_handle_invoice_failed) ; ce cron envoie celui du 15e jour (étape 2).
  *
- * Appel via :
- *   https://assokit.fr/cron_subscriptions.php?token=CRON_TOKEN
+ * Sécurité : ligne de commande, ou CRON_TOKEN dans l'URL
  *
- * Configuration cPanel CRON jobs :
- *   Tous les jours à 8h00
+ * Configuration cPanel CRON jobs (tous les jours à 8h00), au choix :
+ *   /usr/local/bin/php /home/pura7044/public_html/cron_subscriptions.php
  *   wget -qO- "https://assokit.fr/cron_subscriptions.php?token=VOTRE_CRON_TOKEN" > /dev/null 2>&1
  * --------------------------------------------------------------
  */
@@ -33,14 +33,18 @@ require_once __DIR__ . '/plan-helpers.php';
 
 header('Content-Type: text/plain; charset=utf-8');
 
-// === Sécurité : token obligatoire ===
-$expected = defined('CRON_TOKEN') ? CRON_TOKEN : '';
-if ($expected === '') { http_response_code(500); echo "CRON_TOKEN non configure\n"; exit; }
-$received = $_GET['token'] ?? '';
-if (!hash_equals($expected, $received)) {
-    http_response_code(403);
-    echo "FORBIDDEN — invalid token\n";
-    exit;
+// === Sécurité : ligne de commande (crons d'O2Switch, /usr/local/bin/php), sinon token obligatoire ===
+// php-cgi : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
+$is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
+if (!$is_cli) {
+    $expected = defined('CRON_TOKEN') ? (string)CRON_TOKEN : '';
+    if ($expected === '') { http_response_code(500); echo "CRON_TOKEN non configure\n"; exit; }
+    $received = $_GET['token'] ?? '';
+    if (!is_string($received) || !hash_equals($expected, $received)) {
+        http_response_code(403);
+        echo "FORBIDDEN — invalid token\n";
+        exit;
+    }
 }
 
 $now = new DateTime();

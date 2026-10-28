@@ -14,14 +14,20 @@
  *      association) : redirect_status seul ne prouve rien
  *   2. Affiche un message adapté (succès / en attente / échec), avec la
  *      formule réellement payée
- *   3. Le webhook (en parallèle) met à jour la BDD automatiquement : tant
- *      que la ligne d'abonnement n'est pas active, « activation en cours »
+ *   3. Paiement réussi : l'abonnement est relu chez Stripe et appliqué tout de
+ *      suite (ak_stripe_sync_subscription, stripe-sync-helpers.php : même code
+ *      que le webhook, sans doublon), sans attendre le webhook. Si Stripe ne
+ *      répond pas : « activation en cours », la page se recharge, le webhook
+ *      fera l'activation
+ *   4. Prélèvement SEPA en cours de vérification : noté sur l'association
+ *      (pas de fin d'essai ni de second paiement pendant ce temps)
  * --------------------------------------------------------------
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
+require_once __DIR__ . '/stripe-sync-helpers.php';
 
 require_login();
 // Apple 3.1.1 : aucun tunnel d'achat ne doit s'ouvrir dans l'app.
@@ -43,9 +49,10 @@ $status = 'unknown';
 $amount_str = '';
 $intent_data = null;
 $paid_sub_id = '';
+$is_sepa = false;
 
 if ($payment_intent_id && ak_stripe_is_configured($pdo)) {
-    $resp = ak_stripe_api_call($pdo, 'GET', '/payment_intents/' . $payment_intent_id, ['expand' => ['invoice']]);
+    $resp = ak_stripe_api_call($pdo, 'GET', '/payment_intents/' . $payment_intent_id, ['expand' => ['invoice', 'payment_method']]);
     // Seul un paiement du client Stripe de CETTE association est lu (jamais celui d'une autre)
     $org_customer = function_exists('ak_get_stripe_customer_id') ? (string)ak_get_stripe_customer_id($pdo, $org_id) : '';
     if ($resp['ok'] && $org_customer !== '' && (string)($resp['data']['customer'] ?? '') === $org_customer) {
@@ -54,7 +61,19 @@ if ($payment_intent_id && ak_stripe_is_configured($pdo)) {
         $amount = (int)($intent_data['amount'] ?? 0);
         $amount_str = ak_format_price_cents($amount);
         $inv = $intent_data['invoice'] ?? null;
-        $paid_sub_id = is_array($inv) ? (string)($inv['subscription'] ?? '') : '';
+        $paid_sub_id = is_array($inv) ? (string)(ak_stripe_invoice_sub_id($inv) ?? '') : '';
+        $pm = $intent_data['payment_method'] ?? null;
+        $is_sepa = (is_array($pm) && ($pm['type'] ?? '') === 'sepa_debit')
+            || (($intent_data['payment_method_types'] ?? []) === ['sepa_debit']);
+        // L'abonnement est appliqué tout de suite (paiement réussi : actif, fin de l'essai ; prélèvement SEPA
+        // en cours : noté), sans attendre le webhook. Stripe injoignable : le webhook s'en chargera.
+        if ($paid_sub_id !== '' && in_array($status, ['succeeded', 'processing'], true)) {
+            try {
+                ak_stripe_sync_subscription($pdo, $paid_sub_id);
+            } catch (Throwable $e) {
+                error_log('[mon-asso-paiement-success] org #' . $org_id . ' : ' . $e->getMessage());
+            }
+        }
     }
 }
 
@@ -155,10 +174,15 @@ render_sidebar('mon-asso-paiement');
       <!-- ============== EN COURS ============== -->
       <div style="background:linear-gradient(135deg, #FEF3C7 0%, #FAF8F5 100%); border:2px solid #FCD34D; border-radius:18px; padding:48px 32px; text-align:center;">
         <div style="font-size:64px; margin-bottom:16px;">⏳</div>
-        <h1 style="margin:0 0 14px; font-size:24px; color:#92400E;">Paiement en cours de vérification</h1>
+        <h1 style="margin:0 0 14px; font-size:24px; color:#92400E;"><?= $is_sepa ? 'Prélèvement SEPA en cours de vérification' : 'Paiement en cours de vérification' ?></h1>
         <p style="color:#78350F; line-height:1.65; font-size:15px; margin:0 0 24px;">
-          Votre paiement est en cours de validation. Cela peut prendre quelques minutes.<br>
-          Votre abonnement sera activé dès sa confirmation : suivez son état sur la page « Mon abonnement ».
+          <?php if ($is_sepa): ?>
+            Votre mandat de prélèvement est enregistré. Votre banque confirme le prélèvement sous quelques jours ouvrés (jusqu’à une semaine).<br>
+            Vous gardez l’accès à Assokit d’ici là, et votre abonnement s’active automatiquement dès la confirmation. Inutile de payer une seconde fois.
+          <?php else: ?>
+            Votre paiement est en cours de validation. Cela peut prendre quelques minutes.<br>
+            Votre abonnement sera activé dès sa confirmation : suivez son état sur la page « Mon abonnement ».
+          <?php endif; ?>
         </p>
         <a href="/mon-asso-plan" style="background:#92400E; color:white; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px;">Voir mon abonnement</a>
       </div>
@@ -170,11 +194,11 @@ render_sidebar('mon-asso-paiement');
         <div style="font-size:64px; margin-bottom:16px;">❌</div>
         <h1 style="margin:0 0 14px; font-size:24px; color:#991B1B;">Paiement non finalisé</h1>
         <p style="color:#7F1D1D; line-height:1.65; font-size:15px; margin:0 0 24px;">
-          Le paiement n'a pas pu être confirmé. Aucun montant n'a été débité.<br>
-          Vous pouvez réessayer ou nous contacter si le problème persiste.
+          Le paiement n’a pas pu être confirmé<?= ($status === 'requires_action' || $redirect_status === 'failed') ? ' (validation 3-D Secure non effectuée ou refusée par votre banque)' : '' ?>. Aucun montant n’a été débité.<br>
+          Vous pouvez réessayer avec la même carte ou une autre, ou nous contacter si le problème persiste.
         </p>
         <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-          <a href="/mon-asso-paiement" style="background:#DC2626; color:white; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px;">↻ Réessayer</a>
+          <a href="/mon-asso-paiement?plan=assokit" style="background:#DC2626; color:white; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px;">↻ Réessayer</a>
           <a href="/contact?subject=billing" style="background:white; color:#475569; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px; border:1px solid #E2E8F0;">📞 Nous contacter</a>
         </div>
       </div>

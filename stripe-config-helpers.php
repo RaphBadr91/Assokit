@@ -16,6 +16,52 @@
  * --------------------------------------------------------------
  */
 
+if (!function_exists('ak_stripe_api_base')) {
+    /**
+     * Adresse de l'API Stripe, sans « /v1 » : https://api.stripe.com en production.
+     * AK_STRIPE_API_BASE n'est défini QUE par le fichier de préchargement du banc de test (faux
+     * Stripe local, auto_prepend_file) : jamais dans config.php ni en production.
+     */
+    function ak_stripe_api_base(): string {
+        return defined('AK_STRIPE_API_BASE') ? rtrim((string)AK_STRIPE_API_BASE, '/') : 'https://api.stripe.com';
+    }
+}
+
+if (!function_exists('ak_stripe_key_mode')) {
+    /** Mode d'une clé Stripe : 'live' (sk_live_, rk_live_, pk_live_), 'test' (…_test_), '' si inconnue. */
+    function ak_stripe_key_mode(?string $key): string {
+        $key = (string)$key;
+        if (preg_match('/^(sk|rk|pk)_live_/', $key)) return 'live';
+        if (preg_match('/^(sk|rk|pk)_test_/', $key)) return 'test';
+        return '';
+    }
+}
+
+if (!defined('AK_STRIPE_WEBHOOK_EVENTS')) {
+    /**
+     * Événements Stripe traités par stripe-webhook.php : exactement ceux auxquels le point de
+     * terminaison est abonné par « Configurer Stripe automatiquement » (stripe-setup-helpers.php).
+     * Un seul endroit : la liste du webhook et celle de la configuration ne peuvent pas diverger.
+     */
+    define('AK_STRIPE_WEBHOOK_EVENTS', [
+        'customer.subscription.created',
+        'customer.subscription.updated',
+        'customer.subscription.deleted',
+        'invoice.created',
+        'invoice.finalized',
+        'invoice.updated',
+        'invoice.paid',
+        'invoice.payment_failed',
+        'invoice.payment_action_required',
+        'invoice.voided',
+        'invoice.marked_uncollectible',
+        'customer.updated',
+        'customer.deleted',
+        'charge.refunded',
+        'charge.dispute.created',
+    ]);
+}
+
 if (!function_exists('ak_stripe_config_get')) {
     /**
      * Récupère une valeur de configuration Stripe.
@@ -131,6 +177,9 @@ if (!function_exists('ak_stripe_get_mode')) {
      * @return string
      */
     function ak_stripe_get_mode(PDO $pdo): string {
+        // La clé secrète enregistrée fait foi (stripe_mode n'en est qu'une copie, gardée pour l'affichage)
+        $from_key = ak_stripe_key_mode(ak_stripe_config_get($pdo, 'stripe_secret_key', null));
+        if ($from_key !== '') return $from_key;
         $mode = ak_stripe_config_get($pdo, 'stripe_mode', 'test');
         return ($mode === 'live') ? 'live' : 'test';
     }
@@ -188,7 +237,7 @@ if (!function_exists('ak_stripe_test_connection')) {
         }
 
         // Test simple : appel à /v1/balance (endpoint léger qui requiert juste auth)
-        $ch = curl_init('https://api.stripe.com/v1/balance');
+        $ch = curl_init(ak_stripe_api_base() . '/v1/balance');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'Authorization: Bearer ' . $sk,
@@ -205,11 +254,14 @@ if (!function_exists('ak_stripe_test_connection')) {
         }
         if ($http_code === 200) {
             // Détection du mode test/live à partir de la clé
-            $detected_mode = (strpos($sk, 'sk_live_') === 0) ? 'live' : 'test';
-            return ['ok' => true, 'message' => 'Connexion OK (mode ' . $detected_mode . ')', 'mode' => $detected_mode];
+            $detected_mode = ak_stripe_key_mode($sk) === 'live' ? 'live' : 'test';
+            return ['ok' => true, 'message' => 'Connexion OK (mode ' . ($detected_mode === 'live' ? 'réel' : 'test') . ')', 'mode' => $detected_mode];
         }
         if ($http_code === 401) {
-            return ['ok' => false, 'message' => 'Clé secrète invalide (401)'];
+            return ['ok' => false, 'message' => 'Clé secrète refusée par Stripe (401) : recopiez-la depuis Développeurs › Clés API'];
+        }
+        if ($http_code === 403) {
+            return ['ok' => false, 'message' => 'Clé restreinte sans le droit de lire le solde (403) : utilisez la clé secrète standard (sk_…)'];
         }
         return ['ok' => false, 'message' => 'Erreur HTTP ' . $http_code];
     }

@@ -1,6 +1,6 @@
 <?php
 /**
- * AssoKit — CRON Verification fin d'essai gratuit (AK_TRIAL_DAYS, 14 j)
+ * Assokit — CRON Verification fin d'essai gratuit (AK_TRIAL_DAYS, 14 j)
  * À LANCER TOUTES LES 10 MINUTES (et non plus 1x par jour). Les rappels
  * sont notés dans cron_envois : les relancer souvent n'en envoie pas
  * davantage, chaque échéance ne part qu'une fois.
@@ -38,6 +38,9 @@ if (!ak_lot_demarrer($pdo, 'trial-check')) exit(0);
 
 // 1. Essais terminés → ancienne ligne « suspended », plan Démarrage, e-mail de fin
 //
+// Premier prélèvement SEPA en cours de vérification par la banque (ak_org_not_payment_pending_sql) :
+// l'essai attend la réponse de la banque, il n'est pas terminé pendant ce temps.
+//
 // Un client payant n'est jamais concerné (son ancienne ligne a pu rester « trial ») : il ne
 // reçoit pas « votre essai a pris fin ». Une association résiliée, ou suspendue à la main
 // (suspended_reason renseigné par le cockpit ou l'appli), voit sa ligne basculer sans e-mail.
@@ -51,6 +54,7 @@ $stmt = $pdo->query("
       AND o.trial_ends_at IS NOT NULL
       AND o.trial_ends_at < NOW()
       AND o.deleted_at IS NULL
+      AND " . ak_org_not_payment_pending_sql($pdo) . "
       AND NOT EXISTS (SELECT 1 FROM asso_subscriptions a JOIN asso_plans p ON p.id = a.plan_id
                       WHERE a.org_id = o.id AND " . ak_paid_sub_sql($pdo, 'a', 'p') . ")
     ORDER BY o.trial_ends_at ASC
@@ -89,13 +93,13 @@ foreach ($expired as $row) {
                 try {
                     $html = ak_email_template_wrap(
                         "Bonjour " . htmlspecialchars($a['first_name']) . ",",
-                        "Votre essai gratuit sur AssoKit a pris fin " . $quand . "."
+                        "Votre essai gratuit sur Assokit a pris fin " . $quand . "."
                         . "<br><br>Les données de <strong>" . htmlspecialchars($row['org_name']) . "</strong> sont conservées."
                         . "<br><br>Pour continuer avec toutes les fonctionnalités, choisissez votre formule : <strong>Assokit</strong> à "
                         . htmlspecialchars(ak_offer_price($pdo)['label']) . ", sans engagement, ou <strong>Sur-mesure</strong> sur devis.",
-                        "https://assokit.fr/mon-asso-plan", "Choisir ma formule", "AssoKit"
+                        "https://assokit.fr/mon-asso-plan", "Choisir ma formule", "Assokit"
                     );
-                    ak_asso_send_resend($a['email'], "🎁 Votre essai AssoKit a pris fin", $html, null, null, 'AssoKit');
+                    ak_asso_send_resend($a['email'], "🎁 Votre essai Assokit a pris fin", $html, null, null, 'Assokit');
                 } catch (Throwable $e) { error_log('[cron-trial-check] email expire: ' . $e->getMessage()); }
             }
         }
@@ -138,7 +142,9 @@ if (ak_lot_encore()) {
 // fait disparaître sans bruit l'alerte d'une semaine avant et celle du
 // dernier jour.
 // Seuls les essais EN COURS sont relancés : ni une association suspendue ou résiliée à la main,
-// ni un client payant dont l'ancienne ligne serait restée « trial ».
+// ni un client payant dont l'ancienne ligne serait restée « trial », ni une association dont le
+// premier prélèvement SEPA est en cours de vérification (elle a déjà payé : « choisissez votre
+// formule » l'inviterait à payer une seconde fois).
 foreach ([7, 3, 1, 0] as $days_left) {
     // trial_ends_at est ramenée : elle sert de clé de dédoublonnage.
     // Sans elle, la clé serait « j3: » pour tout le monde et le premier
@@ -152,6 +158,7 @@ foreach ([7, 3, 1, 0] as $days_left) {
           AND o.status NOT IN ('suspended', 'cancelled')
           AND o.trial_ends_at >= NOW()
           AND DATE(o.trial_ends_at) = DATE(DATE_ADD(NOW(), INTERVAL ? DAY))
+          AND " . ak_org_not_payment_pending_sql($pdo) . "
           AND NOT EXISTS (SELECT 1 FROM asso_subscriptions a JOIN asso_plans p ON p.id = a.plan_id
                           WHERE a.org_id = o.id AND " . ak_paid_sub_sql($pdo, 'a', 'p') . ")
         ORDER BY s.org_id
@@ -201,9 +208,9 @@ foreach ([7, 3, 1, 0] as $days_left) {
                         $corps . "<strong>" . htmlspecialchars($row['org_name']) . "</strong>."
                         . "<br><br>Pour continuer sans interruption, choisissez votre formule : <strong>Assokit</strong> à "
                         . htmlspecialchars(ak_offer_price($pdo)['label']) . ", sans engagement. Vos données et réglages sont conservés.",
-                        "https://assokit.fr/mon-asso-plan", "Choisir une formule", "AssoKit"
+                        "https://assokit.fr/mon-asso-plan", "Choisir une formule", "Assokit"
                     );
-                    ak_asso_send_resend($a['email'], $title, $html, null, null, 'AssoKit');
+                    ak_asso_send_resend($a['email'], $title, $html, null, null, 'Assokit');
                     $parti = true;
                 } catch (Throwable $e) { error_log('[cron-trial-check] rappel: ' . $e->getMessage()); }
             }

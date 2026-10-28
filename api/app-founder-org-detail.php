@@ -303,7 +303,7 @@ try {
             'nb_users'      => max($nb_users, count($members)),
             'members_more'  => max(0, $nb_users - count($members)),
             // Prolonger l'essai : seulement un essai en cours ou terminé (jamais un abonnement payant)
-            'can_extend_trial' => ($ps['is_trial'] || $ps['trial_expired']) && (string) $o['status'] !== 'cancelled' && !$is_request,
+            'can_extend_trial' => ($ps['is_trial'] || $ps['trial_expired']) && empty($ps['payment_pending']) && (string) $o['status'] !== 'cancelled' && !$is_request,
             'trial_days'    => (int) AK_TRIAL_DAYS,
         ] + $ps,
         'fiche'    => $fiche,

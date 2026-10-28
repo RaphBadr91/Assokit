@@ -7,10 +7,17 @@
  * Fonctionnement :
  *   1. Affiche le récap du plan choisi (Assokit : prix HT + TVA de la plateforme = TTC, includes-pricing.php)
  *   2. Affiche option "+ Domaine personnalisé +10 € HT/mois"
- *   3. Affiche Stripe Payment Element (CB / Apple Pay / Google Pay / SEPA / Klarna)
+ *   3. Affiche Stripe Payment Element : carte bancaire (avec Apple Pay / Google Pay) et, s'il est
+ *      activé sur le compte Stripe, prélèvement SEPA — exactement les moyens acceptés par l'abonnement
+ *      (ak_stripe_payment_method_types, la même liste que stripe-create-payment-intent.php)
  *   4. Au clic "Payer", appel AJAX /stripe-create-payment-intent.php
- *   5. Confirmation côté Stripe via Stripe.js
- *   6. Redirection vers /mon-asso-paiement-success
+ *   5. Confirmation côté Stripe via Stripe.js (3-D Secure, mandat SEPA)
+ *   6. Redirection vers /mon-asso-paiement-success (qui active l'abonnement sans attendre le webhook)
+ *
+ * Prélèvement SEPA déjà en cours de vérification (premier paiement) : aucun nouveau paiement proposé.
+ * Paiement impossible pour cette association (ak_stripe_payment_refusal, même règle que
+ * stripe-create-payment-intent.php : suspension par le support, abonnement réglé sur facture, mode test
+ * hors des associations de test) : le message remplace le formulaire. Mode test : bandeau « MODE TEST ».
  *
  * Association déjà abonnée par carte (abonnement Stripe actif ou en retard) :
  * JAMAIS de second abonnement (double facturation). À la place :
@@ -28,6 +35,7 @@ require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/plan-helpers.php';
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
+require_once __DIR__ . '/stripe-sync-helpers.php';
 require_once __DIR__ . '/includes-pricing.php';
 
 require_login();
@@ -66,14 +74,16 @@ if ($page_action === 'update_card') {
         header('Location: /mon-asso-plan');
         exit;
     }
-    $host = (string)($_SERVER['HTTP_HOST'] ?? '');
-    $base = preg_match('/^[a-z0-9.-]+(:\d+)?$/i', $host)
-        ? ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https' ? 'https' : 'http') . '://' . $host
-        : 'https://assokit.fr';
-    $resp = ak_stripe_api_call($pdo, 'POST', '/billing_portal/sessions', [
+    // Configuration du portail créée par « Configurer Stripe automatiquement » (changer de carte, factures,
+    // résiliation en fin de période), en français. Sans elle, Stripe prend la configuration par défaut du compte.
+    $portal = [
         'customer'   => $customer_id,
-        'return_url' => $base . '/mon-asso-plan',
-    ]);
+        'return_url' => ak_stripe_site_base() . '/mon-asso-plan',
+        'locale'     => 'fr',
+    ];
+    $bpc = (string)ak_stripe_config_get($pdo, 'billing_portal_configuration_id_' . ak_stripe_get_mode($pdo), '');
+    if ($bpc !== '') $portal['configuration'] = $bpc;
+    $resp = ak_stripe_api_call($pdo, 'POST', '/billing_portal/sessions', $portal);
     $portal_url = (string)($resp['data']['url'] ?? '');
     if (!empty($resp['ok']) && preg_match('#^https://[a-z0-9.-]*stripe\.com/#i', $portal_url)) {
         header('Location: ' . $portal_url);
@@ -96,24 +106,29 @@ if ($live_stripe && $_SERVER['REQUEST_METHOD'] === 'POST' && $page_action === 'a
         $_SESSION['flash_error'] = $has_addon ? 'Le domaine personnalisé est déjà inclus dans votre abonnement.'
             : 'L’ajout du domaine personnalisé n’est pas possible sur votre abonnement actuel. Contactez-nous.';
     } else {
+        // Clé d'idempotence : un double envoi du formulaire n'ajoute jamais l'option deux fois
         $resp = ak_stripe_api_call($pdo, 'POST', '/subscription_items', [
             'subscription'       => $live_stripe['stripe_subscription_id'],
             'price'              => $addon_price_id,
             'proration_behavior' => 'create_prorations',
             'metadata[org_id]'   => (string)$org_id,
-        ]);
+        ], 'ak-addon-' . $live_stripe['stripe_subscription_id'] . '-' . $addon_price_id);
         if (!empty($resp['ok'])) {
             // Le webhook customer.subscription.updated l'enregistre aussi (même ligne, sans doublon)
             try {
                 ak_db_insert($pdo, 'asso_subscription_addons', [
                     'subscription_id' => (int)$live_stripe['id'], 'org_id' => $org_id, 'addon_type' => 'custom_domain',
-                    'addon_name' => 'Domaine personnalisé', 'price_cents_monthly' => 1000, 'stripe_price_id' => $addon_price_id,
+                    'addon_name' => 'Domaine personnalisé', 'price_cents_monthly' => AK_ADDON_DOMAIN_HT_CENTS, 'stripe_price_id' => $addon_price_id,
                     'stripe_subscription_item_id' => $resp['data']['id'] ?? null, 'status' => 'active',
                 ], ['created_at' => 'NOW()']);
             } catch (Throwable $e) {
                 error_log('[mon-asso-paiement] add-on local org #' . $org_id . ' : ' . get_class($e));
             }
-            $_SESSION['flash_success'] = 'Domaine personnalisé ajouté à votre abonnement : +' . $addon_live_label . '. La période en cours est facturée au prorata sur la prochaine facture.';
+            $_SESSION['flash_success'] = 'Domaine personnalisé ajouté à votre abonnement : +' . $addon_live_label . '. La période en cours est facturée au prorata sur la prochaine facture. Nous configurons votre domaine et vous écrivons dès qu’il est prêt.';
+            if (function_exists('ak_stripe_notify_founder')) {
+                ak_stripe_notify_founder($pdo, '🏆 Domaine personnalisé à mettre en place',
+                    '<p>« ' . ak_stripe_h((string)($user['org_name'] ?? ('Association n°' . $org_id))) . ' » a ajouté l’option Domaine personnalisé à son abonnement.</p><p>Configurez son domaine dans le cockpit (Domaines).</p>', $org_id);
+            }
         } else {
             error_log('[mon-asso-paiement] add-on Stripe org #' . $org_id . ' : ' . ($resp['error'] ?? '?'));
             $_SESSION['flash_error'] = 'L’ajout du domaine personnalisé a échoué. Aucun montant n’a été prélevé. Réessayez ou contactez-nous.';
@@ -153,12 +168,33 @@ if (!$live_stripe && ((int)($plan['price_cents'] ?? 0) <= 0 || ($plan['slug'] ??
 // Détection si Stripe est configuré
 $stripe_ready = ak_stripe_is_configured($pdo);
 $stripe_pk = $stripe_ready ? ak_stripe_get_publishable_key($pdo) : null;
+// Moyens de paiement : exactement ceux que l'abonnement acceptera (stripe-create-payment-intent.php)
+$pm_types = function_exists('ak_stripe_payment_method_types') ? ak_stripe_payment_method_types($pdo) : ['card'];
+// Premier prélèvement SEPA déjà en cours de vérification : pas de second paiement
+$pending_until = function_exists('ak_stripe_payment_pending_until') ? ak_stripe_payment_pending_until($pdo, $org_id) : null;
+// Paiement impossible pour cette association (le formulaire n'est pas montré). Paiements pas encore
+// ouverts : le bloc « bientôt disponible » plus bas suffit.
+$refusal = ak_stripe_payment_refusal($pdo, $org_id);
+if ($refusal && $refusal['kind'] === 'test_mode' && !$stripe_ready) $refusal = null;
+$test_mode = $stripe_ready && ak_stripe_get_mode($pdo) === 'test';
 
 // Calculs prix : formule et add-on HT, TVA de la plateforme (celle que Stripe ajoute), total TTC prélevé
 $plan_cents = (int)($plan['price_cents'] ?? 0);
 $addon_cents = $with_addon_domain ? AK_ADDON_DOMAIN_HT_CENTS : 0; // +10 € HT/mois
 $vat_rate = function_exists('ak_vat_applicable_rate') ? ak_vat_applicable_rate($pdo) : 0.0;
 $price = ak_price_split($plan_cents + $addon_cents, $vat_rate);
+// Stripe calcule la TVA ligne par ligne (formule, puis option), arrondie au centime sur chaque ligne :
+// même calcul ici, pour que le montant affiché (et celui de la feuille Apple Pay / Google Pay) soit
+// exactement celui de la première facture
+if ($addon_cents > 0 && $vat_rate > 0) {
+    $line_vat = ak_price_split($plan_cents, $vat_rate)['vat_cents'] + ak_price_split($addon_cents, $vat_rate)['vat_cents'];
+    if ($line_vat !== $price['vat_cents']) {
+        $price['vat_cents'] = $line_vat;
+        $price['ttc_cents'] = $plan_cents + $addon_cents + $line_vat;
+        $price['vat'] = ak_price_eur($line_vat);
+        $price['ttc'] = ak_price_eur($price['ttc_cents']);
+    }
+}
 $total_cents = $price['ttc_cents'];
 $total_str = $price['ttc'];
 
@@ -252,13 +288,43 @@ render_sidebar('mon-asso-paiement');
         <?php if ($trial_over): ?>
           Vos données sont conservées : une fois le paiement confirmé, votre association passe au plan <?= htmlspecialchars($plan_label) ?>.
         <?php else: ?>
-          Une fois le paiement confirmé, le plan <?= htmlspecialchars($plan_label) ?> prend le relais de votre essai : vos données et réglages sont conservés.
+          Votre abonnement commence dès le paiement : le premier mois est prélevé aujourd’hui et l’essai gratuit s’arrête (les jours d’essai restants ne sont pas reportés). Vos données et réglages sont conservés.
         <?php endif; ?>
       </div>
     </div>
   <?php endif; ?>
 
-  <?php if (!$stripe_ready): ?>
+  <?php if ($pending_until): ?>
+
+    <!-- ============================================ -->
+    <!-- Prélèvement SEPA en cours de vérification     -->
+    <!-- ============================================ -->
+    <div style="background:linear-gradient(135deg, #FEF3C7 0%, #FAF8F5 100%); border:1px solid #FCD34D; border-radius:14px; padding:32px; text-align:center;">
+      <div style="font-size:48px; margin-bottom:12px;">⏳</div>
+      <h2 style="margin:0 0 12px; font-size:21px; color:#92400E;">Prélèvement SEPA en cours de vérification</h2>
+      <p style="color:#78350F; line-height:1.65; max-width:560px; margin:0 auto 20px; font-size:15px;">
+        Votre banque confirme le prélèvement de votre abonnement : cela prend quelques jours ouvrés. Inutile de payer une seconde fois :
+        votre abonnement s’active automatiquement dès la confirmation, et vous gardez l’accès à Assokit d’ici là.
+      </p>
+      <a href="/mon-asso-plan" style="background:#92400E; color:white; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px;">← Mon abonnement</a>
+    </div>
+
+  <?php elseif ($refusal): ?>
+
+    <!-- ============================================ -->
+    <!-- Paiement impossible pour cette association   -->
+    <!-- ============================================ -->
+    <div style="background:<?= $refusal['kind'] === 'test_mode' ? 'linear-gradient(135deg, #FAF8F5 0%, #F0FDF4 100%)' : '#FFFBEB' ?>; border:1px solid <?= $refusal['kind'] === 'test_mode' ? '#A7F3D0' : '#FCD34D' ?>; border-radius:14px; padding:32px; text-align:center;">
+      <div style="font-size:48px; margin-bottom:12px;"><?= $refusal['kind'] === 'test_mode' ? '🚧' : '📞' ?></div>
+      <h2 style="margin:0 0 12px; font-size:21px; color:<?= $refusal['kind'] === 'test_mode' ? '#047857' : '#92400E' ?>;"><?= $refusal['kind'] === 'test_mode' ? 'Paiement en ligne bientôt disponible' : 'Paiement en ligne indisponible pour votre espace' ?></h2>
+      <p style="color:#475569; line-height:1.65; max-width:560px; margin:0 auto 20px; font-size:15px;"><?= htmlspecialchars($refusal['message']) ?></p>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <a href="/contact?subject=billing" style="background:linear-gradient(180deg,#059669 0%,#047857 100%); color:white; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px;">📞 Nous contacter</a>
+        <a href="/mon-asso-plan" style="background:white; color:#475569; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px; border:1px solid #E2E8F0;">← Mon abonnement</a>
+      </div>
+    </div>
+
+  <?php elseif (!$stripe_ready): ?>
 
     <!-- ============================================ -->
     <!-- MODE 1 : Stripe non configuré (placeholder)  -->
@@ -267,7 +333,7 @@ render_sidebar('mon-asso-paiement');
       <div style="font-size:54px; margin-bottom:14px;">🚧</div>
       <h2 style="margin:0 0 12px; font-size:22px; color:#047857;">Paiement par carte bientôt disponible</h2>
       <p style="color:#475569; line-height:1.65; max-width:540px; margin:0 auto 22px; font-size:15px;">
-        Notre système de paiement automatique sera activé très prochainement (Apple Pay, Google Pay, CB, SEPA, Klarna). En attendant, contactez-nous pour activer votre abonnement par virement.
+        Le paiement en ligne (carte bancaire, Apple Pay, Google Pay, prélèvement SEPA) sera activé très prochainement. En attendant, contactez-nous pour activer votre abonnement par virement.
       </p>
       <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
         <a href="/contact?subject=billing" style="background:linear-gradient(180deg,#059669 0%,#047857 100%); color:white; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px;">📞 Nous contacter</a>
@@ -280,12 +346,17 @@ render_sidebar('mon-asso-paiement');
     <!-- ============================================ -->
     <!-- MODE 2 : Stripe configuré → formulaire actif -->
     <!-- ============================================ -->
+    <?php if ($test_mode): ?>
+    <div style="background:#FEF3C7;border:2px dashed #D97706;border-radius:12px;padding:12px 16px;margin-bottom:18px;color:#92400E;font-size:14px;line-height:1.5;">
+      🧪 <strong>MODE TEST — aucun vrai prélèvement.</strong> Payez avec une carte de test de Stripe (4242 4242 4242 4242, date future, n’importe quel code) : une vraie carte est refusée.
+    </div>
+    <?php endif; ?>
     <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:24px; align-items:start;">
 
       <!-- COLONNE GAUCHE : Stripe Payment Element -->
       <div style="background:white; border:1px solid #E2E8F0; border-radius:14px; padding:28px;">
         <h2 style="margin:0 0 6px; font-size:18px;">🔐 Paiement sécurisé</h2>
-        <p style="color:#64748B; font-size:13.5px; margin:0 0 20px;">Toutes les méthodes de paiement disponibles selon votre appareil.</p>
+        <p style="color:#64748B; font-size:13.5px; margin:0 0 20px;"><?= in_array('sepa_debit', $pm_types, true) ? 'Carte bancaire, Apple Pay ou Google Pay (selon votre appareil), ou prélèvement SEPA.' : 'Carte bancaire, Apple Pay ou Google Pay (selon votre appareil).' ?></p>
 
         <form id="payment-form">
           <!-- Container du Payment Element (rempli par Stripe.js) -->
@@ -298,6 +369,11 @@ render_sidebar('mon-asso-paiement');
             <span id="button-spinner" style="display:none; width:18px; height:18px; border:2px solid white; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite;"></span>
             <span id="button-text">💳 Payer <?= htmlspecialchars($total_str) ?><?= $price['has_vat'] ? ' TTC' : '' ?>/mois</span>
           </button>
+          <p style="font-size:12px; color:#64748B; line-height:1.55; margin:12px 0 0; text-align:center;">
+            En confirmant, vous acceptez les <a href="/cgu#paiement" target="_blank" rel="noopener" style="color:#059669;">conditions générales</a>.
+            Premier mois prélevé aujourd’hui, puis renouvellement le <?= (int)date('j') ?> de chaque mois<?= (int)date('j') > 28 ? ' (ou le dernier jour du mois)' : '' ?> ;
+            résiliation à tout moment depuis « Mon abonnement », effet à la fin du mois payé ; aucun remboursement au prorata.
+          </p>
         </form>
 
         <!-- Logos confiance -->
@@ -377,11 +453,14 @@ render_sidebar('mon-asso-paiement');
     <script src="https://js.stripe.com/v3/"></script>
     <script>
     (function() {
-      const stripe = Stripe(<?= json_encode($stripe_pk) ?>);
+      const stripe = Stripe(<?= json_encode($stripe_pk) ?>, { locale: 'fr' });
+      // Mode « abonnement » sans intention préalable : l'abonnement est créé au clic sur « Payer ».
+      // paymentMethodTypes = exactement les moyens acceptés par l'abonnement (sinon confirmPayment échoue).
       const elements = stripe.elements({
         mode: 'subscription',
         amount: <?= (int)$total_cents ?>,
         currency: 'eur',
+        paymentMethodTypes: <?= json_encode(array_values($pm_types)) ?>,
         appearance: {
           theme: 'stripe',
           variables: {
@@ -416,7 +495,7 @@ render_sidebar('mon-asso-paiement');
       function setLoading(isLoading) {
         if (isLoading) {
           submitBtn.disabled = true;
-          buttonText.textContent = 'Traitement en cours...';
+          buttonText.textContent = 'Traitement en cours…';
           buttonSpinner.style.display = 'inline-block';
         } else {
           submitBtn.disabled = false;
@@ -453,15 +532,21 @@ render_sidebar('mon-asso-paiement');
               with_addon_domain: <?= $with_addon_domain ? 'true' : 'false' ?>
             })
           });
-          const { clientSecret, error: serverError } = await response.json();
+          let data = {};
+          try { data = await response.json(); } catch (e) { data = { error: 'Réponse inattendue du serveur. Aucun montant n’a été prélevé.' }; }
+          const { clientSecret, redirect } = data;
+          // Session refusée (compte désactivé, espace fermé…) : la réponse porte le code dans « error » et le texte dans « message »
+          const serverError = (data.ok === false && data.message) ? data.message : data.error;
 
-          if (serverError) {
-            showMessage(serverError);
+          if (serverError || !clientSecret) {
+            showMessage(serverError || 'Le paiement n’a pas pu être préparé. Aucun montant n’a été prélevé.');
             setLoading(false);
+            // Abonnement déjà en place ou prélèvement en cours : retour à « Mon abonnement »
+            if (redirect) setTimeout(function () { window.location.href = redirect; }, 3500);
             return;
           }
 
-          // 3. Confirmation du paiement chez Stripe
+          // 3. Confirmation du paiement chez Stripe (3-D Secure et mandat SEPA gérés par Stripe.js)
           const { error: confirmError } = await stripe.confirmPayment({
             elements,
             clientSecret,
@@ -471,12 +556,13 @@ render_sidebar('mon-asso-paiement');
           });
 
           if (confirmError) {
-            showMessage(confirmError.message || 'Erreur lors du paiement');
+            // Carte refusée, 3-D Secure non validé… : rien n'est prélevé, on peut réessayer (même abonnement)
+            showMessage((confirmError.message || 'Le paiement n’a pas abouti.') + ' Aucun montant n’a été prélevé.');
             setLoading(false);
           }
           // Si pas d'erreur, Stripe redirige automatiquement
         } catch (e) {
-          showMessage('Erreur réseau : ' + e.message);
+          showMessage('Erreur réseau : ' + e.message + '. Vérifiez votre connexion puis réessayez.');
           setLoading(false);
         }
       });

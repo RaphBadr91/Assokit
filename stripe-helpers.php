@@ -36,6 +36,33 @@ if (!function_exists('ak_get_stripe_customer_id')) {
     }
 }
 
+if (!function_exists('ak_stripe_site_base')) {
+    /**
+     * Adresse du site vue par Stripe (webhook, portail client, retour de paiement) : schéma + hôte de la
+     * requête, sans « www. » (.htaccess redirige www vers assokit.fr, et Stripe ne suit pas les
+     * redirections). Hors requête web (ligne de commande) : SITE_URL, sinon https://assokit.fr.
+     */
+    function ak_stripe_site_base(): string {
+        $host = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+        if ($host !== '' && preg_match('/^[a-z0-9.-]+(:\d+)?$/', $host)) {
+            $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https'
+                || (int)($_SERVER['SERVER_PORT'] ?? 0) === 443;
+            return ($https ? 'https' : 'http') . '://' . preg_replace('/^www\./', '', $host);
+        }
+        if (defined('SITE_URL') && preg_match('#^https?://[a-z0-9.-]+(:\d+)?#i', (string)SITE_URL, $m)) return strtolower($m[0]);
+        return 'https://assokit.fr';
+    }
+}
+
+if (!function_exists('ak_stripe_invoice_cols')) {
+    /** Colonnes d'asso_invoices_stripe (vide si la table manque) : billing_reason, stripe_livemode… selon la migration. */
+    function ak_stripe_invoice_cols(PDO $pdo): array {
+        if (!function_exists('ak_db_columns') && is_file(__DIR__ . '/trial-helpers.php')) require_once __DIR__ . '/trial-helpers.php';
+        return function_exists('ak_db_columns') ? ak_db_columns($pdo, 'asso_invoices_stripe') : [];
+    }
+}
+
 if (!function_exists('ak_get_active_invoice_url')) {
     /**
      * Récupère l'URL Stripe de la facture en attente de paiement (= bouton "Régulariser").
@@ -47,12 +74,16 @@ if (!function_exists('ak_get_active_invoice_url')) {
      */
     function ak_get_active_invoice_url(PDO $pdo, int $org_id): ?string {
         try {
+            // Jamais la facture d'une première tentative de paiement (paiement refusé ou abandonné sur la
+            // page de paiement) : seule une échéance d'un abonnement déjà payé est à « régulariser »
+            $attempt = isset(ak_stripe_invoice_cols($pdo)['billing_reason']) ? "AND COALESCE(billing_reason, '') <> 'subscription_create'" : '';
             $st = $pdo->prepare("
                 SELECT hosted_invoice_url
                 FROM asso_invoices_stripe
                 WHERE org_id = :id
                   AND status = 'open'
                   AND hosted_invoice_url IS NOT NULL
+                  $attempt
                 ORDER BY created_at DESC
                 LIMIT 1
             ");
@@ -77,6 +108,11 @@ if (!function_exists('ak_get_regularize_url')) {
      * @return string URL absolue ou relative
      */
     function ak_get_regularize_url(PDO $pdo, int $org_id): string {
+        // 0. Application mobile (Apple 3.1.1, règles de paiement de Google Play) : jamais une page de
+        // paiement Stripe ni le tunnel de paiement, seulement la page de contact
+        if (function_exists('ak_billing_hidden') && ak_billing_hidden()) {
+            return '/contact?subject=billing';
+        }
         // 1. Si Stripe configuré et facture impayée : URL hosted_invoice
         if (ak_stripe_is_configured($pdo)) {
             $invoice_url = ak_get_active_invoice_url($pdo, $org_id);
@@ -108,16 +144,39 @@ if (!function_exists('ak_get_org_invoices_stripe')) {
      */
     function ak_get_org_invoices_stripe(PDO $pdo, int $org_id, int $limit = 50): array {
         try {
+            // Ni brouillon (facture pas encore émise, sans numéro), ni facture d'une première tentative
+            // de paiement restée impayée (carte refusée, paiement abandonné : annulée par Stripe ensuite)
+            $cols = ak_stripe_invoice_cols($pdo);
+            $attempt = isset($cols['billing_reason'])
+                ? "AND NOT (COALESCE(billing_reason, '') = 'subscription_create' AND COALESCE(status, '') IN ('open', 'void'))" : '';
             $st = $pdo->prepare("
                 SELECT * FROM asso_invoices_stripe
                 WHERE org_id = :id
+                  AND COALESCE(status, '') <> 'draft'
+                  $attempt
                 ORDER BY created_at DESC
                 LIMIT :lim
             ");
             $st->bindValue(':id', $org_id, PDO::PARAM_INT);
             $st->bindValue(':lim', $limit, PDO::PARAM_INT);
             $st->execute();
-            return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            // Facture restée impayée d'un abonnement arrêté depuis (fin des relances, arrêt d'un retard) : plus
+            // due (le Fondateur l'annule par un avoir dans Stripe). Montrée « Annulée », sans PDF ni lien : son
+            // PDF Stripe porte « Payer en ligne », et un paiement ne réactiverait pas l'abonnement arrêté.
+            $live = $pdo->prepare("SELECT 1 FROM asso_subscriptions WHERE stripe_subscription_id = ? AND status IN ('active', 'overdue')"
+                . (isset(ak_db_columns($pdo, 'asso_subscriptions')['payment_mode']) ? " AND COALESCE(payment_mode, 'stripe') = 'stripe'" : '') . " LIMIT 1");
+            foreach ($rows as &$r) {
+                $sid = trim((string)($r['stripe_subscription_id'] ?? ''));
+                if ($sid === '' || !in_array((string)($r['status'] ?? ''), ['open', 'uncollectible'], true)) continue;
+                $live->execute([$sid]);
+                if ($live->fetchColumn()) continue;
+                $r['status'] = 'void';
+                $r['invoice_pdf_url'] = null;
+                $r['hosted_invoice_url'] = null;
+            }
+            unset($r);
+            return $rows;
         } catch (Throwable $e) {
             return [];
         }
@@ -163,6 +222,28 @@ if (!function_exists('ak_get_org_active_subscription')) {
         } catch (Throwable $e) {
             return null;
         }
+    }
+}
+
+if (!function_exists('ak_stripe_price_problem')) {
+    /**
+     * Le prix Stripe $price_id est-il bien celui qu'Assokit affiche : actif, en euros, mensuel, hors taxes
+     * (TVA ajoutée par Stripe), de $amount_cents HT ? Message du problème, ou null si tout va bien.
+     * Vérifié à chaque création d'abonnement (stripe-create-payment-intent.php) et à la saisie manuelle
+     * d'un prix (fondateur-stripe-config.php).
+     */
+    function ak_stripe_price_problem(PDO $pdo, string $price_id, int $amount_cents): ?string {
+        $r = ak_stripe_api_call($pdo, 'GET', '/prices/' . rawurlencode($price_id));
+        if (empty($r['ok'])) return 'Stripe ne trouve pas ce prix avec les clés en place (' . ($r['error'] ?? '?') . ') : vérifiez le mode test / réel.';
+        $p = $r['data'];
+        if (empty($p['active'])) return 'Ce prix est archivé dans Stripe.';
+        if (strtolower((string)($p['currency'] ?? '')) !== 'eur') return 'Ce prix n’est pas en euros.';
+        if (($p['recurring']['interval'] ?? '') !== 'month' || (int)($p['recurring']['interval_count'] ?? 1) !== 1) return 'Ce prix n’est pas mensuel.';
+        if ((int)($p['unit_amount'] ?? -1) !== $amount_cents) {
+            return 'Montant différent : ' . ak_format_price_cents((int)($p['unit_amount'] ?? 0)) . ' chez Stripe, ' . ak_format_price_cents($amount_cents) . ' HT dans Assokit.';
+        }
+        if (($p['tax_behavior'] ?? '') === 'inclusive') return 'Ce prix est TTC (« taxes incluses ») : il doit être hors taxes.';
+        return null;
     }
 }
 
@@ -302,7 +383,8 @@ if (!function_exists('ak_format_price_cents')) {
      * @return string
      */
     function ak_format_price_cents(int $cents): string {
-        return number_format($cents / 100, 2, ',', ' ') . '€';
+        // Typographie française : espaces insécables (milliers, et avant « € »), comme ak_price_eur
+        return number_format($cents / 100, 2, ',', "\u{00A0}") . "\u{00A0}€";
     }
 }
 
@@ -319,17 +401,22 @@ if (!function_exists('ak_stripe_log_event')) {
      */
     function ak_stripe_log_event(PDO $pdo, string $event_id, string $event_type, array $payload, ?int $org_id = null): bool {
         try {
+            // Mode de l'événement (test / réel) gardé quand la colonne existe (migration 2026-10-28)
+            $cols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'asso_stripe_events') : [];
+            $lm = isset($cols['livemode']) && array_key_exists('livemode', $payload);
             $st = $pdo->prepare("
                 INSERT IGNORE INTO asso_stripe_events
-                  (stripe_event_id, event_type, org_id, payload_json, processing_status)
-                VALUES (:eid, :et, :oid, :pl, 'pending')
+                  (stripe_event_id, event_type, org_id, payload_json, processing_status" . ($lm ? ", livemode" : "") . ")
+                VALUES (:eid, :et, :oid, :pl, 'pending'" . ($lm ? ", :lm" : "") . ")
             ");
-            $st->execute([
+            $params = [
                 ':eid' => $event_id,
                 ':et' => $event_type,
                 ':oid' => $org_id,
                 ':pl' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ]);
+            ];
+            if ($lm) $params[':lm'] = !empty($payload['livemode']) ? 1 : 0;
+            $st->execute($params);
             return true;
         } catch (Throwable $e) {
             error_log('[ak_stripe_log_event] ' . $e->getMessage());
@@ -350,12 +437,13 @@ if (!function_exists('ak_stripe_mark_event_processed')) {
      */
     function ak_stripe_mark_event_processed(PDO $pdo, string $event_id, string $status = 'processed', ?string $error_message = null): bool {
         try {
+            // processed = 1 seulement pour un événement terminé (traité ou ignoré), jamais pour un échec
             $st = $pdo->prepare("
                 UPDATE asso_stripe_events
-                SET processing_status = :st, error_message = :err, processed_at = NOW(), processed = 1
+                SET processing_status = :st, error_message = :err, processed_at = NOW(), processed = :done
                 WHERE stripe_event_id = :eid
             ");
-            $st->execute([':st' => $status, ':err' => $error_message, ':eid' => $event_id]);
+            $st->execute([':st' => $status, ':err' => $error_message, ':done' => $status === 'failed' ? 0 : 1, ':eid' => $event_id]);
             return true;
         } catch (Throwable $e) {
             return false;
@@ -371,45 +459,56 @@ if (!function_exists('ak_stripe_api_call')) {
      * @param string $method GET|POST|DELETE
      * @param string $endpoint Ex: '/customers' ou '/subscriptions/sub_xxx'
      * @param array $params Paramètres à envoyer
+     * @param string|null $idempotency_key POST seulement : en-tête Idempotency-Key. Stripe renvoie la même
+     *        réponse pour la même clé (24 h) : un double clic, une requête rejouée ou une nouvelle tentative
+     *        après une coupure réseau ne créent jamais deux clients ni deux abonnements.
      * @return array ['ok' => bool, 'data' => array|null, 'error' => string|null, 'http_code' => int]
      */
-    function ak_stripe_api_call(PDO $pdo, string $method, string $endpoint, array $params = []): array {
+    function ak_stripe_api_call(PDO $pdo, string $method, string $endpoint, array $params = [], ?string $idempotency_key = null): array {
         $sk = ak_stripe_get_secret_key($pdo);
         if (empty($sk)) {
             return ['ok' => false, 'data' => null, 'error' => 'Stripe non configuré', 'http_code' => 0];
         }
 
-        $url = 'https://api.stripe.com/v1' . $endpoint;
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        $method = strtoupper($method);
+        if (!in_array($method, ['GET', 'POST', 'DELETE'], true)) {
+            return ['ok' => false, 'data' => null, 'error' => 'Méthode non supportée', 'http_code' => 0];
+        }
+        // https://api.stripe.com, sauf sur le banc de test (ak_stripe_api_base, stripe-config-helpers.php)
+        $url = ak_stripe_api_base() . '/v1' . $endpoint;
+        if ($method === 'GET' && !empty($params)) $url .= '?' . http_build_query($params);
+        $headers = [
             'Authorization: Bearer ' . $sk,
             'Stripe-Version: 2024-06-20',
             'Content-Type: application/x-www-form-urlencoded',
-        ]);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-
-        $method = strtoupper($method);
-        if ($method === 'GET') {
-            if (!empty($params)) {
-                $url .= '?' . http_build_query($params);
-            }
-            curl_setopt($ch, CURLOPT_URL, $url);
-        } elseif ($method === 'POST') {
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
-        } elseif ($method === 'DELETE') {
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
-        } else {
-            return ['ok' => false, 'data' => null, 'error' => 'Méthode non supportée', 'http_code' => 0];
+        ];
+        if ($method === 'POST' && $idempotency_key !== null && $idempotency_key !== '') {
+            $headers[] = 'Idempotency-Key: ' . substr(preg_replace('/[^A-Za-z0-9_.:-]/', '', $idempotency_key), 0, 255);
         }
 
-        $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curl_err = curl_error($ch);
-        curl_close($ch);
+        // Coupure réseau : une seule nouvelle tentative, et seulement quand elle ne peut rien créer
+        // deux fois (lecture, ou écriture protégée par une clé d'idempotence)
+        $retry = $method === 'GET' || ($method === 'POST' && $idempotency_key) ? 1 : 0;
+        for ($try = 0; ; $try++) {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_URL, $url);
+            if ($method === 'POST') {
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
+            } elseif ($method === 'DELETE') {
+                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+            }
+            $response = curl_exec($ch);
+            $http_code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_err = curl_error($ch);
+            curl_close($ch);
+            if (($curl_err || $http_code >= 500) && $try < $retry) { usleep(400000); continue; }
+            break;
+        }
 
         if ($curl_err) {
             return ['ok' => false, 'data' => null, 'error' => 'cURL: ' . $curl_err, 'http_code' => 0];
