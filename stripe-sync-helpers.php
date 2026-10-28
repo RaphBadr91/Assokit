@@ -195,8 +195,10 @@ if (!function_exists('ak_stripe_refresh_customer_footers')) {
             return $n;
         }
         foreach ($ids as $org_id => $cid) {
-            $r = ak_stripe_api_call($pdo, 'POST', '/customers/' . rawurlencode((string)$cid), ['invoice_settings[footer]' => $footer],
-                'ak-foot-' . ak_stripe_get_mode($pdo) . '-' . $cid . '-' . substr(sha1($footer), 0, 12));
+            // Sans clé d'idempotence : la mise à jour est sans risque à rejouer, et une clé fixe ferait
+            // renvoyer par Stripe sa réponse en cache (24 h) sans rien appliquer quand le pied revient
+            // à une valeur déjà posée (TVA activée, désactivée par erreur, puis réactivée)
+            $r = ak_stripe_api_call($pdo, 'POST', '/customers/' . rawurlencode((string)$cid), ['invoice_settings[footer]' => $footer]);
             if (!empty($r['ok'])) $n['ok']++;
             elseif ((int)($r['http_code'] ?? 0) !== 404) {
                 $n['failed']++;
