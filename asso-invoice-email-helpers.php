@@ -107,7 +107,8 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
 
     // Convertir le body en HTML
     $body_html = nl2br(htmlspecialchars($body_text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
-    $body_html = preg_replace('/(https?:\/\/\S+)/', '<a href="$1" style="color:#059669;font-weight:600;">$1</a>', $body_html);
+    // L'adresse s'arrête avant le « <br /> » ajouté par nl2br (sinon « …/facture/{uuid}<br » : lien cassé)
+    $body_html = preg_replace('#(https?://[^\s<]+)#', '<a href="$1" style="color:#059669;font-weight:600;">$1</a>', $body_html);
 
     // PDF en pièce jointe
     $pdf_path_full = __DIR__ . ($inv['pdf_path'] ?? '');

@@ -286,6 +286,60 @@ la page de suppression de compte, B3) :
 - E-mails de fin d'essai avec « Choisir une formule » : envoyés hors de l'app, ce que la
   règle 3.1.3 permet. Déclarés en « marketing du développeur » dans la confidentialité.
 
+### B1 bis. Paiements reçus par les associations (Stripe Connect) — 30/10/2026
+
+**Ce qui a changé.** Depuis la version `UI_REV = '2026-10-30-paiements-en-ligne'` (`App.js`),
+une association peut faire payer **ses propres** factures, cotisations et dons en ligne, sur
+**son** compte Stripe (Stripe Connect, compte Standard). L'app ne paie rien et n'ouvre
+aucune page de paiement ; elle **partage** un lien et **affiche** un état. La phrase de B1
+« ni lien vers un paiement » se lit désormais ainsi : aucun lien vers un **achat dans
+l'app** ni vers un achat du service Assokit ; un lien de paiement de l'association peut être
+**partagé** à son payeur, jamais ouvert dans l'app.
+
+**Pourquoi les règles d'achat intégré ne s'appliquent pas.**
+
+- **3.1.1** vise l'achat de contenus ou de fonctions **numériques utilisés dans l'app**. Ici,
+  le payeur est le client, l'adhérent ou le donateur de l'association, pas l'utilisateur de
+  l'app ; il ne débloque rien dans l'app.
+- **3.1.3(e)** (biens et services consommés hors de l'app) : une facture d'association
+  (prestation, formation, location de salle…) et une cotisation d'adhésion sont des services
+  rendus hors de l'app. Le paiement se fait sur la page Stripe de l'association, dans le
+  navigateur.
+- **3.2.2(iv)** (dons) : un don à une association n'est **jamais** collecté dans l'app ; la
+  page de dons s'ouvre dans Safari (`Linking.openURL`). L'app ne montre qu'un bouton de
+  **partage** du lien (feuille de partage du système).
+- Le serveur refuse toute page de paiement pour l'agent « AssokitApp » :
+  `ak_connect_start_checkout()` (`stripe-connect-helpers.php`), `payer-facture.php` (renvoi
+  vers la facture avec un message) et `cotiser.php` (page sans formulaire : « Le paiement en
+  ligne s'ouvre dans votre navigateur »). La page « Paiements en ligne »
+  (`encaissement-en-ligne.php`) est en lecture seule dans l'app : relier le compte Stripe se
+  fait sur le site.
+
+**Surfaces de l'app concernées** (`App.js`, numéros de ligne du 30/10/2026) :
+
+| Où | Ce que fait l'app |
+|---|---|
+| l. 158 `PAY_PAGE_RE` | `/cotiser`, `/don`, `/payer-facture`, `/paiement-confirme` reconnues comme pages de paiement |
+| l. 162 `sharePayLink()` | feuille de partage du système (`Share.share`) avec le lien ; aucun chargement |
+| l. 2259–2278, fiche facture | badges « Prélèvement SEPA en cours de confirmation par la banque » et « Payée en ligne par le client » (états, sans montant à payer) ; bouton « Partager le lien de paiement » |
+| l. 6925–6932, fiche campagne | bouton « Partager le lien de paiement » ou « Partager la page de dons » |
+| l. 6613, routeur des notifications | ces pages ne s'ouvrent jamais dans la vue web (`null`) |
+| l. 9546, `onShouldStartLoadWithRequest` | lien vers une de ces pages → Safari, jamais la vue web |
+
+Les API de l'app renvoient `pay_url` et `online_status` (`api/app-invoice.php`), `kind` et
+`pay_url` (`api/app-cotisation.php`) : un lien à partager et un état, rien d'autre.
+
+**Contrôle sur le banc** (`audit/sc4/e2e.sh`, 168 contrôles, à rejouer avant chaque envoi) :
+avec l'agent « AssokitApp », la facture publique n'a aucun formulaire `action="/payer-facture"`
+(« Votre client paie depuis cette page, dans son navigateur ») ; un POST
+`/payer-facture` de l'app est renvoyé à la facture et **aucune** session Stripe n'est créée ;
+`/cotiser/…` n'a pas de champ `payer_email` ; `/encaissement-en-ligne` est en lecture seule et
+un POST « connect » de l'app ne crée aucun compte ; le tableau de bord d'un membre n'affiche
+pas « Renouveler ma cotisation » dans l'app.
+
+**Note pour l'examinateur** : ajoutée au § 6 de [`age-et-revue.md`](age-et-revue.md)
+(paragraphe « PAYMENTS TO ORGANISATIONS »).
+
 ### B2. 4.2 : fonctionnalités minimales (pas un simple site emballé)
 
 Écrans **natifs** (React Native, pas des pages web), à citer si Apple invoque 4.2 :

@@ -307,6 +307,9 @@ render_head($campaign['name']);
                 'suspended' => 'Paiement en ligne indisponible tant que l’espace est suspendu.',
               ][$online['reason']] ?? 'Bientôt disponible. En attendant, enregistrez ci-dessus les paiements reçus (chèque, virement, espèces).') ?></div>
           <?php endif; ?>
+          <?php if (!(function_exists('ak_is_mobile_app') && ak_is_mobile_app())): /* guide public : page du site, pas de l'application */ ?>
+          <div class="ck-stripe-sub" style="margin-top:4px;"><a href="/aide/paiements-en-ligne" target="_blank" rel="noopener" style="color:#059669;">Guide des paiements en ligne ↗</a></div>
+          <?php endif; ?>
         </div>
         <?php if (!$online['ok'] && in_array($online['reason'], ['no_account', 'not_ready', 'kind_off'], true)): ?>
           <a href="/encaissement-en-ligne" class="ck-btn-ghost"><?= $online['reason'] === 'no_account' ? 'Activer le paiement en ligne' : 'Paiements en ligne' ?></a>

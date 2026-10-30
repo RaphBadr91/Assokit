@@ -99,8 +99,14 @@ echo render_sidebar('relances');
               <?php if ($t['relances_sent']>0): ?> · <?= (int)$t['relances_sent'] ?> relance<?= $t['relances_sent']>1?'s':'' ?> envoyée<?= $t['relances_sent']>1?'s':'' ?><?php endif; ?>
             </div>
           </div>
+          <?php if (!empty($t['sepa_pending'])): ?>
+            <span class="rel-stage" style="background:#FEF3C7;color:#92400E;" title="<?= h($t['reason']) ?>">⏳ Prélèvement SEPA en cours</span>
+          <?php else: ?>
           <span class="rel-stage" style="background:<?= $sm[3] ?>;color:<?= $sm[2] ?>;"><?= h($sm[0]) ?></span>
-          <?php if (!$t['has_email']): ?>
+          <?php endif; ?>
+          <?php if (!empty($t['sepa_pending'])): ?>
+            <span class="rel-noemail" title="<?= h($t['reason']) ?>">payée, en attente de la banque</span>
+          <?php elseif (!$t['has_email']): ?>
             <span class="rel-noemail" title="Pas d'email client"><?= ak_icon('mail',12) ?> absent</span>
           <?php else: ?>
             <div class="rel-row-actions">

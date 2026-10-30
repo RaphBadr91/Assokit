@@ -91,6 +91,7 @@ try {
         foreach (ak_rel_invoice_targets($pdo, $org_id) as $t) {
             $iid = (int)$t['id'];
             if (!isset($enabled[$iid])) continue;   // relances désactivées (« Stop ») ou facture hors périmètre
+            if (!empty($t['sepa_pending'])) continue;   // payée par prélèvement SEPA, en attente de la banque : rien à demander
 
             $max_sent = (int)($t['max_sent'] ?? 0);
             $next     = $max_sent + 1;

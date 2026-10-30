@@ -174,11 +174,13 @@ https://assokit.fr/suppression-compte
 
 Cocher **« Mon application ne propose aucune fonctionnalité financière »** (*My app doesn't provide any financial features*). Enregistrer.
 
-Pourquoi, vérifié dans le code :
+Pourquoi, vérifié dans le code (mis à jour le 30/10/2026, paiements en ligne des associations) :
 
 - Assokit **enregistre** des informations de gestion : factures, devis, paiements de cotisation saisis à la main (virement, chèque, espèces…), dépenses, comptabilité, export FEC. Ce sont des outils de **tenue de comptes et de facturation**, pas un service financier.
-- **Aucun argent ne circule par Assokit** dans l'application : pas de paiement, pas de virement, pas de porte-monnaie, pas de connexion à un compte bancaire, pas de prêt, de crédit, d'investissement, de cryptoactif ni d'assurance. Le moyen de paiement « Stripe » d'un paiement de cotisation n'est qu'une étiquette sur un paiement déjà reçu ailleurs.
-- Le seul paiement en ligne du service (l'abonnement à Assokit via Stripe) se fait sur le **site**, jamais dans l'application.
+- **L'application** ne traite ni n'initie aucun paiement : pas de paiement, pas de virement, pas de porte-monnaie, pas de connexion à un compte bancaire, pas de prêt, de crédit, d'investissement, de cryptoactif ni d'assurance.
+- **Sur le site**, une association peut relier **son propre** compte Stripe (Stripe Connect) et faire payer ses factures, ses cotisations et ses dons à ses clients, adhérents et donateurs. L'argent va directement sur le compte Stripe de l'association ; Assokit ne le détient jamais. Le prestataire de paiement est Stripe, et le vendeur est l'association. La connexion du compte Stripe et les paiements se font **dans le navigateur** : dans l'application, la page « Paiements en ligne » est en lecture seule, et les pages de paiement (`/cotiser`, `/don`, `/payer-facture`, `/paiement-confirme`) s'ouvrent toujours dans le navigateur du téléphone (`PAY_PAGE_RE`, `App.js`). Le serveur refuse de créer une page de paiement pour l'agent « AssokitApp ».
+- Ce que l'application montre de ces paiements : un bouton **« Partager le lien de paiement »** (ou « Partager la page de dons ») sur les fiches facture et campagne, qui ouvre la feuille de partage d'Android, et un état (« Payée en ligne par le client », « Prélèvement SEPA en cours »). Le moyen de paiement « Stripe » d'une cotisation reste une étiquette sur un paiement reçu ailleurs.
+- **Règles Google Play sur les paiements** : les achats de biens ou services consommés hors de l'application (une prestation facturée par l'association, une adhésion) et les dons à une association ne relèvent pas de la facturation Google Play ; de toute façon, aucun n'est payé dans l'application. Le seul paiement du service lui-même (l'abonnement de la structure à Assokit, via Stripe) se fait aussi sur le **site**, jamais dans l'application.
 
 Si la Console présente une liste détaillée (services bancaires, prêts, paiements et virements, achats à crédit, trading, services d'assistance…), ne rien cocher d'autre que l'option « aucune fonctionnalité financière ».
 

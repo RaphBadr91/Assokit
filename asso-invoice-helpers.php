@@ -483,6 +483,9 @@ function ak_asso_credit_note_create(PDO $pdo, int $org_id, int $invoice_id, int 
         throw $e;
     }
 
+    // Facture annulée par l'avoir : plus de paiement en ligne possible (pages Stripe ouvertes fermées)
+    if (!$refund) ak_asso_invoice_close_online($pdo, $invoice_id);
+
     // PDF hors transaction (mPDF peut prendre plusieurs secondes)
     $pdf = null;
     try { $pdf = ak_asso_invoice_render_pdf($pdo, $credit_id); }
@@ -1066,6 +1069,8 @@ function ak_asso_invoice_mark_paid(PDO $pdo, int $org_id, int $invoice_id, int $
         if ($ownTx && $pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
+    // Réglée autrement qu'en ligne : les pages de paiement Stripe encore ouvertes pour elle sont fermées
+    if (($opts['source'] ?? '') !== 'stripe') ak_asso_invoice_close_online($pdo, $invoice_id);
 
     return [
         'ok' => true, 'code' => 'ok',
@@ -1074,6 +1079,21 @@ function ak_asso_invoice_mark_paid(PDO $pdo, int $org_id, int $invoice_id, int $
         'invoice_number' => (string)$inv['invoice_number'], 'amount_cents' => (int)$inv['amount_ttc_cents'],
         'payment_id' => $payment_id,
     ];
+}
+
+/**
+ * Facture qui ne se paie plus en ligne (payée à la main, annulée par un avoir) : ses pages de paiement Stripe
+ * encore ouvertes sont fermées (stripe-connect-helpers.php), au mieux et jamais dans une transaction.
+ */
+function ak_asso_invoice_close_online(PDO $pdo, int $invoice_id): void
+{
+    try {
+        if ($pdo->inTransaction() || !function_exists('ak_db_columns') || !ak_db_columns($pdo, 'asso_online_payments')) return;
+        require_once __DIR__ . '/stripe-connect-helpers.php';
+        if (function_exists('ak_connect_invoice_closed')) ak_connect_invoice_closed($pdo, $invoice_id);
+    } catch (Throwable $e) {
+        error_log('[ASSO INVOICE] pages de paiement #' . $invoice_id . ' : ' . $e->getMessage());
+    }
 }
 
 /**

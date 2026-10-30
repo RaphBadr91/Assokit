@@ -62,6 +62,8 @@ if ($mref !== '' && ($mid = ak_connect_member_from_ref($pdo, (int)$campaign['id'
 }
 if (!$member) $mref = '';
 $self_q = $self . ($mref !== '' ? '?m=' . rawurlencode($mref) : '');
+// Prélèvement SEPA de CET adhérent encore en attente de la banque pour cette campagne : pas de second paiement
+$pending_sepa = (!$is_don && $member) ? ak_connect_cotisation_pending_op($pdo, (int)$campaign['id'], (int)$member['id']) : null;
 
 if (empty($_SESSION['csrf_token_public'])) $_SESSION['csrf_token_public'] = bin2hex(random_bytes(32));
 $csrf = $_SESSION['csrf_token_public'];
@@ -142,6 +144,8 @@ ak_pay_head($title, $org_name);
     <?php elseif (!$online['ok']): ?>
       <p class="pp-alert pp-alert-wait"><?= $h(ak_connect_unavailable_text($org_name)) ?></p>
       <?php if ($tiers): ?><p class="pp-muted">Tarifs : <?= $h(implode(' · ', array_map(fn($t) => $t['name'] . ' ' . ck_money($t['amount'], $cur), $tiers))) ?></p><?php endif; ?>
+    <?php elseif ($pending_sepa): ?>
+      <p class="pp-alert pp-alert-wait">Un prélèvement SEPA est déjà en cours pour votre cotisation (<?= $h(ak_connect_money((int)$pending_sepa['amount_cents'])) ?>, envoyé le <?= $h(date('d/m/Y', strtotime((string)$pending_sepa['created_at']))) ?>) : la banque le confirme sous quelques jours ouvrés, et vous recevrez alors votre reçu par e-mail. Rien d’autre à faire.</p>
     <?php elseif ($in_app): ?>
       <p class="pp-alert pp-alert-info">Le paiement en ligne s’ouvre dans votre navigateur. Ouvrez ce lien depuis l’e-mail reçu, ou depuis assokit.fr.</p>
       <?php if ($tiers): ?><p class="pp-muted">Tarifs : <?= $h(implode(' · ', array_map(fn($t) => $t['name'] . ' ' . ck_money($t['amount'], $cur), $tiers))) ?></p><?php endif; ?>

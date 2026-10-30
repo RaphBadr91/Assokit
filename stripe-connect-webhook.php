@@ -13,13 +13,18 @@
  *   - checkout.session.expired → page de paiement abandonnée ;
  *   - charge.refunded → paiement remboursé par l'association (annulé côté Assokit) ;
  *   - charge.dispute.created → contestation : l'association est prévenue ;
+ *   - charge.dispute.closed → décision de la banque : litige gagné (paiement de nouveau « payé ») ou perdu
+ *     (paiement annulé comme un remboursement total) ;
  *   - account.updated → état du compte relu chez Stripe (inscription terminée, informations demandées) ;
  *   - account.application.deauthorized → l'association a retiré l'accès d'Assokit.
  *
  * Sécurité :
  *   - signature Stripe (secret du point de terminaison Connect, par mode : connect_webhook_secret_test / _live) ;
  *   - chaque événement doit porter « account » (compte connecté) ; l'association est retrouvée par ce compte
- *     (org_stripe_accounts), jamais par la seule métadonnée ;
+ *     (org_stripe_accounts), jamais par la seule métadonnée ; un ANCIEN compte de l'association (remplacé par un
+ *     nouveau) est retrouvé par ses paiements : ses paiements, remboursements et litiges sont encore appliqués ;
+ *   - un remboursement ou un litige arrivé avant le paiement lui-même : le paiement est relu et enregistré d'abord,
+ *     sinon réponse 500 et Stripe renvoie l'événement plus tard ;
  *   - événement d'un autre mode que les clés en place : ignoré ;
  *   - idempotence et reprise : même journal que les abonnements (asso_stripe_events, colonne connect_account).
  * Accessible SANS authentification (Stripe ne se connecte pas).
@@ -92,6 +97,9 @@ try {
 } catch (Throwable $e) { /* table absente */ }
 
 $row = ak_connect_account_by_stripe_id($pdo, $acct);
+// Ancien compte de l'association (remplacé) : seuls les événements de ses paiements déjà faits comptent encore
+$former = false;
+if (!$row && ($row = ak_connect_former_account($pdo, $acct))) $former = true;
 $org_id = $row ? (int)$row['org_id'] : null;
 ak_stripe_log_event($pdo, $event_id, $event_type, $event, $org_id);
 try {
@@ -110,6 +118,12 @@ if (!$row) {
     ak_stripe_mark_event_processed($pdo, $event_id, 'ignored', 'compte connecté inconnu');
     http_response_code(200);
     exit('OK (ignored: unknown account)');
+}
+
+if ($former && !preg_match('/^(checkout\.session\.|charge\.refunded$|charge\.dispute\.)/', $event_type)) {
+    ak_stripe_mark_event_processed($pdo, $event_id, 'ignored', 'ancien compte de l’association : ' . $event_type);
+    http_response_code(200);
+    exit('OK (ignored: former account)');
 }
 
 // Revendication atomique (comme stripe-webhook.php) : jamais deux traitements simultanés du même événement
@@ -146,6 +160,9 @@ try {
             break;
         case 'charge.dispute.created':
             ak_connect_handle_dispute($pdo, $acct, $obj);
+            break;
+        case 'charge.dispute.closed':
+            ak_connect_handle_dispute_closed($pdo, $acct, $obj);
             break;
         case 'account.updated':
             ak_connect_refresh_account($pdo, $acct);

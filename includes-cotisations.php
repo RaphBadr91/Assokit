@@ -166,6 +166,26 @@ function ck_has_online_settings(PDO $pdo): bool {
     return isset(ak_db_columns($pdo, 'cotisation_campaigns')['kind']);
 }
 
+/** Structure de type TPE / entreprise (inscription) : pas de campagne de dons (une entreprise ne reçoit pas de dons). */
+function ck_org_is_tpe(PDO $pdo, int $org_id): bool {
+    if ($org_id <= 0 || !isset(ak_db_columns($pdo, 'organizations')['org_type'])) return false;
+    try {
+        $q = $pdo->prepare("SELECT org_type FROM organizations WHERE id = ?");
+        $q->execute([$org_id]);
+        return (string)$q->fetchColumn() === 'tpe';
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/** La campagne (de cette structure) est-elle déjà une campagne de dons ? */
+function ck_campaign_was_don(PDO $pdo, int $campaign_id, int $org_id): bool {
+    if ($campaign_id <= 0 || !ck_has_online_settings($pdo)) return false;
+    $q = $pdo->prepare("SELECT kind FROM cotisation_campaigns WHERE id = ? AND org_id = ?");
+    $q->execute([$campaign_id, $org_id]);
+    return (string)$q->fetchColumn() === 'don';
+}
+
 function ck_method_label(string $m): string {
     return ['stripe' => '💳 CB (Stripe)', 'bank' => '🏦 Virement', 'check' => '✉️ Chèque', 'cash' => '💶 Espèces', 'other' => '➕ Autre'][$m] ?? $m;
 }

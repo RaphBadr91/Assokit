@@ -54,6 +54,7 @@ if (!defined('AK_STRIPE_CONNECT_WEBHOOK_EVENTS')) {
         'checkout.session.expired',
         'charge.refunded',
         'charge.dispute.created',
+        'charge.dispute.closed',
         'account.updated',
         'account.application.deauthorized',
     ]);
@@ -137,6 +138,37 @@ if (!function_exists('ak_connect_account_by_stripe_id')) {
     }
 }
 
+if (!function_exists('ak_connect_former_account')) {
+    /**
+     * Ancien compte Stripe d'une association (remplacé par un nouveau compte) : retrouvé par ses paiements en ligne.
+     * Ses derniers événements (prélèvement SEPA confirmé, remboursement, litige d'un paiement déjà fait) sont
+     * encore appliqués par le webhook Connect, jamais perdus. null si aucun paiement n'a été fait sur ce compte.
+     */
+    function ak_connect_former_account(PDO $pdo, string $acct): ?array {
+        if ($acct === '' || !ak_db_columns($pdo, 'asso_online_payments')) return null;
+        try {
+            $q = $pdo->prepare("SELECT org_id, mode FROM asso_online_payments WHERE stripe_account_id = ? ORDER BY id DESC LIMIT 1");
+            $q->execute([$acct]);
+            $r = $q->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            return null;
+        }
+        return $r ? ['org_id' => (int)$r['org_id'], 'mode' => (string)$r['mode'], 'stripe_account_id' => $acct, 'former' => 1, 'disconnected_at' => date('Y-m-d H:i:s')] : null;
+    }
+}
+
+if (!function_exists('ak_connect_account_gone')) {
+    /**
+     * Réponse de Stripe qui prouve que le compte n'est plus accessible (supprimé, accès retiré) : 401, 403, 404 ou
+     * code « account_invalid ». Toute autre erreur (réseau, 429, 5xx…) est passagère : le compte est gardé.
+     */
+    function ak_connect_account_gone(array $r): bool {
+        if (!empty($r['ok'])) return false;
+        if (in_array((int)($r['http_code'] ?? 0), [401, 403, 404], true)) return true;
+        return (string)($r['data']['error']['code'] ?? '') === 'account_invalid';
+    }
+}
+
 if (!function_exists('ak_connect_settings')) {
     /** Ce que l'association fait payer en ligne (valeurs par défaut : factures et cotisations oui, dons et SEPA non). */
     function ak_connect_settings(PDO $pdo, int $org_id): array {
@@ -187,6 +219,26 @@ if (!function_exists('ak_connect_org_row')) {
     }
 }
 
+if (!function_exists('ak_connect_org_is_tpe')) {
+    /**
+     * Structure de type TPE / entreprise (organizations.org_type = 'tpe', inscription) : pas de dons (une entreprise
+     * n'en reçoit pas : recette commerciale, jamais de reçu fiscal), textes neutres (« votre structure », SIREN).
+     */
+    function ak_connect_org_is_tpe(PDO $pdo, int $org_id): bool {
+        static $cache = [];
+        if ($org_id <= 0) return false;
+        if (isset($cache[$org_id])) return $cache[$org_id];
+        if (!isset(ak_db_columns($pdo, 'organizations')['org_type'])) return $cache[$org_id] = false;
+        try {
+            $q = $pdo->prepare("SELECT org_type FROM organizations WHERE id = ?");
+            $q->execute([$org_id]);
+            return $cache[$org_id] = ((string)$q->fetchColumn() === 'tpe');
+        } catch (Throwable $e) {
+            return $cache[$org_id] = false;
+        }
+    }
+}
+
 if (!function_exists('ak_connect_demo_blocked')) {
     /**
      * Espaces de démonstration (DEMO F, démos commerciales, demo-guard.php) : jamais de vrai compte Stripe ni de
@@ -225,6 +277,8 @@ if (!function_exists('ak_connect_available')) {
         $out['settings'] = $set;
         $key = ['invoice' => 'invoices_enabled', 'cotisation' => 'cotisations_enabled', 'don' => 'dons_enabled'][$kind] ?? '';
         if ($key === '' || empty($set[$key])) { $out['reason'] = 'kind_off'; return $out; }
+        // Une entreprise (TPE) ne reçoit pas de dons, même avec une ancienne campagne de type « Dons »
+        if ($kind === 'don' && ak_connect_org_is_tpe($pdo, $org_id)) { $out['reason'] = 'kind_off'; return $out; }
         $out['ok'] = true; $out['reason'] = '';
         return $out;
     }
@@ -398,6 +452,8 @@ if (!function_exists('ak_connect_campaign_member_link')) {
             foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $c) {
                 if (ak_connect_campaign_is_don($c) || !ck_campaign_renews_membership($c)) continue;
                 if (ak_connect_campaign_open($c) !== null || !ak_connect_campaign_online($pdo, $c)['ok']) continue;
+                // Prélèvement SEPA en attente de la banque pour cette campagne : rien à renouveler pour l'instant
+                if (ak_connect_cotisation_pending_op($pdo, (int)$c['id'], $adherent_id)) return '';
                 return ak_connect_campaign_url($pdo, $c, $adherent_id);
             }
         } catch (Throwable $e) {
@@ -422,6 +478,8 @@ if (!function_exists('ak_connect_invoice_pay_url')) {
     function ak_connect_invoice_pay_url(PDO $pdo, array $inv): string {
         if (empty($inv['public_uuid']) || !ak_connect_invoice_payable($inv)) return '';
         if (!ak_connect_available($pdo, (int)$inv['org_id'], 'invoice')['ok']) return '';
+        // Prélèvement SEPA déjà en attente de la banque : jamais « payez en ligne » une seconde fois
+        if (ak_connect_invoice_pending_op($pdo, (int)($inv['id'] ?? 0))) return '';
         return ak_stripe_site_base() . '/facture/' . $inv['public_uuid'] . '#payer';
     }
 }
@@ -486,7 +544,7 @@ if (!function_exists('ak_connect_refresh_account')) {
         $r = ak_stripe_api_call($pdo, 'GET', '/accounts/' . rawurlencode($acct));
         if (!empty($r['ok']) && is_array($r['data'])) {
             ak_connect_store_account($pdo, $acct, $r['data']);
-        } elseif (in_array((int)($r['http_code'] ?? 0), [401, 403, 404], true)) {
+        } elseif (ak_connect_account_gone($r)) {
             ak_connect_mark_disconnected($pdo, $acct, 'accès retiré');
         }
         return ak_connect_account_by_stripe_id($pdo, $acct);
@@ -503,6 +561,59 @@ if (!function_exists('ak_connect_mark_disconnected')) {
         } catch (Throwable $e) {
             return false;
         }
+    }
+}
+
+if (!function_exists('ak_connect_close_account_ops')) {
+    /**
+     * Compte Stripe devenu inaccessible (accès retiré, compte remplacé) : ses événements n'arriveront plus.
+     *   - page de paiement ouverte → « expirée » ;
+     *   - prélèvement SEPA en attente de la banque → « échoué », avec le motif « à vérifier dans Stripe » : la
+     *     facture ou la cotisation redevient payable, l'association vérifie dans son tableau de bord Stripe.
+     * @return array les prélèvements clos (pour les lister à l'association)
+     */
+    function ak_connect_close_account_ops(PDO $pdo, string $acct): array {
+        if ($acct === '' || !ak_db_columns($pdo, 'asso_online_payments')) return [];
+        try {
+            $q = $pdo->prepare("SELECT * FROM asso_online_payments WHERE stripe_account_id = ? AND status = 'processing' ORDER BY id");
+            $q->execute([$acct]);
+            $ops = $q->fetchAll(PDO::FETCH_ASSOC);
+            $pdo->prepare("UPDATE asso_online_payments SET status = 'failed', updated_at = NOW(),
+                                  failure_message = 'Accès Stripe retiré : vérifiez ce paiement dans votre tableau de bord Stripe'
+                           WHERE stripe_account_id = ? AND status = 'processing'")->execute([$acct]);
+            $pdo->prepare("UPDATE asso_online_payments SET status = 'expired', updated_at = NOW() WHERE stripe_account_id = ? AND status = 'open'")->execute([$acct]);
+            return $ops;
+        } catch (Throwable $e) {
+            error_log('[connect] paiements du compte ' . $acct . ' : ' . $e->getMessage());
+            return [];
+        }
+    }
+}
+
+if (!function_exists('ak_connect_closed_ops_html')) {
+    /** Liste HTML des prélèvements clos sans réponse de la banque (montant, objet, payeur, date). */
+    function ak_connect_closed_ops_html(PDO $pdo, array $ops): string {
+        if (!$ops) return '';
+        $h = 'ak_stripe_h';
+        $li = '';
+        foreach ($ops as $op) {
+            $c = ak_connect_op_context($pdo, $op);
+            $li .= '<li>' . $h(ak_connect_money((int)$op['amount_cents'])) . ' — ' . $h($c['object']) . ' — '
+                . $h(trim((string)($op['payer_name'] ?? '')) ?: (string)($op['payer_email'] ?? 'payeur inconnu'))
+                . ' (prélèvement SEPA du ' . $h(date('d/m/Y', strtotime((string)$op['created_at']))) . ')</li>';
+        }
+        return '<p><strong>Prélèvements SEPA dont Assokit ne connaîtra pas la réponse de la banque</strong> : vérifiez-les dans votre tableau de bord Stripe (Paiements), puis enregistrez à la main ceux qui ont abouti.</p><ul>' . $li . '</ul>';
+    }
+}
+
+if (!function_exists('ak_connect_notify_closed_ops')) {
+    /** Compte remplacé par un nouveau : l'association est prévenue des prélèvements à vérifier sur l'ancien. */
+    function ak_connect_notify_closed_ops(PDO $pdo, int $org_id, string $acct, array $ops, string $why): void {
+        ak_stripe_once($pdo, $org_id, 'cpay_closed_' . $why . '_' . $acct, function () use ($pdo, $org_id, $ops) {
+            return ak_connect_notify_org($pdo, $org_id, '⚠ Paiements en ligne à vérifier dans Stripe',
+                '<p>Votre ancien compte Stripe n’est plus accessible à Assokit ; un nouveau compte le remplace.</p>' . ak_connect_closed_ops_html($pdo, $ops),
+                '/encaissement-en-ligne');
+        });
     }
 }
 
@@ -526,8 +637,13 @@ if (!function_exists('ak_connect_create_account')) {
                     ak_connect_store_account($pdo, $acct, $g['data']);
                     return ['ok' => true, 'acct' => $acct, 'error' => ''];
                 }
-                if ((int)($g['http_code'] ?? 0) === 0) return ['ok' => false, 'acct' => '', 'error' => 'Stripe ne répond pas : réessayez dans quelques minutes.'];
-                // Compte supprimé ou accès retiré par l'association : un nouveau compte remplace l'ancien
+                // Erreur passagère (réseau, 429, 5xx…) : rien ne change, jamais un nouveau compte à la place d'un compte
+                // qui marche (ses prélèvements SEPA, remboursements et litiges en cours en dépendent)
+                if (!ak_connect_account_gone($g)) return ['ok' => false, 'acct' => '', 'error' => 'Stripe ne répond pas : réessayez dans quelques minutes.'];
+                // Compte supprimé ou accès retiré par l'association : un nouveau compte remplace l'ancien. Les paiements
+                // encore ouverts sur l'ancien sont clos, et l'association prévenue de ceux à vérifier dans Stripe.
+                $closed = ak_connect_close_account_ops($pdo, $acct);
+                if ($closed) ak_connect_notify_closed_ops($pdo, $org_id, $acct, $closed, 'replaced');
             }
             $org = ak_connect_org_row($pdo, $org_id) ?: ['name' => 'Association', 'billing_email' => ''];
             $email = trim((string)($org['billing_email'] ?? '')) ?: trim((string)($user['email'] ?? ''));
@@ -614,14 +730,116 @@ if (!function_exists('ak_connect_op')) {
 }
 
 if (!function_exists('ak_connect_invoice_pending_op')) {
-    /** Prélèvement SEPA en attente de la banque pour cette facture (ne pas proposer de payer une seconde fois). */
+    /**
+     * Prélèvement SEPA en attente de la banque pour cette facture (ne pas proposer de payer une seconde fois, ne pas
+     * relancer). Seulement sur un compte Stripe encore connu de l'association (relié ou déconnecté depuis Assokit :
+     * ses événements arrivent toujours) ; un compte remplacé n'en envoie plus.
+     */
     function ak_connect_invoice_pending_op(PDO $pdo, int $invoice_id): ?array {
+        if ($invoice_id <= 0 || !ak_db_columns($pdo, 'asso_online_payments')) return null;
         try {
-            $q = $pdo->prepare("SELECT * FROM asso_online_payments WHERE kind = 'invoice' AND invoice_id = ? AND status = 'processing' ORDER BY id DESC LIMIT 1");
+            $q = $pdo->prepare("SELECT op.* FROM asso_online_payments op
+                                JOIN org_stripe_accounts a ON a.stripe_account_id = op.stripe_account_id AND a.org_id = op.org_id
+                                WHERE op.kind = 'invoice' AND op.invoice_id = ? AND op.status = 'processing' ORDER BY op.id DESC LIMIT 1");
             $q->execute([$invoice_id]);
             return $q->fetch(PDO::FETCH_ASSOC) ?: null;
         } catch (Throwable $e) {
             return null;
+        }
+    }
+}
+
+if (!function_exists('ak_connect_cotisation_pending_op')) {
+    /**
+     * Prélèvement SEPA d'une cotisation en attente de la banque, pour la même campagne et le même adhérent (lien
+     * personnel) ou, sans adhérent, la même adresse e-mail : pas de second paiement, pas de relance, pas de carte
+     * « Renouveler ma cotisation » tant que la banque n'a pas répondu.
+     */
+    function ak_connect_cotisation_pending_op(PDO $pdo, int $campaign_id, int $adherent_id, string $email = ''): ?array {
+        if ($campaign_id <= 0 || ($adherent_id <= 0 && $email === '') || !ak_db_columns($pdo, 'asso_online_payments')) return null;
+        try {
+            $q = $pdo->prepare("SELECT op.* FROM asso_online_payments op
+                                JOIN org_stripe_accounts a ON a.stripe_account_id = op.stripe_account_id AND a.org_id = op.org_id
+                                WHERE op.kind = 'cotisation' AND op.campaign_id = ? AND op.status = 'processing'
+                                  AND " . ($adherent_id > 0 ? "op.adherent_id = ?" : "op.payer_email = ?") . " ORDER BY op.id DESC LIMIT 1");
+            $q->execute([$campaign_id, $adherent_id > 0 ? $adherent_id : mb_strtolower(trim($email))]);
+            return $q->fetch(PDO::FETCH_ASSOC) ?: null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+}
+
+if (!function_exists('ak_connect_expire_sessions')) {
+    /**
+     * Ferme chez Stripe les pages de paiement encore ouvertes (POST /checkout/sessions/{id}/expire, au nom du compte
+     * de l'association), au mieux : facture payée autrement, nouvelle page pour la même facture, déconnexion.
+     * Une page déjà payée entre-temps est appliquée tout de suite (jamais perdue).
+     * @param array $ops lignes asso_online_payments (status open)
+     * @return array{expired: int, paid: int, left: int} left : pages qui n'ont pas pu être fermées (Stripe injoignable)
+     */
+    function ak_connect_expire_sessions(PDO $pdo, array $ops): array {
+        $out = ['expired' => 0, 'paid' => 0, 'left' => 0];
+        foreach ($ops as $op) {
+            if (($op['status'] ?? '') !== 'open' || empty($op['checkout_session_id'])) continue;
+            $acct = (string)$op['stripe_account_id'];
+            $cs = (string)$op['checkout_session_id'];
+            $r = ak_stripe_api_call($pdo, 'POST', '/checkout/sessions/' . rawurlencode($cs) . '/expire', [], null, $acct);
+            if (!empty($r['ok'])) {
+                $pdo->prepare("UPDATE asso_online_payments SET status = 'expired', updated_at = NOW() WHERE id = ? AND status = 'open'")->execute([(int)$op['id']]);
+                $out['expired']++;
+                continue;
+            }
+            // Refus : la page est peut-être déjà payée (ou expirée) : relue et appliquée
+            $g = ak_stripe_api_call($pdo, 'GET', '/checkout/sessions/' . rawurlencode($cs), [], null, $acct);
+            if (!empty($g['ok']) && is_array($g['data'])) {
+                try {
+                    $st = ak_connect_apply_session($pdo, $acct, $g['data'], 'return');
+                } catch (Throwable $e) {
+                    error_log('[connect] page ' . $cs . ' : ' . $e->getMessage());
+                    $st = 'open';
+                }
+                if (in_array($st, ['paid', 'processing'], true)) $out['paid']++;
+                elseif ($st === 'expired') $out['expired']++;
+                else $out['left']++;
+            } elseif (ak_connect_account_gone($g)) {
+                $pdo->prepare("UPDATE asso_online_payments SET status = 'expired', updated_at = NOW() WHERE id = ? AND status = 'open'")->execute([(int)$op['id']]);
+                $out['expired']++;
+            } else {
+                $out['left']++;
+            }
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('ak_connect_open_ops')) {
+    /** Pages de paiement ouvertes : d'une facture ($invoice_id), ou de tout un compte Stripe ($acct). */
+    function ak_connect_open_ops(PDO $pdo, int $invoice_id = 0, string $acct = '', int $except_id = 0): array {
+        if (($invoice_id <= 0 && $acct === '') || !ak_db_columns($pdo, 'asso_online_payments')) return [];
+        try {
+            $q = $pdo->prepare("SELECT * FROM asso_online_payments WHERE status = 'open' AND checkout_session_id IS NOT NULL AND id <> ?"
+                . ($invoice_id > 0 ? " AND kind = 'invoice' AND invoice_id = ?" : " AND stripe_account_id = ?") . " ORDER BY id");
+            $q->execute([$except_id, $invoice_id > 0 ? $invoice_id : $acct]);
+            return $q->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+}
+
+if (!function_exists('ak_connect_invoice_closed')) {
+    /**
+     * La facture ne se paie plus en ligne (payée à la main, avoir, annulation) : ses pages Stripe encore ouvertes
+     * sont fermées, au mieux (jamais bloquant). À appeler HORS transaction (appel réseau).
+     */
+    function ak_connect_invoice_closed(PDO $pdo, int $invoice_id): void {
+        try {
+            if ($pdo->inTransaction()) return;
+            $ops = ak_connect_open_ops($pdo, $invoice_id);
+            if ($ops) ak_connect_expire_sessions($pdo, $ops);
+        } catch (Throwable $e) {
+            error_log('[connect] pages de la facture #' . $invoice_id . ' : ' . $e->getMessage());
         }
     }
 }
@@ -664,6 +882,9 @@ if (!function_exists('ak_connect_start_checkout')) {
             if ($kind === 'invoice') {
                 if (ak_connect_invoice_pending_op($pdo, $invoice_id)) return $fail('Un prélèvement SEPA est déjà en cours pour cette facture : la banque le confirme sous quelques jours ouvrés.');
             }
+            if ($kind === 'cotisation' && ak_connect_cotisation_pending_op($pdo, $campaign_id, $adherent_id, $email)) {
+                return $fail('Un prélèvement SEPA est déjà en cours pour cette cotisation : la banque le confirme sous quelques jours ouvrés.');
+            }
             // Session encore valable pour le même élément, le même montant et le même payeur : reprise
             $q = $pdo->prepare("SELECT * FROM asso_online_payments
                                 WHERE org_id = ? AND kind = ? AND status = 'open' AND stripe_account_id = ? AND amount_cents = ?
@@ -672,12 +893,36 @@ if (!function_exists('ak_connect_start_checkout')) {
                                   AND checkout_expires_at > NOW() + INTERVAL 10 MINUTE
                                 ORDER BY id DESC LIMIT 1");
             $q->execute([$org_id, $kind, $acct, $amount, $invoice_id, $campaign_id, $tier_id, $adherent_id, $email]);
+            $reuse = null;
             if ($op = $q->fetch(PDO::FETCH_ASSOC)) {
                 $g = ak_stripe_api_call($pdo, 'GET', '/checkout/sessions/' . rawurlencode((string)$op['checkout_session_id']), [], null, $acct);
                 if (!empty($g['ok']) && ($g['data']['status'] ?? '') === 'open' && !empty($g['data']['url'])) {
-                    return ['ok' => true, 'url' => (string)$g['data']['url'], 'error' => '', 'op_id' => (int)$op['id']];
+                    $reuse = ['ok' => true, 'url' => (string)$g['data']['url'], 'error' => '', 'op_id' => (int)$op['id']];
                 }
             }
+            // Une seule page Stripe payable à la fois pour une facture (ou pour la cotisation d'un même adhérent) :
+            // les autres pages encore ouvertes (bientôt expirées, autre e-mail, autre onglet) sont fermées chez Stripe
+            // avant d'en ouvrir une nouvelle ; une page payée entre-temps est enregistrée et rien n'est rouvert.
+            $others = [];
+            if ($kind === 'invoice') {
+                $others = ak_connect_open_ops($pdo, $invoice_id, '', (int)($reuse['op_id'] ?? 0));
+            } elseif ($kind === 'cotisation' && $adherent_id > 0) {
+                $oq = $pdo->prepare("SELECT * FROM asso_online_payments WHERE kind = 'cotisation' AND campaign_id = ? AND adherent_id = ? AND status = 'open'
+                                       AND checkout_session_id IS NOT NULL AND id <> ?");
+                $oq->execute([$campaign_id, $adherent_id, (int)($reuse['op_id'] ?? 0)]);
+                $others = $oq->fetchAll(PDO::FETCH_ASSOC);
+            }
+            if ($others) {
+                $x = ak_connect_expire_sessions($pdo, $others);
+                if ($x['paid'] > 0) {
+                    return $fail($kind === 'invoice' ? 'Cette facture vient d’être réglée en ligne : rien de plus à payer. Votre reçu arrive par e-mail.'
+                                                     : 'Votre cotisation vient d’être réglée en ligne : rien de plus à payer. Votre reçu arrive par e-mail.');
+                }
+                if ($x['left'] > 0 && !$reuse) {
+                    return $fail('Une autre page de paiement est encore ouverte et Stripe ne répond pas : réessayez dans quelques minutes.');
+                }
+            }
+            if ($reuse) return $reuse;
             $fee = ak_connect_application_fee($amount);
             $op_id = ak_db_insert($pdo, 'asso_online_payments', [
                 'org_id' => $org_id, 'mode' => $mode, 'stripe_account_id' => $acct, 'kind' => $kind,
@@ -857,7 +1102,7 @@ if (!function_exists('ak_connect_mark_paid')) {
                 } else {
                     $overpaid = true;
                     $pdo->prepare("UPDATE asso_online_payments SET overpaid = 1, failure_message = ? WHERE id = ?")
-                        ->execute([mb_substr('Facture déjà ' . ($res['state_label'] ?? 'réglée') . ' : paiement à rembourser', 0, 500), $op_id]);
+                        ->execute([mb_substr('Facture ' . ($res['state_label'] ?? 'déjà réglée') . ' : paiement à rembourser', 0, 500), $op_id]);
                 }
             } else {
                 require_once __DIR__ . '/includes-cotisations.php';
@@ -887,20 +1132,50 @@ if (!function_exists('ak_connect_mark_paid')) {
         // Après l'enregistrement : reçu au payeur, cloche et e-mail à l'association (une seule fois)
         $op = ak_connect_op($pdo, $op_id);
         ak_connect_notify_paid($pdo, $op, $overpaid);
+        // Facture réglée : les autres pages Stripe encore ouvertes pour elle sont fermées (pas de second paiement)
+        if ($op['kind'] === 'invoice') {
+            $others = ak_connect_open_ops($pdo, (int)$op['invoice_id'], '', $op_id);
+            if ($others) ak_connect_expire_sessions($pdo, $others);
+        }
+        // Cotisation payée deux fois par le même adhérent pour la même campagne : l'association rembourse l'une des deux
+        if ($op['kind'] === 'cotisation' && !empty($op['adherent_id'])) {
+            try {
+                $d = $pdo->prepare("SELECT COUNT(*) FROM asso_online_payments WHERE kind = 'cotisation' AND campaign_id = ? AND adherent_id = ? AND id <> ?
+                                      AND status IN ('paid', 'partially_refunded', 'disputed')");
+                $d->execute([(int)$op['campaign_id'], (int)$op['adherent_id'], $op_id]);
+                if ((int)$d->fetchColumn() > 0) {
+                    $c = ak_connect_op_context($pdo, $op);
+                    $who = trim((string)($op['payer_name'] ?? '')) ?: (string)($op['payer_email'] ?? '');
+                    ak_stripe_once($pdo, (int)$op['org_id'], 'cpay_dup_' . $op_id, function () use ($pdo, $op, $c, $who) {
+                        return ak_connect_notify_org($pdo, (int)$op['org_id'], '⚠ Cotisation payée deux fois : ' . $who,
+                            '<p>' . ak_stripe_h($who) . ' a déjà payé ' . ak_stripe_h($c['object_art']) . ' en ligne : ce nouveau paiement de '
+                            . ak_stripe_h(ak_connect_money((int)$op['amount_cents'])) . ' fait double emploi.</p>'
+                            . '<p>Remboursez l’un des deux depuis votre tableau de bord Stripe (Paiements › le paiement › Rembourser) : Assokit le reportera dans la campagne.</p>',
+                            $c['link']);
+                    });
+                }
+            } catch (Throwable $e) {
+                error_log('[connect] double cotisation op #' . $op_id . ' : ' . $e->getMessage());
+            }
+        }
     }
 }
 
 if (!function_exists('ak_connect_op_context')) {
-    /** Libellés d'un paiement : objet (« facture F-2026-012 », « cotisation Adhésions 2026 · Tarif plein », « don »), lien de gestion. */
+    /**
+     * Libellés d'un paiement : objet (« facture F-2026-012 », « cotisation « Adhésions 2026 » · Tarif plein », « don « … » »),
+     * le même avec son article (object_art : « la facture … », « la cotisation … », « le don … », « le paiement »), lien de gestion.
+     */
     function ak_connect_op_context(PDO $pdo, array $op): array {
         $org = ak_connect_org_row($pdo, (int)$op['org_id']) ?: ['name' => 'Association'];
-        $ctx = ['org_name' => (string)$org['name'], 'object' => 'paiement', 'link' => '/encaissement-en-ligne', 'number' => '', 'campaign' => ''];
+        $ctx = ['org_name' => (string)$org['name'], 'object' => 'paiement', 'object_art' => 'le paiement', 'link' => '/encaissement-en-ligne', 'number' => '', 'campaign' => ''];
         try {
             if ($op['kind'] === 'invoice') {
                 $q = $pdo->prepare("SELECT invoice_number FROM asso_invoices WHERE id = ? AND org_id = ?");
                 $q->execute([(int)$op['invoice_id'], (int)$op['org_id']]);
                 $ctx['number'] = (string)$q->fetchColumn();
                 $ctx['object'] = 'facture ' . $ctx['number'];
+                $ctx['object_art'] = 'la ' . $ctx['object'];
                 $ctx['link'] = '/mon-asso-facture-edit?id=' . (int)$op['invoice_id'];
             } else {
                 $q = $pdo->prepare("SELECT c.name, t.name AS tier FROM cotisation_campaigns c LEFT JOIN cotisation_tiers t ON t.id = ? WHERE c.id = ? AND c.org_id = ?");
@@ -908,6 +1183,7 @@ if (!function_exists('ak_connect_op_context')) {
                 $r = $q->fetch(PDO::FETCH_ASSOC) ?: [];
                 $ctx['campaign'] = (string)($r['name'] ?? '');
                 $ctx['object'] = ($op['kind'] === 'don' ? 'don' : 'cotisation') . ($ctx['campaign'] !== '' ? ' « ' . $ctx['campaign'] . ' »' : '') . (!empty($r['tier']) ? ' · ' . $r['tier'] : '');
+                $ctx['object_art'] = ($op['kind'] === 'don' ? 'le ' : 'la ') . $ctx['object'];
                 $ctx['link'] = '/cotisation/' . (int)$op['campaign_id'];
             }
         } catch (Throwable $e) {}
@@ -978,15 +1254,18 @@ if (!function_exists('ak_connect_notify_paid')) {
         ak_stripe_once($pdo, $org_id, 'cpay_org_' . $op['id'], function () use ($pdo, $op, $c, $h, $amount, $method, $org_id, $who, $overpaid) {
             if ($overpaid) {
                 return ak_connect_notify_org($pdo, $org_id, '⚠ Paiement en ligne à rembourser : ' . $c['object'],
-                    '<p>' . $h($who) . ' a payé ' . $h($amount) . ' en ligne (' . $method . ') pour la <strong>' . $h($c['object']) . '</strong>, qui était déjà réglée, annulée ou remboursée.</p>'
+                    '<p>' . $h($who) . ' a payé ' . $h($amount) . ' en ligne (' . $method . ') pour <strong>' . $h($c['object_art']) . '</strong>, qui était déjà réglée, annulée ou remboursée.</p>'
                     . '<p>Ce paiement est arrivé sur votre compte Stripe : remboursez-le depuis votre tableau de bord Stripe (Paiements › le paiement › Rembourser). Assokit n’a rien modifié sur la facture.</p>',
                     $c['link']);
             }
             $fee = $op['fee_cents'] !== null ? ' Frais Stripe : ' . ak_connect_money((int)$op['fee_cents']) . ', net versé : ' . ak_connect_money((int)$op['net_cents']) . '.' : '';
             $extra = $op['kind'] === 'invoice' ? 'La facture est marquée payée et ses relances s’arrêtent.'
                 : ($op['kind'] === 'don' ? 'Le don est enregistré dans la campagne.' : 'Le paiement est enregistré dans la campagne' . (!empty($op['adherent_id']) ? ' et l’adhésion est prolongée.' : '.'));
-            return ak_connect_notify_org($pdo, $org_id, '💳 Paiement en ligne reçu : ' . $amount,
-                '<p>' . $h($who) . ' a payé <strong>' . $h($amount) . '</strong> en ligne (' . $method . ') pour la ' . $h($c['object']) . '.</p>'
+            $what = $op['kind'] === 'don'
+                ? $h($who) . ' a fait un don de <strong>' . $h($amount) . '</strong> en ligne (' . $method . ')' . ($c['campaign'] !== '' ? ', campagne « ' . $h($c['campaign']) . ' »' : '') . '.'
+                : $h($who) . ' a payé <strong>' . $h($amount) . '</strong> en ligne (' . $method . ') pour ' . $h($c['object_art']) . '.';
+            return ak_connect_notify_org($pdo, $org_id, ($op['kind'] === 'don' ? '💚 Don en ligne reçu : ' : '💳 Paiement en ligne reçu : ') . $amount,
+                '<p>' . $what . '</p>'
                 . '<p>' . $extra . $h($fee) . '</p><p>Les fonds sont versés par Stripe sur votre compte bancaire selon le calendrier de votre compte Stripe.</p>',
                 $c['link']);
         });
@@ -1003,11 +1282,15 @@ if (!function_exists('ak_connect_notify_paid')) {
                 $tbl .= '<tr><td style="padding:6px 0;color:#78716C;width:42%">' . $h($k) . '</td><td style="padding:6px 0;color:#1C1917;font-weight:600">' . $h($v) . '</td></tr>';
             }
             $tbl .= '</table>';
+            // Don : jamais de reçu fiscal promis (toutes les associations ne peuvent pas en délivrer, art. 200 et 238 bis
+            // du CGI) ; cotisation : aucune facture n'existe ; facture : le reçu ne la remplace pas
             $note = $op['kind'] === 'don'
-                ? '<p style="font-size:13px;color:#78716C">Ce reçu confirme votre paiement ; ce n’est pas un reçu fiscal. Pour un reçu fiscal, adressez-vous à ' . $h($c['org_name']) . '.</p>'
-                : '<p style="font-size:13px;color:#78716C">Ce reçu confirme votre paiement ; il ne remplace pas la facture de ' . $h($c['org_name']) . '.</p>';
+                ? 'Ce reçu confirme votre paiement ; ce n’est pas un reçu fiscal. Si ' . $h($c['org_name']) . ' est habilitée à délivrer des reçus fiscaux, elle vous l’adressera séparément.'
+                : ($op['kind'] === 'invoice' ? 'Ce reçu confirme votre paiement ; il ne remplace pas la facture de ' . $h($c['org_name']) . '.'
+                                             : 'Ce reçu confirme le paiement de votre cotisation.');
+            $note = '<p style="font-size:13px;color:#78716C">' . $note . '</p>';
             return ak_connect_send_payer($pdo, $op, 'Reçu de paiement — ' . $c['org_name'],
-                '<p>Bonjour,</p><p>' . $h($c['org_name']) . ' a bien reçu votre paiement. Merci !</p>' . $tbl . $note
+                '<p>Bonjour,</p><p>' . $h($c['org_name']) . ' a bien reçu ' . ($op['kind'] === 'don' ? 'votre don' : 'votre paiement') . '. Merci !</p>' . $tbl . $note
                 . '<p style="font-size:12px;color:#78716C">Paiement encaissé par ' . $h($c['org_name']) . ' via Stripe. Assokit est l’outil de gestion de l’association : il n’encaisse aucun fonds.</p>');
         });
     }
@@ -1021,7 +1304,7 @@ if (!function_exists('ak_connect_notify_processing')) {
         $h = 'ak_stripe_h';
         ak_stripe_once($pdo, (int)$op['org_id'], 'cpay_proc_' . $op['id'], function () use ($pdo, $op, $c, $h) {
             return ak_connect_send_payer($pdo, $op, 'Prélèvement SEPA enregistré — ' . $c['org_name'],
-                '<p>Bonjour,</p><p>Votre prélèvement SEPA de <strong>' . $h(ak_connect_money((int)$op['amount_cents'])) . '</strong> pour la ' . $h($c['object'])
+                '<p>Bonjour,</p><p>Votre prélèvement SEPA de <strong>' . $h(ak_connect_money((int)$op['amount_cents'])) . '</strong> pour ' . $h($c['object_art'])
                 . ' est enregistré. Votre banque le confirme sous quelques jours ouvrés ; vous recevrez alors votre reçu.</p>'
                 . '<p style="font-size:12px;color:#78716C">Paiement encaissé par ' . $h($c['org_name']) . ' via Stripe.</p>');
         });
@@ -1036,94 +1319,187 @@ if (!function_exists('ak_connect_notify_failed')) {
         $h = 'ak_stripe_h';
         $amount = ak_connect_money((int)$op['amount_cents']);
         ak_stripe_once($pdo, (int)$op['org_id'], 'cpay_fail_' . $op['id'], function () use ($pdo, $op, $c, $h, $amount) {
-            $retry = $op['kind'] === 'invoice' ? ' Vous pouvez régler de nouveau depuis la page de la facture.' : ' Vous pouvez payer de nouveau avec le même lien.';
+            // Lien pour payer de nouveau (le payeur a pu venir d'un QR code ou d'un message partagé)
+            $url = '';
+            try {
+                if ($op['kind'] === 'invoice') {
+                    $q = $pdo->prepare("SELECT public_uuid FROM asso_invoices WHERE id = ? AND org_id = ?");
+                    $q->execute([(int)$op['invoice_id'], (int)$op['org_id']]);
+                    $u = (string)$q->fetchColumn();
+                    if ($u !== '') $url = ak_stripe_site_base() . '/facture/' . $u;
+                } else {
+                    $q = $pdo->prepare("SELECT * FROM cotisation_campaigns WHERE id = ? AND org_id = ?");
+                    $q->execute([(int)$op['campaign_id'], (int)$op['org_id']]);
+                    if ($camp = $q->fetch(PDO::FETCH_ASSOC)) $url = ak_connect_campaign_url($pdo, $camp, (int)($op['adherent_id'] ?? 0));
+                }
+            } catch (Throwable $e) {}
+            $retry = $url !== ''
+                ? '<p>Vous pouvez ' . ($op['kind'] === 'invoice' ? 'régler la facture' : 'payer') . ' de nouveau, par carte ou par prélèvement : <a href="' . $h($url) . '" style="color:#059669;font-weight:600;">' . $h($url) . '</a></p>'
+                : '<p>Pour régler de nouveau, contactez ' . $h($c['org_name']) . '.</p>';
             ak_connect_send_payer($pdo, $op, 'Prélèvement rejeté — ' . $c['org_name'],
-                '<p>Bonjour,</p><p>Votre banque a rejeté le prélèvement SEPA de <strong>' . $h($amount) . '</strong> pour la ' . $h($c['object']) . '.' . $h($retry) . '</p>');
+                '<p>Bonjour,</p><p>Votre banque a rejeté le prélèvement SEPA de <strong>' . $h($amount) . '</strong> pour ' . $h($c['object_art']) . '.</p>' . $retry
+                . '<p style="font-size:12px;color:#78716C">Paiement encaissé par ' . $h($c['org_name']) . ' via Stripe.</p>');
             return ak_connect_notify_org($pdo, (int)$op['org_id'], '⚠ Prélèvement SEPA rejeté : ' . $amount,
-                '<p>La banque a rejeté le prélèvement SEPA de ' . $h($amount) . ' pour la ' . $h($c['object']) . '. Rien n’a été enregistré comme payé ; le payeur est prévenu.</p>',
+                '<p>La banque a rejeté le prélèvement SEPA de ' . $h($amount) . ' pour ' . $h($c['object_art']) . '. Rien n’a été enregistré comme payé ; le payeur est prévenu.</p>',
                 $c['link']);
         });
     }
 }
 
+if (!function_exists('ak_connect_op_for_charge')) {
+    /**
+     * Paiement en ligne d'une charge Stripe (remboursement, litige) : par PaymentIntent ou charge ; sinon relu chez
+     * Stripe (métadonnée ak_op_id du PaymentIntent, toujours pour le même compte). Stripe ne garantit pas l'ordre
+     * des événements : un remboursement peut arriver avant checkout.session.completed (webhook en retard, page de
+     * retour jamais ouverte). Le paiement est alors relu et enregistré d'abord ; si c'est encore impossible, une
+     * exception fait répondre 500 au webhook et Stripe renvoie l'événement plus tard (jamais « traité » à tort).
+     * @return array|null null : aucun paiement Assokit sur ce compte pour cette charge (rien à faire)
+     */
+    function ak_connect_op_for_charge(PDO $pdo, string $acct, string $pi, string $charge_id): ?array {
+        if ($pi === '' && $charge_id === '') return null;
+        $q = $pdo->prepare("SELECT * FROM asso_online_payments WHERE stripe_account_id = ?
+                              AND ((? <> '' AND payment_intent_id = ?) OR (? <> '' AND charge_id = ?)) ORDER BY id DESC LIMIT 1");
+        $q->execute([$acct, $pi, $pi, $charge_id, $charge_id]);
+        $op = $q->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$op && $pi !== '') {
+            $r = ak_stripe_api_call($pdo, 'GET', '/payment_intents/' . rawurlencode($pi), [], null, $acct);
+            if (empty($r['ok'])) {
+                if ((int)($r['http_code'] ?? 0) === 404) return null;   // paiement d'un autre outil sur ce compte
+                throw new RuntimeException('PaymentIntent ' . $pi . ' illisible chez Stripe : ' . ($r['error'] ?? 'pas de réponse'));
+            }
+            $oid = (int)($r['data']['metadata']['ak_op_id'] ?? 0);
+            $op = $oid > 0 ? ak_connect_op($pdo, $oid) : null;
+            if (!$op || (string)$op['stripe_account_id'] !== $acct) return null;
+        }
+        if (!$op) return null;
+        if (in_array($op['status'], ['open', 'processing', 'expired', 'failed'], true)) {
+            if (!empty($op['checkout_session_id'])) {
+                $g = ak_stripe_api_call($pdo, 'GET', '/checkout/sessions/' . rawurlencode((string)$op['checkout_session_id']), [], null, $acct);
+                if (!empty($g['ok']) && is_array($g['data'])) ak_connect_apply_session($pdo, $acct, $g['data'], 'return');
+            }
+            $op = ak_connect_op($pdo, (int)$op['id']);
+            if (!$op || !in_array($op['status'], ['paid', 'partially_refunded', 'disputed', 'refunded', 'dispute_lost'], true)) {
+                throw new RuntimeException('paiement #' . (int)($op['id'] ?? 0) . ' pas encore enregistré (' . ($op['status'] ?? '?') . ') : événement à rejouer');
+            }
+        }
+        return $op;
+    }
+}
+
+if (!function_exists('ak_connect_reverse_op')) {
+    /**
+     * Paiement en ligne rendu au payeur en entier (remboursement total, litige perdu) : annulé côté Assokit comme une
+     * annulation manuelle. À appeler DANS la transaction de l'appelant.
+     *   - facture : règlement retiré (ligne négative dans l'historique), facture « en attente » ou « en retard »,
+     *     relances automatiques suspendues jusqu'à la décision de l'association (avoir ou nouveau règlement) ;
+     *   - cotisation / don : ligne « remboursée » (et ses lignes de remboursement partiel), hors encaissements et
+     *     FEC ; l'adhésion n'est pas raccourcie (comme l'annulation manuelle : à corriger sur la fiche si besoin).
+     * $why : refund | dispute. @return string phrase pour l'association
+     */
+    function ak_connect_reverse_op(PDO $pdo, array $op, string $why): string {
+        if (!empty($op['overpaid'])) return 'Ce paiement était un trop-perçu : la facture n’est pas modifiée.';
+        $pi = (string)($op['payment_intent_id'] ?? '');
+        $amount = (int)$op['amount_cents'];
+        if ($op['kind'] === 'invoice') {
+            $inv = $pdo->prepare("SELECT id, status, due_at, invoice_number FROM asso_invoices WHERE id = ? AND org_id = ? FOR UPDATE");
+            $inv->execute([(int)$op['invoice_id'], (int)$op['org_id']]);
+            $i = $inv->fetch(PDO::FETCH_ASSOC);
+            if (!$i || $i['status'] !== 'paid') return '';
+            $back = (!empty($i['due_at']) && strtotime((string)$i['due_at']) < time()) ? 'overdue' : 'pending';
+            // Relances automatiques suspendues (dunning_enabled = 0, comme une facture annulée) : le client vient
+            // d'être remboursé (ou sa banque a repris le paiement), l'association décide avant toute relance
+            $ic = ak_db_columns($pdo, 'asso_invoices');
+            $pdo->prepare("UPDATE asso_invoices SET status = ?, paid_at = NULL, confirmed_paid_by_org_at = NULL, confirmed_paid_by_user_id = NULL,
+                                  payment_method = NULL, payment_reference = NULL"
+                          . (isset($ic['dunning_enabled']) ? ", dunning_enabled = 0" : "") . (isset($ic['next_dunning_at']) ? ", next_dunning_at = NULL" : "")
+                          . ", updated_at = NOW() WHERE id = ?")
+                ->execute([$back, (int)$i['id']]);
+            require_once __DIR__ . '/asso-invoice-helpers.php';
+            $src = ak_db_pick($pdo, 'asso_invoice_payments', 'source', ['stripe', 'admin']) ?? 'admin';
+            try {
+                $pdo->prepare("INSERT INTO asso_invoice_payments (invoice_id, org_id, amount_cents, paid_at, payment_method, reference, notes, source, recorded_by_user_id)
+                               VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, NULL)")
+                    ->execute([(int)$i['id'], (int)$op['org_id'], -$amount, ($op['payment_method_type'] ?? '') === 'sepa_debit' ? 'prelevement' : 'cb',
+                               $pi, $why === 'dispute' ? 'Litige perdu : paiement en ligne repris par la banque du payeur' : 'Remboursement Stripe du paiement en ligne', $src]);
+            } catch (Throwable $e) {
+                error_log('[connect] historique annulation : ' . $e->getMessage());
+            }
+            ak_asso_invoice_audit($pdo, (int)$op['org_id'], (int)$i['id'], $why === 'dispute' ? 'dispute_lost_online' : 'refunded_online', null, 'paid', $back,
+                ['online_payment_id' => (int)$op['id'], 'payment_intent' => $pi, 'amount_cents' => $amount]);
+            return 'La facture ' . $i['invoice_number'] . ' repasse « à payer », sans relance automatique. Si la vente est annulée, établissez un avoir (bouton « Créer un avoir ») ; sinon, attendez un nouveau règlement.';
+        }
+        if (empty($op['cotisation_payment_id'])) return '';
+        $lbl = $why === 'dispute' ? ' · Litige perdu (paiement repris par la banque) le ' : ' · Remboursé depuis Stripe le ';
+        $pdo->prepare("UPDATE cotisation_payments SET status = 'refunded', notes = CONCAT(COALESCE(notes, ''), ?) WHERE id = ? AND org_id = ?")
+            ->execute([$lbl . date('d/m/Y'), (int)$op['cotisation_payment_id'], (int)$op['org_id']]);
+        // Lignes de remboursement partiel déjà passées : retirées aussi (le paiement entier est annulé)
+        if (isset(ak_db_columns($pdo, 'cotisation_payments')['online_payment_id'])) {
+            $pdo->prepare("UPDATE cotisation_payments SET status = 'refunded' WHERE online_payment_id = ? AND org_id = ? AND amount < 0 AND status = 'paid'")
+                ->execute([(int)$op['id'], (int)$op['org_id']]);
+        }
+        return 'Le paiement est passé « Remboursé » dans la campagne'
+            . ($op['kind'] === 'cotisation' && !empty($op['adherent_id']) ? ' ; la date de fin d’adhésion n’a pas été modifiée (corrigez-la sur la fiche de l’adhérent si besoin).' : '.');
+    }
+}
+
 if (!function_exists('ak_connect_handle_refund')) {
     /**
-     * Remboursement fait par l'association dans son tableau de bord Stripe (charge.refunded) : le paiement est
-     * annulé côté Assokit comme une annulation manuelle.
-     *   - cotisation / don remboursé en entier : ligne « remboursée » (hors encaissements et FEC) ; l'adhésion n'est
-     *     pas raccourcie (comme l'annulation manuelle : à corriger sur la fiche si besoin) ;
-     *   - facture remboursée en entier : règlement retiré (ligne négative dans l'historique), facture « en attente »
-     *     ou « en retard » (relances suspendues jusqu'à la décision de l'association : avoir ou nouveau règlement) ;
-     *   - remboursement partiel : noté, l'association est prévenue (un avoir partiel s'établit à la main).
+     * Remboursement fait par l'association dans son tableau de bord Stripe (charge.refunded) :
+     *   - total : paiement annulé côté Assokit (ak_connect_reverse_op) ;
+     *   - partiel d'une cotisation ou d'un don : ligne négative du montant remboursé dans la campagne (même
+     *     adhérent, même référence) : totaux de la campagne et FEC au montant net (contre-passation) ;
+     *   - partiel d'une facture : la facture reste payée, l'association établit un avoir du montant remboursé.
+     * Arrivé avant l'enregistrement du paiement : le paiement est enregistré d'abord (ak_connect_op_for_charge).
      */
     function ak_connect_handle_refund(PDO $pdo, string $acct, array $charge): void {
         $pi = is_array($charge['payment_intent'] ?? null) ? (string)($charge['payment_intent']['id'] ?? '') : (string)($charge['payment_intent'] ?? '');
-        if ($pi === '') return;
-        $q = $pdo->prepare("SELECT * FROM asso_online_payments WHERE payment_intent_id = ? AND stripe_account_id = ? LIMIT 1");
-        $q->execute([$pi, $acct]);
-        $op = $q->fetch(PDO::FETCH_ASSOC);
+        $op = ak_connect_op_for_charge($pdo, $acct, $pi, (string)($charge['id'] ?? ''));
         if (!$op || !in_array($op['status'], ['paid', 'partially_refunded', 'disputed', 'refunded'], true)) return;
         $refunded = min((int)($charge['amount_refunded'] ?? 0), (int)$op['amount_cents']);
-        if ($refunded <= (int)$op['refunded_cents']) return;   // déjà appliqué (événement rejoué ou en retard)
+        $prev = (int)$op['refunded_cents'];
+        if ($refunded <= $prev) return;   // déjà appliqué (événement rejoué ou en retard)
         $full = $refunded >= (int)$op['amount_cents'];
+        $delta = $refunded - $prev;
         $c = ak_connect_op_context($pdo, $op);
         $h = 'ak_stripe_h';
         $pdo->beginTransaction();
         try {
             $st = $pdo->prepare("UPDATE asso_online_payments SET refunded_cents = ?, status = ?, updated_at = NOW() WHERE id = ? AND refunded_cents < ?");
-            $st->execute([$refunded, $full ? 'refunded' : 'partially_refunded', (int)$op['id'], $refunded]);
+            $st->execute([$refunded, $full ? 'refunded' : ($op['status'] === 'disputed' ? 'disputed' : 'partially_refunded'), (int)$op['id'], $refunded]);
             if ($st->rowCount() !== 1) { $pdo->rollBack(); return; }
             $note = '';
-            if ($full && empty($op['overpaid'])) {
-                if ($op['kind'] === 'invoice') {
-                    $inv = $pdo->prepare("SELECT id, status, due_at, invoice_number FROM asso_invoices WHERE id = ? AND org_id = ? FOR UPDATE");
-                    $inv->execute([(int)$op['invoice_id'], (int)$op['org_id']]);
-                    $i = $inv->fetch(PDO::FETCH_ASSOC);
-                    if ($i && $i['status'] === 'paid') {
-                        $back = (!empty($i['due_at']) && strtotime((string)$i['due_at']) < time()) ? 'overdue' : 'pending';
-                        // Relances automatiques suspendues (dunning_enabled = 0, comme une facture annulée) : le client vient
-                        // d'être remboursé, l'association décide (avoir ou nouveau règlement) avant toute relance
-                        $ic = ak_db_columns($pdo, 'asso_invoices');
-                        $pdo->prepare("UPDATE asso_invoices SET status = ?, paid_at = NULL, confirmed_paid_by_org_at = NULL, confirmed_paid_by_user_id = NULL,
-                                              payment_method = NULL, payment_reference = NULL"
-                                      . (isset($ic['dunning_enabled']) ? ", dunning_enabled = 0" : "") . (isset($ic['next_dunning_at']) ? ", next_dunning_at = NULL" : "")
-                                      . ", updated_at = NOW() WHERE id = ?")
-                            ->execute([$back, (int)$i['id']]);
-                        require_once __DIR__ . '/asso-invoice-helpers.php';
-                        $src = ak_db_pick($pdo, 'asso_invoice_payments', 'source', ['stripe', 'admin']) ?? 'admin';
-                        try {
-                            $pdo->prepare("INSERT INTO asso_invoice_payments (invoice_id, org_id, amount_cents, paid_at, payment_method, reference, notes, source, recorded_by_user_id)
-                                           VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, NULL)")
-                                ->execute([(int)$i['id'], (int)$op['org_id'], -$refunded, ($op['payment_method_type'] ?? '') === 'sepa_debit' ? 'prelevement' : 'cb',
-                                           $pi, 'Remboursement Stripe du paiement en ligne', $src]);
-                        } catch (Throwable $e) {
-                            error_log('[connect] historique remboursement : ' . $e->getMessage());
-                        }
-                        ak_asso_invoice_audit($pdo, (int)$op['org_id'], (int)$i['id'], 'refunded_online', null, 'paid', $back,
-                            ['online_payment_id' => (int)$op['id'], 'payment_intent' => $pi, 'amount_cents' => $refunded]);
-                        $note = 'La facture ' . $i['invoice_number'] . ' repasse « à payer », sans relance automatique. Si la vente est annulée, établissez un avoir (bouton « Créer un avoir ») ; sinon, attendez un nouveau règlement.';
-                    }
-                } elseif (!empty($op['cotisation_payment_id'])) {
-                    $pdo->prepare("UPDATE cotisation_payments SET status = 'refunded', notes = CONCAT(COALESCE(notes, ''), ?) WHERE id = ? AND org_id = ?")
-                        ->execute([' · Remboursé depuis Stripe le ' . date('d/m/Y'), (int)$op['cotisation_payment_id'], (int)$op['org_id']]);
-                    $note = 'Le paiement est passé « Remboursé » dans la campagne'
-                        . ($op['kind'] === 'cotisation' && !empty($op['adherent_id']) ? ' ; la date de fin d’adhésion n’a pas été modifiée (corrigez-la sur la fiche de l’adhérent si besoin).' : '.');
-                }
-            } elseif (!$full) {
-                if (!empty($op['cotisation_payment_id'])) {
+            if ($full) {
+                $note = ak_connect_reverse_op($pdo, $op, 'refund');
+            } elseif ($op['kind'] !== 'invoice' && !empty($op['cotisation_payment_id'])) {
+                $m = $pdo->prepare("SELECT * FROM cotisation_payments WHERE id = ? AND org_id = ?");
+                $m->execute([(int)$op['cotisation_payment_id'], (int)$op['org_id']]);
+                if (($row = $m->fetch(PDO::FETCH_ASSOC)) && ($row['status'] ?? 'paid') === 'paid') {
+                    $cols = ak_db_columns($pdo, 'cotisation_payments');
+                    $neg = [
+                        'org_id' => (int)$op['org_id'], 'campaign_id' => (int)$row['campaign_id'], 'tier_id' => $row['tier_id'] ?: null,
+                        'adherent_id' => $row['adherent_id'] ?: null, 'payer_name' => $row['payer_name'], 'payer_email' => $row['payer_email'],
+                        'amount' => number_format(-$delta / 100, 2, '.', ''), 'currency' => (string)($row['currency'] ?: $op['currency']),
+                        'payment_method' => 'stripe', 'status' => 'paid', 'reference' => $pi ?: $row['reference'],
+                        'notes' => 'Remboursement partiel Stripe (' . ak_connect_money($delta) . ')', 'paid_at' => date('Y-m-d H:i:s'), 'created_by' => null,
+                    ];
+                    if (isset($cols['online_payment_id'])) $neg['online_payment_id'] = (int)$op['id'];
+                    ak_db_insert($pdo, 'cotisation_payments', array_intersect_key($neg, $cols), isset($cols['created_at']) ? ['created_at' => 'NOW()'] : []);
                     $pdo->prepare("UPDATE cotisation_payments SET notes = CONCAT(COALESCE(notes, ''), ?) WHERE id = ? AND org_id = ?")
-                        ->execute([' · Remboursement partiel Stripe : ' . ak_connect_money($refunded) . ' le ' . date('d/m/Y'), (int)$op['cotisation_payment_id'], (int)$op['org_id']]);
+                        ->execute([' · Remboursement partiel Stripe : ' . ak_connect_money($delta) . ' le ' . date('d/m/Y'), (int)$row['id'], (int)$op['org_id']]);
+                    $note = 'Une ligne de remboursement de ' . ak_connect_money($delta) . ' est ajoutée dans la campagne : le paiement compte désormais pour '
+                        . ak_connect_money((int)$op['amount_cents'] - $refunded) . ' (totaux et export comptable).';
                 }
-                $note = $op['kind'] === 'invoice' ? 'Remboursement partiel : la facture reste payée ; établissez un avoir du montant remboursé.' : 'Remboursement partiel noté sur le paiement.';
+            } elseif ($op['kind'] === 'invoice') {
+                $note = 'Remboursement partiel : la facture reste payée ; établissez un avoir du montant remboursé.';
             }
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             throw $e;
         }
-        ak_stripe_once($pdo, (int)$op['org_id'], 'cpay_ref_' . $op['id'] . '_' . $refunded, function () use ($pdo, $op, $c, $h, $refunded, $note) {
-            return ak_connect_notify_org($pdo, (int)$op['org_id'], '↩ Paiement en ligne remboursé : ' . ak_connect_money($refunded),
-                '<p>Un remboursement de <strong>' . $h(ak_connect_money($refunded)) . '</strong> a été fait depuis votre compte Stripe pour la ' . $h($c['object']) . '.</p>'
+        ak_stripe_once($pdo, (int)$op['org_id'], 'cpay_ref_' . $op['id'] . '_' . $refunded, function () use ($pdo, $op, $c, $h, $delta, $note) {
+            return ak_connect_notify_org($pdo, (int)$op['org_id'], '↩ Paiement en ligne remboursé : ' . ak_connect_money($delta),
+                '<p>Un remboursement de <strong>' . $h(ak_connect_money($delta)) . '</strong> a été fait depuis votre compte Stripe pour ' . $h($c['object_art']) . '.</p>'
                 . ($note !== '' ? '<p>' . $h($note) . '</p>' : ''), $c['link']);
         });
     }
@@ -1132,31 +1508,89 @@ if (!function_exists('ak_connect_handle_refund')) {
 if (!function_exists('ak_connect_handle_dispute')) {
     /** Contestation du payeur (charge.dispute.created) : l'association répond depuis son tableau de bord Stripe. */
     function ak_connect_handle_dispute(PDO $pdo, string $acct, array $dispute): void {
-        $pi = (string)($dispute['payment_intent'] ?? '');
-        $q = $pdo->prepare("SELECT * FROM asso_online_payments WHERE stripe_account_id = ? AND (payment_intent_id = ? OR charge_id = ?) LIMIT 1");
-        $q->execute([$acct, $pi, (string)($dispute['charge'] ?? '')]);
-        $op = $q->fetch(PDO::FETCH_ASSOC);
+        $op = ak_connect_op_for_charge($pdo, $acct, (string)($dispute['payment_intent'] ?? ''), (string)($dispute['charge'] ?? ''));
         if (!$op) return;
-        $pdo->prepare("UPDATE asso_online_payments SET status = 'disputed', updated_at = NOW() WHERE id = ? AND status = 'paid'")->execute([(int)$op['id']]);
+        $pdo->prepare("UPDATE asso_online_payments SET status = 'disputed', updated_at = NOW() WHERE id = ? AND status IN ('paid', 'partially_refunded')")->execute([(int)$op['id']]);
         $c = ak_connect_op_context($pdo, $op);
         $h = 'ak_stripe_h';
         ak_stripe_once($pdo, (int)$op['org_id'], 'cpay_disp_' . ($dispute['id'] ?? $op['id']), function () use ($pdo, $op, $c, $h) {
             return ak_connect_notify_org($pdo, (int)$op['org_id'], '⚠ Paiement en ligne contesté : ' . ak_connect_money((int)$op['amount_cents']),
-                '<p>Le payeur conteste auprès de sa banque le paiement de ' . $h(ak_connect_money((int)$op['amount_cents'])) . ' pour la ' . $h($c['object']) . '.</p>'
-                . '<p>Répondez depuis votre tableau de bord Stripe (Paiements › Litiges) avant la date indiquée par Stripe, avec vos justificatifs. Les fonds contestés sont retenus par Stripe jusqu’à la décision de la banque.</p>',
+                '<p>Le payeur conteste auprès de sa banque le paiement de ' . $h(ak_connect_money((int)$op['amount_cents'])) . ' pour ' . $h($c['object_art']) . '.</p>'
+                . '<p>Répondez depuis votre tableau de bord Stripe (Paiements › Litiges) avant la date indiquée par Stripe, avec vos justificatifs. Les fonds contestés sont retenus par Stripe jusqu’à la décision de la banque ; Assokit reportera cette décision.</p>',
                 $c['link']);
         });
     }
 }
 
+if (!function_exists('ak_connect_handle_dispute_closed')) {
+    /**
+     * Décision de la banque sur une contestation (charge.dispute.closed) :
+     *   - gagnée (won, warning_closed) : le paiement redevient « payé », l'association est prévenue ;
+     *   - perdue (lost) : l'argent et les frais de litige ont quitté le compte de l'association : le paiement est
+     *     annulé comme un remboursement total (facture de nouveau à payer, cotisation « remboursée »), statut
+     *     « dispute_lost », et l'association est prévenue (avec les frais de litige si Stripe les donne).
+     * Une seule fois par contestation.
+     */
+    function ak_connect_handle_dispute_closed(PDO $pdo, string $acct, array $dispute): void {
+        $op = ak_connect_op_for_charge($pdo, $acct, (string)($dispute['payment_intent'] ?? ''), (string)($dispute['charge'] ?? ''));
+        if (!$op) return;
+        $outcome = (string)($dispute['status'] ?? '');
+        $dp = (string)($dispute['id'] ?? ('op' . $op['id']));
+        $c = ak_connect_op_context($pdo, $op);
+        $h = 'ak_stripe_h';
+        $amount = ak_connect_money((int)$op['amount_cents']);
+        if ($outcome === 'lost') {
+            $fee = 0;
+            foreach ((array)($dispute['balance_transactions'] ?? []) as $bt) if (is_array($bt)) $fee += (int)($bt['fee'] ?? 0);
+            $note = '';
+            $pdo->beginTransaction();
+            try {
+                $st = $pdo->prepare("UPDATE asso_online_payments SET status = 'dispute_lost', updated_at = NOW() WHERE id = ? AND status IN ('paid', 'partially_refunded', 'disputed')");
+                $st->execute([(int)$op['id']]);
+                if ($st->rowCount() !== 1) { $pdo->rollBack(); return; }   // déjà appliqué
+                $note = ak_connect_reverse_op($pdo, $op, 'dispute');
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            ak_stripe_once($pdo, (int)$op['org_id'], 'cpay_dlost_' . $dp, function () use ($pdo, $op, $c, $h, $amount, $fee, $note) {
+                return ak_connect_notify_org($pdo, (int)$op['org_id'], '⚠ Litige perdu : ' . $amount,
+                    '<p>La banque du payeur lui a donné raison pour le paiement de ' . $h($amount) . ' (' . $h($c['object_art']) . ') : Stripe a repris ce montant'
+                    . ($fee > 0 ? ' et des frais de litige de ' . $h(ak_connect_money($fee)) : '') . ' sur votre compte Stripe.</p>'
+                    . ($note !== '' ? '<p>' . $h($note) . '</p>' : '')
+                    . '<p>Le détail est dans votre tableau de bord Stripe (Paiements › Litiges).</p>', $c['link']);
+            });
+            return;
+        }
+        if (in_array($outcome, ['won', 'warning_closed'], true)) {
+            $st = $pdo->prepare("UPDATE asso_online_payments SET status = IF(refunded_cents > 0, 'partially_refunded', 'paid'), updated_at = NOW() WHERE id = ? AND status = 'disputed'");
+            $st->execute([(int)$op['id']]);
+            if ($st->rowCount() !== 1) return;
+            ak_stripe_once($pdo, (int)$op['org_id'], 'cpay_dwon_' . $dp, function () use ($pdo, $op, $c, $h, $amount) {
+                return ak_connect_notify_org($pdo, (int)$op['org_id'], '✓ Litige gagné : ' . $amount,
+                    '<p>La contestation du paiement de ' . $h($amount) . ' (' . $h($c['object_art']) . ') est close en faveur de votre association : les fonds retenus vous sont rendus par Stripe.</p>'
+                    . '<p>Rien ne change dans Assokit : le paiement reste enregistré.</p>', $c['link']);
+            });
+        }
+    }
+}
+
 if (!function_exists('ak_connect_handle_deauthorized')) {
-    /** L'association a retiré l'accès d'Assokit à son compte Stripe : plus de paiement en ligne, elle est prévenue. */
+    /**
+     * L'association a retiré l'accès d'Assokit à son compte Stripe : plus de paiement en ligne. Ses paiements encore
+     * ouverts sont clos (aucun événement n'arrivera plus) et listés dans l'e-mail pour vérification dans Stripe.
+     */
     function ak_connect_handle_deauthorized(PDO $pdo, string $acct): void {
         $row = ak_connect_account_by_stripe_id($pdo, $acct);
-        if (!$row || !ak_connect_mark_disconnected($pdo, $acct, 'accès retiré depuis Stripe')) return;
-        ak_stripe_once($pdo, (int)$row['org_id'], 'cpay_deauth_' . $acct, function () use ($pdo, $row) {
+        if (!$row) return;
+        $was = ak_connect_mark_disconnected($pdo, $acct, 'accès retiré depuis Stripe');
+        $closed = ak_connect_close_account_ops($pdo, $acct);
+        if (!$was && !$closed) return;
+        ak_stripe_once($pdo, (int)$row['org_id'], 'cpay_deauth_' . $acct, function () use ($pdo, $row, $closed) {
             return ak_connect_notify_org($pdo, (int)$row['org_id'], 'Paiements en ligne désactivés',
                 '<p>L’accès d’Assokit à votre compte Stripe a été retiré depuis Stripe : le paiement en ligne n’est plus proposé sur vos factures, cotisations et dons.</p>'
+                . ak_connect_closed_ops_html($pdo, $closed)
                 . '<p>Pour le rétablir, reliez de nouveau votre compte depuis la page « Paiements en ligne ».</p>', '/encaissement-en-ligne');
         });
     }

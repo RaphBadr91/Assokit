@@ -26,9 +26,12 @@ if (!$op || !preg_match('/^cs_[A-Za-z0-9_]+$/', $cs_id) || (!empty($op['checkout
 }
 
 // Session relue chez Stripe, puis appliquée (idempotent : le webhook peut être déjà passé)
+$read_ok = false; $cs_state = '';
 if (in_array($op['status'], ['open', 'processing'], true)) {
     $r = ak_stripe_api_call($pdo, 'GET', '/checkout/sessions/' . rawurlencode($cs_id), [], null, (string)$op['stripe_account_id']);
     if (!empty($r['ok']) && is_array($r['data'])) {
+        $read_ok = true;
+        $cs_state = (string)($r['data']['status'] ?? '') . '/' . (string)($r['data']['payment_status'] ?? '');
         try {
             ak_connect_apply_session($pdo, (string)$op['stripe_account_id'], $r['data'], 'return');
         } catch (Throwable $e) {
@@ -53,32 +56,47 @@ if ($op['kind'] === 'invoice') {
 }
 $status = (string)$op['status'];
 $amount = ak_connect_money((int)$op['amount_cents']);
-$title = in_array($status, ['paid', 'refunded', 'partially_refunded', 'disputed'], true) ? 'Paiement confirmé' : ($status === 'processing' ? 'Prélèvement enregistré' : 'Paiement non abouti');
+// État affiché :
+//   paid       : paiement enregistré (ou remboursé / contesté depuis) ;
+//   processing : prélèvement SEPA envoyé à la banque ;
+//   failed     : échec CERTAIN (paiement marqué échoué ou expiré, ou page Stripe relue : expirée, ou ouverte sans
+//                paiement) : « rien n'a été prélevé » et « Réessayer » ;
+//   pending    : tout le reste (Stripe injoignable, page payée mais pas encore enregistrée) : jamais « rien n'a été
+//                prélevé » ni « Réessayer » : le payeur ne doit pas payer une seconde fois.
+if (in_array($status, ['paid', 'refunded', 'partially_refunded', 'disputed', 'dispute_lost'], true)) $view = 'paid';
+elseif ($status === 'processing') $view = 'processing';
+elseif (in_array($status, ['failed', 'expired'], true) || ($read_ok && in_array($cs_state, ['expired/unpaid', 'open/unpaid'], true))) $view = 'failed';
+else $view = 'pending';
+$title = ['paid' => 'Paiement confirmé', 'processing' => 'Prélèvement enregistré', 'failed' => 'Paiement non abouti', 'pending' => 'Paiement en cours de confirmation'][$view];
 
 ak_pay_head($title, $org_name);
 ?>
 <div class="pp-card">
   <div class="pp-head">
     <div class="pp-org"><?= $h($org_name) ?></div>
-    <h1><?= $status === 'paid' ? '✅ Paiement confirmé — merci !' : ($status === 'processing' ? '⏳ Prélèvement SEPA enregistré' : ($title === 'Paiement confirmé' ? '✅ Paiement confirmé' : 'Paiement non abouti')) ?></h1>
+    <h1><?= ['paid' => $status === 'paid' ? '✅ Paiement confirmé — merci !' : '✅ Paiement confirmé', 'processing' => '⏳ Prélèvement SEPA enregistré',
+             'failed' => 'Paiement non abouti', 'pending' => '⏳ Paiement en cours de confirmation'][$view] ?></h1>
   </div>
   <div class="pp-body">
-    <?php if ($title === 'Paiement confirmé'): ?>
+    <?php if ($view === 'paid'): ?>
       <p><?= $h($org_name) ?> a bien reçu votre paiement.</p>
-    <?php elseif ($status === 'processing'): ?>
+    <?php elseif ($view === 'processing'): ?>
       <p class="pp-alert pp-alert-wait">Votre banque confirme le prélèvement sous quelques jours ouvrés. Vous recevrez alors votre reçu par e-mail ; rien d’autre à faire.</p>
+    <?php elseif ($view === 'pending'): ?>
+      <p class="pp-alert pp-alert-wait">Votre paiement est en cours de confirmation : ne payez pas une seconde fois. Votre reçu arrive par e-mail dès la confirmation.</p>
+      <p><a class="pp-btn-ghost" href="<?= $h($_SERVER['REQUEST_URI'] ?? '') ?>">↻ Actualiser cette page</a></p>
     <?php else: ?>
       <p class="pp-alert pp-alert-error">Le paiement n’a pas abouti<?= $status === 'failed' && !empty($op['failure_message']) ? ' (' . $h(mb_strtolower((string)$op['failure_message'])) . ')' : '' ?> : rien n’a été prélevé.</p>
-      <p class="pp-muted">Si vous venez de valider le paiement sur Stripe, la confirmation peut prendre quelques secondes : rechargez cette page.</p>
     <?php endif; ?>
     <table class="pp-rows">
       <tr><td>Objet</td><td><?= $h(ucfirst($ctx['object'])) ?></td></tr>
       <tr><td>Montant</td><td><?= $h($amount) ?></td></tr>
       <?php if (!empty($op['paid_at'])): ?><tr><td>Date</td><td><?= $h(date('d/m/Y à H:i', strtotime((string)$op['paid_at']))) ?></td></tr><?php endif; ?>
-      <?php if (!empty($op['payer_email']) && in_array($status, ['paid', 'processing'], true)): ?><tr><td>Reçu envoyé à</td><td><?= $h($op['payer_email']) ?></td></tr><?php endif; ?>
+      <?php if (!empty($op['payer_email']) && $status === 'paid'): ?><tr><td>Reçu envoyé à</td><td><?= $h($op['payer_email']) ?></td></tr><?php endif; ?>
+      <?php if (!empty($op['payer_email']) && $view === 'processing'): ?><tr><td>Confirmation envoyée à</td><td><?= $h($op['payer_email']) ?></td></tr><?php endif; ?>
     </table>
-    <?php if ($back !== ''): ?>
-      <p><a class="pp-btn-ghost" href="<?= $h($back) ?>">← <?= $op['kind'] === 'invoice' ? 'Revenir à la facture' : ($title === 'Paiement confirmé' ? 'Revenir à la page' : 'Réessayer') ?></a></p>
+    <?php if ($back !== '' && $view !== 'pending'): ?>
+      <p><a class="pp-btn-ghost" href="<?= $h($back) ?>">← <?= $view === 'failed' ? 'Réessayer' : ($op['kind'] === 'invoice' ? 'Revenir à la facture' : 'Revenir à la page') ?></a></p>
     <?php endif; ?>
   </div>
 </div>

@@ -73,7 +73,9 @@ render_head($campaign ? 'Modifier campagne' : 'Nouvelle campagne');
         <label>Type de campagne</label>
         <select name="kind" id="ck-kind">
           <option value=""<?= $kd !== 'don' ? ' selected' : '' ?>>Cotisation (adhésion, participation, billetterie…)</option>
+          <?php if ($kd === 'don' || !ck_org_is_tpe($pdo, $org_id)): /* une entreprise (TPE) ne reçoit pas de dons */ ?>
           <option value="don"<?= $kd === 'don' ? ' selected' : '' ?>>Dons (montant libre, ne renouvelle pas l’adhésion)</option>
+          <?php endif; ?>
         </select>
       </div>
       <?php endif; ?>

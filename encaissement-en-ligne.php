@@ -36,6 +36,9 @@ $platform = ak_connect_platform_state($pdo);
 $mode = ak_stripe_get_mode($pdo);
 $test_blocked = ($mode === 'test' && !in_array($org_id, ak_stripe_test_org_ids($pdo), true)) || ak_connect_demo_blocked($pdo, $org_id);
 $open = $platform['ok'] && !$test_blocked;
+// TPE / entreprise : pas de dons, textes neutres (« votre structure », SIREN)
+$is_tpe = ak_connect_org_is_tpe($pdo, $org_id);
+$struct = $is_tpe ? 'votre structure' : 'l’association';
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
 $flash = $_SESSION['flash_encaissement'] ?? null;
@@ -71,8 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     switch ($action) {
         case 'connect':
         case 'resume':
+            // Un compte relié (même incomplet) n'est jamais recréé : double clic, onglet resté ouvert, « Connecter »
+            // sur un compte actif → page Stripe du compte en place. Création ou reprise seulement sans compte relié.
             $acc = ak_connect_account($pdo, $org_id);
-            if (!$acc || $action === 'connect') {
+            if (!$acc) {
                 $c = ak_connect_create_account($pdo, $org_id, $user);
                 if (!$c['ok']) $redirect(['type' => 'error', 'message' => $c['error']]);
                 $log('stripe_connect_account', ['acct' => $c['acct']]);
@@ -87,17 +92,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $redirect(['type' => 'success', 'message' => 'État du compte relu chez Stripe.']);
         case 'save_settings':
             $s = ['invoices_enabled' => !empty($_POST['invoices_enabled']), 'cotisations_enabled' => !empty($_POST['cotisations_enabled']),
-                  'dons_enabled' => !empty($_POST['dons_enabled']), 'sepa_enabled' => !empty($_POST['sepa_enabled'])];
+                  'dons_enabled' => !$is_tpe && !empty($_POST['dons_enabled']), 'sepa_enabled' => !empty($_POST['sepa_enabled'])];
             if (!ak_connect_save_settings($pdo, $org_id, $s, (int)$user['id'])) $redirect(['type' => 'error', 'message' => 'Réglages non enregistrés (base de données).']);
             $log('stripe_connect_settings', $s);
             $redirect(['type' => 'success', 'message' => 'Réglages enregistrés.']);
         case 'disconnect':
             $acc = ak_connect_account($pdo, $org_id);
+            $left = 0;
             if ($acc) {
                 ak_connect_mark_disconnected($pdo, (string)$acc['stripe_account_id'], 'déconnecté depuis Assokit');
-                $log('stripe_connect_disconnect', ['acct' => $acc['stripe_account_id']]);
+                // Pages de paiement Stripe encore ouvertes : fermées (un paiement déjà fait reste enregistré)
+                $x = ak_connect_expire_sessions($pdo, ak_connect_open_ops($pdo, 0, (string)$acc['stripe_account_id']));
+                $left = $x['left'];
+                $log('stripe_connect_disconnect', ['acct' => $acc['stripe_account_id'], 'pages_fermees' => $x['expired'], 'pages_restantes' => $left]);
             }
-            $redirect(['type' => 'success', 'message' => 'Paiements en ligne désactivés : les boutons « Payer en ligne » ont disparu. Votre compte Stripe et son argent restent à vous ; vous pouvez le relier de nouveau à tout moment.']);
+            $redirect(['type' => 'success', 'message' => 'Paiements en ligne désactivés : les boutons « Payer en ligne » ont disparu'
+                . ($left > 0 ? ' ; ' . $left . ' page' . ($left > 1 ? 's' : '') . ' de paiement déjà ouverte' . ($left > 1 ? 's restent valables' : ' reste valable') . ' une heure au plus (Stripe ne répond pas), et un paiement fait d’ici là sera enregistré' : '')
+                . '. Votre compte Stripe et son argent restent à vous ; vous pouvez le relier de nouveau à tout moment.']);
         default:
             $redirect(['type' => 'error', 'message' => 'Action inconnue.']);
     }
@@ -117,7 +128,8 @@ try {
     }
 } catch (Throwable $e) {}
 $status_lbl = ['paid' => ['Payé', '#065F46', '#ECFDF5'], 'processing' => ['SEPA en cours', '#92400E', '#FEF3C7'], 'failed' => ['Rejeté', '#991B1B', '#FEE2E2'],
-               'refunded' => ['Remboursé', '#475569', '#F1F5F9'], 'partially_refunded' => ['Remboursé en partie', '#475569', '#F1F5F9'], 'disputed' => ['Contesté', '#991B1B', '#FEE2E2']];
+               'refunded' => ['Remboursé', '#475569', '#F1F5F9'], 'partially_refunded' => ['Remboursé en partie', '#475569', '#F1F5F9'], 'disputed' => ['Contesté', '#991B1B', '#FEE2E2'],
+               'dispute_lost' => ['Litige perdu', '#991B1B', '#FEE2E2'], 'checked' => ['À vérifier dans Stripe', '#92400E', '#FEF3C7']];
 $kind_lbl = ['invoice' => 'Facture', 'cotisation' => 'Cotisation', 'don' => 'Don'];
 $dash_url = 'https://dashboard.stripe.com/' . ($mode === 'test' ? 'test/' : '') . 'payments';
 $csrf = h($_SESSION['csrf_token']);
@@ -129,7 +141,7 @@ render_sidebar('paiements-en-ligne');
   <div class="pel-page">
     <nav class="crumbs"><a href="/dashboard">Tableau de bord</a><span class="sep">›</span><span class="current">Paiements en ligne</span></nav>
     <h1 class="pel-title">💳 Paiements en ligne</h1>
-    <p class="pel-sub">Vos adhérents, donateurs et clients paient par carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA. L’argent arrive directement sur le compte bancaire de l’association.</p>
+    <p class="pel-sub"><?= $is_tpe ? 'Vos clients' : 'Vos adhérents, donateurs et clients' ?> paient par carte bancaire, Apple Pay, Google Pay ou prélèvement SEPA. L’argent arrive directement sur le compte bancaire de <?= h($struct) ?>.<?php if (!$in_app): /* guide public : page du site, pas de l'application */ ?> <a href="/aide/paiements-en-ligne" target="_blank" rel="noopener">Guide pas à pas ↗</a><?php endif; ?></p>
 
     <?php if ($flash): ?>
       <div class="alert <?= ($flash['type'] ?? '') === 'error' ? 'alert-error' : 'alert-success' ?>" style="margin:0 0 16px;"><div><?= h($flash['message'] ?? '') ?></div></div>
@@ -147,12 +159,12 @@ render_sidebar('paiements-en-ligne');
 
     <?php elseif (!$acc || $disconnected): ?>
       <section class="pel-card pel-hero">
-        <h2><?= $disconnected ? 'Paiements en ligne déconnectés' : 'Recevez les paiements de vos adhérents, donateurs et clients directement sur votre compte bancaire' ?></h2>
+        <h2><?= $disconnected ? 'Paiements en ligne déconnectés' : ($is_tpe ? 'Recevez les paiements de vos clients directement sur votre compte bancaire' : 'Recevez les paiements de vos adhérents, donateurs et clients directement sur votre compte bancaire') ?></h2>
         <ul class="pel-list">
-          <li>✓ Un bouton « Payer en ligne » sur vos factures, vos campagnes de cotisation et votre page de dons, et dans vos e-mails et relances.</li>
-          <li>✓ Le paiement est enregistré automatiquement dans Assokit : facture payée, cotisation à jour, reçu envoyé au payeur.</li>
+          <li>✓ Un bouton « Payer en ligne » sur vos factures<?= $is_tpe ? '' : ', vos campagnes de cotisation et votre page de dons' ?>, et dans vos e-mails et relances.</li>
+          <li>✓ Le paiement est enregistré automatiquement dans Assokit : facture payée<?= $is_tpe ? '' : ', cotisation à jour' ?>, reçu envoyé au payeur.</li>
           <li>✓ Votre propre compte Stripe : vous voyez vos paiements, vos versements et vos remboursements dans votre tableau de bord Stripe.</li>
-          <li>✓ Frais Stripe à la charge de l’association (à titre indicatif : 1,5 % + 0,25 € par carte européenne) ; aucune commission Assokit.</li>
+          <li>✓ Frais Stripe à la charge de <?= h($struct) ?> (à titre indicatif : 1,5 % + 0,25 € par carte européenne) ; aucune commission Assokit.</li>
         </ul>
         <?php if ($can_manage): ?>
           <form method="post" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Ouverture de Stripe…';">
@@ -160,9 +172,13 @@ render_sidebar('paiements-en-ligne');
             <input type="hidden" name="action" value="connect">
             <button type="submit" class="pel-btn"><?= $disconnected ? '🔗 Relier de nouveau mon compte Stripe' : '🔗 Connecter mon compte Stripe' ?></button>
           </form>
+          <?php if ($is_tpe): ?>
+          <p class="pel-help">Stripe vous demande, une seule fois : l’identité de votre structure (nom, numéro SIREN), celle de son représentant légal et l’IBAN où verser les paiements. Comptez 10 minutes. Vous acceptez au passage les conditions de service de Stripe : votre structure devient le vendeur des paiements qu’elle reçoit.</p>
+          <?php else: ?>
           <p class="pel-help">Stripe vous demande, une seule fois : l’identité de l’association (nom, numéro RNA ou SIREN), celle de son représentant légal et l’IBAN où verser les paiements. Comptez 10 minutes. Vous acceptez au passage les conditions de service de Stripe : l’association devient le vendeur des paiements qu’elle reçoit.</p>
+          <?php endif; ?>
         <?php elseif (!$in_app): ?>
-          <p class="pel-help">Un administrateur ou le trésorier de l’association peut relier le compte Stripe.</p>
+          <p class="pel-help">Un administrateur ou le trésorier de <?= h($struct) ?> peut relier le compte Stripe.</p>
         <?php endif; ?>
       </section>
 
@@ -193,7 +209,7 @@ render_sidebar('paiements-en-ligne');
           <div><div class="pel-lbl">Prélèvement SEPA</div><div class="pel-val"><?= ($acc['sepa_capability'] ?? '') === 'active' ? '✓ Disponible' : '— Non activé sur Stripe' ?></div></div>
         </div>
         <?php if ($reqs): ?><p class="pel-help">⚠ Stripe demandera bientôt : <?= h(implode(', ', $reqs)) ?>. <?php if ($can_manage): ?>Complétez depuis « Reprendre la configuration ».<?php endif; ?></p><?php endif; ?>
-        <p class="pel-help">Frais Stripe à la charge de l’association, aucune commission Assokit. Les fonds sont versés par Stripe sur votre compte bancaire ; remboursements et litiges se gèrent dans votre tableau de bord Stripe, et Assokit se met à jour tout seul.</p>
+        <p class="pel-help">Frais Stripe à la charge de <?= h($struct) ?>, aucune commission Assokit. Les fonds sont versés par Stripe sur votre compte bancaire ; remboursements et litiges se gèrent dans votre tableau de bord Stripe, et Assokit se met à jour tout seul.</p>
         <div class="pel-actions">
           <?php if (!$in_app): ?><a class="pel-btn-ghost" href="<?= h($dash_url) ?>" target="_blank" rel="noopener">Ouvrir mon tableau de bord Stripe ↗</a><?php endif; ?>
           <?php if ($can_manage): ?>
@@ -210,7 +226,9 @@ render_sidebar('paiements-en-ligne');
           <input type="hidden" name="action" value="save_settings">
           <label class="pel-check"><input type="checkbox" name="invoices_enabled" value="1" <?= $settings['invoices_enabled'] ? 'checked' : '' ?> <?= $can_manage ? '' : 'disabled' ?>> <span><strong>Factures</strong> — bouton « Payer en ligne » sur la page de la facture, lien dans l’e-mail, les relances et le PDF.</span></label>
           <label class="pel-check"><input type="checkbox" name="cotisations_enabled" value="1" <?= $settings['cotisations_enabled'] ? 'checked' : '' ?> <?= $can_manage ? '' : 'disabled' ?>> <span><strong>Cotisations</strong> — lien de paiement de chaque campagne (et lien personnel de chaque adhérent dans les rappels de cotisation).</span></label>
+          <?php if (!$is_tpe): ?>
           <label class="pel-check"><input type="checkbox" name="dons_enabled" value="1" <?= $settings['dons_enabled'] ? 'checked' : '' ?> <?= $can_manage ? '' : 'disabled' ?>> <span><strong>Dons</strong> — page de dons à montant libre pour les campagnes de type « Don ». Assokit envoie un reçu de paiement, pas un reçu fiscal.</span></label>
+          <?php endif; ?>
           <label class="pel-check"><input type="checkbox" name="sepa_enabled" value="1" <?= $settings['sepa_enabled'] ? 'checked' : '' ?> <?= $can_manage ? '' : 'disabled' ?>> <span><strong>Prélèvement SEPA</strong> en plus de la carte (paiements en euros) — confirmé par la banque sous quelques jours ouvrés ; frais Stripe souvent plus bas pour les gros montants.<?= ($acc['sepa_capability'] ?? '') === 'active' ? '' : ' <em>À activer d’abord dans votre tableau de bord Stripe (Paramètres › Moyens de paiement).</em>' ?></span></label>
           <?php if ($can_manage): ?><button type="submit" class="pel-btn">Enregistrer</button><?php endif; ?>
         </form>
@@ -224,7 +242,10 @@ render_sidebar('paiements-en-ligne');
         <table class="pel-tbl">
           <thead><tr><th>Date</th><th>Objet</th><th>Payeur</th><th class="num">Montant</th><th class="num">Frais Stripe</th><th>État</th></tr></thead>
           <tbody>
-          <?php foreach ($payments as $p): $b = $status_lbl[$p['status']] ?? [$p['status'], '#475569', '#F1F5F9']; $cx = ak_connect_op_context($pdo, $p); ?>
+          <?php foreach ($payments as $p):
+                  // Prélèvement clos sans réponse de la banque (accès Stripe retiré) : à vérifier, pas « rejeté »
+                  $sk = ($p['status'] === 'failed' && strpos((string)$p['failure_message'], 'Accès Stripe retiré') === 0) ? 'checked' : $p['status'];
+                  $b = $status_lbl[$sk] ?? [$p['status'], '#475569', '#F1F5F9']; $cx = ak_connect_op_context($pdo, $p); ?>
             <tr>
               <td><?= h(date('d/m/Y', strtotime((string)($p['paid_at'] ?: $p['created_at'])))) ?></td>
               <td><a href="<?= h($cx['link']) ?>"><?= h(ucfirst($cx['object'])) ?></a></td>
@@ -243,13 +264,13 @@ render_sidebar('paiements-en-ligne');
     <details class="pel-card">
       <summary><strong>Comment ça marche ?</strong></summary>
       <ol class="pel-steps">
-        <li>Vous reliez le compte Stripe de l’association (ci-dessus). Assokit ne voit jamais votre IBAN ni les cartes de vos payeurs.</li>
-        <li>Vos factures, campagnes de cotisation et pages de dons affichent un bouton « Payer en ligne » ; vos e-mails et relances contiennent le lien.</li>
-        <li>Le payeur règle sur la page sécurisée de Stripe. L’association est le vendeur : le paiement est versé sur son compte Stripe, puis sur son compte bancaire.</li>
+        <li>Vous reliez le compte Stripe de <?= h($struct) ?> (ci-dessus). Assokit ne voit jamais votre IBAN ni les cartes de vos payeurs.</li>
+        <li>Vos factures<?= $is_tpe ? '' : ', campagnes de cotisation et pages de dons' ?> affichent un bouton « Payer en ligne » ; vos e-mails et relances contiennent le lien.</li>
+        <li>Le payeur règle sur la page sécurisée de Stripe. <?= $is_tpe ? 'Votre structure' : 'L’association' ?> est le vendeur : le paiement est versé sur son compte Stripe, puis sur son compte bancaire.</li>
         <li>Assokit enregistre le paiement tout seul (comme un paiement saisi à la main), envoie un reçu au payeur et vous prévient.</li>
-        <li>Un remboursement se fait depuis votre tableau de bord Stripe : Assokit le reporte (cotisation « remboursée », facture de nouveau « à payer »).</li>
+        <li>Un remboursement ou un litige se gère depuis votre tableau de bord Stripe : Assokit le reporte (<?= $is_tpe ? '' : 'cotisation « remboursée », ' ?>facture de nouveau « à payer »).</li>
       </ol>
-      <p class="pel-help">Assokit est un intermédiaire technique : il ne détient jamais les fonds. Les dons reçus en ligne ne génèrent pas de reçu fiscal automatique.</p>
+      <p class="pel-help">Assokit est un intermédiaire technique : il ne détient jamais les fonds.<?= $is_tpe ? '' : ' Les dons reçus en ligne ne génèrent pas de reçu fiscal automatique.' ?><?php if (!$in_app): ?> <a href="/aide/paiements-en-ligne" target="_blank" rel="noopener">Lire le guide complet ↗</a><?php endif; ?></p>
     </details>
   </div>
 </main>

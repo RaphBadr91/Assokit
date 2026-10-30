@@ -48,6 +48,11 @@ if ($action === 'create' || $action === 'update') {
     $form_error = null;
     if ($name === '') $form_error = ['name', 'Le nom de la campagne est obligatoire.'];
     elseif ($opens && $closes && $closes < $opens) $form_error = ['dates', 'La date de clôture précède la date d’ouverture.'];
+    elseif ($kind === 'don' && ck_org_is_tpe($pdo, $org_id) && !ck_campaign_was_don($pdo, $action === 'update' ? (int)($_POST['id'] ?? 0) : 0, $org_id)) {
+        // Une entreprise (TPE) ne reçoit pas de dons : recette commerciale, jamais de reçu fiscal (une campagne de dons
+        // déjà créée garde son type)
+        $form_error = ['kind', 'Les campagnes de dons sont réservées aux associations : une entreprise ne reçoit pas de dons.'];
+    }
     if ($form_error) {
         $edit_id = $action === 'update' ? (int)($_POST['id'] ?? 0) : 0;
         $_SESSION['ck_campaign_form'] = [

@@ -19,6 +19,7 @@
  */
 
 require_once __DIR__ . '/asso-invoice-email-helpers.php';
+require_once __DIR__ . '/trial-helpers.php';   // ak_db_columns (paiements en ligne : prélèvements SEPA en cours)
 
 if (!defined('AK_REL_MIN_GAP_DAYS')) define('AK_REL_MIN_GAP_DAYS', 7); // délai mini entre 2 relances
 
@@ -130,6 +131,21 @@ function ak_rel_invoice_targets(PDO $pdo, int $org_id): array {
     // Historique de relances par facture (types dunning déjà envoyés).
     $hist = ak_rel_invoice_history($pdo, array_map(fn($r)=>(int)$r['id'], $rows));
 
+    // Paiement en ligne : prélèvement SEPA envoyé par le client, en attente de la banque (quelques jours ouvrés) :
+    // jamais relancé (le client a payé), affiché « Prélèvement SEPA en cours » sur la page Relances
+    $sepa = [];
+    try {
+        if (function_exists('ak_db_columns') && ak_db_columns($pdo, 'asso_online_payments') && ak_db_columns($pdo, 'org_stripe_accounts')) {
+            $ids = array_map(fn($r)=>(int)$r['id'], $rows);
+            $ps = $pdo->prepare("SELECT op.invoice_id FROM asso_online_payments op
+                                 JOIN org_stripe_accounts a ON a.stripe_account_id = op.stripe_account_id AND a.org_id = op.org_id
+                                 WHERE op.org_id = ? AND op.kind = 'invoice' AND op.status = 'processing'
+                                   AND op.invoice_id IN (" . implode(',', array_fill(0, count($ids), '?')) . ")");
+            $ps->execute(array_merge([$org_id], $ids));
+            foreach ($ps->fetchAll(PDO::FETCH_COLUMN) as $iid) $sepa[(int)$iid] = true;
+        }
+    } catch (Throwable $e) { /* tables absentes : aucun paiement en ligne */ }
+
     $out = [];
     foreach ($rows as $r) {
         $iid = (int)$r['id'];
@@ -151,8 +167,9 @@ function ak_rel_invoice_targets(PDO $pdo, int $org_id): array {
             'max_sent' => (int)$h['max_sent'],
             'last_relance_at' => $h['last_at'],
             'stage' => $dec['stage'],
-            'due_now' => $dec['due_now'] && !empty($r['client_email']),
-            'reason' => $dec['reason'],
+            'due_now' => $dec['due_now'] && !empty($r['client_email']) && !isset($sepa[$iid]),
+            'reason' => isset($sepa[$iid]) ? 'Prélèvement SEPA en cours : la banque le confirme sous quelques jours ouvrés.' : $dec['reason'],
+            'sepa_pending' => isset($sepa[$iid]),
         ];
     }
     // Prioriser : à relancer maintenant d'abord, puis par retard décroissant.
@@ -166,13 +183,22 @@ if (!function_exists('ak_rel_membership_targets')) {
  * Cotisations expirées / bientôt expirées à relancer.
  */
 function ak_rel_membership_targets(PDO $pdo, int $org_id, int $soon_days = 15): array {
+    // Paiement en ligne : cotisation payée par prélèvement SEPA, en attente de la banque : pas de relance (l'adhésion
+    // n'est prolongée qu'à la confirmation, quelques jours ouvrés plus tard)
+    $sepa_sql = '';
+    if (function_exists('ak_db_columns') && ak_db_columns($pdo, 'asso_online_payments') && ak_db_columns($pdo, 'org_stripe_accounts')) {
+        $sepa_sql = "
+           AND NOT EXISTS (SELECT 1 FROM asso_online_payments op
+                           JOIN org_stripe_accounts a ON a.stripe_account_id = op.stripe_account_id AND a.org_id = op.org_id
+                           WHERE op.org_id = u.org_id AND op.adherent_id = u.id AND op.kind = 'cotisation' AND op.status = 'processing')";
+    }
     $st = $pdo->prepare(
         "SELECT id, first_name, last_name, email, DATE(adhesion_valid_until) fin,
                 DATEDIFF(CURDATE(), DATE(adhesion_valid_until)) days_past
-         FROM users
+         FROM users u
          WHERE org_id = :o AND deleted_at IS NULL AND is_active = 1
            AND adhesion_valid_until IS NOT NULL
-           AND adhesion_valid_until < DATE_ADD(CURDATE(), INTERVAL :d DAY)
+           AND adhesion_valid_until < DATE_ADD(CURDATE(), INTERVAL :d DAY)" . $sepa_sql . "
          ORDER BY adhesion_valid_until ASC
          LIMIT 500");
     $st->bindValue(':o', $org_id, PDO::PARAM_INT);
@@ -271,7 +297,8 @@ function ak_rel_send_membership(PDO $pdo, int $org_id, int $user_id, int $stage,
     }
 
     $html = nl2br(htmlspecialchars($body, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
-    if ($link !== '') $html = preg_replace('/(https?:\/\/\S+)/', '<a href="$1" style="color:#059669;font-weight:600;">$1</a>', $html);
+    // Liens cliquables : l'adresse s'arrête avant le « <br /> » ajouté par nl2br (sinon le lien personnel finit en « …<br »)
+    if ($link !== '') $html = preg_replace('#(https?://[^\s<]+)#', '<a href="$1" style="color:#059669;font-weight:600;">$1</a>', $html);
 
     try {
         ak_asso_send_resend($m['email'], $subject, $html, $m['org_email'] ?: null, null, $m['org_name']);
@@ -346,7 +373,7 @@ function ak_rel_send_invoice_custom(PDO $pdo, int $org_id, int $invoice_id, int 
     }
 
     $html = nl2br(htmlspecialchars($body, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
-    $html = preg_replace('/(https?:\/\/\S+)/', '<a href="$1" style="color:#059669;font-weight:600;">$1</a>', $html);
+    $html = preg_replace('#(https?://[^\s<]+)#', '<a href="$1" style="color:#059669;font-weight:600;">$1</a>', $html);
     $cc = !empty($inv['org_email']) ? $inv['org_email'] : null;
 
     $attachment = null;

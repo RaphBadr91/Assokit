@@ -291,6 +291,8 @@ RewriteRule ^stripe-connect-webhook/?$ stripe-connect-webhook.php [L,QSA]
 RewriteRule ^encaissement-en-ligne/?$ encaissement-en-ligne.php [L,QSA]
 RewriteRule ^payer-facture/?$ payer-facture.php [L,QSA]
 RewriteRule ^cotiser/([a-f0-9]{32,64})/?$ cotiser.php?token=$1 [L,QSA]
+# Guide public des paiements en ligne pour les associations (rendu de docs/paiements-en-ligne-associations.md)
+RewriteRule ^aide/paiements-en-ligne/?$ aide-paiements-en-ligne.php [L,QSA]
 RewriteRule ^don/([a-f0-9]{32,64})/?$ cotiser.php?token=$1&don=1 [L,QSA]
 RewriteRule ^paiement-confirme/?$ paiement-confirme.php [L,QSA]
 

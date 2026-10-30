@@ -13,6 +13,7 @@ Assokit s’appuie sur **Stripe**, le prestataire de paiement utilisé par des m
 - **Versements** : Stripe verse les paiements reçus sur le compte bancaire de l’association, selon le calendrier de votre compte Stripe (en général quelques jours après chaque paiement).
 - **Reçus fiscaux** : Assokit envoie un **reçu de paiement**, pas un reçu fiscal (CERFA). Si votre association peut délivrer des reçus fiscaux, continuez de les établir vous-même.
 - **Qui peut le configurer** : un administrateur ou le trésorier (droit « Gérer les finances »). Les coordinateurs voient l’état, sans le modifier.
+- **Entreprises (TPE)** : le paiement en ligne des factures fonctionne de la même façon ; les campagnes de dons sont réservées aux associations (une entreprise ne reçoit pas de dons).
 
 ---
 
@@ -69,10 +70,14 @@ Un paiement fait avec le lien général (sans lien personnel) est enregistré au
 
 ## Remboursements, contestations, déconnexion
 
-- **Rembourser** : dans **votre** tableau de bord Stripe (Paiements › le paiement › Rembourser). Assokit se met à jour tout seul : une cotisation passe « Remboursé » ; une facture repasse « à payer » (établissez un **avoir** si la vente est annulée). Un remboursement partiel est noté, la facture reste payée (avoir partiel à établir).
-- **Contestation** (le payeur conteste auprès de sa banque) : Assokit vous prévient ; répondez dans votre tableau de bord Stripe (Paiements › Litiges) avant la date indiquée.
-- **Paiement reçu pour une facture déjà réglée** : Assokit vous prévient (« Paiement en ligne à rembourser ») ; remboursez-le depuis Stripe.
-- **Déconnecter** : Paiements en ligne › « Déconnecter ». Les boutons « Payer en ligne » disparaissent. Votre compte Stripe et son argent restent à vous ; vous pouvez le relier de nouveau à tout moment.
+- **Rembourser** : dans **votre** tableau de bord Stripe (Paiements › le paiement › Rembourser). Assokit se met à jour tout seul : une cotisation passe « Remboursé » ; une facture repasse « à payer » (établissez un **avoir** si la vente est annulée).
+- **Remboursement partiel** : pour une cotisation ou un don, une ligne négative du montant remboursé s’ajoute dans la campagne (les totaux et l’export comptable comptent le montant net) ; pour une facture, elle reste payée (avoir partiel à établir).
+- **Contestation** (le payeur conteste auprès de sa banque) : Assokit vous prévient ; répondez dans votre tableau de bord Stripe (Paiements › Litiges) avant la date indiquée. À la décision de la banque, Assokit vous prévient encore : **litige gagné**, rien ne change ; **litige perdu**, Stripe a repris le montant (et des frais de litige) : le paiement est annulé comme un remboursement (facture de nouveau « à payer », cotisation « Remboursé »).
+- **Prélèvement SEPA en cours** : la banque répond sous quelques jours ouvrés. Pendant ce temps, la facture n’est pas relancée et la cotisation ne peut pas être payée une seconde fois ; la page Relances affiche « ⏳ Prélèvement SEPA en cours ». Le reçu part à la confirmation.
+- **Facture réglée autrement** (virement, chèque, avoir) : les pages de paiement Stripe encore ouvertes pour elle sont fermées. Si un paiement arrive malgré tout (Stripe injoignable à ce moment-là), Assokit vous prévient (« Paiement en ligne à rembourser ») ; remboursez-le depuis Stripe.
+- **Cotisation payée deux fois** par le même adhérent : Assokit vous prévient (« Cotisation payée deux fois ») ; remboursez l’un des deux paiements depuis Stripe.
+- **Déconnecter** : Paiements en ligne › « Déconnecter ». Les boutons « Payer en ligne » disparaissent et les pages de paiement déjà ouvertes sont fermées. Votre compte Stripe et son argent restent à vous ; vous pouvez le relier de nouveau à tout moment.
+- **Accès retiré depuis Stripe** : le paiement en ligne s’arrête. Les prélèvements SEPA encore en attente sont listés dans l’e-mail « Paiements en ligne désactivés » : vérifiez-les dans votre tableau de bord Stripe et enregistrez à la main ceux qui ont abouti.
 
 ## Comptabilité
 

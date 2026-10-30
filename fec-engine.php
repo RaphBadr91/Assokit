@@ -229,7 +229,7 @@ function fec_build(PDO $pdo, int $org_id, int $year): array {
                 "SELECT id, fee_cents, DATE(paid_at) paid, payment_intent_id, kind
                  FROM asso_online_payments
                  WHERE org_id = :o AND fee_cents > 0 AND paid_at IS NOT NULL AND overpaid = 0
-                   AND status IN ('paid', 'refunded', 'partially_refunded', 'disputed') AND DATE(paid_at) BETWEEN :s AND :e
+                   AND status IN ('paid', 'refunded', 'partially_refunded', 'disputed', 'dispute_lost') AND DATE(paid_at) BETWEEN :s AND :e
                  ORDER BY paid_at ASC, id ASC");
             $st->execute([':o'=>$org_id, ':s'=>$start, ':e'=>$end]);
             foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $f) {
