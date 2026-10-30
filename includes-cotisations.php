@@ -81,6 +81,8 @@ function ck_has_renews_setting(PDO $pdo): bool {
  * la personne « à jour » de son adhésion.
  */
 function ck_campaign_renews_membership(array $campaign): bool {
+    // Campagne de dons (migration 2026-10-30) : un don ne rend jamais « à jour » de son adhésion
+    if (($campaign['kind'] ?? '') === 'don') return false;
     $v = $campaign['renews_membership'] ?? null;
     if ($v !== null && $v !== '') return (bool)(int)$v;
     return (bool)preg_match('/adh[ée]sion|cotisation|membership/iu', (string)($campaign['name'] ?? ''));
@@ -142,7 +144,7 @@ function ck_form_nonce_consume(?string $nonce): bool {
 /** Charge config paiement org (Stripe/RIB/chèque) */
 function ck_load_org_payment(PDO $pdo, int $org_id): array {
     try {
-        $stmt = $pdo->prepare("SELECT * FROM org_payment_settings WHERE org_id = ?");
+        $stmt = $pdo->prepare("SELECT * FROM org_payment_settings WHERE org_id = ? ORDER BY id DESC LIMIT 1");
         $stmt->execute([$org_id]);
         $r = $stmt->fetch();
         if ($r) return $r;
@@ -157,6 +159,11 @@ function ck_status_badge(string $status): array {
         'refunded'  => ['Remboursé','#6B7280', '#F3F4F6'],
         'cancelled' => ['Annulé',   '#EF4444', '#FEE2E2'],
     ][$status] ?? ['—','#6B7280','#F3F4F6'];
+}
+
+/** Réglages « paiement en ligne » d'une campagne (type, montant libre) : migration 2026-10-30 passée ? */
+function ck_has_online_settings(PDO $pdo): bool {
+    return isset(ak_db_columns($pdo, 'cotisation_campaigns')['kind']);
 }
 
 function ck_method_label(string $m): string {

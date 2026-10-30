@@ -425,6 +425,10 @@ try {
         'trial_expired'   => (bool) $plan_info['trial_expired'],
         'trial_ends_at'   => $plan_info['trial_ends_at'],
         'trial_days_left' => $plan_info['days_left'] !== null ? (int) $plan_info['days_left'] : null,
+        // Abonnement déjà souscrit pendant l'essai (premier prélèvement automatique à la fin de l'essai) :
+        // information seulement, jamais de paiement dans l'appli
+        'trial_subscribed' => !empty($plan_info['trial_subscribed']),
+        'first_charge_at'  => !empty($plan_info['trial_subscribed']) ? ($plan_info['first_charge_at'] ?? null) : null,
         // Pendant l'essai : « Essai PRO » (même si un paiement Stripe pris pendant l'essai est en attente)
         'plan_label'      => (string) (!empty($plan_info['in_trial']) && !empty($plan_info['trial_name']) ? $plan_info['trial_name']
                                        : ($plan_info['plan_label'] === '—' ? '' : $plan_info['plan_label'])),

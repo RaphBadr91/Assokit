@@ -508,6 +508,9 @@ function today_collect_context(PDO $pdo, array $user, string $profile): array
                     'ends_today'    => !empty($ti['ends_today']),
                     'days_until'    => null,
                     'price_cents'   => (int)$ps['price_cents'],
+                    // Abonnement déjà souscrit pendant l'essai : premier prélèvement à la fin de l'essai
+                    'trial_subscribed' => !empty($ti['trial_subscribed']),
+                    'first_charge_fr'  => (string)($ti['first_charge_fr'] ?? ''),
                 ];
                 if ($ti['in_trial'] || $ti['trial_expired']) {
                     $sub['days_until'] = $ti['days_left'];
@@ -675,7 +678,12 @@ function today_build_prompt(array $ctx): string
         if ($days !== null) {
             $prompt .= "- " . ($days <= 0 || !empty($sub['ends_today']) ? "L'essai se termine aujourd'hui" : "Fin de l'essai dans {$days} jour" . ($days > 1 ? 's' : ''))
                      . (!empty($sub['trial_ends_fr']) ? " (le {$sub['trial_ends_fr']})" : '') . "\n";
-            if ($days <= 7) $prompt .= "- Rappeler de choisir une formule avant la fin de l'essai (page Mon abonnement)\n";
+            if (!empty($sub['trial_subscribed'])) {
+                $prompt .= "- Abonnement Assokit DÉJÀ souscrit pendant l'essai (moyen de paiement enregistré) : premier prélèvement automatique à la fin de l'essai"
+                         . (!empty($sub['first_charge_fr']) ? " (le {$sub['first_charge_fr']})" : '') . ". Ne PAS inviter à choisir une formule\n";
+            } elseif ($days <= 7) {
+                $prompt .= "- Rappeler de choisir une formule avant la fin de l'essai (page Mon abonnement)\n";
+            }
         }
         $prompt .= "\n";
     } elseif ($profile === 'admin' && $sub_status === 'trial_expired') {
@@ -1593,7 +1601,8 @@ function today_fallback_suggestions(array $ctx): array
         $sub = $ctx['subscription'];
         $days_until = (int)($sub['days_until'] ?? 0);
         $sub_status = (string)($sub['status'] ?? '');
-        if ($sub_status === 'trial' && isset($sub['days_until']) && $days_until <= 7) {
+        // Abonnement déjà souscrit pendant l'essai : rien à choisir, le premier prélèvement est programmé
+        if ($sub_status === 'trial' && isset($sub['days_until']) && $days_until <= 7 && empty($sub['trial_subscribed'])) {
             $out[] = [
                 'icon' => '⚡',
                 'title' => ($days_until <= 0 || !empty($sub['ends_today'])) ? 'Ton essai PRO se termine aujourd’hui'

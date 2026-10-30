@@ -920,6 +920,43 @@ render_sidebar('accueil');
     <div class="alert <?= $fl_type === 'ok' ? 'alert-success' : 'alert-error' ?>" role="<?= $fl_type === 'ok' ? 'status' : 'alert' ?>"><?= h($fl_msg) ?></div>
   <?php endforeach; ?>
 
+  <?php
+  // Espace membre : adhésion échue ou qui arrive à échéance (30 jours) et cotisation payable en ligne
+  // (Stripe Connect, lien personnel signé). Jamais dans l'application : le paiement se fait dans le navigateur.
+  $dash_cotis = null;
+  if (!in_array($role, ['admin', 'follower'], true) && (int)($user['org_id'] ?? 0) > 0 && !(function_exists('ak_is_mobile_app') && ak_is_mobile_app())) {
+      try {
+          $q = $pdo->prepare("SELECT adhesion_valid_until FROM users WHERE id = ?");
+          $q->execute([(int)$user['id']]);
+          $fin = (string)$q->fetchColumn();
+          if ($fin === '' || substr($fin, 0, 10) <= date('Y-m-d', strtotime('+30 days'))) {
+              require_once __DIR__ . '/stripe-connect-helpers.php';
+              $lnk = ak_connect_campaign_member_link($pdo, (int)$user['org_id'], (int)$user['id']);
+              if ($lnk !== '') $dash_cotis = ['url' => $lnk, 'fin' => $fin !== '' ? substr($fin, 0, 10) : ''];
+          }
+      } catch (Throwable $e) {
+          error_log('[dashboard] cotisation en ligne : ' . $e->getMessage());
+      }
+  }
+  if ($dash_cotis): ?>
+  <section class="dash-cotis" aria-label="Mon adhésion">
+    <div class="dash-cotis-body">
+      <div class="dash-cotis-title">💳 Mon adhésion</div>
+      <div class="dash-cotis-sub"><?= $dash_cotis['fin'] === '' ? 'Réglez votre cotisation en ligne en quelques clics.'
+          : ($dash_cotis['fin'] < date('Y-m-d') ? 'Votre adhésion a pris fin le ' . h(date('d/m/Y', strtotime($dash_cotis['fin']))) . ' : renouvelez-la en ligne en quelques clics.'
+          : 'Votre adhésion est valable jusqu’au ' . h(date('d/m/Y', strtotime($dash_cotis['fin']))) . ' : renouvelez-la en ligne quand vous le souhaitez.') ?></div>
+    </div>
+    <a class="dash-cotis-btn" href="<?= h($dash_cotis['url']) ?>">Renouveler ma cotisation</a>
+  </section>
+  <style>
+  .dash-cotis { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: linear-gradient(135deg, #fff, #F0FDF4); border: 1px solid #A7F3D0; border-radius: 14px; padding: 14px 18px; margin: 0 0 18px; }
+  .dash-cotis-title { font-weight: 700; color: #065F46; font-size: 15px; }
+  .dash-cotis-sub { font-size: 13.5px; color: #374151; margin-top: 2px; }
+  .dash-cotis-btn { background: #059669; color: #fff; text-decoration: none; border-radius: 10px; padding: 10px 16px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .dash-cotis-btn:hover { background: #047857; }
+  </style>
+  <?php endif; ?>
+
   <?php if ($logo_admin): ?>
   <!-- ====== LOGO DE LA STRUCTURE (admin uniquement) ====== -->
   <section class="dash-logo" aria-label="Logo de la structure">

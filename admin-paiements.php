@@ -1,6 +1,6 @@
 <?php
 /**
- * /admin-paiements - Configuration moyens de paiement (RIB + Stripe)
+ * /admin-paiements - Coordonnées de paiement (RIB, chèque) ; paiement en ligne : /encaissement-en-ligne (Stripe Connect)
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
@@ -16,18 +16,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
     $holder = trim($_POST['bank_holder'] ?? '') ?: null;
     $check_to = trim($_POST['check_payable_to'] ?? '') ?: null;
 
-    $stripe_enabled = !empty($_POST['stripe_enabled']) ? 1 : 0;
-    $stripe_mode = in_array($_POST['stripe_mode'] ?? '', ['test','live'], true) ? $_POST['stripe_mode'] : 'test';
-    $stripe_pub = trim($_POST['stripe_publishable_key'] ?? '') ?: null;
-    $stripe_sec = trim($_POST['stripe_secret_key'] ?? '') ?: null;
-    $stripe_wh = trim($_POST['stripe_webhook_secret'] ?? '') ?: null;
-
-    $stmt = $pdo->prepare("INSERT INTO org_payment_settings (org_id, bank_iban, bank_bic, bank_holder, check_payable_to, stripe_enabled, stripe_mode, stripe_publishable_key, stripe_secret_key, stripe_webhook_secret) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE bank_iban=VALUES(bank_iban), bank_bic=VALUES(bank_bic), bank_holder=VALUES(bank_holder), check_payable_to=VALUES(check_payable_to), stripe_enabled=VALUES(stripe_enabled), stripe_mode=VALUES(stripe_mode), stripe_publishable_key=VALUES(stripe_publishable_key), stripe_secret_key=COALESCE(VALUES(stripe_secret_key), stripe_secret_key), stripe_webhook_secret=COALESCE(VALUES(stripe_webhook_secret), stripe_webhook_secret)");
-    $stmt->execute([$org_id, $iban, $bic, $holder, $check_to, $stripe_enabled, $stripe_mode, $stripe_pub, $stripe_sec, $stripe_wh]);
+    // Coordonnées seulement : le paiement en ligne passe par le compte Stripe relié de l'association
+    // (/encaissement-en-ligne, Stripe Connect). Les clés Stripe ne sont plus saisies ni écrites ici.
+    // Une ligne par association (pas d'index unique sur org_id : mise à jour de la plus récente, sinon création)
+    $cur = $pdo->prepare("SELECT id FROM org_payment_settings WHERE org_id = ? ORDER BY id DESC LIMIT 1");
+    $cur->execute([$org_id]);
+    $sid = (int)$cur->fetchColumn();
+    if ($sid > 0) {
+        $pdo->prepare("UPDATE org_payment_settings SET bank_iban = ?, bank_bic = ?, bank_holder = ?, check_payable_to = ? WHERE id = ?")
+            ->execute([$iban, $bic, $holder, $check_to, $sid]);
+    } else {
+        $pdo->prepare("INSERT INTO org_payment_settings (org_id, bank_iban, bank_bic, bank_holder, check_payable_to) VALUES (?,?,?,?,?)")
+            ->execute([$org_id, $iban, $bic, $holder, $check_to]);
+    }
     $msg = 'Paramètres enregistrés.';
 }
 
 $s = ck_load_org_payment($pdo, $org_id);
+require_once __DIR__ . '/stripe-connect-helpers.php';
+$online_acc = ak_connect_account($pdo, $org_id);
 
 render_head('Paiements');
 ?>
@@ -52,23 +59,14 @@ render_head('Paiements');
       <h2 class="ck-section">✉️ Chèque</h2>
       <div class="ck-fld"><label>Ordre du chèque</label><input type="text" name="check_payable_to" value="<?= h($s['check_payable_to'] ?? '') ?>" maxlength="150" placeholder="Nom de l'association"></div>
 
-      <h2 class="ck-section">💳 Stripe (paiement en ligne par carte)</h2>
+      <h2 class="ck-section">💳 Paiement en ligne (carte, Apple Pay, Google Pay, prélèvement SEPA)</h2>
       <div class="ck-stripe-info">
-        <strong>Paiement en ligne des cotisations : bientôt disponible.</strong><br>
-        Enregistrez les paiements reçus (chèque, virement, espèces) depuis chaque campagne. Les clés ci-dessous peuvent rester vides.
+        <?php if ($online_acc && !empty($online_acc['charges_enabled'])): ?>
+          <strong>✓ Paiements en ligne actifs</strong> sur le compte Stripe de l’association. Réglages (factures, cotisations, dons, SEPA) : <a href="/encaissement-en-ligne">Paiements en ligne</a>.
+        <?php else: ?>
+          Recevez les cotisations, les dons et le règlement de vos factures directement sur le compte bancaire de l’association, en reliant son compte Stripe : <a href="/encaissement-en-ligne">Paiements en ligne</a>.
+        <?php endif; ?>
       </div>
-
-      <div class="ck-fld">
-        <label><input type="checkbox" name="stripe_enabled" value="1" <?= $s['stripe_enabled'] ? 'checked' : '' ?>> Activer Stripe</label>
-      </div>
-      <div class="ck-row">
-        <div class="ck-fld"><label>Mode</label>
-          <select name="stripe_mode"><option value="test" <?= $s['stripe_mode']=='test'?'selected':'' ?>>Test (recommandé pour démarrer)</option><option value="live" <?= $s['stripe_mode']=='live'?'selected':'' ?>>Live (production)</option></select>
-        </div>
-      </div>
-      <div class="ck-fld"><label>Clé publique (pk_…)</label><input type="text" name="stripe_publishable_key" value="<?= h($s['stripe_publishable_key'] ?? '') ?>" maxlength="200" placeholder="pk_test_..."></div>
-      <div class="ck-fld"><label>Clé secrète (sk_…)</label><input type="password" name="stripe_secret_key" value="" maxlength="200" placeholder="<?= !empty($s['stripe_secret_key']) ? '•••••••• enregistrée — laisser vide pour la garder' : 'sk_test_...' ?>" autocomplete="new-password"></div>
-      <div class="ck-fld"><label>Webhook signing secret (whsec_…)</label><input type="password" name="stripe_webhook_secret" value="" maxlength="200" placeholder="<?= !empty($s['stripe_webhook_secret']) ? '•••••••• enregistré — laisser vide pour le garder' : 'whsec_...' ?>" autocomplete="new-password"></div>
 
       <div class="ck-actions">
         <button type="submit" class="ck-btn-primary">Enregistrer</button>
@@ -79,6 +77,7 @@ render_head('Paiements');
 <style>
 .ck-flash { background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 13px; }
 .ck-stripe-info { background: #fffbea; border: 1px solid #fde68a; color: #78350f; padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.55; margin-bottom: 16px; }
+.ck-stripe-info a { color: #065F46; font-weight: 600; }
 .ck-stripe-info code { background: rgba(0,0,0,0.06); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 </style>
 <?= render_foot() ?>

@@ -9,7 +9,8 @@
  * Les écritures sont RECONSTITUÉES à partir des données Assokit :
  *   - Ventes (asso_invoices)          -> journal VT : 411 / 706 + 44571
  *   - Encaissements factures (paid)   -> journal BQ : 512 / 411
- *   - Cotisations encaissées          -> journal BQ : 512 / 756
+ *   - Cotisations encaissées          -> journal BQ : 512 / 756 (campagne de dons : 512 / 754100 Dons manuels)
+ *   - Frais Stripe des paiements en ligne (Stripe Connect) -> journal BQ : 627800 / 512
  *   - Achats fournisseurs (validés)   -> journal AC : 6xxxx (poste du plan
  *     comptable associatif, comme le bilan analytique) + 44566 / 401.
  *     Association non assujettie à la TVA : charge au TTC, sans 44566.
@@ -194,27 +195,54 @@ function fec_build(PDO $pdo, int $org_id, int $year): array {
         }
     } catch (Throwable $e) { $partial = true; error_log('[fec] encaissements: '.$e->getMessage()); }
 
-    // ── COTISATIONS encaissées ──
+    // ── COTISATIONS encaissées (campagne de dons, migration 2026-10-30 : 754100 Dons manuels) ──
     try {
+        $has_kind = false;
+        try { $has_kind = (bool)$pdo->query("SHOW COLUMNS FROM cotisation_campaigns LIKE 'kind'")->fetch(); } catch (Throwable $e) {}
         $st = $pdo->prepare(
-            "SELECT id, amount, DATE(paid_at) paid, payer_name, reference
-             FROM cotisation_payments
-             WHERE org_id = :o AND COALESCE(status,'paid') = 'paid' AND DATE(paid_at) BETWEEN :s AND :e
-             ORDER BY paid_at ASC, id ASC");
+            "SELECT p.id, p.amount, DATE(p.paid_at) paid, p.payer_name, p.reference, " . ($has_kind ? "c.kind" : "NULL") . " AS kind
+             FROM cotisation_payments p" . ($has_kind ? " LEFT JOIN cotisation_campaigns c ON c.id = p.campaign_id AND c.org_id = p.org_id" : "") . "
+             WHERE p.org_id = :o AND COALESCE(p.status,'paid') = 'paid' AND DATE(p.paid_at) BETWEEN :s AND :e
+             ORDER BY p.paid_at ASC, p.id ASC");
         $st->execute([':o'=>$org_id, ':s'=>$start, ':e'=>$end]);
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $p) {
             $amt = (float)$p['amount']; if (abs($amt) < 0.005) continue;
             $avoir = $amt < 0; $a = abs($amt);
             $nb_cotis++;
+            $don = ($p['kind'] ?? '') === 'don';
             $piece = $p['reference'] ?: ('COT'.(int)$p['id']);
-            $lib = 'Cotisation'.($p['payer_name'] ? ' - '.$p['payer_name'] : '');
+            $lib = ($don ? 'Don' : 'Cotisation').($p['payer_name'] ? ' - '.$p['payer_name'] : '');
             $bb = ['jcode'=>'BQ','jlib'=>'Banque','edate'=>$p['paid'],'pdate'=>$p['paid'],'piece'=>$piece,'lib'=>$lib];
             $entries[] = ['j'=>'BQ', 'date'=>(string)$p['paid'], 'lines'=>[
                 $bb + ['compte'=>'512000','compte_lib'=>'Banque', ($avoir?'credit':'debit')=>$a],
-                $bb + ['compte'=>'756000','compte_lib'=>'Cotisations', ($avoir?'debit':'credit')=>$a],
+                $bb + ($don ? ['compte'=>'754100','compte_lib'=>'Dons manuels'] : ['compte'=>'756000','compte_lib'=>'Cotisations']) + [($avoir?'debit':'credit')=>$a],
             ]];
         }
     } catch (Throwable $e) { $partial = true; error_log('[fec] cotisations: '.$e->getMessage()); }
+
+    // ── FRAIS STRIPE des paiements en ligne (Stripe Connect) : le règlement est compté brut (512 / 411 ou 756),
+    // les frais prélevés par Stripe sur chaque paiement sont une charge (627800), à la date du paiement ──
+    try {
+        $has_op = (bool)$pdo->query("SHOW TABLES LIKE 'asso_online_payments'")->fetch();
+        if ($has_op) {
+            $st = $pdo->prepare(
+                "SELECT id, fee_cents, DATE(paid_at) paid, payment_intent_id, kind
+                 FROM asso_online_payments
+                 WHERE org_id = :o AND fee_cents > 0 AND paid_at IS NOT NULL AND overpaid = 0
+                   AND status IN ('paid', 'refunded', 'partially_refunded', 'disputed') AND DATE(paid_at) BETWEEN :s AND :e
+                 ORDER BY paid_at ASC, id ASC");
+            $st->execute([':o'=>$org_id, ':s'=>$start, ':e'=>$end]);
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $f) {
+                $a = (int)$f['fee_cents'] / 100;
+                $piece = $f['payment_intent_id'] ?: ('PEL'.(int)$f['id']);
+                $bb = ['jcode'=>'BQ','jlib'=>'Banque','edate'=>$f['paid'],'pdate'=>$f['paid'],'piece'=>$piece,'lib'=>'Frais Stripe paiement en ligne'];
+                $entries[] = ['j'=>'BQ', 'date'=>(string)$f['paid'], 'lines'=>[
+                    $bb + ['compte'=>'627800','compte_lib'=>'Frais et commissions bancaires','debit'=>$a],
+                    $bb + ['compte'=>'512000','compte_lib'=>'Banque','credit'=>$a],
+                ]];
+            }
+        }
+    } catch (Throwable $e) { $partial = true; error_log('[fec] frais Stripe: '.$e->getMessage()); }
 
     // ── ACHATS fournisseurs (project_invoices validées) ──
     // Compte de charge = poste du plan comptable associatif (comme le bilan

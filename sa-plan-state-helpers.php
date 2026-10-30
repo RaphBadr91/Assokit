@@ -59,7 +59,7 @@ if (!function_exists('sa_org_plan_states')) {
                 $in = implode(',', $chunk); // entiers uniquement
                 // Ligne courante : même ordre que ak_get_current_plan / ak_org_plan_state (ak_sub_order)
                 $rows = $pdo->query("
-                    SELECT o.id AS org_id, o.status AS org_status, o.plan AS org_plan, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . ",
+                    SELECT o.id AS org_id, o.status AS org_status, o.plan AS org_plan, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . ", " . ak_org_trial_card_cols($pdo) . ",
                            " . ak_sub_state_cols($pdo) . ", $pay AS payment_mode, " . implode(', ', $extra) . "
                     FROM organizations o
                     LEFT JOIN asso_subscriptions s ON s.id = (

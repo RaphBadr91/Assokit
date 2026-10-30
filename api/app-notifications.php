@@ -13,7 +13,8 @@ require_once __DIR__ . '/../platform-flags.php';
 require_once __DIR__ . '/../notification-targets.php';
 
 $ICON = ['message' => 'chatbubble', 'mention' => 'at', 'team_added' => 'people', 'step_assigned' => 'checkmark-circle', 'support' => 'help-buoy',
-         'signup' => 'person-add', 'grant_radar' => 'telescope', 'mairie_message' => 'chatbubbles', 'expense_report' => 'receipt'];
+         'signup' => 'person-add', 'grant_radar' => 'telescope', 'mairie_message' => 'chatbubbles', 'expense_report' => 'receipt',
+         'paiement' => 'card'];
 // Notifications de la plateforme (cloche du cockpit fondateur)
 $PICON = ['new_org_pending' => 'business', 'new_ticket' => 'help-buoy', 'new_ticket_message' => 'help-buoy',
           'payment_received' => 'cash', 'invoice_overdue' => 'warning', 'super_admin_action' => 'shield-checkmark'];

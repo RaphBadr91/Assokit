@@ -17,6 +17,9 @@
  *   - invoice.payment_failed / invoice.payment_action_required → échéance refusée : « en retard »,
  *     15 jours de tolérance, e-mail à l'association, alerte au Fondateur ;
  *   - invoice.created / finalized / updated / voided / marked_uncollectible → facture enregistrée ;
+ *   - setup_intent.succeeded → carte ou mandat SEPA enregistré pour un abonnement souscrit pendant l'essai
+ *     (premier prélèvement à la fin de l'essai) : « abonnement souscrit, essai en cours » ;
+ *     customer.subscription.created / updated en « trialing » : même chose (relu chez Stripe) ;
  *   - customer.updated → nouvelle carte du portail appliquée aux abonnements, échéance impayée relancée ;
  *   - customer.deleted → identifiant client effacé (le prochain paiement en recrée un) ;
  *   - charge.refunded / charge.dispute.created → alerte au Fondateur.
@@ -73,29 +76,7 @@ if (!$secrets) {
 // ============================================
 // 1. Vérification de la signature Stripe (HMAC SHA-256)
 // ============================================
-function ak_stripe_verify_signature(string $payload, string $sig_header, string $secret, int $tolerance = 300): bool {
-    // Format de la signature : t=TIMESTAMP,v1=SIGNATURE,...
-    $timestamp = null;
-    $signatures = [];
-    foreach (explode(',', $sig_header) as $item) {
-        $parts = explode('=', trim($item), 2);
-        if (count($parts) !== 2) continue;
-        [$k, $v] = $parts;
-        if ($k === 't') $timestamp = (int)$v;
-        elseif ($k === 'v1') $signatures[] = $v;
-    }
-    if (!$timestamp || empty($signatures)) return false;
-
-    // Anti-rejeu : pas plus de 5 min d'écart
-    if (abs(time() - $timestamp) > $tolerance) return false;
-
-    $expected = hash_hmac('sha256', $timestamp . '.' . $payload, $secret);
-    foreach ($signatures as $sig) {
-        if (hash_equals($expected, $sig)) return true;
-    }
-    return false;
-}
-
+// ak_stripe_verify_signature() : stripe-helpers.php (partagée avec stripe-connect-webhook.php)
 $valid = false;
 foreach ($secrets as $secret) {
     if (ak_stripe_verify_signature($payload, $sig_header, $secret)) { $valid = true; break; }
@@ -117,6 +98,14 @@ if (!is_array($event) || empty($event['id']) || empty($event['type'])) {
 
 $event_id = (string)$event['id'];
 $event_type = (string)$event['type'];
+
+// Événement d'un compte Stripe connecté (paiements reçus par une association) : il a son propre point de
+// terminaison (stripe-connect-webhook.php). Ici, jamais traité : un remboursement ou une contestation d'un
+// paiement d'association ne doit pas alerter le Fondateur comme un abonnement Assokit.
+if (!empty($event['account'])) {
+    http_response_code(200);
+    exit('OK (ignored: connected account event)');
+}
 $obj = $event['data']['object'] ?? [];
 if (!is_array($obj)) $obj = [];
 
@@ -208,6 +197,11 @@ try {
         case 'invoice.marked_uncollectible':
             // Facture annulée (paiement abandonné : incomplete_expired) : plus de lien « Régulariser » vers elle
             ak_handle_invoice_upsert($pdo, $obj);
+            break;
+
+        // -------- Souscription pendant l'essai : carte ou mandat SEPA enregistré --------
+        case 'setup_intent.succeeded':
+            ak_handle_setup_intent_succeeded($pdo, $obj);
             break;
 
         // -------- Client Stripe --------

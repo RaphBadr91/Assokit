@@ -13,6 +13,10 @@
  *      en accès limité, formule Démarrage (ak_sub_expire_cancelled)
  *   Paiement en retard (« Arrêter mon abonnement » de l'écran bloquant
  *   et des relances) : arrêt immédiat de l'abonnement impayé et Démarrage.
+ *   Abonnement souscrit pendant l'essai (premier prélèvement à la fin de
+ *   l'essai, ak_org_trial_card) : annulation sans frais, l'abonnement Stripe
+ *   est arrêté tout de suite (rien n'a été prélevé, rien ne le sera) et
+ *   l'essai continue jusqu'à sa fin (ak_stripe_trial_sub_cancel).
  *   Démarrage n'est plus une offre : les textes parlent d'accès limité.
  * --------------------------------------------------------------
  */
@@ -40,21 +44,53 @@ require_finance_access('mon-asso-plan', 'l\'annulation d\'abonnement');
 require_once __DIR__ . '/plan-helpers.php';
 $trial_info = ak_plan_trial_info($pdo, $org_id);
 
-$active_sub = ak_get_org_active_subscription($pdo, $org_id);
+// Abonnement souscrit pendant l'essai, pas encore prélevé : annulation sans frais (page dédiée plus bas)
+$trial_card = function_exists('ak_org_trial_card') ? ak_org_trial_card($pdo, $org_id) : null;
+if ($trial_card && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!check_csrf($_POST['csrf_token'] ?? '')) {
+        $_SESSION['flash_error'] = 'Session expirée, veuillez réessayer.';
+        header('Location: /mon-asso-plan'); exit;
+    }
+    if (($_POST['action'] ?? '') === 'cancel_trial_subscription') {
+        $why = ak_stripe_is_configured($pdo) || ak_stripe_get_secret_key($pdo)
+            ? ak_stripe_trial_sub_cancel($pdo, $org_id, true)
+            : 'paiements indisponibles pour le moment';
+        if ($why === AK_STRIPE_TRIAL_CHARGE_PENDING) {
+            // Essai terminé, première facture émise par Stripe mais pas encore réglée : ni annulation sans frais
+            // (la date est passée), ni résiliation tant que le prélèvement n'a pas abouti
+            $_SESSION['flash_error'] = 'Votre essai est terminé : le premier prélèvement de votre abonnement est en cours. Vous pourrez résilier dès qu’il aura abouti (la résiliation prendra effet à la fin du mois payé).';
+        } elseif ($why === AK_STRIPE_TRIAL_ALREADY_CHARGED) {
+            // L'essai vient de se terminer et Stripe a déjà prélevé : l'abonnement est en cours (relu et appliqué)
+            $_SESSION['flash_error'] = 'Votre essai est terminé et le premier prélèvement de votre abonnement a déjà eu lieu : votre abonnement est en cours. Pour le résilier (effet à la fin du mois payé), utilisez « Annuler mon abonnement ».';
+        } elseif ($why === null) {
+            $_SESSION['flash_success'] = 'Abonnement annulé : aucun prélèvement n’aura lieu.'
+                . (!empty($trial_info['end_fr']) ? ' Votre essai gratuit continue jusqu’au ' . $trial_info['end_fr'] . ', puis votre association passe en accès limité (Démarrage) ; vos données sont conservées.' : '')
+                . ' Vous pouvez souscrire de nouveau à tout moment.';
+        } else {
+            error_log('[mon-asso-annuler-abonnement] org #' . $org_id . ' annulation pendant l’essai : ' . $why);
+            $_SESSION['flash_error'] = 'L’annulation n’a pas pu être faite (' . $why . '). Réessayez dans quelques minutes ou contactez-nous.';
+        }
+        header('Location: /mon-asso-plan');
+        exit;
+    }
+}
 
-if (!$active_sub) {
+$active_sub = $trial_card ? null : ak_get_org_active_subscription($pdo, $org_id);
+
+if (!$active_sub && !$trial_card) {
     $_SESSION['flash_error'] = 'Aucun abonnement actif à annuler.';
     header('Location: /mon-asso-plan');
     exit;
 }
 
+$active_sub = $active_sub ?? [];
 $plan_label = function_exists('ak_plan_label')
     ? ak_plan_label($active_sub['plan_slug'] ?? '', $active_sub['plan_name'] ?? null)
     : (string)($active_sub['plan_name'] ?? '');
 // Essai (en cours, ou terminé sans formule payante) : rien à annuler. Annuler la ligne d'essai
 // la sortait de la bascule de fin d'essai (elle gardait le plan d'essai après la date de fin).
 // Un abonnement Stripe pris pendant l'essai (paiement en cours) reste, lui, annulable.
-$is_trial_sub = ak_trial_blocks_cancel($pdo, $org_id, $active_sub, $trial_info);
+$is_trial_sub = !$trial_card && ak_trial_blocks_cancel($pdo, $org_id, $active_sub, $trial_info);
 
 $sub_status = (string)($active_sub['status'] ?? '');
 $stripe_sub_id = trim((string)($active_sub['stripe_subscription_id'] ?? ''));
@@ -82,8 +118,10 @@ $flash_msg = null;
 $flash_type = 'success';
 
 // Traitement annulation
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($is_trial_sub || $is_free_sub || $is_already_cancelled)) {
-    if ($is_trial_sub) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($trial_card || $is_trial_sub || $is_free_sub || $is_already_cancelled)) {
+    if ($trial_card) {
+        $_SESSION['flash_error'] = 'Demande inconnue : rien n’a été annulé.';
+    } elseif ($is_trial_sub) {
         $_SESSION['flash_error'] = !empty($trial_info['trial_expired'])
             ? 'Votre essai est terminé : il n’y a pas d’abonnement payant à annuler.'
             : 'Votre association est en essai : il n’y a pas d’abonnement à annuler.';
@@ -194,7 +232,54 @@ render_sidebar('mon-asso-plan');
       </div>
     <?php endif; ?>
 
-    <?php if ($is_trial_sub): ?>
+    <?php if ($trial_card && $trial_card['charging']): ?>
+
+      <!-- Essai terminé, premier prélèvement en cours chez Stripe : plus d'annulation sans frais, résiliation après -->
+      <?php $tc_amount = ak_trial_card_amount($pdo, $trial_card); ?>
+      <div style="background:#FFFBEB;border:2px solid #FCD34D;border-radius:18px;padding:36px 32px;text-align:center;">
+        <div style="font-size:54px;margin-bottom:14px;">⏳</div>
+        <h1 style="margin:0 0 8px;font-size:22px;color:#92400E;">Premier prélèvement en cours</h1>
+        <p style="color:#78350F;line-height:1.65;font-size:14.5px;margin:0 0 22px;">
+          Votre essai est terminé<?= $trial_card['charge_fr'] !== '' ? ' le <strong>' . h($trial_card['charge_fr']) . '</strong>' : '' ?> et le premier prélèvement de votre abonnement<?= $tc_amount !== '' ? ' (' . h($tc_amount) . ')' : '' ?> est en cours<?= $trial_card['pm_type'] === 'sepa_debit' ? ' : la banque le confirme sous quelques jours ouvrés' : '' ?>.<br>
+          L’annulation sans frais n’est plus possible. Vous pourrez résilier dès que le prélèvement aura abouti : la résiliation prendra effet à la fin du mois payé.
+        </p>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <a href="/mon-asso-plan" style="background:#0F172A;color:white;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Mon abonnement</a>
+          <a href="/contact?subject=billing" style="background:white;color:#475569;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;border:1px solid #E2E8F0;">Nous contacter</a>
+        </div>
+      </div>
+
+    <?php elseif ($trial_card): ?>
+
+      <!-- Abonnement souscrit pendant l'essai : annulation sans frais, l'essai continue -->
+      <?php $tc_amount = ak_trial_card_amount($pdo, $trial_card); ?>
+      <div style="background:white;border:2px solid #FECACA;border-radius:18px;padding:36px 32px;">
+        <div style="text-align:center;margin-bottom:22px;">
+          <div style="font-size:54px;margin-bottom:10px;">🎁</div>
+          <h1 style="margin:0 0 8px;font-size:22px;color:#0F172A;">Annuler mon abonnement</h1>
+          <p style="color:#64748B;font-size:14px;margin:0;">Souscrit pendant l’essai · premier prélèvement prévu<?= $trial_card['charge_fr'] !== '' ? ' le <strong>' . h($trial_card['charge_fr']) . '</strong>' : '' ?><?= $tc_amount !== '' ? ' (' . h($tc_amount) . ')' : '' ?></p>
+        </div>
+
+        <div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:12px;padding:18px 20px;margin-bottom:22px;color:#065F46;line-height:1.7;font-size:13.5px;">
+          En confirmant :
+          <ul style="margin:8px 0 0;padding-left:20px;">
+            <li><strong>aucun prélèvement</strong> n’aura lieu : l’annulation est sans frais ;</li>
+            <li>votre <strong>essai gratuit continue</strong><?= !empty($trial_info['end_fr']) ? ' jusqu’au <strong>' . h($trial_info['end_fr']) . '</strong>' : '' ?>, avec toutes les fonctionnalités ;</li>
+            <li>ensuite, votre association passe en <strong>accès limité</strong> (Démarrage) ; <strong>vos données sont conservées</strong> et vous pouvez souscrire de nouveau à tout moment.</li>
+          </ul>
+        </div>
+
+        <form method="post" action="" style="border-top:1px solid #E2E8F0;padding-top:22px;">
+          <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
+          <input type="hidden" name="action" value="cancel_trial_subscription">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <a href="/mon-asso-plan" style="background:#0F172A;color:white;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;flex:1;text-align:center;">← Garder mon abonnement</a>
+            <button type="submit" style="background:#DC2626;color:white;padding:12px 24px;border:none;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;">🛑 Annuler sans frais</button>
+          </div>
+        </form>
+      </div>
+
+    <?php elseif ($is_trial_sub): ?>
 
       <!-- Essai : rien à annuler -->
       <?php $trial_over = !empty($trial_info['trial_expired']); ?>

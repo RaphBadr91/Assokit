@@ -65,6 +65,15 @@ try {
         ];
     }
 
+    // Paiement en ligne (Stripe Connect) : lien public de la campagne à PARTAGER (jamais payé dans l'application)
+    $pay_url = '';
+    try {
+        @require_once __DIR__ . '/../stripe-connect-helpers.php';
+        if (function_exists('ak_connect_campaign_online') && ak_connect_campaign_online($pdo, $c)['ok'] && ak_connect_campaign_open($c) === null) {
+            $pay_url = ak_connect_campaign_url($pdo, $c);
+        }
+    } catch (Throwable $e) {}
+
     echo json_encode([
         'ok' => true,
         'can_manage' => $can_manage,
@@ -80,6 +89,8 @@ try {
             'currency'    => (string) ($c['currency'] ?? 'EUR'),
             // Un paiement encaissé prolonge-t-il l'adhésion du payeur ? (règle du site)
             'renews_membership' => function_exists('ck_campaign_renews_membership') ? ck_campaign_renews_membership($c) : null,
+            'kind'        => ($c['kind'] ?? '') === 'don' ? 'don' : 'cotisation',
+            'pay_url'     => $pay_url,   // '' : pas de paiement en ligne
         ],
         'stats' => [
             'amount_paid'    => (float) $stats['amount_paid'],

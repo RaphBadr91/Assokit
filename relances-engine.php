@@ -257,10 +257,21 @@ function ak_rel_send_membership(PDO $pdo, int $org_id, int $user_id, int $stage,
         '{DATE_FIN}'     => $m['fin'] ? date('d/m/Y', strtotime($m['fin'])) : '',
     ];
     $tpl = ak_rel_membership_template($stage);
-    $subject = strtr($custom_subject ?: $tpl['subject'], $vars);
+    $subject = strtr($custom_subject ?: $tpl['subject'], $vars + ['{LIEN_COTISATION}' => '', '{LIEN_PAIEMENT}' => '']);
     $body    = strtr($custom_body    ?: $tpl['body'],    $vars);
+    // Paiement en ligne (Stripe Connect) : lien PERSONNEL de la campagne d'adhésion en cours ({LIEN_COTISATION}
+    // remplacé, ou paragraphe ajouté) ; sans paiement en ligne, le marqueur est retiré
+    $link = '';
+    try {
+        require_once __DIR__ . '/stripe-connect-helpers.php';
+        $link = ak_connect_campaign_member_link($pdo, $org_id, $user_id);
+        $body = ak_connect_add_link($body, $link, "Renouvelez votre cotisation en ligne en quelques clics (carte bancaire, Apple Pay ou Google Pay) :\n" . $link);
+    } catch (Throwable $e) {
+        $body = str_replace(['{LIEN_COTISATION}', '{LIEN_PAIEMENT}'], '', $body);
+    }
 
     $html = nl2br(htmlspecialchars($body, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+    if ($link !== '') $html = preg_replace('/(https?:\/\/\S+)/', '<a href="$1" style="color:#059669;font-weight:600;">$1</a>', $html);
 
     try {
         ak_asso_send_resend($m['email'], $subject, $html, $m['org_email'] ?: null, null, $m['org_name']);
@@ -322,6 +333,17 @@ function ak_rel_send_invoice_custom(PDO $pdo, int $org_id, int $invoice_id, int 
     if (!$inv) return ['success'=>false, 'message'=>'Facture introuvable'];
     $to = $inv['client_email'] ?? '';
     if (empty($to) || !filter_var($to, FILTER_VALIDATE_EMAIL)) return ['success'=>false, 'message'=>'Email client invalide'];
+
+    // Paiement en ligne (Stripe Connect) : lien « Payer en ligne » ajouté au message (ou {LIEN_PAIEMENT} remplacé)
+    try {
+        require_once __DIR__ . '/stripe-connect-helpers.php';
+        $pay = ak_connect_invoice_pay_url($pdo, $inv);
+        $body = ak_connect_add_link($body, $pay, $pay === '' ? '' : ak_connect_pay_paragraph($pay,
+            ak_connect_sepa_offered($pdo, $org_id, 'invoice', (string)($inv['currency'] ?: 'EUR'))));
+        $subject = str_replace('{LIEN_PAIEMENT}', '', $subject);
+    } catch (Throwable $e) {
+        $body = str_replace('{LIEN_PAIEMENT}', '', $body);
+    }
 
     $html = nl2br(htmlspecialchars($body, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
     $html = preg_replace('/(https?:\/\/\S+)/', '<a href="$1" style="color:#059669;font-weight:600;">$1</a>', $html);

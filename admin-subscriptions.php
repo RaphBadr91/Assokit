@@ -107,8 +107,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->beginTransaction();
             if ($to_trial && $date_changed && $period_end !== '') {
-                // Fin d'essai choisie : ak_org_set_plan conserve une fin future déjà posée
-                $pdo->prepare("UPDATE organizations SET trial_ends_at = ? WHERE id = ?")->execute([$period_end . ' 23:59:59', $org_id]);
+                // Fin d'essai choisie : ak_org_set_plan conserve une fin future déjà posée. Abonnement souscrit pendant
+                // l'essai : la date du premier prélèvement suit chez Stripe, sinon rien n'est changé (AkTrialBlocked)
+                ak_org_set_trial_end($pdo, $org_id, $period_end . ' 23:59:59');
             }
             ak_org_set_plan($pdo, $org_id, $plan_id);
             if (!$to_trial && ($cid = $current_sub_id($org_id))) {

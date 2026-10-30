@@ -11,7 +11,8 @@
  * Le plan se change PARTOUT à la fois (abonnement, organizations.plan, état d'essai)
  * via ak_org_set_plan() ; l'essai se prolonge via ak_trial_extend() ; suspendre, réactiver et
  * refuser passent par ak_org_suspend / ak_org_reactivate / ak_org_reject (trial-helpers.php),
- * les mêmes que le cockpit web. Réponse 'warning' : abonnement Stripe à annuler dans Stripe ;
+ * les mêmes que le cockpit web. Réponse 'warning' : abonnement Stripe à annuler dans Stripe (formule changée,
+ * ou suspension / refus d'une association qui avait souscrit pendant son essai et que Stripe n'a pas arrêtée) ;
  * 'notice' : association réactivée sur Démarrage parce que son essai était terminé ;
  * résilier annule aussi l'abonnement Stripe : 'stripe_cancelled' (identifiants annulés) et
  * 'stripe_warning' (null, ou message : abonnement encore actif, à annuler dans Stripe).
@@ -101,13 +102,14 @@ try {
         $reason = trim((string) ($input['reason'] ?? ''));
         $rv = ak_signup_review_reject($pdo, $target, $reason, (int) $uid);
         if ($rv['state'] === 'withdrawn') app_fail(409, 'withdrawn', ak_signup_review_withdrawn_message());
-        if ($rv['state'] !== 'rejected') ak_org_reject($pdo, $target, $reason, (int) $uid);
+        if ($rv['state'] !== 'rejected' && ($w = ak_org_reject($pdo, $target, $reason, (int) $uid))) $extra['warning'] = $w;
         $log('reject_org', ['reason' => $reason]);
     } elseif ($action === 'suspend') {
         // Comme le cockpit web (ak_org_suspend) : suspendue pendant son essai, l'ancienne table passe
         // aussi en « suspended » (plus de rappels J-7 / J-3 / J-0 ni d'e-mail de fin d'essai).
         $reason = trim((string) ($input['reason'] ?? ''));
-        ak_org_suspend($pdo, $target, $reason !== '' ? $reason : 'Suspendu depuis l’application');
+        // Abonnement souscrit pendant l'essai : arrêté chez Stripe (sinon 'warning' : à annuler dans Stripe)
+        if ($w = ak_org_suspend($pdo, $target, $reason !== '' ? $reason : 'Suspendu depuis l’application')) $extra['warning'] = $w;
         $log('suspend_org', ['reason' => $reason]);
     } elseif ($action === 'activate') {
         // Même règle que le cockpit web (ak_org_reactivate) : un essai en cours repasse EN ESSAI (même fin,

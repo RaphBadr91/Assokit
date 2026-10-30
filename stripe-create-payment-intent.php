@@ -15,8 +15,15 @@
  *   3. Crée la Subscription Stripe (avec add-on optionnel), prix HT + TVA de la plateforme
  *      (default_tax_rates, ak_stripe_vat_tax_rate) ; moyens de paiement = ceux de la page
  *      (payment_settings[payment_method_types]) ; clé d'idempotence (double clic)
- *   4. Retourne { clientSecret, type: 'payment' } au JavaScript (3-D Secure : Stripe.js)
- *   (la ligne asso_subscriptions naît au paiement réussi : page de retour ou webhook)
+ *      Association en essai (ak_stripe_trial_end_for_org : essai en cours, fin à 48 h au moins) : le
+ *      premier prélèvement attend la fin de l'essai. Période d'essai Stripe jusqu'à cette date
+ *      (trial_end), la carte ou le mandat SEPA est seulement enregistré (pending_setup_intent),
+ *      abonnement arrêté par Stripe à la fin de l'essai si rien n'a été enregistré
+ *      (trial_settings missing_payment_method=cancel)
+ *   4. Retourne { clientSecret, mode: 'payment' } (premier mois prélevé maintenant, stripe.confirmPayment)
+ *      ou { clientSecret, mode: 'setup', trialEnd } (essai : stripe.confirmSetup) au JavaScript
+ *   (la ligne asso_subscriptions naît au premier paiement réussi : page de retour ou webhook ; pendant
+ *   l'essai, « carte enregistrée » est noté sur l'association, organizations.stripe_trial_*)
  *
  * Sécurité :
  *   - Authentification obligatoire et session vérifiée (ak_session_guard : compte désactivé ou
@@ -105,6 +112,14 @@ if (!user_can_view_finances($user)) {
 if (function_exists('ak_org_live_stripe_subscription') && ak_org_live_stripe_subscription($pdo, $org_id)) {
     http_response_code(409);
     echo json_encode(['error' => 'Votre association a déjà un abonnement par carte en cours : gérez-le depuis Mon abonnement.']);
+    exit;
+}
+
+// Abonnement déjà souscrit pendant l'essai (carte enregistrée, premier prélèvement à la fin de l'essai)
+$trial_card = function_exists('ak_org_trial_card') ? ak_org_trial_card($pdo, $org_id) : null;
+if ($trial_card) {
+    http_response_code(409);
+    echo json_encode(['error' => 'Votre association a déjà souscrit son abonnement' . ($trial_card['charge_fr'] !== '' ? ' : premier prélèvement le ' . $trial_card['charge_fr'] . ', à la fin de votre essai' : '') . '. Gérez-le depuis Mon abonnement.', 'redirect' => '/mon-asso-plan']);
     exit;
 }
 
@@ -218,6 +233,11 @@ if ($vat_rate > 0) {
 // s'il est activé sur le compte). La page de paiement propose exactement les mêmes (paymentMethodTypes).
 $pm_types = ak_stripe_payment_method_types($pdo);
 
+// Essai en cours : le premier prélèvement a lieu le jour de la fin de l'essai (timestamp), sinon tout de suite.
+// Même règle que la page de paiement (mode « setup » ou « payment » du formulaire Stripe).
+$trial_end = ak_stripe_trial_end_for_org($pdo, $org_id);
+$mode = $trial_end ? 'setup' : 'payment';
+
 // Une association à la fois (deux administrateurs, deux onglets, double clic) : la lecture des abonnements
 // Stripe (étape 2) et la création (étape 3) ne se croisent jamais. Verrou distinct de celui de la
 // synchronisation (« org_… », pris par ak_stripe_sync_subscription à l'étape 2).
@@ -251,7 +271,7 @@ try {
     $wanted_tax = $tax_rate_id ? [$tax_rate_id] : [];
     $existing = ak_stripe_api_call($pdo, 'GET', '/subscriptions', [
         'customer' => $customer_id, 'status' => 'all', 'limit' => 20,
-        'expand' => ['data.latest_invoice.payment_intent'],
+        'expand' => ['data.latest_invoice.payment_intent', 'data.pending_setup_intent'],
     ]);
     if (empty($existing['ok'])) {
         error_log('[stripe-create-payment-intent] org #' . $org_id . ' abonnements Stripe illisibles : ' . ($existing['error'] ?? '?'));
@@ -260,6 +280,7 @@ try {
         exit;
     }
     $reuse = null;
+    $reuse_secret = '';
     $sepa_processing = false;
     // Abonnements déjà connus de Stripe pour ce client (avant les annulations ci-dessous) : ils entrent dans la
     // clé d'idempotence de l'étape 3, qui change dès que cette liste change (une ancienne clé rendrait sinon
@@ -269,25 +290,40 @@ try {
         $es_status = (string)($es['status'] ?? '');
         $es_pi = $es['latest_invoice']['payment_intent'] ?? null;
         $es_pi_status = is_array($es_pi) ? (string)($es_pi['status'] ?? '') : '';
-        if (in_array($es_status, ['active', 'trialing', 'past_due', 'unpaid'], true)) {
+        // Souscription pendant l'essai : souscrite seulement si la carte ou le mandat est enregistré et qu'elle
+        // n'est pas résiliée. Sinon ce n'est qu'une tentative (page fermée avant l'enregistrement, résiliation
+        // pendant l'essai) : reprise si elle porte sur le même contenu et la même fin d'essai, sinon annulée
+        // (rien n'a été prélevé).
+        $es_trial_open = $es_status === 'trialing'
+            && (ak_stripe_obj_id($es['default_payment_method'] ?? '') === '' || !empty($es['cancel_at_period_end']));
+        if (in_array($es_status, ['active', 'trialing', 'past_due', 'unpaid'], true) && !$es_trial_open) {
             // Déjà payé chez Stripe mais pas encore connu ici : appliqué tout de suite, et pas de second abonnement
             try { ak_stripe_sync_subscription($pdo, (string)$es['id'], $es); } catch (Throwable $e) { error_log('[stripe-create-payment-intent] sync : ' . $e->getMessage()); }
             http_response_code(409);
             echo json_encode(['error' => 'Votre association a déjà un abonnement par carte en cours : gérez-le depuis Mon abonnement.', 'redirect' => '/mon-asso-plan']);
             exit;
         }
-        if ($es_status !== 'incomplete') continue;
+        if ($es_status !== 'incomplete' && !$es_trial_open) continue;
         if ($es_pi_status === 'processing') { $sepa_processing = true; continue; }
-        // Tentative restée en attente de paiement (carte refusée, 3-D Secure abandonné, page fermée) :
-        // reprise telle quelle si elle porte sur la même formule, la même option et la même TVA ; sinon annulée
+        // Tentative restée en attente de paiement (carte refusée, 3-D Secure abandonné, page fermée) ou
+        // d'enregistrement de la carte (essai) : reprise telle quelle si elle porte sur la même formule, la même
+        // option, la même TVA et le même mode (même fin d'essai, ou prélèvement immédiat) ; sinon annulée
         $es_items = [];
         foreach (($es['items']['data'] ?? []) as $it) $es_items[] = (string)(is_array($it['price'] ?? null) ? ($it['price']['id'] ?? '') : ($it['price'] ?? ''));
         $es_tax = array_map(fn($t) => is_array($t) ? (string)($t['id'] ?? '') : (string)$t, $es['default_tax_rates'] ?? []);
         sort($es_items); $w = $wanted_items; sort($w); sort($es_tax);
-        $secret = is_array($es_pi) ? (string)($es_pi['client_secret'] ?? '') : '';
-        if (!$reuse && $es_items === $w && $es_tax === $wanted_tax && $secret !== ''
-            && in_array($es_pi_status, ['requires_payment_method', 'requires_confirmation', 'requires_action'], true)) {
+        if ($es_trial_open) {
+            $es_si = $es['pending_setup_intent'] ?? null;
+            $secret = is_array($es_si) ? (string)($es_si['client_secret'] ?? '') : '';
+            $resumable = $trial_end && (int)($es['trial_end'] ?? 0) === $trial_end && empty($es['cancel_at_period_end'])
+                && is_array($es_si) && in_array((string)($es_si['status'] ?? ''), ['requires_payment_method', 'requires_confirmation', 'requires_action'], true);
+        } else {
+            $secret = is_array($es_pi) ? (string)($es_pi['client_secret'] ?? '') : '';
+            $resumable = !$trial_end && in_array($es_pi_status, ['requires_payment_method', 'requires_confirmation', 'requires_action'], true);
+        }
+        if (!$reuse && $es_items === $w && $es_tax === $wanted_tax && $secret !== '' && $resumable) {
             $reuse = $es;
+            $reuse_secret = $secret;
         } else {
             ak_stripe_api_call($pdo, 'DELETE', '/subscriptions/' . rawurlencode((string)$es['id']));
         }
@@ -303,8 +339,10 @@ try {
 
     if ($reuse) {
         echo json_encode([
-            'clientSecret' => (string)$reuse['latest_invoice']['payment_intent']['client_secret'],
-            'type' => 'payment',
+            'clientSecret' => $reuse_secret,
+            'mode' => $mode,
+            'type' => $mode,
+            'trialEnd' => $trial_end,
             'subscriptionId' => (string)$reuse['id'],
             'customerId' => $customer_id,
         ]);
@@ -312,15 +350,17 @@ try {
     }
 
     // ============================================
-    // 3. Création de la Subscription (premier mois prélevé tout de suite : le paiement met fin à
-    //    l'essai gratuit, ak_end_trial_after_payment). 3-D Secure : géré par Stripe.js sur la page.
+    // 3. Création de la Subscription. Hors essai : premier mois prélevé tout de suite (le paiement met fin à
+    //    l'essai terminé, ak_end_trial_after_payment ; 3-D Secure géré par Stripe.js sur la page). Essai en
+    //    cours : période d'essai Stripe jusqu'à la fin de l'essai, aucun prélèvement maintenant ; la carte ou
+    //    le mandat SEPA est enregistré par la SetupIntent de l'abonnement (pending_setup_intent).
     // ============================================
     $sub_data = [
         'customer' => $customer_id,
         'items[0][price]' => $plan_price_id,
         'payment_behavior' => 'default_incomplete',
         'payment_settings[save_default_payment_method]' => 'on_subscription',
-        'expand[]' => 'latest_invoice.payment_intent',
+        'expand' => ['latest_invoice.payment_intent', 'pending_setup_intent'],
         'description' => 'Abonnement Assokit — ' . ($user['org_name'] ?: ('association n°' . $org_id)),
         'metadata[org_id]' => (string)$org_id,
         'metadata[user_id]' => (string)$user_id,
@@ -340,6 +380,14 @@ try {
         $sub_data['metadata[vat_rate]'] = (string)$vat_rate;
     }
 
+    // Essai en cours : premier prélèvement le jour de la fin de l'essai. Sans carte ni mandat enregistré
+    // d'ici là (page fermée), Stripe arrête l'abonnement à cette date sans rien prélever.
+    if ($trial_end) {
+        $sub_data['trial_end'] = $trial_end;
+        $sub_data['trial_settings[end_behavior][missing_payment_method]'] = 'cancel';
+        $sub_data['metadata[first_charge_at_trial_end]'] = '1';
+    }
+
     // Requête rejouée (coupure réseau : nouvelle tentative d'ak_stripe_api_call, ou même demande dans la même
     // demi-heure sans que rien n'ait changé chez Stripe) : Stripe renvoie le même abonnement. La clé ne dépend
     // ni de l'administrateur qui clique (metadata[user_id]) ni du nom affiché, mais des abonnements déjà
@@ -357,8 +405,11 @@ try {
 
     $subscription = $resp['data'];
 
-    // Récupération du client_secret
-    $client_secret = $subscription['latest_invoice']['payment_intent']['client_secret'] ?? null;
+    // Récupération du client_secret : paiement du premier mois, ou enregistrement de la carte (essai)
+    $client_secret = $trial_end
+        ? ($subscription['pending_setup_intent']['client_secret'] ?? null)
+        : ($subscription['latest_invoice']['payment_intent']['client_secret'] ?? null);
+    if ($trial_end && ($subscription['status'] ?? '') !== 'trialing') $client_secret = null;
     if (empty($client_secret)) {
         error_log('[stripe-create-payment-intent] org #' . $org_id . ' abonnement ' . ($subscription['id'] ?? '?') . ' sans client_secret');
         http_response_code(502);
@@ -376,7 +427,9 @@ try {
     // Réponse JSON
     echo json_encode([
         'clientSecret' => $client_secret,
-        'type' => 'payment',
+        'mode' => $mode,
+        'type' => $mode,
+        'trialEnd' => $trial_end,
         'subscriptionId' => $subscription['id'],
         'customerId' => $customer_id,
     ]);

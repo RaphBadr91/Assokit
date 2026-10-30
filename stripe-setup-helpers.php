@@ -5,7 +5,8 @@
  * « Configurer Stripe automatiquement » (fondateur-stripe-config.php) : tout ce que le Fondateur
  * devait créer à la main dans le tableau de bord Stripe, fait en un clic, en mode test ou en mode
  * réel selon les clés enregistrées :
- *   1. base de données prête (migration 2026-10-28-stripe-mise-en-service.sql) ;
+ *   1. base de données prête (migrations 2026-10-28-stripe-mise-en-service.sql et
+ *      2026-10-29-stripe-souscription-pendant-essai.sql) ;
  *   2. clés API valides et du même mode, compte Stripe ;
  *   3. moyens de paiement disponibles (carte + Apple Pay / Google Pay, prélèvement SEPA) ;
  *   4. produit + prix mensuel HT de chaque formule payante (asso_plans.price_cents) ;
@@ -13,6 +14,10 @@
  *   6. taux de TVA Stripe si la TVA est activée (ak_stripe_vat_tax_rate) ;
  *   7. point de terminaison webhook https://<site>/stripe-webhook, abonné exactement aux
  *      événements traités (AK_STRIPE_WEBHOOK_EVENTS), secret de signature gardé ;
+ *   7 bis. paiements reçus par les associations (Stripe Connect) : Connect activé sur le compte de la
+ *      plateforme (vérifié), point de terminaison https://<site>/stripe-connect-webhook créé avec
+ *      connect=true (AK_STRIPE_CONNECT_WEBHOOK_EVENTS), son secret gardé à part. Jamais bloquant :
+ *      les abonnements fonctionnent sans (étape ⚠ tant que Connect n'est pas activé) ;
  *   8. configuration du portail client (changer de carte, voir ses factures, résilier en fin de période) ;
  *   9. domaine des moyens de paiement (Apple Pay / Google Pay) ;
  *  10. en mode réel : données laissées par les essais en mode test effacées.
@@ -28,11 +33,13 @@
 @require_once __DIR__ . '/stripe-helpers.php';
 require_once __DIR__ . '/trial-helpers.php';
 require_once __DIR__ . '/stripe-sync-helpers.php';
+require_once __DIR__ . '/stripe-connect-helpers.php';
 if (!defined('AK_ADDON_DOMAIN_HT_CENTS')) require_once __DIR__ . '/includes-pricing.php';
 
 if (!function_exists('ak_stripe_schema_check')) {
     /**
-     * Tables et colonnes dont le code Stripe a besoin (migration 2026-10-28-stripe-mise-en-service.sql).
+     * Tables et colonnes dont le code Stripe a besoin (migrations 2026-10-28-stripe-mise-en-service.sql et
+     * 2026-10-29-stripe-souscription-pendant-essai.sql : souscription pendant l'essai).
      * @return string[] éléments manquants (vide = base prête)
      */
     function ak_stripe_schema_check(PDO $pdo): array {
@@ -43,7 +50,8 @@ if (!function_exists('ak_stripe_schema_check')) {
             'asso_plans'               => ['stripe_price_id_monthly'],
             'asso_subscriptions'       => ['payment_mode', 'stripe_subscription_id', 'stripe_price_id', 'stripe_livemode', 'current_period_end', 'cancel_at_period_end', 'cancelled_at', 'grace_period_end', 'updated_at'],
             'asso_subscription_addons' => ['stripe_price_id', 'stripe_subscription_item_id'],
-            'organizations'            => ['stripe_customer_id', 'billing_email', 'stripe_payment_pending_until'],
+            'organizations'            => ['stripe_customer_id', 'billing_email', 'stripe_payment_pending_until',
+                                           'stripe_trial_sub_id', 'stripe_trial_charge_at', 'stripe_trial_charge_cents', 'stripe_trial_charge_tax_cents', 'stripe_trial_pm_type'],
         ];
         $missing = [];
         foreach ($need as $table => $cols) {
@@ -189,6 +197,20 @@ if (!function_exists('ak_stripe_purge_test_data')) {
      */
     function ak_stripe_purge_test_data(PDO $pdo): array {
         $n = ['subs' => 0, 'invoices' => 0];
+        // Abonnements souscrits pendant l'essai en mode test (note organizations.stripe_trial_*, aucune ligne
+        // d'abonnement) : inconnus des clés réelles, la note est retirée et l'essai se termine normalement
+        if (isset(ak_db_columns($pdo, 'organizations')['stripe_trial_sub_id'])) {
+            try {
+                $tq = $pdo->query("SELECT id, stripe_trial_sub_id FROM organizations WHERE COALESCE(stripe_trial_sub_id, '') <> ''");
+                foreach ($tq->fetchAll(PDO::FETCH_ASSOC) as $o) {
+                    $r = ak_stripe_api_call($pdo, 'GET', '/subscriptions/' . rawurlencode((string)$o['stripe_trial_sub_id']));
+                    if (empty($r['ok']) && (int)($r['http_code'] ?? 0) === 404
+                        && ak_stripe_trial_clear($pdo, (int)$o['id'], (string)$o['stripe_trial_sub_id'])) $n['subs']++;
+                }
+            } catch (Throwable $e) {
+                error_log('[stripe-setup] souscriptions d’essai de test : ' . get_class($e));
+            }
+        }
         $scols = ak_db_columns($pdo, 'asso_subscriptions');
         if (isset($scols['stripe_livemode'])) {
             // Seulement les abonnements par carte encore en vigueur : une ligne déjà retirée est passée au
@@ -247,7 +269,7 @@ if (!function_exists('ak_stripe_auto_setup')) {
         $missing = ak_stripe_schema_check($pdo);
         if ($missing) {
             $add('Base de données prête', 'ko', 'Il manque : ' . implode(', ', array_slice($missing, 0, 8)) . (count($missing) > 8 ? '…' : '') . '.',
-                 'Sur le serveur, lancez : /usr/local/bin/php migrations/run.php 2026-10-28-stripe-mise-en-service.sql (voir docs/stripe-mise-en-service.md), puis recommencez.');
+                 'Sur le serveur, lancez : /usr/local/bin/php migrations/run.php 2026-10-28-stripe-mise-en-service.sql puis /usr/local/bin/php migrations/run.php 2026-10-29-stripe-souscription-pendant-essai.sql (voir docs/stripe-mise-en-service.md), puis recommencez.');
             return $res(false);
         }
         $add('Base de données prête', 'ok', 'Tables et colonnes des paiements en place.');
@@ -390,6 +412,9 @@ if (!function_exists('ak_stripe_auto_setup')) {
             $add('Webhook (notifications de Stripe)', $wh['state'], $wh['detail'], $wh['fix']);
             if ($wh['state'] === 'ko') $all_ok = false;
 
+            // 7 bis. Paiements des associations (Stripe Connect) : ⚠ au pire, jamais ✕ (abonnements non bloqués)
+            foreach (ak_stripe_setup_connect($pdo, rtrim($base, '/'), $mode) as $cs) $add($cs['label'], $cs['state'], $cs['detail'], $cs['fix']);
+
             // 8. Portail client
             $po = ak_stripe_setup_portal($pdo, rtrim($base, '/'), $mode);
             $add('Portail client (changer de carte)', $po['state'], $po['detail'], $po['fix']);
@@ -423,17 +448,20 @@ if (!function_exists('ak_stripe_setup_webhook')) {
      * Point de terminaison webhook $url abonné à AK_STRIPE_WEBHOOK_EVENTS, version d'API 2024-06-20.
      * Gardé s'il est connu (identifiant + secret enregistrés pour ce mode), mis à jour si sa liste
      * d'événements a changé ; recréé sinon (le secret de signature n'est donné qu'à la création).
+     * $connect : point de terminaison Stripe Connect (événements des comptes des associations, connect=true),
+     * réglages rangés sous « connect_webhook_* » ; il ne touche jamais au secret des abonnements.
      * @return array{state: string, detail: string, fix: string}
      */
-    function ak_stripe_setup_webhook(PDO $pdo, string $url, string $mode): array {
+    function ak_stripe_setup_webhook(PDO $pdo, string $url, string $mode, bool $connect = false): array {
         if ($mode === 'live' && strpos($url, 'https://') !== 0) {
             return ['state' => 'ko', 'detail' => 'Adresse ' . $url . ' : Stripe exige une adresse https en mode réel.', 'fix' => 'Ouvrez cette page en https://assokit.fr, puis recommencez.'];
         }
-        $events = AK_STRIPE_WEBHOOK_EVENTS;
+        $events = $connect ? AK_STRIPE_CONNECT_WEBHOOK_EVENTS : AK_STRIPE_WEBHOOK_EVENTS;
+        $prefix = $connect ? 'connect_webhook' : 'stripe_webhook';
         $l = ak_stripe_api_call($pdo, 'GET', '/webhook_endpoints', ['limit' => 100]);
         if (empty($l['ok'])) return ['state' => 'ko', 'detail' => 'Liste des webhooks illisible : ' . ($l['error'] ?? '?') . '.', 'fix' => 'Réessayez dans quelques minutes.'];
-        $stored_id = (string)ak_stripe_config_get($pdo, 'stripe_webhook_endpoint_id_' . $mode, '');
-        $stored_secret = (string)ak_stripe_config_get($pdo, 'stripe_webhook_secret_' . $mode, '');
+        $stored_id = (string)ak_stripe_config_get($pdo, $prefix . '_endpoint_id_' . $mode, '');
+        $stored_secret = (string)ak_stripe_config_get($pdo, $prefix . '_secret_' . $mode, '');
         $mine = null; $others = []; $same_url = [];
         $host = (string)parse_url($url, PHP_URL_HOST);
         foreach (($l['data']['data'] ?? []) as $e) {
@@ -441,7 +469,7 @@ if (!function_exists('ak_stripe_setup_webhook')) {
             if ($eurl === $url) {
                 if ($stored_id !== '' && $e['id'] === $stored_id && $stored_secret !== '') $mine = $e;
                 else $same_url[] = $e;
-            } elseif (preg_match('#^https?://(www\.)?' . preg_quote(preg_replace('/^www\./', '', $host), '#') . '(:\d+)?/stripe-webhook#i', $eurl)) {
+            } elseif (!$connect && preg_match('#^https?://(www\.)?' . preg_quote(preg_replace('/^www\./', '', $host), '#') . '(:\d+)?/stripe-webhook#i', $eurl)) {
                 $others[] = $eurl;
             }
         }
@@ -456,7 +484,7 @@ if (!function_exists('ak_stripe_setup_webhook')) {
                 $u = ak_stripe_api_call($pdo, 'POST', '/webhook_endpoints/' . rawurlencode($mine['id']), $params);
                 if (empty($u['ok'])) return ['state' => 'ko', 'detail' => 'Webhook non mis à jour : ' . ($u['error'] ?? '?') . '.', 'fix' => 'Réessayez.'];
             }
-            ak_stripe_config_set($pdo, 'stripe_webhook_secret', $stored_secret);
+            if (!$connect) ak_stripe_config_set($pdo, 'stripe_webhook_secret', $stored_secret);
             foreach ($same_url as $dup) ak_stripe_api_call($pdo, 'DELETE', '/webhook_endpoints/' . rawurlencode($dup['id']));
             return ['state' => $others ? 'warn' : 'ok', 'detail' => $url . ' (' . $mine['id'] . ', ' . count($events) . ' événements, secret ' . ak_stripe_mask($stored_secret) . ').' . $warn, 'fix' => $fix_others];
         }
@@ -467,21 +495,57 @@ if (!function_exists('ak_stripe_setup_webhook')) {
             $d = ak_stripe_api_call($pdo, 'DELETE', '/webhook_endpoints/' . rawurlencode($dup['id']));
             if (!empty($d['ok'])) $replaced++;
         }
-        $params = ['url' => $url, 'api_version' => '2024-06-20', 'description' => 'Assokit — abonnements des associations', 'metadata[ak]' => 'assokit'];
+        $params = ['url' => $url, 'api_version' => '2024-06-20', 'metadata[ak]' => 'assokit',
+                   'description' => $connect ? 'Assokit — paiements reçus par les associations (Stripe Connect)' : 'Assokit — abonnements des associations'];
+        if ($connect) $params['connect'] = 'true';
         foreach ($events as $i => $ev) $params['enabled_events[' . $i . ']'] = $ev;
         $c = ak_stripe_api_call($pdo, 'POST', '/webhook_endpoints', $params);
         $secret = (string)($c['data']['secret'] ?? '');
         if (empty($c['ok']) || $secret === '') {
             return ['state' => 'ko', 'detail' => 'Webhook non créé : ' . ($c['error'] ?? 'réponse sans secret') . '.', 'fix' => 'Vérifiez que ' . $url . ' est joignable depuis Internet, puis recommencez.'];
         }
-        $ok = ak_stripe_config_set($pdo, 'stripe_webhook_secret', $secret)
-            && ak_stripe_config_set($pdo, 'stripe_webhook_secret_' . $mode, $secret)
-            && ak_stripe_config_set($pdo, 'stripe_webhook_endpoint_id_' . $mode, (string)$c['data']['id']);
+        $ok = ($connect || ak_stripe_config_set($pdo, 'stripe_webhook_secret', $secret))
+            && ak_stripe_config_set($pdo, $prefix . '_secret_' . $mode, $secret)
+            && ak_stripe_config_set($pdo, $prefix . '_endpoint_id_' . $mode, (string)$c['data']['id']);
         if (!$ok) return ['state' => 'ko', 'detail' => 'Webhook créé (' . $c['data']['id'] . ') mais son secret n’a pas pu être enregistré.', 'fix' => 'Vérifiez la base de données (migration), puis recommencez : il sera recréé.'];
         return ['state' => $others ? 'warn' : 'ok',
                 'detail' => $url . ' créé (' . $c['data']['id'] . ', ' . count($events) . ' événements, secret ' . ak_stripe_mask($secret) . ' enregistré).'
                     . ($replaced ? ' Ancien webhook vers la même adresse remplacé (son secret n’était pas connu d’Assokit).' : '') . $warn,
                 'fix' => $fix_others];
+    }
+}
+
+if (!function_exists('ak_stripe_setup_connect')) {
+    /**
+     * Étape « Paiements des associations (Stripe Connect) » : migration, Connect activé sur le compte de la
+     * plateforme (sonde GET /v1/accounts), webhook Connect. ok / warn / info seulement, jamais ko.
+     * @return array<int, array{label: string, state: string, detail: string, fix: string}>
+     */
+    function ak_stripe_setup_connect(PDO $pdo, string $base, string $mode): array {
+        $label = 'Paiements des associations (Stripe Connect)';
+        $miss = ak_connect_schema_missing($pdo);
+        if ($miss) {
+            return [['label' => $label, 'state' => 'warn', 'detail' => 'Base de données à compléter : il manque ' . implode(', ', array_slice($miss, 0, 5)) . (count($miss) > 5 ? '…' : '') . '.',
+                     'fix' => 'Sur le serveur : /usr/local/bin/php migrations/run.php 2026-10-30-paiements-en-ligne-associations.sql, puis recommencez. Les abonnements fonctionnent sans.']];
+        }
+        $p = ak_stripe_api_call($pdo, 'GET', '/accounts', ['limit' => 1]);
+        if (empty($p['ok'])) {
+            $err = (string)($p['error'] ?? '?');
+            $why = stripos($err, 'connect') !== false || (int)($p['http_code'] ?? 0) === 400
+                ? 'Stripe Connect n’est pas encore activé sur le compte Stripe d’Assokit.'
+                : ((int)($p['http_code'] ?? 0) === 403 ? 'La clé API n’a pas le droit de gérer les comptes connectés.' : 'Stripe ne répond pas (' . $err . ').');
+            return [['label' => $label, 'state' => 'warn', 'detail' => $why . ' Les associations ne peuvent pas encore relier leur compte.',
+                     'fix' => 'Une seule fois, dans le tableau de bord Stripe (mode ' . ($mode === 'live' ? 'réel' : 'test') . ') : Connect › Commencer › « Plateforme », comptes « Standard », profil de la plateforme (logiciel de gestion pour associations), puis recommencez. Clé restreinte (rk_…) : ajoutez les droits « Comptes connectés » et « Sessions Checkout ». Voir docs/stripe-mise-en-service.md, section Connect.']];
+        }
+        $wh = ak_stripe_setup_webhook($pdo, $base . '/stripe-connect-webhook', $mode, true);
+        $state = $wh['state'] === 'ko' ? 'warn' : $wh['state'];
+        $on = (int)ak_stripe_config_get($pdo, 'connect_enabled', 0) === 1;
+        return [
+            ['label' => $label, 'state' => $state, 'detail' => 'Connect activé sur le compte Stripe. Webhook des comptes connectés : ' . $wh['detail'], 'fix' => $wh['fix']],
+            ['label' => 'Ouverture aux associations', 'state' => $on ? 'ok' : 'info',
+             'detail' => $on ? 'Ouverts : chaque association peut relier son compte Stripe depuis « Paiements en ligne ».'
+                             : 'Fermés pour l’instant : bloc 4 ci-dessous, « Ouvrir les paiements en ligne aux associations ».', 'fix' => ''],
+        ];
     }
 }
 

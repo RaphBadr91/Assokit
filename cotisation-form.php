@@ -29,6 +29,8 @@ if ($campaign_id > 0 && $tiers) {
 $d = $campaign ?: ['name'=>'', 'year'=>(int)date('Y'), 'description'=>'', 'currency'=>'EUR', 'opens_at'=>'', 'closes_at'=>'', 'is_active'=>1];
 // Choix « ces paiements renouvellent l'adhésion » : proposé une fois la migration L02 passée.
 $has_renews = ck_has_renews_setting($pdo);
+// Type de campagne (cotisation / don) et paiement en ligne : proposés une fois la migration 2026-10-30 passée
+$has_online = ck_has_online_settings($pdo);
 
 // Saisie refusée par action-cotisation.php (nom vide, clôture avant ouverture) :
 // on rouvre le même formulaire, prérempli, avec le message.
@@ -66,6 +68,16 @@ render_head($campaign ? 'Modifier campagne' : 'Nouvelle campagne');
       <input type="hidden" name="action" value="<?= $campaign ? 'update' : 'create' ?>">
       <?php if ($campaign): ?><input type="hidden" name="id" value="<?= (int)$campaign['id'] ?>"><?php endif; ?>
 
+      <?php if ($has_online): $kd = (string)($d['kind'] ?? ''); ?>
+      <div class="ck-fld">
+        <label>Type de campagne</label>
+        <select name="kind" id="ck-kind">
+          <option value=""<?= $kd !== 'don' ? ' selected' : '' ?>>Cotisation (adhésion, participation, billetterie…)</option>
+          <option value="don"<?= $kd === 'don' ? ' selected' : '' ?>>Dons (montant libre, ne renouvelle pas l’adhésion)</option>
+        </select>
+      </div>
+      <?php endif; ?>
+
       <div class="ck-fld">
         <label>Nom de la campagne *</label>
         <input type="text" name="name" required maxlength="120" value="<?= h($d['name']) ?>" placeholder="Ex : Adhésion 2025-2026">
@@ -87,7 +99,7 @@ render_head($campaign ? 'Modifier campagne' : 'Nouvelle campagne');
       </div>
 
       <?php if ($has_renews): $rm = $d['renews_membership'] ?? null; $rm = ($rm === null || $rm === '') ? '' : (string)(int)$rm; ?>
-      <div class="ck-fld">
+      <div class="ck-fld ck-not-don">
         <label>Ces paiements renouvellent l’adhésion (12 mois)</label>
         <select name="renews_membership">
           <option value=""<?= $rm === '' ? ' selected' : '' ?>>Automatique : oui si le nom contient « adhésion » ou « cotisation »</option>
@@ -102,6 +114,19 @@ render_head($campaign ? 'Modifier campagne' : 'Nouvelle campagne');
         <textarea name="description" rows="3" placeholder="Présentation de la campagne, ce que finance la cotisation, etc."><?= h($d['description']) ?></textarea>
       </div>
 
+      <?php if ($has_online): $op = $d['online_payment'] ?? null; $op = ($op === null || $op === '') ? '' : (string)(int)$op; ?>
+      <h2 class="ck-section">💳 Paiement en ligne</h2>
+      <p class="ck-help">Le lien de paiement de la campagne fonctionne une fois le compte Stripe de l’association relié (<a href="/encaissement-en-ligne">Paiements en ligne</a>). Le montant est toujours fixé ici : tarif choisi, ou montant libre avec un minimum.</p>
+      <div class="ck-row">
+        <div class="ck-fld"><label>Paiement en ligne</label>
+          <select name="online_payment"><option value=""<?= $op !== '0' ? ' selected' : '' ?>>Proposé (si activé pour l’association)</option><option value="0"<?= $op === '0' ? ' selected' : '' ?>>Non proposé pour cette campagne</option></select>
+        </div>
+        <div class="ck-fld"><label>Montant minimum (montant libre)</label><input type="text" inputmode="decimal" name="min_amount" value="<?= h($d['min_amount'] ?? '') ?>" placeholder="1,00"></div>
+      </div>
+      <div class="ck-fld ck-not-don"><label style="text-transform:none;letter-spacing:0;font-weight:500;"><input type="checkbox" name="free_amount" value="1" <?= !empty($d['free_amount']) ? 'checked' : '' ?> style="width:auto;margin-right:6px;"> Proposer aussi un « montant libre » (prix libre, soutien)</label></div>
+      <?php endif; ?>
+
+      <div id="ck-tiers-block" class="ck-not-don">
       <h2 class="ck-section">💰 Tarifs proposés</h2>
       <p class="ck-help">Crée un ou plusieurs tarifs (ex : Membre, Étudiant, Famille…). Au minimum 1 tarif requis.</p>
       <div id="ck-tiers">
@@ -120,6 +145,7 @@ render_head($campaign ? 'Modifier campagne' : 'Nouvelle campagne');
         <?php endforeach; ?>
       </div>
       <button type="button" id="ck-add-tier" class="ck-btn-ghost">+ Ajouter un tarif</button>
+      </div>
 
       <div class="ck-actions">
         <a href="/cotisations" class="ck-btn-ghost">Annuler</a>
@@ -157,6 +183,17 @@ document.getElementById('ck-add-tier').addEventListener('click', function() {
   div.innerHTML = '<input type="hidden" name="tier_id[]" value="0"><input type="text" name="tier_name[]" placeholder="Nom" required><input type="number" name="tier_amount[]" min="0" step="0.01" required placeholder="30"><input type="text" name="tier_desc[]" placeholder="Description"><button type="button" class="ck-tier-rm" onclick="this.closest(\'.ck-tier\').remove()">×</button>';
   c.appendChild(div);
 });
+// Campagne de dons : ni tarifs ni renouvellement d'adhésion (montant libre sur la page de dons)
+(function() {
+  const kind = document.getElementById('ck-kind');
+  if (!kind) return;
+  function sync() {
+    const don = kind.value === 'don';
+    document.querySelectorAll('.ck-not-don').forEach(function(el) { el.style.display = don ? 'none' : ''; });
+    document.querySelectorAll('#ck-tiers input[name="tier_name[]"], #ck-tiers input[name="tier_amount[]"]').forEach(function(i) { i.required = !don; });
+  }
+  kind.addEventListener('change', sync); sync();
+})();
 // La clôture ne peut pas précéder l'ouverture (contrôlé aussi côté serveur)
 document.getElementById('ck-opens').addEventListener('change', function() {
   document.getElementById('ck-closes').min = this.value || '';

@@ -5,6 +5,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/includes-cotisations.php';
+require_once __DIR__ . '/stripe-connect-helpers.php';
 require_login();
 $user = current_user(); $org_id = (int)$user['org_id'];
 if ($org_id <= 0) { header('Location: /dashboard'); exit; }  // compte sans association (agent de collectivité) : pas d'« org 0 » partagée
@@ -44,8 +45,37 @@ if (isset($_GET['adh_q'])) {
     exit;
 }
 
+// Lien personnel de paiement d'un adhérent (à copier et envoyer) : JSON, adhérent de l'association seulement
+if (isset($_GET['lien_adherent'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    $aid = (int)$_GET['lien_adherent'];
+    $ok = false;
+    try {
+        $st = $pdo->prepare("SELECT id FROM users WHERE id = ? AND org_id = ? AND deleted_at IS NULL");
+        $st->execute([$aid, $org_id]);
+        $ok = (bool)$st->fetchColumn();
+    } catch (Throwable $e) {}
+    $url = $ok && ak_connect_campaign_online($pdo, $campaign)['ok'] ? ak_connect_campaign_url($pdo, $campaign, $aid) : '';
+    echo json_encode(['ok' => $url !== '', 'url' => $url], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 $tiers = ck_load_tiers($pdo, $campaign_id);
 $stats = ck_campaign_stats($pdo, $campaign_id);
+// Paiement en ligne de la campagne (Stripe Connect) : état, lien public, frais des paiements reçus en ligne
+$online = ak_connect_campaign_online($pdo, $campaign);
+$online_closed = ak_connect_campaign_open($campaign);
+$online_url = $online['ok'] ? ak_connect_campaign_url($pdo, $campaign) : '';
+$is_don = ak_connect_campaign_is_don($campaign);
+$online_fees = [];
+try {
+    if (!ak_connect_schema_missing($pdo)) {
+        $st = $pdo->prepare("SELECT cotisation_payment_id, fee_cents, net_cents, status, payment_method_type FROM asso_online_payments WHERE campaign_id = ? AND org_id = ? AND cotisation_payment_id IS NOT NULL");
+        $st->execute([$campaign_id, $org_id]);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $online_fees[(int)$r['cotisation_payment_id']] = $r;
+    }
+} catch (Throwable $e) {}
 $payments = ck_load_payments($pdo, $campaign_id);
 
 $flash = $_SESSION['flash_cotisation'] ?? null;
@@ -229,7 +259,7 @@ render_head($campaign['name']);
           </td>
           <td><?= h($p['tier_name'] ?? '—') ?></td>
           <td class="ck-pay-amount"><?= h(ck_money($p['amount'], $p['currency'] ?? $cur)) ?></td>
-          <td><?= ck_method_label($p['payment_method']) ?></td>
+          <td><?= ck_method_label($p['payment_method']) ?><?php if (isset($online_fees[(int)$p['id']])): $of = $online_fees[(int)$p['id']]; ?><div class="ck-pay-email"><?= ($of['payment_method_type'] ?? '') === 'sepa_debit' ? 'Prélèvement SEPA' : 'Carte' ?><?= $of['fee_cents'] !== null ? ' · frais Stripe ' . h(ak_connect_money((int)$of['fee_cents'])) : '' ?></div><?php endif; ?></td>
           <td><span class="ck-badge" style="background:<?= $b[2] ?>;color:<?= $b[1] ?>;"><?= h($b[0]) ?></span></td>
           <td class="ck-pay-date"><?= $p['paid_at'] ? date('d/m/Y', strtotime($p['paid_at'])) : date('d/m/Y', strtotime($p['created_at'])) ?></td>
           <td class="ck-pay-acts">
@@ -258,15 +288,54 @@ render_head($campaign['name']);
     </div>
     <?php endif; ?>
 
-    <!-- Paiement en ligne : pas encore de page de paiement publique ni de reçu automatique -->
-    <div class="ck-stripe-card">
+    <!-- Paiement en ligne (Stripe Connect) : lien public de la campagne, QR code, lien personnel d'un adhérent -->
+    <div class="ck-stripe-card" id="paiement-en-ligne">
       <div class="ck-stripe-head">
         <span class="ck-stripe-icon">💳</span>
-        <div>
-          <div class="ck-stripe-title">Paiement en ligne par carte</div>
-          <div class="ck-stripe-sub">Bientôt disponible. En attendant, enregistrez ci-dessus les paiements reçus (chèque, virement, espèces).</div>
+        <div style="flex:1;min-width:0;">
+          <div class="ck-stripe-title"><?= $is_don ? 'Page de dons en ligne' : 'Paiement en ligne par carte' ?><?= $online['ok'] && $online_closed === null ? ' · actif' : '' ?></div>
+          <?php if ($online['ok']): ?>
+            <div class="ck-stripe-sub"><?= $is_don ? 'Partagez ce lien : vos donateurs choisissent leur montant et paient par carte, Apple Pay, Google Pay' : 'Partagez ce lien : vos adhérents choisissent leur tarif et paient par carte, Apple Pay, Google Pay' ?><?= in_array('sepa_debit', ak_connect_payment_types($online['account'], $online['settings'], (string)($campaign['currency'] ?: 'EUR')), true) ? ' ou prélèvement SEPA' : '' ?>. Le paiement s’enregistre tout seul ci-dessus<?= $is_don ? '' : ', et prolonge l’adhésion des adhérents venus par leur lien personnel' ?>.</div>
+            <?php if ($online_closed !== null): ?><div class="ck-stripe-sub" style="color:#92400E;margin-top:4px;">⚠ <?= h($online_closed) ?> Le lien l’indique au payeur : rouvrez la campagne (✏️ Modifier) pour encaisser.</div><?php endif; ?>
+          <?php else: ?>
+            <div class="ck-stripe-sub"><?= h([
+                'no_account' => 'Recevez les paiements par carte directement sur le compte bancaire de l’association : reliez son compte Stripe en quelques minutes.',
+                'not_ready' => 'Stripe vérifie encore les informations de l’association : le lien de paiement apparaîtra ici dès que ce sera terminé.',
+                'kind_off' => $is_don ? 'Les dons en ligne ne sont pas activés pour l’association.' : 'Les cotisations en ligne ne sont pas activées pour l’association.',
+                'campaign_off' => 'Le paiement en ligne est désactivé pour cette campagne (✏️ Modifier pour le rétablir).',
+                'currency' => 'Le paiement en ligne n’est proposé qu’en euros.',
+                'suspended' => 'Paiement en ligne indisponible tant que l’espace est suspendu.',
+              ][$online['reason']] ?? 'Bientôt disponible. En attendant, enregistrez ci-dessus les paiements reçus (chèque, virement, espèces).') ?></div>
+          <?php endif; ?>
         </div>
+        <?php if (!$online['ok'] && in_array($online['reason'], ['no_account', 'not_ready', 'kind_off'], true)): ?>
+          <a href="/encaissement-en-ligne" class="ck-btn-ghost"><?= $online['reason'] === 'no_account' ? 'Activer le paiement en ligne' : 'Paiements en ligne' ?></a>
+        <?php endif; ?>
       </div>
+      <?php if ($online_url !== ''): ?>
+      <div class="ck-online-body">
+        <div class="ck-online-link">
+          <input type="text" readonly value="<?= h($online_url) ?>" id="ck-pay-url" onclick="this.select()">
+          <button type="button" class="ck-btn-ghost" data-copy="ck-pay-url">Copier le lien</button>
+        </div>
+        <div class="ck-online-qr">
+          <canvas id="ck-qr" width="160" height="160" aria-label="QR code du lien de paiement"></canvas>
+          <a href="#" id="ck-qr-dl" class="ck-btn-ghost" download="<?= h('qr-' . preg_replace('/[^a-z0-9]+/', '-', strtolower(iconv('UTF-8', 'ASCII//TRANSLIT', (string)$campaign['name']) ?: 'campagne')) . '.png') ?>">Télécharger le QR code</a>
+          <div class="ck-stripe-sub">À imprimer sur une affiche ou un flyer : il ouvre la page de paiement.</div>
+        </div>
+        <?php if (!$is_don && $adherents): ?>
+        <div class="ck-online-member">
+          <label for="ck-member-link">Lien personnel d’un adhérent (prérempli, prolonge son adhésion)</label>
+          <div class="ck-online-link">
+            <select id="ck-member-link"><option value="">— Choisir un adhérent —</option><?php foreach ($adherents as $a): ?><option value="<?= (int)$a['id'] ?>"><?= h(trim($a['first_name'] . ' ' . $a['last_name'])) ?></option><?php endforeach; ?></select>
+            <input type="text" readonly id="ck-member-url" placeholder="Le lien apparaît ici" onclick="this.select()">
+            <button type="button" class="ck-btn-ghost" data-copy="ck-member-url">Copier</button>
+          </div>
+          <div class="ck-stripe-sub">Les rappels de cotisation (Relances) envoient déjà ce lien personnel à chaque adhérent.</div>
+        </div>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
     </div>
   </div>
 </main>
@@ -331,6 +400,12 @@ render_head($campaign['name']);
 .ck-stripe-title { font-size: 14px; font-weight: 700; color: #111827; }
 .ck-stripe-sub { font-size: 12.5px; color: #6b7280; margin-top: 2px; }
 .ck-stripe-head .ck-btn-ghost { margin-left: auto; }
+.ck-online-body { display: grid; gap: 14px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #d1fae5; }
+.ck-online-link { display: flex; gap: 8px; flex-wrap: wrap; }
+.ck-online-link input, .ck-online-link select { flex: 1; min-width: 180px; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; font-family: inherit; background: #fff; }
+.ck-online-qr { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.ck-online-qr canvas { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 6px; }
+.ck-online-member label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 5px; }
 .ck-kpi-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
 @media (max-width: 540px) { .ck-pay-tbl thead { display: none; } .ck-pay-tbl, .ck-pay-tbl tbody, .ck-pay-tbl tr, .ck-pay-tbl td { display: block; width: 100%; box-sizing: border-box; } .ck-pay-tbl tr { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; } .ck-pay-tbl td { padding: 3px 0; border: 0; } }
 </style>
@@ -387,6 +462,35 @@ render_head($campaign['name']);
       }, 250);
     });
   }
+})();
+// Paiement en ligne : copie des liens, QR code du lien de la campagne, lien personnel d'un adhérent
+(function() {
+  document.querySelectorAll('[data-copy]').forEach(function(b) {
+    b.addEventListener('click', function() {
+      const i = document.getElementById(b.getAttribute('data-copy'));
+      if (!i || !i.value) return;
+      i.select();
+      (navigator.clipboard ? navigator.clipboard.writeText(i.value) : Promise.reject()).catch(function() { try { document.execCommand('copy'); } catch (e) {} });
+      const t = b.textContent; b.textContent = 'Copié ✓'; setTimeout(function() { b.textContent = t; }, 1600);
+    });
+  });
+  const url = document.getElementById('ck-pay-url'), cv = document.getElementById('ck-qr'), dl = document.getElementById('ck-qr-dl');
+  if (url && cv) {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js';
+    s.onload = function() {
+      if (!window.QRCode) return;
+      QRCode.toCanvas(cv, url.value, { width: 160, margin: 1 }, function() { if (dl) dl.href = cv.toDataURL('image/png'); });
+    };
+    document.head.appendChild(s);
+  }
+  const sel = document.getElementById('ck-member-link'), mu = document.getElementById('ck-member-url');
+  if (sel && mu) sel.addEventListener('change', function() {
+    mu.value = '';
+    if (!sel.value) return;
+    fetch(location.pathname + '?lien_adherent=' + encodeURIComponent(sel.value), {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(function(r) { return r.json(); }).then(function(d) { if (d && d.ok) mu.value = d.url; }).catch(function() {});
+  });
 })();
 </script>
 <?= render_foot() ?>

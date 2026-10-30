@@ -27,6 +27,14 @@ require_once __DIR__ . '/trial-helpers.php';
 
 if (!defined('AK_STRIPE_ADDON_PRODUCT_ID')) define('AK_STRIPE_ADDON_PRODUCT_ID', 'ak_option_domaine');
 if (!defined('AK_STRIPE_GRACE_DAYS')) define('AK_STRIPE_GRACE_DAYS', 15);
+// Souscription pendant l'essai : la fin d'essai doit être au moins à 48 h pour que Stripe prélève le premier mois
+// à cette date (trial_end dans le futur) ; plus près de la fin, le premier mois est prélevé tout de suite
+if (!defined('AK_STRIPE_TRIAL_MIN_HOURS')) define('AK_STRIPE_TRIAL_MIN_HOURS', 48);
+// Annulation d'une souscription faite pendant l'essai refusée : le premier prélèvement a déjà eu lieu
+if (!defined('AK_STRIPE_TRIAL_ALREADY_CHARGED')) define('AK_STRIPE_TRIAL_ALREADY_CHARGED', 'le premier prélèvement a déjà eu lieu : l’abonnement est en cours');
+// … ou l'essai est terminé et Stripe a émis la première facture, pas encore prélevée (une heure environ pour une
+// carte, quelques jours ouvrés pour un prélèvement SEPA) : ni annulation sans frais, ni résiliation avant son issue
+if (!defined('AK_STRIPE_TRIAL_CHARGE_PENDING')) define('AK_STRIPE_TRIAL_CHARGE_PENDING', 'l’essai est terminé et le premier prélèvement est en cours');
 // Motifs de suspension (organizations.suspended_reason, en minuscules) que le paiement lève
 // (ak_end_trial_after_payment) : fin de l'essai, impayé. Toute autre suspension (« Abus », « Fraude »…)
 // reste en place, et aucun paiement n'est accepté tant qu'elle dure (ak_stripe_payment_refusal).
@@ -263,6 +271,12 @@ if (!function_exists('ak_stripe_ensure_customer')) {
             error_log('[stripe] org #' . $org_id . ' : client ' . $cid . ' inconnu de Stripe (autre mode ou supprimé), remplacé');
             $pdo->prepare("UPDATE organizations SET stripe_customer_id = NULL WHERE id = ? AND stripe_customer_id = ?")->execute([$org_id, $cid]);
         }
+        // Mode test : nouveau client rattaché à l'horloge de test choisie par le Fondateur (fondateur-stripe-config),
+        // pour avancer le temps chez Stripe (fin d'essai, premier prélèvement, échéances) sans attendre
+        if (ak_stripe_get_mode($pdo) === 'test') {
+            $clock = trim((string)ak_stripe_config_get($pdo, 'stripe_test_clock_id', ''));
+            if (preg_match('/^clock_[A-Za-z0-9]+$/', $clock)) $params['test_clock'] = $clock;
+        }
         // Clé d'idempotence propre à CET appel : la nouvelle tentative après une coupure réseau (ak_stripe_api_call)
         // ne crée pas de doublon, mais une clé déjà vue ne rend jamais un client supprimé depuis (Stripe rejoue la
         // réponse d'une clé pendant 24 h). Deux demandes simultanées : verrou de stripe-create-payment-intent.php.
@@ -410,14 +424,15 @@ if (!function_exists('ak_stripe_sub_items')) {
 
 if (!function_exists('ak_stripe_fetch_subscription')) {
     /**
-     * Abonnement tel qu'il est MAINTENANT chez Stripe (avec la dernière facture et son paiement).
+     * Abonnement tel qu'il est MAINTENANT chez Stripe (avec la dernière facture et son paiement, et le moyen de
+     * paiement enregistré : carte ou mandat SEPA).
      * @return array|null|false l'abonnement ; null s'il n'existe pas dans ce compte / ce mode (404) ;
      *         false si Stripe n'a pas répondu ($err : raison)
      */
     function ak_stripe_fetch_subscription(PDO $pdo, string $sub_id, ?string &$err = null) {
         $err = null;
         if (!preg_match('/^sub_[A-Za-z0-9_]+$/', $sub_id)) { $err = 'identifiant invalide'; return null; }
-        $r = ak_stripe_api_call($pdo, 'GET', '/subscriptions/' . rawurlencode($sub_id), ['expand' => ['latest_invoice.payment_intent']]);
+        $r = ak_stripe_api_call($pdo, 'GET', '/subscriptions/' . rawurlencode($sub_id), ['expand' => ['latest_invoice.payment_intent', 'default_payment_method']]);
         if (!empty($r['ok']) && is_array($r['data'] ?? null)) return $r['data'];
         if ((int)($r['http_code'] ?? 0) === 404) return null;
         $err = (string)($r['error'] ?? 'réponse invalide');
@@ -508,6 +523,38 @@ if (!function_exists('ak_stripe_apply_subscription')) {
         $existing_row = $check->fetch(PDO::FETCH_ASSOC) ?: null;
         $existing_id = $existing_row ? (int)$existing_row['id'] : 0;
         $before = (string)($existing_row['status'] ?? '');
+
+        // Abonnement souscrit pendant l'essai gratuit (période d'essai Stripe jusqu'à la fin de l'essai d'Assokit) :
+        // rien n'est encore payé, l'association reste en essai (ak_stripe_apply_trial_subscription). Un abonnement
+        // déjà payé auquel le Fondateur offre des jours dans Stripe (« trialing » avec une ligne) reste actif.
+        if ($stripe_status === 'trialing' && !$existing_id && $event_type !== 'customer.subscription.deleted') {
+            return ak_stripe_apply_trial_subscription($pdo, $org_id, $sub);
+        }
+        // Abonnement issu d'un essai (souscrit pendant l'essai : trial_end chez Stripe, ou noté sur l'association)
+        $trial_card = function_exists('ak_org_trial_card') ? ak_org_trial_card($pdo, $org_id) : null;
+        $from_trial = !$existing_id && (!empty($sub['trial_end']) || ($trial_card && $trial_card['sub_id'] === $stripe_sub_id));
+        // Association suspendue (ou refusée) à la main pendant son essai — « Abus », « Fraude »… — dont l'abonnement
+        // souscrit pendant l'essai n'a pas pu être arrêté à la suspension (Stripe injoignable) : à la fin de l'essai,
+        // aucun abonnement ne démarre (ni ligne, ni fin d'essai, ni e-mail « actif »), il est arrêté chez Stripe et
+        // le Fondateur rembourse si le premier mois a été prélevé. Aucun paiement n'est accepté tant qu'elle dure.
+        if ($from_trial && in_array($local_status, ['active', 'overdue'], true) && ak_stripe_org_blocked_by_hand($pdo, $org_id)) {
+            ak_stripe_stop_blocked_trial_sub($pdo, $org_id, $sub);
+            return null;
+        }
+        // Fin de l'essai : Stripe a émis la première facture mais ne l'a pas encore prélevée (environ une heure
+        // après la fin de l'essai pour une carte, quelques jours ouvrés pour un prélèvement SEPA). Rien n'est payé :
+        // ni ligne d'abonnement, ni fin d'essai, ni e-mail « paiement confirmé ». L'association reste « carte
+        // enregistrée » ; un prélèvement SEPA en cours la protège de la fin d'essai comme au premier paiement.
+        if ($from_trial && $stripe_status === 'active' && is_array($sub['latest_invoice'] ?? null)
+            && (string)($sub['latest_invoice']['status'] ?? '') !== 'paid' && (int)($sub['latest_invoice']['amount_due'] ?? 0) > 0) {
+            if ($pi_status === 'processing') ak_stripe_set_payment_pending($pdo, $org_id, true);
+            return null;
+        }
+        // Souscription annulée pendant l'essai (« Annuler », portail, Fondateur) puis arrêtée par Stripe : la note
+        // « carte enregistrée » est retirée, l'essai continue jusqu'à sa fin (aucune ligne, aucun prélèvement)
+        if ($local_status === 'cancelled' && !$existing_id && $trial_card && $trial_card['sub_id'] === $stripe_sub_id) {
+            if (ak_stripe_trial_clear($pdo, $org_id, $stripe_sub_id)) ak_stripe_notify_trial_cancelled($pdo, $org_id, $stripe_sub_id);
+        }
 
         // Premier paiement pas encore abouti : aucune ligne (elle naît au paiement réussi). Prélèvement
         // SEPA en cours de vérification (plusieurs jours) : noté sur l'association, pour que l'essai ne
@@ -602,13 +649,17 @@ if (!function_exists('ak_stripe_apply_subscription')) {
                 'current_period_end' => $current_period_end, 'cancel_at_period_end' => $cancel_at_period_end ? 1 : 0,
             ];
             if ($livemode !== null) $data['stripe_livemode'] = $livemode;
+            // Premier prélèvement refusé à la fin de l'essai (abonnement souscrit pendant l'essai) : l'association
+            // entre dans le parcours d'impayé habituel, avec ses AK_STRIPE_GRACE_DAYS jours de tolérance
+            if ($local_status === 'overdue') $data['grace_period_end'] = date('Y-m-d H:i:s', strtotime('+' . AK_STRIPE_GRACE_DAYS . ' days'));
             try {
                 $existing_id = ak_db_insert($pdo, 'asso_subscriptions', $data, ['created_at' => 'NOW()', 'started_at' => 'NOW()', 'updated_at' => 'NOW()']);
             } catch (PDOException $e) {
                 // Un seul abonnement par association (index unique) : la ligne existante (essai, Démarrage ou
-                // abonnement payé autrement) n'est reprise par Stripe que si l'abonnement est VRAIMENT payé.
+                // abonnement payé autrement) n'est reprise par Stripe que si l'abonnement est VRAIMENT payé, ou
+                // si c'est le premier prélèvement (refusé) d'un abonnement souscrit pendant l'essai.
                 if ((string)$e->getCode() !== '23000') throw $e;
-                if ($local_status !== 'active') return null;
+                if ($local_status !== 'active' && !$from_trial) return null;
                 $cur = $pdo->prepare("SELECT s.id FROM asso_subscriptions s WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1");
                 $cur->execute([$org_id]);
                 $existing_id = (int)$cur->fetchColumn();
@@ -625,7 +676,16 @@ if (!function_exists('ak_stripe_apply_subscription')) {
         $just_paid = $stripe_status === 'active' && ($first_payment || $before === 'overdue');
         if ($local_status === 'active') {
             ak_end_trial_after_payment($pdo, $org_id, $stripe_sub_id, $just_paid);
-            if ($first_payment) ak_stripe_on_first_payment($pdo, $org_id, $plan_id, $sub);
+            // Premier paiement, ou premier prélèvement de fin d'essai réglé après un refus (une seule fois par
+            // abonnement : un abonnement qui sort d'un retard a déjà eu son e-mail de bienvenue)
+            if ($first_payment || $just_paid) ak_stripe_on_first_payment($pdo, $org_id, $plan_id, $sub);
+        } elseif ($local_status === 'overdue' && $before === '' && $existing_id) {
+            // Premier prélèvement refusé à la fin de l'essai : l'essai est terminé (l'association a souscrit), et
+            // l'impayé suit le parcours habituel (tolérance, e-mail « à régulariser », relances de Stripe)
+            ak_end_trial_after_payment($pdo, $org_id, $stripe_sub_id, false);
+            // Banque qui demande une confirmation 3-D Secure (paiement « requires_action ») : e-mail « confirmez le
+            // paiement », pas « refusé » (l'e-mail est unique par facture : il doit être le bon dès le premier envoi)
+            if (is_array($sub['latest_invoice'] ?? null)) ak_stripe_notify_overdue($pdo, $org_id, $stripe_sub_id, $sub['latest_invoice'], $pi_status === 'requires_action');
         }
 
         // Abonnement arrêté par Stripe : à la fin de la période payée, l'association passe au plan gratuit
@@ -728,6 +788,389 @@ if (!function_exists('ak_stripe_payment_pending_until')) {
     }
 }
 
+// ============================================================
+// Souscription pendant l'essai : le premier prélèvement attend la fin de l'essai
+// ============================================================
+// Une association en essai qui souscrit garde ses jours d'essai : l'abonnement Stripe est créé avec une
+// période d'essai jusqu'à la fin de l'essai d'Assokit (trial_end), la carte ou le mandat SEPA est
+// enregistré tout de suite (SetupIntent, pending_setup_intent), et Stripe prélève le premier mois ce
+// jour-là. D'ici là, rien n'est payé : aucune ligne asso_subscriptions, l'association reste en essai,
+// l'état est noté sur organizations.stripe_trial_* (migration 2026-10-29). À la fin de l'essai :
+// invoice.paid → abonnement actif (fin de l'essai, comme un premier paiement) ; prélèvement refusé →
+// parcours d'impayé habituel ; souscription annulée avant → aucun prélèvement, fin d'essai normale.
+
+if (!function_exists('ak_stripe_trial_end_for_org')) {
+    /**
+     * Date (timestamp) à laquelle Stripe doit prélever le premier mois d'une association qui souscrit
+     * MAINTENANT : la fin de son essai en cours. null = prélèvement immédiat, comme après l'essai.
+     * Seulement pour un essai EN COURS (association « trial », ni suspendue, ni terminée, ni déjà cliente,
+     * aucun prélèvement SEPA en cours) qui se termine dans AK_STRIPE_TRIAL_MIN_HOURS heures au moins (Stripe
+     * exige une fin d'essai future), et une fois la migration 2026-10-29 passée (sans elle, rien ne retiendrait
+     * l'association en essai jusqu'au prélèvement). Même règle pour la page de paiement et la création.
+     */
+    function ak_stripe_trial_end_for_org(PDO $pdo, int $org_id): ?int {
+        if ($org_id <= 0 || !isset(ak_db_columns($pdo, 'organizations')['stripe_trial_sub_id'])) return null;
+        $st = ak_org_plan_state($pdo, $org_id);
+        if ($st['org_status'] !== 'trial' || empty($st['is_trial']) || !empty($st['trial_expired']) || !empty($st['trial_paused'])
+            || !empty($st['payment_pending']) || !empty($st['is_paid'])) return null;
+        $end = !empty($st['trial_ends_at']) ? strtotime((string)$st['trial_ends_at']) : false;
+        if (!$end || $end < time() + AK_STRIPE_TRIAL_MIN_HOURS * 3600) return null;
+        return (int)$end;
+    }
+}
+
+if (!function_exists('ak_stripe_sub_charge_cents')) {
+    /**
+     * Montant d'une échéance de l'abonnement Stripe $sub (centimes TTC) : prix de chaque élément, plus la TVA
+     * « non incluse » de l'abonnement (default_tax_rates), arrondie ligne par ligne comme Stripe.
+     * @return array{cents: int, tax_cents: int}
+     */
+    function ak_stripe_sub_charge_cents(array $sub): array {
+        $rates = [];
+        foreach (($sub['default_tax_rates'] ?? []) as $t) {
+            if (is_array($t) && empty($t['inclusive'])) $rates[] = (float)($t['percentage'] ?? 0);
+        }
+        $ht = 0; $tax = 0;
+        foreach (($sub['items']['data'] ?? []) as $it) {
+            $price = $it['price'] ?? ($it['plan'] ?? []);
+            $line = (is_array($price) ? (int)($price['unit_amount'] ?? ($price['amount'] ?? 0)) : 0) * max(1, (int)($it['quantity'] ?? 1));
+            $ht += $line;
+            foreach ($rates as $r) $tax += (int)round($line * $r / 100);
+        }
+        return ['cents' => $ht + $tax, 'tax_cents' => $tax];
+    }
+}
+
+if (!function_exists('ak_stripe_pm_type')) {
+    /** Type du moyen de paiement enregistré (card, sepa_debit…) : objet développé, sinon relu chez Stripe. '' si inconnu. */
+    function ak_stripe_pm_type(PDO $pdo, $pm): string {
+        if (is_array($pm)) return (string)($pm['type'] ?? '');
+        $id = ak_stripe_obj_id($pm);
+        if ($id === '') return '';
+        $r = ak_stripe_api_call($pdo, 'GET', '/payment_methods/' . rawurlencode($id));
+        return !empty($r['ok']) ? (string)($r['data']['type'] ?? '') : '';
+    }
+}
+
+if (!function_exists('ak_stripe_trial_clear')) {
+    /**
+     * Retire la note « abonnement souscrit pendant l'essai » (organizations.stripe_trial_*) : celle de
+     * l'abonnement $sub_id seulement, ou n'importe laquelle ($sub_id null). @return bool une note a été retirée
+     */
+    function ak_stripe_trial_clear(PDO $pdo, int $org_id, ?string $sub_id): bool {
+        if ($org_id <= 0 || !isset(ak_db_columns($pdo, 'organizations')['stripe_trial_sub_id'])) return false;
+        try {
+            $tax = isset(ak_db_columns($pdo, 'organizations')['stripe_trial_charge_tax_cents']) ? " stripe_trial_charge_tax_cents = NULL," : "";
+            $st = $pdo->prepare("UPDATE organizations SET stripe_trial_sub_id = NULL, stripe_trial_charge_at = NULL,
+                                        stripe_trial_charge_cents = NULL,$tax stripe_trial_pm_type = NULL
+                                 WHERE id = ? AND COALESCE(stripe_trial_sub_id, '') <> ''" . ($sub_id !== null ? " AND stripe_trial_sub_id = ?" : ""));
+            $st->execute($sub_id !== null ? [$org_id, $sub_id] : [$org_id]);
+            return $st->rowCount() > 0;
+        } catch (Throwable $e) {
+            error_log('[stripe-sync] note d’essai org #' . $org_id . ' : ' . get_class($e));
+            return false;
+        }
+    }
+}
+
+if (!function_exists('ak_stripe_apply_trial_subscription')) {
+    /**
+     * Abonnement Stripe en période d'essai (« trialing ») sans ligne locale : souscrit pendant l'essai gratuit,
+     * premier prélèvement à la fin de l'essai (stripe-create-payment-intent.php, trial_end).
+     *   - carte ou mandat SEPA enregistré (default_payment_method) et aucune résiliation : « abonnement souscrit,
+     *     essai en cours » noté sur l'association (date et montant du premier prélèvement, moyen enregistré),
+     *     e-mail de confirmation la première fois. L'essai continue : aucune ligne d'abonnement, aucune fin
+     *     d'essai avant le premier prélèvement réussi (invoice.paid à la fin de l'essai) ;
+     *   - moyen pas encore enregistré (page de paiement en cours ou abandonnée) : rien n'est souscrit. Stripe
+     *     arrête seul un tel abonnement à la fin de l'essai (trial_settings missing_payment_method=cancel) ;
+     *   - résiliation pendant l'essai (portail : fin de période = fin de l'essai) : aucun prélèvement, la note
+     *     est retirée, l'association en est informée ; l'essai se termine normalement à sa date ;
+     *   - espace fermé ou supprimé : l'abonnement est arrêté chez Stripe (jamais de prélèvement).
+     * Appelée sous le verrou de l'association (ak_handle_subscription_event). @return string|null 'trialing' si souscrit
+     */
+    function ak_stripe_apply_trial_subscription(PDO $pdo, int $org_id, array $sub): ?string {
+        $ocols = ak_db_columns($pdo, 'organizations');
+        if (!isset($ocols['stripe_trial_sub_id'])) return null;
+        $sid = (string)$sub['id'];
+        $pm = $sub['default_payment_method'] ?? null;
+        $q = $pdo->prepare("SELECT status, stripe_trial_sub_id" . (isset($ocols['deleted_at']) ? ", deleted_at" : ", NULL AS deleted_at") . " FROM organizations WHERE id = ?");
+        $q->execute([$org_id]);
+        $org = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+        $marked = trim((string)($org['stripe_trial_sub_id'] ?? ''));
+
+        // Espace fermé ou supprimé, ou suspendu à la main (« Abus », refus…) : jamais de prélèvement, l'abonnement est
+        // arrêté chez Stripe. Suspendu : l'association est informée (une fois) qu'aucun montant ne sera prélevé.
+        $closed = ($org['status'] ?? '') === 'cancelled' || !empty($org['deleted_at']);
+        $blocked = !$closed && ak_stripe_org_blocked_by_hand($pdo, $org_id);
+        if ($closed || $blocked) {
+            $del = ak_stripe_api_call($pdo, 'DELETE', '/subscriptions/' . rawurlencode($sid));
+            $stopped = !empty($del['ok']) || (int)($del['http_code'] ?? 0) === 404;
+            if (!$stopped) {
+                error_log('[stripe-sync] org #' . $org_id . ($closed ? ' fermée' : ' suspendue') . ' : abonnement en essai ' . $sid . ' NON arrêté : ' . ($del['error'] ?? '?'));
+                ak_stripe_notify_founder($pdo, '⚠️ Abonnement à arrêter dans Stripe',
+                    '<p>« ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' » est ' . ($closed ? 'fermée' : 'suspendue') . ', mais son abonnement Stripe ' . ak_stripe_h($sid)
+                    . ' (souscrit pendant l’essai) n’a pas pu être arrêté. Annulez-le dans Stripe avant la fin de l’essai pour qu’aucun prélèvement n’ait lieu.</p>', $org_id);
+                if ($blocked) return null;   // note gardée : la prochaine relecture (cron, webhook) réessaie
+            }
+            if (ak_stripe_trial_clear($pdo, $org_id, $sid) && $blocked && $stopped && ak_stripe_obj_id($pm) !== '') {
+                ak_stripe_notify_trial_cancelled($pdo, $org_id, $sid, true);
+            }
+            return null;
+        }
+        if (ak_stripe_obj_id($pm) === '' || !empty($sub['cancel_at_period_end'])) {
+            // Pas (ou plus) souscrit : enregistrement de la carte pas fait, ou résiliation pendant l'essai
+            if (ak_stripe_trial_clear($pdo, $org_id, $sid) && !empty($sub['cancel_at_period_end'])) {
+                ak_stripe_notify_trial_cancelled($pdo, $org_id, $sid);
+            }
+            return null;
+        }
+        // Jamais deux abonnements : un autre est déjà souscrit (essai) ou payé pour cette association
+        $other = function_exists('ak_org_live_stripe_subscription') ? ak_org_live_stripe_subscription($pdo, $org_id) : null;
+        if (($marked !== '' && $marked !== $sid) || $other) {
+            $known = $marked !== '' && $marked !== $sid ? $marked : (string)$other['stripe_subscription_id'];
+            ak_stripe_once($pdo, $org_id, 'double:' . $sid, function () use ($pdo, $org_id, $sid, $known) {
+                ak_stripe_notify_founder($pdo, '⚠️ Deux abonnements Stripe pour une association',
+                    '<p>L’association n°' . $org_id . ' a deux abonnements Stripe : <strong>' . ak_stripe_h($known) . '</strong> (connu d’Assokit) et <strong>'
+                    . ak_stripe_h($sid) . '</strong> (nouveau, en période d’essai).</p><p>Annulez le doublon dans le tableau de bord Stripe (Clients › le client › Abonnements) avant la fin de l’essai.</p>', $org_id);
+                return true;
+            });
+            error_log('[stripe-sync] org #' . $org_id . ' : second abonnement ' . $sid . ' ignoré (en place : ' . $known . ')');
+            return null;
+        }
+        $te = (int)($sub['trial_end'] ?? 0) ?: (int)(ak_stripe_sub_period_end($sub) ?? 0);
+        $charge = ak_stripe_sub_charge_cents($sub);
+        $pm_type = ak_stripe_pm_type($pdo, $pm);
+        ak_db_update($pdo, 'organizations', $org_id, [
+            'stripe_trial_sub_id' => $sid,
+            'stripe_trial_charge_at' => $te > 0 ? date('Y-m-d H:i:s', $te) : null,
+            'stripe_trial_charge_cents' => $charge['cents'],
+            'stripe_trial_charge_tax_cents' => $charge['tax_cents'],   // « TTC » d'après l'abonnement, pas l'interrupteur du jour
+            'stripe_trial_pm_type' => $pm_type !== '' ? mb_substr($pm_type, 0, 20) : null,
+        ]);
+        ak_stripe_set_payment_pending($pdo, $org_id, false);
+        if ($marked === '') ak_stripe_notify_trial_subscribed($pdo, $org_id, $sid, $te, $charge, $pm_type);
+        return 'trialing';
+    }
+}
+
+if (!function_exists('ak_stripe_org_blocked_by_hand')) {
+    /**
+     * Association suspendue à la main (cockpit, appli : « Abus », « Fraude »…, ou refusée) : statut « suspended »
+     * avec un motif que le paiement ne lève pas (ni fin d'essai, ni impayé : AK_SUSPENSION_TRIAL_REGEX,
+     * AK_SUSPENSION_UNPAID_REGEX, ak_end_trial_after_payment). Aucun abonnement ne doit démarrer tant qu'elle dure.
+     */
+    function ak_stripe_org_blocked_by_hand(PDO $pdo, int $org_id): bool {
+        if ($org_id <= 0 || !isset(ak_db_columns($pdo, 'organizations')['suspended_reason'])) return false;
+        try {
+            $q = $pdo->prepare("SELECT status, suspended_reason FROM organizations WHERE id = ?");
+            $q->execute([$org_id]);
+            $o = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $e) {
+            return false;
+        }
+        $reason = mb_strtolower(trim((string)($o['suspended_reason'] ?? '')));
+        if (($o['status'] ?? '') !== 'suspended' || $reason === '') return false;
+        $lift = '/' . str_replace('/', '\\/', AK_SUSPENSION_TRIAL_REGEX . '|' . AK_SUSPENSION_UNPAID_REGEX) . '/u';
+        return !preg_match($lift, $reason);
+    }
+}
+
+if (!function_exists('ak_stripe_stop_blocked_trial_sub')) {
+    /**
+     * Premier prélèvement (fin de l'essai) d'un abonnement souscrit pendant l'essai par une association suspendue à
+     * la main depuis : aucun abonnement ne démarre. Il est arrêté chez Stripe, la note est retirée, et le Fondateur
+     * est prévenu (une fois) : rembourser le premier mois s'il a été prélevé, sinon vérifier que la première facture
+     * est bien annulée. Appelée sous le verrou de l'association (ak_stripe_apply_subscription).
+     */
+    function ak_stripe_stop_blocked_trial_sub(PDO $pdo, int $org_id, array $sub): void {
+        $sid = (string)($sub['id'] ?? '');
+        if ($sid === '') return;
+        $del = ak_stripe_api_call($pdo, 'DELETE', '/subscriptions/' . rawurlencode($sid));
+        $stopped = !empty($del['ok']) || (int)($del['http_code'] ?? 0) === 404;
+        if ($stopped) ak_stripe_trial_clear($pdo, $org_id, $sid);
+        $inv = is_array($sub['latest_invoice'] ?? null) ? $sub['latest_invoice'] : [];
+        $paid = (string)($inv['status'] ?? '') === 'paid' && (int)($inv['amount_paid'] ?? ($inv['amount_due'] ?? 0)) > 0;
+        $amount = ak_format_price_cents((int)($inv['amount_paid'] ?? ($inv['amount_due'] ?? 0)));
+        error_log('[stripe-sync] org #' . $org_id . ' suspendue à la main : abonnement d’essai ' . $sid . ($stopped ? ' arrêté' : ' NON arrêté') . ($paid ? ' (premier mois prélevé)' : ''));
+        ak_stripe_once($pdo, $org_id, 'bloque:' . $sid . ($stopped ? '' : ':echec'), function () use ($pdo, $org_id, $sid, $stopped, $paid, $amount) {
+            ak_stripe_notify_founder($pdo, $paid ? '⚠️ Premier prélèvement à rembourser (association suspendue)' : '⚠️ Abonnement d’une association suspendue',
+                '<p>« ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' » est suspendue, mais l’abonnement souscrit pendant son essai (' . ak_stripe_h($sid) . ') est arrivé à son premier prélèvement'
+                . ($paid ? ', qui a été réglé (' . ak_stripe_h($amount) . ')' : '') . '. Aucun abonnement n’a démarré dans Assokit.</p>'
+                . '<p>' . ($stopped ? 'L’abonnement a été arrêté chez Stripe : plus aucun prélèvement. ' : '<strong>L’abonnement n’a pas pu être arrêté : annulez-le dans Stripe (Clients › le client › Abonnements).</strong> ')
+                . ($paid ? 'Remboursez ce premier prélèvement dans le tableau de bord Stripe (Paiements › le paiement › Rembourser).'
+                         : 'Vérifiez dans Stripe (Factures) que la première facture est annulée ; sinon, annulez-la.') . '</p>', $org_id);
+            return true;
+        });
+    }
+}
+
+if (!function_exists('ak_handle_setup_intent_succeeded')) {
+    /**
+     * setup_intent.succeeded (et retour de la page de paiement en mode « essai ») : la carte ou le mandat SEPA
+     * de la SetupIntent devient le moyen de paiement de l'abonnement en essai qui l'attendait (Stripe le fait
+     * avec save_default_payment_method=on_subscription ; sinon Assokit le pose), puis l'abonnement est relu et
+     * appliqué (« abonnement souscrit, essai en cours »). Lève une RuntimeException si Stripe ne répond pas
+     * (le webhook répond 500, Stripe renvoie l'événement). @return string|null abonnement concerné
+     */
+    function ak_handle_setup_intent_succeeded(PDO $pdo, array $seti): ?string {
+        if (($seti['status'] ?? 'succeeded') !== 'succeeded') return null;
+        $pm = ak_stripe_obj_id($seti['payment_method'] ?? '');
+        $cid = ak_stripe_obj_id($seti['customer'] ?? '');
+        if ($pm === '' || $cid === '' || ak_stripe_org_by_customer($pdo, $cid) <= 0) return null;
+        $l = ak_stripe_api_call($pdo, 'GET', '/subscriptions', ['customer' => $cid, 'status' => 'trialing', 'limit' => 20]);
+        if (empty($l['ok'])) throw new RuntimeException('Stripe injoignable pour lire les abonnements de ' . $cid . ' : ' . ($l['error'] ?? '?'));
+        $done = null;
+        foreach (($l['data']['data'] ?? []) as $s) {
+            $sid = (string)($s['id'] ?? '');
+            $psi = ak_stripe_obj_id($s['pending_setup_intent'] ?? '');
+            // L'abonnement de CETTE SetupIntent ; une fois celle-ci réussie, Stripe retire pending_setup_intent
+            if ($sid === '' || ($psi !== '' && $psi !== (string)($seti['id'] ?? ''))) continue;
+            if (ak_stripe_obj_id($s['default_payment_method'] ?? '') === '') {
+                $u = ak_stripe_api_call($pdo, 'POST', '/subscriptions/' . rawurlencode($sid), ['default_payment_method' => $pm], 'ak-trialpm-' . $sid . '-' . $pm);
+                if (empty($u['ok'])) throw new RuntimeException('Carte de l’abonnement ' . $sid . ' non posée : ' . ($u['error'] ?? '?'));
+            }
+            ak_stripe_sync_subscription($pdo, $sid);
+            if ($done === null) $done = $sid;
+        }
+        return $done;
+    }
+}
+
+if (!function_exists('ak_stripe_trial_move_end')) {
+    /**
+     * Essai prolongé (ou rouvert) par le Fondateur alors que l'association a souscrit pendant l'essai : la date
+     * du premier prélèvement suit chez Stripe (trial_end, sans prorata). Sinon Stripe prélèverait à l'ancienne
+     * date et terminerait l'essai avant l'heure. @return string|null raison de l'échec (null : fait, ou rien à faire)
+     */
+    function ak_stripe_trial_move_end(PDO $pdo, int $org_id, string $end_sql): ?string {
+        $card = function_exists('ak_org_trial_card') ? ak_org_trial_card($pdo, $org_id) : null;
+        if (!$card) return null;
+        $ts = strtotime($end_sql);
+        if (!$ts || $ts <= time()) return 'date de fin invalide';
+        $err = null;
+        $sub = ak_stripe_fetch_subscription($pdo, $card['sub_id'], $err);
+        if ($sub === false) return 'Stripe ne répond pas : ' . $err;
+        if ($sub === null) { ak_stripe_trial_clear($pdo, $org_id, $card['sub_id']); return null; }
+        if (($sub['status'] ?? '') !== 'trialing') {
+            // Plus en essai chez Stripe (déjà prélevé, ou arrêté) : la note suit Stripe
+            try { ak_stripe_sync_subscription($pdo, $card['sub_id'], $sub); } catch (Throwable $e) {}
+            return null;
+        }
+        $r = ak_stripe_api_call($pdo, 'POST', '/subscriptions/' . rawurlencode($card['sub_id']),
+            ['trial_end' => $ts, 'proration_behavior' => 'none'], 'ak-trialend-' . $card['sub_id'] . '-' . $ts);
+        if (empty($r['ok'])) return (string)($r['error'] ?? 'refus de Stripe');
+        $pdo->prepare("UPDATE organizations SET stripe_trial_charge_at = ? WHERE id = ? AND stripe_trial_sub_id = ?")
+            ->execute([date('Y-m-d H:i:s', $ts), $org_id, $card['sub_id']]);
+        return null;
+    }
+}
+
+if (!function_exists('ak_stripe_trial_sub_cancel')) {
+    /**
+     * Annule la souscription faite pendant l'essai, AVANT son premier prélèvement (« Annuler mon abonnement »
+     * pendant l'essai, ou formule changée par le Fondateur) : abonnement arrêté tout de suite chez Stripe,
+     * rien n'est prélevé, la note est retirée ; l'essai continue jusqu'à sa fin. Jamais un abonnement déjà
+     * prélevé (il n'est plus en essai chez Stripe : il est relu et appliqué, et l'annulation est refusée :
+     * AK_STRIPE_TRIAL_ALREADY_CHARGED), ni un abonnement dont l'essai est fini et la première facture émise mais pas
+     * encore réglée (AK_STRIPE_TRIAL_CHARGE_PENDING : la résiliation sera possible une fois le prélèvement abouti).
+     * $notify : confirmation par e-mail à l'association (et alerte au Fondateur). $suspended : annulation parce que
+     * le Fondateur suspend ou refuse l'association (e-mail adapté : l'essai ne « continue » pas).
+     * @return string|null raison de l'échec (null : annulé, ou rien à annuler)
+     */
+    function ak_stripe_trial_sub_cancel(PDO $pdo, int $org_id, bool $notify, bool $suspended = false): ?string {
+        $card = function_exists('ak_org_trial_card') ? ak_org_trial_card($pdo, $org_id) : null;
+        if (!$card) return null;
+        $sid = $card['sub_id'];
+        $err = null;
+        $sub = ak_stripe_fetch_subscription($pdo, $sid, $err);
+        if ($sub === false) return 'Stripe ne répond pas (' . $err . ')';
+        $status = (string)($sub['status'] ?? 'canceled');
+        if ($sub !== null && !in_array($status, ['trialing', 'canceled', 'incomplete_expired'], true)) {
+            try { ak_stripe_sync_subscription($pdo, $sid, $sub); } catch (Throwable $e) {}
+            // Essai fini chez Stripe, première facture émise mais pas réglée (« active » ou « past_due » le temps
+            // du prélèvement, SEPA en cours) : rien n'est encore prélevé, mais plus rien n'est annulable sans frais
+            $inv = is_array($sub['latest_invoice'] ?? null) ? $sub['latest_invoice'] : [];
+            $unpaid_first = $status === 'active' && $inv && (string)($inv['status'] ?? '') !== 'paid' && (int)($inv['amount_due'] ?? 0) > 0;
+            return $unpaid_first ? AK_STRIPE_TRIAL_CHARGE_PENDING : AK_STRIPE_TRIAL_ALREADY_CHARGED;
+        }
+        if ($sub !== null && $status === 'trialing') {
+            $r = ak_stripe_api_call($pdo, 'DELETE', '/subscriptions/' . rawurlencode($sid));
+            if (empty($r['ok']) && (int)($r['http_code'] ?? 0) !== 404) return (string)($r['error'] ?? 'refus de Stripe');
+        }
+        $cleared = ak_stripe_trial_clear($pdo, $org_id, $sid);
+        if ($notify && $cleared) ak_stripe_notify_trial_cancelled($pdo, $org_id, $sid, $suspended);
+        return null;
+    }
+}
+
+if (!function_exists('ak_stripe_trial_charge_label')) {
+    /** « 49,99 € » (+ « TTC » si la TVA s'applique) : montant du premier prélèvement, pour les textes. */
+    function ak_stripe_trial_charge_label(?int $cents, bool $with_tax): string {
+        if ($cents === null) return '';
+        return ak_format_price_cents($cents) . ($with_tax ? ' TTC' : '');
+    }
+}
+
+if (!function_exists('ak_stripe_notify_trial_subscribed')) {
+    /**
+     * Abonnement souscrit pendant l'essai : confirmation à l'association (aucun prélèvement aujourd'hui, date et
+     * montant du premier prélèvement, annulation possible avant sans frais) et alerte au Fondateur. Une fois.
+     */
+    function ak_stripe_notify_trial_subscribed(PDO $pdo, int $org_id, string $sid, int $charge_ts, array $charge, string $pm_type): void {
+        ak_stripe_once($pdo, $org_id, 'souscrit:' . $sid, function () use ($pdo, $org_id, $sid, $charge_ts, $charge, $pm_type) {
+            $date = $charge_ts > 0 ? date('d/m/Y', $charge_ts) : '';
+            $amount = ak_stripe_trial_charge_label((int)$charge['cents'], (int)$charge['tax_cents'] > 0);
+            $how = $pm_type === 'sepa_debit' ? 'Votre mandat de prélèvement SEPA est enregistré' : 'Votre carte est enregistrée';
+            $sent = ak_stripe_notify_org($pdo, $org_id, '✅ Votre abonnement Assokit est souscrit',
+                '<p>Bonjour,</p><p>Merci ! ' . $how . ' pour l’abonnement Assokit de « ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' ».</p>'
+                . '<p><strong>Aucun prélèvement aujourd’hui</strong> : votre essai gratuit continue' . ($date !== '' ? ' jusqu’au <strong>' . ak_stripe_h($date) . '</strong>' : '') . '. '
+                . 'Le premier prélèvement' . ($amount !== '' ? ' de <strong>' . ak_stripe_h($amount) . '</strong>' : '') . ' aura lieu ' . ($date !== '' ? 'le ' . ak_stripe_h($date) . ', ' : '') . 'à la fin de votre essai, puis chaque mois à la même date.</p>'
+                . '<p>Vous pouvez annuler avant cette date sans frais, depuis la page « Mon abonnement » : aucun montant ne sera prélevé.</p>',
+                'Voir mon abonnement', 'https://assokit.fr/mon-asso-plan');
+            ak_stripe_notify_founder($pdo, '📝 Abonnement souscrit pendant l’essai',
+                '<p>« ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' » a souscrit l’abonnement Assokit pendant son essai (' . ak_stripe_h($sid) . ', '
+                . ($pm_type === 'sepa_debit' ? 'mandat SEPA' : 'carte') . ' enregistré' . ($pm_type === 'sepa_debit' ? '' : 'e') . ').</p>'
+                . '<p>Premier prélèvement' . ($amount !== '' ? ' de ' . ak_stripe_h($amount) : '') . ($date !== '' ? ' le ' . ak_stripe_h($date) : '') . ', à la fin de l’essai.</p>', $org_id);
+            return $sent;
+        });
+    }
+}
+
+if (!function_exists('ak_stripe_notify_trial_cancelled')) {
+    /**
+     * Souscription annulée pendant l'essai, avant tout prélèvement : confirmation à l'association (aucun
+     * prélèvement, l'essai continue jusqu'à sa fin, puis accès limité) et alerte au Fondateur. Une fois.
+     */
+    function ak_stripe_notify_trial_cancelled(PDO $pdo, int $org_id, string $sid, bool $suspended = false): void {
+        ak_stripe_once($pdo, $org_id, 'annul-essai:' . $sid, function () use ($pdo, $org_id, $sid, $suspended) {
+            if ($suspended) {
+                // Espace suspendu (ou refusé) par le Fondateur pendant l'essai : la carte enregistrée ne sera pas prélevée
+                $sent = ak_stripe_notify_org($pdo, $org_id, 'Votre abonnement Assokit est annulé : aucun prélèvement',
+                    '<p>Bonjour,</p><p>L’espace Assokit de « ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' » est suspendu. L’abonnement souscrit pendant votre essai est donc annulé.</p>'
+                    . '<p><strong>Aucun prélèvement n’aura lieu</strong> sur le moyen de paiement enregistré. Vos données sont conservées.</p>'
+                    . '<p>Pour toute question, écrivez-nous depuis la page Contact. Si votre espace est rouvert, vous pourrez souscrire de nouveau.</p>',
+                    'Nous contacter', 'https://assokit.fr/contact');
+                ak_stripe_notify_founder($pdo, '🛑 Souscription annulée (association suspendue)',
+                    '<p>« ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' » a été suspendue pendant son essai : l’abonnement souscrit pendant l’essai (' . ak_stripe_h($sid) . ') est annulé chez Stripe, aucun prélèvement.</p>', $org_id);
+                return $sent;
+            }
+            $q = $pdo->prepare("SELECT trial_ends_at FROM organizations WHERE id = ?");
+            $q->execute([$org_id]);
+            $end = (string)$q->fetchColumn();
+            $end_fr = $end !== '' && strtotime($end) > time() ? date('d/m/Y', strtotime($end)) : '';
+            $sent = ak_stripe_notify_org($pdo, $org_id, 'Annulation de votre abonnement Assokit enregistrée',
+                '<p>Bonjour,</p><p>Nous confirmons l’annulation de l’abonnement Assokit souscrit pendant l’essai de « ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' ».</p>'
+                . '<p><strong>Aucun prélèvement n’aura lieu.</strong> ' . ($end_fr !== '' ? 'Votre essai gratuit continue jusqu’au <strong>' . ak_stripe_h($end_fr) . '</strong> ; ensuite, votre' : 'Votre')
+                . ' association passe en accès limité (plan Démarrage) et vos données sont conservées.</p>'
+                . '<p>Vous pouvez souscrire de nouveau à tout moment depuis la page « Mon abonnement ».</p>',
+                'Voir mon abonnement', 'https://assokit.fr/mon-asso-plan');
+            ak_stripe_notify_founder($pdo, '🛑 Souscription annulée pendant l’essai',
+                '<p>« ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' » a annulé l’abonnement souscrit pendant son essai (' . ak_stripe_h($sid) . ') : aucun prélèvement.</p>', $org_id);
+            return $sent;
+        });
+    }
+}
+
 if (!function_exists('ak_stripe_clear_overdue_notes')) {
     /** Retard réglé : notes de relance de l'épisode terminé effacées (le prochain retard sera relancé). */
     function ak_stripe_clear_overdue_notes(PDO $pdo, int $row_id): void {
@@ -779,6 +1222,9 @@ if (!function_exists('ak_end_trial_after_payment')) {
     function ak_end_trial_after_payment(PDO $pdo, int $org_id, string $paid_stripe_sub_id, bool $paid = false): void {
         if ($org_id <= 0) return;
         ak_stripe_set_payment_pending($pdo, $org_id, false);
+        // Abonnement souscrit pendant l'essai : son premier prélèvement a eu lieu (ou a été refusé), plus de
+        // « carte enregistrée, premier prélèvement le … »
+        ak_stripe_trial_clear($pdo, $org_id, null);
         try {
             // Association en essai, ou suspendue à la fin de l'essai (cron d'essai : sans motif, ou motif
             // « Fin de l'essai », « Essai terminé ») : elle repasse active, sans motif. Une suspension
@@ -860,7 +1306,9 @@ if (!function_exists('ak_handle_invoice_failed')) {
      * invoice.payment_failed / invoice.payment_action_required : facture enregistrée ; échéance d'un
      * abonnement déjà payé refusée (ou qui demande une confirmation 3-D Secure) → « en retard » avec
      * AK_STRIPE_GRACE_DAYS jours de tolérance, e-mail à l'association (une fois par facture) et alerte
-     * au Fondateur. Un PREMIER paiement refusé n'est pas un impayé (aucune ligne, aucune relance).
+     * au Fondateur. Un premier paiement refusé à la souscription (subscription_create) n'est pas un impayé
+     * (aucune ligne, aucune relance). Le premier prélèvement d'un abonnement souscrit pendant l'essai, refusé à
+     * la fin de l'essai, en est un : l'association a souscrit (ligne « en retard », essai terminé, tolérance).
      */
     function ak_handle_invoice_failed(PDO $pdo, array $invoice, bool $action_required = false): void {
         ak_handle_invoice_upsert($pdo, $invoice);
@@ -872,6 +1320,15 @@ if (!function_exists('ak_handle_invoice_failed')) {
             // Premier paiement refusé (carte refusée, SEPA rejeté) : plus de prélèvement en cours
             if ($org_id > 0) ak_stripe_set_payment_pending($pdo, $org_id, false);
             return;
+        }
+
+        // Premier prélèvement d'un abonnement souscrit pendant l'essai (fin de l'essai), pas encore connu ici :
+        // l'abonnement est relu chez Stripe (en retard de paiement : la ligne naît « en retard », l'essai se termine)
+        $known = $pdo->prepare("SELECT 1 FROM asso_subscriptions WHERE stripe_subscription_id = ? LIMIT 1");
+        $known->execute([$sub_id]);
+        if (!$known->fetchColumn() && $org_id > 0) {
+            ak_stripe_set_payment_pending($pdo, $org_id, false);   // prélèvement SEPA de fin d'essai rejeté
+            ak_stripe_sync_subscription($pdo, $sub_id);
         }
 
         // Les nouvelles tentatives de Stripe ne repoussent pas la fin de la période de grâce déjà ouverte.
@@ -891,7 +1348,19 @@ if (!function_exists('ak_handle_invoice_failed')) {
         $q->execute([$sub_id]);
         if ((int)$q->fetchColumn() < 1 || $org_id <= 0) return;
 
+        ak_stripe_notify_overdue($pdo, $org_id, $sub_id, $invoice, $action_required);
+    }
+}
+
+if (!function_exists('ak_stripe_notify_overdue')) {
+    /**
+     * Échéance refusée (ou en attente d'une confirmation 3-D Secure) d'un abonnement payé par carte : e-mail
+     * « à régulariser » à l'association et alerte au Fondateur, une seule fois par facture. La date de fin de
+     * tolérance est celle de la ligne d'abonnement (grace_period_end).
+     */
+    function ak_stripe_notify_overdue(PDO $pdo, int $org_id, string $sub_id, array $invoice, bool $action_required): void {
         $inv_id = (string)($invoice['id'] ?? '');
+        if ($org_id <= 0 || $inv_id === '') return;
         ak_stripe_once($pdo, $org_id, 'echec:' . $inv_id, function () use ($pdo, $org_id, $invoice, $sub_id, $action_required) {
             $q = $pdo->prepare("SELECT grace_period_end FROM asso_subscriptions WHERE stripe_subscription_id = ? ORDER BY id DESC LIMIT 1");
             $q->execute([$sub_id]);
@@ -907,7 +1376,7 @@ if (!function_exists('ak_handle_invoice_failed')) {
                 . ' : réglez la facture ou changez de carte depuis la page « Mon abonnement », le paiement est relancé tout de suite.</p>'
                 . '<p>Sans régularisation' . ($until !== '' ? ' d’ici là' : '') . ', l’Assistant IA et la diffusion d’e-mails seront bloqués, puis, si les nouvelles tentatives de prélèvement échouent aussi, l’abonnement sera arrêté (accès limité, plan Démarrage). Vos données restent conservées.</p>',
                 'Régulariser mon abonnement', 'https://assokit.fr/mon-asso-plan');
-            ak_stripe_notify_founder($pdo, '💳 Paiement refusé',
+            ak_stripe_notify_founder($pdo, $action_required ? '💳 Paiement à confirmer (3-D Secure)' : '💳 Paiement refusé',
                 '<p>L’échéance de « ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' » (' . ak_stripe_h($amount) . ', abonnement ' . ak_stripe_h($sub_id) . ') a été '
                 . ($action_required ? 'bloquée en attente de confirmation 3-D Secure' : 'refusée') . '. '
                 . 'L’association est « en retard de paiement »' . ($until !== '' ? ' jusqu’au ' . ak_stripe_h($until) : '') . ' ; Stripe retente le prélèvement.</p>', $org_id);
@@ -1000,8 +1469,9 @@ if (!function_exists('ak_handle_customer_updated')) {
      * customer.updated : nouvelle carte par défaut du client (portail Stripe « Changer ma carte »). Les
      * abonnements créés par Assokit gardent LEUR carte (save_default_payment_method=on_subscription),
      * qui passe avant celle du client : sans cette mise à jour, les relances de Stripe repartaient sur
-     * l'ancienne carte. La nouvelle carte devient celle de chaque abonnement en vigueur ; une échéance
-     * restée impayée est relancée tout de suite.
+     * l'ancienne carte. La nouvelle carte devient celle de chaque abonnement en vigueur (et de l'abonnement
+     * souscrit pendant l'essai : premier prélèvement à la fin de l'essai) ; une échéance restée impayée est
+     * relancée tout de suite.
      */
     function ak_handle_customer_updated(PDO $pdo, array $customer, array $previous): void {
         if (!array_key_exists('invoice_settings', $previous)) return;
@@ -1009,6 +1479,18 @@ if (!function_exists('ak_handle_customer_updated')) {
         if ($pm === '') return;
         $org_id = ak_stripe_org_by_customer($pdo, $customer['id'] ?? '');
         if ($org_id <= 0) return;
+        // Abonnement souscrit pendant l'essai (pas encore de ligne) : la nouvelle carte sera celle du premier
+        // prélèvement, à la fin de l'essai (sinon Stripe prélèverait l'ancienne, enregistrée sur l'abonnement)
+        $trial_card = function_exists('ak_org_trial_card') ? ak_org_trial_card($pdo, $org_id) : null;
+        if ($trial_card) {
+            $tsid = $trial_card['sub_id'];
+            $r = ak_stripe_api_call($pdo, 'POST', '/subscriptions/' . rawurlencode($tsid), ['default_payment_method' => $pm], 'ak-pm-' . $tsid . '-' . $pm);
+            if (!empty($r['ok'])) {
+                try { ak_stripe_sync_subscription($pdo, $tsid); } catch (Throwable $e) { error_log('[stripe-sync] carte de l\'essai ' . $tsid . ' : ' . $e->getMessage()); }
+            } else {
+                error_log('[stripe-sync] carte de l\'abonnement souscrit pendant l\'essai ' . $tsid . ' : ' . ($r['error'] ?? '?'));
+            }
+        }
         $st = $pdo->prepare("SELECT id, status, stripe_subscription_id FROM asso_subscriptions
                              WHERE org_id = ? AND COALESCE(stripe_subscription_id, '') <> '' AND status IN ('active', 'overdue')");
         $st->execute([$org_id]);

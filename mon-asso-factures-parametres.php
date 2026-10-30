@@ -142,10 +142,11 @@ render_sidebar('factures');
         <div class="card" style="padding:18px; margin-bottom:16px; background:#EFF6FF; border-left:4px solid #3B82F6;">
             <div style="font-weight:600; color:#1E3A8A; margin-bottom:8px;">📌 Variables utilisables dans les emails :</div>
             <div style="display:flex; flex-wrap:wrap; gap:6px; font-size:12px;">
-                <?php foreach (['{NOM_CLIENT}','{NUMERO}','{MONTANT_TTC}','{DATE_EMISSION}','{DATE_ECHEANCE}','{NOM_ASSO}','{LIEN_PUBLIC}','{IBAN}'] as $var): ?>
+                <?php foreach (['{NOM_CLIENT}','{NUMERO}','{MONTANT_TTC}','{DATE_EMISSION}','{DATE_ECHEANCE}','{NOM_ASSO}','{LIEN_PUBLIC}','{LIEN_PAIEMENT}','{IBAN}'] as $var): ?>
                     <code style="background:white; padding:3px 8px; border-radius:4px; color:#1E40AF; border:1px solid #DBEAFE;"><?= h($var) ?></code>
                 <?php endforeach; ?>
             </div>
+            <div style="font-size:12px; color:#1E3A8A; margin-top:8px;">{LIEN_PAIEMENT} : lien « Payer en ligne » de la facture, quand le <a href="/encaissement-en-ligne" style="color:#1E40AF;">paiement en ligne</a> est activé. Sans ce marqueur, le lien est ajouté tout seul avant la signature ; sans paiement en ligne, rien n’est ajouté.</div>
         </div>
 
         <!-- 4 templates -->

@@ -10,6 +10,7 @@
  *   $pdf_client   (array - snapshot asso_clients)
  *   $pdf_settings (array - org_invoice_settings)
  *   $pdf_parent   (?array - avoir : facture d'origine, invoice_number + issued_at)
+ *   $pdf_pay_url  (string - lien « Payer en ligne » quand l'association encaisse en ligne, '' sinon)
  */
 
 $pdf_emitter = is_array($pdf_emitter ?? null) ? $pdf_emitter : [];
@@ -359,6 +360,20 @@ table.lines tbody td.num { text-align: right; font-variant-numeric: tabular-nums
     <div style="font-size:8pt; color:#065F46; margin-top:6px;">
         Merci d'indiquer la référence <strong><?= $htF($pdf_invoice['invoice_number']) ?></strong> lors du règlement.
     </div>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($pdf_pay_url) && !$isCredit): ?>
+<div class="payment-info" style="margin-top:10px;">
+    <table>
+        <tr>
+            <td style="width:30mm; vertical-align:middle;"><barcode code="<?= $htF($pdf_pay_url) ?>" type="QR" size="0.7" error="M" disableborder="1" /></td>
+            <td style="vertical-align:middle; padding-left:6px;">
+                <div class="title">Payer en ligne</div>
+                <div style="font-size:8.5pt; color:#374151; line-height:1.5;">Par carte bancaire, Apple Pay ou Google Pay, sur la page sécurisée de Stripe : scannez le code ou ouvrez<br><strong><?= $htF($pdf_pay_url) ?></strong></div>
+            </td>
+        </tr>
+    </table>
 </div>
 <?php endif; ?>
 

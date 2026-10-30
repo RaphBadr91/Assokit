@@ -213,7 +213,15 @@ function render_trial_banner() {
         if (!function_exists('user_can_view_finances')) require_once __DIR__ . '/finance-permissions.php';
         $can_pay = user_can_view_finances($user);
 
-        if ($expired && !$can_pay) {
+        // Abonnement déjà souscrit pendant l'essai : pas de « S'abonner », la date du premier prélèvement
+        $subscribed = !$expired && !empty($ps['trial_subscribed']);
+        $charge_fr = $subscribed && !empty($ps['trial_charge_at']) ? date('d/m/Y', strtotime((string)$ps['trial_charge_at'])) : $end_fr;
+        if ($subscribed && $end_ts <= time()) {
+            $msg = "terminé &middot; abonnement souscrit, premier prélèvement en cours";
+        } elseif ($subscribed) {
+            $msg = ($days_left === 0 ? "se termine <strong>aujourd'hui</strong>" : ($days_left === 1 ? "se termine <strong>demain</strong>" : "Plus que <strong>" . $days_left . " jours</strong>"))
+                 . " &middot; abonnement souscrit, premier prélèvement le " . $charge_fr;
+        } elseif ($expired && !$can_pay) {
             $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, l’administrateur de votre association peut choisir une formule pour retrouver toutes les fonctionnalités";
         } elseif ($expired) {
             $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, choisissez une formule pour retrouver toutes les fonctionnalités";
@@ -243,10 +251,13 @@ function render_trial_banner() {
 </style>
 <div class="ak-trial-banner">
   <div class="ak-trial-banner-info">
-    <span class="ak-trial-banner-icon"><?= $expired ? '⏳' : '🚀' ?></span>
+    <span class="ak-trial-banner-icon"><?= $expired ? '⏳' : ($subscribed ? '✅' : '🚀') ?></span>
     <div class="ak-trial-banner-text"><strong>Essai gratuit</strong> &middot; <?= $msg ?></div>
   </div>
-  <?php if ($can_pay): ?>
+  <?php if ($subscribed && $can_pay): ?>
+  <a href="/mon-asso-plan" class="ak-trial-banner-btn">Mon abonnement</a>
+  <?php elseif ($subscribed): ?>
+  <?php elseif ($can_pay): ?>
   <a href="/mon-asso-paiement?plan=assokit" class="ak-trial-banner-btn">⚡ <?= $expired ? 'Choisir ma formule' : "S'abonner" ?></a>
   <?php elseif (!$expired): ?>
   <span class="ak-trial-banner-note">Pour vous abonner, parlez-en à l’administrateur de votre association.</span>

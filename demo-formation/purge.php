@@ -154,6 +154,10 @@ function df_purge_plan(): array
         ['cotisation_campaigns',        'org_id',          'org'],
         ['asso_membership_reminders',   'org_id',          'org'],
         ['org_payment_settings',        'org_id',          'org'],
+        // Paiements en ligne (Stripe Connect, migration 2026-10-30)
+        ['asso_online_payments',        'org_id',          'org'],
+        ['org_online_payment_settings', 'org_id',          'org'],
+        ['org_stripe_accounts',         'org_id',          'org'],
 
         // Notes de frais
         ['expense_report_lines',        'report_id',       'expense_reports'],

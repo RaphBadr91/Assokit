@@ -134,6 +134,10 @@ if ($cur_slug === 'demarrage' && !$trial_lineage && $active_sub && !empty($activ
 $regularize_url = function_exists('ak_get_regularize_url') ? ak_get_regularize_url($pdo, $org_id) : '/contact?subject=billing';
 // Premier prélèvement SEPA en cours de vérification par la banque : ni « Passer à Assokit », ni second paiement
 $sepa_pending_until = function_exists('ak_stripe_payment_pending_until') ? ak_stripe_payment_pending_until($pdo, $org_id) : null;
+// Abonnement souscrit pendant l'essai (carte ou mandat SEPA enregistré) : l'essai continue, le premier mois est
+// prélevé automatiquement à sa fin. Ni « Passer à Assokit », ni second abonnement ; « Annuler » reste possible sans frais.
+$trial_card = function_exists('ak_org_trial_card') ? ak_org_trial_card($pdo, $org_id) : null;
+$trial_card_amount = ak_trial_card_amount($pdo, $trial_card);   // « TTC » d'après l'abonnement souscrit, pas l'interrupteur du jour
 // Prochain prélèvement d'un abonnement par carte en cours (échéance donnée par Stripe)
 $next_charge_fr = ($live_stripe && $live_stripe['status'] === 'active' && empty($live_stripe['cancel_at_period_end'])
     && !empty($live_stripe['current_period_end']) && strtotime((string)$live_stripe['current_period_end']) > time())
@@ -253,6 +257,8 @@ render_sidebar('mon-asso-plan');
           ⏳ Période de grâce · Régularisez sous <?= (int)($subscription_status['days_remaining'] ?? 0) ?> jours
         <?php elseif ($is_overdue): ?>
           ⚠️ Paiement en retard · Régularisez pour conserver vos accès
+        <?php elseif ($is_trial && $trial_card): ?>
+          🎁 Essai gratuit<?= $trial_end_fr !== '' ? ' jusqu’au ' . $trial_end_fr : '' ?> · ✅ abonnement Assokit souscrit<?= $trial_card['charging'] ? ' · premier prélèvement en cours' : ($trial_card['charge_fr'] !== '' ? ' · premier prélèvement le ' . htmlspecialchars($trial_card['charge_fr']) : '') ?>
         <?php elseif ($is_trial): ?>
           🎁 Essai gratuit<?= $trial_end_fr !== '' ? ' jusqu’au ' . $trial_end_fr . ' · ' . ($trial_days_left === 0 ? 'dernier jour' : $trial_days_left . ' jour' . ($trial_days_left > 1 ? 's' : '') . ' restant' . ($trial_days_left > 1 ? 's' : '')) : '' ?> · toutes les fonctionnalités
         <?php else: ?>
@@ -264,7 +270,7 @@ render_sidebar('mon-asso-plan');
       <?php if ($is_grace || $is_pending || $is_overdue): ?>
         <a href="<?= htmlspecialchars($regularize_url) ?>" style="display:inline-flex;align-items:center;gap:7px;background:#EA580C;color:white;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('credit-card',14) ?>Régulariser</a>
       <?php endif; ?>
-      <?php if (!$sepa_pending_until && ($st === 'none' || $is_trial || $trial_over || ($is_free_plan && !$stripe_on_free && !$is_cancel_scheduled) || ($is_cancel_scheduled && ($cur_plan['slug'] ?? '') !== 'assokit'))): ?>
+      <?php if (!$sepa_pending_until && !$trial_card && ($st === 'none' || $is_trial || $trial_over || ($is_free_plan && !$stripe_on_free && !$is_cancel_scheduled) || ($is_cancel_scheduled && ($cur_plan['slug'] ?? '') !== 'assokit'))): ?>
         <a href="/mon-asso-paiement?plan=assokit" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(180deg,#059669 0%,#047857 100%);color:white;padding:11px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;"><?= ak_icon('star-fill',14) ?><?= $trial_over ? 'Choisir Assokit' : ($after_paid ? 'Reprendre Assokit' : 'Passer à Assokit') ?></a>
       <?php endif; ?>
       <?php if ($trial_over): ?>
@@ -272,6 +278,20 @@ render_sidebar('mon-asso-plan');
       <?php endif; ?>
     </div>
   </div>
+
+  <?php if ($trial_card && !$sepa_pending_until && $trial_card['charging']): ?>
+  <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:12px;padding:14px 18px;margin:-8px 0 24px;color:#92400E;font-size:14px;line-height:1.55;">
+    ⏳ <strong>Premier prélèvement en cours</strong> — votre essai est terminé<?= $trial_card['charge_fr'] !== '' ? ' le <strong>' . htmlspecialchars($trial_card['charge_fr']) . '</strong>' : '' ?>
+    et le premier mois<?= $trial_card_amount !== '' ? ' (<strong>' . htmlspecialchars($trial_card_amount) . '</strong>)' : '' ?> est en train d’être prélevé. Votre abonnement s’active dès qu’il aura abouti ;
+    vous pourrez ensuite le résilier à tout moment (effet à la fin du mois payé).
+  </div>
+  <?php elseif ($trial_card && !$sepa_pending_until): ?>
+  <div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:12px;padding:14px 18px;margin:-8px 0 24px;color:#065F46;font-size:14px;line-height:1.55;">
+    ✅ <strong>Abonnement souscrit</strong> — aucun prélèvement pendant votre essai.
+    Premier prélèvement<?= $trial_card_amount !== '' ? ' de <strong>' . htmlspecialchars($trial_card_amount) . '</strong>' : '' ?><?= $trial_card['charge_fr'] !== '' ? ' le <strong>' . htmlspecialchars($trial_card['charge_fr']) . '</strong>' : '' ?>, à la fin de votre essai, puis chaque mois à la même date.
+    Vous pouvez annuler avant cette date sans frais : aucun montant ne sera prélevé.
+  </div>
+  <?php endif; ?>
 
   <?php if ($sepa_pending_until): ?>
   <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:12px;padding:14px 18px;margin:-8px 0 24px;color:#92400E;font-size:14px;line-height:1.55;">
@@ -381,8 +401,8 @@ render_sidebar('mon-asso-plan');
       ?>
       <?php if (!empty($plans)): ?>
       <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px 24px;">
-        <h3 style="margin:0 0 6px;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('chart',18) ?><?= ($trial_over || $is_trial || $trial_paused || $after_paid) ? 'Choisissez votre formule' : 'Changer de plan' ?></h3>
-        <p style="color:#64748B;font-size:13px;margin:0 0 16px;"><?= $trial_over ? 'Votre essai est terminé : vos données sont conservées, choisissez la formule qui vous convient pour continuer.' : ($after_paid ? 'Votre abonnement est arrêté : vos données sont conservées, choisissez une formule pour retrouver toutes les fonctionnalités.' : 'Sans engagement, résiliable à tout moment.') ?></p>
+        <h3 style="margin:0 0 6px;font-size:16px;display:inline-flex;align-items:center;gap:8px;"><?= ak_icon('chart',18) ?><?= $trial_card ? 'Votre formule' : (($trial_over || $is_trial || $trial_paused || $after_paid) ? 'Choisissez votre formule' : 'Changer de plan') ?></h3>
+        <p style="color:#64748B;font-size:13px;margin:0 0 16px;"><?= $trial_card ? 'Abonnement Assokit souscrit : il commence à la fin de votre essai, sans engagement.' : ($trial_over ? 'Votre essai est terminé : vos données sont conservées, choisissez la formule qui vous convient pour continuer.' : ($after_paid ? 'Votre abonnement est arrêté : vos données sont conservées, choisissez une formule pour retrouver toutes les fonctionnalités.' : 'Sans engagement, résiliable à tout moment.')) ?></p>
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
           <?php
           // Sur-mesure / sur devis : jamais « Gratuit » (prix 0 en base = sur devis, comme le cockpit et /tarifs)
@@ -405,6 +425,8 @@ render_sidebar('mon-asso-plan');
               <?php // Formule à 0 € (filtrée plus haut sauf formule actuelle) : ni achat ni résiliation depuis cette carte ?>
             <?php elseif ($sepa_pending_until): ?>
               <div style="background:#FEF3C7;color:#92400E;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;">⏳ Paiement en cours</div>
+            <?php elseif ($trial_card): ?>
+              <div style="background:#ECFDF5;color:#047857;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;">✓ Souscrit · à la fin de l’essai</div>
             <?php elseif ($trial_over || ((int)$p['price_cents'] > (int)($current_plan_id ? $pricing['plan_cents'] : 0) && !$cur_is_quote)): ?>
               <a href="/mon-asso-paiement?plan=<?= htmlspecialchars($p['slug']) ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#059669;color:white;padding:7px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;"><?= ak_icon('upload',14) ?><?= ($trial_over || $is_trial || $trial_paused || $after_paid) ? 'Choisir' : 'Upgrade' ?></a>
             <?php elseif ((int)$p['price_cents'] > 0): ?>
@@ -430,6 +452,14 @@ render_sidebar('mon-asso-plan');
             <div style="flex:1;font-size:13px;line-height:1.4;">
               <div style="font-weight:700;color:#92400E;">Prélèvement par carte à arrêter</div>
               <div style="color:#64748B;"><?= $stripe_on_free_plan ? 'Votre formule actuelle est gratuite' : 'Votre formule actuelle n’est pas réglée par carte' ?> : l’abonnement par carte (Stripe) de votre ancienne formule n’a plus lieu d’être. Si votre carte est encore débitée, contactez-nous.</div>
+            </div>
+          </div>
+        <?php elseif ($trial_card && !$sepa_pending_until): ?>
+          <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#F0FDF4;border:1px solid #A7F3D0;border-radius:10px;margin-bottom:14px;">
+            <div style="font-size:24px;"><?= $trial_card['pm_type'] === 'sepa_debit' ? '🏦' : '💳' ?></div>
+            <div style="flex:1;font-size:13px;line-height:1.4;">
+              <div style="font-weight:700;color:#047857;"><?= $trial_card['pm_type'] === 'sepa_debit' ? 'Mandat SEPA enregistré' : 'Carte enregistrée' ?></div>
+              <div style="color:#64748B;"><?= $trial_card['charging'] ? 'Premier prélèvement en cours' : 'Premier prélèvement' . ($trial_card['charge_fr'] !== '' ? ' le ' . htmlspecialchars($trial_card['charge_fr']) : '') . ', à la fin de l’essai' ?></div>
             </div>
           </div>
         <?php elseif ($sepa_pending_until): ?>
@@ -499,7 +529,7 @@ render_sidebar('mon-asso-plan');
           </div>
         <?php endif; ?>
 
-        <?php if ($has_stripe_subscription && !$is_cancel_scheduled): ?>
+        <?php if (($has_stripe_subscription && !$is_cancel_scheduled) || ($trial_card && $stripe_ready)): ?>
           <a href="/mon-asso-paiement?action=update_card" style="display:flex;align-items:center;justify-content:center;gap:6px;text-align:center;background:#F1F5F9;color:#0F172A;padding:9px;border-radius:8px;font-size:13px;text-decoration:none;font-weight:600;"><?= ak_icon('refresh',14) ?>Changer ma CB</a>
         <?php endif; ?>
       </div>
@@ -514,7 +544,15 @@ render_sidebar('mon-asso-plan');
           <a href="/contact?subject=billing" style="background:#FAF8F5;color:#0F172A;padding:10px 14px;border-radius:8px;text-decoration:none;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px;border:1px solid #E2E8F0;">
             <?= ak_icon('phone',16) ?>Nous contacter
           </a>
-          <?php if ($is_cancel_scheduled): ?>
+          <?php if ($trial_card && $trial_card['charging']): ?>
+            <div style="background:#FEF3C7;color:#92400E;padding:10px 14px;border-radius:8px;font-size:13.5px;font-weight:600;border:1px solid #FCD34D;margin-top:6px;">
+              ⏳ Premier prélèvement en cours
+            </div>
+          <?php elseif ($trial_card): ?>
+            <a href="/mon-asso-annuler-abonnement" style="background:#FEE2E2;color:#991B1B;padding:10px 14px;border-radius:8px;text-decoration:none;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px;border:1px solid #FECACA;margin-top:6px;">
+              🛑 Annuler mon abonnement (sans frais)
+            </a>
+          <?php elseif ($is_cancel_scheduled): ?>
             <div style="background:#FEF3C7;color:#92400E;padding:10px 14px;border-radius:8px;font-size:13.5px;font-weight:600;border:1px solid #FCD34D;margin-top:6px;">
               🛑 <?= $sub_cancelled ? 'Abonnement résilié' : 'Résiliation programmée' ?><?= $access_until_fr !== '' ? ($sub_cancelled ? ' · accès jusqu’au ' : ' le ') . htmlspecialchars($access_until_fr) : '' ?>
             </div>

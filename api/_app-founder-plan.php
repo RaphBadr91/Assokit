@@ -30,6 +30,12 @@ if (!function_exists('fd_plan_fields')) {
             'trial_expired' => (bool) $st['trial_expired'],
             'trial_paused'  => !empty($st['trial_paused']),   // suspendue à la main pendant l'essai (fin encore à venir)
             'payment_pending' => !empty($st['payment_pending']), // premier prélèvement SEPA en cours de vérification
+            // Abonnement souscrit pendant l'essai (carte ou mandat SEPA enregistré) : premier prélèvement à la fin
+            // de l'essai (date, montant TTC en centimes, moyen : card / sepa_debit). Montants affichables dans l'appli.
+            'trial_subscribed'   => !empty($st['trial_subscribed']),
+            'first_charge_at'    => !empty($st['trial_subscribed']) && !empty($st['trial_charge_at']) ? date('Y-m-d H:i:s', strtotime((string) $st['trial_charge_at'])) : null,
+            'first_charge_cents' => !empty($st['trial_subscribed']) && $st['trial_charge_cents'] !== null ? (int) $st['trial_charge_cents'] : null,
+            'payment_method'     => !empty($st['trial_subscribed']) ? (string) $st['trial_pm_type'] : '',
             'trial_ends_at' => $end ? date('Y-m-d H:i:s', $end) : null,
             // Ancien champ (dates d/m/Y) : seulement quand l'essai est en cours ou terminé,
             // pour qu'une association passée sur un plan payant n'affiche plus « essai → … ».
@@ -90,6 +96,10 @@ if (!function_exists('fd_tone_of')) {
             'org_plan'               => $r['org_plan'] ?? '',
             'trial_ends_at'          => $r['trial_ends_at'] ?? null,
             'payment_pending_until'  => $r['payment_pending_until'] ?? null,
+            'trial_sub_id'           => $r['trial_sub_id'] ?? null,
+            'trial_charge_at'        => $r['trial_charge_at'] ?? null,
+            'trial_charge_cents'     => $r['trial_charge_cents'] ?? null,
+            'trial_pm_type'          => $r['trial_pm_type'] ?? null,
             'plan_id'                => $r['plan_id'] ?? null,
             'slug'                   => $r['slug'] ?? '',
             'name'                   => $r['name'] ?? null,
@@ -119,7 +129,7 @@ if (!function_exists('fd_org_tones')) {
             // payment_mode : un plan « Offert » ne compte pas dans le MRR (fd_tone_of).
             $pay = isset(ak_db_columns($pdo, 'asso_subscriptions')['payment_mode']) ? 's.payment_mode' : 'NULL';
             $rows = $pdo->query("
-                SELECT o.id, o.status AS org_status, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . ", " . ak_sub_state_cols($pdo) . ", $pay AS payment_mode
+                SELECT o.id, o.status AS org_status, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . ", " . ak_org_trial_card_cols($pdo) . ", " . ak_sub_state_cols($pdo) . ", $pay AS payment_mode
                 FROM organizations o
                 LEFT JOIN asso_subscriptions s ON s.id = (
                     SELECT s2.id FROM asso_subscriptions s2 INNER JOIN asso_plans p2 ON p2.id = s2.plan_id

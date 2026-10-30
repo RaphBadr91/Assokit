@@ -64,6 +64,8 @@ $export['mes_plannings']         = $grab("SELECT id, title, type, recurrence, da
 $export['mes_notes_de_frais']    = $grab("SELECT id, title, status, total_cents, note, decided_at, created_at FROM expense_reports WHERE user_id = ? ORDER BY id DESC LIMIT 1000", [$uid]);
 // Cotisations : rattachées au compte, ou saisies à son adresse par SON association (jamais celles d'une autre structure)
 $export['mes_cotisations']       = $grab("SELECT id, campaign_id, payer_name, payer_email, amount, currency, payment_method, status, reference, paid_at FROM cotisation_payments WHERE adherent_id = ? OR (org_id = ? AND ? <> '' AND payer_email = ?) ORDER BY id DESC LIMIT 1000", [$uid, $org_id, $email, $email]);
+// Paiements en ligne (Stripe Connect) : faits par la personne (rattachés au compte, ou à son adresse dans SON association)
+$export['mes_paiements_en_ligne'] = $grab("SELECT id, kind, invoice_id, campaign_id, payer_name, payer_email, amount_cents, currency, status, payment_method_type, refunded_cents, paid_at, created_at FROM asso_online_payments WHERE adherent_id = ? OR (org_id = ? AND ? <> '' AND payer_email = ?) ORDER BY id DESC LIMIT 1000", [$uid, $org_id, $email, $email]);
 // Support : ses tickets et ses messages (les notes internes de l'équipe support ne sont pas des échanges avec la personne)
 $export['mes_tickets_support']   = $grab("SELECT id, title, category, status, created_at, closed_at FROM support_tickets WHERE created_by_user_id = ? ORDER BY id DESC LIMIT 500", [$uid]);
 $export['mes_messages_support']  = $grab("SELECT id, ticket_id, body, created_at FROM support_messages WHERE author_user_id = ? AND is_internal_note = 0 ORDER BY id DESC LIMIT 2000", [$uid]);

@@ -7,6 +7,8 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
+require_once __DIR__ . '/app-context.php';
+require_once __DIR__ . '/stripe-connect-helpers.php';
 
 $uuid = $_GET['uuid'] ?? '';
 if (empty($uuid) || !preg_match('/^[a-f0-9-]{36}$/i', $uuid)) {
@@ -87,6 +89,23 @@ $is_closed   = $is_credit || in_array($status, ['cancelled', 'refunded'], true);
 $is_paid     = !$is_closed && ($status === 'paid' || !empty($inv['paid_at']));
 $is_declared = !$is_closed && !$is_paid && !empty($inv['client_marked_paid_at']);
 $can_declare = !$is_preview && !$is_closed && !$is_paid && !$is_declared;
+
+// Paiement en ligne (Stripe Connect, compte de l'association) : facture à payer, association qui l'a activé.
+// Dans l'application mobile : jamais de bouton de paiement (règles des stores), une simple indication.
+$pay_online = false; $pay_pending = null; $pay_sepa = false; $in_app = ak_is_mobile_app();
+if (!$is_preview && !$is_closed && !$is_paid && ak_connect_invoice_payable($inv)) {
+    try {
+        $pay_av = ak_connect_available($pdo, (int)$inv['org_id'], 'invoice');
+        $pay_online = $pay_av['ok'];
+        if ($pay_online) {
+            $pay_pending = ak_connect_invoice_pending_op($pdo, (int)$inv['id']);
+            $pay_sepa = in_array('sepa_debit', ak_connect_payment_types($pay_av['account'], $pay_av['settings'], (string)($inv['currency'] ?: 'EUR')), true);
+        }
+    } catch (Throwable $e) {
+        error_log('[facture-public] paiement en ligne : ' . $e->getMessage());
+    }
+}
+$pay_cancelled = isset($_GET['annule']);
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -273,6 +292,12 @@ table td.num { text-align: right; font-variant-numeric: tabular-nums; }
     gap: 10px;
     justify-content: flex-end;
 }
+.pay-card { background: #F0FDF4; border: 1px solid #86EFAC; border-radius: 10px; padding: 16px; }
+.pay-text { font-size: 14px; color: #374151; margin: 0 0 12px; }
+.pay-wait { font-size: 14px; color: #92400E; background: #FEF3C7; border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; }
+.pay-btn { width: 100%; justify-content: center; font-size: 16px; padding: 14px 18px; }
+.pay-btn:disabled { opacity: .6; cursor: wait; }
+.pay-lock { font-size: 12px; color: #6B7280; margin-top: 8px; text-align: center; }
 .footer {
     text-align: center;
     color: #6B7280;
@@ -343,6 +368,27 @@ table td.num { text-align: right; font-variant-numeric: tabular-nums; }
                 <div class="amount"><?= $h(ak_asso_fmt_cents((int)$inv['amount_ttc_cents'])) ?></div>
                 <div class="label">TTC</div>
             </div>
+
+            <?php if ($pay_online): ?>
+            <div class="section pay-card" id="payer">
+                <h2>💳 Payer en ligne</h2>
+                <?php if ($pay_pending): ?>
+                    <p class="pay-wait">⏳ Prélèvement SEPA en cours de confirmation par la banque (enregistré le <?= $h(date('d/m/Y', strtotime((string)$pay_pending['created_at']))) ?>). Rien d’autre à faire : la facture passera « payée » dès la confirmation.</p>
+                <?php elseif ($in_app): ?>
+                    <p class="pay-text"><?= $h($inv['org_name']) ?> propose le paiement en ligne de cette facture. Votre client paie depuis cette page, dans son navigateur.</p>
+                <?php else: ?>
+                    <?php if ($pay_cancelled): ?><p class="pay-wait">Paiement annulé : rien n’a été prélevé. Vous pouvez réessayer.</p><?php endif; ?>
+                    <p class="pay-text">Réglez cette facture par carte bancaire, Apple Pay, Google Pay<?= $pay_sepa ? ' ou prélèvement SEPA' : '' ?> sur la page sécurisée de Stripe. Le paiement est versé directement à <?= $h($inv['org_name']) ?>.</p>
+                    <?php if ($is_declared): ?><p class="pay-text" style="color:#92400E;">Vous avez déclaré un paiement le <?= $h(date('d/m/Y', strtotime($inv['client_marked_paid_at']))) ?> : ne payez en ligne que si ce paiement n’a pas été fait.</p><?php endif; ?>
+                    <form method="POST" action="/payer-facture" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Ouverture de la page de paiement…';">
+                        <input type="hidden" name="csrf_token" value="<?= $h($csrf) ?>">
+                        <input type="hidden" name="uuid" value="<?= $h($uuid) ?>">
+                        <button type="submit" class="btn btn-primary pay-btn">💳 Payer <?= $h(ak_asso_fmt_cents((int)$inv['amount_ttc_cents'])) ?> en ligne</button>
+                    </form>
+                    <div class="pay-lock">🔒 Paiement sécurisé par Stripe : ni <?= $h($inv['org_name']) ?> ni Assokit ne voient vos données bancaires.</div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
 
             <?php
             $stmt = $pdo->prepare("SELECT * FROM asso_invoice_lines WHERE invoice_id = :id ORDER BY line_order");

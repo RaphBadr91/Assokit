@@ -106,6 +106,12 @@ purge($pdo, $LIVE, 'Journaux activité > 12 mois', 'assokit_activity_log',
 purge($pdo, $LIVE, 'Carnet d’envois des crons > 6 mois', 'cron_envois',
       'sent_at < DATE_SUB(NOW(), INTERVAL 6 MONTH)');
 
+// 3 ter) Paiements en ligne jamais aboutis > 6 mois (page Stripe abandonnée, expirée, prélèvement rejeté) :
+// nom et e-mail du payeur sans aucun paiement derrière. Les paiements réussis ou remboursés restent
+// (pièces comptables, comme cotisation_payments et asso_invoices).
+purge($pdo, $LIVE, 'Paiements en ligne non aboutis > 6 mois', 'asso_online_payments',
+      "status IN ('open', 'expired', 'failed') AND paid_at IS NULL AND created_at < DATE_SUB(NOW(), INTERVAL 6 MONTH)");
+
 // 4) Comptes supprimés depuis plus de 30 jours (sortis de la corbeille, plus
 //    restaurables) : ANONYMISÉS, jamais effacés — la ligne reste référencée par les
 //    paiements, projets et messages. Même anonymisation que la suppression de son

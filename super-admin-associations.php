@@ -44,6 +44,10 @@ function sa_assoc_set_plan(PDO $pdo, int $org_id, int $plan_id): ?string {
     } catch (InvalidArgumentException $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         return 'Plan inconnu : choisissez un plan de la liste.';
+    } catch (AkTrialBlocked $e) {
+        // Abonnement souscrit pendant l'essai que Stripe n'a pas pu arrêter : le message dit quoi faire
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        return $e->getMessage();
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         error_log('[super-admin-associations] set_plan: ' . get_class($e) . ' ' . $e->getMessage());
@@ -137,7 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                     // Retirée par le demandeur entre-temps : ak_org_reject rouvrirait l'espace fermé (suspendu)
                     $error = ak_signup_review_withdrawn_message();
                 } else {
-                    if ($rv['state'] !== 'rejected') ak_org_reject($pdo, $target_id, $reason, (int) $user['id']);
+                    // Abonnement souscrit pendant l'essai : arrêté chez Stripe par le refus (sinon avertissement)
+                    if ($rv['state'] !== 'rejected' && ($w = ak_org_reject($pdo, $target_id, $reason, (int) $user['id']))) $error = $w;
                     sa_log_action((int) $user['id'], 'reject_org', $target_id, null, ['reason' => $reason]);
                     $success = $rv['state'] === 'rejected'
                         ? '✕ Demande refusée. ' . ($rv['mailed'] ? 'Le demandeur a reçu un e-mail l’en informant.' : 'L’e-mail au demandeur n’a pas pu partir.')
@@ -274,12 +279,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
             $st_before = ak_org_plan_state($pdo, $target_id);
             // Suspendue pendant son essai : l'ancienne table passe aussi en « suspended » (plus de rappels
             // J-7 / J-3 / J-0). « Réactiver » rouvre l'essai s'il reste des jours. Même règle que l'appli.
-            ak_org_suspend($pdo, $target_id, $reason !== '' ? $reason : 'Suspendu par super admin');
+            // Abonnement souscrit pendant l'essai : arrêté chez Stripe avant la suspension (sinon avertissement)
+            $w = ak_org_suspend($pdo, $target_id, $reason !== '' ? $reason : 'Suspendu par super admin');
             sa_log_action((int) $user['id'], 'suspend_org', $target_id, null, ['reason' => $reason]);
             $success = 'Association suspendue.';
             if ($st_before['badge_tone'] === 'trial' && $st_before['trial_ends_at']) {
                 $success .= ' Son essai est mis en pause : « Réactiver » le rouvre jusqu’au ' . date('d/m/Y', strtotime((string) $st_before['trial_ends_at'])) . '.';
             }
+            if (!empty($st_before['trial_subscribed']) && $w === null) {
+                $success .= ' L’abonnement qu’elle avait souscrit pendant son essai est annulé chez Stripe : aucun prélèvement (elle en est informée par e-mail ; elle pourra souscrire de nouveau si vous la réactivez).';
+            }
+            if ($w !== null) $error = $w;
             $view_id = $target_id;
         }
         // ---- REACTIVATE ----
@@ -721,6 +731,16 @@ if ($view_id > 0) {
                         L’accès est suspendu, les données sont conservées. «&nbsp;Réactiver&nbsp;» rouvre l’essai jusqu’au <?= h($trial_end_fr) ?>
                         (plan <?= h($plan_state['plan_label']) ?>, 0 €) ; vous pouvez aussi prolonger l’essai ou passer l’association en abonnement.
                     </div>
+                <?php elseif (!empty($plan_state['trial_subscribed']) && !$plan_state['trial_expired']):
+                    $tc_at = !empty($plan_state['trial_charge_at']) ? date('d/m/Y', strtotime((string) $plan_state['trial_charge_at'])) : $trial_end_fr;
+                    $tc_amount = $plan_state['trial_charge_cents'] !== null ? number_format((int) $plan_state['trial_charge_cents'] / 100, 2, ',', "\u{202F}") . "\u{00A0}€" : '';
+                    $tc_sepa = ($plan_state['trial_pm_type'] ?? '') === 'sepa_debit'; ?>
+                    <div class="sa-trial-title">Abonnement souscrit pendant l’essai — premier prélèvement le <?= h($tc_at) ?></div>
+                    <div class="sa-trial-text">
+                        L’association a enregistré <?= $tc_sepa ? 'un mandat de prélèvement SEPA' : 'sa carte' ?> : Stripe prélèvera automatiquement <?= $tc_amount !== '' ? '<strong>' . h($tc_amount) . '</strong>' : 'le premier mois' ?>
+                        à la fin de l’essai, puis l’abonnement Assokit deviendra actif. D’ici là, l’essai continue (plan <?= h($plan_state['plan_label']) ?>, 0 €).
+                        Prolonger l’essai repousse aussi le premier prélèvement ; passer l’association sur une autre formule annule cette souscription (rien n’est prélevé).
+                    </div>
                 <?php elseif (!empty($plan_state['payment_pending'])): ?>
                     <div class="sa-trial-title">Paiement SEPA en cours de vérification</div>
                     <div class="sa-trial-text">
@@ -777,7 +797,9 @@ if ($view_id > 0) {
             <?php if ($paid_plans): ?>
             <span class="sa-trial-sep" aria-hidden="true"></span>
             <form method="POST" action="/super-admin/associations"
-                  onsubmit="return confirm('Passer cette association sur le plan choisi ? L’essai prendra fin immédiatement.');">
+                  onsubmit="return confirm(<?= h(json_encode(!empty($plan_state['trial_subscribed'])
+                      ? 'Passer cette association sur le plan choisi ? L’essai prendra fin immédiatement, et l’abonnement qu’elle a souscrit par carte pendant l’essai sera annulé chez Stripe (rien n’est prélevé).'
+                      : 'Passer cette association sur le plan choisi ? L’essai prendra fin immédiatement.', JSON_UNESCAPED_UNICODE)) ?>);">
                 <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                 <input type="hidden" name="action" value="set_plan">
                 <input type="hidden" name="org_id" value="<?= (int) $org['id'] ?>">

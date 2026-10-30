@@ -67,12 +67,15 @@ function ak_plan_trial_name(PDO $pdo, string $plan_label): string {
  *   trial_name     « Essai PRO » pendant l'essai en cours, sinon ''
  *   label          texte unique : « Essai PRO — jusqu’au 23/10 (J-14) », « Essai terminé le 08/10/2026 »,
  *                  « Essai suspendu · fin prévue le 23/10/2026 », ou le nom du plan
+ *   trial_subscribed  abonnement souscrit pendant l'essai (carte ou mandat SEPA enregistré) : premier
+ *                  prélèvement le first_charge_fr (fin de l'essai), first_charge_cents (TTC), pm_type
  */
 function ak_plan_trial_info(PDO $pdo, int $org_id): array {
     $info = ['in_trial' => false, 'trial_expired' => false, 'trial_paused' => false, 'trial_ends_at' => null, 'days_left' => null,
              'end_fr' => '', 'end_short' => '', 'ends_today' => false,
              'plan_label' => '', 'plan_slug' => '', 'badge' => '', 'badge_tone' => 'gray', 'trial_name' => '', 'label' => '',
-             'cancel_scheduled' => false, 'access_until' => null, 'access_until_fr' => ''];
+             'cancel_scheduled' => false, 'access_until' => null, 'access_until_fr' => '',
+             'trial_subscribed' => false, 'first_charge_at' => null, 'first_charge_fr' => '', 'first_charge_cents' => null, 'pm_type' => ''];
     if ($org_id <= 0 || !function_exists('ak_org_plan_state')) return $info;
     // Ligne d'abonnement courante garantie (essai ou Démarrage, comme pour les quotas) : sans elle,
     // ak_org_plan_state() retomberait sur l'ancien libellé organizations.plan (« Association »…)
@@ -92,6 +95,15 @@ function ak_plan_trial_info(PDO $pdo, int $org_id): array {
     $info['plan_slug']     = (string)$st['plan_slug'];
     $info['badge']         = (string)$st['badge'];
     $info['badge_tone']    = (string)$st['badge_tone'];
+    // Abonnement souscrit pendant l'essai : premier prélèvement à la fin de l'essai (ak_plan_state_compute)
+    if (!empty($st['trial_subscribed'])) {
+        $charge = !empty($st['trial_charge_at']) ? strtotime((string)$st['trial_charge_at']) : false;
+        $info['trial_subscribed']   = true;
+        $info['first_charge_at']    = $charge ? date('Y-m-d H:i:s', $charge) : null;
+        $info['first_charge_fr']    = $charge ? date('d/m/Y', $charge) : '';
+        $info['first_charge_cents'] = $st['trial_charge_cents'] !== null ? (int)$st['trial_charge_cents'] : null;
+        $info['pm_type']            = (string)$st['trial_pm_type'];
+    }
     $end = !empty($st['trial_ends_at']) ? strtotime((string)$st['trial_ends_at']) : false;
     if (($info['in_trial'] || $info['trial_expired'] || $info['trial_paused']) && $end) {
         $info['trial_ends_at'] = date('Y-m-d H:i:s', $end);

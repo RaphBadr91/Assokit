@@ -417,6 +417,102 @@ if (!function_exists('ak_org_payment_pending_col')) {
     }
 }
 
+// Abonnement souscrit pendant l'essai (premier prélèvement à la fin de l'essai) : jours de marge après la
+// fin de l'essai pendant lesquels l'association n'est pas basculée en fin d'essai, le temps que Stripe
+// prélève et prévienne Assokit (cron-trial-check relit l'abonnement chez Stripe entre-temps)
+if (!defined('AK_TRIAL_CARD_GRACE_DAYS')) define('AK_TRIAL_CARD_GRACE_DAYS', 3);
+
+if (!function_exists('ak_org_trial_card_cols')) {
+    /**
+     * Colonnes « abonnement souscrit pendant l'essai » (organizations.stripe_trial_*, migration 2026-10-29)
+     * pour les requêtes lues par ak_plan_state_compute() : trial_sub_id, trial_charge_at, trial_charge_cents,
+     * trial_charge_tax_cents, trial_pm_type. Sans les colonnes (migration pas encore passée) : NULL.
+     */
+    function ak_org_trial_card_cols(PDO $pdo, string $o = 'o'): string {
+        if (!preg_match('/^[a-z0-9_]+$/i', $o)) $o = 'o';
+        $c = ak_db_columns($pdo, 'organizations');
+        $out = [];
+        foreach (['stripe_trial_sub_id' => 'trial_sub_id', 'stripe_trial_charge_at' => 'trial_charge_at',
+                  'stripe_trial_charge_cents' => 'trial_charge_cents', 'stripe_trial_charge_tax_cents' => 'trial_charge_tax_cents',
+                  'stripe_trial_pm_type' => 'trial_pm_type'] as $col => $as) {
+            $out[] = (isset($c[$col]) ? "$o.$col" : "NULL") . " AS $as";
+        }
+        return implode(', ', $out);
+    }
+}
+
+if (!function_exists('ak_org_no_trial_card_sql')) {
+    /**
+     * Condition SQL « pas d'abonnement souscrit pendant l'essai en attente de son premier prélèvement » sur
+     * l'alias d'organizations. Une association qui a enregistré sa carte (ou son mandat SEPA) pendant l'essai
+     * est prélevée par Stripe le jour où l'essai se termine : elle n'est ni basculée en fin d'essai, ni relancée
+     * pour « choisir sa formule ». Passé AK_TRIAL_CARD_GRACE_DAYS jours après la fin de l'essai sans nouvelle de
+     * Stripe, la fin d'essai normale reprend. Sans la colonne (migration 2026-10-29 pas encore passée) : « 1 ».
+     */
+    function ak_org_no_trial_card_sql(PDO $pdo, string $o = 'o'): string {
+        if (!preg_match('/^[a-z0-9_]+$/i', $o)) $o = 'o';
+        return isset(ak_db_columns($pdo, 'organizations')['stripe_trial_sub_id'])
+            ? "(COALESCE($o.stripe_trial_sub_id, '') = '' OR $o.trial_ends_at < NOW() - INTERVAL " . (int)AK_TRIAL_CARD_GRACE_DAYS . " DAY)"
+            : "1";
+    }
+}
+
+if (!function_exists('ak_org_trial_card')) {
+    /**
+     * Abonnement souscrit pendant l'essai, en attente de son premier prélèvement (organizations.stripe_trial_*) :
+     * ['sub_id', 'charge_at' (Y-m-d H:i:s), 'charge_fr' (d/m/Y), 'charge_cents' (int|null, TTC), 'charge_tax_cents'
+     * (int|null : TVA comprise dans ce montant, null si la note est antérieure à la colonne), 'charging' (bool : la date
+     * du premier prélèvement est passée, Stripe prélève), 'pm_type' (card, sepa_debit…), 'pm_label' (« carte »,
+     * « mandat SEPA »)], ou null s'il n'y en a pas.
+     */
+    function ak_org_trial_card(PDO $pdo, int $org_id): ?array {
+        if ($org_id <= 0 || !isset(ak_db_columns($pdo, 'organizations')['stripe_trial_sub_id'])) return null;
+        try {
+            $q = $pdo->prepare("SELECT " . ak_org_trial_card_cols($pdo, 'o') . " FROM organizations o WHERE o.id = ?");
+            $q->execute([$org_id]);
+            $r = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $e) {
+            return null;
+        }
+        $sid = trim((string)($r['trial_sub_id'] ?? ''));
+        if ($sid === '') return null;
+        $at = !empty($r['trial_charge_at']) && strtotime((string)$r['trial_charge_at']) ? date('Y-m-d H:i:s', strtotime((string)$r['trial_charge_at'])) : null;
+        $pm = (string)($r['trial_pm_type'] ?? '');
+        return ['sub_id' => $sid, 'charge_at' => $at, 'charge_fr' => $at ? date('d/m/Y', strtotime($at)) : '',
+                'charge_cents' => $r['trial_charge_cents'] !== null && $r['trial_charge_cents'] !== '' ? (int)$r['trial_charge_cents'] : null,
+                'charge_tax_cents' => isset($r['trial_charge_tax_cents']) && $r['trial_charge_tax_cents'] !== '' ? (int)$r['trial_charge_tax_cents'] : null,
+                'charging' => $at !== null && strtotime($at) <= time(),
+                'pm_type' => $pm, 'pm_label' => ak_trial_pm_label($pm)];
+    }
+}
+
+if (!function_exists('ak_trial_card_amount')) {
+    /**
+     * « 49,99 € », ou « 59,99 € TTC » : montant du premier prélèvement d'un abonnement souscrit pendant l'essai,
+     * pour les pages et les e-mails. « TTC » seulement si l'abonnement Stripe porte de la TVA (montant noté à la
+     * souscription), jamais d'après l'interrupteur de TVA du jour : un abonnement souscrit en franchise de TVA
+     * (art. 293 B du CGI) le reste tant que le Fondateur ne le change pas dans Stripe. Note plus ancienne que la
+     * colonne stripe_trial_charge_tax_cents : interrupteur actuel, faute de mieux. '' si le montant est inconnu.
+     * @param array{charge_cents: ?int, charge_tax_cents?: ?int}|null $card ak_org_trial_card()
+     */
+    function ak_trial_card_amount(PDO $pdo, ?array $card): string {
+        if (!$card || $card['charge_cents'] === null) return '';
+        $tax = $card['charge_tax_cents'] ?? null;
+        $with_tax = $tax !== null ? $tax > 0 : (function_exists('ak_vat_applicable_rate') && ak_vat_applicable_rate($pdo) > 0);
+        $cents = (int)$card['charge_cents'];
+        $txt = function_exists('ak_format_price_cents') ? ak_format_price_cents($cents)
+            : number_format($cents / 100, 2, ',', "\u{00A0}") . "\u{00A0}€";
+        return $txt . ($with_tax ? ' TTC' : '');
+    }
+}
+
+if (!function_exists('ak_trial_pm_label')) {
+    /** « carte » / « mandat SEPA » : moyen de paiement enregistré pendant l'essai (Apple Pay et Google Pay sont des cartes). */
+    function ak_trial_pm_label(?string $type): string {
+        return $type === 'sepa_debit' ? 'mandat SEPA' : 'carte';
+    }
+}
+
 if (!function_exists('ak_plan_off_stripe_sql')) {
     /**
      * Condition SQL « plan qui n'est pas facturé par Stripe » (alias $p = asso_plans) : plan d'essai,
@@ -494,17 +590,24 @@ if (!function_exists('ak_plan_state_compute')) {
      *   - trial_paused : essai suspendu à la main avant sa fin (pas « Essai terminé le <date future> ») ;
      *   - payment_pending : premier prélèvement SEPA en cours de vérification (payment_pending_until à
      *     venir) : l'essai n'est pas terminé (le cron ne le termine pas non plus), badge « Paiement SEPA en cours » ;
+     *   - trial_subscribed : abonnement souscrit pendant l'essai (carte ou mandat SEPA enregistré, colonnes
+     *     trial_sub_id, trial_charge_at, trial_charge_cents, trial_pm_type lues par ak_org_trial_card_cols) :
+     *     l'association reste en essai jusqu'à sa fin, Stripe prélève le premier mois ce jour-là. Pendant les
+     *     AK_TRIAL_CARD_GRACE_DAYS jours qui suivent la fin, l'essai n'est pas « terminé » (prélèvement en cours) ;
      *   - badge : Résiliée (association ou abonnement résilié) > Paiement SEPA en cours > Essai terminé >
-     *     Essai suspendu > ESSAI > Suspendue > Paiement en attente / en retard > Active.
+     *     Essai suspendu > ESSAI (« ESSAI · carte enregistrée » si souscrit) > Suspendue > Paiement en attente /
+     *     en retard > Active.
      * @return array{plan_id:?int, plan_slug:string, plan_label:string, sub_status:string, org_status:string,
      *               is_trial:bool, trial_expired:bool, trial_paused:bool, is_paid:bool, trial_ends_at:?string,
-     *               days_left:?int, price_cents:int, badge:string, badge_tone:string}
+     *               days_left:?int, price_cents:int, badge:string, badge_tone:string, trial_subscribed:bool,
+     *               trial_charge_at:?string, trial_charge_cents:?int, trial_pm_type:string}
      *  badge / badge_tone : texte et ton communs ('trial', 'expired', 'active', 'suspended', 'cancelled', 'pending').
      */
     function ak_plan_state_compute(array $r): array {
         $st = ['plan_id' => null, 'plan_slug' => '', 'plan_label' => '—', 'sub_status' => '', 'org_status' => '',
                'is_trial' => false, 'trial_expired' => false, 'trial_paused' => false, 'is_paid' => false,
                'trial_ends_at' => null, 'days_left' => null, 'price_cents' => 0, 'payment_pending' => false,
+               'trial_subscribed' => false, 'trial_charge_at' => null, 'trial_charge_cents' => null, 'trial_pm_type' => '',
                'badge' => '—', 'badge_tone' => 'gray'];
         $st['org_status'] = (string)($r['org_status'] ?? '');
         $st['trial_ends_at'] = $r['trial_ends_at'] ?? null;
@@ -530,6 +633,15 @@ if (!function_exists('ak_plan_state_compute')) {
         if ($end && $end <= time() && !$st['is_paid'] && ($st['org_status'] === 'suspended' || $st['is_trial'])) {
             $st['trial_expired'] = true;
         }
+        // Abonnement souscrit pendant l'essai (carte ou mandat SEPA enregistré) : premier prélèvement à la fin de
+        // l'essai. Jamais pour un client déjà payant ; l'essai n'est pas « terminé » le temps du prélèvement.
+        if (!$st['is_paid'] && $st['is_trial'] && trim((string)($r['trial_sub_id'] ?? '')) !== '') {
+            $st['trial_subscribed'] = true;
+            $st['trial_charge_at'] = !empty($r['trial_charge_at']) ? (string)$r['trial_charge_at'] : $st['trial_ends_at'];
+            $st['trial_charge_cents'] = isset($r['trial_charge_cents']) && $r['trial_charge_cents'] !== '' ? (int)$r['trial_charge_cents'] : null;
+            $st['trial_pm_type'] = (string)($r['trial_pm_type'] ?? '');
+            if ($st['trial_expired'] && $end > time() - AK_TRIAL_CARD_GRACE_DAYS * 86400) $st['trial_expired'] = false;
+        }
         // Premier prélèvement SEPA en cours de vérification : l'association a payé, la banque confirme
         $pp = !empty($r['payment_pending_until']) ? strtotime((string)$r['payment_pending_until']) : false;
         if ($pp && $pp > time() && !$st['is_paid']) {
@@ -550,6 +662,15 @@ if (!function_exists('ak_plan_state_compute')) {
         } elseif ($st['trial_paused']) {
             $st['badge'] = 'Essai suspendu' . ($end_fr !== '' ? ' · fin prévue le ' . $end_fr : '');
             $st['badge_tone'] = 'suspended';
+        } elseif ($st['is_trial'] && $st['trial_subscribed']) {
+            // « ESSAI · carte enregistrée · 1er prélèvement le 12/11/2026 (J-14) », puis « … · prélèvement en cours »
+            $d = $st['days_left'];
+            $charge = $st['trial_charge_at'] ? strtotime((string)$st['trial_charge_at']) : $end;
+            $st['badge'] = 'ESSAI · ' . ($st['trial_pm_type'] === 'sepa_debit' ? 'mandat SEPA enregistré' : 'carte enregistrée')
+                         . ($charge && $charge <= time() ? ' · prélèvement en cours'
+                            : ($charge ? ' · 1er prélèvement le ' . date('d/m/Y', $charge) : '')
+                              . ($d !== null ? ' (' . ($d <= 0 ? 'dernier jour' : 'J-' . $d) . ')' : ''));
+            $st['badge_tone'] = 'trial';
         } elseif ($st['is_trial']) {
             $d = $st['days_left'];
             $st['badge'] = 'ESSAI' . ($end_fr !== '' ? ' · fin ' . $end_fr : '')
@@ -573,11 +694,13 @@ if (!function_exists('ak_org_plan_state')) {
     function ak_org_plan_state(PDO $pdo, int $org_id): array {
         $r = [];
         try {
-            $o = $pdo->prepare("SELECT o.status, o.plan, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . " FROM organizations o WHERE o.id = ?");
+            $o = $pdo->prepare("SELECT o.status, o.plan, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . ", " . ak_org_trial_card_cols($pdo) . " FROM organizations o WHERE o.id = ?");
             $o->execute([$org_id]);
             $org = $o->fetch(PDO::FETCH_ASSOC) ?: [];
             $r = ['org_status' => $org['status'] ?? '', 'org_plan' => $org['plan'] ?? '', 'trial_ends_at' => $org['trial_ends_at'] ?? null,
-                  'payment_pending_until' => $org['payment_pending_until'] ?? null];
+                  'payment_pending_until' => $org['payment_pending_until'] ?? null,
+                  'trial_sub_id' => $org['trial_sub_id'] ?? null, 'trial_charge_at' => $org['trial_charge_at'] ?? null,
+                  'trial_charge_cents' => $org['trial_charge_cents'] ?? null, 'trial_pm_type' => $org['trial_pm_type'] ?? null];
             $s = $pdo->prepare("SELECT " . ak_sub_state_cols($pdo) . "
                                 FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
                                 WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1");
@@ -660,6 +783,8 @@ if (!function_exists('ak_org_set_plan')) {
      * Stripe ne facture pas (gratuit, Sur-mesure…) garde son abonnement Stripe, à annuler dans Stripe
      * (ak_stripe_left_on_free le signale). Un motif de suspension n'est pas gardé quand l'association
      * repart en essai ou active.
+     * Abonnement souscrit pendant l'essai (premier prélèvement Stripe à la fin de l'essai) et nouveau plan hors
+     * essai : il est arrêté chez Stripe d'abord (ak_stripe_trial_sub_cancel) ; si Stripe refuse, AkTrialBlocked.
      * organizations.plan (ancien libellé, parfois un ENUM) n'est écrit que s'il accepte la valeur.
      * Demande d'espace de l'app iPhone en attente : refusé (ak_org_review_guard).
      */
@@ -675,6 +800,16 @@ if (!function_exists('ak_org_set_plan')) {
         if (!$plan) throw new InvalidArgumentException('Plan inconnu.');
         $is_trial = !empty($plan['is_trial']) || $plan['slug'] === 'pro-essai';
         $paid_plan = !$is_trial && ((int)$plan['price_cents'] > 0 || $plan['slug'] === 'sur-mesure' || !empty($plan['is_custom_quote']));
+        // Abonnement souscrit pendant l'essai (premier prélèvement par Stripe à la fin de l'essai) : la formule
+        // choisie ici le remplace. Il est arrêté chez Stripe AVANT tout changement (jamais un prélèvement en plus
+        // d'une formule réglée autrement, ou d'un plan gratuit) ; si Stripe refuse, rien n'est changé.
+        if (!$is_trial && ak_org_trial_card($pdo, $org_id)) {
+            if (!function_exists('ak_stripe_trial_sub_cancel')) @require_once __DIR__ . '/stripe-sync-helpers.php';
+            $why = function_exists('ak_stripe_trial_sub_cancel') ? ak_stripe_trial_sub_cancel($pdo, $org_id, false) : 'Stripe indisponible sur ce serveur';
+            if ($why !== null) {
+                throw new AkTrialBlocked('L’association a souscrit par carte pendant son essai (premier prélèvement à la fin de l’essai) : cet abonnement Stripe n’a pas pu être arrêté (' . $why . '). Rien n’a été changé ; réessayez, ou annulez-le dans Stripe.');
+            }
+        }
         $before = ak_org_plan_state($pdo, $org_id);
         $leaving_trial = !$is_trial && ($before['is_trial'] || $before['trial_expired']);
         // Passage à une formule à prix mensuel (ni essai, ni gratuite, ni Sur-mesure) depuis un état non
@@ -693,6 +828,11 @@ if (!function_exists('ak_org_set_plan')) {
 
         if ($is_trial) {
             $end = (string)$pdo->query("SELECT COALESCE((SELECT trial_ends_at FROM organizations WHERE id = " . (int)$org_id . " AND trial_ends_at > NOW()), DATE_ADD(NOW(), INTERVAL " . (int)AK_TRIAL_DAYS . " DAY))")->fetchColumn();
+            // Essai rouvert (fin passée remplacée par J+AK_TRIAL_DAYS) alors que l'association a souscrit pendant
+            // l'essai : la date du premier prélèvement suit chez Stripe, sinon rien n'est changé (AkTrialBlocked)
+            if ((string)($before['trial_ends_at'] ?? '') !== '' && strtotime((string)$before['trial_ends_at']) !== strtotime($end)) {
+                ak_trial_card_follow_end($pdo, $org_id, $end);
+            }
         }
         if ($row) {
             $sets = [];
@@ -745,6 +885,38 @@ if (!function_exists('ak_org_set_plan')) {
     }
 }
 
+if (!function_exists('ak_trial_card_follow_end')) {
+    /**
+     * Nouvelle fin d'essai $end_sql pour une association qui a souscrit pendant son essai (premier prélèvement
+     * Stripe à la fin de l'essai) : la date du premier prélèvement est déplacée d'abord chez Stripe
+     * (ak_stripe_trial_move_end, trial_end sans prorata). Si Stripe refuse : AkTrialBlocked, l'appelant n'écrit
+     * rien. Sans souscription pendant l'essai : rien à faire. Une seule règle pour toutes les façons de changer
+     * la fin d'un essai (ak_trial_extend, ak_org_set_trial_end, ak_org_set_plan).
+     */
+    function ak_trial_card_follow_end(PDO $pdo, int $org_id, string $end_sql): void {
+        if (!ak_org_trial_card($pdo, $org_id)) return;
+        if (!function_exists('ak_stripe_trial_move_end')) @require_once __DIR__ . '/stripe-sync-helpers.php';
+        $why = function_exists('ak_stripe_trial_move_end') ? ak_stripe_trial_move_end($pdo, $org_id, $end_sql) : 'Stripe indisponible sur ce serveur';
+        if ($why !== null) {
+            throw new AkTrialBlocked('L’association a souscrit par carte pendant son essai : la date de son premier prélèvement n’a pas pu être déplacée chez Stripe (' . $why . '). Rien n’a été changé ; réessayez dans quelques minutes.');
+        }
+    }
+}
+
+if (!function_exists('ak_org_set_trial_end')) {
+    /**
+     * Fin d'essai choisie à la main (pages Abonnements du Fondateur et de l'admin : plan d'essai avec une date) :
+     * organizations.trial_ends_at, et la date du premier prélèvement chez Stripe si l'association a souscrit
+     * pendant son essai (ak_trial_card_follow_end, AkTrialBlocked si Stripe refuse : rien n'est écrit). Avant,
+     * seule la base changeait : Stripe prélevait à l'ancienne date (et terminait l'essai plus tôt), ou plus tard
+     * qu'une fin d'essai raccourcie.
+     */
+    function ak_org_set_trial_end(PDO $pdo, int $org_id, string $end_sql): void {
+        ak_trial_card_follow_end($pdo, $org_id, $end_sql);
+        $pdo->prepare("UPDATE organizations SET trial_ends_at = ? WHERE id = ?")->execute([$end_sql, $org_id]);
+    }
+}
+
 if (!function_exists('ak_trial_extend')) {
     /**
      * Prolonge (ou rouvre) l'essai de N jours à partir de la fin actuelle si elle est future,
@@ -757,6 +929,8 @@ if (!function_exists('ak_trial_extend')) {
      *     en attente ou refusé : celui-ci reste tel quel et l'essai a sa propre ligne ; si le schéma
      *     n'admet qu'une ligne par association, AkTrialBlocked (rien n'est écrit).
      * Une erreur SQL remonte à l'appelant (transaction) : jamais d'essai à moitié rouvert.
+     * Abonnement souscrit pendant l'essai : la date du premier prélèvement suit chez Stripe
+     * (ak_stripe_trial_move_end) ; si Stripe refuse, AkTrialBlocked (rien n'est écrit).
      * Demande d'espace de l'app iPhone en attente : refusé (ak_org_review_guard).
      * @return string nouvelle date de fin (SQL)
      */
@@ -764,6 +938,10 @@ if (!function_exists('ak_trial_extend')) {
         ak_org_review_guard($pdo, $org_id);
         $days = max(1, min(90, $days));
         $end = (string)$pdo->query("SELECT DATE_ADD(GREATEST(NOW(), COALESCE((SELECT trial_ends_at FROM organizations WHERE id = " . (int)$org_id . "), NOW())), INTERVAL " . $days . " DAY)")->fetchColumn();
+        // Abonnement souscrit pendant l'essai : la date du premier prélèvement suit la nouvelle fin d'essai chez
+        // Stripe (sinon Stripe prélèverait à l'ancienne date et terminerait l'essai avant l'heure). Si Stripe
+        // refuse, rien n'est prolongé (AkTrialBlocked).
+        ak_trial_card_follow_end($pdo, $org_id, $end);
         $trial = ak_trial_plan($pdo);
         $cols = ak_db_columns($pdo, 'asso_subscriptions');
         $r = $pdo->prepare("SELECT s.id, s.plan_id, s.status, "
@@ -1071,7 +1249,8 @@ if (!function_exists('ak_trial_expired_org_ids')) {
      * Associations dont l'essai est terminé et pas encore traité par ak_trial_expire() : fin d'essai
      * passée (trial_ends_at < NOW()), et association encore « trial » ou ligne d'essai encore là, quel
      * que soit le statut de l'association (suspendue ou réactivée à la main, ligne annulée à tort).
-     * Ni client payant, ni association supprimée, ni démo. Une association traitée n'y figure plus.
+     * Ni client payant, ni association supprimée, ni démo, ni abonnement souscrit pendant l'essai dont le
+     * premier prélèvement est attendu (ak_org_no_trial_card_sql). Une association traitée n'y figure plus.
      * @return int[]
      */
     function ak_trial_expired_org_ids(PDO $pdo, int $limit = 500): array {
@@ -1081,6 +1260,7 @@ if (!function_exists('ak_trial_expired_org_ids')) {
               AND o.deleted_at IS NULL
               AND (o.slug IS NULL OR o.slug NOT LIKE 'demo-%')
               AND " . ak_org_not_payment_pending_sql($pdo) . "
+              AND " . ak_org_no_trial_card_sql($pdo) . "
               AND (o.status = 'trial' OR EXISTS (
                     SELECT 1 FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
                     WHERE s.org_id = o.id
@@ -1100,7 +1280,8 @@ if (!function_exists('ak_trial_expire')) {
      * suspendue, réactivée ou résiliée à la main garde son statut), lignes d'essai → Démarrage,
      * ancien libellé organizations.plan recalé. Idempotent.
      * Jamais touchées : client payant, association supprimée, espace de démonstration (demo-*),
-     * essai dont la date n'est pas passée.
+     * essai dont la date n'est pas passée, abonnement souscrit pendant l'essai dont Stripe prélève le premier
+     * mois à cette date (ak_org_no_trial_card_sql : le paiement termine l'essai, ak_end_trial_after_payment).
      * @return bool l'association remplissait les conditions et a été traitée
      */
     function ak_trial_expire(PDO $pdo, int $org_id): bool {
@@ -1108,6 +1289,7 @@ if (!function_exists('ak_trial_expire')) {
                             WHERE o.id = ? AND o.trial_ends_at IS NOT NULL AND o.trial_ends_at < NOW()
                               AND o.deleted_at IS NULL AND (o.slug IS NULL OR o.slug NOT LIKE 'demo-%')
                               AND " . ak_org_not_payment_pending_sql($pdo) . "
+                              AND " . ak_org_no_trial_card_sql($pdo) . "
                               AND NOT EXISTS (SELECT 1 FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
                                               WHERE s.org_id = o.id AND " . ak_paid_sub_sql($pdo) . ")");
         $q->execute([$org_id]);
@@ -1128,9 +1310,29 @@ if (!function_exists('ak_org_suspend')) {
      * J-7 / J-3 / J-0 et l'e-mail de fin d'essai partiraient encore. « Réactiver » rouvre l'essai
      * s'il reste des jours (ak_org_reactivate). suspended_reason distingue aussi une suspension
      * à la main d'une fin d'essai (cron-trial-check).
+     * Abonnement souscrit pendant l'essai (carte ou mandat SEPA enregistré, premier prélèvement à la fin de
+     * l'essai) : il est arrêté chez Stripe AVANT la suspension, l'association en est informée (aucun prélèvement).
+     * Sinon Stripe prélevait à la fin de l'essai une association suspendue (« Abus ») qui ne peut pas se servir
+     * d'Assokit. La suspension a lieu même si Stripe refuse (elle ne doit jamais attendre) : la raison est
+     * renvoyée pour le Fondateur, et la synchronisation arrête l'abonnement au plus tard à son premier prélèvement
+     * (ak_stripe_apply_subscription, association suspendue à la main).
+     * @return string|null avertissement à montrer au Fondateur (abonnement Stripe pas arrêté), sinon null
      */
-    function ak_org_suspend(PDO $pdo, int $org_id, string $reason): void {
+    function ak_org_suspend(PDO $pdo, int $org_id, string $reason): ?string {
         $before = ak_org_plan_state($pdo, $org_id);
+        $warn = null;
+        if ($card = ak_org_trial_card($pdo, $org_id)) {
+            if (!function_exists('ak_stripe_trial_sub_cancel')) @require_once __DIR__ . '/stripe-sync-helpers.php';
+            $why = function_exists('ak_stripe_trial_sub_cancel') ? ak_stripe_trial_sub_cancel($pdo, $org_id, true, true) : 'Stripe indisponible sur ce serveur';
+            if ($why !== null) {
+                error_log('[ak_org_suspend] org #' . $org_id . ' : abonnement souscrit pendant l’essai ' . $card['sub_id'] . ' non arrêté : ' . $why);
+                $already = defined('AK_STRIPE_TRIAL_ALREADY_CHARGED') && $why === AK_STRIPE_TRIAL_ALREADY_CHARGED;
+                $warn = $already
+                    ? 'L’association avait souscrit pendant son essai et son premier prélèvement a déjà eu lieu : c’est une cliente payante, son abonnement Stripe ' . $card['sub_id'] . ' continue. Résiliez-le (et remboursez si besoin) dans Stripe s’il ne doit plus être prélevé.'
+                    : 'L’abonnement Stripe ' . $card['sub_id'] . ' souscrit pendant l’essai n’a pas pu être arrêté (' . $why . '). Annulez-le dans Stripe (Clients › le client › Abonnements)'
+                      . ($card['charge_fr'] !== '' ? ' avant le ' . $card['charge_fr'] : '') . ' ; sinon Assokit l’arrêtera à son premier prélèvement et vous signalera le montant à rembourser.';
+            }
+        }
         ak_db_update($pdo, 'organizations', $org_id, ['status' => 'suspended', 'suspended_reason' => $reason !== '' ? $reason : 'Suspendue par le Fondateur']);
         if ($before['is_trial'] && ak_db_accepts($pdo, 'subscriptions', 'status', 'suspended')) {
             try {
@@ -1139,6 +1341,7 @@ if (!function_exists('ak_org_suspend')) {
                 error_log('[ak_org_suspend] subscriptions: ' . get_class($e));
             }
         }
+        return $warn;
     }
 }
 
@@ -1173,13 +1376,17 @@ if (!function_exists('ak_org_reactivate')) {
 }
 
 if (!function_exists('ak_org_reject')) {
-    /** Refus d'une association par le Fondateur (web « Refuser », appli « reject ») : refusée ET suspendue. */
-    function ak_org_reject(PDO $pdo, int $org_id, string $reason, int $by_user_id): void {
+    /**
+     * Refus d'une association par le Fondateur (web « Refuser », appli « reject ») : refusée ET suspendue
+     * (ak_org_suspend : un abonnement souscrit pendant l'essai est arrêté chez Stripe).
+     * @return string|null avertissement d'ak_org_suspend (abonnement Stripe pas arrêté), sinon null
+     */
+    function ak_org_reject(PDO $pdo, int $org_id, string $reason, int $by_user_id): ?string {
         $reason = $reason !== '' ? $reason : 'Refusé par le Fondateur';
         ak_db_update($pdo, 'organizations', $org_id,
             ['validation_status' => 'rejected', 'rejection_reason' => $reason, 'validated_by_user_id' => $by_user_id > 0 ? $by_user_id : null],
             ['validated_at' => 'NOW()']);
-        ak_org_suspend($pdo, $org_id, $reason);
+        return ak_org_suspend($pdo, $org_id, $reason);
     }
 }
 

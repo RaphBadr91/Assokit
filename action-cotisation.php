@@ -33,6 +33,15 @@ if ($action === 'create' || $action === 'update') {
     $renews_sent = array_key_exists('renews_membership', $_POST);
     $renews_raw = (string)($_POST['renews_membership'] ?? '');
     $renews = $renews_raw === '1' ? 1 : ($renews_raw === '0' ? 0 : null);
+    // Paiement en ligne (migration 2026-10-30) : type (cotisation / don), proposé ou non, montant libre et minimum
+    $online_sent = array_key_exists('kind', $_POST) && ck_has_online_settings($pdo);
+    $kind = ($_POST['kind'] ?? '') === 'don' ? 'don' : null;
+    $online_raw = (string)($_POST['online_payment'] ?? '');
+    $online = $online_raw === '0' ? 0 : null;
+    $free_amount = !empty($_POST['free_amount']) ? 1 : 0;
+    $min_raw = str_replace([',', ' '], ['.', ''], trim((string)($_POST['min_amount'] ?? '')));
+    $min_amount = preg_match('/^\d{1,6}(\.\d{1,2})?$/', $min_raw) && (float)$min_raw > 0 ? number_format((float)$min_raw, 2, '.', '') : null;
+    if ($kind === 'don') { $renews = 0; $renews_sent = true; }
 
     // Saisie refusée : retour au formulaire (création ou modification de CETTE campagne),
     // prérempli, avec le message. Même contrôle des dates que l'appli (app-create-campaign).
@@ -45,7 +54,8 @@ if ($action === 'create' || $action === 'update') {
             'id' => $edit_id,
             'data' => ['name' => $name, 'year' => $year, 'description' => $description, 'currency' => $currency,
                        'opens_at' => (string)($_POST['opens_at'] ?? ''), 'closes_at' => (string)($_POST['closes_at'] ?? ''),
-                       'is_active' => $is_active, 'renews_membership' => $renews],
+                       'is_active' => $is_active, 'renews_membership' => $renews, 'kind' => $kind, 'online_payment' => $online,
+                       'free_amount' => $free_amount, 'min_amount' => $min_amount],
             'tiers' => array_map(fn($i) => [
                 'id' => (int)(($_POST['tier_id'] ?? [])[$i] ?? 0),
                 'name' => (string)(($_POST['tier_name'] ?? [])[$i] ?? ''),
@@ -72,6 +82,14 @@ if ($action === 'create' || $action === 'update') {
         }
         $stmt = $pdo->prepare("UPDATE cotisation_campaigns SET name=?, year=?, description=?, currency=?, opens_at=?, closes_at=?, is_active=? WHERE id=? AND org_id=?");
         $stmt->execute([$name, $year ?: null, $description ?: null, $currency, $opens, $closes, $is_active, $campaign_id, $org_id]);
+    }
+    if ($online_sent) {
+        try {
+            $pdo->prepare("UPDATE cotisation_campaigns SET kind = ?, online_payment = ?, free_amount = ?, min_amount = ? WHERE id = ? AND org_id = ?")
+                ->execute([$kind, $online, $free_amount, $min_amount, $campaign_id, $org_id]);
+        } catch (Throwable $e) {
+            error_log('[cotisations] paiement en ligne : ' . $e->getMessage());
+        }
     }
     if ($renews_sent && ck_has_renews_setting($pdo)) {
         try {

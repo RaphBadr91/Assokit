@@ -11,6 +11,10 @@
  *   instant) + e-mail de fin ; jamais pour un client payant, ni d'e-mail à une association
  *   résiliée ou suspendue à la main
  * - J-7, J-3, J-1 et J-0 → e-mail de rappel (essais en cours seulement)
+ * - abonnement souscrit pendant l'essai (carte ou mandat SEPA enregistré, premier prélèvement à la fin
+ *   de l'essai) : ni fin d'essai ni rappels « choisissez votre formule », mais UN rappel à J-3
+ *   « premier prélèvement le … » ; après la fin de l'essai, l'abonnement est relu chez Stripe tant que
+ *   le premier prélèvement n'est pas connu (webhook en retard)
  * - abonnement résilié arrivé à échéance → plan gratuit Démarrage (ak_sub_expire_cancelled)
  * - demande de création d'espace (app iPhone) sans décision depuis 24 h → un rappel au Fondateur
  *   (signup-review-helpers.php)
@@ -36,7 +40,41 @@ echo "[" . date('Y-m-d H:i:s') . "] CRON trial-check demarre\n";
 require_once __DIR__ . '/cron-lots.php';
 if (!ak_lot_demarrer($pdo, 'trial-check')) exit(0);
 
+// 0. Abonnements souscrits pendant l'essai dont l'essai est fini depuis plus de 2 heures : Stripe a dû
+// prélever le premier mois (une heure environ après la fin de l'essai). Sans nouvelle (webhook en retard
+// ou perdu), l'abonnement est relu chez Stripe : payé → actif ; refusé → en retard ; arrêté → note retirée
+// (la fin d'essai normale suit). Passé AK_TRIAL_CARD_GRACE_DAYS jours sans réponse, la fin d'essai reprend.
+if (isset(ak_db_columns($pdo, 'organizations')['stripe_trial_sub_id'])) {
+    @require_once __DIR__ . '/stripe-config-helpers.php';
+    @require_once __DIR__ . '/stripe-helpers.php';
+    require_once __DIR__ . '/stripe-sync-helpers.php';
+    if (function_exists('ak_stripe_get_secret_key') && ak_stripe_get_secret_key($pdo)) {
+        $relus = 0;
+        $q = $pdo->query("SELECT id, stripe_trial_sub_id FROM organizations
+                          WHERE COALESCE(stripe_trial_sub_id, '') <> '' AND deleted_at IS NULL
+                            AND trial_ends_at IS NOT NULL AND trial_ends_at < NOW() - INTERVAL 2 HOUR
+                          ORDER BY trial_ends_at ASC LIMIT " . max(1, (int) ak_lot_place()));
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if (!ak_lot_encore()) break;
+            ak_lot_fait();
+            try {
+                $err = null;
+                $sub = ak_stripe_fetch_subscription($pdo, (string) $row['stripe_trial_sub_id'], $err);
+                if ($sub === false) { echo "  ! Org #" . $row['id'] . " : Stripe injoignable (" . $err . ")\n"; continue; }
+                if ($sub === null) ak_stripe_trial_clear($pdo, (int) $row['id'], (string) $row['stripe_trial_sub_id']);
+                else ak_handle_subscription_event($pdo, $sub, 'customer.subscription.updated');
+                $relus++;
+            } catch (Throwable $e) { error_log('[cron-trial-check] relecture abonnement d’essai org #' . $row['id'] . ': ' . get_class($e) . ' ' . $e->getMessage()); }
+        }
+        if ($relus) echo "→ " . $relus . " abonnement(s) souscrit(s) pendant l'essai relu(s) chez Stripe\n";
+    }
+}
+
 // 1. Essais terminés → ancienne ligne « suspended », plan Démarrage, e-mail de fin
+//
+// Abonnement souscrit pendant l'essai (ak_org_no_trial_card_sql) : Stripe prélève le premier mois à la fin
+// de l'essai ; l'association n'est pas basculée (le paiement termine l'essai), sauf sans nouvelle de Stripe
+// AK_TRIAL_CARD_GRACE_DAYS jours après.
 //
 // Premier prélèvement SEPA en cours de vérification par la banque (ak_org_not_payment_pending_sql) :
 // l'essai attend la réponse de la banque, il n'est pas terminé pendant ce temps.
@@ -55,6 +93,7 @@ $stmt = $pdo->query("
       AND o.trial_ends_at < NOW()
       AND o.deleted_at IS NULL
       AND " . ak_org_not_payment_pending_sql($pdo) . "
+      AND " . ak_org_no_trial_card_sql($pdo) . "
       AND NOT EXISTS (SELECT 1 FROM asso_subscriptions a JOIN asso_plans p ON p.id = a.plan_id
                       WHERE a.org_id = o.id AND " . ak_paid_sub_sql($pdo, 'a', 'p') . ")
     ORDER BY o.trial_ends_at ASC
@@ -144,7 +183,8 @@ if (ak_lot_encore()) {
 // Seuls les essais EN COURS sont relancés : ni une association suspendue ou résiliée à la main,
 // ni un client payant dont l'ancienne ligne serait restée « trial », ni une association dont le
 // premier prélèvement SEPA est en cours de vérification (elle a déjà payé : « choisissez votre
-// formule » l'inviterait à payer une seconde fois).
+// formule » l'inviterait à payer une seconde fois), ni une association qui a souscrit pendant l'essai
+// (carte enregistrée : elle reçoit à la place le rappel « premier prélèvement le … », section 2 bis).
 foreach ([7, 3, 1, 0] as $days_left) {
     // trial_ends_at est ramenée : elle sert de clé de dédoublonnage.
     // Sans elle, la clé serait « j3: » pour tout le monde et le premier
@@ -159,6 +199,7 @@ foreach ([7, 3, 1, 0] as $days_left) {
           AND o.trial_ends_at >= NOW()
           AND DATE(o.trial_ends_at) = DATE(DATE_ADD(NOW(), INTERVAL ? DAY))
           AND " . ak_org_not_payment_pending_sql($pdo) . "
+          AND " . (isset(ak_db_columns($pdo, 'organizations')['stripe_trial_sub_id']) ? "COALESCE(o.stripe_trial_sub_id, '') = ''" : "1") . "
           AND NOT EXISTS (SELECT 1 FROM asso_subscriptions a JOIN asso_plans p ON p.id = a.plan_id
                           WHERE a.org_id = o.id AND " . ak_paid_sub_sql($pdo, 'a', 'p') . ")
         ORDER BY s.org_id
@@ -221,6 +262,64 @@ foreach ([7, 3, 1, 0] as $days_left) {
         if (!$parti) {
             ak_envoi_rendre($pdo, 'trial-check', (int) $row['org_id'], $cle);
             echo "  ! Org #" . $row['org_id'] . " : aucun e-mail parti, rappel reporté\n";
+        }
+    }
+}
+
+// 2 bis. Abonnement souscrit pendant l'essai : UN rappel au plus 3 jours avant le premier prélèvement (date et
+// montant, annulation possible sans frais d'ici là). Fenêtre « dans les 3 jours » et non « à J-3 pile » : une
+// souscription faite entre 48 et 72 heures avant la fin de l'essai, ou un cron arrêté ce jour-là, n'en privait
+// pas l'association. Souscription faite dans ces 3 jours : l'e-mail de confirmation (« … est souscrit », date et
+// montant) en tient lieu, pas de second e-mail. Clé : la date du prélèvement (une prolongation de l'essai déplace
+// le prélèvement, et donc le rappel).
+if (isset(ak_db_columns($pdo, 'organizations')['stripe_trial_sub_id']) && ak_lot_encore()) {
+    $charge_sql = "COALESCE(o.stripe_trial_charge_at, o.trial_ends_at)";
+    $carnet = (bool) ak_db_columns($pdo, 'cron_envois');
+    $tax_col = isset(ak_db_columns($pdo, 'organizations')['stripe_trial_charge_tax_cents']) ? "o.stripe_trial_charge_tax_cents" : "NULL";
+    $stmt = $pdo->query("
+        SELECT o.id AS org_id, o.name AS org_name, o.trial_ends_at, o.stripe_trial_sub_id, o.stripe_trial_charge_at, o.stripe_trial_charge_cents,
+               $tax_col AS stripe_trial_charge_tax_cents, o.stripe_trial_pm_type
+        FROM organizations o
+        WHERE COALESCE(o.stripe_trial_sub_id, '') <> ''
+          AND o.deleted_at IS NULL
+          AND o.status NOT IN ('suspended', 'cancelled')
+          AND $charge_sql > NOW()
+          AND $charge_sql <= DATE_ADD(NOW(), INTERVAL 3 DAY)"
+        . ($carnet ? "
+          AND NOT EXISTS (SELECT 1 FROM cron_envois e WHERE e.job = 'trial-check' AND e.org_id = o.id
+                          AND e.cle = CONCAT('prelev3:', DATE_FORMAT($charge_sql, '%Y-%m-%d')))
+          AND NOT EXISTS (SELECT 1 FROM cron_envois e WHERE e.job = 'stripe' AND e.org_id = o.id
+                          AND e.cle = LEFT(CONCAT('souscrit:', o.stripe_trial_sub_id), 60)
+                          AND e.sent_at >= DATE_SUB($charge_sql, INTERVAL 3 DAY))" : "") . "
+        ORDER BY $charge_sql ASC
+        LIMIT " . (int) ak_lot_place());
+    $rs = $stmt->fetchAll();
+    echo "→ Premier prélèvement dans les 3 jours : " . count($rs) . " rappel(s)\n";
+    foreach ($rs as $row) {
+        if (!ak_lot_encore()) break;
+        ak_lot_fait();
+        $at = (string) ($row['stripe_trial_charge_at'] ?: $row['trial_ends_at']);
+        $cle = 'prelev3:' . date('Y-m-d', strtotime($at));
+        if (!ak_envoi_reserver($pdo, 'trial-check', (int) $row['org_id'], $cle)) continue;
+        $date = date('d/m/Y', strtotime($at));
+        // « TTC » d'après l'abonnement souscrit (TVA notée à la souscription), pas l'interrupteur de TVA du jour
+        $amount = ak_trial_card_amount($pdo, [
+            'charge_cents' => $row['stripe_trial_charge_cents'] !== null ? (int) $row['stripe_trial_charge_cents'] : null,
+            'charge_tax_cents' => $row['stripe_trial_charge_tax_cents'] !== null ? (int) $row['stripe_trial_charge_tax_cents'] : null]);
+        $moyen = $row['stripe_trial_pm_type'] === 'sepa_debit' ? 'sur votre compte (mandat SEPA enregistré)' : 'sur la carte enregistrée';
+        // E-mail de facturation (adresse de facturation et administrateurs), comme les autres e-mails d'abonnement
+        $parti = false;
+        try {
+            $parti = ak_stripe_notify_org($pdo, (int) $row['org_id'], '📅 Premier prélèvement de votre abonnement Assokit le ' . $date,
+                '<p>Bonjour,</p><p>Votre essai gratuit se termine bientôt pour « ' . htmlspecialchars($row['org_name']) . ' », et votre abonnement Assokit est déjà souscrit.</p>'
+                . '<p>Le premier prélèvement' . ($amount !== '' ? ' de <strong>' . htmlspecialchars($amount) . '</strong>' : '') . ' aura lieu le <strong>' . htmlspecialchars($date) . '</strong> ' . $moyen
+                . ', puis chaque mois à la même date. Vous n’avez rien à faire.</p>'
+                . '<p>Vous pouvez encore annuler sans frais avant cette date, depuis la page « Mon abonnement » : aucun montant ne sera prélevé.</p>',
+                'Voir mon abonnement', 'https://assokit.fr/mon-asso-plan');
+        } catch (Throwable $e) { error_log('[cron-trial-check] rappel prélèvement: ' . $e->getMessage()); }
+        if (!$parti) {
+            ak_envoi_rendre($pdo, 'trial-check', (int) $row['org_id'], $cle);
+            echo "  ! Org #" . $row['org_id'] . " : aucun e-mail parti, rappel de prélèvement reporté\n";
         }
     }
 }

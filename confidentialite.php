@@ -82,6 +82,9 @@ render_public_nav('');
       </ul>
       <p>Aucun partage à des fins publicitaires.</p>
 
+      <h3 id="paiements-en-ligne" style="font-size:18px;margin-top:18px;">5.1 Paiements en ligne à une association (cotisation, don, facture)</h3>
+      <p>Quand vous payez en ligne une association qui utilise Assokit, <strong>l’association est responsable du traitement</strong> de vos données ; RBPS (Assokit) agit pour son compte, comme sous-traitant. Sont traités : vos nom et prénom, votre adresse e-mail, le montant, l’objet du paiement (facture, cotisation, don), sa date et les références techniques de Stripe, pour enregistrer le paiement dans l’espace de l’association et vous envoyer un reçu (<em>exécution du contrat</em> entre vous et l’association). Le paiement lui-même se fait sur la page de <strong>Stripe</strong>, qui traite vos données de carte ou votre IBAN comme responsable de traitement distinct (<a href="https://stripe.com/fr/privacy" target="_blank" rel="noopener">politique de confidentialité de Stripe</a>) : ni l’association ni Assokit n’y ont accès. Durées : un paiement réussi est conservé avec les pièces comptables de l’association (10 ans) ; une tentative non aboutie est effacée au bout de 6 mois. Pour exercer vos droits, adressez-vous à l’association, ou à <a href="mailto:contact@assokit.fr">contact@assokit.fr</a>, qui transmettra.</p>
+
       <h2>6. Où sont stockées vos données ?</h2>
       <p>Vos données sont stockées sur des serveurs <strong>situés en France</strong> (O2Switch, Clermont-Ferrand). Aucun transfert hors UE en dehors des cas mentionnés ci-dessus (voir section 11).</p>
 
@@ -174,7 +177,7 @@ render_public_nav('');
       <p>Cette politique peut évoluer. Toute modification substantielle vous sera notifiée par email avec un préavis de 30 jours.</p>
 
       <?php /* Date de version : à changer seulement quand le texte change */ ?>
-      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 23/10/2026</p>
+      <p style="margin-top:30px;color:var(--c-text-3);font-size:14px;">Version du 29/10/2026</p>
     </article>
   </div>
 </section>

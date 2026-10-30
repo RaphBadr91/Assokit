@@ -89,6 +89,7 @@ function ak_nav_familles(array $ctx): array
             'entrees' => [
                 ['facturation',  '/mon-asso-factures-client', 'Facturation',          $billing,  ['devis','factures','clients','stats']],
                 ['relances',     '/relances',                 'Relances',             $billing,  ['relances']],
+                ['paiements-en-ligne', '/encaissement-en-ligne', 'Paiements en ligne', $billing, ['paiements-en-ligne']],   // Stripe Connect (encaissement-en-ligne.php)
                 ['anomalies',    '/anomalies',                'Anomalies',            $finances, ['anomalies']],
                 ['previsions',   '/previsions',               'Prévisions',           $finances, ['previsions']],
                 ['comptabilite', '/comptabilite',             'Comptabilité',         $finances, ['comptabilite']],
@@ -195,7 +196,7 @@ function ak_nav_icone_entree(string $cle): string
         'messages' => 'messages', 'boite-mail' => 'boite-mail', 'communication' => 'communication', 'prospection' => 'prospection',
         'mon-asso-qr' => 'qr', 'coach-ia' => 'coach', 'support' => 'support',
         'parametres' => 'parametres', 'admin' => 'admin', 'mon-asso-sso' => 'wordpress',
-        'archives' => 'archives', 'abonnement' => 'abonnement',
+        'archives' => 'archives', 'abonnement' => 'abonnement', 'paiements-en-ligne' => 'cotisations',
     ];
     return ak_nav_icone($corresp[$cle] ?? 'projets', 14);
 }

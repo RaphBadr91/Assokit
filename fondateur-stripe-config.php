@@ -14,6 +14,8 @@
  *     Stripe existant est remis à jour (mention 293 B retirée ou remise)
  *   - Mode test : choisir les associations de test qui peuvent payer (les autres voient « bientôt »)
  *   - Réglages avancés : prix saisis à la main (vérifiés chez Stripe), secret de webhook
+ *   - Paiements reçus par les associations (Stripe Connect) : ouverture / pause, associations reliées
+ *     et montants encaissés (l'argent ne transite jamais par RBPS : stripe-connect-helpers.php)
  *
  * Sécurité :
  *   - Réservé au Fondateur (is_founder=1 ou role='founder'), comme toute la section
@@ -31,6 +33,7 @@ require_once __DIR__ . '/stripe-config-helpers.php';
 require_once __DIR__ . '/stripe-helpers.php';
 require_once __DIR__ . '/stripe-setup-helpers.php';
 require_once __DIR__ . '/stripe-sync-helpers.php';
+require_once __DIR__ . '/stripe-connect-helpers.php';
 require_once __DIR__ . '/includes-pricing.php';
 
 require_login();
@@ -52,7 +55,7 @@ $is_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (int)(
 
 $flash_msg = null;
 $flash_type = 'success';
-$db_hint = 'Enregistrement impossible dans la base : lancez d’abord la migration (php migrations/run.php 2026-10-28-stripe-mise-en-service.sql, voir docs/stripe-mise-en-service.md).';
+$db_hint = 'Enregistrement impossible dans la base : lancez d’abord les migrations (php migrations/run.php 2026-10-28-stripe-mise-en-service.sql, puis 2026-10-29-stripe-souscription-pendant-essai.sql, voir docs/stripe-mise-en-service.md).';
 
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
@@ -157,6 +160,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? 'TVA activée (' . $rate_lbl . ') : les nouveaux abonnements par carte sont facturés HT + TVA.' . $foot_msg
                       . ' La TVA est due sur TOUS les abonnements à partir de la date d’assujettissement : appliquez-la aussi aux abonnements déjà en place (voir le guide, « Le jour où RBPS devient assujettie »).'
                     : 'TVA désactivée (franchise en base, art. 293 B du CGI) pour les nouveaux abonnements.' . $foot_msg;
+                // Abonnements souscrits pendant l'essai, pas encore prélevés (aucune ligne d'abonnement) : ils gardent
+                // le taux de leur souscription, et leurs pages affichent le montant que Stripe prélèvera vraiment
+                try {
+                    $n_trial = isset(ak_db_columns($pdo, 'organizations')['stripe_trial_sub_id'])
+                        ? (int)$pdo->query("SELECT COUNT(*) FROM organizations WHERE COALESCE(stripe_trial_sub_id, '') <> ''")->fetchColumn() : 0;
+                } catch (Throwable $e) { $n_trial = 0; }
+                if ($n_trial > 0) {
+                    $flash_msg .= ' ' . $n_trial . ' abonnement(s) souscrit(s) pendant l’essai et pas encore prélevé(s) gardent le taux de TVA de leur souscription'
+                        . ($new_val === '1' ? ' : ajoutez-y aussi la TVA dans Stripe (Abonnements › l’abonnement › Modifier › Taxes) si elle est due dès leur premier prélèvement.' : '.');
+                }
                 if ($foot['failed']) $flash_type = 'warn';
                 break;
 
@@ -175,6 +188,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!ak_stripe_config_set($pdo, 'stripe_test_org_ids', $ids ? implode(',', $ids) : null)) throw new Exception($db_hint);
                 $flash_msg = $ids ? 'Associations autorisées à payer en mode test : n° ' . implode(', ', $ids) . '.'
                                   : 'Associations autorisées à payer en mode test : celles du Fondateur.';
+                break;
+
+            case 'save_test_clock':
+                // Horloge de test Stripe (mode test) : les NOUVEAUX clients Stripe de test y sont rattachés, pour
+                // avancer le temps chez Stripe (fin d'essai, premier prélèvement) sans attendre
+                if (ak_stripe_get_mode($pdo) !== 'test') throw new Exception('Les horloges de test ne servent qu’avec les clés du mode test.');
+                $clock = trim((string)($_POST['stripe_test_clock_id'] ?? ''));
+                if ($clock !== '' && !preg_match('/^clock_[A-Za-z0-9]+$/', $clock)) throw new Exception('Identifiant d’horloge invalide : il commence par clock_ (Stripe › Facturation › Horloges de test).');
+                if (!ak_stripe_config_set($pdo, 'stripe_test_clock_id', $clock !== '' ? $clock : null)) throw new Exception($db_hint);
+                $flash_msg = $clock !== '' ? 'Horloge de test ' . $clock . ' enregistrée : les nouveaux clients Stripe de test y seront rattachés (créez une nouvelle association de test).'
+                                           : 'Horloge de test retirée : les nouveaux clients Stripe de test suivent l’heure réelle.';
                 break;
 
             case 'save_addon_price':
@@ -197,6 +221,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($price_id !== '' && ($why = sc_check_manual_price($pdo, $price_id, (int)$plan['price_cents']))) throw new Exception($why);
                 $pdo->prepare("UPDATE asso_plans SET stripe_price_id_monthly = :p WHERE id = :id")->execute([':p' => $price_id !== '' ? $price_id : null, ':id' => $plan_id]);
                 $flash_msg = 'Prix Stripe de la formule enregistré.';
+                break;
+
+            case 'connect_enable':
+                // Paiements reçus par les associations : seulement quand Connect et son webhook sont en place
+                if (ak_connect_schema_missing($pdo)) throw new Exception('Lancez d’abord la migration 2026-10-30-paiements-en-ligne-associations.sql.');
+                if (trim((string)ak_stripe_config_get($pdo, 'connect_webhook_secret_' . ak_stripe_get_mode($pdo), '')) === '') {
+                    throw new Exception('Le webhook des comptes connectés n’est pas encore créé : activez Connect dans Stripe, puis cliquez sur « Configurer Stripe automatiquement ».');
+                }
+                ak_stripe_config_set($pdo, 'connect_enabled', '1');
+                $flash_msg = 'Paiements en ligne ouverts : chaque association peut relier son compte Stripe depuis « Paiements en ligne »'
+                    . (ak_stripe_get_mode($pdo) === 'test' ? ' (mode test : seulement les associations de test).' : '.');
+                break;
+
+            case 'connect_disable':
+                ak_stripe_config_set($pdo, 'connect_enabled', '0');
+                $flash_msg = 'Paiements en ligne des associations en pause : plus aucun bouton « Payer en ligne ». Les paiements déjà faits restent enregistrés, et les notifications de Stripe continuent d’être traitées.';
                 break;
 
             case 'purge_test':
@@ -229,6 +269,7 @@ $addon_price_id = ak_stripe_config_get($pdo, 'addon_domain_price_id', null);
 $setup_mode = (string)ak_stripe_config_get($pdo, 'stripe_setup_mode', '');
 // Mode test : associations qui peuvent payer (les autres voient « Le paiement en ligne ouvre très bientôt »)
 $test_org_ids_raw = (string)ak_stripe_config_get($pdo, 'stripe_test_org_ids', '');
+$test_clock_id = (string)ak_stripe_config_get($pdo, 'stripe_test_clock_id', '');
 $test_orgs = [];
 try {
     $tids = ak_stripe_test_org_ids($pdo);
@@ -308,7 +349,7 @@ render_sidebar('fondateur-stripe-config');
   <?php if ($schema_missing): ?>
     <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:16px 20px;margin-bottom:22px;color:#991B1B;font-size:14px;line-height:1.6;">
       ✕ <strong>Base de données à mettre à jour</strong> avant toute chose : il manque <?= h(implode(', ', array_slice($schema_missing, 0, 6))) ?><?= count($schema_missing) > 6 ? '…' : '' ?>.<br>
-      Sur le serveur : <code style="background:white;padding:2px 6px;border-radius:4px;">cd ~/public_html &amp;&amp; /usr/local/bin/php migrations/run.php 2026-10-28-stripe-mise-en-service.sql</code>
+      Sur le serveur : <code style="background:white;padding:2px 6px;border-radius:4px;">cd ~/public_html &amp;&amp; /usr/local/bin/php migrations/run.php 2026-10-28-stripe-mise-en-service.sql &amp;&amp; /usr/local/bin/php migrations/run.php 2026-10-29-stripe-souscription-pendant-essai.sql</code>
     </div>
   <?php endif; ?>
 
@@ -376,7 +417,8 @@ render_sidebar('fondateur-stripe-config');
     <p style="color:#475569;font-size:13.5px;margin:0 0 14px;line-height:1.6;">
       Crée ou retrouve chez Stripe, en mode <strong><?= $mode_fr ?></strong> : le produit et le prix mensuel HT de la formule Assokit, l’option Domaine personnalisé,
       la TVA si elle est activée, le webhook <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;"><?= h($webhook_url) ?></code> et son secret,
-      le portail client (changer de carte, voir ses factures, résilier en fin de période) et le domaine pour Apple Pay / Google Pay.
+      le portail client (changer de carte, voir ses factures, résilier en fin de période), le domaine pour Apple Pay / Google Pay
+      et, quand Stripe Connect est activé sur votre compte, le webhook des paiements reçus par les associations (<code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;"><?= h(ak_stripe_site_base() . '/stripe-connect-webhook') ?></code>).
       Vous pouvez relancer autant de fois que nécessaire : rien n’est créé en double.
     </p>
     <p style="color:#64748B;font-size:12.5px;margin:0 0 16px;line-height:1.55;">
@@ -428,6 +470,16 @@ render_sidebar('fondateur-stripe-config');
       </div>
       <div style="font-size:12.5px;color:#64748B;">Autorisées en ce moment : <?= $test_orgs ? h(implode(' · ', array_map(fn($o) => 'n° ' . (int)$o['id'] . ' ' . $o['name'], $test_orgs))) : 'aucune' ?>. Le numéro d’une association figure dans le cockpit (Associations › la fiche).</div>
     </form>
+    <form method="post" action="" style="display:grid;gap:8px;margin:0 0 18px;padding:14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;">
+      <input type="hidden" name="action" value="save_test_clock">
+      <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+      <label style="font-size:13px;font-weight:600;color:#475569;">Horloge de test Stripe <span style="font-weight:400;color:#64748B;">— facultatif, pour essayer la fin d’essai sans attendre</span></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input type="text" name="stripe_test_clock_id" value="<?= h($test_clock_id) ?>" placeholder="clock_…" style="<?= $input ?>flex:1;min-width:160px;width:auto;">
+        <button type="submit" style="background:#475569;color:white;padding:8px 16px;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600;">Enregistrer</button>
+      </div>
+      <div style="font-size:12.5px;color:#64748B;">Créée dans Stripe › Facturation › Horloges de test. Les <strong>nouveaux</strong> clients Stripe de test y sont rattachés (3 au plus par horloge) : avancez l’horloge dans Stripe pour simuler la fin de l’essai et le premier prélèvement (voir le guide). Vide : heure réelle.</div>
+    </form>
     <?php endif; ?>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <form method="post" action="" style="display:inline;">
@@ -449,6 +501,58 @@ render_sidebar('fondateur-stripe-config');
         </form>
       <?php endif; ?>
     </div>
+  </div>
+
+  <!-- ÉTAPE 4 : paiements reçus par les associations (Stripe Connect) -->
+  <?php $cx_on = (int)ak_stripe_config_get($pdo, 'connect_enabled', 0) === 1; $cx_wh = trim((string)ak_stripe_config_get($pdo, 'connect_webhook_secret_' . $stripe_mode, '')) !== ''; $cx = ak_connect_platform_stats($pdo); $cx_miss = ak_connect_schema_missing($pdo); ?>
+  <div style="<?= $card ?>">
+    <h2 style="margin:0 0 6px;font-size:18px;">4. 🤝 Paiements reçus par les associations (Stripe Connect)</h2>
+    <p style="color:#64748B;font-size:13.5px;margin:0 0 14px;line-height:1.55;">
+      Chaque association relie <strong>son propre compte Stripe</strong> (page « Paiements en ligne ») et fait payer en ligne ses factures, ses cotisations et ses dons.
+      L’argent va directement sur le compte de l’association : il ne transite jamais par RBPS, les frais Stripe sont à sa charge et Assokit ne prend aucune commission.
+      <?= $stripe_mode === 'test' ? 'En mode test, seules les associations de test (bloc 3) voient le paiement en ligne.' : '' ?>
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+      <span style="font-weight:700;color:<?= $cx_on ? '#059669' : '#94A3B8' ?>;"><?= $cx_on ? '✅ Ouverts aux associations' : '⏸ Fermés' ?></span>
+      <span style="color:#64748B;font-size:13px;">· Webhook des comptes connectés : <?= $cx_wh ? '✓ en place' : '✕ à créer (« Configurer Stripe automatiquement »)' ?><?= $cx_miss ? ' · ✕ migration 2026-10-30 à lancer' : '' ?></span>
+      <form method="post" action="" style="display:inline;margin-left:auto;" <?= $cx_on ? 'onsubmit="return confirm(' . h(json_encode('Mettre en pause ? Les boutons « Payer en ligne » disparaissent ; les paiements déjà faits restent enregistrés.', JSON_UNESCAPED_UNICODE)) . ');"' : '' ?>>
+        <input type="hidden" name="action" value="<?= $cx_on ? 'connect_disable' : 'connect_enable' ?>">
+        <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+        <button type="submit" style="<?= $cx_on ? 'background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;' : 'background:#059669;color:white;border:none;' ?>padding:10px 18px;border-radius:10px;font-weight:600;cursor:pointer;font-size:13.5px;"><?= $cx_on ? '⏸ Mettre en pause' : '🚀 Ouvrir les paiements en ligne aux associations' ?></button>
+      </form>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:12px;margin-bottom:14px;">
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;"><div style="font-size:11px;color:#64748B;text-transform:uppercase;font-weight:700;">Associations reliées</div><div style="font-size:20px;font-weight:700;"><?= count(array_filter($cx['accounts'], fn($a) => empty($a['disconnected_at']))) ?></div><div style="font-size:12px;color:#64748B;">dont <?= count(array_filter($cx['accounts'], fn($a) => empty($a['disconnected_at']) && !empty($a['charges_enabled']))) ?> prête(s) à encaisser</div></div>
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;"><div style="font-size:11px;color:#64748B;text-transform:uppercase;font-weight:700;">Encaissé ce mois-ci</div><div style="font-size:20px;font-weight:700;"><?= h(ak_format_price_cents($cx['month_cents'])) ?></div><div style="font-size:12px;color:#64748B;"><?= (int)$cx['month_count'] ?> paiement(s), mode <?= $mode_fr ?></div></div>
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;"><div style="font-size:11px;color:#64748B;text-transform:uppercase;font-weight:700;">Encaissé au total</div><div style="font-size:20px;font-weight:700;"><?= h(ak_format_price_cents($cx['total_cents'])) ?></div><div style="font-size:12px;color:#64748B;">remboursements déduits</div></div>
+    </div>
+    <?php if ($cx['accounts']): ?>
+      <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px;">
+        <thead><tr style="background:#F8FAFC;">
+          <th style="text-align:left;padding:8px 10px;font-size:11px;color:#64748B;text-transform:uppercase;">Association</th>
+          <th style="text-align:left;padding:8px 10px;font-size:11px;color:#64748B;text-transform:uppercase;">Compte Stripe</th>
+          <th style="text-align:left;padding:8px 10px;font-size:11px;color:#64748B;text-transform:uppercase;">État</th>
+          <th style="text-align:right;padding:8px 10px;font-size:11px;color:#64748B;text-transform:uppercase;">Ce mois</th>
+          <th style="text-align:right;padding:8px 10px;font-size:11px;color:#64748B;text-transform:uppercase;">Total</th>
+        </tr></thead>
+        <tbody>
+        <?php foreach ($cx['accounts'] as $a):
+            $etat = !empty($a['disconnected_at']) ? '✕ Déconnecté' : (!empty($a['charges_enabled']) ? '✓ Encaisse' : (!empty($a['details_submitted']) ? '⏳ Vérification Stripe' : '⚠ Inscription à terminer')); ?>
+          <tr style="border-top:1px solid #F1F5F9;">
+            <td style="padding:8px 10px;"><a href="/super-admin/associations?id=<?= (int)$a['org_id'] ?>" style="color:#059669;text-decoration:none;"><?= h($a['org_name'] ?? ('n°' . (int)$a['org_id'])) ?></a></td>
+            <td style="padding:8px 10px;font-family:monospace;font-size:12px;"><?= h($a['stripe_account_id']) ?></td>
+            <td style="padding:8px 10px;"><?= h($etat) ?><?= (int)$a['nb_paid'] > 0 ? ' · ' . (int)$a['nb_paid'] . ' paiement(s)' : '' ?></td>
+            <td style="padding:8px 10px;text-align:right;white-space:nowrap;"><?= h(ak_format_price_cents((int)$a['month_cents'])) ?></td>
+            <td style="padding:8px 10px;text-align:right;white-space:nowrap;"><?= h(ak_format_price_cents((int)$a['total_cents'])) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+      </div>
+    <?php else: ?>
+      <p style="color:#64748B;font-size:13px;margin:0;">Aucune association n’a encore relié son compte Stripe.</p>
+    <?php endif; ?>
   </div>
 
   <!-- Activité récente -->

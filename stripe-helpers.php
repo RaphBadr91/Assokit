@@ -145,10 +145,11 @@ if (!function_exists('ak_get_org_invoices_stripe')) {
     function ak_get_org_invoices_stripe(PDO $pdo, int $org_id, int $limit = 50): array {
         try {
             // Ni brouillon (facture pas encore émise, sans numéro), ni facture d'une première tentative
-            // de paiement restée impayée (carte refusée, paiement abandonné : annulée par Stripe ensuite)
+            // de paiement restée impayée (carte refusée, paiement abandonné : annulée par Stripe ensuite),
+            // ni facture à 0 € de la période d'essai d'un abonnement souscrit pendant l'essai (rien n'est payé)
             $cols = ak_stripe_invoice_cols($pdo);
             $attempt = isset($cols['billing_reason'])
-                ? "AND NOT (COALESCE(billing_reason, '') = 'subscription_create' AND COALESCE(status, '') IN ('open', 'void'))" : '';
+                ? "AND NOT (COALESCE(billing_reason, '') = 'subscription_create' AND (COALESCE(status, '') IN ('open', 'void') OR COALESCE(amount_cents, 0) = 0))" : '';
             $st = $pdo->prepare("
                 SELECT * FROM asso_invoices_stripe
                 WHERE org_id = :id
@@ -462,9 +463,12 @@ if (!function_exists('ak_stripe_api_call')) {
      * @param string|null $idempotency_key POST seulement : en-tête Idempotency-Key. Stripe renvoie la même
      *        réponse pour la même clé (24 h) : un double clic, une requête rejouée ou une nouvelle tentative
      *        après une coupure réseau ne créent jamais deux clients ni deux abonnements.
+     * @param string|null $stripe_account Stripe Connect : appel fait AU NOM du compte Stripe d'une association
+     *        (en-tête Stripe-Account: acct_…), avec la clé de la plateforme : session de paiement, lecture d'un
+     *        paiement. Les objets créés appartiennent à ce compte (paiement direct, stripe-connect-helpers.php).
      * @return array ['ok' => bool, 'data' => array|null, 'error' => string|null, 'http_code' => int]
      */
-    function ak_stripe_api_call(PDO $pdo, string $method, string $endpoint, array $params = [], ?string $idempotency_key = null): array {
+    function ak_stripe_api_call(PDO $pdo, string $method, string $endpoint, array $params = [], ?string $idempotency_key = null, ?string $stripe_account = null): array {
         $sk = ak_stripe_get_secret_key($pdo);
         if (empty($sk)) {
             return ['ok' => false, 'data' => null, 'error' => 'Stripe non configuré', 'http_code' => 0];
@@ -484,6 +488,13 @@ if (!function_exists('ak_stripe_api_call')) {
         ];
         if ($method === 'POST' && $idempotency_key !== null && $idempotency_key !== '') {
             $headers[] = 'Idempotency-Key: ' . substr(preg_replace('/[^A-Za-z0-9_.:-]/', '', $idempotency_key), 0, 255);
+        }
+        if ($stripe_account !== null && $stripe_account !== '') {
+            // Identifiant de compte connecté seulement (jamais une valeur libre dans un en-tête HTTP)
+            if (!preg_match('/^acct_[A-Za-z0-9]{1,60}$/', $stripe_account)) {
+                return ['ok' => false, 'data' => null, 'error' => 'Compte Stripe connecté invalide', 'http_code' => 0];
+            }
+            $headers[] = 'Stripe-Account: ' . $stripe_account;
         }
 
         // Coupure réseau : une seule nouvelle tentative, et seulement quand elle ne peut rien créer
@@ -525,6 +536,32 @@ if (!function_exists('ak_stripe_api_call')) {
 
         $err = $data['error']['message'] ?? 'Erreur HTTP ' . $http_code;
         return ['ok' => false, 'data' => $data, 'error' => $err, 'http_code' => $http_code];
+    }
+}
+
+if (!function_exists('ak_stripe_verify_signature')) {
+    /**
+     * Signature d'un webhook Stripe (en-tête Stripe-Signature « t=…,v1=… », HMAC SHA-256 du « t.payload »
+     * avec le secret du point de terminaison). Anti-rejeu : 5 minutes d'écart au plus.
+     * Partagée par stripe-webhook.php (abonnements) et stripe-connect-webhook.php (comptes connectés).
+     */
+    function ak_stripe_verify_signature(string $payload, string $sig_header, string $secret, int $tolerance = 300): bool {
+        $timestamp = null;
+        $signatures = [];
+        foreach (explode(',', $sig_header) as $item) {
+            $parts = explode('=', trim($item), 2);
+            if (count($parts) !== 2) continue;
+            [$k, $v] = $parts;
+            if ($k === 't') $timestamp = (int)$v;
+            elseif ($k === 'v1') $signatures[] = $v;
+        }
+        if (!$timestamp || empty($signatures) || $secret === '') return false;
+        if (abs(time() - $timestamp) > $tolerance) return false;
+        $expected = hash_hmac('sha256', $timestamp . '.' . $payload, $secret);
+        foreach ($signatures as $sig) {
+            if (hash_equals($expected, $sig)) return true;
+        }
+        return false;
     }
 }
 

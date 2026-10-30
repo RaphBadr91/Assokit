@@ -48,6 +48,16 @@ $client_email = (string)($client['email'] ?? '');
 $can_mark_paid = in_array((string)$invoice['status'], ['pending', 'overdue'], true);
 $declared = $can_mark_paid && !empty($invoice['client_marked_paid_at']);
 $pay_methods = ak_asso_payment_methods();
+// Paiement en ligne (Stripe Connect) : dernier paiement en ligne de la facture (payé, SEPA en cours, remboursé…)
+$online_op = null;
+try {
+    require_once __DIR__ . '/stripe-connect-helpers.php';
+    if (!ak_connect_schema_missing($pdo)) {
+        $stmt = $pdo->prepare("SELECT * FROM asso_online_payments WHERE invoice_id = ? AND org_id = ? AND status NOT IN ('open', 'expired') ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$invoice_id, (int)$invoice['org_id']]);
+        $online_op = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+} catch (Throwable $e) {}
 // Date de règlement indiquée par le client (historique des règlements), sinon date de sa déclaration
 $declared_date = $declared ? date('Y-m-d', strtotime($invoice['client_marked_paid_at'])) : '';
 if ($declared) {
@@ -265,6 +275,20 @@ render_sidebar('factures');
         if (!empty($invoice['payment_reference'])): ?> · réf. <?= h($invoice['payment_reference']) ?><?php endif; ?>
     </div>
     <?php endif; ?>
+
+    <?php if ($online_op): $op_lbl = [
+        'paid' => '💳 Payée en ligne', 'processing' => '⏳ Prélèvement SEPA en cours de confirmation par la banque', 'failed' => '✕ Prélèvement SEPA rejeté par la banque',
+        'refunded' => '↩ Paiement en ligne remboursé depuis Stripe', 'partially_refunded' => '↩ Paiement en ligne remboursé en partie', 'disputed' => '⚠ Paiement en ligne contesté par le payeur'][$online_op['status']] ?? ''; ?>
+    <?php if ($op_lbl !== ''): ?>
+    <div class="card" style="padding:14px 22px; margin-bottom:16px; border-left:4px solid <?= in_array($online_op['status'], ['failed', 'disputed'], true) ? '#DC2626' : ($online_op['status'] === 'processing' ? '#F59E0B' : '#10B981') ?>; font-size:13px; color:#1F2937;">
+        <?= h($op_lbl) ?><?= $online_op['paid_at'] ? ' le <strong>' . h(date('d/m/Y', strtotime((string)$online_op['paid_at']))) . '</strong>' : '' ?>
+        · <?= h(ak_connect_money((int)$online_op['amount_cents'])) ?> (<?= ($online_op['payment_method_type'] ?? '') === 'sepa_debit' ? 'prélèvement SEPA' : 'carte' ?>)
+        <?php if ($online_op['fee_cents'] !== null): ?> · frais Stripe <?= h(ak_connect_money((int)$online_op['fee_cents'])) ?>, net <?= h(ak_connect_money((int)$online_op['net_cents'])) ?><?php endif; ?>
+        <?php if ((int)$online_op['refunded_cents'] > 0): ?> · remboursé <?= h(ak_connect_money((int)$online_op['refunded_cents'])) ?><?php endif; ?>
+        <?php if (!empty($online_op['overpaid'])): ?><div style="color:#991B1B; margin-top:4px;">⚠ Ce paiement est arrivé alors que la facture était déjà réglée ou annulée : remboursez-le depuis votre tableau de bord Stripe.</div><?php endif; ?>
+        <?php if ($online_op['status'] === 'refunded' && in_array((string)$invoice['status'], ['pending', 'overdue'], true)): ?><div style="margin-top:4px;">La facture est de nouveau « à payer » : établissez un avoir si la vente est annulée.</div><?php endif; ?>
+    </div>
+    <?php endif; endif; ?>
 
     <!-- ────── HISTORIQUE EMAILS ────── -->
     <?php if (!empty($emails_log)): ?>

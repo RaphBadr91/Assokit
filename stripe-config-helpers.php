@@ -59,6 +59,8 @@ if (!defined('AK_STRIPE_WEBHOOK_EVENTS')) {
         'customer.deleted',
         'charge.refunded',
         'charge.dispute.created',
+        // Souscription pendant l'essai : carte ou mandat SEPA enregistré (premier prélèvement à la fin de l'essai)
+        'setup_intent.succeeded',
     ]);
 }
 

@@ -14,6 +14,12 @@
  *   5. Confirmation côté Stripe via Stripe.js (3-D Secure, mandat SEPA)
  *   6. Redirection vers /mon-asso-paiement-success (qui active l'abonnement sans attendre le webhook)
  *
+ * Association en essai (ak_stripe_trial_end_for_org : essai en cours, fin à 48 h au moins) : elle garde ses
+ * jours d'essai. Le formulaire Stripe est en mode « setup » (aucun montant) : la carte, Apple Pay, Google Pay
+ * ou le mandat SEPA est enregistré (stripe.confirmSetup), et le premier mois est prélevé automatiquement le
+ * jour de la fin de l'essai. Abonnement déjà souscrit pendant l'essai (ak_org_trial_card) : rappel de la date
+ * du premier prélèvement, changer de carte ou annuler, jamais un second abonnement.
+ *
  * Prélèvement SEPA déjà en cours de vérification (premier paiement) : aucun nouveau paiement proposé.
  * Paiement impossible pour cette association (ak_stripe_payment_refusal, même règle que
  * stripe-create-payment-intent.php : suspension par le support, abonnement réglé sur facture, mode test
@@ -57,6 +63,8 @@ $page_action = (string)($_POST['action'] ?? ($_GET['action'] ?? ''));
 
 // Abonnement par carte déjà en vigueur : aucun nouvel abonnement ne doit naître de cette page
 $live_stripe = function_exists('ak_org_live_stripe_subscription') ? ak_org_live_stripe_subscription($pdo, $org_id) : null;
+// Abonnement souscrit pendant l'essai (carte enregistrée, premier prélèvement à la fin de l'essai) : pas de second
+$trial_card = !$live_stripe && function_exists('ak_org_trial_card') ? ak_org_trial_card($pdo, $org_id) : null;
 $has_addon = function_exists('ak_has_addon_custom_domain') && ak_has_addon_custom_domain($pdo, $org_id);
 $addon_price_id = ak_stripe_config_get($pdo, 'addon_domain_price_id', null);
 // Add-on ajouté à l'abonnement par carte en place : le montant tel qu'il sera prélevé (même règle que
@@ -201,6 +209,14 @@ $total_str = $price['ttc'];
 // Essai en cours / terminé : rappelé au-dessus du paiement (même texte que « Mon abonnement »)
 $trial_info = function_exists('ak_plan_trial_info') ? ak_plan_trial_info($pdo, $org_id) : ['in_trial' => false, 'trial_expired' => false];
 $plan_label = function_exists('ak_plan_display_name') ? ak_plan_display_name($plan) : (string)$plan['name'];
+// Essai en cours (fin à 48 h au moins) : premier prélèvement le jour de la fin de l'essai, rien aujourd'hui.
+// Même règle que stripe-create-payment-intent.php (formulaire Stripe en mode « setup »).
+$setup_end = function_exists('ak_stripe_trial_end_for_org') ? ak_stripe_trial_end_for_org($pdo, $org_id) : null;
+$setup_mode = $setup_end !== null;
+$first_charge_fr = $setup_mode ? date('d/m/Y', $setup_end) : '';
+$first_charge_str = $total_str . ($price['has_vat'] ? ' TTC' : '');
+// Libellé du bouton (repris par le JavaScript après une erreur)
+$btn_label = $setup_mode ? '✓ Souscrire · 0 € aujourd’hui' : '💳 Payer ' . $total_str . ($price['has_vat'] ? ' TTC' : '') . '/mois';
 
 render_head('Paiement — ' . $plan_label);
 render_sidebar('mon-asso-paiement');
@@ -270,6 +286,41 @@ render_sidebar('mon-asso-paiement');
     </div>
   <?php endif; ?>
 
+  <?php elseif ($trial_card):
+    $btn = 'display:inline-flex;align-items:center;gap:7px;padding:11px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;';
+    $tc_amount = ak_trial_card_amount($pdo, $trial_card);   // « TTC » d'après l'abonnement souscrit
+  ?>
+
+  <!-- ============================================ -->
+  <!-- Abonnement souscrit pendant l'essai : premier prélèvement à la fin de l'essai -->
+  <!-- ============================================ -->
+  <div class="main-head" style="margin-bottom:24px;">
+    <div>
+      <h1 style="margin:0 0 4px;">✅ Abonnement souscrit</h1>
+      <p style="color:#64748B;margin:0;">Votre <?= htmlspecialchars($trial_card['pm_label']) ?> est enregistré<?= $trial_card['pm_type'] === 'sepa_debit' ? '' : 'e' ?> : rien à payer aujourd’hui</p>
+    </div>
+  </div>
+  <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:28px;max-width:640px;">
+    <p style="font-size:14px;color:#475569;margin:0 0 16px;line-height:1.6;">
+      <?php if ($trial_card['charging']): ?>
+      Votre essai est terminé : le premier prélèvement<?= $tc_amount !== '' ? ' de <strong>' . htmlspecialchars($tc_amount) . '</strong>' : '' ?> est en cours. Votre abonnement s’active dès qu’il aura abouti, puis se renouvelle chaque mois à la même date.
+      <?php else: ?>
+      Votre essai gratuit continue<?= !empty($trial_info['end_fr']) ? ' jusqu’au <strong>' . htmlspecialchars($trial_info['end_fr']) . '</strong>' : '' ?>.
+      Le premier prélèvement<?= $tc_amount !== '' ? ' de <strong>' . htmlspecialchars($tc_amount) . '</strong>' : '' ?> aura lieu automatiquement<?= $trial_card['charge_fr'] !== '' ? ' le <strong>' . htmlspecialchars($trial_card['charge_fr']) . '</strong>' : '' ?>, à la fin de votre essai, puis chaque mois à la même date.
+      Vous pouvez annuler avant cette date sans frais : aucun montant ne sera prélevé.
+      <?php endif; ?>
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <?php if ($stripe_ready): ?>
+        <a href="/mon-asso-paiement?action=update_card" style="<?= $btn ?>background:#059669;color:white;">💳 Changer ma carte bancaire</a>
+      <?php endif; ?>
+      <?php if (!$trial_card['charging']): ?>
+        <a href="/mon-asso-annuler-abonnement" style="<?= $btn ?>background:white;color:#991B1B;border:1px solid #FECACA;">Annuler sans frais</a>
+      <?php endif; ?>
+      <a href="/mon-asso-plan" style="<?= $btn ?>background:white;color:#475569;border:1px solid #E2E8F0;">← Mon abonnement</a>
+    </div>
+  </div>
+
   <?php else: ?>
 
   <div class="main-head" style="margin-bottom:24px;">
@@ -287,8 +338,10 @@ render_sidebar('mon-asso-paiement');
         <strong><?= htmlspecialchars($trial_info['label']) ?></strong><br>
         <?php if ($trial_over): ?>
           Vos données sont conservées : une fois le paiement confirmé, votre association passe au plan <?= htmlspecialchars($plan_label) ?>.
+        <?php elseif ($setup_mode): ?>
+          Vous gardez tous vos jours d’essai : aucun prélèvement aujourd’hui. Le premier prélèvement aura lieu le <?= htmlspecialchars($first_charge_fr) ?>, à la fin de votre essai. Vos données et réglages sont conservés.
         <?php else: ?>
-          Votre abonnement commence dès le paiement : le premier mois est prélevé aujourd’hui et l’essai gratuit s’arrête (les jours d’essai restants ne sont pas reportés). Vos données et réglages sont conservés.
+          Votre essai se termine dans moins de 48 heures : le premier mois est prélevé aujourd’hui et votre abonnement commence tout de suite. Vos données et réglages sont conservés.
         <?php endif; ?>
       </div>
     </div>
@@ -367,13 +420,23 @@ render_sidebar('mon-asso-paiement');
 
           <button id="submit-button" type="submit" style="width:100%; background:linear-gradient(180deg,#059669 0%,#047857 100%); color:white; padding:14px 24px; border:none; border-radius:12px; font-weight:600; font-size:15px; cursor:pointer; box-shadow:0 4px 14px rgba(5,150,105,0.30); display:flex; align-items:center; justify-content:center; gap:10px;">
             <span id="button-spinner" style="display:none; width:18px; height:18px; border:2px solid white; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite;"></span>
-            <span id="button-text">💳 Payer <?= htmlspecialchars($total_str) ?><?= $price['has_vat'] ? ' TTC' : '' ?>/mois</span>
+            <span id="button-text"><?= htmlspecialchars($btn_label) ?></span>
           </button>
+          <?php if ($setup_mode): $ch_day = (int)date('j', $setup_end); ?>
+          <p style="font-size:13px; color:#047857; background:#ECFDF5; border:1px solid #A7F3D0; border-radius:10px; line-height:1.55; margin:12px 0 0; padding:10px 12px; text-align:center;">
+            <strong>Aucun prélèvement aujourd’hui.</strong> Premier prélèvement de <?= htmlspecialchars($first_charge_str) ?> le <?= htmlspecialchars($first_charge_fr) ?>, à la fin de votre essai. Vous pouvez annuler avant sans frais.
+          </p>
+          <p style="font-size:12px; color:#64748B; line-height:1.55; margin:10px 0 0; text-align:center;">
+            En confirmant, vous acceptez les <a href="/cgu#paiement" target="_blank" rel="noopener" style="color:#059669;">conditions générales</a> et autorisez le prélèvement automatique de votre abonnement à partir du <?= htmlspecialchars($first_charge_fr) ?>,
+            puis le <?= $ch_day ?> de chaque mois<?= $ch_day > 28 ? ' (ou le dernier jour du mois)' : '' ?> ; annulation sans frais avant le premier prélèvement, puis résiliation à tout moment depuis « Mon abonnement », effet à la fin du mois payé ; aucun remboursement au prorata.
+          </p>
+          <?php else: ?>
           <p style="font-size:12px; color:#64748B; line-height:1.55; margin:12px 0 0; text-align:center;">
             En confirmant, vous acceptez les <a href="/cgu#paiement" target="_blank" rel="noopener" style="color:#059669;">conditions générales</a>.
             Premier mois prélevé aujourd’hui, puis renouvellement le <?= (int)date('j') ?> de chaque mois<?= (int)date('j') > 28 ? ' (ou le dernier jour du mois)' : '' ?> ;
             résiliation à tout moment depuis « Mon abonnement », effet à la fin du mois payé ; aucun remboursement au prorata.
           </p>
+          <?php endif; ?>
         </form>
 
         <!-- Logos confiance -->
@@ -437,6 +500,14 @@ render_sidebar('mon-asso-paiement');
         </div>
         <?php endif; ?>
 
+        <?php if ($setup_mode): ?>
+        <!-- Essai : rien aujourd'hui, premier prélèvement à la fin de l'essai -->
+        <div style="display:flex; justify-content:space-between; gap:10px; padding:10px 12px; margin-top:12px; background:#ECFDF5; border:1px solid #A7F3D0; border-radius:8px; font-size:13px; color:#047857; line-height:1.5;">
+          <div><strong>Aujourd’hui</strong><br>Premier prélèvement le <?= htmlspecialchars($first_charge_fr) ?></div>
+          <div style="text-align:right; white-space:nowrap;"><strong>0 €</strong><br><?= htmlspecialchars($first_charge_str) ?></div>
+        </div>
+        <?php endif; ?>
+
         <!-- Garanties -->
         <div style="background:#F0FDF4; border:1px solid #A7F3D0; border-radius:8px; padding:12px 14px; margin-top:18px; font-size:12px; color:#047857; line-height:1.55;">
           ✅ <strong>Sans engagement</strong> — résiliable à tout moment, effet en fin de période en cours<br>
@@ -454,12 +525,15 @@ render_sidebar('mon-asso-paiement');
     <script>
     (function() {
       const stripe = Stripe(<?= json_encode($stripe_pk) ?>, { locale: 'fr' });
-      // Mode « abonnement » sans intention préalable : l'abonnement est créé au clic sur « Payer ».
-      // paymentMethodTypes = exactement les moyens acceptés par l'abonnement (sinon confirmPayment échoue).
-      const elements = stripe.elements({
-        mode: 'subscription',
-        amount: <?= (int)$total_cents ?>,
-        currency: 'eur',
+      // Essai en cours : la carte (ou le mandat SEPA) est seulement enregistrée, le premier mois est prélevé
+      // à la fin de l'essai (mode « setup », aucun montant, stripe.confirmSetup). Sinon mode « abonnement » :
+      // premier mois prélevé maintenant (stripe.confirmPayment). Dans les deux cas l'abonnement est créé au
+      // clic. paymentMethodTypes = exactement les moyens acceptés par l'abonnement (sinon la confirmation échoue).
+      const SETUP = <?= $setup_mode ? 'true' : 'false' ?>;
+      const intentOptions = SETUP
+        ? { mode: 'setup', currency: 'eur' }
+        : { mode: 'subscription', amount: <?= (int)$total_cents ?>, currency: 'eur' };
+      const elements = stripe.elements(Object.assign(intentOptions, {
         paymentMethodTypes: <?= json_encode(array_values($pm_types)) ?>,
         appearance: {
           theme: 'stripe',
@@ -473,7 +547,7 @@ render_sidebar('mon-asso-paiement');
             borderRadius: '8px'
           }
         }
-      });
+      }));
 
       const paymentElement = elements.create('payment', {
         layout: 'tabs',
@@ -499,7 +573,7 @@ render_sidebar('mon-asso-paiement');
           buttonSpinner.style.display = 'inline-block';
         } else {
           submitBtn.disabled = false;
-          buttonText.textContent = <?= json_encode('💳 Payer ' . $total_str . ($price['has_vat'] ? ' TTC' : '') . '/mois', JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>;
+          buttonText.textContent = <?= json_encode($btn_label, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>;
           buttonSpinner.style.display = 'none';
         }
       }
@@ -546,18 +620,28 @@ render_sidebar('mon-asso-paiement');
             return;
           }
 
-          // 3. Confirmation du paiement chez Stripe (3-D Secure et mandat SEPA gérés par Stripe.js)
-          const { error: confirmError } = await stripe.confirmPayment({
+          // La fin de l'essai a changé entre l'affichage et le clic (prolongée, ou à moins de 48 h) : le serveur
+          // a choisi l'autre mode, le formulaire doit être refait (rien n'a été prélevé ni enregistré)
+          if ((data.mode || 'payment') !== (SETUP ? 'setup' : 'payment')) {
+            showMessage('La date de fin de votre essai vient de changer : la page se met à jour. Aucun montant n’a été prélevé.');
+            setTimeout(function () { window.location.reload(); }, 2500);
+            return;
+          }
+
+          // 3. Confirmation chez Stripe (3-D Secure et mandat SEPA gérés par Stripe.js) : paiement du premier
+          //    mois, ou, pendant l'essai, enregistrement de la carte / du mandat (aucun prélèvement)
+          const confirmArgs = {
             elements,
             clientSecret,
             confirmParams: {
               return_url: window.location.origin + '/mon-asso-paiement-success'
             }
-          });
+          };
+          const { error: confirmError } = SETUP ? await stripe.confirmSetup(confirmArgs) : await stripe.confirmPayment(confirmArgs);
 
           if (confirmError) {
             // Carte refusée, 3-D Secure non validé… : rien n'est prélevé, on peut réessayer (même abonnement)
-            showMessage((confirmError.message || 'Le paiement n’a pas abouti.') + ' Aucun montant n’a été prélevé.');
+            showMessage((confirmError.message || (SETUP ? 'L’enregistrement n’a pas abouti.' : 'Le paiement n’a pas abouti.')) + ' Aucun montant n’a été prélevé.');
             setLoading(false);
           }
           // Si pas d'erreur, Stripe redirige automatiquement
@@ -580,7 +664,7 @@ render_sidebar('mon-asso-paiement');
 
   <?php endif; ?>
 
-  <?php endif; /* $live_stripe */ ?>
+  <?php endif; /* $live_stripe / $trial_card */ ?>
 
 </main>
 

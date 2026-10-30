@@ -441,6 +441,7 @@ function ak_notif_icon(string $type): array {
         'mention'      => ['icon' => '🏷️', 'color' => '#EF4444', 'label' => 'Mention'],
         'team_added'   => ['icon' => '👥', 'color' => '#10B981', 'label' => 'Équipe'],
         'step_assigned'=> ['icon' => '📝', 'color' => '#F59E0B', 'label' => 'Étape'],
+        'paiement'     => ['icon' => '💳', 'color' => '#059669', 'label' => 'Paiement en ligne'],
     ];
     return $map[$type] ?? ['icon' => '🔔', 'color' => '#64748B', 'label' => 'Notification'];
 }

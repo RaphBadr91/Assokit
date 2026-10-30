@@ -50,6 +50,7 @@ $product_schema = [
 // FAQ : source unique de la section visible ET du schema FAQPage (rich results Google)
 $tarifs_faqs = [
     ['L’essai est-il vraiment gratuit ?', 'Oui. Pendant ' . $trial_days . ' jours, vous utilisez toutes les fonctionnalités PRO d’Assokit gratuitement, sans carte bancaire et sans engagement. À la fin de l’essai, vous choisissez de continuer avec Assokit, ou vous vous arrêtez : comme aucune carte n’a été demandée, rien n’est prélevé.'],
+    ['Puis-je m’abonner pendant l’essai ?', 'Oui, et vous gardez tous vos jours d’essai : votre carte (ou votre mandat de prélèvement SEPA) est enregistrée, mais rien n’est prélevé avant la fin de l’essai. Le premier mois est prélevé automatiquement ce jour-là, et vous pouvez annuler sans frais d’ici là.'],
     ['Combien coûte Assokit après l’essai ?', 'Une seule formule, tout inclus : ' . $offer['label'] . ', sans engagement. Les réseaux, fédérations, grandes structures et collectivités peuvent demander une offre Sur-mesure, sur devis.'],
     ['Y a-t-il un engagement de durée ?', 'Non. L’abonnement est mensuel et résiliable à tout moment depuis votre espace, en quelques clics. La résiliation prend effet à la fin de la période en cours, déjà payée : pas de frais de résiliation, et pas de remboursement au prorata du mois entamé.'],
     ['Existe-t-il une formule gratuite ?', 'Non. Plutôt qu’une version gratuite bridée, nous vous offrons ' . $trial_days . ' jours d’essai complet, puis un seul abonnement qui comprend tout. Vous savez exactement ce que vous payez.'],

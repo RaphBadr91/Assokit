@@ -722,6 +722,15 @@ function ak_asso_invoice_render_pdf(PDO $pdo, int $invoice_id): string
         $parent = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
+    // Paiement en ligne (Stripe Connect) : lien et QR code « Payer en ligne » sur une facture à régler
+    $pdf_pay_url = '';
+    try {
+        require_once __DIR__ . '/stripe-connect-helpers.php';
+        $pdf_pay_url = preg_replace('/#.*$/', '', ak_connect_invoice_pay_url($pdo, $invoice));
+    } catch (Throwable $e) {
+        $pdf_pay_url = '';
+    }
+
     // Render HTML
     ob_start();
     $pdf_invoice = $invoice;
@@ -979,7 +988,10 @@ function ak_asso_payment_methods(): array
  * qui a confirmé, moyen et référence, ligne dans l'historique des règlements.
  *
  * $opts : paid_at (AAAA-MM-JJ, défaut aujourd'hui ; ni future ni de plus de 5 ans),
- *         method (clé de ak_asso_payment_methods(), défaut 'declared'), reference.
+ *         method (clé de ak_asso_payment_methods(), défaut 'declared'), reference,
+ *         source ('admin' par défaut ; 'stripe' : paiement en ligne reçu par Stripe Connect,
+ *         stripe-connect-helpers.php), online_payment_id (asso_online_payments.id).
+ * $user_id 0 : aucun utilisateur (paiement en ligne enregistré par le webhook).
  * Retourne ['ok' => bool, 'code' => 'ok'|'not_found'|'state', 'message' => string,
  *           'invoice_number' => string, 'amount_cents' => int] (+ 'state_label' si 'state').
  */
@@ -999,6 +1011,15 @@ function ak_asso_invoice_mark_paid(PDO $pdo, int $org_id, int $invoice_id, int $
     if (!array_key_exists($method, ak_asso_payment_methods())) $method = 'declared';
     $reference = trim((string)($opts['reference'] ?? ''));
     $reference = $reference === '' ? null : mb_substr($reference, 0, 255);
+    $uid = $user_id > 0 ? $user_id : null;
+    // Paiement en ligne : « stripe » si la colonne l'accepte (migration 2026-10-30), sinon « admin » comme avant
+    $source = 'admin';
+    if (($opts['source'] ?? '') === 'stripe') {
+        if (!function_exists('ak_db_pick')) require_once __DIR__ . '/trial-helpers.php';
+        $source = ak_db_pick($pdo, 'asso_invoice_payments', 'source', ['stripe', 'admin']) ?? 'admin';
+    }
+    $online_id = (int)($opts['online_payment_id'] ?? 0);
+    $payment_id = 0;
 
     $ownTx = !$pdo->inTransaction();
     if ($ownTx) $pdo->beginTransaction();
@@ -1027,11 +1048,15 @@ function ak_asso_invoice_mark_paid(PDO $pdo, int $org_id, int $invoice_id, int $
         $pdo->prepare("UPDATE asso_invoices SET status = 'paid', paid_at = ?, confirmed_paid_by_org_at = NOW(),
                               confirmed_paid_by_user_id = ?, payment_method = ?, payment_reference = ?, updated_at = NOW()
                        WHERE id = ? AND org_id = ?")
-            ->execute([$paid_at_full, $user_id, $method, $reference, $invoice_id, $org_id]);
+            ->execute([$paid_at_full, $uid, $method, $reference, $invoice_id, $org_id]);
         try {
             $pdo->prepare("INSERT INTO asso_invoice_payments (invoice_id, org_id, amount_cents, paid_at, payment_method, reference, source, recorded_by_user_id)
-                           VALUES (?, ?, ?, ?, ?, ?, 'admin', ?)")
-                ->execute([$invoice_id, $org_id, (int)$inv['amount_ttc_cents'], $paid_at_full, $method, $reference, $user_id]);
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                ->execute([$invoice_id, $org_id, (int)$inv['amount_ttc_cents'], $paid_at_full, $method, $reference, $source, $uid]);
+            $payment_id = (int)$pdo->lastInsertId();
+            if ($online_id > 0 && $payment_id > 0 && isset(ak_db_columns($pdo, 'asso_invoice_payments')['online_payment_id'])) {
+                $pdo->prepare("UPDATE asso_invoice_payments SET online_payment_id = ? WHERE id = ?")->execute([$online_id, $payment_id]);
+            }
         } catch (Throwable $e) {
             error_log('[ASSO INVOICE MARK PAID] historique : ' . $e->getMessage());
         }
@@ -1047,6 +1072,7 @@ function ak_asso_invoice_mark_paid(PDO $pdo, int $org_id, int $invoice_id, int $
         'message' => 'Facture ' . $inv['invoice_number'] . ' marquée payée ('
             . number_format(((int)$inv['amount_ttc_cents']) / 100, 2, ',', ' ') . ' €).',
         'invoice_number' => (string)$inv['invoice_number'], 'amount_cents' => (int)$inv['amount_ttc_cents'],
+        'payment_id' => $payment_id,
     ];
 }
 

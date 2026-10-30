@@ -74,7 +74,13 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
     $tpl = ak_asso_get_email_template($settings, $email_type);
 
     // Variables à substituer
-    $public_url = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr') . '/facture/' . $inv['public_uuid'];
+    require_once __DIR__ . '/stripe-connect-helpers.php';
+    $public_url = ak_stripe_site_base() . '/facture/' . $inv['public_uuid'];
+    // Paiement en ligne (Stripe Connect) : lien « Payer en ligne » pour une facture à régler, sauf copie d'une facture payée
+    $pay_url = '';
+    if (!$is_credit && in_array($email_type, ['initial', 'dunning1', 'dunning2', 'dunning3', 'manual'], true)) {
+        try { $pay_url = ak_connect_invoice_pay_url($pdo, $inv); } catch (Throwable $e) { $pay_url = ''; }
+    }
     $parent_number = '';
     if ($is_credit && !empty($inv['parent_invoice_id'])) {
         $ps = $pdo->prepare("SELECT invoice_number FROM asso_invoices WHERE id = :id AND org_id = :org LIMIT 1");
@@ -93,8 +99,11 @@ function ak_asso_invoice_send_email(PDO $pdo, int $invoice_id, string $email_typ
         '{IBAN}'          => $settings['bank_iban'] ?? '—',
     ];
 
-    $subject = strtr($tpl['subject'], $vars);
+    $subject = strtr($tpl['subject'], $vars + ['{LIEN_PAIEMENT}' => '']);
     $body_text = strtr($tpl['body'], $vars);
+    // {LIEN_PAIEMENT} remplacé, ou paragraphe « Payer en ligne… » ajouté avant la formule de politesse
+    $body_text = ak_connect_add_link($body_text, $pay_url, $pay_url === '' ? '' : ak_connect_pay_paragraph($pay_url,
+        ak_connect_sepa_offered($pdo, (int)$inv['org_id'], 'invoice', (string)($inv['currency'] ?: 'EUR'))));
 
     // Convertir le body en HTML
     $body_html = nl2br(htmlspecialchars($body_text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
@@ -182,7 +191,8 @@ function ak_asso_send_resend(string $to, string $subject, string $html, ?string 
     if (!empty($cc)) $payload['cc'] = [$cc];
     if (!empty($attachment)) $payload['attachments'] = [$attachment];
 
-    $ch = curl_init('https://api.resend.com/emails');
+    // RESEND_API_URL : même réglage que resend-helper.php (banc de test : faux Resend local)
+    $ch = curl_init(defined('RESEND_API_URL') && RESEND_API_URL ? RESEND_API_URL : 'https://api.resend.com/emails');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST           => true,

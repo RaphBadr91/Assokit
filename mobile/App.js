@@ -22,6 +22,7 @@ import {
   KeyboardAvoidingView,
   Alert,
   Linking,
+  Share,
   AppState,
   Dimensions,
   TurboModuleRegistry,
@@ -151,6 +152,17 @@ const IOS_SIGNUP_REQUEST = Platform.OS === 'ios';
 // valider sur iPhone, voir IOS_SIGNUP_REQUEST), /connexion, /mot-de-passe-oublie, /confidentialite, /cgu, /cookies,
 // /mentions-legales, /suppression-compte, /retirer-demande (retrait d'une demande d'espace, sans session), /contact.
 const MARKETING_URL_RE = /^https?:\/\/(?:www\.)?assokit\.fr(?:\/(?:index\.php)?|\/(?:fonctionnalites|logiciel-[a-z-]+|comptabilite-analytique|alternative-helloasso|guide-association-loi-1901|guide-comptabilite-association|pour-associations|pour-tpe|pour-organismes|a-propos|avis|application|blog|modeles?-[a-z-]+|flyer)(?:\.php)?(?:\/[^?#]*)?)?(?:[?#]|$)/i;
+
+// Pages publiques de paiement des associations (cotiser.php, payer-facture.php, paiement-confirme.php) :
+// ouvertes dans le navigateur du téléphone, jamais dans la WebView (onShouldStartLoadWithRequest).
+const PAY_PAGE_RE = /^https?:\/\/(?:www\.)?assokit\.fr\/(?:cotiser|don|payer-facture|paiement-confirme)(?:[/?#]|$)/i;
+
+// Partage d'un lien de paiement (facture, campagne de cotisation ou de dons) : le payeur paie dans SON
+// navigateur ; rien n'est payé dans l'application.
+function sharePayLink(url, label) {
+  if (!url) return;
+  Share.share({ message: label + ' : ' + url, url }).catch(() => {});
+}
 
 const APP_ONLY_CSS = `
 (function(){ try {
@@ -999,7 +1011,7 @@ function NativeLogin({ onSubmit, busy, error, onForgot, onDemo, onBack, onFaceId
  * D'où cette ligne discrète en bas des réglages. UI_REV est incrémenté à
  * la main quand l'interface change de façon visible.
  */
-const UI_REV = '2026-10-23-notifications';
+const UI_REV = '2026-10-30-paiements-en-ligne';
 
 function BuildStamp() {
   // updateId absent, ou lancement embarqué : c'est le bundle du binaire qui
@@ -2242,6 +2254,27 @@ function NativeInvoiceDetail({ entry, onBack, onRefresh, onWeb, onEdit, onAction
               </TouchableOpacity>
             )}
           </>
+        )}
+        {/* Paiement en ligne (Stripe Connect) : état et lien à partager au client (payé dans son navigateur) */}
+        {!isQuote && !isCredit && inv.online_status === 'processing' && (
+          <View style={[styles.dLockCard, { marginTop: 0, marginBottom: 12 }]}>
+            <Ionicons name="time-outline" size={18} color="#B45309" />
+            <Text style={styles.dLockTxt}>Prélèvement SEPA en cours de confirmation par la banque</Text>
+          </View>
+        )}
+        {!isQuote && !isCredit && inv.online_status === 'paid' && inv.status === 'paid' && (
+          <View style={[styles.dLockCard, { marginTop: 0, marginBottom: 12 }]}>
+            <Ionicons name="card-outline" size={18} color="#065F46" />
+            <Text style={styles.dLockTxt}>Payée en ligne par le client</Text>
+          </View>
+        )}
+        {!isQuote && !isCredit && !!inv.pay_url && (
+          <TouchableOpacity accessibilityRole="button" style={[styles.dWebBtn, { marginBottom: 10 }]} activeOpacity={0.85}
+            accessibilityLabel="Partager le lien de paiement en ligne de la facture"
+            onPress={() => sharePayLink(inv.pay_url, 'Facture ' + inv.number + ' (' + fmtEuro2(inv.amount_ttc) + '), à régler en ligne')}>
+            <Ionicons name="share-outline" size={17} color={INK_2} />
+            <Text style={styles.dWebBtnTxt}>Partager le lien de paiement</Text>
+          </TouchableOpacity>
         )}
         {/* Paire « Modifier » / « Aperçu client » côte à côte (nœud 9:48). */}
         <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -6576,6 +6609,8 @@ function notifLinkTarget(link, platform) {
   if (/^\/notifications(?:[/?#.]|$)/.test(path)) return { screen: 'notifications', label: 'Voir les notifications' };
   // Pages jamais chargées dans l'appli (tarifs, abonnement : onShouldStartLoadWithRequest)
   if (/^\/(tarifs|abonnement|mon-asso-plan|mon-asso-paiement|mon-asso-abonnement|mon-asso-annuler-abonnement)(?:[/?#.]|$)/i.test(path)) return null;
+  // Pages publiques de paiement des associations : jamais dans l'application (navigateur)
+  if (/^\/(cotiser|don|payer-facture|paiement-confirme)(?:[/?#]|$)/i.test(path)) return null;
   return { screen: 'web', path, label: 'Ouvrir la page' };
 }
 
@@ -6887,6 +6922,15 @@ function NativeCotisationDetail({ entry, onBack, onRefresh, onAction, onNewPayme
           </View>
         ) : null}
         {!!c.description && <DescBlock label="Description" text={c.description} tint="#2563EB" />}
+        {/* Paiement en ligne (Stripe Connect) : lien public de la campagne à partager (payé dans le navigateur) */}
+        {!!c.pay_url && (
+          <TouchableOpacity accessibilityRole="button" style={[styles.dWebBtn, { marginTop: 12 }]} activeOpacity={0.85}
+            accessibilityLabel={c.kind === 'don' ? 'Partager le lien de la page de dons' : 'Partager le lien de paiement de la campagne'}
+            onPress={() => sharePayLink(c.pay_url, c.kind === 'don' ? 'Faire un don en ligne' : c.name + ' : cotisation à régler en ligne')}>
+            <Ionicons name="share-outline" size={17} color={INK_2} />
+            <Text style={styles.dWebBtnTxt}>{c.kind === 'don' ? 'Partager la page de dons' : 'Partager le lien de paiement'}</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Deux cartes statistiques (nœud 10:14) : libellé capitales au-dessus de la valeur. */}
         <FadeUp still={still} delay={80}>
@@ -9496,6 +9540,10 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
             if (/^(mailto:|tel:|sms:|geo:|maps:)/i.test(u)) { Linking.openURL(u).catch(() => {}); return false; }
             // Lien externe (hors assokit.fr) -> navigateur systeme, pas dans la WebView applicative
             if (/^https?:\/\//i.test(u) && !isAssokitUrl(u)) { Linking.openURL(u).catch(() => {}); return false; }
+            // Paiements en ligne reçus par les associations (cotisations, dons, factures : Stripe Connect) :
+            // jamais payés dans l'application (Apple 3.1.1 / 3.2.2, Google Play) -> navigateur du téléphone.
+            // Le serveur ne crée de toute façon aucune page de paiement pour l'agent « AssokitApp ».
+            if (PAY_PAGE_RE.test(u)) { Linking.openURL(u).catch(() => {}); return false; }
             // /signup reste ouverte sur iPhone : signup.php y sert la demande de création d'espace
             // (IOS_SIGNUP_REQUEST), sans essai ni prix.
             // Conformité stores (Apple 3.1.1 / Google) : on ne charge JAMAIS une page

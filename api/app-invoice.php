@@ -97,6 +97,21 @@ try {
         if ($di && $dd && $dd >= $di) $due_days = (int) floor(($dd - $di) / 86400);
     }
 
+    // Paiement en ligne (Stripe Connect) : lien à PARTAGER au client (jamais payé dans l'application),
+    // état du dernier paiement en ligne (payé, prélèvement SEPA en cours…)
+    $pay_url = ''; $online_status = '';
+    try {
+        @require_once __DIR__ . '/../stripe-connect-helpers.php';
+        if (function_exists('ak_connect_invoice_pay_url')) {
+            $pay_url = preg_replace('/#.*$/', '', ak_connect_invoice_pay_url($pdo, $inv));
+            if (!ak_connect_schema_missing($pdo)) {
+                $q = $pdo->prepare("SELECT status FROM asso_online_payments WHERE invoice_id = ? AND org_id = ? AND status NOT IN ('open', 'expired') ORDER BY id DESC LIMIT 1");
+                $q->execute([(int)$inv['id'], (int)$inv['org_id']]);
+                $online_status = (string)$q->fetchColumn();
+            }
+        }
+    } catch (Throwable $e) {}
+
     echo json_encode([
         'ok' => true,
         'invoice' => [
@@ -124,6 +139,8 @@ try {
             'credit_note_number'    => $credit_note ? (string) $credit_note['invoice_number'] : null,
             // Action « credit_note » de app-invoice-action.php disponible (facture émise, sans avoir)
             'can_credit_note'       => !$is_credit && !$credit_note && in_array((string) $inv['status'], ['pending', 'overdue', 'paid'], true),
+            'pay_url'               => $pay_url,          // '' : pas de paiement en ligne
+            'online_status'         => $online_status,    // paid | processing | failed | refunded | partially_refunded | disputed | ''
         ],
         'lines' => $lines,
     ], JSON_UNESCAPED_UNICODE);
