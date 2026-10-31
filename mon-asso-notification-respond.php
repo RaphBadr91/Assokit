@@ -86,6 +86,11 @@ try {
         }
         // Facture déjà réglée, annulée… : la notification est close, rien n'est encaissé une seconde fois
         $pdo->commit();
+        // Pages de paiement en ligne déjà ouvertes pour cette facture : fermées après le commit
+        // (ak_asso_invoice_close_online ne fait rien dans une transaction)
+        if ($res['ok'] && function_exists('ak_asso_invoice_close_online')) {
+            try { ak_asso_invoice_close_online($pdo, (int)$notif['invoice_id']); } catch (Throwable $e) {}
+        }
         $_SESSION['flash_asso_factures'] = $res['ok']
             ? ['type' => 'success', 'message' => '✅ Facture ' . $notif['invoice_number'] . ' marquée comme payée.']
             : ['type' => 'error', 'message' => $res['message'] . ' Aucun règlement n’a été ajouté.'];

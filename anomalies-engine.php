@@ -317,6 +317,7 @@ function ak_anom_cotis_double(PDO $pdo, int $org_id): array {
          JOIN cotisation_payments b ON b.org_id = a.org_id AND b.campaign_id = a.campaign_id
               AND b.adherent_id = a.adherent_id AND b.id > a.id
               AND COALESCE(b.status,'') = 'paid' AND COALESCE(a.status,'') = 'paid'
+              AND a.amount > 0 AND b.amount > 0
               AND ABS(DATEDIFF(b.paid_at, a.paid_at)) <= 30
          WHERE a.org_id = :o AND a.adherent_id IS NOT NULL
          ORDER BY a.paid_at DESC

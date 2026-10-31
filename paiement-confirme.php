@@ -65,6 +65,9 @@ $amount = ak_connect_money((int)$op['amount_cents']);
 //                prélevé » ni « Réessayer » : le payeur ne doit pas payer une seconde fois.
 if (in_array($status, ['paid', 'refunded', 'partially_refunded', 'disputed', 'dispute_lost'], true)) $view = 'paid';
 elseif ($status === 'processing') $view = 'processing';
+// Clos parce que l'association a retiré l'accès Stripe (ak_connect_close_account_ops) : le prélèvement peut
+// encore aboutir à la banque, ce n'est pas un échec certain : jamais « rien n'a été prélevé » ni « Réessayer »
+elseif ($status === 'failed' && strpos((string)($op['failure_message'] ?? ''), 'Accès Stripe retiré') === 0) $view = 'pending';
 elseif (in_array($status, ['failed', 'expired'], true) || ($read_ok && in_array($cs_state, ['expired/unpaid', 'open/unpaid'], true))) $view = 'failed';
 else $view = 'pending';
 $title = ['paid' => 'Paiement confirmé', 'processing' => 'Prélèvement enregistré', 'failed' => 'Paiement non abouti', 'pending' => 'Paiement en cours de confirmation'][$view];

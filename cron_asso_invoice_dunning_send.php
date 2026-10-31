@@ -52,6 +52,17 @@ try {
     // de celles des autres associations (elles reviendraient sinon en tête à chaque passage).
     $blocked_orgs = [];
     $tried = [];
+    // Prélèvement SEPA en cours de vérification sur cette facture (paiement en ligne) : pas de relance,
+    // comme ak_rel_invoice_targets et cron_asso_invoice_dunning_check
+    $sepa_guard = '';
+    try {
+        if (function_exists('ak_db_columns') && ak_db_columns($pdo, 'asso_online_payments') && ak_db_columns($pdo, 'org_stripe_accounts')) {
+            $sepa_guard = "
+          AND NOT EXISTS (SELECT 1 FROM asso_online_payments op
+                          JOIN org_stripe_accounts a ON a.stripe_account_id = op.stripe_account_id AND a.org_id = op.org_id
+                          WHERE op.org_id = i.org_id AND op.invoice_id = i.id AND op.kind = 'invoice' AND op.status = 'processing')";
+        }
+    } catch (Throwable $e) {}
     while ($sent + $failed < 50) {
         // Une ligne par facture : la demande validée de plus haut niveau (les autres
         // demandes de la même facture sont écartées une fois la relance partie).
@@ -68,7 +79,7 @@ try {
           AND i.status IN ('pending', 'overdue')
           AND i.paid_at IS NULL
           AND i.dunning_enabled = 1
-          AND " . ak_asso_org_active_sql('o') . "
+          AND " . ak_asso_org_active_sql('o') . "" . $sepa_guard . "
           AND NOT EXISTS (
               SELECT 1 FROM asso_invoice_notifications n2
               WHERE n2.invoice_id = n.invoice_id

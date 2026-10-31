@@ -159,13 +159,20 @@ if (!function_exists('ak_connect_former_account')) {
 
 if (!function_exists('ak_connect_account_gone')) {
     /**
-     * Réponse de Stripe qui prouve que le compte n'est plus accessible (supprimé, accès retiré) : 401, 403, 404 ou
-     * code « account_invalid ». Toute autre erreur (réseau, 429, 5xx…) est passagère : le compte est gardé.
+     * Réponse de Stripe qui prouve que le compte de l'association n'est plus accessible (supprimé, accès retiré) :
+     * code « account_invalid », ou 404 « resource_missing ». Un 401 dit que la clé de la PLATEFORME est refusée
+     * (clé changée dans Stripe), un 403 sans account_invalid qu'une clé restreinte manque d'un droit : rien sur le
+     * compte de l'association, qui est gardé. Toute autre erreur (réseau, 429, 5xx…) est passagère.
      */
     function ak_connect_account_gone(array $r): bool {
         if (!empty($r['ok'])) return false;
-        if (in_array((int)($r['http_code'] ?? 0), [401, 403, 404], true)) return true;
-        return (string)($r['data']['error']['code'] ?? '') === 'account_invalid';
+        $code = (string)($r['data']['error']['code'] ?? '');
+        if ($code === 'account_invalid') return true;
+        if ((int)($r['http_code'] ?? 0) === 404 && $code === 'resource_missing') return true;
+        if (in_array((int)($r['http_code'] ?? 0), [401, 403], true)) {
+            error_log('[stripe-connect] clé de la plateforme refusée par Stripe (HTTP ' . (int)$r['http_code'] . ') : vérifiez la configuration Stripe');
+        }
+        return false;
     }
 }
 
