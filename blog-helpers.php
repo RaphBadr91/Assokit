@@ -202,8 +202,9 @@ if (!function_exists('blog_extract_faq_jsonld')) {
             return null;
         }
         $rest    = substr($markdown, $mh[0][1] + strlen($mh[0][0]));
-        // Jusqu'au prochain titre de même niveau ou supérieur (## ou ###)
-        $section = preg_split('/\n#{2,3}\s+/', $rest, 2)[0];
+        // Jusqu'au prochain titre (# à ###) ou à une ligne de séparation (« --- » avant le bloc CTA),
+        // que la page n'affiche pas dans la réponse : sinon la dernière réponse finissait par « --- ».
+        $section = preg_split('/\n(?:#{1,3}\s+|[ \t]*[-*_]{3,}[ \t]*(?=\n|$))/', $rest, 2)[0];
 
         $qa = [];
         if (preg_match_all('/\*\*(.+?)\*\*\s*\n+(.*?)(?=\n\s*\*\*|\z)/s', $section, $mm, PREG_SET_ORDER)) {

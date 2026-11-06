@@ -218,7 +218,7 @@ $first_charge_str = $total_str . ($price['has_vat'] ? ' TTC' : '');
 // Libellé du bouton (repris par le JavaScript après une erreur)
 $btn_label = $setup_mode ? '✓ Souscrire · 0 € aujourd’hui' : '💳 Payer ' . $total_str . ($price['has_vat'] ? ' TTC' : '') . '/mois';
 
-render_head('Paiement — ' . $plan_label);
+render_head('Paiement de l’abonnement');   // le plan s'appelle « Assokit » : render_head ajoute déjà « — Assokit »
 render_sidebar('mon-asso-paiement');
 ?>
 
@@ -326,7 +326,7 @@ render_sidebar('mon-asso-paiement');
   <div class="main-head" style="margin-bottom:24px;">
     <div>
       <h1 style="margin:0 0 4px;">💳 Finaliser votre abonnement</h1>
-      <p style="color:#64748B;margin:0;">Plan <strong><?= htmlspecialchars($plan_label) ?></strong> — paiement sécurisé par Stripe</p>
+      <p style="color:#64748B;margin:0;">Plan <strong><?= htmlspecialchars($plan_label) ?></strong><?= $stripe_ready ? ' — paiement sécurisé par Stripe' : '' ?></p>
     </div>
   </div>
 
@@ -338,6 +338,10 @@ render_sidebar('mon-asso-paiement');
         <strong><?= htmlspecialchars($trial_info['label']) ?></strong><br>
         <?php if ($trial_over): ?>
           Vos données sont conservées : une fois le paiement confirmé, votre association passe au plan <?= htmlspecialchars($plan_label) ?>.
+        <?php elseif (!$stripe_ready): // paiement en ligne pas encore ouvert : aucune date de prélèvement à annoncer ?>
+          Vos jours d’essai restent acquis. Le paiement en ligne ouvre très bientôt : rien ne sera prélevé sans votre accord.
+        <?php elseif ($refusal): // formulaire non proposé à cette association (bloc ci-dessous) ?>
+          Vos jours d’essai restent acquis : rien n’est prélevé tant que le paiement n’est pas en place. Vos données et réglages sont conservés.
         <?php elseif ($setup_mode): ?>
           Vous gardez tous vos jours d’essai : aucun prélèvement aujourd’hui. Le premier prélèvement aura lieu le <?= htmlspecialchars($first_charge_fr) ?>, à la fin de votre essai. Vos données et réglages sont conservés.
         <?php else: ?>

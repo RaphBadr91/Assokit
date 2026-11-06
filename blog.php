@@ -22,8 +22,8 @@ $last_page = max(1, (int)ceil($total / $per_page));
 if ($page > $last_page) $page = $last_page;
 $articles = blog_list($pdo, $cat_filter ?: null, $q ?: null, $per_page, ($page - 1) * $per_page);
 
-$page_title = 'Blog';
-if ($cat_filter) $page_title = 'Blog · ' . $cats[$cat_filter]['label'];
+$page_title = 'Blog : guides pour associations loi 1901 et TPE';
+if ($cat_filter) $page_title = 'Blog ' . $cats[$cat_filter]['label'] . ' : guides et conseils';
 elseif ($q)      $page_title = 'Blog · Recherche "' . $q . '"';
 if ($page > 1)   $page_title .= ' — Page ' . $page;
 
@@ -35,9 +35,20 @@ if ($cat_filter) $qp[] = 'categorie=' . rawurlencode($cat_filter);
 if ($page > 1)   $qp[] = 'page=' . $page;
 if ($qp) $canon_path .= '?' . implode('&', $qp);
 
+// Une description propre à chaque catégorie (155 caractères au plus) : pas de texte répété d'une page à l'autre.
+$cat_descs = [
+    'associations'  => 'Créer et faire vivre une association loi 1901 : bureau, assemblée générale, adhésions, bénévoles, subventions. Nos guides pratiques, pas à pas.',
+    'tpe'           => 'Devis, factures, avoirs, facture électronique, TVA, trésorerie : nos guides pratiques pour les TPE, artisans et indépendants qui gèrent leur activité.',
+    'comptabilite'  => 'Comptabilité d\'association : plan comptable, budget prévisionnel, bilan, trésorerie, notes de frais, reçus fiscaux. Nos guides pas à pas pour le trésorier.',
+    'juridique'     => 'Statuts, assemblée générale, radiation d\'un membre, obligations légales et contrôles : le droit des associations loi 1901 expliqué simplement.',
+    'communication' => 'Newsletter, réseaux sociaux, e-mails aux adhérents, bénévoles à recruter : nos conseils pour faire connaître votre association et mobiliser ses membres.',
+    'gestion'       => 'Organisation du bureau, outils, tableaux de bord, passage d\'Excel à un logiciel : nos conseils pour gérer une association ou une TPE au quotidien.',
+];
 $blog_desc = $cat_filter
-    ? ('Nos guides et conseils « ' . $cats[$cat_filter]['label'] . ' » pour les associations loi 1901, les TPE et les indépendants.')
+    ? ($cat_descs[$cat_filter] ?? ('Nos guides et conseils « ' . $cats[$cat_filter]['label'] . ' » pour les associations loi 1901, les TPE et les indépendants.'))
     : 'Le blog Assokit : conseils, guides et bonnes pratiques pour les associations loi 1901, les TPE et les indépendants. Pensé pour vous faire gagner du temps.';
+// Le numéro de page en tête : la description est coupée à 160 caractères par la fin, il doit rester.
+if ($page > 1) $blog_desc = 'Page ' . $page . ' · ' . $blog_desc;
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],

@@ -101,6 +101,9 @@ render_public_head([
     'title'       => 'Paiements en ligne des associations — guide Assokit',
     'description' => 'Relier le compte Stripe de votre association à Assokit et faire payer en ligne cotisations, dons et factures : étapes, frais, remboursements, comptabilité.',
     'path'        => '/aide/paiements-en-ligne',
+    // Non indexée tant que le paiement en ligne des associations (Stripe Connect) n'est pas
+    // ouvert : passer à false le jour de l'ouverture et ajouter la page à sitemap-pages.xml.php.
+    'noindex'     => true,
 ]);
 render_public_nav('');
 ?>

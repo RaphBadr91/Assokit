@@ -22,7 +22,7 @@ const AK_SEO_PAGES = [
         'description' => 'Assokit, le logiciel français pour gérer votre association loi 1901 ou TPE : adhérents, projets, factures, communication par email, IA intégrée. Essai gratuit 14 jours, sans carte bancaire.',
         'keywords' => 'logiciel association loi 1901, gestion association, logiciel adhérents, gestion TPE, facturation association, communication adhérents, association française',
         'canonical' => '/',
-        'og_image' => 'https://assokit.fr/assets/og-home.jpg',
+        'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
         'page_type' => 'website',
     ],
 
@@ -33,8 +33,8 @@ const AK_SEO_PAGES = [
         'title' => 'Tarifs Assokit — Essai PRO gratuit 14 jours, Assokit, Sur-mesure',
         'description' => 'Essai PRO gratuit 14 jours sans carte bancaire, puis un abonnement unique Assokit tout inclus, sans engagement, ou Sur-mesure sur devis. Prix HT, sans frais cachés.',
         'keywords' => 'tarif logiciel association, prix gestion asso, abonnement Assokit, essai gratuit logiciel association, sans engagement',
-        'canonical' => '/plans',
-        'og_image' => 'https://assokit.fr/assets/og-plans.jpg',
+        'canonical' => '/tarifs',
+        'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
         'page_type' => 'product',
     ],
 
@@ -45,8 +45,8 @@ const AK_SEO_PAGES = [
         'title' => 'Essai gratuit 14 jours — Créez votre espace Assokit',
         'description' => 'Créez votre espace Assokit et testez toutes les fonctionnalités PRO pendant 14 jours, sans carte bancaire, sans engagement. Idéal pour les associations loi 1901 et TPE.',
         'keywords' => 'inscription Assokit, créer compte association, essai gratuit logiciel association, démarrer gratuitement',
-        'canonical' => '/inscription',
-        'og_image' => 'https://assokit.fr/assets/og-inscription.jpg',
+        'canonical' => '/signup',
+        'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
         'page_type' => 'website',
     ],
 
@@ -56,8 +56,8 @@ const AK_SEO_PAGES = [
     'login' => [
         'title' => 'Connexion — Assokit',
         'description' => 'Connectez-vous à votre espace Assokit pour gérer votre association ou TPE.',
-        'canonical' => '/login',
-        'og_image' => 'https://assokit.fr/assets/og-default.jpg',
+        'canonical' => '/connexion',
+        'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
         'page_type' => 'website',
         'noindex' => true, // pages de login pas indexées
     ],
@@ -70,7 +70,7 @@ const AK_SEO_PAGES = [
         'description' => 'Adhérents, projets collaboratifs, factures, devis, paiements en ligne, communication email/SMS, IA intégrée, statistiques, white-label : Assokit fait tout.',
         'keywords' => 'fonctionnalités Assokit, gestion adhérents, facturation, communication, IA association',
         'canonical' => '/fonctionnalites',
-        'og_image' => 'https://assokit.fr/assets/og-fonctionnalites.jpg',
+        'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
         'page_type' => 'website',
     ],
 
@@ -82,7 +82,7 @@ const AK_SEO_PAGES = [
         'description' => 'Assokit accompagne les associations loi 1901 dans leur quotidien : gestion adhérents, projets, AG, cotisations, communication, comptabilité. Conçu en France.',
         'keywords' => 'logiciel association loi 1901, gestion association, asso française, cotisations, AG association',
         'canonical' => '/pour-associations',
-        'og_image' => 'https://assokit.fr/assets/og-asso.jpg',
+        'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
         'page_type' => 'website',
     ],
 
@@ -94,7 +94,7 @@ const AK_SEO_PAGES = [
         'description' => 'Assokit pour les TPE : facturation conforme, devis, suivi clients, paiements en ligne via Stripe, statistiques. Tout-en-un, sans complexité.',
         'keywords' => 'logiciel TPE, facturation TPE, gestion clients, devis facture, paiement Stripe',
         'canonical' => '/pour-tpe',
-        'og_image' => 'https://assokit.fr/assets/og-tpe.jpg',
+        'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
         'page_type' => 'website',
     ],
 
@@ -105,7 +105,7 @@ const AK_SEO_PAGES = [
         'title' => 'Contact — Une question ? On vous répond',
         'description' => 'Une question sur Assokit ? Notre équipe vous répond rapidement par email. Support gratuit pour tous les utilisateurs.',
         'canonical' => '/contact',
-        'og_image' => 'https://assokit.fr/assets/og-default.jpg',
+        'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
         'page_type' => 'website',
     ],
 
@@ -128,19 +128,19 @@ const AK_SEO_PAGES = [
     'cgv' => [
         'title' => 'Conditions Générales de Vente — Assokit',
         'description' => 'CGV d\'Assokit. Conditions de vente des plans payants Assokit et Sur-mesure.',
-        'canonical' => '/cgv',
+        'canonical' => '/cgu',
         'page_type' => 'website',
     ],
     'politique-confidentialite' => [
         'title' => 'Politique de confidentialité — Assokit',
         'description' => 'Politique de confidentialité d\'Assokit. Comment nous protégeons vos données personnelles, conformément au RGPD.',
-        'canonical' => '/politique-confidentialite',
+        'canonical' => '/confidentialite',
         'page_type' => 'website',
     ],
     'rgpd' => [
         'title' => 'RGPD — Vos droits sur Assokit',
         'description' => 'Informations RGPD. Exercez vos droits d\'accès, rectification, suppression de vos données personnelles.',
-        'canonical' => '/rgpd',
+        'canonical' => '/confidentialite',
         'page_type' => 'website',
     ],
     'cookies' => [

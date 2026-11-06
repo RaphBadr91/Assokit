@@ -8,7 +8,8 @@
  *   - Création de compte (token type = set_password)
  *   - Réinitialisation (token type = reset_password)
  *
- * Le token valide pendant 7 jours, usage unique.
+ * Token à usage unique : 7 jours pour une invitation, 2 heures pour un mot de passe oublié
+ * (password-token-helper.php).
  * ============================================================
  */
 require_once __DIR__ . '/config.php';

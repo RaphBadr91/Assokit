@@ -5,6 +5,10 @@
  * Route : /logiciel-cotisation-association. Premium + FAQPage + Breadcrumb + SoftwareApplication.
  */
 require_once __DIR__ . '/includes-public.php';
+// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+require_once __DIR__ . '/includes-pricing.php';
+require_once __DIR__ . '/_landing-seo.php';
+$offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],
@@ -21,18 +25,17 @@ $faqs = [
     ['Peut-on créer plusieurs niveaux ou tarifs de cotisation ?', "Oui : tarifs différents par catégorie de membre (étudiant, famille, bienfaiteur…), pour chaque campagne de cotisation. Tout est paramétrable."],
     ['Comment organiser la collecte des cotisations ?', "Créez votre campagne de cotisation dans Assokit, définissez le ou les tarifs, puis prévenez vos adhérents par e-mail depuis Assokit. À chaque règlement reçu, vous l'enregistrez en quelques secondes : l'adhésion est prolongée et le total collecté se met à jour."],
     ['Puis-je suivre qui est à jour de sa cotisation ?', "Oui, en temps réel : pour chaque campagne, vous voyez qui a réglé, qui doit encore payer et le montant collecté. Chaque règlement reste rattaché à la fiche de l'adhérent."],
+    ['Qui fixe le montant de la cotisation d\'une association ?', "La loi 1901 n'impose ni montant ni obligation de cotisation : ce sont les statuts ou le règlement intérieur qui le prévoient, le plus souvent en confiant à l'assemblée générale le soin de fixer le montant chaque année. Dans Assokit, vous reportez ensuite ce montant, ou plusieurs tarifs, dans la campagne de cotisation."],
 ];
-$faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
-$soft_schema = [
-    '@context' => 'https://schema.org', '@type' => 'SoftwareApplication',
-    'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android',
-    'description' => "Logiciel de gestion des cotisations pour association loi 1901 : campagnes et tarifs, suivi des règlements, relances des adhésions, suivi en temps réel.",
-    // 'offers' retiré (évite l'exigence Google review/aggregateRating sans avis notés réels)  'inLanguage' => 'fr-FR',
-];
+$faq_schema = ak_landing_faq_jsonld($faqs);
+$soft_schema = ak_landing_software_jsonld(
+    "Logiciel de gestion des cotisations pour association loi 1901 : campagnes et tarifs, suivi des règlements, relances des adhésions, suivi en temps réel.",
+    ['Campagnes de cotisation et tarifs multiples', 'Règlements par chèque, virement ou espèces enregistrés', 'Date de fin d\'adhésion prolongée à chaque règlement', 'Suivi de qui est à jour', 'Relances des adhésions à renouveler']
+);
 
 render_public_head([
     'title'       => 'Logiciel de gestion des cotisations d\'association · Assokit',
-    'description' => 'Cotisations d\'association : campagnes et tarifs, règlements suivis en temps réel, relances des adhésions à renouveler. Essai gratuit 14 jours, hébergé en France.',
+    'description' => 'Gestion des cotisations d\'association : campagnes et tarifs, règlements suivis, qui est à jour, relances des adhésions. Essai gratuit 14 jours.',
     'path'        => '/logiciel-cotisation-association',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);
@@ -164,6 +167,9 @@ require __DIR__ . '/_landing-premium.php';
     <p class="pub-text-center reveal" style="margin-top:14px;color:var(--c-text-3);font-size:14.5px;">À combiner avec la gestion des <a href="/logiciel-adherents" style="color:var(--c-emeraude-dark);font-weight:600;">adhérents</a>, la <a href="/logiciel-comptabilite-association" style="color:var(--c-emeraude-dark);font-weight:600;">comptabilité d'association</a> et le <a href="/logiciel-association" style="color:var(--c-emeraude-dark);font-weight:600;">logiciel de gestion complet</a>.</p>
   </div>
 </section>
+
+<?php ak_landing_pricing(); ?>
+<?php ak_landing_siblings('/logiciel-cotisation-association'); ?>
 
 <section class="pub-section">
   <div class="pub-container">

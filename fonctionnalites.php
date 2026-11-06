@@ -27,7 +27,7 @@ $breadcrumb = build_breadcrumb_jsonld([
 $feat_faqs = [
     ['Assokit convient-il aux associations comme aux TPE ?', "Oui. Assokit réunit dans un seul outil les besoins des associations loi 1901 (adhérents, cotisations, bénévoles, projets) et ceux des TPE, PME et indépendants (devis, factures, suivi des paiements, comptabilité analytique). Mêmes fonctionnalités, mêmes prix justes."],
     ['Puis-je gérer adhérents, cotisations et facturation au même endroit ?', "Oui. Annuaire des adhérents avec rôles personnalisés, relances de cotisations automatiques, devis et factures directement dans la plateforme, suivi des dépenses par projet et export comptable : tout est réuni, sans tableur à maintenir."],
-    ['La comptabilité analytique est-elle vraiment incluse ?', "Oui, la comptabilité analytique est incluse dans l'abonnement Assokit : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Cela représente environ 900 € d'économie par an par rapport à une prestation externalisée. Votre expert-comptable n'intervient plus que pour valider les comptes."],
+    ['La comptabilité analytique est-elle vraiment incluse ?', "Oui, la comptabilité analytique est incluse dans l'abonnement Assokit : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Aucun module à acheter en plus ; votre expert-comptable n'intervient plus que pour valider les comptes."],
     ['Puis-je utiliser mon propre nom de domaine (marque blanche) ?', "Oui. Avec l'option white-label, vos adhérents accèdent à votre plateforme via votre propre adresse, avec vos couleurs et votre logo, pour un rendu 100 % professionnel."],
     ['Mes données sont-elles hébergées en France ?', "Oui, 100 %. L'hébergement est français (O2Switch, Clermont-Ferrand), avec double authentification, journal des actions et conformité RGPD. Vos données restent les vôtres et ne sortent pas du territoire européen."],
     ['Existe-t-il une application mobile ?', "Oui. Assokit s'installe sur iPhone et Android en quelques secondes depuis assokit.fr : icône sur l'écran d'accueil, plein écran, accès rapide à vos projets, adhérents et factures — même hors-ligne."],
@@ -45,7 +45,7 @@ $feat_faq_schema = [
 
 render_public_head([
     'title'       => 'Fonctionnalités du logiciel Assokit pour associations & TPE',
-    'description' => 'Toutes les fonctionnalités du logiciel Assokit pour gérer votre association loi 1901 ou votre TPE : adhérents, cotisations, facturation, comptabilité analytique, projets, emailing et IA. Essai gratuit, hébergé en France.',
+    'description' => 'Adhérents, cotisations, facturation, comptabilité analytique, projets, e-mailing et IA : toutes les fonctionnalités d\'Assokit pour associations et TPE.',
     'path'        => '/fonctionnalites',
     'schema_jsonld' => [$breadcrumb, $feat_faq_schema],
 ]);

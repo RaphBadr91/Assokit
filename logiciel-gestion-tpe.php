@@ -4,8 +4,9 @@
  * Route : /logiciel-gestion-tpe. Premium + FAQPage + Breadcrumb + SoftwareApplication.
  */
 require_once __DIR__ . '/includes-public.php';
-// Offre schema.org de la formule Assokit (prix HT, TVA non comprise : includes-pricing.php)
+// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
 require_once __DIR__ . '/includes-pricing.php';
+require_once __DIR__ . '/_landing-seo.php';
 $offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
@@ -23,12 +24,15 @@ $faqs = [
     ['Un indépendant a-t-il besoin d\'un logiciel de gestion ?', "Oui. Même seul, un indépendant ou un artisan doit éditer des devis et des factures conformes, relancer les impayés et suivre sa trésorerie. Un logiciel de gestion évite les tableurs dispersés et les oublis de relance, peut faire gagner plusieurs heures par semaine et donne une vision claire de la rentabilité de chaque client."],
     ['Peut-on suivre la rentabilité par chantier ou par client ?', "Oui, c'est le cœur d'Assokit. Chaque dépense et chaque facture est rattachée à un projet, un chantier ou un client. La comptabilité analytique intégrée calcule automatiquement la marge réelle, poste par poste : vous savez immédiatement quelle affaire rapporte et laquelle vous coûte de l'argent."],
 ];
-$faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
-$soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplication', 'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android', 'description' => "Logiciel de gestion tout-en-un pour TPE, PME et indépendants : devis, factures, projets/chantiers, trésorerie, agenda et comptabilité analytique.", 'offers' => ak_offer_jsonld(), 'inLanguage' => 'fr-FR'];
+$faq_schema = ak_landing_faq_jsonld($faqs);
+$soft_schema = ak_landing_software_jsonld(
+    "Logiciel de gestion tout-en-un pour TPE, PME et indépendants : devis, factures, projets/chantiers, trésorerie, agenda et comptabilité analytique.",
+    ['Clients et chantiers', 'Devis et factures', 'Relances de paiement', 'Rentabilité par projet', 'Agenda des rendez-vous', 'Application mobile']
+);
 
 render_public_head([
     'title'       => 'Logiciel de gestion pour TPE & indépendants · Assokit',
-    'description' => 'Logiciel de gestion pour TPE, PME et indépendants : devis, factures, trésorerie, rentabilité par chantier. Essai gratuit, appli mobile, hébergé en France.',
+    'description' => 'Logiciel de gestion pour TPE et indépendants : clients, chantiers, devis, factures, trésorerie et rentabilité par projet. Essai gratuit 14 jours.',
     'path'        => '/logiciel-gestion-tpe',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);
@@ -166,7 +170,10 @@ require __DIR__ . '/_landing-premium.php';
   </div>
 </section>
 
-<section class="pub-section pub-section-creme">
+<?php ak_landing_pricing(); ?>
+<?php ak_landing_siblings('/logiciel-gestion-tpe'); ?>
+
+<section class="pub-section">
   <div class="pub-container">
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Questions fréquentes</span><h2 class="pub-h2">Choisir son <em>logiciel de gestion TPE</em></h2></div>
     <div class="pub-faq reveal">

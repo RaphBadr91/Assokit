@@ -11,7 +11,7 @@ $breadcrumb = build_breadcrumb_jsonld([
 ]);
 render_public_head([
     'title'       => 'Mairies & collectivités : suivi des associations · Assokit',
-    'description' => 'Mairies, départements, préfectures, CAF : centralisez le suivi des associations de votre territoire. Annuaire, subventions, messagerie, emailing et tableau de bord en temps réel.',
+    'description' => 'Mairies, départements, CAF : centralisez le suivi des associations de votre territoire. Annuaire, subventions, messagerie, tableau de bord en temps réel.',
     'path'        => '/pour-organismes',
     'og_image'    => AK_PUBLIC_DOMAIN . '/assets/og-organismes.jpg',
     'schema_jsonld' => [$breadcrumb],

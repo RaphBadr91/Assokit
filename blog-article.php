@@ -67,16 +67,16 @@ $article_jsonld = [
     'image' => [$article_image],
     'datePublished' => $article['published_at'] ? date('c', strtotime($article['published_at'])) : null,
     'dateModified'  => ($article['updated_at'] ?: $article['published_at']) ? date('c', strtotime($article['updated_at'] ?: $article['published_at'])) : null,
-    'author' => [
-        '@type' => 'Person',
-        'name'  => $article['author'] ?: 'L\'équipe Assokit',
-        'url'   => AK_PUBLIC_DOMAIN . '/a-propos',
-    ],
+    // « L'équipe Assokit » n'est pas une personne : auteur = l'organisation. Un auteur nommé
+    // (rédacteur réel) reste une Person.
+    'author' => ($article['author'] && stripos((string) $article['author'], 'équipe') === false)
+        ? ['@type' => 'Person', 'name' => $article['author'], 'url' => AK_PUBLIC_DOMAIN . '/a-propos']
+        : ['@type' => 'Organization', '@id' => AK_PUBLIC_DOMAIN . '/#organization', 'name' => 'Assokit', 'url' => AK_PUBLIC_DOMAIN],
     'publisher' => [
         '@type' => 'Organization',
         '@id'   => AK_PUBLIC_DOMAIN . '/#organization',
         'name'  => 'Assokit',
-        'logo'  => ['@type' => 'ImageObject', 'url' => AK_PUBLIC_DOMAIN . '/assets/logo-assokit.png', 'width' => 512, 'height' => 512],
+        'logo'  => ['@type' => 'ImageObject', 'url' => AK_PUBLIC_DOMAIN . '/assets/logo-assokit.png', 'width' => 1024, 'height' => 1024],
     ],
     'mainEntityOfPage' => [
         '@type' => 'WebPage',
@@ -94,8 +94,10 @@ $article_jsonld = [
 $faq_jsonld = blog_extract_faq_jsonld((string)$article['content_md']);
 
 render_public_head([
-    'title'       => $article['meta_title'] ?: $article['title'],
-    'description' => $article['meta_description'] ?: $article['excerpt'],
+    // Un meta_title ou une meta_description coupés par « … » (ancien générateur) sont ignorés :
+    // le titre complet et l'extrait (coupé à la dernière phrase entière par render_public_head) valent mieux.
+    'title'       => (($article['meta_title'] ?? '') !== '' && mb_substr((string) $article['meta_title'], -1) !== '…') ? $article['meta_title'] : $article['title'],
+    'description' => (($article['meta_description'] ?? '') !== '' && mb_substr((string) $article['meta_description'], -1) !== '…') ? $article['meta_description'] : ($article['excerpt'] ?: $article['meta_description']),
     'path'        => '/blog/' . $article['slug'],
     'og_type'     => 'article',
     'og_image'    => $article_image,
@@ -159,14 +161,32 @@ render_public_nav('blog');
       $ak_body = preg_replace('/(?:\n[ \t]*[-*_]{3,}[ \t]*)+\s*$/', '', rtrim((string) $ak_body));
 
       // === CTA contextuels selon le thème de l'article ===
+      // Ordre : du besoin le plus précis au plus général. La facturation passe avant la compta
+      // (sinon les articles facture, avoir, Chorus Pro… ne menaient jamais à /logiciel-facturation).
       $ak_theme = 'asso';
-      $cat_l = strtolower((string) $article['category'] . ' ' . $article['title']);
-      if (preg_match('/tpe|entreprise|auto-?entrepreneur|ind[ée]pendant|artisan/u', $cat_l)) $ak_theme = 'tpe';
-      elseif (preg_match('/compta|factur|tva|bilan|fiscal|tr[ée]sor/u', $cat_l)) $ak_theme = 'compta';
+      $cat_l = mb_strtolower((string) $article['category'] . ' ' . $article['title'] . ' ' . $article['slug']);
+      $ak_is_tpe = (bool) preg_match('/\btpe\b|entreprise|auto-?entrepreneur|ind[ée]pendant|artisan/u', $cat_l);
+      if (preg_match('/factur|devis|\bavoirs?\b|chorus|bon[- ]de[- ]commande/u', $cat_l)) $ak_theme = 'facturation';
+      elseif (preg_match('/cotisation/u', $cat_l)) $ak_theme = 'cotisation';
+      elseif (preg_match('/adh[ée]sion|adh[ée]rent|membres?\b|radier|radiation/u', $cat_l)) $ak_theme = 'adherents';
+      elseif ($ak_is_tpe) $ak_theme = 'tpe';
+      elseif (preg_match('/compta|tva|bilan|fiscal|tr[ée]sor|budget|frais|kilom[ée]tr|justificatif/u', $cat_l)) $ak_theme = 'compta';
       elseif (preg_match('/juridiqu|statut|rgpd|l[ée]gal|obligation|d[ée]claration/u', $cat_l)) $ak_theme = 'juridique';
       elseif (preg_match('/communic|newsletter|r[ée]seau|email/u', $cat_l)) $ak_theme = 'communication';
 
       $AK_CTA = [
+        'facturation' => [
+          ['ic'=>'🧾','t'=>'Des factures justes du premier coup, et des impayés relancés','p'=>'Avec Assokit, devis et factures sont numérotés automatiquement, avec les mentions et la TVA calculées. Un devis accepté devient facture en un clic, les <strong>relances d\'impayés partent seules</strong> et une erreur se corrige par un avoir.','a'=>['/logiciel-facturation','Logiciel de facturation pour association'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'📄','t'=>'Factures au format Factur-X','p'=>'Vos factures sont générées au format Factur-X (PDF + XML), vos pièces centralisées et chaque facture alimente directement votre comptabilité. Le raccordement à une plateforme agréée est en préparation.','a'=>[$ak_is_tpe ? '/logiciel-gestion-tpe' : '/logiciel-comptabilite-association', $ak_is_tpe ? 'Logiciel de gestion pour TPE' : 'Logiciel de comptabilité association'],'b'=>['/contact','Réserver une démo']],
+        ],
+        'cotisation' => [
+          ['ic'=>'💸','t'=>'Sachez enfin qui est à jour de sa cotisation','p'=>'Campagnes et tarifs, règlements par chèque, virement ou espèces enregistrés en quelques secondes, <strong>adhésions à renouveler relancées</strong> en un clic ou automatiquement. Le trésorier voit qui a payé, sans tableur.','a'=>['/logiciel-cotisation-association','Gérer les cotisations avec Assokit'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'👥','t'=>'Un fichier adhérents relié aux cotisations','p'=>'Chaque règlement met à jour la fiche du membre et prolonge son adhésion. L\'historique reste complet d\'une saison et d\'un trésorier à l\'autre.','a'=>['/logiciel-adherents','Logiciel de gestion des adhérents'],'b'=>['/contact','Réserver une démo']],
+        ],
+        'adherents' => [
+          ['ic'=>'👥','t'=>'Un fichier des membres toujours à jour','p'=>'Fiche par adhérent, rôles et espaces membres, import de votre fichier Excel, <strong>renouvellements suivis</strong> et relances des adhésions qui arrivent à échéance. Fini les versions de tableur qui circulent par e-mail.','a'=>['/logiciel-adherents','Logiciel de gestion des adhérents'],'b'=>['/tarifs','Voir les tarifs']],
+          ['ic'=>'💸','t'=>'Les cotisations au même endroit','p'=>'Campagnes, tarifs et règlements enregistrés sur la fiche de chaque membre : vous savez qui est à jour, sans double saisie.','a'=>['/logiciel-cotisation-association','Gérer les cotisations'],'b'=>['/contact','Réserver une démo']],
+        ],
         'compta' => [
           ['ic'=>'📊','t'=>'La compta de votre association, sans y passer vos soirées','p'=>'Assokit construit votre comptabilité analytique <strong>automatiquement</strong> au fil de votre activité : factures, cotisations, dépenses catégorisées, justificatifs centralisés. Bilan par projet inclus dans l\'abonnement.','a'=>['/logiciel-comptabilite-association','Logiciel de comptabilité association'],'b'=>['/tarifs','Voir les tarifs']],
           ['ic'=>'✅','t'=>'Un dossier propre et daté pour votre expert-comptable','p'=>'Fini la ressaisie de fin d\'année. Vos comptes se préparent tout seuls, exportables en PDF et Excel — votre comptable n\'a plus qu\'à valider.','a'=>['/pour-associations','Découvrir pour les assos'],'b'=>['/contact','Réserver une démo']],
@@ -216,6 +236,53 @@ render_public_nav('blog');
           foreach ($spots as $pos => $card) $html = substr($html, 0, $pos) . $card . substr($html, $pos);
           return $html;
       };
+
+      // === Lien contextuel dans le texte (articles qui reçoivent le plus de visites) ===
+      // Une phrase par article, insérée à la fin de la première section (avant le 2e titre H2),
+      // avant les cartes CTA pour ne jamais tomber juste après l'une d'elles :
+      // un seul lien commercial, ancre descriptive et variée d'un article à l'autre.
+      // [texte avant le lien, ancre, url, texte après le lien]
+      $AK_CONTEXT_LINKS = [
+        'changement-tresorier-association-passation-en-7-etapes-cles' => ['Quand les comptes sont tenus dans un ', 'logiciel de comptabilité pour association', '/logiciel-comptabilite-association', ', la passation se résume à transmettre un accès : l\'historique, les justificatifs et le budget restent en place.'],
+        'relance-cotisation-association-5-modeles-d-emails-et-sms-qui-fonctionnent' => ['Pour ne plus envoyer les relances une par une, vous pouvez aussi ', 'relancer automatiquement les cotisations', '/logiciel-cotisation-association', ' arrivées à échéance depuis votre fichier d\'adhérents.'],
+        'depenses-sans-justificatif-en-association-les-limites-legales-en-2026' => ['Le plus sûr reste de ', 'centraliser les justificatifs de l\'association', '/logiciel-comptabilite-association', ' au moment de chaque dépense, plutôt qu\'en fin d\'exercice.'],
+        'budget-previsionnel-association-2026-modele-excel-gratuit-et-tutoriel-complet' => ['Une fois le budget voté, il reste à ', 'suivre le budget par projet', '/comptabilite-analytique', ' tout au long de l\'année, pour comparer le prévu et le réalisé.'],
+        'tresorerie-association-tableau-de-suivi-excel-gratuit-2026' => ['Quand un tableau Excel devient trop lourd à tenir, un ', 'logiciel de trésorerie pour association', '/logiciel-comptabilite-association', ' reprend les encaissements et les dépenses sans ressaisie.'],
+        'plan-comptable-association-modele-simplifie' => ['Un ', 'logiciel de comptabilité d\'association', '/logiciel-comptabilite-association', ' classe chaque recette et chaque dépense dans le bon poste, sans connaître les numéros de compte par cœur.'],
+        'logiciel-comptable-gratuit-vs-excel-pour-association-que-choisir-en-2026' => ['Pour comparer les options sans engagement, voir aussi notre point sur le ', 'logiciel association gratuit', '/logiciel-association-gratuit', ' : ce qui est vraiment gratuit, et ce qui ne l\'est pas.'],
+        'passage-d-une-comptabilite-excel-a-un-logiciel-10-etapes-sans-perdre-de-donnees' => ['Si vous hésitez encore, découvrez ce que change le fait de ', 'passer à un logiciel de comptabilité d\'association', '/logiciel-comptabilite-association', ', avec un essai gratuit de 14 jours.'],
+        'erreur-sur-facture-electronique-comment-corriger-legalement-en-2026' => ['Avec un ', 'logiciel de facturation pour association', '/logiciel-facturation', ', l\'avoir se crée depuis la facture d\'origine, reprend ses lignes et prend son numéro dans la même séquence que vos factures : aucune ressaisie.'],
+        'chorus-pro-association-inscription-et-premier-envoi-en-8-etapes' => ['Avant le dépôt sur Chorus Pro, la facture elle-même peut être préparée dans un ', 'logiciel de facturation', '/logiciel-facturation', ' qui calcule la TVA et numérote vos pièces.'],
+        'facture-association-sans-numero-siret-les-alternatives-legales-en-2027' => ['Une fois le SIRET obtenu, vos ', 'factures d\'association', '/logiciel-facturation', ' peuvent être émises avec toutes les mentions, au format PDF ou Factur-X.'],
+        'association-et-facturation-de-partenariat-sponsors-vs-mecenat-fiscal' => ['Un partenariat de sponsoring se facture comme toute prestation : un ', 'outil de facturation pour association', '/logiciel-facturation', ' évite les oublis de mentions et de TVA.'],
+        'association-et-auto-entrepreneur-qui-facture-qui-et-comment-gerer-la-situation' => ['Côté association, chaque facture reçue ou émise peut être rattachée au projet concerné grâce à un ', 'logiciel de facturation et de devis', '/logiciel-facturation', '.'],
+        'prestation-de-service-payante-en-association-7-activites-lucratives-autorisees' => ['Pour les prestations payantes de l\'association, ', 'établir devis et factures', '/logiciel-facturation', ' dans un outil dédié permet de suivre ce qui a été encaissé et ce qui reste dû.'],
+        'archivage-factures-association-duree-legale-et-obligations-2027' => ['Les factures émises avec un ', 'logiciel de facturation', '/logiciel-facturation', ' sont conservées et retrouvables en PDF, classées par client et par date.'],
+        'avoir-ou-remboursement-quelle-difference-comptable-et-fiscale-en-tpe' => ['Dans la pratique, ', 'émettre un avoir', '/logiciel-facturation', ' depuis la facture d\'origine garde la numérotation et la comptabilité cohérentes.'],
+        'adhesion-association-regles-bonnes-pratiques' => ['Pour suivre les adhésions et leurs renouvellements sans tableur, voir notre ', 'logiciel de gestion des adhérents', '/logiciel-adherents', '.'],
+        'radier-membre-association-procedure' => ['Chaque radiation reste tracée sur la fiche du membre dans un ', 'fichier des adhérents', '/logiciel-adherents', ' tenu à jour, utile en cas de contestation.'],
+        'cotisation-adherent-association-gerer' => ['Pour aller plus vite, la ', 'gestion des cotisations d\'association', '/logiciel-cotisation-association', ' peut se faire dans un outil qui relie chaque règlement à la fiche du membre.'],
+        'augmentation-cotisation-association-7-strategies-pour-preserver-vos-adherents' => ['Une fois le nouveau tarif voté, il suffit de le reporter dans votre ', 'campagne de cotisation', '/logiciel-cotisation-association', ', avec un tarif par catégorie de membre si besoin.'],
+        'bureau-association-composition-role' => ['Pour répartir les accès entre président, trésorier et secrétaire, un ', 'logiciel de gestion d\'association loi 1901', '/logiciel-association', ' donne à chacun les droits adaptés à son rôle.'],
+        'calendrier-comptable-association-2026-12-echeances-a-ne-jamais-manquer' => ['Les échéances comptables de l\'année peuvent aussi être suivies dans un ', 'logiciel de comptabilité pour association', '/logiciel-comptabilite-association', ', avec l\'agenda partagé du bureau.'],
+        'echeancier-comptable-association-2026-le-calendrier-mensuel-pour-ne-rien-oublier' => ['Toutes les dates de l\'année sont réunies dans notre ', 'agenda comptable de l\'association', '/blog/calendrier-comptable-association-2026-12-echeances-a-ne-jamais-manquer', '.'],
+        'indemnites-kilometriques-en-association-bareme-optimal-2026-et-maximisation' => ['Les indemnités kilométriques peuvent être remboursées par les ', 'notes de frais de l\'association', '/logiciel-comptabilite-association#notes-de-frais', ', avec le justificatif rattaché à chaque dépense.'],
+        'note-frais-benevole-regles-modele' => ['Pour ne plus perdre de justificatifs, les ', 'notes de frais des bénévoles', '/logiciel-comptabilite-association#notes-de-frais', ' peuvent être saisies et suivies dans le logiciel de l\'association.'],
+      ];
+      if (isset($AK_CONTEXT_LINKS[$article['slug']])) {
+          [$ak_b, $ak_a, $ak_u, $ak_e] = $AK_CONTEXT_LINKS[$article['slug']];
+          $ak_ctx = '<p class="bm-p">' . htmlspecialchars($ak_b) . '<a href="' . $ak_u . '" class="bm-link">' . htmlspecialchars($ak_a) . '</a>' . htmlspecialchars($ak_e) . '</p>';
+          // Fin de la 1re section : juste avant le 2e titre H2 (sinon après le 1er paragraphe de la section).
+          $ak_h2  = strpos($ak_html, '</h2>');
+          $ak_pos = $ak_h2 !== false ? strpos($ak_html, '<h2', $ak_h2) : false;
+          if ($ak_pos === false) {
+              $ak_p   = $ak_h2 !== false ? strpos($ak_html, '</p>', $ak_h2) : strpos($ak_html, '</p>');
+              $ak_pos = $ak_p !== false ? $ak_p + 4 : false;
+          }
+          if ($ak_pos !== false) $ak_html = substr($ak_html, 0, $ak_pos) . $ak_ctx . substr($ak_html, $ak_pos);
+          else $ak_html .= $ak_ctx;
+      }
+
       $ak_html = $ak_inject($ak_html, $ak_cards);
       ?>
       <style>
@@ -250,6 +317,13 @@ render_public_nav('blog');
       <?php
       // Maillage interne montant : article → pages produit (money pages) selon le thème détecté ($ak_theme)
       $AK_SOLUTIONS = [
+        'facturation'   => [['/logiciel-facturation', 'Logiciel de facturation pour association et TPE'],
+                            $ak_is_tpe ? ['/logiciel-gestion-tpe', 'Logiciel de gestion pour TPE'] : ['/logiciel-comptabilite-association', 'Logiciel de comptabilité pour association']],
+        'cotisation'    => [['/logiciel-cotisation-association', 'Gestion des cotisations d\'association'],
+                            ['/logiciel-adherents', 'Logiciel de gestion des adhérents']],
+        'adherents'     => [['/logiciel-adherents', 'Logiciel de gestion des adhérents'],
+                            ['/logiciel-cotisation-association', 'Gestion des cotisations d\'association'],
+                            ['/logiciel-association', 'Logiciel de gestion d\'association loi 1901']],
         'compta'        => [['/logiciel-comptabilite-association', 'Logiciel de comptabilité pour association'],
                             ['/comptabilite-analytique', 'La comptabilité analytique par projet']],
         'asso'          => [['/logiciel-association', 'Logiciel de gestion d\'association loi 1901'],
@@ -263,6 +337,19 @@ render_public_nav('blog');
                             ['/logiciel-facturation', 'Devis & factures pro en 2 minutes']],
       ];
       $ak_sol = $AK_SOLUTIONS[$ak_theme ?? 'asso'] ?? $AK_SOLUTIONS['asso'];
+      // Modèles et guides gratuits qui répondent à la même question que l'article (en tête de liste)
+      $ak_t = mb_strtolower((string) $article['title']);
+      foreach ([
+        '/statuts/u'                                  => ['/modele-statuts-association', 'Modèle de statuts d\'association loi 1901'],
+        '/assembl[ée]e|\bag\b|convocation/u'          => ['/modele-convocation-assemblee-generale', 'Modèle de convocation à l\'assemblée générale'],
+        '/proc[èe]s-verbal|\bpv\b|compte[- ]rendu/u'   => ['/modele-proces-verbal-assemblee-generale', 'Modèle de procès-verbal d\'AG'],
+        '/re[çc]u fiscal|\bdons?\b|m[ée]c[ée]nat/u'     => ['/modele-recu-fiscal-association', 'Modèle de reçu fiscal pour association'],
+        '/plan comptable|bilan|cl[ôo]ture|comptabilit[ée] d/u' => ['/guide-comptabilite-association', 'Guide de la comptabilité d\'association'],
+        '/loi 1901|cr[ée]er une association|bureau/u' => ['/guide-association-loi-1901', 'Guide de l\'association loi 1901'],
+      ] as $ak_rx => $ak_lnk) {
+          if (preg_match($ak_rx, $ak_t)) array_unshift($ak_sol, $ak_lnk);
+      }
+      $ak_sol = array_slice(array_values(array_unique($ak_sol, SORT_REGULAR)), 0, 4);
       ?>
       <div style="border:1px solid var(--c-border);border-radius:var(--radius-lg);padding:22px 24px;margin-top:32px;background:var(--c-creme-2);">
         <h3 style="margin:0 0 12px;font-size:16px;color:var(--c-encre);">🧩 Les outils Assokit sur ce sujet</h3>

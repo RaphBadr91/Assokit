@@ -30,7 +30,7 @@ if (!defined('AK_SEO_BRAND_FULL')) {
     define('AK_SEO_BRAND_FULL', 'Assokit — Logiciel de gestion d\'association loi 1901 et TPE');
 }
 if (!defined('AK_SEO_DEFAULT_OG_IMAGE')) {
-    define('AK_SEO_DEFAULT_OG_IMAGE', 'https://assokit.fr/assets/og-default.jpg');
+    define('AK_SEO_DEFAULT_OG_IMAGE', 'https://assokit.fr/assets/og-assokit-home.png'); // og-default.jpg n'existe pas
 }
 if (!defined('AK_SEO_TWITTER_HANDLE')) {
     define('AK_SEO_TWITTER_HANDLE', '@assokit_fr');

@@ -88,10 +88,12 @@ function generate_slug(string $title): string
     $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
     $slug = trim($slug, '-');
 
-    // Limiter la longueur
-    if (mb_strlen($slug) > 80) {
-        $slug = mb_substr($slug, 0, 80);
+    // Limiter la longueur (nouveaux articles seulement : les URL déjà publiées ne changent pas)
+    if (mb_strlen($slug) > 70) {
+        $slug = mb_substr($slug, 0, 70);
         $slug = preg_replace('/-[^-]*$/', '', $slug);
+        // Pas de slug qui finit sur un mot vide (« …-pour », « …-de-la », « …-mise-en »)
+        $slug = preg_replace('/(?:-(?:pour|de|des|du|d|la|le|les|l|en|et|a|au|aux|ta|ton|tes|vos|votre|un|une|sans|avec|sur|que|qui|ou|par|mise))+$/', '', $slug);
     }
 
     return $slug ?: 'article-' . substr(md5((string) microtime(true)), 0, 8);
@@ -247,11 +249,15 @@ function generate_excerpt(string $markdown, int $max_chars = 200): string
 
 function generate_meta_title(string $title, int $max = 60): string
 {
+    // Jamais de titre coupé par « … » (titre incomplet dans Google, moins de clics) :
+    // on retire une précision finale entre parenthèses si cela suffit, sinon on garde
+    // le titre complet et Google abrège lui-même l'affichage.
+    $title = trim($title);
     if (mb_strlen($title) <= $max) {
         return $title;
     }
-    $short = mb_substr($title, 0, $max);
-    return preg_replace('/\s\S*$/', '', $short) . '…';
+    $short = trim((string) preg_replace('/\s*\([^()]*\)\s*$/u', '', $title));
+    return ($short !== '' && mb_strlen($short) <= $max) ? $short : $title;
 }
 
 function generate_meta_description(string $excerpt, int $max = 160): string
@@ -260,6 +266,12 @@ function generate_meta_description(string $excerpt, int $max = 160): string
         return $excerpt;
     }
     $short = mb_substr($excerpt, 0, $max);
+    // De préférence la dernière phrase entière, sinon coupure au dernier mot
+    if (preg_match_all('/[.?!](?=\s|$)/u', $short, $m, PREG_OFFSET_CAPTURE)) {
+        $end = end($m[0]);
+        $sentence = substr($short, 0, $end[1] + 1);
+        if (mb_strlen($sentence) >= 80) return $sentence;
+    }
     return preg_replace('/\s\S*$/', '', $short) . '…';
 }
 

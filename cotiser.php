@@ -34,7 +34,7 @@ if (!$campaign || !$org || !empty($org['deleted_at'])) {
     http_response_code(404);
     ak_pay_head('Page introuvable', 'Assokit');
     echo '<div class="pp-card"><div class="pp-body"><p><strong>Ce lien de paiement n’existe pas ou plus.</strong></p><p class="pp-muted">Vérifiez l’adresse reçue, ou contactez l’association.</p></div></div>';
-    ak_pay_foot('l’association');
+    ak_pay_foot('l’association', false);
     exit;
 }
 
@@ -120,7 +120,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 }
 
 $cur = (string)($campaign['currency'] ?: 'EUR');
-$title = $is_don ? 'Faire un don' : 'Payer ma cotisation';
+// Paiement en ligne réellement proposé ? Sinon, ni titre ni phrase d'accroche ne l'annoncent.
+$pay_ok = $closed_msg === null && $online['ok'];
+$title = $is_don ? 'Faire un don' : ($pay_ok ? 'Payer ma cotisation' : 'Cotisation');
 ak_pay_head($title, $org_name);
 ?>
 <div class="pp-card">
@@ -130,7 +132,11 @@ ak_pay_head($title, $org_name);
   </div>
   <div class="pp-body">
     <?php /* La description de la campagne est « à usage interne » (cotisation-form.php) : jamais affichée ici */ ?>
+    <?php if ($pay_ok): ?>
     <p><?= $is_don ? 'Soutenez ' . $h($org_name) . ' par un don en ligne.' : 'Réglez votre cotisation à ' . $h($org_name) . ' en ligne.' ?></p>
+    <?php else: ?>
+    <p><?= $is_don ? 'Soutenir ' . $h($org_name) . ' : informations.' : 'Cotisation à ' . $h($org_name) . ' : tarifs et informations.' ?></p>
+    <?php endif; ?>
     <?php if (!empty($campaign['closes_at']) && $closed_msg === null): ?><p class="pp-muted">⏰ Jusqu’au <?= $h(date('d/m/Y', strtotime((string)$campaign['closes_at']))) ?></p><?php endif; ?>
     <?php if ($member): ?>
       <p class="pp-alert pp-alert-info">Bonjour <?= $h($member['first_name']) ?> ! Ce lien vous est personnel : votre paiement sera rattaché à votre adhésion<?= !empty($member['adhesion_valid_until']) ? ' (valable jusqu’au ' . $h(date('d/m/Y', strtotime((string)$member['adhesion_valid_until']))) . ')' : '' ?>.</p>
@@ -197,4 +203,4 @@ ak_pay_head($title, $org_name);
     <?php endif; ?>
   </div>
 </div>
-<?php ak_pay_foot($org_name); ?>
+<?php ak_pay_foot($org_name, $pay_ok); ?>

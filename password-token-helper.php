@@ -15,7 +15,12 @@
 @require_once __DIR__ . '/resend-helper.php';
 
 if (!defined('PW_TOKEN_EXPIRY_DAYS')) {
-    define('PW_TOKEN_EXPIRY_DAYS', 7);
+    define('PW_TOKEN_EXPIRY_DAYS', 7);           // invitations (set_password)
+}
+// Mot de passe oublie : lien court. Un lien de 7 jours laissait une semaine pour prendre la main sur
+// le compte a qui lit la base (sauvegarde, phpMyAdmin). Les liens deja envoyes gardent leur date.
+if (!defined('PW_RESET_TOKEN_EXPIRY_HOURS')) {
+    define('PW_RESET_TOKEN_EXPIRY_HOURS', 2);
 }
 
 /**
@@ -34,7 +39,8 @@ function create_password_token(PDO $pdo, int $user_id, string $type = 'set_passw
     // Token aleatoire crypto-secure
     $token = bin2hex(random_bytes(32));  // 64 caracteres hex
 
-    $expires_at = date('Y-m-d H:i:s', time() + PW_TOKEN_EXPIRY_DAYS * 86400);
+    $ttl = $type === 'reset_password' ? PW_RESET_TOKEN_EXPIRY_HOURS * 3600 : PW_TOKEN_EXPIRY_DAYS * 86400;
+    $expires_at = date('Y-m-d H:i:s', time() + $ttl);
     $ip = $_SERVER['REMOTE_ADDR'] ?? null;
 
     $stmt = $pdo->prepare("
@@ -166,7 +172,7 @@ function send_reset_password_email(string $email, string $first_name, string $to
              . '<p>Bonjour ' . htmlspecialchars($first_name) . ',</p>'
              . '<p>Vous avez demandé à réinitialiser votre mot de passe Assokit. Pour définir un nouveau mot de passe, cliquez sur le bouton ci-dessous :</p>'
              . '<div style="background:#ECFDF5;border-left:3px solid #059669;padding:12px 16px;border-radius:6px;margin:16px 0;font-size:13px;color:#065F46;line-height:1.6;">'
-             . '⏰ <strong>Ce lien expire dans ' . PW_TOKEN_EXPIRY_DAYS . ' jours.</strong>'
+             . '⏰ <strong>Ce lien expire dans ' . PW_RESET_TOKEN_EXPIRY_HOURS . ' heures.</strong> Passé ce délai, refaites une demande depuis « Mot de passe oublié ».'
              . '</div>'
              . '<p style="font-size:12px; color:#78716C; margin-top:18px;"><strong>Vous n\'êtes pas à l\'origine de cette demande ?</strong><br>'
              . 'Vous pouvez ignorer ce message en toute sécurité. Votre mot de passe actuel reste valide tant que vous ne cliquez pas sur le lien ci-dessus.</p>';

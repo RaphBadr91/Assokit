@@ -43,7 +43,9 @@ try {
     error_log('sitemap.xml lastmod blog: ' . $e->getMessage());
 }
 
-$pages_lastmod = date('Y-m-d');
+// Date du fichier de page le plus récemment modifié (même règle que sitemap-pages.xml.php)
+$pages_mtimes = array_map(fn($f) => (int) @filemtime($f), glob(__DIR__ . '/{index,tarifs,fonctionnalites,logiciel-*,pour-*,guide-*,modele*,avis,application,a-propos,contact,comptabilite-analytique,alternative-helloasso,mentions-legales,cgu,confidentialite,cookies,suppression-compte}.php', GLOB_BRACE) ?: []);
+$pages_lastmod = date('Y-m-d', $pages_mtimes ? max($pages_mtimes) : time());
 
 echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 ?>

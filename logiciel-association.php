@@ -2,10 +2,14 @@
 /**
  * logiciel-association.php — Page SEO ciblée « logiciel association » / « logiciel gestion association loi 1901 ».
  * Route : /logiciel-association. Design premium (_landing-premium.php) + FAQPage + Breadcrumb + SoftwareApplication.
+ * Page cible des requêtes génériques (« logiciel association », « logiciel gestion association »,
+ * « logiciel pour association ») : /logiciel-association-gratuit garde l'angle « gratuit »,
+ * les autres pages « logiciel-… » un besoin précis (adhérents, cotisations, compta, facturation).
  */
 require_once __DIR__ . '/includes-public.php';
 // Prix de la formule Assokit (HT + TTC, includes-pricing.php)
 require_once __DIR__ . '/includes-pricing.php';
+require_once __DIR__ . '/_landing-seo.php';
 $offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
@@ -17,25 +21,24 @@ $faqs = [
     ['Quel logiciel choisir pour gérer une association loi 1901 ?', "Un bon logiciel d'association doit réunir adhérents, cotisations, comptabilité, projets et communication dans un seul outil, sans compétence technique. Assokit est conçu exactement pour ça : pensé pour les associations françaises, hébergé en France et conforme RGPD."],
     ['Existe-t-il un logiciel de gestion d\'association gratuit ?', "Assokit n'est pas un logiciel gratuit à vie, mais vous pouvez le tester gratuitement : pendant 14 jours, sans carte bancaire et sans engagement, vous gérez votre association (adhérents, cotisations, factures) avec toutes les fonctionnalités, puis vous choisissez votre formule."],
     ['Un logiciel association remplace-t-il Excel et les autres outils ?', "Complètement. Assokit remplace le tableur des adhérents, l'outil de facturation, l'agenda, la messagerie et le logiciel de compta — un seul outil, plus de ressaisie ni de fichiers perdus."],
-    ['Le logiciel gère-t-il la comptabilité de l\'association ?', "Oui. Assokit inclut la facturation, le suivi des cotisations et la comptabilité analytique par projet (incluse dans l'abonnement), exportable pour votre expert-comptable — soit jusqu'à ~900 € d'économie par an estimée."],
+    ['Le logiciel gère-t-il la comptabilité de l\'association ?', "Oui. Assokit inclut la facturation, le suivi des cotisations et la comptabilité analytique par projet (incluse dans l'abonnement), exportable en PDF et Excel pour votre expert-comptable, sans module à acheter en plus."],
     ['Mes données sont-elles hébergées en France ?', "Oui, 100 %. Serveurs en France (Clermont-Ferrand), conformité RGPD, double authentification et export de vos données à tout moment. Vos données restent les vôtres."],
     ['Comment gérer une association loi 1901 ?', "Gérer une association loi 1901 repose sur quelques piliers : des statuts à jour, un bureau (président, trésorier, secrétaire) qui prend les décisions, une assemblée générale annuelle, la déclaration des changements en préfecture, le suivi des adhérents et de leurs cotisations, et une comptabilité claire pour les subventions. Un logiciel comme Assokit centralise tout cela : vous tenez l'annuaire, encaissez les cotisations, préparez vos AG et suivez le budget depuis un seul espace, sans ressaisie ni fichiers éparpillés."],
     ['Quel logiciel pour gérer une petite association ?', "Pour une petite association, mieux vaut un outil simple et abordable qui couvre l'essentiel sans usine à gaz. Assokit réunit adhérents, cotisations et factures : vous testez tout gratuitement pendant 14 jours, sans carte bancaire, puis vous choisissez votre formule. C'est un choix adapté à un club, une amicale ou une association de quartier gérée par des bénévoles."],
     ['Assokit est-il adapté aux associations sportives ou culturelles ?', "Oui. Assokit s'adapte aussi bien à un club sportif (licences, équipes, cotisations saisonnières, événements) qu'à une association culturelle (ateliers, adhésions, billetterie d'événements, subventions). La gestion des adhérents par rôles et espaces, le suivi des projets et la comptabilité analytique conviennent à tous les objets associatifs relevant de la loi 1901."],
+    ['Existe-t-il un logiciel de gestion d\'association en ligne ?', "Oui. Assokit fonctionne en ligne, dans le navigateur, sans rien installer : le président, le trésorier et le secrétaire travaillent sur les mêmes données à jour, chacun avec ses droits. L'application iOS et Android donne accès au même espace depuis un téléphone."],
+    ['Combien coûte un logiciel de gestion d\'association ?', "Les prix varient selon les éditeurs, souvent selon le nombre d'adhérents ou de modules. Assokit propose une formule unique à " . $offer['per_month'] . ", toutes les fonctionnalités comprises, après un essai gratuit de 14 jours sans carte bancaire. L'abonnement est sans engagement."],
     ['Peut-on gérer les adhérents et la comptabilité au même endroit ?', "C'est précisément l'intérêt d'un logiciel tout-en-un. Dans Assokit, une cotisation encaissée met à jour l'adhérent et alimente automatiquement la comptabilité : plus besoin de reporter les montants d'un tableur vers un logiciel de compta. Adhérents, cotisations, factures et comptabilité analytique par projet vivent dans le même outil, avec un export prêt pour votre expert-comptable."],
 ];
-$faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
-$soft_schema = [
-    '@context' => 'https://schema.org', '@type' => 'SoftwareApplication',
-    'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android',
-    'description' => "Logiciel de gestion tout-en-un pour les associations loi 1901 : adhérents, cotisations, comptabilité, projets et communication.",
-    // 'offers' retiré (évite l'exigence Google review/aggregateRating sans avis notés réels) 
-    'inLanguage' => 'fr-FR',
-];
+$faq_schema = ak_landing_faq_jsonld($faqs);
+$soft_schema = ak_landing_software_jsonld(
+    "Logiciel de gestion tout-en-un pour les associations loi 1901 : adhérents, cotisations, comptabilité, projets et communication.",
+    ['Gestion des adhérents et des rôles', 'Cotisations et relances des adhésions', 'Assemblées générales : convocation, émargement, procès-verbal', 'Projets et subventions', 'Facturation et comptabilité analytique', 'Communication par e-mail assistée par IA']
+);
 
 render_public_head([
     'title'       => 'Logiciel de gestion d\'association loi 1901 · Assokit',
-    'description' => 'Logiciel de gestion pour association loi 1901 : adhérents, cotisations, comptabilité, projets et communication en un seul outil. Essai gratuit, hébergé en France.',
+    'description' => 'Logiciel de gestion d\'association loi 1901 : adhérents, cotisations, AG, comptabilité, projets et communication. Essai gratuit 14 jours, hébergé en France.',
     'path'        => '/logiciel-association',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);
@@ -49,7 +52,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="lp-hero-grid" style="display:grid;grid-template-columns:1.05fr .95fr;gap:52px;align-items:center;">
       <div>
         <span class="lp-badge reveal"><span class="dot"></span> Logiciel association loi 1901</span>
-        <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:620px;">Le <span class="lp-grad">logiciel de gestion</span> pensé pour votre association</h1>
+        <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:620px;">Le <span class="lp-grad">logiciel de gestion d'association</span> loi 1901, tout-en-un</h1>
         <p class="pub-tagline reveal" style="max-width:560px;">Adhérents, cotisations, comptabilité, projets, événements et communication — <strong>un seul logiciel</strong> pour toute la vie de votre association loi 1901. Français, hébergé en France, conforme RGPD, avec l'IA intégrée.</p>
         <div class="lp-hero-cta reveal">
           <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours
@@ -93,6 +96,34 @@ require __DIR__ . '/_landing-premium.php';
         <div class="lp-card reveal"><div class="lp-ic"><?= $c[0] ?></div><h3><?= $c[1] ?></h3><p><?= $c[2] ?></p></div>
       <?php endforeach; ?>
     </div>
+  </div>
+</section>
+
+<!-- Pour quel type d'association ? -->
+<section class="pub-section">
+  <div class="pub-container">
+    <div class="pub-section-head reveal">
+      <span class="pub-section-eyebrow">Pour quel type d'association ?</span>
+      <h2 class="pub-h2">Un logiciel pour <em>toutes les associations loi 1901</em></h2>
+      <p class="pub-section-lead">Les besoins changent d'un objet associatif à l'autre, la base reste la même : des membres, des cotisations, des décisions et des comptes à tenir.</p>
+    </div>
+    <div class="lp-grid">
+      <?php foreach ([
+        ['⚽','Club et association sportive','Cotisations de saison avec plusieurs tarifs (adulte, jeune, famille), équipes et rôles, agenda des entraînements et des événements, relance des adhésions à renouveler.'],
+        ['🎭','Association culturelle et de loisirs','Ateliers et projets suivis étape par étape, inscriptions aux événements, budget par action pour justifier les subventions de la mairie ou du département.'],
+        ['🎉','Comité des fêtes et association de quartier','Bénévoles et équipes par événement, dépenses et recettes rattachées à chaque fête, compte-rendu de réunion rédigé avec l\'aide de l\'IA.'],
+        ['🎓','Association étudiante','Bureau renouvelé chaque année : les accès passent d\'un trésorier à l\'autre, l\'historique des comptes et des adhérents reste dans l\'outil.'],
+        ['🤲','Association caritative ou humanitaire','Projets financés suivis poste par poste, justificatifs centralisés, bilan par projet pour rendre compte aux financeurs et aux donateurs.'],
+        ['👵','Association de retraités ou de seniors','Fichier des adhérents simple à tenir, convocations à l\'assemblée générale envoyées en un clic, règlements par chèque ou espèces enregistrés sans tableur.'],
+      ] as $c): ?>
+        <div class="lp-card reveal"><div class="lp-ic"><?= $c[0] ?></div><h3><?= $c[1] ?></h3><p><?= $c[2] ?></p></div>
+      <?php endforeach; ?>
+    </div>
+    <p class="pub-text-center reveal" style="margin-top:22px;color:var(--c-text-3);font-size:14.5px;">Fédération, réseau ou grande structure ? Une offre sur mesure existe, <a href="/tarifs" style="color:var(--c-emeraude-dark);font-weight:600;">voir les tarifs</a>.</p>
+    <figure class="reveal" style="max-width:1000px;margin:36px auto 0;">
+      <img src="/assets/dashboard-desktop.png" width="1400" height="669" loading="lazy" decoding="async" alt="Tableau de bord Assokit d'une association : projets, membres, événements et budget" style="width:100%;height:auto;border-radius:16px;border:1px solid var(--c-border);box-shadow:0 18px 44px rgba(6,78,59,.10);">
+      <figcaption style="margin-top:10px;font-size:13px;color:var(--c-text-3);text-align:center;">Le tableau de bord d'une association (compte de démonstration).</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -220,8 +251,11 @@ require __DIR__ . '/_landing-premium.php';
   </div>
 </section>
 
+<?php ak_landing_pricing(); ?>
+<?php ak_landing_siblings('/logiciel-association'); ?>
+
 <!-- FAQ -->
-<section class="pub-section pub-section-creme">
+<section class="pub-section">
   <div class="pub-container">
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Questions fréquentes</span><h2 class="pub-h2">Choisir son <em>logiciel d'association</em></h2></div>
     <div class="pub-faq reveal">

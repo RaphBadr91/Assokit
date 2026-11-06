@@ -21,7 +21,7 @@ if (!$op || !preg_match('/^cs_[A-Za-z0-9_]+$/', $cs_id) || (!empty($op['checkout
     http_response_code(404);
     ak_pay_head('Paiement introuvable', 'Assokit');
     echo '<div class="pp-card"><div class="pp-body"><p><strong>Ce lien de confirmation n’est pas valable.</strong></p><p class="pp-muted">Si vous venez de payer, votre reçu arrive par e-mail.</p></div></div>';
-    ak_pay_foot('l’association');
+    ak_pay_foot('l’association', false);
     exit;
 }
 

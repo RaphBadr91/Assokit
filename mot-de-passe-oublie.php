@@ -143,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           Si un compte existe avec cette adresse, vous recevrez un email dans quelques instants avec un lien pour réinitialiser votre mot de passe.
         </p>
         <p class="sub" style="text-align:center; font-size:12px;">
-          💡 Vérifiez aussi vos spams. Le lien est valide pendant 7 jours.
+          💡 Vérifiez aussi vos spams. Le lien est valable <?= defined('PW_RESET_TOKEN_EXPIRY_HOURS') ? (int)PW_RESET_TOKEN_EXPIRY_HOURS : 2 ?> heures.
         </p>
         <a href="/connexion" class="link-back">← Retour à la connexion</a>
       </div>

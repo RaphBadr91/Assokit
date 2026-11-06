@@ -2,10 +2,14 @@
 /**
  * logiciel-facturation.php — Page SEO ciblée « logiciel de facturation » / « logiciel devis facture »
  * (+ facturation électronique). Route : /logiciel-facturation. Premium + FAQPage + Breadcrumb + SoftwareApplication.
+ * Cible : « logiciel facturation association », « logiciel de facturation TPE ». Les articles du blog
+ * sur la facture, l'avoir, Chorus Pro ou la facture électronique pointent ici (blog-article.php).
  */
 require_once __DIR__ . '/includes-public.php';
-// Offre schema.org de la formule Assokit (prix HT, TVA non comprise : includes-pricing.php)
+// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
 require_once __DIR__ . '/includes-pricing.php';
+require_once __DIR__ . '/_landing-seo.php';
+$offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil', 'url' => '/'],
@@ -15,20 +19,25 @@ $breadcrumb = build_breadcrumb_jsonld([
 $faqs = [
     ['Quel logiciel de facturation choisir pour une association ou une TPE ?', "Un bon logiciel de facturation crée devis et factures conformes en quelques clics, relance les impayés automatiquement et se relie à votre comptabilité. Assokit fait tout ça, avec votre logo, la numérotation automatique et l'export comptable — pensé pour les associations et les TPE françaises."],
     ['Le logiciel gère-t-il devis et factures ?', "Oui : devis (avec signature électronique), factures HT/TVA/TTC, factures récurrentes, avoirs, numérotation automatique et export PDF avec votre logo. Le tout suivi en temps réel."],
-    ['Assokit est-il prêt pour la facturation électronique ?', "Oui, Assokit vous prépare à la réforme de la facturation électronique : émission de factures conformes et centralisation de vos pièces, pour aborder l'échéance sereinement."],
+    ['Assokit gère-t-il la facturation électronique ?', "Assokit génère vos factures au format Factur-X (PDF + XML, norme EN 16931) et centralise vos pièces. Le raccordement à une plateforme agréée, par laquelle les factures électroniques sont reçues puis émises, est en préparation."],
     ['Peut-on automatiser les relances d\'impayés ?', "Oui. Les relances de paiement partent automatiquement selon le calendrier que vous définissez. Vous êtes payé plus vite, sans courir après vos clients ou adhérents."],
     ['La facturation est-elle reliée à la comptabilité ?', "Oui : chaque facture émise ou encaissée alimente automatiquement votre comptabilité et votre bilan analytique. Aucune double saisie."],
     ['Comment faire une facture pour une association ?', "Une association qui facture une prestation, une vente ou une subvention conventionnée doit émettre une facture comportant les mentions légales obligatoires : identité et adresse de l'association, numéro RNA ou SIRET le cas échéant, date, numéro de facture séquentiel, désignation, montant HT, taux et montant de TVA (ou la mention « TVA non applicable, art. 293 B du CGI » si l'association n'y est pas assujettie) et montant TTC. Avec Assokit, vous partez d'un devis ou d'un modèle, le logiciel applique la numérotation automatique et les mentions, puis génère un PDF conforme à votre charte en quelques secondes."],
-    ['La facturation électronique est-elle obligatoire en 2026 ?', "La réforme de la facturation électronique se déploie par étapes. À compter du 1er septembre 2026, les entreprises et structures assujetties devront être en capacité de recevoir des factures électroniques, l'obligation d'émission s'appliquant ensuite selon la taille de la structure. Les factures à destination du secteur public passent déjà par Chorus Pro. Assokit émet des factures au format conforme et centralise vos pièces pour aborder chaque échéance sans stress, y compris la correction d'une facture électronique par avoir."],
+    ['La facturation électronique est-elle obligatoire en 2026 ?', "La réforme de la facturation électronique se déploie par étapes. Depuis le 1er septembre 2026, les entreprises et structures assujetties doivent être en capacité de recevoir des factures électroniques, l'obligation d'émission s'appliquant ensuite selon la taille de la structure. Les factures à destination du secteur public passent déjà par Chorus Pro. Assokit émet vos factures au format Factur-X et centralise vos pièces, y compris la correction d'une facture par avoir ; le raccordement à une plateforme agréée est en préparation."],
     ['Peut-on transformer un devis en facture automatiquement ?', "Oui. Une fois un devis accepté (et signé électroniquement), vous le convertissez en facture en un clic : lignes, quantités, TVA et coordonnées du client sont reprises à l'identique, un nouveau numéro de facture est attribué automatiquement et le devis reste archivé comme justificatif. Vous évitez la double saisie et les erreurs de recopie."],
     ['Assokit gère-t-il les relances de factures impayées ?', "Oui. Vous définissez un calendrier de relance (par exemple J+7, J+15, J+30 après l'échéance) et Assokit envoie les rappels automatiquement par e-mail tant que la facture n'est pas soldée. Vous suivez en temps réel les factures payées, en attente et en retard, et vous pouvez émettre un avoir si nécessaire — sans jamais courir après vos clients ou adhérents."],
+    ['Comment corriger une facture déjà émise ?', "Une facture émise ne se modifie pas : on l'annule par un avoir, puis on émet une nouvelle facture juste. Dans Assokit, l'avoir se crée depuis la facture concernée : il reprend ses lignes en négatif, prend son numéro dans la même séquence que vos factures et produit un PDF « AVOIR ». La facture d'origine est passée en « Annulée » si elle n'était pas encore réglée."],
 ];
-$faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
-$soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplication', 'name' => 'Assokit', 'applicationCategory' => 'FinanceApplication', 'operatingSystem' => 'Web, iOS, Android', 'description' => "Logiciel de facturation pour association et TPE : devis, factures, relances automatiques, export comptable, prêt pour la facturation électronique.", 'offers' => ak_offer_jsonld(), 'inLanguage' => 'fr-FR'];
+$faq_schema = ak_landing_faq_jsonld($faqs);
+$soft_schema = ak_landing_software_jsonld(
+    "Logiciel de facturation pour association et TPE : devis, factures, relances automatiques, export comptable, factures au format Factur-X.",
+    ['Devis avec signature électronique', 'Factures HT, TVA et TTC numérotées', 'Avoirs', 'Factures récurrentes', 'Relances des impayés', 'Factures au format Factur-X'],
+    'FinanceApplication'
+);
 
 render_public_head([
     'title'       => 'Logiciel de facturation pour association & TPE · Assokit',
-    'description' => 'Logiciel de facturation pour association et TPE : devis, factures, relances, export comptable, conforme 2026. Essai gratuit, hébergé en France.',
+    'description' => 'Logiciel de facturation pour association et TPE : devis signés en ligne, factures, avoirs, relances d\'impayés, Factur-X et export comptable. Essai gratuit.',
     'path'        => '/logiciel-facturation',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);
@@ -43,7 +52,7 @@ require __DIR__ . '/_landing-premium.php';
       <div>
         <span class="lp-badge reveal"><span class="dot"></span> Devis &amp; factures en 2 minutes</span>
         <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:620px;">Le <span class="lp-grad">logiciel de facturation</span> simple pour assos &amp; TPE</h1>
-        <p class="pub-tagline reveal" style="max-width:560px;">Créez devis et factures pro avec votre logo, envoyez les <strong>relances automatiquement</strong>, suivez vos encaissements en temps réel. Export comptable inclus et prêt pour la facturation électronique.</p>
+        <p class="pub-tagline reveal" style="max-width:560px;">Créez devis et factures pro avec votre logo, envoyez les <strong>relances automatiquement</strong>, suivez vos encaissements en temps réel. Export comptable inclus, factures au format Factur-X.</p>
         <div class="lp-hero-cta reveal">
           <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
@@ -75,7 +84,7 @@ require __DIR__ . '/_landing-premium.php';
         ['✍️','Signature électronique','Vos devis signés en ligne, sans impression ni scan.'],
         ['🔁','Factures récurrentes','Abonnements et cotisations facturés automatiquement, chaque mois.'],
         ['🔔','Relances automatiques','Les impayés relancés tout seuls. Vous êtes payé plus vite.'],
-        ['🇪🇺','Facture électronique','Prêt pour la réforme : factures conformes, pièces centralisées.'],
+        ['🇪🇺','Facture électronique','Factures au format Factur-X (PDF + XML), pièces centralisées. Raccordement à une plateforme agréée en préparation.'],
         ['📊','Export comptable','Chaque facture alimente votre comptabilité analytique.'],
       ] as $c): ?>
         <div class="lp-card reveal"><div class="lp-ic"><?= $c[0] ?></div><h3><?= $c[1] ?></h3><p><?= $c[2] ?></p></div>
@@ -113,11 +122,11 @@ require __DIR__ . '/_landing-premium.php';
           <?php foreach ([
             ['Devis → facture en 1 clic', '✗ Copier-coller manuel', '~ Selon l\'offre', 'Oui, natif'],
             ['Relances automatiques', '✗ À la main', '~ Souvent en option', 'Oui, incluses'],
-            ['Conformité facture électronique 2026', '✗ Non', '~ Variable', 'Oui, prêt'],
+            ['Factures au format Factur-X', '✗ Non', '~ Variable', 'Oui (plateforme agréée en préparation)'],
             ['Suivi des paiements', '✗ Aucun', 'Oui', 'Oui, temps réel'],
             ['Export comptable', '✗ Ressaisie', 'Oui', 'Oui, 1 clic'],
             ['Hébergement en France', '—', '~ Selon l\'éditeur', '🇫🇷 Oui'],
-            ['Prix', 'Gratuit mais chronophage', 'Abonnement mensuel', 'Essai gratuit'],
+            ['Prix', 'Gratuit mais chronophage', 'Abonnement mensuel', $offer['per_month'] . ' · essai gratuit 14 j'],
           ] as $r): ?>
           <tr style="border-top:1px solid var(--c-border);">
             <td style="padding:14px 18px;font-weight:600;color:var(--c-encre);"><?= $r[0] ?></td>
@@ -163,6 +172,9 @@ require __DIR__ . '/_landing-premium.php';
     </p>
   </div>
 </section>
+
+<?php ak_landing_pricing(); ?>
+<?php ak_landing_siblings('/logiciel-facturation'); ?>
 
 <section class="pub-section">
   <div class="pub-container">

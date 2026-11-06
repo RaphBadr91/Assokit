@@ -34,7 +34,7 @@ $home_faqs = [
     ],
     [
         'q' => "La comptabilité analytique est-elle incluse ?",
-        'a' => "Oui, la comptabilité analytique est incluse dans l'abonnement Assokit, soit environ 900 € d'économie par an par rapport à un expert-comptable. Votre comptable n'intervient plus que pour valider les comptes.",
+        'a' => "Oui, la comptabilité analytique est incluse dans l'abonnement Assokit, sans module à acheter en plus. Votre comptable n'intervient plus que pour valider les comptes.",
     ],
     [
         'q' => "Mes données sont-elles sécurisées et hébergées en France ?",
@@ -56,9 +56,10 @@ foreach ($home_faqs as $f) {
 
 render_public_head([
     // === SEO HOMEPAGE — VALIDÉ ===
-    // Title  (54 chars) : Assokit · Logiciel Association & TPE Tout-en-Un · IA
+    // Title  (53 chars) : Assokit · Gestion tout-en-un pour associations et TPE
+    // (« logiciel de gestion d'association » est laissé à /logiciel-association : une requête = une page)
     // Meta D (136 chars): Gérez votre association & TPE en un seul outil. Facturation, IA, projets, adhérents. Plus de temps pour ce qui compte. Essai gratuit 14 jours.
-    'title_full'  => 'Assokit · Logiciel Association & TPE Tout-en-Un · IA',
+    'title_full'  => 'Assokit · Gestion tout-en-un pour associations et TPE',
     'description' => 'Gérez votre association & TPE en un seul outil. Facturation, IA, projets, adhérents. Plus de temps pour ce qui compte. Essai gratuit 14 jours.',
     'path'        => '/',
     // Image OG dédiée (1200x630) pour partage WhatsApp/Facebook/LinkedIn/Twitter
@@ -1152,6 +1153,7 @@ render_public_nav('');
         <span class="ak-split-cta">Découvrir Assokit pour TPE →</span>
       </a>
     </div>
+    <p class="ak-split-intro" style="margin-top:22px;">En détail : notre <a href="/logiciel-association" style="color:var(--c-emeraude-dark);font-weight:600;">logiciel de gestion d'association</a> et notre <a href="/logiciel-gestion-tpe" style="color:var(--c-emeraude-dark);font-weight:600;">logiciel de gestion pour TPE</a>.</p>
   </div>
   
 </section>
@@ -1276,7 +1278,7 @@ render_public_nav('');
       <article class="ake-card ake-card--sans">
         <div class="ake-card__top">
           <span class="ake-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg></span>
-          <div><h3>Sans AssoKit</h3><span>Compta analytique externalisée</span></div>
+          <div><h3>Sans Assokit</h3><span>Compta analytique externalisée</span></div>
         </div>
         <div class="ake-price"><b>~900&nbsp;€</b><em>/ an en moyenne</em></div>
         <ul class="ake-list">
@@ -1290,7 +1292,7 @@ render_public_nav('');
         <span class="ake-tag">INCLUSE</span>
         <div class="ake-card__top">
           <span class="ake-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 4 12 14.01l-3-3"/></svg></span>
-          <div><h3>Avec AssoKit</h3><span>Incluse dans l'abonnement</span></div>
+          <div><h3>Avec Assokit</h3><span>Incluse dans l'abonnement</span></div>
         </div>
         <div class="ake-price"><b>Incluse</b><em><span class="ake-strike">~900&nbsp;€</span> dans votre abonnement</em></div>
         <ul class="ake-list">
@@ -1395,7 +1397,7 @@ render_public_nav('');
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#D1FAE5;color:#059669;">📋</div>
         <h3>Facturation, devis & relances auto</h3>
-        <p>Devis avec signature, factures multi-lignes, <strong>relances automatiques J+15/30/45</strong>, factures récurrentes.</p>
+        <p>Devis avec signature, factures multi-lignes, <strong>relances automatiques J+15/30/45</strong>, factures récurrentes. <a href="/logiciel-facturation" style="color:var(--c-emeraude-dark);font-weight:600;">Le logiciel de facturation</a></p>
       </div>
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#F3E8FF;color:#7E22CE;">🤖</div>
@@ -1410,12 +1412,12 @@ render_public_nav('');
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#E0F2FE;color:#0C4A6E;">👥</div>
         <h3>Adhérents & bénévoles</h3>
-        <p>Annuaire intelligent, rôles personnalisés, espaces dédiés, relances cotisations automatiques.</p>
+        <p>Annuaire intelligent, rôles personnalisés, espaces dédiés, relances cotisations automatiques. <a href="/logiciel-adherents" style="color:var(--c-emeraude-dark);font-weight:600;">Gestion des adhérents</a> · <a href="/logiciel-cotisation-association" style="color:var(--c-emeraude-dark);font-weight:600;">des cotisations</a></p>
       </div>
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#FCE7F3;color:#9D174D;">💰</div>
         <h3>Trésorerie & comptabilité</h3>
-        <p>Suivi de votre solde, dépenses par projet, export comptable. Plus jamais de tableur cassé.</p>
+        <p>Suivi de votre solde, dépenses par projet, export comptable. Plus jamais de tableur cassé. <a href="/logiciel-comptabilite-association" style="color:var(--c-emeraude-dark);font-weight:600;">La comptabilité d'association</a></p>
       </div>
     </div>
 

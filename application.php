@@ -11,7 +11,7 @@ $breadcrumb = build_breadcrumb_jsonld([
 ]);
 
 render_public_head([
-    'title'       => 'L\'application Assokit',
+    'title'       => 'Application mobile Assokit pour iPhone et Android',
     // Texte brut en UTF-8 : render_public_head l'échappe lui-même (des entités ici
     // s'affichaient telles quelles, « acc&egrave;s », dans Google et au partage).
     'description' => 'Installez Assokit sur votre iPhone ou Android : accès rapide, plein écran, même hors-ligne. Gérez votre association depuis votre téléphone.',

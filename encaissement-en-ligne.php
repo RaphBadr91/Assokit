@@ -264,7 +264,7 @@ render_sidebar('paiements-en-ligne');
     <details class="pel-card">
       <summary><strong>Comment ça marche ?</strong></summary>
       <ol class="pel-steps">
-        <li>Vous reliez le compte Stripe de <?= h($struct) ?> (ci-dessus). Assokit ne voit jamais votre IBAN ni les cartes de vos payeurs.</li>
+        <li>Vous reliez le compte Stripe de <?= h($struct) ?> <?= $open ? '(ci-dessus)' : '(dès l’ouverture du service)' ?>. Assokit ne voit jamais votre IBAN ni les cartes de vos payeurs.</li>
         <li>Vos factures<?= $is_tpe ? '' : ', campagnes de cotisation et pages de dons' ?> affichent un bouton « Payer en ligne » ; vos e-mails et relances contiennent le lien.</li>
         <li>Le payeur règle sur la page sécurisée de Stripe. <?= $is_tpe ? 'Votre structure' : 'L’association' ?> est le vendeur : le paiement est versé sur son compte Stripe, puis sur son compte bancaire.</li>
         <li>Assokit enregistre le paiement tout seul (comme un paiement saisi à la main), envoie un reçu au payeur et vous prévient.</li>

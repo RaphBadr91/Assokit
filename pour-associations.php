@@ -14,7 +14,7 @@ $faqs = [
     ['Assokit convient-il aux petites associations ?', "Oui. Que vous ayez 5 ou 500 adhérents, Assokit s'adapte. Vous testez tout gratuitement pendant 14 jours, sans carte bancaire, puis un seul abonnement tout inclus, sans engagement. Aucune compétence technique requise."],
     ['Peut-on gérer les adhérents et les cotisations ?', "Absolument : annuaire des adhérents avec rôles (bureau, bénévoles, membres), suivi des cotisations et relances automatiques des adhésions, et espace membre dédié. Fini les tableurs qui se cassent."],
     ['Assokit aide-t-il pour l\'assemblée générale ?', "Oui. Convocations, émargement, procès-verbal, suivi des présents et des votes : votre AG se prépare et s'archive en quelques clics."],
-    ['La comptabilité analytique est-elle incluse ?', "Oui, elle est incluse dans l'abonnement Assokit : bilan par projet et par poste, exportable en PDF et Excel pour votre expert-comptable. Environ 900 € d'économie par an par rapport à une prestation externalisée."],
+    ['La comptabilité analytique est-elle incluse ?', "Oui, elle est incluse dans l'abonnement Assokit : bilan par projet et par poste, exportable en PDF et Excel pour votre expert-comptable, sans module à acheter en plus."],
     ['Mes données sont-elles en sécurité ?', "100 %. Hébergement en France (Clermont-Ferrand), conformité RGPD, double authentification, export de vos données à tout moment. Vos données restent les vôtres."],
 ];
 $faq_schema = [
@@ -24,7 +24,7 @@ $faq_schema = [
 
 render_public_head([
     'title'       => 'Gérer son association loi 1901 sans paperasse · Assokit',
-    'description' => 'Assokit, le logiciel tout-en-un des associations loi 1901 : adhérents, cotisations, assemblées générales, projets, subventions, comptabilité analytique et communication. Essai gratuit, hébergé en France.',
+    'description' => 'Le logiciel tout-en-un des associations loi 1901 : adhérents, cotisations, AG, projets, subventions, comptabilité analytique. Essai gratuit 14 jours.',
     'path'        => '/pour-associations',
     'schema_jsonld' => [$breadcrumb, $faq_schema],
 ]);
@@ -40,7 +40,7 @@ require __DIR__ . '/_landing-premium.php';
       <div>
         <span class="lp-badge reveal"><span class="dot"></span> Pensé pour les associations loi 1901</span>
         <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:600px;">Gérez votre association <span class="lp-grad">sans paperasse</span>, et retrouvez du temps pour l'essentiel.</h1>
-        <p class="pub-tagline reveal" style="max-width:560px;">Adhérents, cotisations, assemblées générales, projets, subventions, communication : <strong>tout au même endroit</strong>, main dans la main avec l'IA. Fini les tableurs et les relances oubliées.</p>
+        <p class="pub-tagline reveal" style="max-width:560px;">Adhérents, cotisations, assemblées générales, projets, subventions, communication : <strong>tout au même endroit</strong>, main dans la main avec l'IA. Fini les tableurs et les relances oubliées. Voir le <a href="/logiciel-association" style="color:var(--c-emeraude-dark);font-weight:600;">logiciel de gestion d'association</a> en détail.</p>
         <div class="lp-hero-cta reveal">
           <a href="/contact" class="lp-btn lp-btn-primary">Réserver une démo gratuite
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
@@ -99,6 +99,7 @@ require __DIR__ . '/_landing-premium.php';
         </div>
       <?php endforeach; ?>
     </div>
+    <p class="pub-text-center reveal" style="margin-top:24px;color:var(--c-text-2);font-size:15px;">Chaque besoin a sa page : <a href="/logiciel-adherents" style="color:var(--c-emeraude-dark);font-weight:600;">gestion des adhérents</a>, <a href="/logiciel-cotisation-association" style="color:var(--c-emeraude-dark);font-weight:600;">gestion des cotisations</a>, <a href="/logiciel-comptabilite-association" style="color:var(--c-emeraude-dark);font-weight:600;">comptabilité d'association</a> et <a href="/logiciel-facturation" style="color:var(--c-emeraude-dark);font-weight:600;">facturation</a>.</p>
   </div>
 </section>
 

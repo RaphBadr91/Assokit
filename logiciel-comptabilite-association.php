@@ -6,6 +6,7 @@
 require_once __DIR__ . '/includes-public.php';
 // Prix de la formule Assokit (HT + TTC, includes-pricing.php)
 require_once __DIR__ . '/includes-pricing.php';
+require_once __DIR__ . '/_landing-seo.php';
 $offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
@@ -15,7 +16,7 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 $faqs = [
     ['Quel logiciel de comptabilité pour une association ?', "Le meilleur logiciel de comptabilité pour une association loi 1901 relie la compta au quotidien : factures, cotisations et dépenses se comptabilisent automatiquement, avec un plan comptable adapté et une comptabilité analytique par projet. C'est exactement ce que fait Assokit."],
-    ['La comptabilité analytique est-elle incluse ?', "Oui, elle est incluse dans l'abonnement Assokit : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Cela peut remplacer une prestation externalisée souvent estimée autour de 900 € par an. Votre expert-comptable n'a plus qu'à valider."],
+    ['La comptabilité analytique est-elle incluse ?', "Oui, elle est incluse dans l'abonnement Assokit : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Aucun module à acheter en plus ; votre expert-comptable n'a plus qu'à valider."],
     ['Faut-il des connaissances comptables pour l\'utiliser ?', "Non. Assokit est pensé pour les trésoriers bénévoles : catégorisation guidée, justificatifs centralisés, préparation automatique du bilan. Pas besoin d'être comptable."],
     ['Peut-on exporter les comptes pour l\'expert-comptable ?', "Oui : exports PDF et Excel du bilan analytique avec les pièces justificatives rattachées. Vous transmettez un dossier propre et daté, prêt à valider."],
     ['Le logiciel gère-t-il aussi la facturation et les cotisations ?', "Oui, tout est lié : devis, factures, relances de paiement, règlements de cotisations enregistrés — chaque opération alimente automatiquement votre comptabilité."],
@@ -23,18 +24,20 @@ $faqs = [
     ['Une association doit-elle tenir une comptabilité ?', "Toute association doit tenir une comptabilité, au minimum un suivi des recettes et dépenses. Elle devient plus formelle (comptes annuels, parfois commissaire aux comptes au-delà de certains seuils) dès qu'elle perçoit des subventions publiques importantes, exerce une activité économique soumise à la TVA, ou émet des reçus fiscaux ouvrant droit à réduction d'impôt."],
     ['Comment faire le bilan d\'une association loi 1901 ?', "Le bilan présente à une date donnée le patrimoine de l'association : actif (trésorerie, créances) et passif (dettes, fonds propres, fonds dédiés). Avec Assokit, le bilan et le compte de résultat se construisent automatiquement au fil des écritures ; vous les exportez en PDF ou Excel pour l'assemblée générale et l'expert-comptable."],
     ['Faut-il un expert-comptable pour une association ?', "Ce n'est obligatoire que pour les grandes associations (au-delà de certains seuils de subventions ou d'activité, un commissaire aux comptes peut être requis). Pour la plupart des petites structures, un trésorier bénévole outillé suffit : Assokit prépare un dossier propre et daté que l'expert-comptable n'a plus qu'à valider si vous en sollicitez un."],
+    ['Excel ou logiciel de comptabilité pour une association ?', "Un tableur gratuit convient pour une petite association avec peu d'opérations : un journal des recettes et des dépenses suffit. Il montre ses limites dès qu'il faut rattacher les justificatifs, suivre plusieurs projets ou subventions, ou transmettre des comptes propres à un expert-comptable. Un logiciel de comptabilité d'association relie ces opérations aux cotisations et aux factures, sans ressaisie."],
+    ['Existe-t-il un logiciel de comptabilité gratuit pour association ?', "Il existe des tableurs et quelques logiciels gratuits, souvent limités en fonctionnalités ou en nombre d'écritures. Assokit n'est pas gratuit à vie : il s'essaie gratuitement 14 jours, sans carte bancaire, puis l'abonnement est de " . $offer['per_month'] . ", comptabilité analytique comprise."],
+    ['Assokit sert-il aussi de logiciel de trésorerie ?', "Oui pour le suivi : encaissements de cotisations et de factures, dépenses et budget par projet sont visibles en temps réel, et les factures impayées sont relancées. Assokit n'est pas connecté à votre compte bancaire : le rapprochement avec les relevés reste à faire de votre côté."],
 ];
-$faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
-$soft_schema = [
-    '@context' => 'https://schema.org', '@type' => 'SoftwareApplication',
-    'name' => 'Assokit', 'applicationCategory' => 'FinanceApplication', 'operatingSystem' => 'Web, iOS, Android',
-    'description' => "Logiciel de comptabilité pour association loi 1901 : facturation, cotisations, comptabilité analytique par projet, exports pour l'expert-comptable.",
-    // 'offers' retiré (évite l'exigence Google review/aggregateRating sans avis notés réels)  'inLanguage' => 'fr-FR',
-];
+$faq_schema = ak_landing_faq_jsonld($faqs);
+$soft_schema = ak_landing_software_jsonld(
+    "Logiciel de comptabilité pour association loi 1901 : facturation, cotisations, comptabilité analytique par projet, exports pour l'expert-comptable.",
+    ['Recettes et dépenses catégorisées', 'Justificatifs rattachés aux opérations', 'Comptabilité analytique par projet', 'Bilan en PDF et Excel', 'Export FEC', 'Notes de frais'],
+    'FinanceApplication'
+);
 
 render_public_head([
     'title'       => 'Logiciel de comptabilité pour association loi 1901 · Assokit',
-    'description' => 'Logiciel de comptabilité pour association loi 1901 : compta analytique par projet, cotisations, export expert-comptable. Essai gratuit, hébergé en France.',
+    'description' => 'Logiciel de comptabilité pour association loi 1901 : recettes, dépenses, justificatifs, bilan par projet, export pour l\'expert-comptable. Essai gratuit.',
     'path'        => '/logiciel-comptabilite-association',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);
@@ -84,8 +87,9 @@ require __DIR__ . '/_landing-premium.php';
         ['📁','Justificatifs centralisés','Chaque pièce rattachée à la bonne opération, exportable en archive.'],
         ['📅','Échéances &amp; alertes','Ne manquez plus une date fiscale ou administrative clé.'],
         ['✅','Prêt pour le comptable','Export PDF / Excel daté — votre expert-comptable n\'a plus qu\'à valider.'],
+        ['🚗','Notes de frais','Frais des bénévoles et de l\'équipe avec justificatif photo ou PDF, indemnités kilométriques calculées à partir de la distance (barème indicatif, à vérifier chaque année).','notes-de-frais'],
       ] as $c): ?>
-        <div class="lp-card reveal"><div class="lp-ic"><?= $c[0] ?></div><h3><?= $c[1] ?></h3><p><?= $c[2] ?></p></div>
+        <div class="lp-card reveal"<?= isset($c[3]) ? ' id="' . $c[3] . '"' : '' ?>><div class="lp-ic"><?= $c[0] ?></div><h3><?= $c[1] ?></h3><p><?= $c[2] ?></p></div>
       <?php endforeach; ?>
     </div>
   </div>
@@ -189,7 +193,10 @@ require __DIR__ . '/_landing-premium.php';
   </div>
 </section>
 
-<section class="pub-section pub-section-creme">
+<?php ak_landing_pricing(); ?>
+<?php ak_landing_siblings('/logiciel-comptabilite-association'); ?>
+
+<section class="pub-section">
   <div class="pub-container">
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Questions fréquentes</span><h2 class="pub-h2">Votre <em>comptabilité d'association</em>, simplement</h2></div>
     <div class="pub-faq reveal">

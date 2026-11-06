@@ -23,10 +23,11 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 // FAQPage : reprend les questions visibles plus bas (rich results Google)
 $ca_faqs = [
-    ['Dois-je vraiment garder un expert-comptable ?', "Oui. AssoKit remplace la prestation de comptabilité analytique (la ventilation par projet et poste, que vous payiez en plus). Votre expert-comptable, lui, conserve son rôle : il contrôle et valide les comptes. Vous lui transmettez simplement un dossier déjà prêt."],
+    ['Dois-je vraiment garder un expert-comptable ?', "Oui. Assokit remplace la prestation de comptabilité analytique (la ventilation par projet et poste, que vous payiez en plus). Votre expert-comptable, lui, conserve son rôle : il contrôle et valide les comptes. Vous lui transmettez simplement un dossier déjà prêt."],
     ['Quelles offres incluent la compta analytique illimitée ?', "Le bilan analytique est illimité dans l'abonnement Assokit (" . $offer['label'] . "), pendant l'essai PRO de " . $trial_days . " jours et en Sur-mesure."],
     ['Puis-je tout exporter pour mon comptable ?', "Oui : le bilan analytique s'exporte en PDF et Excel, avec les pièces justificatives rattachées. En Sur-mesure, vous obtenez aussi des exports de données comptables avancés."],
-    ['Combien vais-je réellement économiser ?', "Une prestation de compta analytique externalisée tourne autour de 900 €/an. Avec l'abonnement Assokit (≈ " . $offer_year_txt . "/an, tout le logiciel compris), vous gardez jusqu'à " . $offer_saving_txt . "/an — davantage si votre prestation actuelle coûte plus cher."],
+    // Sans montant de référence tant qu'aucune source ne l'étaye (données structurées comprises).
+    ['Combien vais-je réellement économiser ?', "Tout dépend du coût actuel de la ventilation analytique de vos comptes. Avec l'abonnement Assokit (≈ " . $offer_year_txt . "/an, tout le logiciel compris), elle est incluse : indiquez votre coût actuel dans le simulateur de cette page pour estimer votre économie."],
 ];
 $ca_faq_schema = [
     '@context'   => 'https://schema.org',
@@ -39,8 +40,8 @@ $ca_faq_schema = [
 ];
 
 render_public_head([
-    'title'         => 'Comptabilité analytique incluse · AssoKit · sans comptable',
-    'description'   => 'La comptabilité analytique coûte environ 900 euros par an chez un comptable. Avec AssoKit, elle est incluse dans l\'abonnement : bilan par projet et par poste, export PDF et Excel, validation par votre expert-comptable.',
+    'title'         => 'Comptabilité analytique d\'association · Assokit',
+    'description'   => 'Suivez chaque projet de votre association : budget, dépenses et recettes affectées, bilan par projet en PDF et Excel. Inclus dans Assokit, essai 14 jours.',
     'path'          => '/comptabilite-analytique',
     'schema_jsonld' => [$breadcrumb, $ca_faq_schema],
 ]);
@@ -58,7 +59,7 @@ render_public_nav('');
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
       Incluse dans votre abonnement
     </span>
-    <h1 class="pub-h1 ake-anim ake-d2" style="max-width:820px;margin-left:auto;margin-right:auto;">Votre comptabilité analytique, <em>incluse — sans comptable</em></h1>
+    <h1 class="pub-h1 ake-anim ake-d2" style="max-width:820px;margin-left:auto;margin-right:auto;">La comptabilité analytique de votre association, <em>incluse</em></h1>
     <p class="pub-tagline ake-anim ake-d2" style="max-width:640px;">Suivez vos recettes et dépenses par projet et par poste, en temps réel. Dans l’abonnement Assokit, la compta analytique est <strong>illimitée et incluse</strong> — votre expert-comptable n'intervient plus que pour valider les comptes.</p>
     <div class="ake-hero-cta ake-anim ake-d3">
       <a class="pub-btn pub-btn-primary pub-btn-lg" href="/contact">Réserver une démo gratuite
@@ -75,13 +76,13 @@ render_public_nav('');
     <div class="pub-section-head">
       <span class="pub-section-eyebrow">Le vrai coût</span>
       <h2 class="pub-h2">Ce que vous payez <em>aujourd'hui</em> — et après</h2>
-      <p class="pub-section-lead">La ventilation analytique chez un comptable est une prestation à part. Avec AssoKit, elle est intégrée à l'outil.</p>
+      <p class="pub-section-lead">La ventilation analytique chez un comptable est une prestation à part. Avec Assokit, elle est intégrée à l'outil.</p>
     </div>
     <div class="ake-compare">
       <article class="ake-card ake-card--sans ake-anim ake-d2">
         <div class="ake-card__top">
           <span class="ake-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg></span>
-          <div><h3>Sans AssoKit</h3><span>Compta analytique externalisée</span></div>
+          <div><h3>Sans Assokit</h3><span>Compta analytique externalisée</span></div>
         </div>
         <div class="ake-price"><b>~900&nbsp;€</b><em>/ an en moyenne</em></div>
         <ul class="ake-list">
@@ -96,7 +97,7 @@ render_public_nav('');
         <span class="ake-tag">ABONNEMENT ASSOKIT</span>
         <div class="ake-card__top">
           <span class="ake-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 4 12 14.01l-3-3"/></svg></span>
-          <div><h3>Avec AssoKit</h3><span>Incluse dans l’abonnement, dès l’essai gratuit</span></div>
+          <div><h3>Avec Assokit</h3><span>Incluse dans l’abonnement, dès l’essai gratuit</span></div>
         </div>
         <div class="ake-price"><b>Incluse</b><em><span class="ake-strike">~900&nbsp;€</span> dans votre abonnement</em></div>
         <ul class="ake-list">
@@ -145,7 +146,7 @@ render_public_nav('');
     </div>
     <div class="ake-steps">
       <div class="ake-step ake-anim ake-d2"><div class="ake-step__n">1</div><div class="ake-step__line"></div><h4>Affectez vos opérations</h4><p>Chaque recette et dépense est rattachée à un projet et à un poste comptable, au fil de l'eau.</p></div>
-      <div class="ake-step ake-anim ake-d3"><div class="ake-step__n">2</div><div class="ake-step__line"></div><h4>AssoKit génère le bilan</h4><p>Le bilan analytique se construit tout seul, en temps réel — exportable en PDF ou Excel avec les pièces.</p></div>
+      <div class="ake-step ake-anim ake-d3"><div class="ake-step__n">2</div><div class="ake-step__line"></div><h4>Assokit génère le bilan</h4><p>Le bilan analytique se construit tout seul, en temps réel — exportable en PDF ou Excel avec les pièces.</p></div>
       <div class="ake-step ake-anim ake-d4"><div class="ake-step__n">3</div><h4>L'expert-comptable valide</h4><p>Vous transmettez un dossier propre et daté. Il contrôle et valide — sans refaire la saisie.</p></div>
     </div>
   </div>
@@ -191,10 +192,10 @@ render_public_nav('');
       <h2 class="pub-h2">Ce qu'on nous demande <em>souvent</em></h2>
     </div>
     <div class="ake-faq ake-anim ake-d2">
-      <details open><summary>Dois-je vraiment garder un expert-comptable ?</summary><div class="ake-faq__body">Oui. AssoKit remplace la <strong>prestation de comptabilité analytique</strong> (la ventilation par projet et poste, que vous payiez en plus). Votre expert-comptable, lui, conserve son rôle : il <strong>contrôle et valide</strong> les comptes. Vous lui transmettez simplement un dossier déjà prêt.</div></details>
+      <details open><summary>Dois-je vraiment garder un expert-comptable ?</summary><div class="ake-faq__body">Oui. Assokit remplace la <strong>prestation de comptabilité analytique</strong> (la ventilation par projet et poste, que vous payiez en plus). Votre expert-comptable, lui, conserve son rôle : il <strong>contrôle et valide</strong> les comptes. Vous lui transmettez simplement un dossier déjà prêt.</div></details>
       <details><summary>Quelles offres incluent la compta analytique illimitée ?</summary><div class="ake-faq__body">Le bilan analytique est <strong>illimité</strong> dans l’abonnement <strong>Assokit</strong> (<?= pub_h($offer['label']) ?>), pendant l’<strong>essai PRO de <?= $trial_days ?> jours</strong> et en <strong>Sur-mesure</strong>.</div></details>
       <details><summary>Puis-je tout exporter pour mon comptable ?</summary><div class="ake-faq__body">Oui : le bilan analytique s'exporte en <strong>PDF</strong> et <strong>Excel</strong>, avec les <strong>pièces justificatives</strong> rattachées. En Sur-mesure, vous obtenez aussi des exports de données comptables avancés.</div></details>
-      <details><summary>Combien vais-je réellement économiser ?</summary><div class="ake-faq__body">Une prestation de compta analytique externalisée tourne autour de <strong>900&nbsp;€/an</strong>. Avec l’abonnement Assokit (≈&nbsp;<?= pub_h($offer_year_txt) ?>/an, tout le logiciel compris), vous gardez <strong>jusqu’à <?= pub_h($offer_saving_txt) ?>/an</strong> — davantage si votre prestation actuelle coûte plus cher.</div></details>
+      <details><summary>Combien vais-je réellement économiser ?</summary><div class="ake-faq__body">Tout dépend du coût actuel de la ventilation analytique de vos comptes. Avec l’abonnement Assokit (≈&nbsp;<?= pub_h($offer_year_txt) ?>/an, tout le logiciel compris), elle est <strong>incluse</strong> : indiquez votre coût actuel dans le simulateur de cette page pour estimer votre économie.</div></details>
     </div>
   </div>
 </section>
@@ -209,7 +210,7 @@ render_public_nav('');
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       <a class="pub-btn pub-btn-ghost pub-btn-lg" href="/tarifs">Voir les tarifs</a>
     </div>
-    <p class="ake-anim ake-d4" style="font-size:13px;opacity:.6;margin-top:22px;max-width:64ch;margin-left:auto;margin-right:auto;">* Estimation moyenne pour une compta analytique externalisée (~900&nbsp;€/an), variable selon votre structure. AssoKit ne remplace pas votre expert-comptable, qui conserve la validation des comptes.</p>
+    <p class="ake-anim ake-d4" style="font-size:13px;opacity:.6;margin-top:22px;max-width:64ch;margin-left:auto;margin-right:auto;">* Estimation moyenne pour une compta analytique externalisée (~900&nbsp;€/an), variable selon votre structure. Assokit ne remplace pas votre expert-comptable, qui conserve la validation des comptes.</p>
   </div>
 </section>
 

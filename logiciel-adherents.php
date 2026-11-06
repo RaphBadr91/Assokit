@@ -2,10 +2,12 @@
 /**
  * logiciel-adherents.php — Page SEO ciblée « logiciel gestion adhérents » / « logiciel adhérents association ».
  * Route : /logiciel-adherents. Premium + FAQPage + Breadcrumb + SoftwareApplication.
+ * Cible : « gestion des adhérents », « gestion des adhésions », « logiciel gestion des membres ».
  */
 require_once __DIR__ . '/includes-public.php';
-// Offre schema.org de la formule Assokit (prix HT, TVA non comprise : includes-pricing.php)
+// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
 require_once __DIR__ . '/includes-pricing.php';
+require_once __DIR__ . '/_landing-seo.php';
 $offer = ak_offer_price();
 
 $breadcrumb = build_breadcrumb_jsonld([
@@ -23,13 +25,18 @@ $faqs = [
     ['Un logiciel de gestion des adhérents est-il conforme au RGPD ?', "Oui, à condition qu'il encadre les données personnelles. Assokit est hébergé en France, chiffre les données, journalise les accès et vous permet de répondre aux droits des adhérents (accès, rectification, effacement, export). Vous restez responsable de traitement, mais l'outil facilite la conformité RGPD : durées de conservation, radiation d'un membre et purge des anciens adhérents sont maîtrisées."],
     ['Peut-on importer sa liste d\'adhérents depuis Excel ?', "Oui : l'import depuis un fichier Excel ou CSV se fait en quelques minutes. Vous téléversez votre tableur, faites correspondre les colonnes (nom, email, rôle, statut de cotisation) et vos adhérents sont créés sans ressaisie. Aucune donnée n'est perdue, et vous pouvez ré-exporter votre base quand vous le souhaitez."],
     ['Comment relancer les adhésions à renouveler ?', "Assokit repère automatiquement les adhésions arrivant à échéance : vous relancez les adhérents concernés par e-mail en un clic, ou la relance automatique s'en charge si vous l'activez. Chaque règlement enregistré met la fiche à jour en temps réel, et vous pilotez la communication ciblée (par rôle, par équipe ou par statut) sans lister manuellement les retardataires — un gain de temps direct pour les bénévoles du bureau."],
+    ['Comment gérer les adhésions d\'une association ?', "Chaque membre a sa fiche, avec la date de fin de son adhésion. À chaque cotisation enregistrée, cette date se prolonge ; les adhésions qui arrivent à échéance apparaissent dans la page Relances, d'où vous relancez un membre ou tout un groupe. Vous voyez à tout moment qui est à jour et qui doit renouveler, sans tenir de tableur à part."],
+    ['Existe-t-il un logiciel de gestion des membres d\'une association gratuit ?', "Un tableur gratuit suffit pour quelques dizaines de membres, au prix de ressaisies et de relances à la main. Assokit n'est pas gratuit à vie : vous le testez gratuitement 14 jours, sans carte bancaire, puis l'abonnement est de " . $offer['per_month'] . ", toutes fonctionnalités comprises."],
 ];
-$faq_schema = ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => array_map(fn($qa) => ['@type' => 'Question', 'name' => $qa[0], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]]], $faqs)];
-$soft_schema = ['@context' => 'https://schema.org', '@type' => 'SoftwareApplication', 'name' => 'Assokit', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web, iOS, Android', 'description' => "Logiciel de gestion des adhérents pour association loi 1901 : annuaire, rôles, cotisations, espaces membres et communication ciblée.", 'offers' => ak_offer_jsonld(), 'inLanguage' => 'fr-FR'];
+$faq_schema = ak_landing_faq_jsonld($faqs);
+$soft_schema = ak_landing_software_jsonld(
+    "Logiciel de gestion des adhérents pour association loi 1901 : annuaire, rôles, cotisations, espaces membres et communication ciblée.",
+    ['Fichier des adhérents centralisé', 'Rôles et espaces membres', 'Import et export Excel ou CSV', 'Suivi des adhésions et des renouvellements', 'Relances des adhésions arrivant à échéance', 'Communication ciblée par rôle ou par équipe']
+);
 
 render_public_head([
     'title'       => 'Logiciel de gestion des adhérents pour association · Assokit',
-    'description' => 'Logiciel de gestion des adhérents pour association loi 1901 : annuaire, cotisations, relances et communication ciblée. Essai gratuit, hébergé en France.',
+    'description' => 'Gestion des adhérents et des adhésions de votre association : fichier des membres, rôles, renouvellements, relances et import Excel. Essai gratuit.',
     'path'        => '/logiciel-adherents',
     'schema_jsonld' => [$breadcrumb, $faq_schema, $soft_schema],
 ]);
@@ -172,6 +179,9 @@ require __DIR__ . '/_landing-premium.php';
     </p>
   </div>
 </section>
+
+<?php ak_landing_pricing(); ?>
+<?php ak_landing_siblings('/logiciel-adherents'); ?>
 
 <section class="pub-section">
   <div class="pub-container">

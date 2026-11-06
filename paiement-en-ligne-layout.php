@@ -68,11 +68,13 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 }
 
 if (!function_exists('ak_pay_foot')) {
-    function ak_pay_foot(string $org_name): void {
+    // $online = false : aucun paiement proposé sur la page (lien introuvable, paiement en ligne fermé) :
+    // pas de mention « encaissé via Stripe ».
+    function ak_pay_foot(string $org_name, bool $online = true): void {
         $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         ?>
 <div class="pp-foot">
-  Paiement encaissé par <strong><?= $h($org_name) ?></strong> via Stripe. Page fournie par <a href="https://assokit.fr">Assokit</a>, l’outil de gestion de l’association, qui n’encaisse aucun fonds.<br>
+  <?php if ($online): ?>Paiement encaissé par <strong><?= $h($org_name) ?></strong> via Stripe. Page fournie par <a href="https://assokit.fr">Assokit</a>, l’outil de gestion de l’association, qui n’encaisse aucun fonds.<?php else: ?>Page fournie par <a href="https://assokit.fr">Assokit</a>, l’outil de gestion de l’association.<?php endif; ?><br>
   <a href="/confidentialite">Confidentialité</a> · <a href="/cgu">Conditions générales</a>
 </div>
 </div>

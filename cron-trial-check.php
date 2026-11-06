@@ -156,7 +156,9 @@ foreach (ak_trial_expired_org_ids($pdo, max(1, (int) ak_lot_place())) as $oid) {
         if (ak_trial_expire($pdo, $oid)) $rattrapes++;
     } catch (Throwable $e) { error_log('[cron-trial-check] rattrapage org #' . $oid . ': ' . get_class($e)); }
 }
-if ($rattrapes) echo "→ " . $rattrapes . " fin(s) d'essai rattrapée(s) (sans ancienne ligne)\n";
+// Peut aussi reprendre une association de l'étape 1 dont la ligne d'essai a été recréée entre-temps
+// (page ouverte pendant le passage) : le libellé ne présume pas de l'ancienne table.
+if ($rattrapes) echo "→ " . $rattrapes . " ligne(s) d'essai passée(s) en Démarrage (rattrapage)\n";
 
 // 1 ter. Abonnements résiliés arrivés à échéance → plan gratuit Démarrage (comme une fin d'essai,
 // sans e-mail : la date a été annoncée à la résiliation). La page la fait aussi à la première visite.

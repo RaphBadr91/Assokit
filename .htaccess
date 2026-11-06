@@ -46,6 +46,10 @@ RewriteRule ^ https://assokit.fr%{REQUEST_URI} [L,R=301]
 RewriteCond %{HTTPS} !=on
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
+# /index et /index.php -> accueil, en un seul saut (sinon /index.php -> /index, doublon de l'accueil)
+RewriteCond %{THE_REQUEST} \s/+index(\.php)?[\s?/] [NC]
+RewriteRule ^index(\.php)?/?$ https://assokit.fr/ [L,R=301]
+
 # ============================================================
 # 2. URLS PROPRES POUR LES RESSOURCES AVEC ID
 # ============================================================
@@ -479,9 +483,13 @@ RewriteRule ^carte/([A-Za-z0-9_-]+)/?$     carte.php?c=$1       [L,QSA]
 RewriteRule ^p/([0-9]+\.[a-f0-9]+)/?$               p.php?t=$1 [L,QSA]
 RewriteRule ^desinscription/([0-9]+\.[a-f0-9]+)/?$  desinscription.php?t=$1 [L,QSA]
 
+# « $1 ne finit pas par .php » : sans ce garde-fou, /blog/Xyz ou /tarifs/foo (fichier blog.php ou
+# tarifs.php existant) étaient réécrits en .php.php.php… jusqu'à l'erreur 500 (limite de 10
+# redirections internes). Avec lui, ces adresses renvoient une vraie 404.
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteCond $1 !\.php$
 RewriteRule ^(.+?)/?$ $1.php [L]
 
 # ========== Niveau 2 sécurité SA ==========
@@ -583,6 +591,18 @@ RedirectMatch 404 /private_notes_frais
     Require all denied
 </Files>
 
+# Gabarits et morceaux de page inclus par d'autres scripts (jamais ouverts par une adresse) :
+# en accès direct, ils plantaient (erreur 500) ou remplissaient le journal d'avertissements.
+# « _….php » couvre aussi api/_app-*.php (socles communs des endpoints de l'appli).
+<FilesMatch "^(org-billing-form-template|asso-quote-pdf-template|invoice-pdf-template|asso-invoice-pdf-template|paiement-en-ligne-layout|sidebar-snippet-facturation-asso|_[a-z0-9-]+)\.php$">
+    Require all denied
+</FilesMatch>
+
+# Script lancé en ligne de commande par le serveur mail (filtre « pipe »), jamais par le web
+<Files "app-pipe-inbound-contact.php">
+    Require all denied
+</Files>
+
 # Fichiers d'information WordPress (révèlent la version installée)
 <FilesMatch "^(readme\.html|wp-config-sample\.php)$">
     Require all denied
@@ -667,6 +687,21 @@ Options -Indexes
 # par un autre site. Le « .php » couvre la requête après réécriture interne.
 <IfModule mod_setenvif.c>
     SetEnvIf Request_URI "^/(espace-public|projet-public|evenement-public)(/|\.php|$)" AK_EMBED
+</IfModule>
+
+# Pages à ne jamais indexer : documents clients ouverts par lien (devis, factures, AG, émargement,
+# paiement), restes statiques (flyers, maquettes), fichiers inclus « _… » et dossier WordPress.
+# Le « .php » couvre la requête après réécriture interne. Ne PAS les ajouter à robots.txt :
+# Google ne pourrait plus lire ce noindex.
+<IfModule mod_setenvif.c>
+    SetEnvIf Request_URI "^/(devis|facture|ag-public|emarger|cotiser|don)(/|-public\.php|\.php|$)" AK_NOINDEX
+    SetEnvIf Request_URI "^/(devis-sign|facture-paid|payer-facture|paiement-confirme)(\.php)?$" AK_NOINDEX
+    SetEnvIf Request_URI "^/(flyer(-1|-trifold)?\.(html|php)|flyer|offline\.html|dashboard\.html|projets\.html|connexion\.html)$" AK_NOINDEX
+    SetEnvIf Request_URI "^/_" AK_NOINDEX
+    SetEnvIf Request_URI "^/wp-content/" AK_NOINDEX
+</IfModule>
+<IfModule mod_headers.c>
+    Header always set X-Robots-Tag "noindex, nofollow" env=AK_NOINDEX
 </IfModule>
 
 # Headers de sécurité (ne cassent pas les styles/scripts inline)

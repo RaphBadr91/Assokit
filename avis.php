@@ -2,12 +2,12 @@
 /**
  * avis.php — Page publique "Avis clients / Témoignages"
  * Route : /avis
- * Témoignages réels de clients Assokit + schéma Review/AggregateRating (rich results Google).
- * Les avis affichés ici correspondent exactement à ceux fournis par les clients.
+ * Témoignages de clients Assokit (contenu visible). Pas de schéma Review/AggregateRating :
+ * à n'ajouter qu'une fois chaque avis et sa note confirmés et vérifiables.
  */
 require_once __DIR__ . '/includes-public.php';
 
-// --- Témoignages réels (source unique, includes-public.php : aussi repris sur l'accueil) ---
+// --- Témoignages (source unique, includes-public.php : aussi repris sur l'accueil) ---
 $reviews = pub_customer_reviews();
 
 $rating_count = count($reviews);
@@ -18,28 +18,19 @@ $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Avis clients', 'url' => '/avis'],
 ]);
 
-// Schéma SoftwareApplication + Reviews TEXTUELS (les témoignages sont réels et affichés).
-// NB : on n'expose NI aggregateRating NI reviewRating tant que la note n'est pas RÉELLEMENT
-// fournie par chaque client (une note attribuée par le site = rich result « fabriqué »,
-// passible d'une action manuelle Google). À rétablir dès qu'une vraie note est collectée par avis.
-$review_schema = [
-    '@context'    => 'https://schema.org',
-    '@type'       => 'SoftwareApplication',
-    'name'        => 'Assokit — Logiciel de gestion association & TPE',
-    'applicationCategory' => 'BusinessApplication',
-    'operatingSystem' => 'Web, iOS, Android',
-    'description' => "Logiciel tout-en-un pour associations loi 1901 et TPE : adhérents, cotisations, facturation, comptabilité analytique, suivi de projets, communication et IA.",
-    // 'offers' + 'review' structurés RETIRÉS : avec 'offers', Google classe la page
-    // en « extrait de produit » et réclame review/aggregateRating notés ; et un
-    // 'Review' sans 'reviewRating' est incomplet pour Google. Sans notes réellement
-    // collectées, on ne fabrique rien : les témoignages restent en contenu visible
-    // (honnête et conforme). À rétablir (offers + review avec reviewRating +
-    // aggregateRating) dès que de vraies notes seront collectées auprès des clients.
-];
+// Données structurées : la fiche logicielle unique d'Assokit (même @id que les autres pages),
+// SANS aggregateRating, review ni reviewRating. Tant que chaque avis et sa note ne sont pas
+// confirmés et vérifiables, aucune note n'est déclarée à Google (une note attribuée par le
+// site = résultat enrichi « fabriqué », passible d'une action manuelle). Les témoignages
+// restent en contenu visible.
+require_once __DIR__ . '/_landing-seo.php';
+$review_schema = ak_landing_software_jsonld(
+    "Logiciel tout-en-un pour associations loi 1901 et TPE : adhérents, cotisations, facturation, comptabilité analytique, suivi de projets, communication et IA."
+);
 
 render_public_head([
     'title'         => 'Avis clients Assokit · Ce qu\'en pensent associations & TPE',
-    'description'   => 'Découvrez les avis d\'associations loi 1901 et de TPE qui utilisent Assokit au quotidien : comptabilité analytique, suivi de projets, communication d\'équipe et facturation.',
+    'description'   => 'Témoignages d\'utilisateurs d\'Assokit, logiciel de gestion pour associations loi 1901 et TPE : comptabilité analytique, projets, communication, facturation.',
     'path'          => '/avis',
     'schema_jsonld' => [$breadcrumb, $review_schema],
 ]);

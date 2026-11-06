@@ -171,22 +171,34 @@ if (!function_exists('render_public_head')) {
             // Titre déjà long (cas des articles de blog) : pas de suffixe de marque.
             $full_title = $title;
         }
-        // Garde-fou : ne jamais dépasser la limite (troncature au dernier mot entier).
+        // Titre trop long : on retire une précision finale entre parenthèses si cela suffit.
+        // Jamais de coupure au milieu d'une phrase (« … ») : un titre tronqué perd des clics,
+        // et Google abrège lui-même l'affichage d'un titre complet trop long.
         if (mb_strlen($full_title) > $AK_TITLE_MAX) {
-            $cut = mb_substr($full_title, 0, $AK_TITLE_MAX - 1);
-            $sp  = mb_strrpos($cut, ' ');
-            $full_title = ($sp !== false ? mb_substr($cut, 0, $sp) : $cut) . '…';
+            $short = trim((string) preg_replace('/\s*\([^()]*\)\s*$/u', '', $full_title));
+            if ($short !== '' && mb_strlen($short) <= $AK_TITLE_MAX) $full_title = $short;
         }
 
-        // Description : normalisée (espaces/retours markdown), fallback utile, tronquée à 160.
+        // Description : normalisée (espaces/retours markdown), fallback utile, 160 caractères au plus.
+        // Coupée de préférence à la fin d'une phrase entière, sinon au dernier mot entier.
         $desc = trim(preg_replace('/\s+/', ' ', (string)($seo['description'] ?? '')));
         if ($desc === '') {
             $desc = 'Centralisez adhérents, cotisations, projets et communication avec Assokit, le logiciel tout-en-un pour les associations loi 1901 et les TPE.';
         }
         if (mb_strlen($desc) > 160) {
-            $cut = mb_substr($desc, 0, 157);
-            $sp  = mb_strrpos($cut, ' ');
-            $desc = ($sp !== false ? mb_substr($cut, 0, $sp) : $cut) . '…';
+            $cut = mb_substr($desc, 0, 160);
+            $sentence = '';
+            if (preg_match_all('/[.?!](?=\s|$)/u', $cut, $mm, PREG_OFFSET_CAPTURE)) {
+                $end = end($mm[0]);
+                $sentence = substr($cut, 0, $end[1] + 1);
+            }
+            if (mb_strlen($sentence) >= 80) {
+                $desc = $sentence;
+            } else {
+                $cut = mb_substr($desc, 0, 157);
+                $sp  = mb_strrpos($cut, ' ');
+                $desc = rtrim(($sp !== false ? mb_substr($cut, 0, $sp) : $cut), " ,;:") . '…';
+            }
         }
         $path        = (string)($seo['path'] ?? '/');
         $canonical   = pub_url($path);
@@ -200,7 +212,7 @@ if (!function_exists('render_public_head')) {
         echo "  <title>" . pub_h($full_title) . "</title>\n";
         echo "  <meta name=\"description\" content=\"" . pub_h($desc) . "\">\n";
         echo "  <link rel=\"canonical\" href=\"" . pub_h($canonical) . "\">\n";
-        echo "  <meta name=\"robots\" content=\"" . ($noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large') . "\">\n";
+        echo "  <meta name=\"robots\" content=\"" . ($noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large') . "\">\n";
 
         // hreflang
         echo "  <link rel=\"alternate\" hreflang=\"fr-FR\" href=\"" . pub_h($canonical) . "\">\n";
@@ -261,7 +273,7 @@ if (!function_exists('render_public_head')) {
             'logo'     => [
                 '@type' => 'ImageObject',
                 'url'   => AK_PUBLIC_DOMAIN . '/assets/logo-assokit.png',
-                'width' => 512, 'height' => 512,
+                'width' => 1024, 'height' => 1024,
             ],
             'description' => 'Logiciel tout-en-un pour les associations loi 1901 et les TPE',
             'foundingDate' => '2026',
@@ -285,14 +297,8 @@ if (!function_exists('render_public_head')) {
             'url' => AK_PUBLIC_DOMAIN,
             'inLanguage' => 'fr-FR',
             'publisher' => ['@id' => AK_PUBLIC_DOMAIN . '/#organization'],
-            'potentialAction' => [
-                '@type' => 'SearchAction',
-                'target' => [
-                    '@type' => 'EntryPoint',
-                    'urlTemplate' => AK_PUBLIC_DOMAIN . '/blog?q={search_term_string}',
-                ],
-                'query-input' => 'required name=search_term_string',
-            ],
+            // Pas de SearchAction : /blog?q= est en noindex et interdit dans robots.txt,
+            // et Google n'affiche plus le champ de recherche dans les liens annexes.
         ];
         echo "  <script type=\"application/ld+json\">" . json_encode($site_jsonld, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "</script>\n";
 
@@ -368,7 +374,7 @@ if (!function_exists('render_public_nav')) {
         <header class="pub-nav">
           <div class="pub-nav-inner">
             <a href="<?= $is_logged ? '/dashboard' : '/connexion' ?>" class="pub-logo" aria-label="Assokit">
-              <img src="/assets/logo-assokit.png" alt="Assokit" class="pub-logo-img">
+              <img src="/assets/logo-assokit.png" alt="Assokit" class="pub-logo-img" width="32" height="32">
               <span class="pub-logo-text">Assokit</span>
             </a>
           </div>
@@ -380,7 +386,7 @@ if (!function_exists('render_public_nav')) {
         <header class="pub-nav">
           <div class="pub-nav-inner">
             <a href="/" class="pub-logo" aria-label="Accueil Assokit">
-              <img src="/assets/logo-assokit.png" alt="Assokit" class="pub-logo-img">
+              <img src="/assets/logo-assokit.png" alt="Assokit" class="pub-logo-img" width="32" height="32">
               <span class="pub-logo-text">Assokit</span>
             </a>
             <style>
@@ -493,7 +499,7 @@ if (!function_exists('render_public_footer')) {
             <div class="pub-footer-grid">
               <div class="pub-footer-brand">
                 <div class="pub-logo">
-                  <img src="/assets/logo-assokit.png" alt="Assokit" class="pub-logo-img">
+                  <img src="/assets/logo-assokit.png" alt="Assokit" class="pub-logo-img" width="36" height="36" loading="lazy" decoding="async">
                   <span class="pub-logo-text">Assokit</span>
                 </div>
                 <p>L'allié quotidien des associations loi 1901 et des petites entreprises engagées.</p>
@@ -520,7 +526,7 @@ if (!function_exists('render_public_footer')) {
                 <a href="/logiciel-adherents">Gestion des adhérents</a>
                 <a href="/logiciel-cotisation-association">Gestion des cotisations</a>
                 <a href="/logiciel-comptabilite-association">Comptabilité association</a>
-                <a href="/logiciel-association-gratuit">Logiciel association : essai gratuit</a>
+                <a href="/logiciel-association-gratuit">Logiciel association gratuit</a>
                 <a href="/alternative-helloasso">Alternative à HelloAsso</a>
               </div>
 
@@ -533,6 +539,9 @@ if (!function_exists('render_public_footer')) {
                 <a href="/guide-association-loi-1901">Guide association loi 1901</a>
                 <a href="/guide-comptabilite-association">Guide comptabilité asso</a>
                 <a href="/modeles-gratuits-association">Modèles gratuits</a>
+                <a href="/modele-statuts-association">Modèle de statuts</a>
+                <a href="/modele-convocation-assemblee-generale">Convocation d'AG</a>
+                <a href="/modele-recu-fiscal-association">Reçu fiscal</a>
               </div>
 
               <div class="pub-footer-col">

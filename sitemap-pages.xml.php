@@ -12,7 +12,30 @@ header('Content-Type: application/xml; charset=utf-8');
 header('X-Robots-Tag: noindex');
 
 $site_url = defined('SITE_URL') ? rtrim(SITE_URL, '/') : 'https://assokit.fr';
-$today    = date('Y-m-d');
+// <lastmod> = date de dernière modification réelle du fichier de la page ou des fichiers
+// partagés qu'elle inclut (en-tête, blocs des pages commerciales, prix) : le déploiement par
+// git pull ne change la date que des fichiers modifiés. Pas la date du jour : Google ignore
+// les lastmod qui changent à chaque passage. Limite : un clone neuf (ou un checkout complet)
+// met tous les fichiers à la même date. /blog : date du dernier article publié ou modifié.
+$lastmod_for = static function (string $path): string {
+    $f = __DIR__ . '/' . ($path === '/' ? 'index.php' : ltrim($path, '/') . '.php');
+    if (!is_file($f)) return date('Y-m-d');
+    $t = (int) @filemtime($f);
+    $src = (string) @file_get_contents($f);
+    foreach (['includes-public.php', '_landing-seo.php', '_landing-premium.php', 'includes-pricing.php'] as $inc) {
+        if (strpos($src, $inc) !== false && is_file(__DIR__ . '/' . $inc)) $t = max($t, (int) @filemtime(__DIR__ . '/' . $inc));
+    }
+    return date('Y-m-d', $t ?: time());
+};
+$blog_lastmod = null;
+try {
+    if (isset($pdo)) {
+        $v = $pdo->query("SELECT GREATEST(COALESCE(MAX(updated_at), '1970-01-01'), COALESCE(MAX(published_at), '1970-01-01')) FROM asso_blog_articles WHERE is_published = 1")->fetchColumn();
+        if ($v && strpos((string) $v, '1970-01-01') !== 0) $blog_lastmod = date('Y-m-d', strtotime((string) $v));
+    }
+} catch (Throwable $e) {
+    error_log('sitemap-pages lastmod blog: ' . $e->getMessage());
+}
 
 // Pages statiques du site Assokit — uniquement des URLs qui repondent en 200.
 // (Les anciennes URLs /plans, /inscription, /login, /pour-associations,
@@ -59,7 +82,7 @@ echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 <?php foreach ($pages as [$path, $priority, $changefreq]): ?>
     <url>
         <loc><?= htmlspecialchars($site_url . $path, ENT_XML1) ?></loc>
-        <lastmod><?= $today ?></lastmod>
+        <lastmod><?= ($path === '/blog' && $blog_lastmod) ? $blog_lastmod : $lastmod_for($path) ?></lastmod>
         <changefreq><?= $changefreq ?></changefreq>
         <priority><?= $priority ?></priority>
     </url>
