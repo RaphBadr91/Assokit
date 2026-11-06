@@ -33,7 +33,8 @@ if (!function_exists('blog_list')) {
             $where = ['is_published = 1'];
             $params = [];
             if ($category) { $where[] = 'category = :c'; $params[':c'] = $category; }
-            if ($q) { $where[] = '(title LIKE :q OR excerpt LIKE :q OR content_md LIKE :q)'; $params[':q'] = '%' . $q . '%'; }
+            // Trois marqueurs distincts : un même marqueur nommé répété est refusé (HY093) avec les requêtes préparées natives
+            if ($q) { $where[] = '(title LIKE :q1 OR excerpt LIKE :q2 OR content_md LIKE :q3)'; $params[':q1'] = $params[':q2'] = $params[':q3'] = '%' . $q . '%'; }
 
             $sql = "SELECT id, slug, title, excerpt, cover_emoji, cover_color_from, cover_color_to,
                            category, tags, author, reading_time_min, published_at
@@ -57,7 +58,8 @@ if (!function_exists('blog_count')) {
             $where = ['is_published = 1'];
             $params = [];
             if ($category) { $where[] = 'category = :c'; $params[':c'] = $category; }
-            if ($q) { $where[] = '(title LIKE :q OR excerpt LIKE :q OR content_md LIKE :q)'; $params[':q'] = '%' . $q . '%'; }
+            // Trois marqueurs distincts : un même marqueur nommé répété est refusé (HY093) avec les requêtes préparées natives
+            if ($q) { $where[] = '(title LIKE :q1 OR excerpt LIKE :q2 OR content_md LIKE :q3)'; $params[':q1'] = $params[':q2'] = $params[':q3'] = '%' . $q . '%'; }
             $st = $pdo->prepare("SELECT COUNT(*) FROM asso_blog_articles WHERE " . implode(' AND ', $where));
             $st->execute($params);
             return (int)$st->fetchColumn();
