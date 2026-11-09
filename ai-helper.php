@@ -268,13 +268,23 @@ PROMPT;
 }
 
 /**
+ * Options du compteur IA unifié (ai_usage_ledger, ai-models.php) reprises des options d'un appel :
+ * path, org_id, user_id, credits, ledger. Les autres options ne passent pas.
+ */
+function ak_ai_ledger_opts(array $opts): array {
+    return array_intersect_key($opts, array_flip(['path', 'org_id', 'user_id', 'credits', 'ledger']));
+}
+
+/**
  * Appelle l'API Anthropic Claude.
  *
  * @param string $system_prompt Instructions système (personnalité + contexte)
  * @param array  $messages      [['role'=>'user'|'assistant', 'content'=>'...'], ...]
  * @param int    $max_tokens    Longueur max de la réponse
  * @param array  $opts          purpose : 'write' (rédaction, défaut) ou 'fast' (tri, tâches de fond) ;
- *                              effort : 'low' (défaut), 'medium'… (ai-models.php)
+ *                              effort : 'low' (défaut), 'medium'… (ai-models.php) ;
+ *                              compteur IA unifié (ai_usage_ledger) : path ('hub', 'copilote',
+ *                              'mail-tri'…), org_id, user_id, credits, ledger (false = rien noter)
  * @return array ['success' => bool, 'content' => string, 'error' => string|null, 'tokens' => int]
  */
 function ask_claude($system_prompt, $messages, $max_tokens = null, array $opts = []) {
@@ -304,7 +314,7 @@ function ask_claude($system_prompt, $messages, $max_tokens = null, array $opts =
         'model_override' => ($opts['purpose'] ?? 'write') === 'write' && defined('ANTHROPIC_MODEL') ? ANTHROPIC_MODEL : null,
         'api_key' => ANTHROPIC_API_KEY,
         'timeout' => 180,
-    ]);
+    ] + ak_ai_ledger_opts($opts));
 
     if ($r['curl_error'] !== '') {
         return [
@@ -378,6 +388,8 @@ function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_to
         'model_override' => ($opts['purpose'] ?? 'write') === 'write' && defined('ANTHROPIC_MODEL') ? ANTHROPIC_MODEL : null,
         'api_key' => ANTHROPIC_API_KEY,
     ];
+    $purpose = ($req_opts['purpose'] === 'fast') ? 'fast' : 'write';
+    $stream_model = ak_ai_model($purpose, $req_opts['model_override']);
 
     // Deux essais au plus : le second, sans le repli côté serveur, seulement si l'API a refusé ce paramètre
     foreach ([true, false] as $with_fallbacks) {
@@ -400,7 +412,7 @@ function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_to
         // Coupe si plus rien n'arrive pendant 60 s (le serveur envoie des pings)
         curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, 1);
         curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, 60);
-        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $chunk) use (&$buffer, &$raw, &$content_text, &$tokens_in, &$tokens_out, &$stream_err, &$stop_reason, $on_text) {
+        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $chunk) use (&$buffer, &$raw, &$content_text, &$tokens_in, &$tokens_out, &$stream_err, &$stop_reason, &$stream_model, $on_text) {
             if ((int)curl_getinfo($ch, CURLINFO_HTTP_CODE) !== 200) {
                 $raw .= $chunk;
                 return strlen($chunk);
@@ -420,6 +432,7 @@ function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_to
                 switch ($ev['type'] ?? '') {
                     case 'message_start':
                         $tokens_in = (int)($ev['message']['usage']['input_tokens'] ?? 0);
+                        if (!empty($ev['message']['model'])) $stream_model = (string)$ev['message']['model'];
                         break;
                     case 'content_block_delta':
                         // Seul le texte est affiché : les deltas de réflexion (thinking_delta,
@@ -485,6 +498,11 @@ function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_to
         ];
     }
 
+    // Compteur IA unifié : usage du flux noté à la fin (entrée : message_start, sortie : message_delta)
+    if (($opts['ledger'] ?? true) !== false && function_exists('ak_ai_ledger_record')) {
+        ak_ai_ledger_record(ak_ai_ledger_context(ak_ai_ledger_opts($opts), $purpose), $stream_model, $purpose, [$tokens_in, $tokens_out]);
+    }
+
     return [
         'success' => true,
         'content' => $content_text,
@@ -512,7 +530,7 @@ function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_to
  *   tokens => int,
  * }
  */
-function extract_invoice_from_image($image_path, $mime_type) {
+function extract_invoice_from_image($image_path, $mime_type, array $opts = []) {
     if (!is_ai_enabled()) {
         return ['success' => false, 'data' => [], 'error' => 'IA non configurée', 'tokens' => 0];
     }
@@ -603,7 +621,7 @@ PROMPT;
         'model_override' => defined('ANTHROPIC_MODEL') ? ANTHROPIC_MODEL : null,
         'api_key' => ANTHROPIC_API_KEY,
         'timeout' => 90, // Un peu plus long car analyse d'image
-    ]);
+    ] + ak_ai_ledger_opts($opts + ['path' => 'justificatif']));
 
     if ($r['curl_error'] !== '') {
         return ['success' => false, 'data' => [], 'error' => 'Erreur de connexion : ' . $r['curl_error'], 'tokens' => 0];

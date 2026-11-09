@@ -39,6 +39,9 @@ render_public_nav('');
         <li><strong>Identification</strong> : nom, prénom, email, mot de passe (haché)</li>
         <li><strong>Structure</strong> : nom, type, adresse, SIREN/RNA si applicable</li>
         <li><strong>Usage</strong> : journaux de connexion, statistiques d'utilisation tirées du journal d'activité (12 mois)</li>
+<?php if (is_file(__DIR__ . '/journal-equipe.php')): /* N1 : affiché seulement une fois le journal d'équipe livré */ ?>
+        <li><strong>Journal d’activité (formule Équipe)</strong> : les administrateurs de votre structure voient les actions réalisées par les membres dans Assokit (création, modification, suppression, envoi), avec la date et l’auteur, pendant 12 mois au plus. Les pages consultées n’y figurent pas, ni l’adresse IP ni le navigateur.</li>
+<?php endif; ?>
         <li><strong>Contenus</strong> : ce que vous téléversez (factures, contacts, messages…)</li>
         <li><strong>Application mobile</strong> : un jeton de notifications, si vous acceptez les notifications, et un identifiant d'installation tiré au hasard, qui sert à livrer les mises à jour de l'application ; les photos que vous prenez ou choisissez pour scanner une facture ou changer le logo. L'empreinte digitale et la reconnaissance faciale restent gérées par votre téléphone : nous n'y avons jamais accès. Pour la connexion biométrique, vos identifiants sont gardés dans le stockage sécurisé du téléphone et effacés à la déconnexion. L'application n'intègre aucun outil de mesure d'audience ni de publicité.</li>
       </ul>

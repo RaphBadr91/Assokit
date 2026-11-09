@@ -5,8 +5,10 @@
  * Page de paiement intégrée avec Stripe Payment Element.
  *
  * Fonctionnement :
- *   1. Affiche le récap du plan choisi (Assokit : prix HT + TVA de la plateforme = TTC, includes-pricing.php)
- *   2. Affiche option "+ Domaine personnalisé +10 € HT/mois"
+ *   1. Affiche le récap de la formule choisie (Essentiel, Pro, Équipe : prix HT, + TVA de la plateforme si
+ *      elle s'applique ; sinon « TVA non applicable (art. 293 B du CGI) : le prix HT est le prix payé. »)
+ *   2. Option « domaine personnel » : retirée de la vente tant que la fonction n'est pas livrée
+ *      (ak_addon_domain_offer, stripe-plan-change-helpers.php) ; jamais sur Essentiel
  *   3. Affiche Stripe Payment Element : carte bancaire (avec Apple Pay / Google Pay) et, s'il est
  *      activé sur le compte Stripe, prélèvement SEPA — exactement les moyens acceptés par l'abonnement
  *      (ak_stripe_payment_method_types, la même liste que stripe-create-payment-intent.php)
@@ -29,9 +31,11 @@
  * JAMAIS de second abonnement (double facturation). À la place :
  *   - ?action=update_card → portail client Stripe (changer la carte, payer
  *     une facture en attente), retour sur /mon-asso-plan ;
- *   - ?addon_domain=1 → confirmation, puis POST action=add_domain qui ajoute
- *     l'add-on domaine à l'abonnement existant (POST /v1/subscription_items) ;
- *   - sinon → rappel de l'abonnement en place (changement de formule : contact).
+ *   - ?addon_domain=1 → (seulement si l'option est de nouveau vendue) confirmation, puis POST
+ *     action=add_domain qui ajoute l'add-on domaine à l'abonnement existant (POST /v1/subscription_items) ;
+ *   - ?plan=<autre formule> → /stripe-change-plan (montée immédiate au prorata, baisse à l'échéance) ;
+ *   - sinon → rappel de l'abonnement en place.
+ * Même renvoi vers /stripe-change-plan pour une souscription faite pendant l'essai.
  *
  * SI Stripe pas encore configuré → affiche un message d'attente
  * --------------------------------------------------------------
@@ -42,6 +46,7 @@ require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/stripe-config-helpers.php';
 @require_once __DIR__ . '/stripe-helpers.php';
 require_once __DIR__ . '/stripe-sync-helpers.php';
+require_once __DIR__ . '/stripe-plan-change-helpers.php';
 require_once __DIR__ . '/includes-pricing.php';
 
 require_login();
@@ -57,7 +62,7 @@ require_once __DIR__ . '/finance-permissions.php';
 require_finance_access('mon-asso-plan', 'le paiement de l\'abonnement');
 
 // Récupération paramètres
-$target_plan_slug = (string)($_GET['plan'] ?? 'assokit');
+$target_plan_slug = (string)($_GET['plan'] ?? 'assokit');   // assokit = formule Pro
 $with_addon_domain = !empty($_GET['addon_domain']);
 $page_action = (string)($_POST['action'] ?? ($_GET['action'] ?? ''));
 
@@ -65,8 +70,20 @@ $page_action = (string)($_POST['action'] ?? ($_GET['action'] ?? ''));
 $live_stripe = function_exists('ak_org_live_stripe_subscription') ? ak_org_live_stripe_subscription($pdo, $org_id) : null;
 // Abonnement souscrit pendant l'essai (carte enregistrée, premier prélèvement à la fin de l'essai) : pas de second
 $trial_card = !$live_stripe && function_exists('ak_org_trial_card') ? ak_org_trial_card($pdo, $org_id) : null;
+// Autre formule demandée alors qu'un abonnement (ou une souscription pendant l'essai) est en place :
+// changement de formule, jamais un second abonnement
+if (($live_stripe || $trial_card) && isset($_GET['plan']) && $page_action === '') {
+    $want = ak_pc_plan_by_slug($pdo, $target_plan_slug);
+    $have = $live_stripe ? (int)$live_stripe['plan_id'] : 0;
+    if ($want && ak_pc_plan_is_sellable($want) && (int)$want['id'] !== $have) {
+        header('Location: /stripe-change-plan?plan=' . rawurlencode($target_plan_slug));
+        exit;
+    }
+}
 $has_addon = function_exists('ak_has_addon_custom_domain') && ak_has_addon_custom_domain($pdo, $org_id);
 $addon_price_id = ak_stripe_config_get($pdo, 'addon_domain_price_id', null);
+// Option domaine personnel vendue seulement quand la fonction est livrée, et jamais sur Essentiel
+$live_plan_row = $live_stripe ? ak_stripe_plan_row($pdo, (int)$live_stripe['plan_id']) : null;
 // Add-on ajouté à l'abonnement par carte en place : le montant tel qu'il sera prélevé (même règle que
 // « Mon abonnement ») : « 10,00 € HT/mois, soit 12,00 € TTC » si l'abonnement porte la TVA, sinon « 10,00 €/mois »
 $live_vat_rate = function_exists('ak_live_sub_vat_rate') ? ak_live_sub_vat_rate($pdo, $org_id, $live_stripe) : null;
@@ -106,13 +123,13 @@ if ($page_action === 'update_card') {
 // Add-on domaine sur un abonnement par carte déjà actif : ajouté à CET abonnement (prorata sur la
 // prochaine facture), jamais un second abonnement qui refacturerait le plan
 $addon_possible = $live_stripe && $live_stripe['status'] === 'active' && empty($live_stripe['cancel_at_period_end'])
-    && !$has_addon && !empty($addon_price_id) && ak_stripe_is_configured($pdo);
+    && !$has_addon && !empty($addon_price_id) && ak_stripe_is_configured($pdo) && ak_addon_domain_offer($live_plan_row) === 'addon';
 if ($live_stripe && $_SERVER['REQUEST_METHOD'] === 'POST' && $page_action === 'add_domain') {
     if (!check_csrf($_POST['csrf_token'] ?? '')) {
         $_SESSION['flash_error'] = 'Session expirée, veuillez réessayer.';
     } elseif (!$addon_possible) {
-        $_SESSION['flash_error'] = $has_addon ? 'Le domaine personnalisé est déjà inclus dans votre abonnement.'
-            : 'L’ajout du domaine personnalisé n’est pas possible sur votre abonnement actuel. Contactez-nous.';
+        $_SESSION['flash_error'] = $has_addon ? 'Le domaine personnel est déjà inclus dans votre abonnement.'
+            : 'L’option domaine personnel n’est pas proposée sur votre formule.';
     } else {
         // Clé d'idempotence : un double envoi du formulaire n'ajoute jamais l'option deux fois
         $resp = ak_stripe_api_call($pdo, 'POST', '/subscription_items', [
@@ -154,6 +171,14 @@ try {
     $plan = $st->fetch(PDO::FETCH_ASSOC);
 } catch (Throwable $e) { /* skip */ }
 
+// Mise en service de la grille en cours : la ligne n'a pas encore son prix de /tarifs (Pro encore à
+// l'ancien prix) : rien n'est vendu à un autre montant que celui affiché sur le site.
+if ($plan && function_exists('ak_pc_plan_grid_pending') && ak_pc_plan_grid_pending($pdo, $plan)) {
+    $_SESSION['flash_error'] = 'Cette formule sera disponible à la souscription très prochainement : contactez-nous, nous vous l’ouvrons au prix affiché sur la page Tarifs.';
+    header('Location: /mon-asso-plan');
+    exit;
+}
+
 if (!$plan) {
     $_SESSION['flash_error'] = 'Plan introuvable.';
     header('Location: /mon-asso-plan');
@@ -168,7 +193,7 @@ if (!$live_stripe && ((int)($plan['price_cents'] ?? 0) <= 0 || ($plan['slug'] ??
         header('Location: /contact?plan=sur-mesure');
         exit;
     }
-    $_SESSION['flash_error'] = 'Cette formule ne se souscrit pas en ligne : choisissez Assokit pour continuer.';
+    $_SESSION['flash_error'] = 'Cette formule ne se souscrit pas en ligne : choisissez une formule pour continuer.';
     header('Location: /mon-asso-plan');
     exit;
 }
@@ -186,6 +211,10 @@ $refusal = ak_stripe_payment_refusal($pdo, $org_id);
 if ($refusal && $refusal['kind'] === 'test_mode' && !$stripe_ready) $refusal = null;
 $test_mode = $stripe_ready && ak_stripe_get_mode($pdo) === 'test';
 
+// Option domaine : seulement si elle est vendue pour cette formule (aujourd'hui : jamais)
+if (ak_addon_domain_offer($plan) !== 'addon') $with_addon_domain = false;
+// Membres ou gestionnaires au-delà des limites de la formule choisie : pas de souscription à cette formule
+$usage_blockers = !$live_stripe && !$trial_card ? ak_pc_usage_blockers($pdo, $org_id, $plan) : [];
 // Calculs prix : formule et add-on HT, TVA de la plateforme (celle que Stripe ajoute), total TTC prélevé
 $plan_cents = (int)($plan['price_cents'] ?? 0);
 $addon_cents = $with_addon_domain ? AK_ADDON_DOMAIN_HT_CENTS : 0; // +10 € HT/mois
@@ -216,9 +245,9 @@ $setup_mode = $setup_end !== null;
 $first_charge_fr = $setup_mode ? date('d/m/Y', $setup_end) : '';
 $first_charge_str = $total_str . ($price['has_vat'] ? ' TTC' : '');
 // Libellé du bouton (repris par le JavaScript après une erreur)
-$btn_label = $setup_mode ? '✓ Souscrire · 0 € aujourd’hui' : '💳 Payer ' . $total_str . ($price['has_vat'] ? ' TTC' : '') . '/mois';
+$btn_label = $setup_mode ? '✓ Souscrire · 0 € aujourd’hui' : '💳 Payer ' . $total_str . ($price['has_vat'] ? ' TTC' : ' HT') . '/mois';
 
-render_head('Paiement de l’abonnement');   // le plan s'appelle « Assokit » : render_head ajoute déjà « — Assokit »
+render_head('Paiement de l’abonnement');   // render_head ajoute déjà « — Assokit »
 render_sidebar('mon-asso-paiement');
 ?>
 
@@ -244,17 +273,17 @@ render_sidebar('mon-asso-paiement');
   <div class="main-head" style="margin-bottom:24px;">
     <div>
       <h1 style="margin:0 0 4px;">💳 Mon abonnement par carte</h1>
-      <p style="color:#64748B;margin:0;">Plan <strong><?= htmlspecialchars($live_label) ?></strong> — déjà réglé par carte via Stripe</p>
+      <p style="color:#64748B;margin:0;">Formule <strong><?= htmlspecialchars($live_label) ?></strong> — déjà réglée par carte via Stripe</p>
     </div>
   </div>
 
   <?php if ($with_addon_domain && $addon_possible): ?>
     <div style="background:linear-gradient(135deg, #EFF6FF 0%, white 100%);border:1px solid #BFDBFE;border-radius:14px;padding:28px;max-width:640px;">
       <div style="font-size:32px;margin-bottom:8px;">🏆</div>
-      <h2 style="margin:0 0 8px;font-size:18px;color:#1E40AF;">Ajouter un domaine personnalisé</h2>
+      <h2 style="margin:0 0 8px;font-size:18px;color:#1E40AF;">Ajouter un domaine personnel</h2>
       <p style="font-size:14px;color:#475569;margin:0 0 18px;line-height:1.6;">
         <strong>+<?= htmlspecialchars($addon_live_label) ?></strong> ajoutés à votre abonnement <?= htmlspecialchars($live_label) ?> en cours, avec la même carte.
-        La période déjà entamée est facturée au prorata sur votre prochaine facture. Aucun nouvel abonnement, votre plan n’est pas refacturé.
+        La période déjà entamée est facturée au prorata sur votre prochaine facture. Aucun nouvel abonnement, votre formule n’est pas refacturée.
       </p>
       <form method="post" action="/mon-asso-paiement" style="display:flex;gap:10px;flex-wrap:wrap;">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_token'] ?? '')) ?>">
@@ -272,13 +301,16 @@ render_sidebar('mon-asso-paiement');
       <?php else: ?>
         <p style="font-size:14px;color:#475569;margin:0 0 16px;line-height:1.6;">
           Votre association a déjà un abonnement par carte en cours : il n’y a rien à payer ici.
-          <?php if ($with_addon_domain && $has_addon): ?>Le domaine personnalisé est déjà inclus.<?php endif; ?>
-          Pour changer de formule, contactez-nous : nous ajustons votre abonnement sans double prélèvement.
+          <?php if ($with_addon_domain && $has_addon): ?>Le domaine personnel est déjà inclus.<?php endif; ?>
+          Pour changer de formule, choisissez-la dans « Mon abonnement » : une montée prend effet tout de suite, au prorata ; une baisse, à la fin du mois payé. Jamais de double prélèvement.
         </p>
       <?php endif; ?>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <?php if ($stripe_ready && empty($live_stripe['cancel_at_period_end'])): ?>
           <a href="/mon-asso-paiement?action=update_card" style="<?= $btn ?>background:#059669;color:white;">💳 Changer ma carte bancaire</a>
+        <?php endif; ?>
+        <?php if (empty($live_stripe['cancel_at_period_end']) && $live_stripe['status'] === 'active'): ?>
+          <a href="/mon-asso-plan#formules" style="<?= $btn ?>background:white;color:#047857;border:1px solid #A7F3D0;">🔁 Changer de formule</a>
         <?php endif; ?>
         <a href="/contact?subject=billing" style="<?= $btn ?>background:white;color:#475569;border:1px solid #E2E8F0;">📞 Nous contacter</a>
         <a href="/mon-asso-plan" style="<?= $btn ?>background:white;color:#475569;border:1px solid #E2E8F0;">← Mon abonnement</a>
@@ -326,7 +358,7 @@ render_sidebar('mon-asso-paiement');
   <div class="main-head" style="margin-bottom:24px;">
     <div>
       <h1 style="margin:0 0 4px;">💳 Finaliser votre abonnement</h1>
-      <p style="color:#64748B;margin:0;">Plan <strong><?= htmlspecialchars($plan_label) ?></strong><?= $stripe_ready ? ' — paiement sécurisé par Stripe' : '' ?></p>
+      <p style="color:#64748B;margin:0;">Formule <strong><?= htmlspecialchars($plan_label) ?></strong><?= $stripe_ready ? ' — paiement sécurisé par Stripe' : '' ?></p>
     </div>
   </div>
 
@@ -337,13 +369,14 @@ render_sidebar('mon-asso-paiement');
       <div style="flex:1;min-width:220px;">
         <strong><?= htmlspecialchars($trial_info['label']) ?></strong><br>
         <?php if ($trial_over): ?>
-          Vos données sont conservées : une fois le paiement confirmé, votre association passe au plan <?= htmlspecialchars($plan_label) ?>.
+          Vos données sont conservées : une fois le paiement confirmé, votre association passe à la formule <?= htmlspecialchars($plan_label) ?>.
         <?php elseif (!$stripe_ready): // paiement en ligne pas encore ouvert : aucune date de prélèvement à annoncer ?>
           Vos jours d’essai restent acquis. Le paiement en ligne ouvre très bientôt : rien ne sera prélevé sans votre accord.
         <?php elseif ($refusal): // formulaire non proposé à cette association (bloc ci-dessous) ?>
           Vos jours d’essai restent acquis : rien n’est prélevé tant que le paiement n’est pas en place. Vos données et réglages sont conservés.
         <?php elseif ($setup_mode): ?>
           Vous gardez tous vos jours d’essai : aucun prélèvement aujourd’hui. Le premier prélèvement aura lieu le <?= htmlspecialchars($first_charge_fr) ?>, à la fin de votre essai. Vos données et réglages sont conservés.
+          <?php if (($plan['slug'] ?? '') === 'ak-equipe'): ?><br>L’essai porte sur les fonctions Pro ; les fonctions et les volumes Équipe s’activent à l’abonnement, à la fin de votre essai.<?php endif; ?>
         <?php else: ?>
           Votre essai se termine dans moins de 48 heures : le premier mois est prélevé aujourd’hui et votre abonnement commence tout de suite. Vos données et réglages sont conservés.
         <?php endif; ?>
@@ -351,7 +384,16 @@ render_sidebar('mon-asso-paiement');
     </div>
   <?php endif; ?>
 
-  <?php if ($pending_until): ?>
+  <?php if ($usage_blockers): ?>
+
+    <!-- Membres ou gestionnaires au-delà des limites de la formule choisie -->
+    <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:14px; padding:28px; text-align:center;">
+      <h2 style="margin:0 0 10px; font-size:19px; color:#991B1B;">La formule <?= htmlspecialchars($plan_label) ?> ne suffit pas pour votre structure</h2>
+      <p style="color:#7F1D1D; line-height:1.65; max-width:560px; margin:0 auto 18px; font-size:14.5px;"><?= htmlspecialchars(implode(' ', $usage_blockers)) ?> Choisissez une formule plus grande, ou réduisez-les d’abord.</p>
+      <a href="/mon-asso-plan#formules" style="background:#0F172A; color:white; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px;">← Choisir une autre formule</a>
+    </div>
+
+  <?php elseif ($pending_until): ?>
 
     <!-- ============================================ -->
     <!-- Prélèvement SEPA en cours de vérification     -->
@@ -458,26 +500,26 @@ render_sidebar('mon-asso-paiement');
         <!-- Plan -->
         <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:10px 0; border-bottom:1px solid #F1F5F9;">
           <div style="flex:1;">
-            <div style="font-weight:600; font-size:14px;">Plan <?= htmlspecialchars($plan_label) ?></div>
+            <div style="font-weight:600; font-size:14px;">Formule <?= htmlspecialchars($plan_label) ?></div>
             <div style="color:#64748B; font-size:12px; margin-top:2px;"><?= htmlspecialchars($plan['tagline'] ?? 'Abonnement mensuel') ?></div>
           </div>
-          <div style="font-weight:700; font-size:14px; white-space:nowrap;"><?= htmlspecialchars(ak_price_eur($plan_cents)) ?><?= $price['has_vat'] ? ' HT' : '' ?>/mois</div>
+          <div style="font-weight:700; font-size:14px; white-space:nowrap;"><?= htmlspecialchars(ak_price_eur($plan_cents)) ?>&nbsp;HT/mois</div>
         </div>
 
         <!-- Add-on domaine (option) -->
         <?php if ($with_addon_domain): ?>
         <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:10px 0; border-bottom:1px solid #F1F5F9;">
           <div style="flex:1;">
-            <div style="font-weight:600; font-size:14px; color:#1E40AF;">🏆 Add-on Domaine perso</div>
+            <div style="font-weight:600; font-size:14px; color:#1E40AF;">🏆 Option domaine personnel</div>
             <div style="color:#64748B; font-size:12px; margin-top:2px;">adherents.tonasso.fr + emails</div>
           </div>
-          <div style="font-weight:700; font-size:14px; color:#1E40AF; white-space:nowrap;">+<?= htmlspecialchars(ak_price_eur($addon_cents)) ?><?= $price['has_vat'] ? ' HT' : '' ?>/mois</div>
+          <div style="font-weight:700; font-size:14px; color:#1E40AF; white-space:nowrap;">+<?= htmlspecialchars(ak_price_eur($addon_cents)) ?>&nbsp;HT/mois</div>
         </div>
-        <?php else: ?>
+        <?php elseif (ak_addon_domain_offer($plan) === 'addon'): ?>
         <!-- Bouton ajouter add-on -->
         <a href="?plan=<?= htmlspecialchars($target_plan_slug) ?>&addon_domain=1" style="display:block; padding:14px; background:#EFF6FF; border:1px dashed #BFDBFE; border-radius:10px; margin:10px 0; text-decoration:none; color:#1E40AF; text-align:center;">
-          <div style="font-weight:700; font-size:13.5px; margin-bottom:3px;">🏆 + Ajouter un domaine personnalisé</div>
-          <div style="font-size:12px; opacity:0.85;">+<?= htmlspecialchars(ak_price_eur(AK_ADDON_DOMAIN_HT_CENTS)) ?><?= $price['has_vat'] ? ' HT' : '' ?>/mois · adherents.tonasso.fr + emails à votre nom</div>
+          <div style="font-weight:700; font-size:13.5px; margin-bottom:3px;">🏆 + Ajouter un domaine personnel</div>
+          <div style="font-size:12px; opacity:0.85;">+<?= htmlspecialchars(ak_price_eur(AK_ADDON_DOMAIN_HT_CENTS)) ?>&nbsp;HT/mois</div>
         </a>
         <?php endif; ?>
 
@@ -497,10 +539,10 @@ render_sidebar('mon-asso-paiement');
         <?php else: ?>
         <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 0 6px; margin-top:6px; border-top:2px solid #0F172A;">
           <div style="font-weight:700; font-size:16px;">Total mensuel</div>
-          <div style="font-weight:800; font-size:22px; color:#059669; white-space:nowrap;"><?= htmlspecialchars($total_str) ?></div>
+          <div style="font-weight:800; font-size:22px; color:#059669; white-space:nowrap;"><?= htmlspecialchars($total_str) ?>&nbsp;HT</div>
         </div>
         <div style="font-size:11px; color:#64748B; margin-top:6px;">
-          TVA non applicable · art. 293 B du CGI
+          <?= htmlspecialchars(ak_pc_vat_note(0.0)) ?>
         </div>
         <?php endif; ?>
 
@@ -520,7 +562,7 @@ render_sidebar('mon-asso-paiement');
         </div>
 
         <!-- Lien retour -->
-        <a href="/mon-asso-plan" style="display:block; text-align:center; margin-top:14px; color:#64748B; font-size:12.5px; text-decoration:none;">← Retour au choix du plan</a>
+        <a href="/mon-asso-plan#formules" style="display:block; text-align:center; margin-top:14px; color:#64748B; font-size:12.5px; text-decoration:none;">← Retour au choix de la formule</a>
       </div>
     </div>
 

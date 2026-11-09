@@ -85,7 +85,7 @@ try {
         if ($rv['state'] === 'validated') {
             $log('validate_org', ['trial_ends_at' => $rv['trial_end'], 'demande' => 'app iPhone']);
             $extra['review'] = ['trial_ends' => ak_trial_end_label($rv['trial_end']), 'mailed' => (bool) $rv['mailed'], 'warnings' => $rv['warnings'],
-                'message' => 'Essai PRO de ' . (int) AK_TRIAL_DAYS . ' jours ouvert jusqu’au ' . ak_trial_end_label($rv['trial_end']) . '. '
+                'message' => 'Essai Pro de ' . (int) AK_TRIAL_DAYS . ' jours ouvert jusqu’au ' . ak_trial_end_label($rv['trial_end']) . '. '
                            . ($rv['mailed'] ? 'L’administrateur a reçu l’e-mail « Votre espace Assokit est activé ».' : 'L’e-mail d’activation n’a pas pu partir : prévenez l’administrateur.')];
         } else {
             // Une association en essai gratuit reste en essai : la passer « active » rendait l'essai illimité.

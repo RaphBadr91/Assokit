@@ -7,30 +7,21 @@
  *   'offers' ET une note ('aggregateRating' ou 'review') : sans avis noté vérifiable, la page
  *   n'y est pas éligible, avec ou sans 'offers'. C'est voulu ; une alerte « champ manquant »
  *   dans la Search Console est attendue et sans effet sur le classement. Le prix reste affiché
- *   en clair sur la page (ak_landing_pricing) et sur /tarifs.
+ *   en clair sur la page (ak_landing_pricing) et sur /tarifs. L'entité est construite par
+ *   ak_software_jsonld() (includes-pricing.php), la même sur /tarifs. ak_offer_jsonld() n'est
+ *   donc appelée nulle part.
  * - ak_landing_faq_jsonld() : FAQPage construite à partir des questions AFFICHÉES sur la page.
- * - ak_landing_pricing() : le tarif réel (essai gratuit 14 jours, puis prix de la formule).
+ * - ak_landing_pricing() : la grille réelle (essai gratuit 14 jours sur Pro, puis « dès 19,99 € HT/mois »).
  * - ak_landing_siblings() : liens entre les pages commerciales, une page = un besoin.
  * Requiert includes-public.php et includes-pricing.php (déjà chargés par les pages).
  * --------------------------------------------------------------
  */
 
 if (!function_exists('ak_landing_software_jsonld')) {
+    /** L'entité SoftwareApplication commune (ak_software_jsonld, includes-pricing.php) : ni 'offers' ni note. */
     function ak_landing_software_jsonld(string $description, array $features = [], string $category = 'BusinessApplication'): array {
-        $j = [
-            '@context' => 'https://schema.org',
-            '@type'    => 'SoftwareApplication',
-            '@id'      => AK_PUBLIC_DOMAIN . '/#software',
-            'name'     => 'Assokit',
-            'url'      => AK_PUBLIC_DOMAIN . '/',
-            'applicationCategory' => $category,
-            'operatingSystem' => 'Web, iOS, Android',
-            'description' => $description,
-            'inLanguage' => 'fr-FR',
-            'publisher' => ['@id' => AK_PUBLIC_DOMAIN . '/#organization'],
-        ];
-        if ($features) $j['featureList'] = array_values($features);
-        return $j;
+        if (!function_exists('ak_software_jsonld')) require_once __DIR__ . '/includes-pricing.php';
+        return ak_software_jsonld($description, $features, $category);
     }
 }
 
@@ -42,30 +33,36 @@ if (!function_exists('ak_landing_faq_jsonld')) {
 }
 
 if (!function_exists('ak_landing_pricing')) {
-    /** Bloc « Tarif » : le prix réel de la formule, lu comme sur /tarifs (ak_offer_price). */
-    function ak_landing_pricing(string $what = 'toutes les fonctionnalités'): void {
-        $o = ak_offer_price();
+    /**
+     * Bloc « Tarif » : la grille réelle, lue comme sur /tarifs (ak_pricing_state, dernier relevé en
+     * base) : essai gratuit de 14 jours sur Pro, puis « dès 19,99 € HT/mois » (Essentiel, Pro, Équipe),
+     * Sur-mesure sur devis. Jamais de prix d'ancienne formule.
+     */
+    function ak_landing_pricing(string $what = 'toutes les fonctions de la formule Pro'): void {
         $trial = defined('AK_TRIAL_DAYS') ? (int) AK_TRIAL_DAYS : 14;
-        $tax = $o['has_vat'] ? ' (soit ' . $o['ttc'] . ' TTC par mois)' : ($o['vat_known'] ? ' (TVA non applicable)' : '');
+        $from = ak_offer_from_price();
+        $plans = ['ak-essentiel' => 'Essentiel', 'assokit' => 'Pro', 'ak-equipe' => 'Équipe'];
+        $list = [];
+        foreach ($plans as $slug => $name) $list[] = $name . ' ' . ak_plan_price($slug)['per_month'];
         ?>
 <section class="pub-section">
   <div class="pub-container">
-    <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Tarif</span><h2 class="pub-h2">Un seul abonnement, <em>tout compris</em></h2></div>
+    <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Tarif</span><h2 class="pub-h2">Trois formules, <em>sans engagement</em></h2></div>
     <div class="reveal" style="max-width:760px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;">
       <div class="lp-card">
         <div class="lp-ic">🎁</div>
-        <h3>Essai gratuit <?= $trial ?> jours</h3>
-        <p>Sans carte bancaire et sans engagement, avec <?= pub_h($what) ?>. À la fin de l'essai, vous décidez de continuer ou non.</p>
+        <h3>Essai gratuit <?= $trial ?>&nbsp;jours</h3>
+        <p>Sans carte bancaire et sans engagement, avec <?= pub_h($what) ?>. À la fin de l'essai, vous choisissez votre formule ou vous vous arrêtez : rien n'est prélevé si vous ne choisissez rien.</p>
       </div>
       <div class="lp-card">
         <div class="lp-ic">💶</div>
-        <h3><?= pub_h($o['per_month']) ?></h3>
-        <p>Ensuite, une formule unique<?= pub_h($tax) ?> : adhérents, cotisations, facturation, comptabilité analytique, projets, communication et application mobile. Résiliable à tout moment.</p>
+        <h3><?= pub_h(ucfirst($from)) ?></h3>
+        <p><?= pub_h(implode(' · ', $list)) ?>. Sur-mesure sur devis pour les réseaux et les collectivités. Résiliable à tout moment. <?= pub_h(ak_vat_note()) ?></p>
       </div>
     </div>
     <div class="pub-text-center reveal" style="margin-top:24px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
       <a href="/signup" class="lp-btn lp-btn-primary">Commencer l'essai gratuit</a>
-      <a href="/tarifs" class="lp-btn lp-btn-glass">Détail des tarifs</a>
+      <a href="/tarifs" class="lp-btn lp-btn-glass">Comparer les formules</a>
     </div>
   </div>
 </section>

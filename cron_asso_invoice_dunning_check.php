@@ -37,6 +37,7 @@ if (!$is_cli) {
 
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/relances-engine.php';
+require_once __DIR__ . '/plan-controls.php';   // formule : relances automatiques (feature_recurring_invoices)
 
 if (!$is_cli) header('Content-Type: text/plain; charset=UTF-8');
 
@@ -45,6 +46,7 @@ echo "Date : " . date('Y-m-d H:i:s') . "\n\n";
 
 $created = 0;
 $skipped = 0;
+$plan_skipped = 0;   // associations sautées : formule sans relances automatiques
 $dismissed = 0;
 
 try {
@@ -87,6 +89,9 @@ try {
     ");
 
     foreach ($orgs as $org_id => $enabled) {
+        // Formule sans relances automatiques (Essentiel, accès limité) : aucune relance proposée
+        // sur le tableau de bord ; la relance manuelle en un clic reste dans /relances.
+        if (!akc_has($pdo, (int)$org_id, 'recurring_invoices', false)) { $plan_skipped++; continue; }
         // Stade et échéance décidés par le moteur commun de /relances.
         foreach (ak_rel_invoice_targets($pdo, $org_id) as $t) {
             $iid = (int)$t['id'];
@@ -130,6 +135,7 @@ try {
     echo "\n=== RÉCAP ===\n";
     echo "Notifications créées : $created\n";
     echo "Skipped (déjà en attente) : $skipped\n";
+    echo "Associations sautées (formule sans relances automatiques) : $plan_skipped\n";
     echo "Demandes écartées (sans objet) : $dismissed\n";
 
 } catch (Throwable $e) {

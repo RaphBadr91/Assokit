@@ -129,9 +129,9 @@ if (PHP_SAPI !== 'cli') {
                . '<div style="max-width:540px;margin:80px auto;font-family:system-ui,Segoe UI,Arial,sans-serif;text-align:center;color:#1e293b;">'
                . '<div style="font-size:42px;">🔒</div>'
                . '<h1 style="font-size:20px;margin:14px 0 8px;">Compta analytique : 1 export inclus</h1>'
-               . '<p style="font-size:14px;color:#475569;line-height:1.55;">Votre offre' . $pn . ' inclut 1 export de compta analytique.' . (ak_billing_hidden() ? '' : ' Avec une formule payante, les exports sont illimités.') . '</p>'
+               . '<p style="font-size:14px;color:#475569;line-height:1.55;">Votre offre' . $pn . ' inclut 1 export de compta analytique.' . (ak_billing_hidden() ? '' : ' Les exports sont illimités à partir de la formule ' . htmlspecialchars(function_exists('ak_plan_required_label') ? ak_plan_required_label($pdo, 'advanced_stats') : 'Pro', ENT_QUOTES, 'UTF-8') . '.') . '</p>'
                . (ak_billing_hidden() ? ''
-                  : '<a href="/mon-asso-plan" style="display:inline-block;margin-top:18px;background:#1D4ED8;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:14px;">Choisir une formule</a>')
+                  : '<a href="/mon-asso-plan" style="display:inline-block;margin-top:18px;background:#1D4ED8;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:14px;">Voir les formules</a>')
                . '</div>';
             exit;
         }

@@ -4,6 +4,9 @@
  * Route : /pour-tpe. SEO + FAQPage + Breadcrumb. Style glass/4D via _landing-premium.php.
  */
 require_once __DIR__ . '/includes-public.php';
+// Grille Essentiel / Pro / Équipe : bloc « Tarif » commun (ak_landing_pricing, « dès 19,99 € HT/mois »)
+require_once __DIR__ . '/includes-pricing.php';
+require_once __DIR__ . '/_landing-seo.php';
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil',       'url' => '/'],
@@ -12,9 +15,9 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 $faqs = [
     ['Assokit est-il adapté à une TPE ou un indépendant ?', "Oui, totalement. Artisans, commerçants, indépendants, petites entreprises : vous pilotez devis, factures, paiements, projets/chantiers et comptabilité depuis un seul outil, sans logiciel comptable en plus."],
-    ['Puis-je faire mes devis et factures avec ?', "Oui : devis et factures professionnels, relances de paiement automatiques, suivi des encaissements en temps réel, et scan de facture par IA pour la saisie. Conforme à la facturation française."],
+    ['Puis-je faire mes devis et factures avec ?', "Oui : devis et factures professionnels avec les mentions légales, au format Factur-X (raccordement à une plateforme agréée en préparation), suivi des encaissements en temps réel. Avec la formule Pro : relances de paiement automatiques, devis signés en ligne et lecture des justificatifs par IA, que vous vérifiez."],
     ['Comment ça marche pour suivre mes chantiers / projets ?', "Chaque client ou chantier devient un projet : étapes, budget alloué vs dépensé, factures rattachées, collègues assignés. Vous savez en un coup d'œil où en est chaque affaire."],
-    ['La comptabilité analytique, c\'est utile pour moi ?', "Énormément : vous voyez la rentabilité réelle de chaque chantier/projet, poste par poste, et vous savez quelles affaires vous rapportent. Incluse dans l'abonnement Assokit. Elle ne remplace pas votre comptable — au contraire, elle lui prépare un dossier propre et daté, prêt à valider."],
+    ['La comptabilité analytique, c\'est utile pour moi ?', "Énormément : vous voyez la rentabilité réelle de chaque chantier/projet, poste par poste, et vous savez quelles affaires vous rapportent. Bilans sans limite dès la formule Pro. Elle ne remplace pas votre comptable — au contraire, elle lui prépare un dossier propre et daté, prêt à valider."],
     ['Mes rendez-vous et mon agenda sont-ils gérés ?', "Oui : notez vos rendez-vous directement dans l'outil, avec rappels. Plus besoin de jongler entre dix applis — tout est centralisé et visible."],
 ];
 $faq_schema = [
@@ -76,7 +79,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="lp-grid">
       <?php
       $pains = [
-        ['🧾', 'Les devis et factures qui traînent', 'Devis et factures pro en 2 minutes, relances de paiement automatiques, suivi des encaissements.'],
+        ['🧾', 'Les devis et factures qui traînent', 'Devis et factures pro en 2 minutes, relances de paiement en un clic (automatiques avec la formule Pro), suivi des encaissements.'],
         ['📸', 'La saisie des factures fournisseurs', 'Scannez, l\'IA lit et pré-remplit. Vos justificatifs sont rattachés au bon projet.'],
         ['🏗️', 'Les chantiers difficiles à suivre', 'Un projet par client/chantier : étapes, budget, factures, collègues assignés. Tout est clair.'],
         ['📊', 'La rentabilité qu\'on devine', 'Comptabilité analytique par chantier : vous voyez enfin, poste par poste, ce que chaque affaire vous rapporte vraiment.'],
@@ -98,12 +101,12 @@ require __DIR__ . '/_landing-premium.php';
 <section class="pub-section">
   <div class="pub-container">
     <div class="pub-section-head reveal">
-      <span class="pub-section-eyebrow">Tout inclus</span>
+      <span class="pub-section-eyebrow">Un seul outil</span>
       <h2 class="pub-h2">Le tout-en-un qui remplace <em>vos 10 outils</em></h2>
     </div>
     <ul class="lp-checks reveal">
       <?php
-      $feats = ['Devis & factures pro', 'Relances de paiement auto', 'Scan de factures par IA', 'Projets / chantiers', 'Comptabilité analytique', 'Suivi de trésorerie', 'Agenda & rendez-vous', 'Clients & contacts', 'Équipe & rôles', 'Application mobile', 'Hébergement France · RGPD', 'Export de vos données'];
+      $feats = ['Devis & factures pro', 'Relances de paiement', 'Lecture des justificatifs par IA (Pro)', 'Projets / chantiers', 'Comptabilité analytique', 'Suivi de trésorerie', 'Agenda & rendez-vous', 'Clients & contacts', 'Équipe & rôles', 'Application mobile', 'Hébergement France · RGPD', 'Export de vos données'];
       foreach ($feats as $f): ?>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><?= pub_h($f) ?></li>
       <?php endforeach; ?>
@@ -118,7 +121,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="lp-stat reveal">
       <span class="pub-section-eyebrow" style="position:relative;color:#A7F3D0;">Votre trésorerie, sous contrôle</span>
       <div class="big" style="font-size:clamp(34px,7vw,60px);">Soyez payé plus vite</div>
-      <p>Relances de paiement <strong>automatiques</strong>, encaissements suivis en temps réel, et la <strong>rentabilité réelle de chaque chantier</strong> sous les yeux. Vous pilotez votre entreprise — pas juste sa paperasse. Et votre comptable reçoit un dossier propre et daté, prêt à valider.</p>
+      <p>Relances de paiement <strong>automatiques</strong> avec la formule Pro, encaissements suivis en temps réel, et la <strong>rentabilité réelle de chaque chantier</strong> sous les yeux. Vous pilotez votre entreprise — pas juste sa paperasse. Et votre comptable reçoit un dossier propre et daté, prêt à valider.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:4px 0 22px;">
         <span class="lp-badge" style="background:rgba(255,255,255,.14);border-color:rgba(167,243,208,.5);color:#fff;">💶 Moins d'impayés</span>
         <span class="lp-badge" style="background:rgba(255,255,255,.14);border-color:rgba(167,243,208,.5);color:#fff;">📈 Marges par chantier</span>
@@ -129,6 +132,8 @@ require __DIR__ . '/_landing-premium.php';
     </div>
   </div>
 </section>
+
+<?php ak_landing_pricing(); ?>
 
 <!-- ===== FAQ ===== -->
 <section class="pub-section">

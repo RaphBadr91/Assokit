@@ -30,6 +30,18 @@ if (function_exists('ak_can_add_user')) {
     }
 }
 
+// Limite de gestionnaires de la formule (administrateur, coordinateur, référent) : les rôles
+// gestionnaires ne sont plus proposés quand elle est atteinte (refus aussi à l'enregistrement,
+// action-admin-utilisateur.php)
+$manager_roles = function_exists('ak_manager_roles') ? ak_manager_roles() : [];
+$manager_block = null;
+if (function_exists('ak_can_add_manager')) {
+    $mchk = ak_can_add_manager($pdo, $org_id, 1);
+    if (empty($mchk['ok'])) $manager_block = (string)$mchk['reason'];
+}
+// Application mobile, compte d'examen : aucun lien vers les formules (Apple 3.1.1)
+$billing_hidden = function_exists('ak_billing_hidden') && ak_billing_hidden();
+
 // Récupérer les erreurs/données pré-remplies depuis session
 $errors = $_SESSION['form_errors'] ?? [];
 $form_data = $_SESSION['form_data'] ?? [];
@@ -82,12 +94,14 @@ render_sidebar('admin');
         <p style="margin:0 0 14px; color:#7F1D1D; line-height:1.6; font-size:14px;">
           Vous avez atteint la limite de <strong><?= (int)($plan_limit_info['limit'] ?? 0) ?> utilisateurs</strong> de votre plan actuel
           (<?= (int)($plan_limit_info['current'] ?? 0) ?> utilisateurs actifs).
-          <br>Pour ajouter de nouveaux utilisateurs, passez au plan supérieur.
+          <?php if (!$billing_hidden): ?><br>Pour ajouter de nouveaux utilisateurs, changez de formule.<?php endif; ?>
         </p>
+        <?php if (!$billing_hidden): ?>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <a href="/mon-asso-plan" class="btn btn-primary" style="background:#DC2626; color:white;">↗ Voir les plans</a>
+          <a href="/mon-asso-plan" class="btn btn-primary" style="background:#DC2626; color:white;">Voir les formules</a>
           <a href="/contact?subject=demo&plan=assokit" class="btn btn-ghost">📞 Demander une démo</a>
         </div>
+        <?php endif; ?>
       </div>
     </div>
   <?php else: ?>
@@ -172,16 +186,21 @@ render_sidebar('admin');
             'follower' => ['👁️ Suivi projet', 'Financeur externe. Voit uniquement les projets qu\'il finance.'],
           ];
           $selected_role = old_val('role', 'member');
+          if ($manager_block !== null && in_array($selected_role, $manager_roles, true)) $selected_role = 'member';
           foreach ($roles as $key => $info):
             $is_selected = ($selected_role === $key);
+            $is_locked = $manager_block !== null && in_array($key, $manager_roles, true);
           ?>
-            <label class="role-option <?= $is_selected ? 'active' : '' ?>">
-              <input type="radio" name="role" value="<?= h($key) ?>" <?= $is_selected ? 'checked' : '' ?> onchange="updateRoleSelection(this)">
+            <label class="role-option <?= $is_selected ? 'active' : '' ?>" <?= $is_locked ? 'style="opacity:0.5;pointer-events:none;" title="' . h($manager_block) . '"' : '' ?>>
+              <input type="radio" name="role" value="<?= h($key) ?>" <?= $is_selected ? 'checked' : '' ?> <?= $is_locked ? 'disabled' : '' ?> onchange="updateRoleSelection(this)">
               <div class="role-option-label"><?= $info[0] ?></div>
               <div class="role-option-desc"><?= $info[1] ?></div>
             </label>
           <?php endforeach; ?>
         </div>
+        <?php if ($manager_block !== null): ?>
+          <div class="form-hint" style="margin-top:8px;">🔒 <?= h($manager_block) ?></div>
+        <?php endif; ?>
       </div>
 
       <div class="form-cols" style="margin-top: 20px;">

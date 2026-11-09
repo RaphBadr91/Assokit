@@ -6,7 +6,7 @@
  * Angle « gratuit » seulement : la requête générique « logiciel association » vise /logiciel-association.
  */
 require_once __DIR__ . '/includes-public.php';
-// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+// Grille Essentiel / Pro / Équipe (includes-pricing.php) : « dès 19,99 € HT/mois », lu comme sur /tarifs
 require_once __DIR__ . '/includes-pricing.php';
 require_once __DIR__ . '/_landing-seo.php';
 $offer = ak_offer_price();
@@ -18,11 +18,11 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 $faqs = [
     ['Existe-t-il un logiciel de gestion d\'association gratuit ?', "Il existe des outils gratuits qui couvrent une partie du besoin : un tableur (adhérents, budget), une messagerie pour les relances, ou une plateforme de collecte comme HelloAsso, gratuite pour l'association, pour encaisser cotisations et dons en ligne. En revanche, un logiciel de gestion complet et gratuit à vie (adhérents, cotisations, comptabilité, projets et communication réunis) est rare. Assokit propose un essai gratuit de 14 jours, sans carte bancaire, pour tester l'ensemble des fonctionnalités avant de choisir une formule."],
-    ['Assokit propose-t-il une offre gratuite ?', "Soyons transparents : Assokit n'est pas un logiciel gratuit à vie. Vous bénéficiez d'un essai gratuit de 14 jours, sans carte bancaire et sans engagement, qui donne accès à toutes les fonctionnalités. Au terme de l'essai, vous choisissez de continuer avec l'abonnement Assokit, à " . $offer['label'] . ", tout inclus. Aucun prélèvement automatique : tant que vous n'avez pas saisi de moyen de paiement, rien n'est débité."],
+    ['Assokit propose-t-il une offre gratuite ?', "Soyons transparents : Assokit n'est pas un logiciel gratuit à vie. Vous bénéficiez d'un essai gratuit de 14 jours, sans carte bancaire et sans engagement, qui donne accès à toutes les fonctions de la formule Pro. Au terme de l'essai, vous choisissez votre formule, " . ak_offer_from_price() . " (Essentiel, Pro ou Équipe) ; si vous n'en choisissez pas, rien n'est prélevé à la fin de l'essai."],
     ['Peut-on gérer une association gratuitement avec un tableur ?', "Oui, un tableur est gratuit et suffit pour une association qui démarre avec quelques adhérents. Ses limites apparaissent avec la croissance : ressaisie entre le fichier des membres, la facturation et la comptabilité, versions perdues, relances manuelles, absence d'historique fiable. Un logiciel dédié fait gagner du temps dès que le nombre d'adhérents, de cotisations ou de projets augmente."],
     ['Quelle est la différence entre un outil gratuit et un logiciel payant pour association ?', "Un outil gratuit couvre en général une brique isolée (un tableur pour les adhérents, une plateforme pour encaisser les paiements). Un logiciel payant comme Assokit réunit ces briques dans un seul espace : une cotisation encaissée met à jour l'adhérent et alimente automatiquement la comptabilité. Le coût de l'abonnement se compare surtout au temps bénévole économisé sur la ressaisie et les relances."],
     ['Où trouver des modèles gratuits pour une association ?', "Assokit met à disposition, sans inscription, des modèles gratuits à copier et personnaliser : statuts d'association loi 1901, convocation à l'assemblée générale, procès-verbal d'AG et reçu fiscal pour les dons. Ils sont réunis sur la page Modèles gratuits."],
-    ['Combien coûte Assokit après l\'essai gratuit ?', "Après les 14 jours d'essai gratuit, un seul abonnement tout inclus : " . $offer['label'] . " (adhérents, cotisations, facturation, comptabilité analytique par projet, assemblées générales, communication, IA). Le détail est disponible sur la page Tarifs. Vous restez libre d'arrêter à tout moment, sans engagement de durée."],
+    ['Combien coûte Assokit après l\'essai gratuit ?', "Après les 14 jours d'essai gratuit, vous choisissez votre formule : Essentiel (" . ak_plan_price('ak-essentiel')['per_month'] . "), Pro (" . ak_plan_price('assokit')['per_month'] . ") ou Équipe (" . ak_plan_price('ak-equipe')['per_month'] . "), et Sur-mesure sur devis. Adhérents, cotisations, factures, comptabilité et assemblées générales sont dans toutes les formules ; le détail est sur la page Tarifs. Vous restez libre d'arrêter à tout moment, sans engagement de durée."],
 ];
 $faq_schema = ak_landing_faq_jsonld($faqs);
 $soft_schema = ak_landing_software_jsonld("Logiciel de gestion pour associations loi 1901 : adhérents, cotisations, comptabilité, projets et communication. Essai gratuit de 14 jours, sans carte bancaire.");
@@ -44,7 +44,7 @@ require __DIR__ . '/_landing-premium.php';
       <div>
         <span class="lp-badge reveal"><span class="dot"></span> Essai gratuit · sans carte bancaire</span>
         <h1 class="pub-h1 reveal" style="margin-top:20px;max-width:640px;"><span class="lp-grad">Logiciel d'association gratuit</span> : ce qui existe, et notre essai de 14 jours</h1>
-        <p class="pub-tagline reveal" style="max-width:560px;">On vous dit la vérité : Assokit n'est pas gratuit à vie. Mais vous testez <strong>toutes les fonctionnalités gratuitement pendant 14 jours</strong>, sans carte bancaire ni engagement — adhérents, cotisations, comptabilité, projets. Décidez ensuite en connaissance de cause.</p>
+        <p class="pub-tagline reveal" style="max-width:560px;">On vous dit la vérité : Assokit n'est pas gratuit à vie. Mais vous testez <strong>toutes les fonctions de la formule Pro gratuitement pendant 14 jours</strong>, sans carte bancaire ni engagement — adhérents, cotisations, comptabilité, projets. Décidez ensuite en connaissance de cause.</p>
         <div class="lp-hero-cta reveal">
           <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
@@ -78,7 +78,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="pub-section-lead reveal" style="max-width:820px;margin:0 auto;text-align:left;">
       <p style="margin:0 0 18px;"><strong>Des outils gratuits existent, mais couvrent chacun une brique.</strong> Un tableur (Google Sheets, LibreOffice Calc) est gratuit et parfait pour tenir la liste des adhérents d'une petite association qui démarre. Une messagerie gratuite permet d'envoyer les convocations. Et une plateforme de collecte comme <strong>HelloAsso</strong>, gratuite pour l'association, permet d'encaisser cotisations et dons en ligne — elle se finance grâce aux contributions volontaires laissées par les donateurs et les payeurs. Chacun de ces outils rend service, gratuitement.</p>
       <p style="margin:0 0 18px;"><strong>Ce qui est rare, c'est un logiciel de gestion complet et gratuit à vie.</strong> Réunir dans un seul espace les adhérents, les cotisations, la comptabilité, les projets, les assemblées générales et la communication a un coût de développement et d'hébergement. Les solutions qui proposent tout cela « gratuitement » se financent généralement d'une autre manière (publicité, frais sur les transactions, fonctionnalités bridées). L'honnêteté commande de le dire clairement.</p>
-      <p style="margin:0;"><strong>Assokit joue cartes sur table.</strong> Notre logiciel n'est pas gratuit à vie. Il propose un <strong>essai gratuit de 14 jours, sans carte bancaire</strong>, qui donne accès à toutes les fonctionnalités. Vous testez avec vos vraies données, puis vous choisissez de continuer avec Assokit, à <?= pub_h($offer['label']) ?> — ou vous arrêtez, sans aucun prélèvement. Pas de piège, pas de carte demandée à l'inscription.</p>
+      <p style="margin:0;"><strong>Assokit joue cartes sur table.</strong> Notre logiciel n'est pas gratuit à vie. Il propose un <strong>essai gratuit de 14 jours, sans carte bancaire</strong>, qui donne accès à toutes les fonctions de la formule Pro. Vous testez avec vos vraies données, puis vous choisissez votre formule, <?= pub_h(ak_offer_from_price()) ?> — ou vous arrêtez, sans aucun prélèvement. Pas de piège, pas de carte demandée à l'inscription.</p>
     </div>
   </div>
 </section>
@@ -119,7 +119,7 @@ require __DIR__ . '/_landing-premium.php';
         'Relances de cotisations automatiques, plus de suivi manuel',
         'AG préparées : convocations, émargement, procès-verbaux',
         'Communication (newsletters, comptes-rendus) rédigée par l\'IA',
-        'Hébergement en France · conforme RGPD · export à tout moment',
+        'Hébergement en France · respect du RGPD · export à tout moment',
       ] as $f): ?>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><?= $f ?></li>
       <?php endforeach; ?>
@@ -143,10 +143,10 @@ require __DIR__ . '/_landing-premium.php';
     </div>
     <div class="lp-grid">
       <?php foreach ([
-        ['1','Créez votre espace gratuit','Inscription en quelques minutes, sans carte bancaire. Vous accédez immédiatement à toutes les fonctionnalités pendant 14 jours.'],
+        ['1','Créez votre espace gratuit','Inscription en quelques minutes, sans carte bancaire. Vous accédez immédiatement à toutes les fonctions de la formule Pro pendant 14 jours.'],
         ['2','Importez vos données','Ajoutez ou importez vos adhérents, paramétrez vos cotisations et vos projets. Testez avec la réalité de votre association, pas des exemples.'],
         ['3','Mesurez le temps gagné','Encaissez une cotisation, envoyez une relance, générez un compte-rendu par l\'IA. Comparez honnêtement avec vos outils gratuits actuels.'],
-        ['4','Choisissez librement','À la fin de l\'essai, abonnez-vous à ' . $offer['label'] . ' si l\'outil vous convient — ou arrêtez, sans aucun prélèvement ni engagement.'],
+        ['4','Choisissez librement','À la fin de l\'essai, choisissez votre formule (' . ak_offer_from_price() . ') si l\'outil vous convient — ou arrêtez, sans aucun prélèvement ni engagement.'],
       ] as $s): ?>
         <div class="lp-card reveal"><div class="lp-ic" style="font-weight:800;font-size:20px;color:var(--c-emeraude-dark)"><?= $s[0] ?></div><h3><?= $s[1] ?></h3><p><?= $s[2] ?></p></div>
       <?php endforeach; ?>
@@ -158,7 +158,7 @@ require __DIR__ . '/_landing-premium.php';
   </div>
 </section>
 
-<?php ak_landing_pricing('toutes les fonctionnalités, avec vos vraies données'); ?>
+<?php ak_landing_pricing('toutes les fonctions de la formule Pro, avec vos vraies données'); ?>
 <?php ak_landing_siblings('/logiciel-association-gratuit'); ?>
 
 <!-- FAQ -->

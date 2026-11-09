@@ -19,7 +19,7 @@
  *   - depuis l'appli (api/app-founder-action.php, validate / reject).
  * Les trois passent par ak_signup_review_validate() / ak_signup_review_reject() : mêmes effets.
  *
- * Valider : l'essai PRO de AK_TRIAL_DAYS jours démarre À CE MOMENT (organizations, plan
+ * Valider : l'essai Pro de AK_TRIAL_DAYS jours démarre À CE MOMENT (organizations, plan
  * d'essai, ancienne table subscriptions : ak_signup_trial_rows, comme une inscription sur le
  * site), puis l'administrateur reçoit « Votre espace Assokit est activé ».
  * Refuser : ak_org_reject (refusée ET suspendue, comme le cockpit), e-mail poli au demandeur.
@@ -233,7 +233,7 @@ function ak_signup_review_when(?string $sql): string
  * ------------------------------------------------------------------ */
 
 /**
- * Valide une demande d'espace : l'essai PRO démarre maintenant, l'administrateur est prévenu.
+ * Valide une demande d'espace : l'essai Pro démarre maintenant, l'administrateur est prévenu.
  *   ['state' => 'validated', 'trial_end' => SQL, 'warnings' => string[], 'admin' => ?array, 'mailed' => bool]
  *   ['state' => 'withdrawn', 'org' => array] : demande retirée par le demandeur (même à l'instant,
  *     page ouverte avant le retrait) : rien n'est modifié, et l'appelant ne doit rien faire d'autre
@@ -641,7 +641,7 @@ function ak_signup_review_mail_activated(string $email, string $first_name, stri
              . '<p>Bonjour ' . ak_signup_review_h($first_name) . ',</p>'
              . '<p>Bonne nouvelle&nbsp;: notre équipe a validé votre demande, l’espace de <strong>' . ak_signup_review_h($org_name) . '</strong> est prêt.</p>'
              . '<p>Connectez-vous avec l’adresse e-mail et le mot de passe choisis lors de votre demande, sur assokit.fr ou dans l’application.</p>'
-             . '<p>Votre <strong>essai PRO de ' . $days . ' jours</strong> commence aujourd’hui&nbsp;: toutes les fonctionnalités sont ouvertes'
+             . '<p>Votre <strong>essai Pro de ' . $days . ' jours</strong> commence aujourd’hui&nbsp;: toutes les fonctions de la formule Pro sont ouvertes'
              . ($trial_end_label !== '' ? ' jusqu’au <strong>' . ak_signup_review_h($trial_end_label) . '</strong>' : '') . ', sans carte bancaire.</p>'
              . '<div style="background:#ECFDF5;border-left:3px solid #059669;padding:12px 16px;border-radius:6px;margin:16px 0;font-size:13px;color:#065F46;line-height:1.6;">'
              . '&#128172; Une question&nbsp;? Répondez simplement à cet e-mail&nbsp;: l’équipe Assokit vous accompagne pour bien démarrer.'

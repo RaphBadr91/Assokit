@@ -17,6 +17,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/relances-engine.php';
+require_once __DIR__ . '/plan-controls.php';   // formule : relances automatiques (feature_recurring_invoices)
 
 // CLI true si SAPI cli OU exécution hors contexte web (binaire CGI lancé en cron :
 // aucune requête HTTP -> REQUEST_METHOD absent).
@@ -59,6 +60,13 @@ foreach ($aVoir as $org_id) {
     $o = $parOrg[$org_id];
     $maxStage = max(1, min(3, (int)$o['max_stage']));
 
+    // Formule sans relances automatiques (Essentiel, accès limité) : rien n'est envoyé, l'option
+    // reste enregistrée et reprend si la formule change. La relance manuelle reste dans /relances.
+    if (!akc_has($pdo, (int)$org_id, 'recurring_invoices', false)) {
+        echo "  – org #$org_id : relances automatiques non incluses dans la formule, ignorée\n";
+        continue;
+    }
+
     if (!empty($o['auto_invoices'])) {
         try {
             // Factures dont l'admin a coupé les relances (« Stop » sur le tableau de bord).
@@ -83,6 +91,7 @@ foreach ($aVoir as $org_id) {
                 if (!$t['due_now'] || $t['stage'] > $maxStage) continue;
                 $res = ak_rel_send_membership($pdo, $org_id, (int)$t['id'], (int)$t['stage'], null);
                 if (!empty($res['success'])) { $total_mem++; echo "  ✓ org #$org_id cotisation user#{$t['id']} (stade {$t['stage']})\n"; }
+                elseif (!empty($res['quota_limit'])) { echo "  – org #$org_id : e-mails du mois épuisés, relances de cotisation reportées\n"; break; }
                 else { $fail++; }
                 usleep(200000);
             }

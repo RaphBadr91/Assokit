@@ -8,11 +8,10 @@
  * --------------------------------------------------------------
  */
 require_once __DIR__ . '/includes-public.php';
-// Offre : essai PRO gratuit, puis formule Assokit (prix HT + TTC, includes-pricing.php)
+// Grille : essai Pro gratuit 14 jours, puis Essentiel, Pro, Équipe « dès 19,99 € HT/mois »
+// (includes-pricing.php : dernier relevé des prix en base, la page n'ouvre pas la base)
 require_once __DIR__ . '/includes-pricing.php';
-$offer = ak_offer_price();
-// Option domaine personnalisé : même TVA que la formule (« 10,00 € HT/mois » ou « 10,00 €/mois »)
-$addon_domain = ak_price_split(AK_ADDON_DOMAIN_HT_CENTS, $offer['vat_known'] ? $offer['vat_rate'] : null);
+$offer_from = ak_offer_from_price();
 
 // === FAQ (source unique : alimente le schema FAQPage ET la section visible) ===
 $home_faqs = [
@@ -30,15 +29,15 @@ $home_faqs = [
     ],
     [
         'q' => "Combien coûte Assokit ?",
-        'a' => "Assokit se teste gratuitement pendant 14 jours, sans carte bancaire et sans engagement, avec toutes les fonctionnalités. Ensuite, un seul abonnement tout inclus : " . $offer['label'] . ", résiliable à tout moment. Les réseaux, fédérations et grandes structures peuvent demander une offre Sur-mesure.",
+        'a' => "Assokit se teste gratuitement pendant 14 jours, sans carte bancaire et sans engagement, avec toutes les fonctions de la formule Pro. Ensuite, vous choisissez votre formule, " . $offer_from . " : Essentiel (" . ak_plan_price('ak-essentiel')['per_month'] . "), Pro (" . ak_plan_price('assokit')['per_month'] . ") ou Équipe (" . ak_plan_price('ak-equipe')['per_month'] . "), résiliable à tout moment. Les réseaux, fédérations et collectivités peuvent demander une offre Sur-mesure, sur devis.",
     ],
     [
         'q' => "La comptabilité analytique est-elle incluse ?",
-        'a' => "Oui, la comptabilité analytique est incluse dans l'abonnement Assokit, sans module à acheter en plus. Votre comptable n'intervient plus que pour valider les comptes.",
+        'a' => "Oui, sans module à acheter en plus : les bilans analytiques sont sans limite dès la formule Pro, et la formule Essentiel en permet un export au total. Votre comptable n'intervient plus que pour valider les comptes.",
     ],
     [
         'q' => "Mes données sont-elles sécurisées et hébergées en France ?",
-        'a' => "Oui. Vos données sont hébergées en France, conformes au RGPD, protégées par la double authentification (2FA) et sauvegardées régulièrement.",
+        'a' => "Oui. Vos données sont hébergées en France, dans le respect du RGPD, protégées par la double authentification (2FA) et sauvegardées chaque jour.",
     ],
     [
         'q' => "Existe-t-il une application mobile Assokit ?",
@@ -1042,8 +1041,8 @@ render_public_nav('');
 
         <div class="pub-hero-trust">
           <span>🇫🇷 Hébergé en France</span>
-          <span>🔒 Conforme RGPD</span>
-          <span>⚡ Support &lt;24h</span>
+          <span>🔒 Respect du RGPD</span>
+          <span>⚡ Support sous 24 h ouvrées</span>
           <span>🏢 Édité par RBPS</span>
           <span>💚 Données sécurisées</span>
         </div>
@@ -1165,7 +1164,7 @@ render_public_nav('');
   <div class="pub-container">
     <div class="ak-anticonc">
       <div class="ak-anticonc-icon">💡</div>
-      <p>Contrairement aux outils limités à la collecte de dons ou aux simples tableurs, <strong>Assokit centralise la gestion complète de votre structure</strong> : contacts, adhérents, factures, projets, emails, relances et IA. Un seul outil, un seul abonnement, zéro paperasse.</p>
+      <p>Contrairement aux outils limités à la collecte de dons ou aux simples tableurs, <strong>Assokit centralise la gestion complète de votre structure</strong> : contacts, adhérents, factures, projets, emails, relances et IA. Un seul outil, sans engagement, zéro paperasse.</p>
     </div>
   </div>
   
@@ -1201,8 +1200,8 @@ render_public_nav('');
         <span class="pub-promise-num">01</span>
         <div class="pub-promise-ico">💸</div>
         <h3>Fini les impayés qui dorment</h3>
-        <p class="pub-promise-tagline">Relances automatiques · récupération sans effort · trésorerie au rendez-vous.</p>
-        <p>À J+15, J+30 puis J+45, vos clients ou adhérents reçoivent un email parfaitement rédigé, à votre nom. Vous voyez les paiements arriver. Le reste se fait tout seul, en arrière-plan.</p>
+        <p class="pub-promise-tagline">Relances automatiques avec la formule Pro · trésorerie mieux suivie.</p>
+        <p>Une fois les relances automatiques activées, vos clients ou adhérents en retard reçoivent jusqu’à trois relances graduées, à votre nom : un rappel courtois dès le lendemain de l’échéance, puis une relance ferme et une mise en demeure, jamais deux à moins de 7 jours d’écart. Vous voyez les paiements arriver.</p>
       </div>
 
       <!-- 2 — IA -->
@@ -1228,7 +1227,7 @@ render_public_nav('');
         <span class="pub-promise-num">04</span>
         <div class="pub-promise-ico">💬</div>
         <h3>Une équipe humaine derrière l'écran</h3>
-        <p class="pub-promise-tagline">Réponse en moins de 24h · pas de bot · vraies personnes.</p>
+        <p class="pub-promise-tagline">Réponse sous 24 h ouvrées · pas de bot · vraies personnes.</p>
         <p>Une équipe basée à Évry, joignable par email à tout moment. Pas de ticket qui se perd, pas de chatbot qui boucle. Quelqu'un lit votre message, comprend votre contexte, vous répond.</p>
       </div>
 
@@ -1237,8 +1236,8 @@ render_public_nav('');
         <span class="pub-promise-num">05</span>
         <div class="pub-promise-ico">🔒</div>
         <h3>Vos données restent les vôtres</h3>
-        <p class="pub-promise-tagline">Hébergement français · RGPD natif · zéro revente.</p>
-        <p>Vos données dorment dans des serveurs basés en France, chez O2switch. Aucune sortie hors UE, aucun partenaire commercial caché. Vous restez propriétaire de tout, à 100%, et exportable à tout moment.</p>
+        <p class="pub-promise-tagline">Hébergement français · respect du RGPD · zéro revente.</p>
+        <p>Vos données sont hébergées en France, chez O2switch. Seuls quelques sous-traitants nécessaires (l’IA, Google si vous le reliez) sont hors de l’Union européenne, avec les garanties du RGPD : voir notre <a href="/confidentialite">politique de confidentialité</a>. Aucune revente, aucun partenaire commercial caché. Vous restez propriétaire de tout, à 100 %, et exportable à tout moment.</p>
       </div>
 
       <!-- 6 — Évolutif -->
@@ -1246,17 +1245,17 @@ render_public_nav('');
         <span class="pub-promise-num">06</span>
         <div class="pub-promise-ico">📈</div>
         <h3>Un outil qui grandit avec vous</h3>
-        <p class="pub-promise-tagline">10 ou 2000 adhérents · 1 ou 50 projets · même outil.</p>
-        <p>Vous démarrez petit, vous grandissez tranquillement. Aucun palier qui vous oblige à migrer, aucune fonction bloquée derrière un mur. Le même Assokit vous accompagne du jour 1 au jour 1000.</p>
+        <p class="pub-promise-tagline">Essentiel, Pro, Équipe · vos données vous suivent.</p>
+        <p>Vous démarrez petit, vous grandissez tranquillement : de 100 à 2&nbsp;000 membres, vous changez de formule sans rien migrer ni ressaisir. Au-delà, ou pour un réseau, l’offre Sur-mesure prend le relais.</p>
       </div>
 
-      <!-- 7 — Marque & Domaine personnalisé -->
+      <!-- 7 — Prix clairs (l'ancienne promesse « domaine personnel » est retirée : fonction non livrée) -->
       <div class="pub-promise">
         <span class="pub-promise-num">07</span>
-        <div class="pub-promise-ico">🌐</div>
-        <h3>Votre marque, partout</h3>
-        <p class="pub-promise-tagline">Sous-domaine inclus · domaine perso en option à +<?= pub_h($addon_domain['per_month']) ?> · plateforme à votre image.</p>
-        <p>Vos adhérents accèdent à <strong>tonasso.assokit.fr</strong> avec votre logo et vos couleurs. Ajoutez votre propre domaine (<strong>adherents.tonasso.fr</strong>) et vos emails à votre nom pour <strong>+<?= pub_h($addon_domain['per_month']) ?> seulement</strong>.</p>
+        <div class="pub-promise-ico">💶</div>
+        <h3>Des prix clairs, sans engagement</h3>
+        <p class="pub-promise-tagline">Trois formules <?= pub_h($offer_from) ?> · essai gratuit de 14 jours · Sur-mesure sur devis.</p>
+        <p>Essentiel (<?= pub_h(ak_plan_price('ak-essentiel')['per_month']) ?>), Pro (<?= pub_h(ak_plan_price('assokit')['per_month']) ?>) ou Équipe (<?= pub_h(ak_plan_price('ak-equipe')['per_month']) ?>) : vous choisissez jusqu’où Assokit travaille à votre place, et vous changez de formule quand vous voulez. <?= pub_h(ak_vat_note()) ?> <a href="/tarifs" style="color:var(--c-emeraude-dark);font-weight:600;">Comparer les formules</a></p>
       </div>
 
     </div>
@@ -1270,9 +1269,9 @@ render_public_nav('');
 <section class="pub-section">
   <div class="pub-container">
     <div class="pub-section-head">
-      <span class="pub-section-eyebrow">Comptabilité analytique incluse</span>
-      <h2 class="pub-h2">Votre compta analytique, <em>incluse — sans comptable</em></h2>
-      <p class="pub-section-lead">La comptabilité analytique coûte ~900 €/an chez un comptable. Avec Assokit, elle est <strong>incluse dans l'abonnement</strong> — votre expert-comptable n'intervient plus que pour valider les comptes.</p>
+      <span class="pub-section-eyebrow">Comptabilité analytique</span>
+      <h2 class="pub-h2">Votre compta analytique, <em>sans module en plus</em></h2>
+      <p class="pub-section-lead">Externalisée, la comptabilité analytique peut coûter plusieurs centaines d’euros par an (estimation, selon le coût de votre prestataire). Avec Assokit, elle est <strong>incluse dès la formule Pro</strong>, bilans sans limite — votre expert-comptable n'intervient plus que pour valider les comptes.</p>
     </div>
     <div class="ake-compare">
       <article class="ake-card ake-card--sans">
@@ -1280,7 +1279,7 @@ render_public_nav('');
           <span class="ake-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg></span>
           <div><h3>Sans Assokit</h3><span>Compta analytique externalisée</span></div>
         </div>
-        <div class="ake-price"><b>~900&nbsp;€</b><em>/ an en moyenne</em></div>
+        <div class="ake-price"><b>~900&nbsp;€</b><em>/ an (estimation, selon le coût de votre prestataire)</em></div>
         <ul class="ake-list">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg> Prestation facturée chaque année</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg> Allers-retours, délais, ressaisie</li>
@@ -1292,18 +1291,18 @@ render_public_nav('');
         <span class="ake-tag">INCLUSE</span>
         <div class="ake-card__top">
           <span class="ake-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 4 12 14.01l-3-3"/></svg></span>
-          <div><h3>Avec Assokit</h3><span>Incluse dans l'abonnement</span></div>
+          <div><h3>Avec Assokit</h3><span>Incluse dès la formule Pro</span></div>
         </div>
-        <div class="ake-price"><b>Incluse</b><em><span class="ake-strike">~900&nbsp;€</span> dans votre abonnement</em></div>
+        <div class="ake-price"><b>Incluse</b><em>dans la formule Pro</em></div>
         <ul class="ake-list">
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Bilan analytique <strong>illimité</strong>, par projet &amp; poste</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Bilans analytiques <strong>sans limite</strong> dès Pro, par projet &amp; poste (Essentiel : 1 export au total)</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Mis à jour en temps réel, export PDF / Excel</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Votre expert-comptable valide en quelques clics</li>
         </ul>
       </article>
     </div>
     <div class="pub-text-center" style="margin-top:34px;">
-      <a class="pub-btn pub-btn-primary pub-btn-lg" href="/comptabilite-analytique" style="margin:4px 6px;">Économisez jusqu'à 900&nbsp;€/an <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="pub-btn pub-btn-primary pub-btn-lg" href="/comptabilite-analytique" style="margin:4px 6px;">Voir la compta analytique <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       <a class="pub-btn pub-btn-ghost pub-btn-lg" href="/tarifs" style="margin:4px 6px;">Voir les tarifs</a>
     </div>
   </div>
@@ -1397,7 +1396,7 @@ render_public_nav('');
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#D1FAE5;color:#059669;">📋</div>
         <h3>Facturation, devis & relances auto</h3>
-        <p>Devis avec signature, factures multi-lignes, <strong>relances automatiques J+15/30/45</strong>, factures récurrentes. <a href="/logiciel-facturation" style="color:var(--c-emeraude-dark);font-weight:600;">Le logiciel de facturation</a></p>
+        <p>Devis, factures multi-lignes, relance en un clic ; avec la formule Pro, <strong>relances automatiques</strong>, devis signés en ligne et factures récurrentes. <a href="/logiciel-facturation" style="color:var(--c-emeraude-dark);font-weight:600;">Le logiciel de facturation</a></p>
       </div>
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#F3E8FF;color:#7E22CE;">🤖</div>
@@ -1407,12 +1406,12 @@ render_public_nav('');
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#FEF3C7;color:#92400E;">📊</div>
         <h3>Tableau de bord intelligent</h3>
-        <p>KPIs en temps réel, graphiques, top clients, statistiques avancées par projet et par période.</p>
+        <p>KPIs en temps réel, graphiques, top clients, statistiques par projet et par période (prévisions de trésorerie avec la formule Pro).</p>
       </div>
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#E0F2FE;color:#0C4A6E;">👥</div>
         <h3>Adhérents & bénévoles</h3>
-        <p>Annuaire intelligent, rôles personnalisés, espaces dédiés, relances cotisations automatiques. <a href="/logiciel-adherents" style="color:var(--c-emeraude-dark);font-weight:600;">Gestion des adhérents</a> · <a href="/logiciel-cotisation-association" style="color:var(--c-emeraude-dark);font-weight:600;">des cotisations</a></p>
+        <p>Annuaire intelligent, rôles personnalisés, espaces dédiés, relances de cotisation en un clic (automatiques avec la formule Pro). <a href="/logiciel-adherents" style="color:var(--c-emeraude-dark);font-weight:600;">Gestion des adhérents</a> · <a href="/logiciel-cotisation-association" style="color:var(--c-emeraude-dark);font-weight:600;">des cotisations</a></p>
       </div>
       <div class="pub-feature">
         <div class="pub-feature-ico" style="background:#FCE7F3;color:#9D174D;">💰</div>
@@ -1477,7 +1476,7 @@ render_public_nav('');
       </details>
       <?php endforeach; ?>
     </div>
-    <p class="ak-faq-more">Une autre question ? <a href="/contact">Contactez-nous</a> — réponse sous 24 h.</p>
+    <p class="ak-faq-more">Une autre question ? <a href="/contact">Contactez-nous</a> — réponse sous 24 h ouvrées.</p>
   </div>
 </section>
 
@@ -1508,15 +1507,15 @@ render_public_nav('');
     <div class="ak-cta-card">
       <span class="ak-cta-eyebrow">✨ Essai gratuit · sans carte bancaire</span>
       <h2 class="ak-cta-title">Reprenez le contrôle de votre gestion. <em>Sans complexité.</em></h2>
-      <p class="ak-cta-lead">Essayez Assokit gratuitement pendant <strong>14 jours</strong> et découvrez comment votre association ou votre TPE peut gagner du temps dès la première semaine. Ensuite, si l’outil vous convient : <strong><?= pub_h($offer['label']) ?></strong>, tout inclus, sans engagement.</p>
+      <p class="ak-cta-lead">Essayez Assokit gratuitement pendant <strong>14 jours</strong> et découvrez comment votre association ou votre TPE peut gagner du temps dès la première semaine. Ensuite, si l’outil vous convient : trois formules <strong><?= pub_h($offer_from) ?></strong>, sans engagement.</p>
       <div class="ak-cta-actions">
         <a href="/signup" class="pub-btn pub-btn-primary pub-btn-lg">Démarrer l'essai gratuit →</a>
         <a href="/contact?demo=1" class="pub-btn pub-btn-ghost pub-btn-lg">Réserver une démo</a>
       </div>
       <div class="ak-cta-trust">
         <span>🇫🇷 Hébergé en France</span>
-        <span>🔒 Conforme RGPD</span>
-        <span>⚡ Support &lt;24h</span>
+        <span>🔒 Respect du RGPD</span>
+        <span>⚡ Support sous 24 h ouvrées</span>
         <span>💚 Sans engagement</span>
       </div>
     </div>

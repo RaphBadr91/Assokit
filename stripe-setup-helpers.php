@@ -9,8 +9,12 @@
  *      2026-10-29-stripe-souscription-pendant-essai.sql) ;
  *   2. clés API valides et du même mode, compte Stripe ;
  *   3. moyens de paiement disponibles (carte + Apple Pay / Google Pay, prélèvement SEPA) ;
- *   4. produit + prix mensuel HT de chaque formule payante (asso_plans.price_cents) ;
- *   5. produit + prix de l'add-on « Domaine personnalisé » ;
+ *   4. produit + prix mensuel HT (tax_behavior exclusive) de chaque formule vendue : Essentiel
+ *      (ak-essentiel), Pro (assokit), Équipe (ak-equipe) — asso_plans.price_cents, prix gardé dans
+ *      asso_plans.stripe_price_id_monthly. L'offre fondateur (masquée, même montant que Pro) est
+ *      prélevée au prix Stripe de Pro : aucun produit à part, jamais vendue ; Sur-mesure : aucun prix ;
+ *   5. option « Domaine personnel » : produit et prix créés seulement une fois la fonction livrée
+ *      (AK_CUSTOM_DOMAIN_LIVE) ; retirée de la vente d'ici là ;
  *   6. taux de TVA Stripe si la TVA est activée (ak_stripe_vat_tax_rate) ;
  *   7. point de terminaison webhook https://<site>/stripe-webhook, abonné exactement aux
  *      événements traités (AK_STRIPE_WEBHOOK_EVENTS), secret de signature gardé ;
@@ -338,13 +342,13 @@ if (!function_exists('ak_stripe_auto_setup')) {
             $plans = ak_stripe_paid_plans($pdo);
             if (!$plans) $all_ok = false;
             if (!$plans) {
-                $add('Formules', 'ko', 'Aucune formule payante (prix mensuel HT > 0) dans Assokit.', 'Renseignez le prix de la formule Assokit dans Pilotage › Plans tarifaires.');
+                $add('Formules', 'ko', 'Aucune formule payante (prix mensuel HT > 0) dans Assokit.', 'Renseignez le prix des formules Essentiel, Pro et Équipe dans Pilotage › Plans tarifaires (et lancez la migration 2026-11-09-grille-tarifaire.sql).');
             }
             foreach ($plans as $p) {
                 $slug = (string)$p['slug'];
                 $label = ak_plan_label($slug, $p['name'] ?? null);
                 $prod = ak_stripe_plan_product_id($slug);
-                $pr = ak_stripe_setup_product($pdo, $prod, $label, 'Abonnement mensuel Assokit — formule ' . $label);
+                $pr = ak_stripe_setup_product($pdo, $prod, 'Assokit ' . $label, 'Abonnement mensuel Assokit — formule ' . $label);
                 if (!$pr['ok']) {
                     $all_ok = false;
                     $add('Formule ' . $label, 'ko', 'Produit Stripe non créé : ' . $pr['error'] . '.', 'Réessayez ; si l’erreur revient, vérifiez les droits de la clé.');
@@ -361,23 +365,58 @@ if (!function_exists('ak_stripe_auto_setup')) {
                 $add('Formule ' . $label, 'ok', ak_format_price_cents($amount) . ' HT par mois, en euros (prix ' . $price['id'] . ($price['created'] ? ', créé' : ', déjà en place') . ').'
                     . ($price['archived'] ? ' Ancien prix ' . implode(', ', $price['archived']) . ' archivé : les associations déjà abonnées gardent leur montant, les nouvelles paient le nouveau.' : ''));
             }
+            // Offre fondateur (masquée, clients de la première heure) : prélevée au prix Stripe de la formule vendue
+            // de MÊME montant (Pro, 29,99 € HT). Elle n'est jamais vendue (is_visible = 0 : refusée par
+            // stripe-create-payment-intent.php) ; le prix ne sert qu'aux abonnements par carte rattachés à cette
+            // offre, et la synchronisation garde « fondateur » à prix égal (ak_stripe_sub_items).
+            $linked = [];
+            try {
+                $fq = $pdo->query("SELECT * FROM asso_plans WHERE slug = 'fondateur' LIMIT 1");
+                $fond = $fq ? $fq->fetch(PDO::FETCH_ASSOC) : null;
+                if ($fond && (int)$fond['price_cents'] > 0) {
+                    $twin = null;
+                    $refreshed = $pdo->query("SELECT id, slug, name, price_cents, stripe_price_id_monthly FROM asso_plans WHERE COALESCE(stripe_price_id_monthly, '') <> ''")->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($refreshed as $r) {
+                        if (in_array((int)$r['id'], array_map(fn($p) => (int)$p['id'], $plans), true) && (int)$r['price_cents'] === (int)$fond['price_cents']) {
+                            if (!$twin || $r['slug'] === 'assokit') $twin = $r;
+                        }
+                    }
+                    if ($twin) {
+                        $pdo->prepare("UPDATE asso_plans SET stripe_price_id_monthly = ? WHERE id = ?")->execute([$twin['stripe_price_id_monthly'], (int)$fond['id']]);
+                        $linked[] = (int)$fond['id'];
+                        $add('Offre fondateur', 'info', 'Formule masquée, jamais vendue : les abonnements par carte rattachés à l’offre fondateur sont prélevés au prix de '
+                            . ak_plan_label($twin['slug'], $twin['name'] ?? null) . ' (' . ak_format_price_cents((int)$fond['price_cents']) . ' HT par mois, prix ' . $twin['stripe_price_id_monthly'] . ').');
+                    } else {
+                        $add('Offre fondateur', 'warn', 'Aucune formule vendue au même montant (' . ak_format_price_cents((int)$fond['price_cents']) . ' HT) : un abonnement par carte rattaché à l’offre fondateur ne serait plus suivi par Stripe.',
+                             'Aucune association ne paie l’offre fondateur par carte aujourd’hui (paiement sur facture). Si cela change, alignez le prix de l’offre fondateur sur celui de Pro dans Pilotage › Plans tarifaires, puis relancez.');
+                    }
+                }
+            } catch (Throwable $e) {
+                error_log('[stripe-setup] offre fondateur : ' . get_class($e) . ' ' . $e->getMessage());
+            }
             // Les autres formules (Démarrage, Essai, Sur-mesure) ne sont jamais vendues par carte : aucun prix Stripe
-            $paid_ids = array_map(fn($p) => (int)$p['id'], $plans);
+            $paid_ids = array_merge(array_map(fn($p) => (int)$p['id'], $plans), $linked);
             $q = $pdo->query("SELECT id FROM asso_plans WHERE COALESCE(stripe_price_id_monthly, '') <> ''");
             foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $pid) {
                 if (!in_array((int)$pid, $paid_ids, true)) $pdo->prepare("UPDATE asso_plans SET stripe_price_id_monthly = NULL WHERE id = ?")->execute([(int)$pid]);
             }
 
-            // 5. Add-on Domaine personnalisé
-            $pr = ak_stripe_setup_product($pdo, AK_STRIPE_ADDON_PRODUCT_ID, 'Domaine personnalisé', 'Option Assokit : votre propre nom de domaine (adherents.votre-asso.fr)');
-            $price = $pr['ok'] ? ak_stripe_setup_price($pdo, AK_STRIPE_ADDON_PRODUCT_ID, AK_STRIPE_ADDON_PRODUCT_ID . '_mensuel', AK_ADDON_DOMAIN_HT_CENTS,
-                'Domaine personnalisé — ' . ak_format_price_cents(AK_ADDON_DOMAIN_HT_CENTS) . ' HT / mois', ak_stripe_config_get($pdo, 'addon_domain_price_id', null))
-                : ['ok' => false, 'error' => $pr['error']];
-            if ($price['ok']) {
-                ak_stripe_config_set($pdo, 'addon_domain_price_id', $price['id']);
-                $add('Option Domaine personnalisé', 'ok', ak_format_price_cents(AK_ADDON_DOMAIN_HT_CENTS) . ' HT par mois (prix ' . $price['id'] . ').');
+            // 5. Option Domaine personnel : seulement une fois la fonction livrée (le domaine personnel n'est
+            // aujourd'hui qu'une ébauche). Un prix déjà enregistré reste en place pour les éventuels abonnements
+            // qui le portent (rien n'est retiré chez Stripe).
+            if (defined('AK_CUSTOM_DOMAIN_LIVE') && AK_CUSTOM_DOMAIN_LIVE) {
+                $pr = ak_stripe_setup_product($pdo, AK_STRIPE_ADDON_PRODUCT_ID, 'Domaine personnel', 'Option Assokit : votre propre nom de domaine');
+                $price = $pr['ok'] ? ak_stripe_setup_price($pdo, AK_STRIPE_ADDON_PRODUCT_ID, AK_STRIPE_ADDON_PRODUCT_ID . '_mensuel', AK_ADDON_DOMAIN_HT_CENTS,
+                    'Domaine personnel — ' . ak_format_price_cents(AK_ADDON_DOMAIN_HT_CENTS) . ' HT / mois', ak_stripe_config_get($pdo, 'addon_domain_price_id', null))
+                    : ['ok' => false, 'error' => $pr['error']];
+                if ($price['ok']) {
+                    ak_stripe_config_set($pdo, 'addon_domain_price_id', $price['id']);
+                    $add('Option Domaine personnel', 'ok', ak_format_price_cents(AK_ADDON_DOMAIN_HT_CENTS) . ' HT par mois (prix ' . $price['id'] . '), proposée sur Pro, comprise dans les formules qui l’incluent, jamais sur Essentiel.');
+                } else {
+                    $add('Option Domaine personnel', 'warn', 'Non créée : ' . $price['error'] . '.', 'Les abonnements fonctionnent sans ; réessayez plus tard pour proposer l’option.');
+                }
             } else {
-                $add('Option Domaine personnalisé', 'warn', 'Non créée : ' . $price['error'] . '.', 'Les abonnements fonctionnent sans ; réessayez plus tard pour proposer l’option.');
+                $add('Option Domaine personnel', 'info', 'Retirée de la vente tant que la fonction n’est pas livrée : aucun prix créé, rien n’est proposé aux associations.');
             }
 
             // 6. TVA

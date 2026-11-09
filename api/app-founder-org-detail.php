@@ -92,6 +92,12 @@ try {
     $ps = fd_org_plan($pdo, $id);
     $plans = fd_plan_choices($pdo, $ps['plan_id']);
     $known = in_array($ps['plan_slug'], array_column($plans, 'slug'), true);
+    // Résumé de la formule (limites, compteurs du mois, garantie de l'offre fondateur) : grille de novembre 2026
+    $plan_card = null;
+    try {
+        require_once __DIR__ . '/_app-plan.php';
+        $plan_card = app_plan_card($pdo, $id, true);
+    } catch (Throwable $e) { $plan_card = null; }
 
     /* ---------------- Demande d'inscription (public_signups) ---------------- */
     $sig = [];
@@ -313,6 +319,7 @@ try {
         'activity' => $activity,
         'members'  => $members,
         'plans'    => $plans,
+        'plan_card' => $plan_card,   // null : fondations absentes ou formule illisible
         'can_note' => $hasNote,
         'can_reset_2fa' => $is_founder,   // bouton « Réinitialiser la 2FA » d'un membre (Fondateur)
     ], JSON_UNESCAPED_UNICODE);

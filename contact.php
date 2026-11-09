@@ -19,8 +19,8 @@ $breadcrumb = build_breadcrumb_jsonld([
 ]);
 
 render_public_head([
-    'title'       => 'Contact · On vous répond en moins de 24h',
-    'description' => 'Une question, une démo, un partenariat ? Contactez l\'équipe Assokit. Réponse en moins de 24h, par de vrais humains.',
+    'title'       => 'Contact · On vous répond sous 24 h ouvrées',
+    'description' => 'Une question, une démo, un partenariat ? Contactez l\'équipe Assokit. Réponse sous 24 h ouvrées, par de vrais humains.',
     'path'        => '/contact',
     'schema_jsonld' => [$breadcrumb],
 ]);
@@ -53,8 +53,10 @@ $ct_str = static fn($v): string => is_string($v) ? trim($v) : '';
 $prefill_subject_key = $ct_str($_GET['subject'] ?? '');
 // Le plan est recopié dans l'objet des e-mails, y compris l'accusé de réception
 // envoyé à l'adresse saisie : seuls les plans connus sont acceptés, sous leur nom.
-// Offre publique : Essai PRO, Assokit, Sur-mesure (Démarrage n'est plus proposée)
-$ct_plans = ['pro-essai' => 'Essai PRO', 'assokit' => 'Assokit', 'sur-mesure' => 'Sur-mesure'];
+// Offre publique (grille 2026) : Essai Pro, Essentiel, Pro (slug assokit), Équipe, Sur-mesure,
+// et les collectivités (bouton « Collectivités : nous contacter » de /tarifs, traité comme un devis)
+$ct_plans = ['pro-essai' => 'Essai Pro', 'ak-essentiel' => 'Essentiel', 'assokit' => 'Pro', 'ak-equipe' => 'Équipe',
+             'sur-mesure' => 'Sur-mesure', 'collectivite' => 'Sur-mesure (collectivité)'];
 $prefill_plan = $ct_str($_GET['plan'] ?? '');
 if (!isset($ct_plans[$prefill_plan]) || $ct_in_app) $prefill_plan = '';   // dans l'app : aucune offre
 
@@ -64,7 +66,7 @@ if (isset($subjects_list[$prefill_subject_key])) {
 }
 
 // Cas spécial : si plan précisé, on force "demo" ou "quote"
-if ($prefill_plan === 'sur-mesure') {
+if ($prefill_plan === 'sur-mesure' || $prefill_plan === 'collectivite') {
     $selected_subject_key = 'quote';
 } elseif ($prefill_plan && $selected_subject_key === '') {
     $selected_subject_key = 'demo';
@@ -121,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($hp_website !== '') {
         // Honeypot rempli = bot : faux succès, aucun envoi
         $form_status = 'success';
-        $form_message = 'Merci ! Votre message a bien été envoyé. On vous répond en moins de 24h.';
+        $form_message = 'Merci ! Votre message a bien été envoyé. On vous répond sous 24 h ouvrées.';
     } elseif (!isset($subjects_list[$subject_key])) {
         // Objet absent (cartes non cliquées) ou forgé
         $form_status = 'error';
@@ -243,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($saved || $notified) {
             $form_status = 'success';
-            $form_message = 'Merci ! Votre message a bien été envoyé. On vous répond en moins de 24h.';
+            $form_message = 'Merci ! Votre message a bien été envoyé. On vous répond sous 24 h ouvrées.';
             // Sauvegarder l'email pour l'afficher dans le succès
             $sent_email = $email;
         } else {
@@ -267,7 +269,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <span class="pub-eyebrow">💬 On vous répond toujours</span>
     <h1 class="pub-h1" style="max-width:780px;">Une équipe humaine, <em>derrière l'écran</em>.</h1>
     <p class="pub-tagline" style="max-width:680px;">
-      <?= $ct_in_app ? 'Démo, question, partenariat…' : 'Démo, question, partenariat, devis sur-mesure…' ?> <strong>Pas de bot, pas de FAQ qui tourne en rond.</strong> On vous répond personnellement, en moins de 24h.
+      <?= $ct_in_app ? 'Démo, question, partenariat…' : 'Démo, question, partenariat, devis sur-mesure…' ?> <strong>Pas de bot, pas de FAQ qui tourne en rond.</strong> On vous répond personnellement, sous 24 h ouvrées.
     </p>
   </div>
 </section>
@@ -286,7 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="contact-success-icon">✨</div>
             <h2>Message envoyé avec succès !</h2>
             <p><?= htmlspecialchars($form_message) ?></p>
-            <p class="contact-success-email">Vous recevrez une réponse à <strong><?= htmlspecialchars($sent_email ?? '') ?></strong> en moins de 24h.</p>
+            <p class="contact-success-email">Vous recevrez une réponse à <strong><?= htmlspecialchars($sent_email ?? '') ?></strong> sous 24 h ouvrées.</p>
             <a href="/" class="pub-btn pub-btn-primary" style="margin-top:18px;">← Retour à l'accueil</a>
           </div>
         <?php else: ?>
@@ -296,9 +298,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <h2 class="contact-form-title">Écrivez-nous</h2>
             <p class="contact-form-subtitle">Décrivez votre besoin, nous reviendrons rapidement vers vous.</p>
-            <?php if ($prefill_plan === 'sur-mesure'): ?>
+            <?php if ($prefill_plan === 'sur-mesure' || $prefill_plan === 'collectivite'): ?>
               <p class="contact-form-subtitle" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 14px;color:#065F46;">
                 <strong>Offre Sur-mesure</strong> : réseaux, fédérations, grandes structures, collectivités. Indiquez votre téléphone et quelques mots sur votre structure : nous vous rappelons pour construire votre devis.
+              </p>
+            <?php elseif ($prefill_plan === 'ak-equipe'): ?>
+              <p class="contact-form-subtitle" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 14px;color:#065F46;">
+                <strong>Formule Équipe</strong> : dites-nous combien de personnes gèrent avec vous et combien de membres compte votre structure ; un conseiller vous répond.
               </p>
             <?php endif; ?>
 

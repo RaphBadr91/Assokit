@@ -193,7 +193,8 @@ if (!function_exists('fd_price_text')) {
 if (!function_exists('fd_plan_choices')) {
     /**
      * Plans proposés au Fondateur pour changer la formule d'une association : plans visibles,
-     * plan d'essai (même masqué) et plan actuel de l'association (même masqué).
+     * plan d'essai (même masqué), plan actuel de l'association (même masqué), et les formules
+     * masquées attribuées à la main : offre fondateur et lignes « sur-mesure-<client> » (sur devis).
      */
     function fd_plan_choices(PDO $pdo, ?int $current_plan_id = null): array {
         $cols = ak_db_columns($pdo, 'asso_plans');
@@ -208,6 +209,8 @@ if (!function_exists('fd_plan_choices')) {
             $where[] = "is_visible = 1";
             $where[] = $has_trial ? "is_trial = 1" : "slug = 'pro-essai'";
             if ($current_plan_id) $where[] = "id = " . (int) $current_plan_id;
+            $where[] = "slug = 'fondateur'";
+            if (isset($cols['is_custom_quote'])) $where[] = "(COALESCE(is_custom_quote, 0) = 1 AND slug LIKE 'sur-mesure%')";
         }
         $order = $has_trial ? "is_trial ASC, " : "";
         $order .= isset($cols['display_order']) ? "display_order ASC, price_cents ASC, id ASC" : "price_cents ASC, id ASC";
@@ -226,6 +229,7 @@ if (!function_exists('fd_plan_choices')) {
                 'price_text'  => fd_price_text($p),
                 'is_trial'    => !empty($p['is_trial']),
                 'is_visible'  => !empty($p['is_visible']),
+                'is_custom_quote' => !empty($p['is_custom_quote']),
             ];
         }
         return $out;

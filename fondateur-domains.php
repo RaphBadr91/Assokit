@@ -57,7 +57,7 @@ render_sidebar('fondateur-domains');
   <div class="main-head" style="margin-bottom:24px;">
     <div>
       <h1 style="margin:0 0 4px;">🌐 Gestion des domaines</h1>
-      <p style="color:#64748B;margin:0;">Sous-domaines Assokit + domaines personnalisés clients (white-label)</p>
+      <p style="color:#64748B;margin:0;">Sous-domaines Assokit et domaines personnalisés clients : pas encore disponible (phase 1)</p>
     </div>
   </div>
 

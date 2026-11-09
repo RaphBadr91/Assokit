@@ -50,6 +50,7 @@ echo "✅ Factures générées : {$stats['generated']}\n";
 echo "📧 Envoyées au client (envoi automatique) : " . (int)($stats['sent'] ?? 0) . "\n";
 echo "🔔 Avis envoyés aux admins : " . (int)($stats['notified'] ?? 0) . "\n";
 echo "❌ Échecs : {$stats['failed']}\n";
+echo "🔒 Sautées (formule sans factures récurrentes) : " . (int)($stats['skipped_plan'] ?? 0) . "\n";
 echo "⏱  Durée : {$elapsed}s\n";
 
 if (!empty($stats['invoices'])) {

@@ -32,7 +32,10 @@ if (!$rec) { header('Location: /mon-asso-recurrences'); exit; }
 $new_status = $rec['status'];
 switch ($action) {
     case 'pause':  $new_status = 'paused'; break;
-    case 'resume': $new_status = 'active'; break;
+    case 'resume':
+        // Reprendre une récurrence : formule avec factures récurrentes. Suspendre ou arrêter reste permis.
+        if (!ak_recurrence_plan_ok($pdo, $org_id)) ak_recurrence_plan_refuse($pdo, $org_id);
+        $new_status = 'active'; break;
     case 'cancel': $new_status = 'cancelled'; break;
     default: header('Location: /mon-asso-recurrences'); exit;
 }

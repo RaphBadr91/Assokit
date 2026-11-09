@@ -5,6 +5,17 @@ require_once __DIR__ . '/includes-public.php';
 // l'app, ce qui laissait « décrites sur la page  : ») : Apple 3.1.1 / 3.1.3 f, paiements Google Play.
 require_once __DIR__ . '/app-context.php';
 $cgu_in_app = ak_billing_hidden();
+// Grille 2026 : prix HT et volumes lus comme sur /tarifs (includes-pricing.php, dernier relevé en base)
+require_once __DIR__ . '/includes-pricing.php';
+$cgu_grid = ak_pricing_state();
+$cgu_vol = function (string $slug) use ($cgu_grid): string {
+    $p = $cgu_grid['plans'][$slug];
+    $f = fn($n) => number_format((int)$n, 0, ',', "\u{00A0}");
+    return ($p['adherents'] === null ? 'membres sans plafond' : 'jusqu’à ' . $f($p['adherents']) . ' membres (bureau compris)')
+        . ', ' . ($p['managers'] === null ? 'gestionnaires sans plafond' : $f($p['managers']) . ' gestionnaires')
+        . ', ' . ($p['ai'] === null ? 'crédits IA fixés au devis' : $f($p['ai']) . ' crédits IA par mois')
+        . ' et ' . ($p['emails'] === null ? 'e-mails fixés au devis' : $f($p['emails']) . ' e-mails par mois');
+};
 
 render_public_head([
     'title'       => 'Conditions générales d\'utilisation et de vente',
@@ -18,7 +29,7 @@ render_public_nav('');
     <div class="pub-breadcrumb"><a href="/">Accueil</a><span class="pub-breadcrumb-sep">›</span><strong style="color:var(--c-encre);">CGU / CGV</strong></div>
     <h1 class="pub-h1" style="font-size:36px;">Conditions générales</h1>
     <?php /* Date de version du texte (dernière modification) : à changer seulement quand le texte change */ ?>
-    <p class="pub-tagline">Version du 29/10/2026</p>
+    <p class="pub-tagline">Version du 09/11/2026</p>
   </div>
 </section>
 <section class="pub-section" style="padding-top:0;">
@@ -44,17 +55,22 @@ render_public_nav('');
       <p>Les conditions commerciales du Service (formule, durée, prix) sont convenues avec la structure (association, entreprise) lors de sa souscription, et décrites sur notre site, dans la version complète de ces conditions générales. Toute modification de prix est annoncée par e-mail au moins 30 jours avant son application ; la structure qui la refuse peut résilier avant son entrée en vigueur. En cas de défaut de paiement, l'accès peut être suspendu après un préavis de 15 jours.</p>
 <?php else: ?>
       <h2 id="paiement">4. Formules, essai, tarifs et paiement</h2>
-      <p>Le Service est proposé selon trois formules, décrites sur la page <a href="/tarifs">Tarifs</a> :</p>
+      <p>Le Service est proposé selon quatre formules publiques, décrites sur la page <a href="/tarifs">Tarifs</a>, et un essai gratuit :</p>
       <ul>
-        <li><strong>Essai PRO</strong> : essai gratuit de 14 jours, sans carte bancaire, donnant accès aux fonctionnalités de la formule Assokit (les envois d’e-mails et les imports sont plafonnés pendant l’essai). L’essai ne se transforme jamais en abonnement payant sans action de l’Utilisateur : à son terme, sans souscription, aucun montant n’est prélevé, les données sont conservées et l’espace passe en accès limité (fonctionnalités restreintes) jusqu’à la souscription d’une formule. L’Utilisateur qui souscrit pendant l’essai garde tous ses jours d’essai (voir ci-dessous).</li>
-        <li><strong>Assokit</strong> : abonnement mensuel au prix indiqué sur la page Tarifs.</li>
-        <li><strong>Sur-mesure</strong> : offre sur devis pour les réseaux, fédérations, grandes structures et collectivités, régie par les conditions particulières du devis accepté.</li>
+        <li><strong>Essentiel</strong> : <?= pub_h(ak_plan_price('ak-essentiel')['per_month']) ?>, <?= pub_h($cgu_vol('ak-essentiel')) ?>.</li>
+        <li><strong>Pro</strong> : <?= pub_h(ak_plan_price('assokit')['per_month']) ?>, <?= pub_h($cgu_vol('assokit')) ?>.</li>
+        <li><strong>Équipe</strong> : <?= pub_h(ak_plan_price('ak-equipe')['per_month']) ?>, <?= pub_h($cgu_vol('ak-equipe')) ?> ; elle inclut aussi une séance de prise en main d’une heure en visio et la reprise d’un fichier d’adhérents (tableur CSV ou Excel, une fois, à demander dans les 3 mois suivant la souscription).</li>
+        <li><strong>Sur-mesure</strong> : offre sur devis pour les réseaux, fédérations, grandes structures et collectivités, régie par les conditions particulières du devis accepté (volumes, prix et modalités de paiement).</li>
+        <li><strong>Essai Pro</strong> : essai gratuit de 14 jours, sans carte bancaire, donnant accès aux fonctions de la formule Pro (pendant l’essai : 100 crédits IA, envois d’e-mails et imports plafonnés). Les fonctions et les volumes propres à la formule Équipe ne font pas partie de l’essai. L’essai ne se transforme jamais en abonnement payant sans action de l’Utilisateur : à son terme, sans souscription, aucun montant n’est prélevé, les données sont conservées et l’espace passe en <strong>accès limité</strong> jusqu’à la souscription d’une formule. L’Utilisateur qui souscrit pendant l’essai garde tous ses jours d’essai (voir ci-dessous).</li>
       </ul>
-      <p>Les prix sont exprimés <strong>hors taxes (HT)</strong> ; la TVA au taux en vigueur s’y ajoute, sauf mention « TVA non applicable, art. 293 B du CGI ». Le montant toutes taxes comprises (TTC) est indiqué avant tout paiement.</p>
-      <p>L’abonnement Assokit est <strong>mensuel</strong> (il n’existe pas de formule annuelle). Il est payable d’avance chaque mois, via notre partenaire de paiement sécurisé (Stripe), par <strong>carte bancaire</strong>, <strong>Apple Pay</strong>, <strong>Google Pay</strong> ou <strong>prélèvement SEPA</strong>, ou, sur accord, sur facture par virement. Le prélèvement SEPA repose sur un mandat donné lors de la souscription ; chaque prélèvement est annoncé par e-mail au moins 2 jours avant sa date, et sa confirmation par la banque peut prendre quelques jours ouvrés.</p>
+      <p>Le contenu de chaque formule (fonctions et volumes) est décrit dans l’<a href="#annexe-formules">annexe des présentes</a>, datée ; la page <a href="/tarifs">Tarifs</a> le présente de façon commerciale. Une fonction ajoutée ensuite à une formule s’ajoute à cette annexe ; toute réduction suit la règle des 30 jours ci-dessous. <strong>1 crédit IA</strong> = 1 texte rédigé, 1 réponse du copilote ou 1 justificatif lu ; les tâches de fond (tri de la boîte mail, priorités du jour préparées automatiquement, coach hebdomadaire) ne consomment pas de crédit. Sont comptés dans les <strong>e-mails</strong> : diffusions, invitations, convocations d’AG et relances ; les factures et devis envoyés un par un ne sont jamais comptés. Les compteurs mensuels repartent à zéro le 1er de chaque mois. Une offre réservée à certains clients (par exemple une offre de fidélité) est régie par les conditions communiquées par e-mail à ces clients, et à défaut par les présentes.</p>
+      <p><strong>Accès limité</strong> : à la fin d’un essai non suivi d’une souscription, après la résiliation de l’abonnement ou après un impayé non régularisé, l’espace passe en accès limité ; les données restent conservées et exportables, et l’Utilisateur peut choisir une formule à tout moment.<?php if (defined('AK_DEMARRAGE_READONLY_LIVE') && AK_DEMARRAGE_READONLY_LIVE): ?> En accès limité, l’espace est consultable et exportable, mais rien ne peut plus y être créé, modifié ni envoyé ; les pages de cotisation déjà diffusées restent ouvertes 60 jours après le passage en accès limité.<?php endif; ?></p>
+      <p>Les prix sont exprimés <strong>hors taxes (HT)</strong>. <?= pub_h(ak_vat_note()) ?> Si la TVA devient applicable, son taux en vigueur s’ajoute au prix HT et le montant toutes taxes comprises (TTC) est indiqué avant tout paiement.</p>
+      <p><strong>Changement de formule</strong> : l’Utilisateur peut changer de formule à tout moment, depuis son espace lorsque cette fonction y est proposée, ou sur simple demande au support. Une montée vers une formule supérieure prend effet immédiatement (au prorata en cas de paiement par carte) ; une baisse prend effet à la fin de la période mensuelle déjà payée. Une baisse de formule, ou le choix d’une formule à la fin de l’essai, n’est possible que si les membres (bureau compris) et les gestionnaires de l’Utilisateur tiennent dans les limites de cette formule ; rien n’est jamais supprimé.</p>
+      <p>L’abonnement est <strong>mensuel</strong> (il n’existe pas de formule annuelle). Il est payable d’avance chaque mois, via notre partenaire de paiement sécurisé (Stripe), par <strong>carte bancaire</strong>, <strong>Apple Pay</strong>, <strong>Google Pay</strong> ou <strong>prélèvement SEPA</strong>, ou, sur accord, sur facture par virement. Le prélèvement SEPA repose sur un mandat donné lors de la souscription ; chaque prélèvement est annoncé par e-mail au moins 2 jours avant sa date, et sa confirmation par la banque peut prendre quelques jours ouvrés.</p>
       <p>Souscrire pendant l’essai gratuit <strong>ne l’interrompt pas</strong> : l’Utilisateur garde tous ses jours d’essai. Le moyen de paiement (carte bancaire, Apple Pay, Google Pay ou mandat de prélèvement SEPA) est enregistré le jour de la souscription, <strong>sans aucun prélèvement</strong> ; le premier mois est prélevé <strong>automatiquement le jour de la fin de l’essai</strong>, date à laquelle l’abonnement commence. Un e-mail rappelle cette date et ce montant trois jours avant (pour une souscription faite moins de trois jours avant la fin de l’essai, l’e-mail de confirmation de la souscription en tient lieu). Jusqu’à cette date, l’Utilisateur peut <strong>annuler sa souscription sans frais</strong> (rubrique « Mon abonnement ») : aucun montant n’est alors prélevé et l’essai se termine normalement à sa date. Lorsque l’essai se termine dans moins de 48 heures, ou une fois l’essai terminé, le premier mois est prélevé le jour de la souscription.</p>
       <p>L’abonnement se renouvelle ensuite automatiquement <strong>chaque mois à la date anniversaire</strong> du premier prélèvement, jusqu’à sa résiliation. Les factures sont mises à disposition dans l’espace de l’Utilisateur (rubrique « Mon abonnement »).</p>
-      <p>Toute modification des prix est annoncée par e-mail au moins 30 jours avant son application à un abonnement en cours ; l’Utilisateur qui la refuse peut résilier avant son entrée en vigueur.</p>
+      <p>Toute hausse de prix, comme toute réduction des fonctions ou des volumes d’une formule, est annoncée par e-mail au moins <strong>30 jours</strong> avant son application à un abonnement en cours ; l’Utilisateur qui la refuse peut résilier avant son entrée en vigueur.</p>
       <p><strong>Paiement refusé</strong> (y compris le premier prélèvement à la fin de l’essai) : l’Utilisateur est prévenu par e-mail et dispose de <strong>15 jours</strong> pour régulariser (mise à jour de la carte ou règlement de la facture), pendant lesquels l’accès est maintenu. Sans régularisation à l’issue de ce délai, certaines fonctionnalités (Assistant IA, diffusion d’e-mails) sont bloquées ; si les nouvelles tentatives de prélèvement échouent aussi, l’abonnement est arrêté et le compte passe en accès limité, ses données restant conservées. L’Utilisateur en est informé par e-mail et peut reprendre un abonnement à tout moment.</p>
       <p>Le Service est réservé aux structures (associations, entreprises, indépendants) qui l’utilisent pour leur organisation ; il n’est pas destiné aux consommateurs. Le droit de rétractation prévu pour les consommateurs (art. L221-18 du Code de la consommation) ne s’applique donc pas ; l’essai gratuit de 14 jours permet d’évaluer le Service avant tout paiement.</p>
 <?php endif; ?>
@@ -131,6 +147,17 @@ render_public_nav('');
 
       <h2>14. Contact</h2>
       <p>Pour toute question : <a href="mailto:contact@assokit.fr">contact@assokit.fr</a></p>
+<?php if (!$cgu_in_app): ?>
+      <h2 id="annexe-formules">Annexe — Contenu des formules (grille en vigueur au 09/11/2026)</h2>
+      <p>Cette annexe fait partie des présentes conditions. Elle décrit ce que comprend chaque formule à la date de la présente version ; elle n’est modifiée qu’avec elle (§ 12).</p>
+      <ul>
+        <li><strong>Toutes les formules payantes</strong> : adhérents, cotisations et dons ; factures et devis en nombre illimité, au format Factur-X (raccordement à une plateforme agréée en préparation) ; comptabilité, bilans et export FEC ; assemblées générales (convocation, vote, procès-verbal, émargement par QR code), projets, agenda et subventions ; rédaction de textes par l’IA dans la limite des crédits de la formule ; relance manuelle en un clic ; application mobile ; support par e-mail sous 24 h ouvrées.</li>
+        <li><strong>Essentiel</strong> : ce qui précède, <?= pub_h($cgu_vol('ak-essentiel')) ?> ; un export de bilan analytique au total.</li>
+        <li><strong>Pro</strong> : tout Essentiel, plus les relances automatiques (cotisations et impayés) et les factures récurrentes ; les devis signés en ligne (signature simple, horodatée) ; le copilote IA (priorités du jour des gestionnaires, questions sur la structure, assistant de projet, lecture des justificatifs) ; la boîte Gmail intégrée, triée par règles, avec des brouillons de réponse rédigés par l’IA ; les prévisions de trésorerie et la comptabilité analytique sans limite ; <?= pub_h($cgu_vol('assokit')) ?>.</li>
+        <li><strong>Équipe</strong> : tout Pro, plus les priorités du jour proposées par l’IA à chaque membre et le tri de la boîte mail par l’IA ; la boîte mail partagée (attribution des conversations) ; le planning d’équipe, les absences et la prospection partagée ; la détection automatique des anomalies dans les comptes ; le journal d’activité de l’équipe ; le support prioritaire (demandes traitées en tête de file, avec le même délai de réponse de 24 h ouvrées) ; une séance de prise en main d’une heure en visio et la reprise d’un fichier d’adhérents (tableur CSV ou Excel, une fois, à demander dans les 3 mois suivant la souscription) ; <?= pub_h($cgu_vol('ak-equipe')) ?>.</li>
+        <li><strong>Sur-mesure</strong> : tout Équipe, sans plafond de membres ni de gestionnaires, avec les volumes, les prestations et le prix fixés au devis accepté.</li>
+      </ul>
+<?php endif; ?>
     </article>
   </div>
 </section>

@@ -268,7 +268,7 @@ render_sidebar('fondateur-subscriptions');
   <div class="page-head" style="margin-bottom:24px;">
     <div>
       <h1 style="margin:0 0 4px;">📊 Abonnements actifs</h1>
-      <p style="color:#64748b;margin:0;">Gérer les plans des <?= (int)$total_rows ?> organisation<?= $total_rows > 1 ? 's' : '' ?><?= $total_rows > count($rows) ? ' (les ' . count($rows) . ' plus récentes affichées)' : '' ?> · un essai PRO est gratuit (0 €) jusqu’à sa conversion</p>
+      <p style="color:#64748b;margin:0;">Gérer les plans des <?= (int)$total_rows ?> organisation<?= $total_rows > 1 ? 's' : '' ?><?= $total_rows > count($rows) ? ' (les ' . count($rows) . ' plus récentes affichées)' : '' ?> · un essai Pro est gratuit (0 €) jusqu’à sa conversion</p>
     </div>
     <?php if (($user['role'] ?? '') === 'founder' || !empty($user['is_founder'])): ?>
     <a href="/fondateur-plans" class="btn">⚙️ Gérer les plans</a>

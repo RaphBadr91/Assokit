@@ -36,7 +36,18 @@ try {
         }
     } catch (Throwable $e) {}
 
-    echo json_encode(['ok' => true, 'allowed' => true, 'report' => $report], JSON_UNESCAPED_UNICODE);
+    // Accès limité (formule Démarrage) : le dernier rapport reste lisible, mais aucun nouveau rapport
+    // (cron-coach-ia.php coupé, génération refusée par api/_app-write-boot.php). Message neutre.
+    $can_generate = true; $notice = null;
+    try {
+        require_once __DIR__ . '/_app-plan.php';
+        if (app_plan_readonly($pdo, $org_id, $user)) {
+            $can_generate = false;
+            $notice = app_plan_readonly_message() . ' Le coach IA ne prépare plus de nouveau rapport.';
+        }
+    } catch (Throwable $e) {}
+
+    echo json_encode(['ok' => true, 'allowed' => true, 'report' => $report, 'can_generate' => $can_generate, 'notice' => $notice], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-coach] ' . $e->getMessage());
     http_response_code(500);

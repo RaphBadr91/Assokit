@@ -34,6 +34,16 @@ if ($org_id <= 0) ak_cop_fail(403, 'no_org', 'Accès non autorisé.');
 require_once __DIR__ . '/finance-permissions.php';
 if (!ak_copilote_allowed($user)) ak_cop_fail(403, 'forbidden', 'Accès non autorisé.');
 
+// Formule : copilote à partir de Pro (feature_ai_assistant). Réponse au format des autres erreurs,
+// avec le message dans « answer » : la bulle flottante (includes-layout.php) l'affiche tel quel.
+require_once __DIR__ . '/plan-controls.php';
+if (!akc_has($pdo, $org_id, 'ai_assistant')) {
+    $msg = akc_gate_message($pdo, $org_id, 'ai_assistant');
+    http_response_code(403);
+    echo json_encode(['ok'=>false, 'error'=>'plan_feature', 'message'=>$msg, 'answer'=>$msg], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // Corps JSON ou form
 $body = json_decode(file_get_contents('php://input'), true);
 if (!is_array($body)) $body = $_POST;

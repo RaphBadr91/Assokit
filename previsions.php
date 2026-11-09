@@ -19,6 +19,10 @@ if ($org_id <= 0 || !can('manage_finances')) {
 }
 $csrf = h($_SESSION['csrf_token'] ?? '');
 
+// Formule : prévisions de trésorerie à partir de Pro (feature_advanced_stats)
+require_once __DIR__ . '/plan-controls.php';
+akc_lock_page($pdo, $org_id, 'advanced_stats', 'Prévisions de trésorerie', 'previsions');
+
 // Enregistrement du solde de trésorerie de départ (POST, CSRF).
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set-balance') {
     if (check_csrf($_POST['csrf_token'] ?? '')) {

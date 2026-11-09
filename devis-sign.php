@@ -33,6 +33,16 @@ if (strtotime($quote['expires_at']) < time()) {
 }
 
 $action = $_POST['action'] ?? 'sign';
+
+// Formule de l'émetteur : signature en ligne des devis à partir de Pro (feature_signature_quotes).
+// Sans elle, le devis reste consultable et refusable, mais ne se signe pas en ligne.
+if ($action !== 'refuse' && is_file(__DIR__ . '/plan-controls.php')) {
+    require_once __DIR__ . '/plan-controls.php';
+    if (!akc_has($pdo, (int)$quote['org_id'], 'signature_quotes', false)) {
+        $_SESSION['flash_public'] = ['type' => 'error', 'message' => 'Ce devis ne peut pas être signé en ligne : contactez son émetteur.'];
+        header('Location: /devis/' . $uuid); exit;
+    }
+}
 $ip = $_SERVER['REMOTE_ADDR'] ?? '';
 $ua = mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500);
 

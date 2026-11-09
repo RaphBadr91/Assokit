@@ -37,6 +37,15 @@ foreach ($accs as $acc) {
         echo date('H:i:s') . " org #{$acc['org_id']} : ignorée (association " . ($access === 'closed' ? 'supprimée ou résiliée' : 'suspendue') . ")\n";
         continue;
     }
+    // Formule sans boîte Gmail (Essentiel, accès limité) : ni lecture ni tri, la synchro reprend
+    // d'elle-même si la formule change. La purge de conservation (RGPD) continue de tourner.
+    if (!mail_plan_inbox_ok($pdo, (int)$acc['org_id'], false)) {
+        echo date('H:i:s') . " org #{$acc['org_id']} : ignorée (boîte mail non incluse dans la formule)\n";
+        if ((int)date('G') === 3 && (int)date('i') < 5) {
+            try { $n = mail_purge_old($pdo, $acc); if ($n) echo "  conservation : $n fil(s) ancien(s) effacé(s)\n"; } catch (Throwable $e) {}
+        }
+        continue;
+    }
     try {
         $r = mail_sync($pdo, $acc, 40.0);
         if (!empty($r['occupe'])) {

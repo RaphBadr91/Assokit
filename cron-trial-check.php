@@ -27,8 +27,61 @@ require_once __DIR__ . '/config.php';
 @require_once __DIR__ . '/projet-email-helpers.php';
 @require_once __DIR__ . '/asso-invoice-email-helpers.php';
 require_once __DIR__ . '/trial-helpers.php';
-// Prix de la formule Assokit dans les e-mails (HT + TTC au taux de TVA de la plateforme)
+// Prix des formules dans les e-mails (grille 2026 : Essentiel, Pro, Équipe ; HT, note de TVA)
 require_once __DIR__ . '/includes-pricing.php';
+
+if (!function_exists('ak_trial_mail_usage')) {
+    /**
+     * « Pendant votre essai, vous avez déjà enregistré 42 membres, créé 7 factures et préparé 3
+     * relances. » : seulement les compteurs lus en base et supérieurs à 0 ; '' sinon.
+     */
+    function ak_trial_mail_usage(PDO $pdo, int $org_id): string {
+        $count = function (string $sql) use ($pdo, $org_id): int {
+            try { $st = $pdo->prepare($sql); $st->execute([$org_id]); return (int) $st->fetchColumn(); }
+            catch (Throwable $e) { return 0; }
+        };
+        $n_m = $count("SELECT COUNT(*) FROM users WHERE org_id = ? AND is_active = 1 AND deleted_at IS NULL");
+        $n_f = $count("SELECT COUNT(*) FROM asso_invoices WHERE org_id = ?");
+        $n_r = $count("SELECT COUNT(*) FROM asso_membership_reminders WHERE org_id = ?");
+        $bits = [];
+        if ($n_m > 0) $bits[] = 'enregistré ' . $n_m . ' membre' . ($n_m > 1 ? 's' : '');
+        if ($n_f > 0) $bits[] = 'créé ' . $n_f . ' facture' . ($n_f > 1 ? 's' : '');
+        if ($n_r > 0) $bits[] = 'préparé ' . $n_r . ' relance' . ($n_r > 1 ? 's' : '');
+        if (!$bits) return '';
+        $last = array_pop($bits);
+        return 'Pendant votre essai, vous avez déjà ' . ($bits ? implode(', ', $bits) . ' et ' : '') . $last . '.';
+    }
+}
+
+if (!function_exists('ak_trial_mail_offer')) {
+    /**
+     * Fin du corps des e-mails de fin d'essai (HTML) : Pro mis en avant (« Gardez tout pour
+     * 29,99 € HT/mois »), Essentiel et Équipe proposés, Sur-mesure sur devis, puis la note de TVA.
+     * $ended : e-mail de fin d'essai (J0) ou rappel avant la fin. Jamais de « dernière chance », ni
+     * de prix barré ; aucun lien de paiement (le bouton mène à /mon-asso-plan, site uniquement).
+     */
+    function ak_trial_mail_offer(PDO $pdo, bool $ended): string {
+        $pro = ak_plan_price('assokit', $pdo)['per_month'];
+        $ess = ak_plan_price('ak-essentiel', $pdo)['per_month'];
+        $equ = ak_plan_price('ak-equipe', $pdo)['per_month'];
+        $per_day = ak_grid_is_reference($pdo) ? ", soit environ 1\u{00A0}€\u{00A0}HT par jour" : '';
+        $h = fn($t) => htmlspecialchars($t, ENT_QUOTES, 'UTF-8');
+        if ($ended) {
+            $html = "Pour reprendre exactement où vous en étiez, avec les relances qui partent sans vous, "
+                  . "<strong>gardez tout pour " . $h($pro) . "</strong> avec Pro. Sans engagement, résiliable à tout moment."
+                  . "<br><br>Vous hésitez ? Essentiel (" . $h($ess) . ") et Équipe (" . $h($equ) . ") sont sur la même page. "
+                  . "Pour un réseau ou une collectivité, le Sur-mesure est sur devis. Écrivez-nous depuis votre espace, rubrique Support : nous vous aidons à choisir.";
+        } else {
+            $html = "Pour que tout continue comme aujourd’hui (relances automatiques, factures récurrentes, devis signés en ligne, copilote IA), "
+                  . "<strong>gardez tout pour " . $h($pro) . "</strong> avec Pro" . $h($per_day) . ", sans engagement. Vous n’avez rien à ressaisir."
+                  . "<br><br>Vous gérez surtout à la main ? <strong>Essentiel</strong> (" . $h($ess) . ") garde toute votre gestion, avec la relance en un clic."
+                  . "<br>Vous êtes plusieurs à gérer chaque jour ? <strong>Équipe</strong> (" . $h($equ) . ") donne à chacun ses priorités du jour."
+                  . "<br><br>Si vous ne choisissez rien, rien n’est prélevé, et vos données restent conservées et exportables."
+                  . "<br><br>Une question ? Écrivez-nous depuis votre espace, rubrique Support : une personne de l’équipe vous répond en moins de 24\u{00A0}h ouvrées.";
+        }
+        return $html . '<br><br><span style="font-size:12px;color:#64748B;">' . $h(ak_vat_note($pdo)) . '</span>';
+    }
+}
 
 // php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
 $is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
@@ -130,15 +183,17 @@ foreach ($expired as $row) {
             foreach ($admins->fetchAll() as $a) {
                 if (!filter_var($a['email'], FILTER_VALIDATE_EMAIL)) continue;
                 try {
+                    // Texte du kit (fin d'essai, J0) : « gardez tout pour 29,99 € HT/mois » ; {quand} =
+                    // « aujourd'hui », ou « le JJ/MM/AAAA » si l'e-mail part après le jour de fin.
                     $html = ak_email_template_wrap(
                         "Bonjour " . htmlspecialchars($a['first_name']) . ",",
-                        "Votre essai gratuit sur Assokit a pris fin " . $quand . "."
-                        . "<br><br>Les données de <strong>" . htmlspecialchars($row['org_name']) . "</strong> sont conservées."
-                        . "<br><br>Pour continuer avec toutes les fonctionnalités, choisissez votre formule : <strong>Assokit</strong> à "
-                        . htmlspecialchars(ak_offer_price($pdo)['label']) . ", sans engagement, ou <strong>Sur-mesure</strong> sur devis.",
+                        "Votre essai s’est terminé " . $quand . ". Rien n’a été prélevé. "
+                        . "Les données de <strong>" . htmlspecialchars($row['org_name']) . "</strong> et vos réglages sont bien là."
+                        . "<br><br>Vous choisissez votre formule quand vous le souhaitez."
+                        . "<br><br>" . ak_trial_mail_offer($pdo, true),
                         "https://assokit.fr/mon-asso-plan", "Choisir ma formule", "Assokit"
                     );
-                    ak_asso_send_resend($a['email'], "🎁 Votre essai Assokit a pris fin", $html, null, null, 'Assokit');
+                    ak_asso_send_resend($a['email'], "Votre essai est terminé : vos données vous attendent", $html, null, null, 'Assokit');
                 } catch (Throwable $e) { error_log('[cron-trial-check] email expire: ' . $e->getMessage()); }
             }
         }
@@ -242,16 +297,21 @@ foreach ([7, 3, 1, 0] as $days_left) {
                     } elseif ($days_left === 1) {
                         $title  = "⏰ Votre essai se termine demain";
                         $corps  = "Votre essai se termine <strong>demain</strong> pour ";
+                    } elseif ($days_left === 3) {
+                        // Texte du kit (J-3)
+                        $title  = "Plus que 3 jours d’essai : on garde ce que vous avez construit ?";
+                        $corps  = "Votre essai de la formule Pro se termine le <strong>" . date('d/m/Y', strtotime((string) $row['trial_ends_at'])) . "</strong> pour ";
                     } else {
                         $title  = "⏰ Plus que " . $days_left . " jours d'essai gratuit";
-                        $corps  = "Plus que <strong>" . $days_left . " jours</strong> avant la fin de votre essai pour ";
+                        $corps  = "Plus que <strong>" . $days_left . " jours</strong> avant la fin de votre essai de la formule Pro pour ";
                     }
+                    $usage = ak_trial_mail_usage($pdo, (int) $row['org_id']);
                     $html = ak_email_template_wrap(
                         "Bonjour " . htmlspecialchars($a['first_name']) . ",",
                         $corps . "<strong>" . htmlspecialchars($row['org_name']) . "</strong>."
-                        . "<br><br>Pour continuer sans interruption, choisissez votre formule : <strong>Assokit</strong> à "
-                        . htmlspecialchars(ak_offer_price($pdo)['label']) . ", sans engagement. Vos données et réglages sont conservés.",
-                        "https://assokit.fr/mon-asso-plan", "Choisir une formule", "Assokit"
+                        . ($usage !== '' ? "<br><br>" . htmlspecialchars($usage) : '')
+                        . "<br><br>" . ak_trial_mail_offer($pdo, false),
+                        "https://assokit.fr/mon-asso-plan", "Choisir ma formule", "Assokit"
                     );
                     ak_asso_send_resend($a['email'], $title, $html, null, null, 'Assokit');
                     $parti = true;

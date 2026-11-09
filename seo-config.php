@@ -30,8 +30,8 @@ const AK_SEO_PAGES = [
     // PAGE PLANS / TARIFS
     // ============================================================
     'plans' => [
-        'title' => 'Tarifs Assokit — Essai PRO gratuit 14 jours, Assokit, Sur-mesure',
-        'description' => 'Essai PRO gratuit 14 jours sans carte bancaire, puis un abonnement unique Assokit tout inclus, sans engagement, ou Sur-mesure sur devis. Prix HT, sans frais cachés.',
+        'title' => 'Tarifs Assokit — Essentiel, Pro, Équipe, Sur-mesure, essai gratuit 14 jours',
+        'description' => 'Essai Pro gratuit 14 jours sans carte bancaire, puis Essentiel, Pro ou Équipe dès 19,99 € HT/mois, sans engagement, ou Sur-mesure sur devis.',
         'keywords' => 'tarif logiciel association, prix gestion asso, abonnement Assokit, essai gratuit logiciel association, sans engagement',
         'canonical' => '/tarifs',
         'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
@@ -43,7 +43,7 @@ const AK_SEO_PAGES = [
     // ============================================================
     'inscription' => [
         'title' => 'Essai gratuit 14 jours — Créez votre espace Assokit',
-        'description' => 'Créez votre espace Assokit et testez toutes les fonctionnalités PRO pendant 14 jours, sans carte bancaire, sans engagement. Idéal pour les associations loi 1901 et TPE.',
+        'description' => 'Créez votre espace Assokit et testez toutes les fonctions de la formule Pro pendant 14 jours, sans carte bancaire, sans engagement. Idéal pour les associations loi 1901 et TPE.',
         'keywords' => 'inscription Assokit, créer compte association, essai gratuit logiciel association, démarrer gratuitement',
         'canonical' => '/signup',
         'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
@@ -67,7 +67,7 @@ const AK_SEO_PAGES = [
     // ============================================================
     'fonctionnalites' => [
         'title' => 'Fonctionnalités — Tout ce que fait Assokit',
-        'description' => 'Adhérents, projets collaboratifs, factures, devis, paiements en ligne, communication email/SMS, IA intégrée, statistiques, white-label : Assokit fait tout.',
+        'description' => 'Adhérents, projets collaboratifs, factures et devis, paiements en ligne, communication par e-mail, IA intégrée, statistiques : tout ce que fait Assokit, formule par formule.',
         'keywords' => 'fonctionnalités Assokit, gestion adhérents, facturation, communication, IA association',
         'canonical' => '/fonctionnalites',
         'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
@@ -91,7 +91,7 @@ const AK_SEO_PAGES = [
     // ============================================================
     'pour-tpe' => [
         'title' => 'Logiciel TPE — Facturation et gestion clients simple',
-        'description' => 'Assokit pour les TPE : facturation conforme, devis, suivi clients, paiements en ligne via Stripe, statistiques. Tout-en-un, sans complexité.',
+        'description' => 'Assokit pour les TPE : devis et factures au format Factur-X, suivi clients, paiements en ligne via Stripe, statistiques. Tout-en-un, sans complexité.',
         'keywords' => 'logiciel TPE, facturation TPE, gestion clients, devis facture, paiement Stripe',
         'canonical' => '/pour-tpe',
         'og_image' => 'https://assokit.fr/assets/og-assokit-home.png',
@@ -159,7 +159,7 @@ const AK_SEO_FAQS = [
     'accueil' => [
         [
             'q' => 'Peut-on essayer Assokit gratuitement ?',
-            'a' => 'Oui : 14 jours d’essai PRO gratuits, sans carte bancaire, avec toutes les fonctionnalités. Ensuite, un abonnement unique tout inclus et sans engagement, dont le prix est indiqué sur la page Tarifs. Sans abonnement, rien n’est prélevé.',
+            'a' => 'Oui : 14 jours d’essai Pro gratuits, sans carte bancaire, avec toutes les fonctions de la formule Pro. Ensuite, vous choisissez votre formule (Essentiel, Pro ou Équipe), sans engagement, aux prix indiqués sur la page Tarifs. Si vous ne choisissez rien, rien n’est prélevé.',
         ],
         [
             'q' => 'Pour qui est conçu Assokit ?',
@@ -167,22 +167,22 @@ const AK_SEO_FAQS = [
         ],
         [
             'q' => 'Mes données sont-elles en sécurité ?',
-            'a' => 'Oui. Vos données sont hébergées en France (O2Switch), protégées par chiffrement et conformes au RGPD. Vous restez propriétaire de toutes vos informations.',
+            'a' => 'Oui. Vos données sont hébergées en France (O2Switch), protégées par chiffrement, dans le respect du RGPD. Vous restez propriétaire de toutes vos informations.',
         ],
         [
-            'q' => 'Puis-je avoir mon propre nom de domaine ?',
-            'a' => 'Oui, avec l’abonnement Assokit (sous-domaine tonasso.assokit.fr inclus, domaine personnalisé en option, au prix indiqué sur la page Tarifs) ou l’offre Sur-mesure (domaine inclus + emails à votre nom).',
+            'q' => 'Quelles formules propose Assokit ?',
+            'a' => 'Essentiel pour gérer à la main une petite structure, Pro pour les relances automatiques, les factures récurrentes et le copilote IA, Équipe quand plusieurs personnes gèrent chaque jour, et Sur-mesure sur devis pour les réseaux et les collectivités. Prix et détails sur la page Tarifs.',
         ],
         [
             'q' => 'Comment fonctionne l\'IA d\'Assokit ?',
-            'a' => 'Assokit IA vous aide à rédiger vos communications aux adhérents, à analyser vos données et à automatiser vos tâches récurrentes. Incluse dans l’abonnement Assokit et pendant l’essai.',
+            'a' => 'L’IA d’Assokit rédige vos courriers et vos communications dans toutes les formules, dans la limite de vos crédits IA du mois. Dès la formule Pro, le copilote IA propose vos priorités du jour et répond à vos questions sur votre structure. Elle propose, vous vérifiez.',
         ],
     ],
 
     'plans' => [
         [
-            'q' => 'Quelle est la différence entre l’Essai PRO, Assokit et Sur-mesure ?',
-            'a' => 'L’Essai PRO est gratuit pendant 14 jours, sans carte bancaire. Assokit est l’abonnement mensuel tout inclus : adhérents, cotisations, facturation, comptabilité, assemblées générales, subventions, communication, IA et application mobile. Sur-mesure ajoute un accompagnement, votre domaine personnalisé et des volumes adaptés, sur devis.',
+            'q' => 'Quelle est la différence entre Essentiel, Pro, Équipe et Sur-mesure ?',
+            'a' => 'Toutes les formules comprennent adhérents, cotisations, factures et devis, comptabilité, assemblées générales et application mobile. Essentiel convient à une petite structure gérée à la main ; Pro ajoute les relances automatiques, les factures récurrentes, les devis signés en ligne et le copilote IA ; Équipe ajoute les priorités du jour pour toute l’équipe, le planning et la détection d’anomalies. Sur-mesure, sur devis, fixe les volumes pour les réseaux et les collectivités. L’essai Pro est gratuit pendant 14 jours, sans carte bancaire.',
         ],
         [
             'q' => 'Y a-t-il un engagement ?',
@@ -190,15 +190,15 @@ const AK_SEO_FAQS = [
         ],
         [
             'q' => 'Comment se passe le paiement ?',
-            'a' => 'Paiement sécurisé par Stripe, renouvellement automatique mensuel, annulation possible à tout moment. Les prix sont affichés HT, la TVA s’y ajoute.',
+            'a' => 'Abonnement mensuel, renouvelé chaque mois, résiliable à tout moment. Le mode de paiement (carte, prélèvement SEPA ou virement sur facture) est indiqué sur la page de paiement. Les prix sont affichés HT ; la note de TVA applicable figure sur la page Tarifs.',
         ],
         [
             'q' => 'Puis-je m’abonner pendant l’essai ?',
-            'a' => 'Oui, à tout moment depuis votre espace (Mon abonnement). Vos données sont conservées et le passage est instantané.',
+            'a' => 'Oui, depuis votre espace (Mon abonnement). Vous gardez vos jours d’essai et vos données.',
         ],
         [
             'q' => 'Y a-t-il des frais cachés ?',
-            'a' => 'Aucun frais caché : les prix sont affichés HT, la TVA s’y ajoute et le montant TTC est indiqué avant tout paiement. Pas de frais d\'installation, pas de frais de résiliation, pas de surprise.',
+            'a' => 'Non : les prix sont affichés HT et le montant à payer est indiqué avant tout paiement. Pas de frais d\'installation, pas de frais de résiliation. Toute hausse de prix est annoncée 30 jours avant.',
         ],
     ],
 
@@ -213,18 +213,18 @@ const AK_SEO_FAQS = [
         ],
         [
             'q' => 'Comment se passe la migration depuis un autre logiciel ?',
-            'a' => 'Notre équipe vous accompagne gratuitement pour importer vos adhérents et données depuis Excel, Google Sheets ou un autre logiciel. Contactez-nous via /contact.',
+            'a' => 'Vous importez vos adhérents depuis un tableur (Excel, Google Sheets, CSV). Avec la formule Équipe, nous reprenons votre fichier d’adhérents pour vous. Une question ? Écrivez-nous via /contact.',
         ],
     ],
 
     'pour-tpe' => [
         [
-            'q' => 'Est-ce conforme à la facturation française 2026 ?',
-            'a' => 'Oui, Assokit génère des factures 100% conformes aux exigences légales françaises : numérotation continue, mentions obligatoires, archivage 10 ans, format conforme à la facturation électronique.',
+            'q' => 'Et la facture électronique de 2026 ?',
+            'a' => 'Assokit génère des factures avec numérotation continue, mentions obligatoires et archivage, au format Factur-X ; le raccordement à une plateforme agréée est en préparation.',
         ],
         [
             'q' => 'Comment se passent les paiements en ligne ?',
-            'a' => 'Vos clients paient directement vos factures par CB, Apple Pay, Google Pay, SEPA ou Klarna via Stripe. Les fonds arrivent sur votre compte sous 2 jours ouvrés.',
+            'a' => 'Une fois votre compte Stripe relié, vos clients paient vos factures en ligne (carte, Apple Pay, Google Pay ou prélèvement SEPA), sans commission Assokit (frais bancaires Stripe en sus). Les fonds sont versés par Stripe sur votre compte bancaire.',
         ],
         [
             'q' => 'Puis-je gérer la TVA ?',

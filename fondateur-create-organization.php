@@ -251,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($send_welcome_email) {
             try {
                 @require_once __DIR__ . '/resend-helper.php';
-                // Même libellé que partout ailleurs (« Essai PRO », « Assokit »…)
+                // Même libellé que partout ailleurs (« Essai Pro », « Pro », « Équipe »…)
                 $plan_name = $chosen_plan ? ak_plan_label($chosen_plan['slug'], $chosen_plan['name']) : '';
                 $base_url = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr');
                 $subject = 'Bienvenue chez Assokit !';
@@ -448,14 +448,8 @@ render_sidebar('fondateur-create-organization');
         <?php endforeach; ?>
       </div>
 
-      <!-- Add-on -->
-      <label style="display:flex;align-items:center;gap:10px;padding:14px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;cursor:pointer;margin-bottom:22px;">
-        <input type="checkbox" name="with_addon_domain" value="1" style="width:18px;height:18px;">
-        <div>
-          <div style="font-weight:700;font-size:14px;color:#1E40AF;">🏆 + Domaine personnalisé (+10€/mois)</div>
-          <div style="font-size:12px;color:#475569;">Ajoute l'option white-label avec domaine perso</div>
-        </div>
-      </label>
+      <!-- Option domaine retirée : le domaine personnel n'est pas encore disponible (fondateur-domains.php, phase 1) -->
+      <p style="padding:12px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;font-size:12.5px;color:#475569;margin:0 0 22px;">Le domaine personnel n’est pas encore disponible : aucune option à ajouter.</p>
 
       <hr style="border:none;border-top:1px solid #F1F5F9;margin:22px 0;">
 

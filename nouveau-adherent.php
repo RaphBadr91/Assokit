@@ -69,7 +69,7 @@ if ($is_post && !check_csrf($_POST['csrf_token'] ?? '')) {
 
     // === [PACK 6.2] Re-check plan au POST (sécurité) ===
     if ($plan_limit_reached) {
-        $error = '🚫 ' . ($plan_limit_info['reason'] ?? 'Limite d\'adhérents atteinte') . '. Passez au plan supérieur pour continuer.';
+        $error = '🚫 ' . rtrim((string)($plan_limit_info['reason'] ?? 'Limite de membres atteinte'), '.') . '. Cette limite est celle de votre formule.';
     } else {
 
     $form['first_name'] = trim($_POST['first_name'] ?? '');
@@ -96,6 +96,11 @@ if ($is_post && !check_csrf($_POST['csrf_token'] ?? '')) {
     } elseif ($trial_block = ak_trial_members_block($pdo, $org_id, 1)) {
         // Essai gratuit : 300 adhérents ajoutés par 24 h (comme l'import CSV)
         $error = $trial_block;
+    } elseif (function_exists('ak_can_add_manager') && function_exists('ak_manager_roles')
+              && in_array($form['role'], ak_manager_roles(), true)
+              && empty(($mgr_check = ak_can_add_manager($pdo, $org_id, 1))['ok'])) {
+        // Limite de gestionnaires de la formule (administrateur, coordinateur, référent)
+        $error = $mgr_check['reason'];
     } else {
         // Verifier doublon (y compris soft-deleted pour eviter collision ; un compte actif d'abord)
         $stmt = $pdo->prepare("SELECT id, org_id, deleted_at FROM users WHERE email = ? ORDER BY deleted_at IS NULL DESC LIMIT 1");
@@ -254,16 +259,18 @@ render_sidebar('adherents');
     <div style="background:linear-gradient(135deg, #FEE2E2 0%, #FED7AA 100%); border:2px solid #DC2626; border-radius:14px; padding:24px 28px; margin-bottom:20px; display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;">
       <div style="font-size:42px; line-height:1; flex-shrink:0;">🔒</div>
       <div style="flex:1; min-width:240px;">
-        <h3 style="margin:0 0 8px; font-size:18px; color:#991B1B;">Limite d'adhérents atteinte</h3>
+        <h3 style="margin:0 0 8px; font-size:18px; color:#991B1B;">Limite de membres atteinte</h3>
         <p style="margin:0 0 14px; color:#7F1D1D; line-height:1.6; font-size:14px;">
-          Vous avez atteint la limite de <strong><?= (int)($plan_limit_info['limit'] ?? 0) ?> adhérents</strong> de votre plan actuel
-          (<?= (int)($plan_limit_info['current'] ?? 0) ?> adhérents inscrits).
-          <br>Pour continuer à ajouter des adhérents, passez au plan supérieur.
+          Votre formule permet <strong><?= (int)($plan_limit_info['limit'] ?? 0) ?> membres (bureau compris)</strong>
+          et votre espace en compte <?= (int)($plan_limit_info['current'] ?? 0) ?>.
+          <br>Cette limite est celle de votre formule.
         </p>
+        <?php // Appli iOS / Android (règle Apple 3.1.1) : aucun lien vers les formules ni vers la vente
+        if (!(function_exists('ak_billing_hidden') && ak_billing_hidden()) && ($role_me ?? '') === 'admin'): ?>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <a href="/mon-asso-plan" class="btn btn-primary" style="background:#DC2626; color:white;">↗ Voir les plans</a>
-          <a href="/contact?subject=demo&plan=assokit" class="btn btn-ghost">📞 Demander une démo</a>
+          <a href="/mon-asso-plan" class="btn btn-primary" style="background:#DC2626; color:white;">Voir les formules</a>
         </div>
+        <?php endif; ?>
       </div>
     </div>
   <?php else: ?>

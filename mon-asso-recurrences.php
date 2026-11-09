@@ -39,6 +39,22 @@ if (!$can_view_finances) {
 }
 // ============================================================
 
+// Formule sans factures récurrentes (Essentiel, accès limité) : carte de verrou. S'il en existe
+// déjà (formule changée), la liste reste visible pour les consulter, les suspendre ou les
+// supprimer ; rien n'est plus généré (cron_asso_invoice_recurrences.php).
+$rec_plan_ok = ak_recurrence_plan_ok($pdo, $org_id);
+$rec_lock_html = '';
+if (!$rec_plan_ok) {
+    require_once __DIR__ . '/plan-controls.php';
+    $nb_rec = 0;
+    try {
+        $st_nb = $pdo->prepare("SELECT COUNT(*) FROM asso_invoice_recurrences WHERE org_id = ?");
+        $st_nb->execute([$org_id]);
+        $nb_rec = (int)$st_nb->fetchColumn();
+    } catch (Throwable $e) {}
+    if ($nb_rec === 0) akc_lock_page($pdo, $org_id, 'recurring_invoices', 'Factures récurrentes', 'recurrences');
+    $rec_lock_html = function_exists('ak_render_feature_lock') ? ak_render_feature_lock($pdo, $org_id, 'recurring_invoices', 'Factures récurrentes') : '';
+}
 
 // Filtres
 $f_status = $_GET['status']    ?? '';
@@ -151,11 +167,12 @@ render_sidebar('recurrences');
       </div>
       <div class="rec-actions">
         <a class="rec-btn rec-btn-ghost" href="/mon-asso-factures-client">← Factures</a>
-        <a class="rec-btn rec-btn-primary" href="/mon-asso-recurrence-new">+ Nouvelle récurrence</a>
+        <?php if ($rec_plan_ok): ?><a class="rec-btn rec-btn-primary" href="/mon-asso-recurrence-new">+ Nouvelle récurrence</a><?php endif; ?>
       </div>
     </div>
 
     <?= ak_recurrence_flash_html() ?>
+    <?= $rec_lock_html ?>
 
     <?php if ($page_error): ?>
       <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;margin-bottom:18px;color:#991B1B;font-size:14px;">
@@ -240,7 +257,7 @@ render_sidebar('recurrences');
               </td>
               <td data-lbl="Actions">
                 <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                  <a class="rec-btn rec-btn-sm rec-btn-ghost" href="/mon-asso-recurrence-edit?id=<?= (int)$r['id'] ?>">Modifier</a>
+                  <?php if ($rec_plan_ok): ?><a class="rec-btn rec-btn-sm rec-btn-ghost" href="/mon-asso-recurrence-edit?id=<?= (int)$r['id'] ?>">Modifier</a><?php endif; ?>
                   <?php if ($r['status'] === 'active'): ?>
                     <form method="post" action="/mon-asso-recurrence-toggle" style="display:inline;">
                       <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
@@ -248,12 +265,14 @@ render_sidebar('recurrences');
                       <input type="hidden" name="action" value="pause">
                       <button class="rec-btn rec-btn-sm rec-btn-warn" type="submit">⏸ Pause</button>
                     </form>
-                    <form method="post" action="/mon-asso-recurrence-run-now" style="display:inline;" onsubmit="return confirm(<?= h(json_encode('Générer dès maintenant la facture prévue le ' . date('d/m/Y', strtotime($r['next_run_date'])) . ' ? Elle ne sera pas générée une seconde fois à cette date.', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>);">
+<?php if ($rec_plan_ok): ?>
+                                        <form method="post" action="/mon-asso-recurrence-run-now" style="display:inline;" onsubmit="return confirm(<?= h(json_encode('Générer dès maintenant la facture prévue le ' . date('d/m/Y', strtotime($r['next_run_date'])) . ' ? Elle ne sera pas générée une seconde fois à cette date.', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>);">
                       <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                       <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                       <button class="rec-btn rec-btn-sm rec-btn-success" type="submit">▶ Générer</button>
                     </form>
-                  <?php elseif ($r['status'] === 'paused'): ?>
+                    <?php endif; ?>
+                  <?php elseif ($r['status'] === 'paused' && $rec_plan_ok): ?>
                     <form method="post" action="/mon-asso-recurrence-toggle" style="display:inline;">
                       <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                       <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">

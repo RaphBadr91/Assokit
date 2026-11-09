@@ -668,14 +668,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
     // Dans l'app : accord préalable pour l'envoi à Anthropic (règle 5.1.2(i) d'Apple)
     if (!function_exists('ak_ai_app_gate')) require_once __DIR__ . '/ai-consent-helper.php';
     $ak_gate = ak_ai_app_gate();
+    // Formule : crédits IA du mois (1 texte rédigé = 1 crédit, registre ai_usage_ledger)
+    require_once __DIR__ . '/plan-controls.php';
+    $ak_plan_block = akc_ai_block($pdo, (int)$org_id, 1);
     try {
         if ($ak_gate !== null) throw new RuntimeException($ak_gate);
+        if ($ak_plan_block !== null) throw new RuntimeException($ak_plan_block);
         if (function_exists('ai_chat')) {
             $generated = ai_chat([['role' => 'user', 'content' => $prompt]], $config['system'], $max_tok);
         } elseif (function_exists('call_claude_api')) {
             $generated = call_claude_api($config['system'], [['role' => 'user', 'content' => $prompt]]);
         } elseif (function_exists('ask_claude')) {
-            $result = ask_claude($config['system'], [['role' => 'user', 'content' => $prompt]], $max_tok);
+            $result = ask_claude($config['system'], [['role' => 'user', 'content' => $prompt]], $max_tok,
+                                 akc_ai_opts('generateur', (int)$org_id, (int)$user_id));
             if (!empty($result['success'])) {
                 $generated = $result['content'];
             } else {

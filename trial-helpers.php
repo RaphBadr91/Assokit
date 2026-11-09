@@ -313,7 +313,7 @@ if (!function_exists('ak_signup_trial_rows')) {
                     'org_id' => $org_id,
                     'plan' => ak_db_pick($pdo, 'subscriptions', 'plan', ['pro', 'association', 'essentiel']) ?? 'pro',
                     'status' => $sub_status, 'billing_cycle' => ak_db_pick($pdo, 'subscriptions', 'billing_cycle', ['monthly']) ?? 'monthly',
-                    'price_ht' => 49.99, 'tva_rate' => 20.00, 'current_period_end' => $trial_end,
+                    'price_ht' => 29.99, 'tva_rate' => 20.00, 'current_period_end' => $trial_end,
                 ], ['started_at' => 'NOW()', 'current_period_start' => 'NOW()', 'created_at' => 'NOW()']);
             }
         } catch (Throwable $e) {
@@ -563,10 +563,16 @@ if (!function_exists('ak_trial_days_left')) {
 }
 
 if (!function_exists('ak_plan_label')) {
-    /** Libellé lisible d'un plan (slug asso_plans ou ancien libellé organizations.plan). */
+    /**
+     * Libellé lisible d'un plan (slug asso_plans ou ancien libellé organizations.plan).
+     * Grille de novembre 2026 : la ligne « assokit » est la formule Pro (slug gardé), « fondateur »
+     * l'offre des clients de la première heure. « essentiel » et « pro » restent pour les anciens
+     * libellés d'organizations.plan.
+     */
     function ak_plan_label(?string $slug, ?string $name = null): string {
         $slug = strtolower(trim((string)$slug));
-        $map = ['pro-essai' => 'Essai PRO', 'demarrage' => 'Démarrage', 'assokit' => 'Assokit', 'sur-mesure' => 'Sur-mesure',
+        $map = ['pro-essai' => 'Essai Pro', 'demarrage' => 'Démarrage', 'assokit' => 'Pro', 'sur-mesure' => 'Sur-mesure',
+                'ak-essentiel' => 'Essentiel', 'ak-equipe' => 'Équipe', 'fondateur' => 'Offre fondateur',
                 'essentiel' => 'Essentiel', 'association' => 'Association', 'organisation' => 'Organisation', 'pro' => 'Pro'];
         if (isset($map[$slug])) return $map[$slug];
         if ($name !== null && trim($name) !== '') return trim($name);

@@ -6,6 +6,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
+@require_once __DIR__ . '/plan-helpers.php';     // limite de gestionnaires de la formule
 
 require_login();
 $current = current_user();
@@ -40,6 +41,17 @@ if (!$user) {
 }
 
 $is_self = ($user_id === (int)$current['id']);
+
+// Limite de gestionnaires de la formule (administrateur, coordinateur, référent) : un compte actif
+// qui n'est pas déjà gestionnaire ne peut plus le devenir quand elle est atteinte (refus aussi à
+// l'enregistrement, action-admin-utilisateur.php)
+$manager_roles = function_exists('ak_manager_roles') ? ak_manager_roles() : [];
+$manager_block = null;
+if (!$is_self && !empty($user['is_active']) && !in_array((string)$user['role'], $manager_roles, true)
+    && function_exists('ak_can_add_manager')) {
+    $mchk = ak_can_add_manager($pdo, $org_id, 1);
+    if (empty($mchk['ok'])) $manager_block = (string)$mchk['reason'];
+}
 
 $errors = $_SESSION['form_errors'] ?? [];
 unset($_SESSION['form_errors']);
@@ -186,14 +198,18 @@ $colors = [
           ];
           foreach ($roles as $key => $info):
             $is_selected = ($user['role'] === $key);
+            $is_locked = !$is_selected && $manager_block !== null && in_array($key, $manager_roles, true);
           ?>
-            <label class="role-option <?= $is_selected ? 'active' : '' ?>" <?= $is_self && !$is_selected ? 'style="opacity:0.5;pointer-events:none;"' : '' ?>>
-              <input type="radio" name="role" value="<?= h($key) ?>" <?= $is_selected ? 'checked' : '' ?> <?= $is_self ? 'disabled' : '' ?> onchange="updateRoleSelection(this)">
+            <label class="role-option <?= $is_selected ? 'active' : '' ?>" <?= ($is_self && !$is_selected) || $is_locked ? 'style="opacity:0.5;pointer-events:none;"' : '' ?><?= $is_locked ? ' title="' . h($manager_block) . '"' : '' ?>>
+              <input type="radio" name="role" value="<?= h($key) ?>" <?= $is_selected ? 'checked' : '' ?> <?= $is_self || $is_locked ? 'disabled' : '' ?> onchange="updateRoleSelection(this)">
               <div class="role-option-label"><?= $info[0] ?></div>
               <div class="role-option-desc"><?= $info[1] ?></div>
             </label>
           <?php endforeach; ?>
         </div>
+        <?php if ($manager_block !== null): ?>
+          <div class="form-hint" style="margin-top:8px;">🔒 <?= h($manager_block) ?></div>
+        <?php endif; ?>
       </div>
 
       <div class="form-cols" style="margin-top: 20px;">

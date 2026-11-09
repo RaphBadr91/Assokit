@@ -81,8 +81,8 @@ function ak_import_plan_room(PDO $pdo, int $org_id): ?int {
 
 function ak_import_plan_message(int $room, int $wanted): string {
     return $room > 0
-        ? "Votre plan permet encore $room adhérent" . ($room > 1 ? 's' : '') . " ; ce fichier en ajouterait $wanted. Réduisez le fichier ou passez au plan supérieur."
-        : "Vous avez atteint la limite d'adhérents de votre plan. Passez au plan supérieur pour en importer d'autres.";
+        ? "Votre formule permet encore $room membre" . ($room > 1 ? 's' : '') . " (bureau compris) ; ce fichier en ajouterait $wanted. Réduisez le fichier : cette limite est celle de votre formule."
+        : "Vous avez atteint la limite de membres (bureau compris) de votre formule : aucun membre ne peut être importé.";
 }
 
 $step = 'upload';
@@ -279,6 +279,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
         $created = 0;
         $skipped = 0;
         $errors = 0;
+        $mgr_capped = 0;   // rôles gestionnaires importés en « Membre » (limite de la formule)
         $emails_sent = 0;
         $emails_failed = 0;
         $failed = [];      // lignes non créées à cause d'une erreur, montrées à l'utilisateur
@@ -302,6 +303,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
                 $avatar_color = $colors[array_rand($colors)];
 
                 if (in_array($row['role'], $roles_reserved, true)) $row['role'] = 'member';
+                // Limite de gestionnaires de la formule (administrateur, coordinateur, référent) :
+                // au-delà, le compte est importé comme membre (rôle à changer ensuite)
+                if (function_exists('ak_can_add_manager') && function_exists('ak_manager_roles')
+                    && in_array($row['role'], ak_manager_roles(), true) && empty(ak_can_add_manager($pdo, $org_id, 1)['ok'])) {
+                    $row['role'] = 'member';
+                    $mgr_capped++;
+                }
                 $perms = match($row['role']) {
                     'admin'       => [1, 1, 1, 1, 1, 1],
                     'coordinator' => [1, 1, 0, 1, 1, 1],
@@ -368,6 +376,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
         }
 
         $msg = "Import terminé : $created créé(s), $skipped ignoré(s), $errors erreur(s).";
+        if ($mgr_capped > 0) {
+            $msg .= " $mgr_capped compte(s) importé(s) comme membre : votre formule ne permet pas davantage de gestionnaires (administrateurs, coordinateurs, référents).";
+        }
         if ($failed) {
             $msg .= ' Non importé(s) : ' . implode(', ', array_slice($failed, 0, 10))
                   . (count($failed) > 10 ? ' et ' . (count($failed) - 10) . ' autre(s)' : '') . '.';

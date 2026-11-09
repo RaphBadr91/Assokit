@@ -275,6 +275,13 @@ function ak_rel_send_membership(PDO $pdo, int $org_id, int $user_id, int $stage,
     $m = $st->fetch(PDO::FETCH_ASSOC);
     if (!$m) return ['success'=>false, 'message'=>'Adhérent introuvable'];
     if (empty($m['email']) || !filter_var($m['email'], FILTER_VALIDATE_EMAIL)) return ['success'=>false, 'message'=>'Email adhérent invalide'];
+    // Formule : les relances de cotisation comptent dans les e-mails du mois (ak_emails_sent_month,
+    // asso_membership_reminders). Plafond atteint ou accès limité : rien n'est envoyé. Un seul
+    // contrôle ici pour le cockpit, le traitement par lot, le cron et l'appli.
+    if (is_file(__DIR__ . '/plan-controls.php')) {
+        require_once __DIR__ . '/plan-controls.php';
+        if ($quota = akc_email_block($pdo, $org_id, 1)) return ['success'=>false, 'message'=>$quota, 'quota_limit'=>true];
+    }
 
     $vars = [
         '{NOM_ADHERENT}' => trim($m['first_name'].' '.$m['last_name']) ?: 'cher adhérent',

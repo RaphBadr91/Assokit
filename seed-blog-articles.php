@@ -117,7 +117,7 @@ Une fois l'asso officielle, il y a quelques formalités à anticiper :
 Les coûts à anticiper :
 - Compte bancaire associatif : 0-15 €/mois selon les banques
 - Assurance RC : à partir de 80 €/an
-- Outils de gestion (comme Assokit) : à partir de 13 €/mois pour le plan Démarrage avec tarif réduit asso
+- Outils de gestion (comme Assokit) : dès 19,99 € HT/mois (formule Essentiel), après un essai gratuit de 14 jours
 
 ## En résumé
 
@@ -841,7 +841,7 @@ Pour une petite asso, le risque réel d'amende est **faible**. Mais une mise en 
 
 Le RGPD n'est pas un mur. C'est une **bonne pratique** qui protège vos adhérents et votre asso. Avec quelques actions simples, vous êtes en conformité.
 
-> 🌿 **Assokit est conçu RGPD-compliant par défaut** : hébergement en France, journal des accès, droit à l'effacement intégré, exports faciles. Vous économisez des semaines de travail.",
+> 🌿 **Assokit est conçu dans le respect du RGPD** : hébergement en France, journal des accès, droit à l'effacement intégré, exports faciles. Vous économisez des semaines de travail.",
     ],
 
     [

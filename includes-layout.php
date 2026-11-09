@@ -222,9 +222,9 @@ function render_trial_banner() {
             $msg = ($days_left === 0 ? "se termine <strong>aujourd'hui</strong>" : ($days_left === 1 ? "se termine <strong>demain</strong>" : "Plus que <strong>" . $days_left . " jours</strong>"))
                  . " &middot; abonnement souscrit, premier prélèvement le " . $charge_fr;
         } elseif ($expired && !$can_pay) {
-            $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, l’administrateur de votre association peut choisir une formule pour retrouver toutes les fonctionnalités";
+            $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, l’administrateur de votre association peut choisir une formule pour continuer";
         } elseif ($expired) {
-            $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, choisissez une formule pour retrouver toutes les fonctionnalités";
+            $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, choisissez une formule pour continuer";
         } elseif ($days_left === 0) {
             $msg = "se termine <strong>aujourd'hui</strong>";
         } elseif ($days_left === 1) {

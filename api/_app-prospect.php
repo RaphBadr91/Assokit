@@ -137,7 +137,7 @@ if (!function_exists('ak_prospect_html_template')) {
         $cta   = htmlspecialchars((string) ($d['cta'] ?? ($offer ? 'Démarrer mon essai gratuit' : 'Découvrir Assokit')));
         // Texte d'aperçu (boîte de réception) : sans le balisage **gras** du corps
         $preBody = strip_tags(str_replace('**', '', (string) ($d['body'] ?? '')));
-        $pre   = htmlspecialchars(($offer ? "Essai PRO gratuit $trialDays jours, sans engagement — " : '') . mb_substr(trim(preg_replace('/\s+/', ' ', $preBody)), 0, 90));
+        $pre   = htmlspecialchars(($offer ? "Essai Pro gratuit $trialDays jours, sans engagement — " : '') . mb_substr(trim(preg_replace('/\s+/', ' ', $preBody)), 0, 90));
         // Pastille d'en-tête : la saison associative en cours (sept. → août), jamais une année figée
         $seasonStart = (int) date('n') >= 8 ? (int) date('Y') : (int) date('Y') - 1;
         $badge = (string) ($d['badge'] ?? ($type === 'tpe' ? '' : 'Saison ' . $seasonStart . '-' . ($seasonStart + 1)));
@@ -163,7 +163,7 @@ if (!function_exists('ak_prospect_html_template')) {
                 . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
                 . '<td valign="middle" style="width:40px;font-size:26px;line-height:1;">&#127873;</td>'
                 . '<td valign="middle" style="font-family:' . $FONT . ';">'
-                . '<div style="font-size:16px;font-weight:800;color:#0F172A;">Essai PRO gratuit ' . $trialDays . ' jours</div>'
+                . '<div style="font-size:16px;font-weight:800;color:#0F172A;">Essai Pro gratuit ' . $trialDays . ' jours</div>'
                 . '<div style="font-size:12.5px;color:#92400E;margin-top:2px;font-weight:600;">Toutes les fonctionnalités &#183; sans carte bancaire &#183; sans engagement</div>'
                 . '</td></tr></table></td></tr></table>';
         }

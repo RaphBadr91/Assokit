@@ -16,6 +16,15 @@ require_once __DIR__ . '/../demo-guard.php';
 $out = function (array $d, int $code = 200) { http_response_code($code); echo json_encode($d, JSON_UNESCAPED_UNICODE); exit; };
 
 if (!mail_can_access($user)) $out(['ok' => false, 'error' => 'Boîte mail réservée aux administrateurs et coordinateurs.'], 403);
+// Formule : boîte Gmail intégrée à partir de Pro (feature_mail_inbox, api/_app-plan.php). Message neutre
+// (règle Apple 3.1.1). 'error' porte le texte, comme les autres réponses de cet endpoint (l'appli
+// l'affiche tel quel) ; code 'plan_feature' et feature comme ak_feature_denied_json().
+require_once __DIR__ . '/_app-plan.php';
+if (!app_plan_has($pdo, (int)($user['org_id'] ?? 0), 'mail_inbox', $user)) {
+    $d = app_plan_denied($pdo, (int)($user['org_id'] ?? 0), 'mail_inbox');
+    $out(['ok' => false, 'error' => $d['message'], 'code' => 'plan_feature', 'feature' => $d['feature'],
+          'locked' => true, 'message' => $d['message']], 403);
+}
 if (!mail_schema_ready($pdo)) $out(['ok' => false, 'error' => 'Boîte mail non installée sur ce serveur.'], 503);
 $org = (int)$user['org_id'];
 $acc = mail_get_account($pdo, $org);

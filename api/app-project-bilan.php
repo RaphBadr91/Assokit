@@ -2,7 +2,7 @@
 /**
  * api/app-project-bilan.php — Bilan analytique d'un projet pour la fiche native.
  * Reutilise ak_invoice_dossier() (pca-mapping.php). Lecture seule, scope org.
- * Gate : fonctionnalite Pro "advanced_stats" (sans consommer l'export gratuit).
+ * Contrôle : fonction « advanced_stats » de la formule (sans consommer l'export de bilan d'Essentiel).
  * NE MODIFIE PAS le site.
  */
 require_once __DIR__ . '/_app-read-boot.php';   // session, compte actif (sinon 401 'auth'), en-têtes JSON, $user, $uid, $org_id
@@ -24,17 +24,20 @@ try {
     require_once __DIR__ . '/../platform-flags.php';
     if (!user_can_access_billing(ak_platform_flags($user))) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
-    // Gate Pro sans effet de bord (ne consomme pas l'export gratuit)
+    // Contrôle de la formule sans effet de bord (ne consomme pas l'export de bilan d'Essentiel)
     $allowed = true;
     if (function_exists('ak_can_use_feature')) {
         $allowed = (bool) ak_can_use_feature($pdo, $org_id, 'advanced_stats');
     }
 
     if (!$allowed) {
+        // Message neutre (règle Apple 3.1.1) : ni nom de formule supérieure, ni prix
         echo json_encode([
             'ok'      => true,
             'allowed' => false,
-            'upsell'  => 'Le bilan analytique (comptabilité par poste) est inclus dans le plan Pro.',
+            'error'   => 'plan_feature',
+            'feature' => 'feature_advanced_stats',
+            'message' => 'Cette fonction n’est pas incluse dans votre formule.',
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }

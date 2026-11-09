@@ -25,6 +25,23 @@
 
 if (!function_exists('ak_nav_familles')) {
 
+// Verrous des formules (cadenas sur les entrées non incluses, bandeau d'accès limité)
+if (is_file(__DIR__ . '/plan-controls.php')) require_once __DIR__ . '/plan-controls.php';
+
+/**
+ * Fonction de la formule non incluse pour l'association de la session ? (cadenas du menu)
+ * Faux en cas de doute : fondations absentes, compte plateforme, pas d'association.
+ * L'entrée reste visible et cliquable : la page affiche le verrou (ak_render_feature_lock).
+ * Le menu n'affiche jamais de prix.
+ */
+function ak_nav_verrou(string $feature): bool
+{
+    global $pdo;
+    if (!($pdo instanceof PDO) || !function_exists('akc_has')) return false;
+    $org = akc_org_id();
+    return $org > 0 && !akc_has($pdo, $org, $feature);
+}
+
 /**
  * Décrit le menu.
  *
@@ -67,7 +84,7 @@ function ak_nav_familles(array $ctx): array
                 ['adherents',       '/adherents',        'Adhérents',       $membre,             ['adherents'],       $ctx['user_count'] ?? null],
                 ['cotisations',     '/cotisations',      'Cotisations',     $membre && $estCoord, ['cotisations']],
                 ['agenda',          '/agenda',           'Agenda',          true,                ['agenda']],
-                ['emploi-du-temps', '/emploi-du-temps',  'Emploi du temps', $membre,             ['emploi-du-temps']],
+                ['emploi-du-temps', '/emploi-du-temps',  'Emploi du temps', $membre,             ['emploi-du-temps'], null, false, ak_nav_verrou('team_planning')],
                 ['assemblees',      '/assemblees',       'Assemblées',      $estAdmin,           ['assemblees']],
                 ['emargement',      '/emargement',       'Émargement',      $estCoord,           ['emargement']],   // admin et coordinateur, comme emargement.php
             ],
@@ -90,8 +107,8 @@ function ak_nav_familles(array $ctx): array
                 ['facturation',  '/mon-asso-factures-client', 'Facturation',          $billing,  ['devis','factures','clients','stats']],
                 ['relances',     '/relances',                 'Relances',             $billing,  ['relances']],
                 ['paiements-en-ligne', '/encaissement-en-ligne', 'Paiements en ligne', $billing, ['paiements-en-ligne']],   // Stripe Connect (encaissement-en-ligne.php)
-                ['anomalies',    '/anomalies',                'Anomalies',            $finances, ['anomalies']],
-                ['previsions',   '/previsions',               'Prévisions',           $finances, ['previsions']],
+                ['anomalies',    '/anomalies',                'Anomalies',            $finances, ['anomalies'], null, false, ak_nav_verrou('anomalies')],
+                ['previsions',   '/previsions',               'Prévisions',           $finances, ['previsions'], null, false, ak_nav_verrou('advanced_stats')],
                 ['comptabilite', '/comptabilite',             'Comptabilité',         $finances, ['comptabilite']],
                 ['export-fec',   '/export-fec',               'Export FEC',           $finances, ['export-fec']],
                 ['facturx',      '/facturx',                  'E-facture (Factur-X)', $finances, ['facturx']],
@@ -105,9 +122,9 @@ function ak_nav_familles(array $ctx): array
             'icone' => $i('communication', 16),
             'entrees' => [
                 ['messages',      '/messages',      'Messages',      $membre,       ['messages']],
-                ['boite-mail',    '/boite-mail',    'Boîte mail',    $estCoord || !empty($ctx['is_founder']), ['boite-mail'], $ctx['mail_unread'] ?? null],
+                ['boite-mail',    '/boite-mail',    'Boîte mail',    $estCoord || !empty($ctx['is_founder']), ['boite-mail'], $ctx['mail_unread'] ?? null, false, ak_nav_verrou('mail_inbox')],
                 ['communication', '/communication', 'Diffusion',     $marketing,    ['communication']],
-                ['prospection',   '/prospection',   'Prospection',   $prospection,  ['prospection']],
+                ['prospection',   '/prospection',   'Prospection',   $prospection,  ['prospection'], null, false, ak_nav_verrou('prospection')],
                 ['mon-asso-qr',   '/mon-asso-qr',   'Codes QR',      $prospection,  ['mon-asso-qr']],
             ],
         ],
@@ -127,6 +144,8 @@ function ak_nav_familles(array $ctx): array
             'entrees' => [
                 ['parametres',   '/parametres',   'Paramètres',            true,   ['parametres']],
                 ['admin',        '/admin',        'Administration',        $admin, ['admin']],
+                // Journal d'activité de l'équipe (formule Équipe) : administrateurs seulement, comme la page
+                ['journal-equipe', '/journal-equipe', 'Journal d’activité', $estAdmin && is_file(__DIR__ . '/journal-equipe.php'), ['journal-equipe'], null, false, ak_nav_verrou('activity_log')],
                 ['mon-asso-sso', '/mon-asso-sso', 'Intégration WordPress', $admin, ['mon-asso-sso']],
                 ['archives',     '/archives',     'Archives',              $admin && $zoneAdmin, ['archives']],
                 ['abonnement',   '/abonnement',   'Abonnement',            $admin && $zoneAdmin && $facturation, ['abonnement']],
@@ -176,6 +195,8 @@ function ak_nav_icone(string $nom, int $taille = 14): string
         'archives'      => '<polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/>',
         'abonnement'    => '<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
         'chevron'       => '<polyline points="6 9 12 15 18 9"/>',
+        'cadenas'       => '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+        'journal'       => '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>',
     ][$nom] ?? '';
 
     return '<svg width="' . $taille . '" height="' . $taille . '" viewBox="0 0 24 24" fill="none"'
@@ -197,6 +218,7 @@ function ak_nav_icone_entree(string $cle): string
         'mon-asso-qr' => 'qr', 'coach-ia' => 'coach', 'support' => 'support',
         'parametres' => 'parametres', 'admin' => 'admin', 'mon-asso-sso' => 'wordpress',
         'archives' => 'archives', 'abonnement' => 'abonnement', 'paiements-en-ligne' => 'cotisations',
+        'journal-equipe' => 'journal',
     ];
     return ak_nav_icone($corresp[$cle] ?? 'projets', 14);
 }
@@ -208,8 +230,11 @@ function ak_nav_rendre(array $ctx): void
 {
     $active = (string)($ctx['active'] ?? '');
 
+    ak_nav_bandeau_acces_limite($ctx);
+
     foreach (ak_nav_familles($ctx) as $famille) {
         // [0]=clé [1]=url [2]=libellé [3]=visible [4]=clés actives [5]=badge [6]=badge rouge
+        // [7]=cadenas (fonction non incluse dans la formule : la page affiche le verrou)
         $entrees = array_values(array_filter($famille['entrees'], fn($e) => !empty($e[3])));
         if (!$entrees) continue;
 
@@ -247,6 +272,9 @@ function ak_nav_rendre(array $ctx): void
             <a href="<?= h($e[1]) ?>" class="sb-link<?= $estActive ? ' active' : '' ?>"<?= $estActive ? ' aria-current="page"' : '' ?>>
               <?= ak_nav_icone_entree($e[0]) ?>
               <?= h($e[2]) ?>
+              <?php if (!empty($e[7])): ?>
+                <span class="ak-nav-verrou" title="Fonction non incluse dans votre formule" style="margin-left:auto;display:inline-flex;color:var(--ink-3,#94A3B8);"><?= ak_nav_icone('cadenas', 12) ?><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">(fonction non incluse dans votre formule)</span></span>
+              <?php endif; ?>
               <?php if ($badge !== null && (int)$badge > 0): ?>
                 <span class="sb-badge"<?= $urgent ? ' style="background:#EF4444;color:#fff;"' : '' ?>><?= (int)$badge ?></span>
               <?php endif; ?>
@@ -258,6 +286,29 @@ function ak_nav_rendre(array $ctx): void
     }
 
     ak_nav_script();
+}
+
+/**
+ * Accès limité (formule Démarrage) : encadré en tête du menu, sur toutes les pages. Bouton
+ * « Choisir une formule » sur le site seulement, pour un administrateur (jamais dans l'appli).
+ */
+function ak_nav_bandeau_acces_limite(array $ctx): void
+{
+    global $pdo;
+    if (!($pdo instanceof PDO) || !function_exists('akc_readonly')) return;
+    $org = akc_org_id();
+    if ($org <= 0 || !akc_readonly($pdo, $org)) return;
+    $admin = ((string)($ctx['role'] ?? '') === 'admin');
+    $hidden = function_exists('ak_billing_hidden') && ak_billing_hidden();
+    ?>
+    <div class="ak-nav-acces-limite" role="status" style="margin:0 4px 10px;padding:10px 12px;border:1px solid #FCD34D;background:#FFFBEB;border-radius:12px;font-size:12px;line-height:1.5;color:#92400E;">
+      <strong style="display:flex;align-items:center;gap:6px;color:#78350F;"><?= ak_nav_icone('cadenas', 13) ?> Accès limité</strong>
+      <?= h(akc_readonly_message()) ?>
+      <?php if ($admin && !$hidden): ?>
+        <a href="/mon-asso-plan" style="display:block;margin-top:8px;text-align:center;background:#059669;color:#fff;font-weight:600;padding:7px 10px;border-radius:9px;text-decoration:none;">Choisir une formule</a>
+      <?php endif; ?>
+    </div>
+    <?php
 }
 
 /**

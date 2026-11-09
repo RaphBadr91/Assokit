@@ -153,7 +153,7 @@ elseif (in_array($view, ['invalid', 'expired', 'no_secret'], true)) http_respons
 
 <?php elseif ($view === 'validated'): ?>
   <h1>Demande validée</h1>
-  <div class="box box-ok">L’espace de <strong><?= $h($org_name) ?></strong> est activé. L’essai PRO de <?= (int)AK_TRIAL_DAYS ?> jours court jusqu’au <strong><?= $h(ak_trial_end_label($res['trial_end'] ?? null)) ?></strong>.</div>
+  <div class="box box-ok">L’espace de <strong><?= $h($org_name) ?></strong> est activé. L’essai Pro de <?= (int)AK_TRIAL_DAYS ?> jours court jusqu’au <strong><?= $h(ak_trial_end_label($res['trial_end'] ?? null)) ?></strong>.</div>
   <p><?= !empty($res['mailed']) ? 'L’administrateur a reçu l’e-mail « Votre espace Assokit est activé » avec le lien de connexion.'
         : 'L’e-mail « Votre espace Assokit est activé » n’a pas pu partir : prévenez l’administrateur' . ($lead && $lead['email'] !== '' ? ' (' . $h($lead['email']) . ')' : '') . '.' ?></p>
   <?php if (!empty($res['warnings'])): ?>
@@ -211,7 +211,7 @@ elseif (in_array($view, ['invalid', 'expired', 'no_secret'], true)) http_respons
       <p class="small" style="margin-top:12px;">Le demandeur reçoit un e-mail poli ; l’espace reste fermé.</p>
     <?php else: ?>
       <button type="submit" class="btn btn-ok">Confirmer la validation</button>
-      <p class="small" style="margin-top:12px;">L’essai PRO de <?= (int)AK_TRIAL_DAYS ?> jours démarre maintenant et l’administrateur reçoit l’e-mail « Votre espace Assokit est activé ».</p>
+      <p class="small" style="margin-top:12px;">L’essai Pro de <?= (int)AK_TRIAL_DAYS ?> jours démarre maintenant et l’administrateur reçoit l’e-mail « Votre espace Assokit est activé ».</p>
     <?php endif; ?>
   </form>
   <p class="small" style="margin-top:6px;">Vous pouvez aussi décider depuis le <a href="<?= $h($cockpit) ?>">cockpit</a>.</p>

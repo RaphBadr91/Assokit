@@ -22,6 +22,24 @@ try {
     @require_once __DIR__ . '/../rate-limit-helper.php';
     if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_ai', 10, 60, (string) ($_SESSION['user_id'] ?? ''));
 
+    // Formule (api/_app-plan.php) : analyses IA de l'appli = copilote IA, à partir de Pro
+    // (feature_ai_assistant), puis 1 crédit IA par analyse (chemin 'appli-factures'). Messages neutres,
+    // sans prix ni « Passer à… » (règle Apple 3.1.1). Grille absente ou fondations absentes : on laisse passer.
+    require_once __DIR__ . '/_app-plan.php';
+    $msg = null; $code = ''; $feature = '';
+    if (!app_plan_has($pdo, $org_id, 'ai_assistant', $user)) {
+        $d = app_plan_denied($pdo, $org_id, 'ai_assistant');
+        $msg = $d['message']; $code = 'plan_feature'; $feature = (string) $d['feature'];
+        http_response_code(200);   // réponse lisible par la version actuelle de l'appli (allowed:false)
+    } elseif (!app_plan_is_platform($user) && ($q = app_plan_ai_block($pdo, $org_id, 1)) !== null) {
+        $msg = $q; $code = 'ai_quota';
+    }
+    if ($msg !== null) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'locked' => true, 'error' => $code, 'feature' => $feature,
+                          'message' => $msg], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     // Stats de facturation : factures émises uniquement (payées, en attente, en retard),
     // brouillons et annulées exclus, comme le hub Facturation et l'écran Factures.
     $stmt = $pdo->prepare("
@@ -64,7 +82,8 @@ try {
     $resp = ask_claude(
         "Tu es un assistant de gestion financière pour des associations et TPE. Tu es concis, concret et bienveillant.",
         [['role' => 'user', 'content' => $prompt]],
-        500
+        500,
+        app_plan_ai_opts('appli-factures', $org_id, $uid)   // compteur IA unifié : 1 crédit
     );
     $analysis = ($resp && !empty($resp['success'])) ? trim((string) ($resp['content'] ?? '')) : '';
     // Accord pour l'IA manquant dans l'app (ai-consent-helper.php) : le motif, pas « indisponible »

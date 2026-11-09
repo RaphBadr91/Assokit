@@ -28,6 +28,10 @@ if (is_follower()) {
     exit;
 }
 
+// Formule : planning d'équipe et absences à partir d'Équipe (feature_team_planning)
+require_once __DIR__ . '/plan-controls.php';
+akc_lock_page($pdo, $org_id, 'team_planning', 'Planning d’équipe et absences', 'emploi-du-temps');
+
 // =============================================================
 // AUTO-CRÉATION DES TABLES (idempotent)
 // =============================================================

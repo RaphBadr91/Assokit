@@ -471,7 +471,11 @@ function ak_session_guard(): void
     $acc = ak_session_access($pdo);
     $state = $acc['state'];
     if ($state === 'anonymous') { ak_login_remember_target(); return; }
-    if ($state === 'ok') return;
+    if ($state === 'ok') {
+        // Formule Démarrage (fin d'essai non convertie, résiliation, impayé) : lecture seule
+        ak_readonly_guard($pdo, $acc['user']);
+        return;
+    }
 
     $script = ak_guard_script();
     $api = ak_guard_is_api($script);
@@ -528,6 +532,97 @@ function ak_mairie_space_guard(): void
     if (preg_match('#^(mairie-|action-mairie|super-admin-mairie)#', $script)
         || in_array($script, AK_GUARD_OPEN, true) || in_array($script, AK_GUARD_MAIRIE_OPEN, true)) return;
     ak_guard_stop(ak_guard_is_api($script), 403, 'mairie_space', 'mairie_space', '/mairie-dashboard');
+}
+
+/**
+ * Accès limité (formule Démarrage : fin d'essai non convertie, résiliation, impayé) : l'espace
+ * reste consultable et exportable, mais rien ne se crée ni ne s'envoie. Toute requête POST d'un
+ * compte de l'association est refusée, sauf ce qui sert à consulter, exporter, choisir et payer
+ * une formule (site), joindre le support et gérer son compte personnel (AK_READONLY_OPEN).
+ *   - Comptes plateforme (Fondateur, super-admin) : jamais concernés ; incarnation : non vérifiée
+ *     (ak_session_guard s'arrête avant).
+ *   - API de l'appli (api/app-*.php, api/_app-*.php) : refus d'écriture dans api/_app-write-boot.php
+ *     (chantier appli), pas ici.
+ *   - Pages publiques (cotiser.php : délai de grâce de 60 jours, contrôlé par la page) : pas de session.
+ * Sans les fondations (ak_plan_is_readonly absente) ou en cas d'erreur : on laisse passer.
+ */
+define('AK_READONLY_OPEN', [
+    'connexion.php', 'connexion-2fa.php', 'deconnexion.php', 'changer-mot-de-passe.php',
+    'parametres.php', 'securite-2fa.php', 'rgpd-export.php', 'rgpd-supprimer-compte.php',
+    'mon-asso-plan.php', 'mon-asso-paiement.php', 'mon-asso-paiement-success.php', 'mon-asso-annuler-abonnement.php',
+    'mon-asso-factures.php', 'facture-abonnement-pdf.php', 'abonnement.php', 'action-abonnement.php',
+    'support.php', 'support-nouveau.php', 'support-ticket.php', 'support-tickets.php',
+    'contact.php', 'contact-send.php', 'mon-asso-export.php',
+    'notifications.php', 'action-mark-read.php', 'api-notifications.php', 'api-search.php', 'guide-onboarding-done.php',
+    'super-admin-stop-impersonation.php',
+]);
+
+/** Script ouvert en accès limité ? (liste AK_READONLY_OPEN, préfixes stripe-, exports, appli) */
+function ak_readonly_script_open(string $script): bool
+{
+    if (in_array($script, AK_READONLY_OPEN, true)) return true;
+    if (strpos($script, 'stripe-') === 0) return true;                                     // paiement de la formule
+    if (strpos($script, 'api/app-') === 0 || strpos($script, 'api/_app-') === 0) return true; // appli : api/_app-write-boot.php
+    if (strpos($script, 'download-') === 0 || strpos($script, 'export') !== false) return true; // exports (FEC, bilans, CSV)
+    // Paramètres : compte personnel et mot de passe ; pas les réglages de l'association
+    if ($script === 'action-parametres.php') return (string)($_POST['action'] ?? '') !== 'update_organization';
+    return false;
+}
+
+function ak_readonly_guard(PDO $pdo, ?array $u): void
+{
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') return;
+    if (!$u || ak_user_is_platform($u)) return;
+    $script = ak_guard_script();
+    if (ak_readonly_script_open($script)) return;
+    $org_id = (int)($_SESSION['org_id'] ?? 0) ?: (int)($u['org_id'] ?? 0);
+    if ($org_id <= 0) return;
+    // plan-controls.php : ak_plan_is_readonly (fondations), seulement une fois la grille appliquée
+    // à la ligne demarrage (akc_readonly_live) ; tout manque ou toute erreur laisse passer
+    if (!is_file(__DIR__ . '/plan-controls.php')) return;
+    try {
+        require_once __DIR__ . '/plan-controls.php';
+        if (!akc_readonly($pdo, $org_id, false)) return;
+    } catch (Throwable $e) {
+        return;
+    }
+    $msg = function_exists('ak_readonly_message') ? ak_readonly_message()
+         : 'Votre espace est en accès limité : vos données restent consultables et exportables.';
+    if (ak_guard_is_api($script)) {
+        if (!headers_sent()) {
+            http_response_code(403);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store');
+        }
+        echo json_encode(['ok' => false, 'error' => 'readonly', 'message' => $msg], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if (!headers_sent()) {
+        http_response_code(403);
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store');
+    }
+    $e = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    // Bouton vers les formules : site seulement, administrateur seulement (jamais dans l'appli)
+    $btn = (!ak_billing_hidden() && ($u['role'] ?? '') === 'admin')
+         ? '<a href="/mon-asso-plan" style="display:inline-block;background:#059669;color:#fff;text-decoration:none;font-weight:600;padding:11px 18px;border-radius:10px;margin:6px;">Choisir une formule</a>'
+         : '';
+    $ref = (string)($_SERVER['HTTP_REFERER'] ?? '');
+    $host = (string)($_SERVER['HTTP_HOST'] ?? '');
+    $back = ($ref !== '' && $host !== '' && parse_url($ref, PHP_URL_HOST) === $host) ? $ref : '/dashboard';
+    echo '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+       . '<meta name="robots" content="noindex, nofollow"><title>Accès limité — Assokit</title></head>'
+       . '<body style="margin:0;background:#F8FAFC;font-family:Geist,system-ui,-apple-system,Segoe UI,sans-serif;color:#0F172A;">'
+       . '<main style="max-width:560px;margin:48px auto;padding:0 16px;">'
+       . '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:28px 24px;text-align:center;">'
+       . '<div style="font-size:38px;line-height:1;margin-bottom:12px;" aria-hidden="true">🔒</div>'
+       . '<h1 style="font-size:20px;margin:0 0 10px;">Accès limité</h1>'
+       . '<p style="margin:0 0 8px;line-height:1.6;color:#334155;">' . $e($msg) . '</p>'
+       . '<p style="margin:0 0 18px;line-height:1.6;color:#64748B;font-size:14px;">Cette action n’a pas été enregistrée : il n’est plus possible de créer, modifier ni envoyer.</p>'
+       . '<a href="' . $e($back) . '" style="display:inline-block;border:1px solid #CBD5E1;color:#0F172A;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:10px;margin:6px;">Retour</a>'
+       . $btn
+       . '</div></main></body></html>';
+    exit;
 }
 
 }

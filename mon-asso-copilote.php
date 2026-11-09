@@ -17,6 +17,10 @@ if ($org_id <= 0) { header('Location: /'); exit; }
 require_once __DIR__ . '/finance-permissions.php';
 if (!ak_copilote_allowed($user)) { $_SESSION['flash_error'] = 'Le copilote est réservé aux rôles de pilotage (admin, coordinateur).'; header('Location: /dashboard'); exit; }
 
+// Formule : copilote à partir de Pro (feature_ai_assistant)
+require_once __DIR__ . '/plan-controls.php';
+akc_lock_page($pdo, $org_id, 'ai_assistant', 'Copilote IA', 'mon-asso-copilote');
+
 render_head('Copilote IA');
 render_sidebar('mon-asso-copilote');
 $csrf = h($_SESSION['csrf_token'] ?? '');

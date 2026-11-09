@@ -328,7 +328,9 @@ sa_render_sidebar('dashboard');
         <div style="margin-top:14px;">
             <?php
             $total_plans = array_sum($plans_split) ?: 1;
-            $colors = ['demarrage' => '#A1A1AA', 'assokit' => '#7F77DD', 'sur-mesure' => '#FCD34D',
+            // Grille de novembre 2026 : assokit = Pro ; fondateur = offre des clients de la première heure
+            $colors = ['demarrage' => '#A1A1AA', 'ak-essentiel' => '#60A5FA', 'assokit' => '#7F77DD', 'fondateur' => '#A78BFA',
+                       'ak-equipe' => '#34D399', 'sur-mesure' => '#FCD34D', 'pro-essai' => '#C4B5FD',
                        'trial' => '#C4B5FD', 'expired' => '#F59E0B', 'legacy' => '#52525B'];
             foreach ($plans_split as $plan => $nb):
                 $pct = round(($nb / $total_plans) * 100, 1);

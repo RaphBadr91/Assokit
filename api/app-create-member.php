@@ -21,11 +21,11 @@ if (!in_array($role_me, ['admin', 'coordinator'], true)
 }
 $roles_reserved = $role_me === 'admin' ? [] : ($role_me === 'coordinator' ? ['admin'] : ['admin', 'coordinator']);
 
-// Meme blocage de limite de plan
+// Meme blocage de limite de plan. Message neutre, sans invitation à changer de formule (règle Apple 3.1.1)
 if (function_exists('ak_can_add_adherent')) {
     $check = ak_can_add_adherent($pdo, $org_id);
     if (empty($check['ok'])) {
-        app_fail(403, 'plan_limit', ($check['reason'] ?? 'Limite d\'adhérents atteinte') . '. Passez au plan supérieur.');
+        app_fail(403, 'plan_limit', rtrim((string) ($check['reason'] ?? '') ?: 'Limite de membres atteinte', '.') . '.');
     }
 }
 
@@ -41,6 +41,11 @@ $valid_roles = ['admin', 'coordinator', 'referent', 'member', 'follower'];
 if (!in_array($role, $valid_roles, true)) $role = 'member';
 // Un coordinateur ne peut pas creer d'admin : repli sur 'member', comme nouveau-adherent.php
 if (in_array($role, $roles_reserved, true)) $role = 'member';
+
+// Limite de gestionnaires de la formule (administrateur, coordinateur, référent : ak_can_add_manager),
+// comme nouveau-adherent.php. Message des fondations, neutre.
+require_once __DIR__ . '/_app-plan.php';
+if (($mgr_block = app_plan_manager_block($pdo, $org_id, $role)) !== null) app_fail(403, 'plan_limit', $mgr_block);
 
 if ($first === '' || $last === '') app_fail(422, 'invalid', 'Le prénom et le nom sont obligatoires.');
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) app_fail(422, 'invalid', 'Email invalide.');

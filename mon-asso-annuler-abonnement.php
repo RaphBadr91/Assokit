@@ -163,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ak_sub_downgrade_free($pdo, (int)$active_sub['id'], $stripe_ended);
                 // Confirmation sur un support durable (le webhook ne la renvoie pas : la ligne est déjà arrêtée)
                 ak_stripe_notify_stop($pdo, $org_id, $is_stripe_sub ? $stripe_sub_id : 'manuel-' . (int)$active_sub['id'], null, false);
-                $flash_msg = 'L’abonnement impayé est arrêté : plus aucun prélèvement. Votre association passe en accès limité (Démarrage) et vos données sont conservées. Vous pouvez reprendre Assokit à tout moment.';
+                $flash_msg = 'L’abonnement impayé est arrêté : plus aucun prélèvement. Votre association passe en accès limité (Démarrage) et vos données sont conservées. Vous pouvez choisir de nouveau une formule à tout moment.';
             } elseif ($is_stripe_sub) {
                 // Annulation via API Stripe (à fin de période)
                 $resp = ak_stripe_api_call($pdo, 'POST', '/subscriptions/' . rawurlencode($stripe_sub_id), [
@@ -194,6 +194,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            . ', puis votre association passe en accès limité (Démarrage).';
             }
 
+            // Baisse de formule programmée (stripe-change-plan) : sans objet une fois l'abonnement résilié
+            if (function_exists('ak_sub_set_pending') && !empty($active_sub['id'])) ak_sub_set_pending($pdo, (int)$active_sub['id'], null, null);
             $_SESSION['flash_success'] = $flash_msg;
             header('Location: /mon-asso-plan');
             exit;
@@ -264,7 +266,7 @@ render_sidebar('mon-asso-plan');
           En confirmant :
           <ul style="margin:8px 0 0;padding-left:20px;">
             <li><strong>aucun prélèvement</strong> n’aura lieu : l’annulation est sans frais ;</li>
-            <li>votre <strong>essai gratuit continue</strong><?= !empty($trial_info['end_fr']) ? ' jusqu’au <strong>' . h($trial_info['end_fr']) . '</strong>' : '' ?>, avec toutes les fonctionnalités ;</li>
+            <li>votre <strong>essai gratuit continue</strong><?= !empty($trial_info['end_fr']) ? ' jusqu’au <strong>' . h($trial_info['end_fr']) . '</strong>' : '' ?>, avec toutes les fonctions de la formule Pro ;</li>
             <li>ensuite, votre association passe en <strong>accès limité</strong> (Démarrage) ; <strong>vos données sont conservées</strong> et vous pouvez souscrire de nouveau à tout moment.</li>
           </ul>
         </div>
@@ -285,11 +287,11 @@ render_sidebar('mon-asso-plan');
       <?php $trial_over = !empty($trial_info['trial_expired']); ?>
       <div style="background:<?= $trial_over ? '#FEF2F2' : '#FFFBEB' ?>;border:2px solid <?= $trial_over ? '#FECACA' : '#FCD34D' ?>;border-radius:18px;padding:36px 32px;text-align:center;">
         <div style="font-size:54px;margin-bottom:14px;"><?= $trial_over ? '⏳' : '🎁' ?></div>
-        <h1 style="margin:0 0 8px;font-size:22px;color:<?= $trial_over ? '#991B1B' : '#92400E' ?>;"><?= h($trial_info['label'] !== '' ? $trial_info['label'] : 'Essai PRO') ?></h1>
+        <h1 style="margin:0 0 8px;font-size:22px;color:<?= $trial_over ? '#991B1B' : '#92400E' ?>;"><?= h($trial_info['label'] !== '' ? $trial_info['label'] : 'Essai Pro') ?></h1>
         <p style="color:<?= $trial_over ? '#7F1D1D' : '#78350F' ?>;line-height:1.65;font-size:14.5px;margin:0 0 22px;">
           <?php if ($trial_over): ?>
             Votre essai est terminé<?= $trial_info['end_fr'] !== '' ? ' depuis le <strong>' . h($trial_info['end_fr']) . '</strong>' : '' ?> et aucune formule n’a encore été choisie : il n’y a pas d’abonnement payant à annuler.<br>
-            Vos données sont conservées. Choisissez une formule pour retrouver toutes les fonctionnalités.
+            Vos données sont conservées. Choisissez une formule pour continuer.
           <?php else: ?>
             Votre association est en <strong>essai gratuit</strong><?= $trial_info['end_fr'] !== '' ? ' jusqu’au <strong>' . h($trial_info['end_fr']) . '</strong>' : '' ?> : il n’y a pas d’abonnement à annuler et rien ne vous sera facturé.<br>
             Sans formule choisie d’ici là, l’essai s’arrête de lui-même. Vos données sont conservées.
@@ -376,20 +378,28 @@ render_sidebar('mon-asso-plan');
         <div style="text-align:center;margin-bottom:22px;">
           <div style="font-size:54px;margin-bottom:10px;">😢</div>
           <h1 style="margin:0 0 8px;font-size:22px;color:#0F172A;">Annuler mon abonnement</h1>
-          <p style="color:#64748B;font-size:14px;margin:0;">Plan actuel : <strong><?= h($plan_label) ?></strong></p>
+          <p style="color:#64748B;font-size:14px;margin:0;">Formule actuelle : <strong><?= h($plan_label) ?></strong></p>
         </div>
 
         <!-- Conséquences -->
         <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:12px;padding:18px 20px;margin-bottom:22px;">
           <div style="font-weight:700;color:#92400E;margin-bottom:10px;font-size:14px;">⚠️ Avant de partir, voici ce que vous perdrez :</div>
           <ul style="margin:0;padding-left:20px;color:#78350F;line-height:1.85;font-size:13.5px;">
-            <li>L'accès au plan <strong><?= h($plan_label) ?></strong></li>
-            <li>La diffusion email aux adhérents</li>
-            <li>Les factures récurrentes automatiques</li>
-            <li>Les statistiques avancées</li>
-            <li>Le support prioritaire</li>
+            <li>L’accès à la formule <strong><?= h($plan_label) ?></strong></li>
+            <?php
+            // Seulement les fonctions que la formule actuelle comprend vraiment (grille 2026)
+            $lost = ['feature_email_diffusion' => 'La diffusion d’e-mails à vos membres', 'feature_recurring_invoices' => 'Les relances automatiques et les factures récurrentes',
+                     'feature_ai_assistant' => 'Le copilote IA et les priorités du jour', 'feature_mail_inbox' => 'La boîte Gmail intégrée',
+                     'feature_advanced_stats' => 'Les prévisions de trésorerie et la comptabilité analytique', 'feature_team_planning' => 'Le planning d’équipe et les absences',
+                     'feature_anomalies' => 'La détection d’anomalies dans vos comptes'];
+            $cur_row = null;
+            try { $cq = $pdo->prepare("SELECT * FROM asso_plans WHERE id = ?"); $cq->execute([(int)($active_sub['plan_id'] ?? 0)]); $cur_row = $cq->fetch(PDO::FETCH_ASSOC) ?: null; } catch (Throwable $e) {}
+            foreach ($lost as $col => $txt):
+                if (!$cur_row || !array_key_exists($col, $cur_row) || empty($cur_row[$col])) continue; ?>
+            <li><?= h($txt) ?></li>
+            <?php endforeach; ?>
             <?php if (function_exists('ak_has_addon_custom_domain') && ak_has_addon_custom_domain($pdo, $org_id)): ?>
-            <li>Votre domaine personnalisé (add-on)</li>
+            <li>Votre domaine personnel (option)</li>
             <?php endif; ?>
           </ul>
         </div>

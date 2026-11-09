@@ -28,14 +28,40 @@ require_once __DIR__ . '/_app-founder-plan.php';
 // Plans et prix : Fondateur uniquement (lecture comme écriture), un super-admin simple n'y a pas accès sur le site
 if (!app_is_founder($pdo, $user)) plans_fail(403, 'forbidden');
 
-// Champs entiers-nullable (quotas) et booléens (features)
-$INT_FIELDS = ['limit_adherents', 'limit_invoices_total', 'limit_quotes_total', 'limit_contacts', 'limit_users',
-    'limit_ai_text_per_month', 'limit_ai_image_per_month', 'limit_emails_per_month'];
-$BOOL_FIELDS = ['feature_recurring_invoices', 'feature_signature_quotes', 'feature_email_diffusion',
-    'feature_advanced_stats', 'feature_priority_support', 'feature_custom_domain', 'feature_dedicated_support'];
+// Champs entiers-nullable (limites) et booléens (fonctions) : listes de la grille (plan-helpers.php,
+// ak_plan_limit_keys / ak_plan_feature_keys, les mêmes que /fondateur-plans et /admin-plans), sinon
+// les anciennes listes. Vide = illimité, 0 = bloqué.
+require_once __DIR__ . '/_app-plan.php';
+app_plan_load();
+$LIMIT_LABELS = function_exists('ak_plan_limit_keys') ? ak_plan_limit_keys() : [
+    'limit_adherents' => 'Adhérents', 'limit_users' => 'Utilisateurs', 'limit_invoices_total' => 'Factures (total)',
+    'limit_quotes_total' => 'Devis (total)', 'limit_contacts' => 'Contacts', 'limit_ai_text_per_month' => 'IA texte par mois',
+    'limit_ai_image_per_month' => 'IA image par mois', 'limit_emails_per_month' => 'E-mails par mois'];
+$FEATURE_LABELS = function_exists('ak_plan_feature_keys') ? ak_plan_feature_keys() : [
+    'feature_recurring_invoices' => 'Factures récurrentes', 'feature_signature_quotes' => 'Devis signés',
+    'feature_email_diffusion' => 'Diffusion e-mail', 'feature_advanced_stats' => 'Statistiques avancées',
+    'feature_priority_support' => 'Support prioritaire', 'feature_custom_domain' => 'Domaine personnel',
+    'feature_dedicated_support' => 'Support dédié'];
+$INT_FIELDS  = array_keys($LIMIT_LABELS);
+$BOOL_FIELDS = array_keys($FEATURE_LABELS);
+// Nouvelles fonctions de la grille : 1 par défaut (colonne absente ou nouvelle ligne = comme avant)
+$BOOL_DEFAULT_ON = function_exists('ak_plan_default_on_keys') ? ak_plan_default_on_keys() : [];
 
-// Plans dont dépendent l'inscription (essai) et la fin d'essai (plan gratuit) : slug figé, suppression refusée
-const PLANS_SYSTEM = ['pro-essai', 'demarrage'];
+// Plans dont dépendent l'inscription (essai), la fin d'essai (accès limité) et l'offre fondateur
+// (cli-rattacher-fondateur.php, migration de la grille) : slug figé, suppression refusée, comme /fondateur-plans
+const PLANS_SYSTEM = ['pro-essai', 'demarrage', 'fondateur'];
+// Lignes de la grille : slug figé (lu par la migration, les liens ?plan= et les prix de secours)
+const PLANS_FIXED_SLUG = ['pro-essai', 'demarrage', 'fondateur', 'assokit', 'ak-essentiel', 'ak-equipe', 'sur-mesure'];
+
+/** Rôle d'une ligne système, affiché dans l'éditeur de l'appli. */
+function plans_system_hint(string $slug): string {
+    switch ($slug) {
+        case 'pro-essai': return 'Formule d’essai attribuée à l’inscription.';
+        case 'demarrage': return 'Accès limité (consultation et export) attribué à la fin d’un essai non converti, à la résiliation ou en cas d’impayé.';
+        case 'fondateur': return 'Offre fondateur : formule masquée des clients de la première heure.';
+    }
+    return in_array($slug, PLANS_FIXED_SLUG, true) ? 'Formule de la grille : son slug ne peut pas changer.' : '';
+}
 
 /**
  * Adoption : nombre d'associations par plan, d'après leur abonnement COURANT (même ligne
@@ -106,6 +132,9 @@ function plans_list(PDO $pdo, array $INT_FIELDS, array $BOOL_FIELDS): array {
             'name'          => (string) ($p['name'] ?? ''),
             'label'         => ak_plan_label($p['slug'] ?? '', $p['name'] ?? null),
             'is_system'     => in_array((string) ($p['slug'] ?? ''), PLANS_SYSTEM, true),
+            'slug_fixed'    => in_array((string) ($p['slug'] ?? ''), PLANS_FIXED_SLUG, true),
+            'system_hint'   => plans_system_hint((string) ($p['slug'] ?? '')),
+            'grille'        => !empty($p['grille_version']),
             'tagline'       => (string) ($p['tagline'] ?? ''),
             'price_eur'     => round(((int) ($p['price_cents'] ?? 0)) / 100, 2),
             'price_label'   => (string) ($p['price_label'] ?? ''),
@@ -116,8 +145,10 @@ function plans_list(PDO $pdo, array $INT_FIELDS, array $BOOL_FIELDS): array {
             'display_order' => (int) ($p['display_order'] ?? 0),
             'adoption'      => $adoption[(int) $p['id']] ?? 0,
         ];
+        // Colonne absente (schéma de prod non versionné) : limite vide, fonction de la grille active
         foreach ($INT_FIELDS as $f) $item[$f] = (!isset($p[$f]) || $p[$f] === '') ? null : (int) $p[$f];
-        foreach ($BOOL_FIELDS as $f) $item[$f] = !empty($p[$f]);
+        foreach ($BOOL_FIELDS as $f) $item[$f] = array_key_exists($f, $p) ? !empty($p[$f]) : in_array($f, $GLOBALS['BOOL_DEFAULT_ON'], true);
+        $item['bonus_ai_first_week'] = (int) ($p['bonus_ai_first_week'] ?? 0);
         $out[] = $item;
     }
     return $out;
@@ -125,7 +156,12 @@ function plans_list(PDO $pdo, array $INT_FIELDS, array $BOOL_FIELDS): array {
 
 // --- GET : liste ---
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-    try { echo json_encode(['ok' => true, 'plans' => plans_list($pdo, $INT_FIELDS, $BOOL_FIELDS)], JSON_UNESCAPED_UNICODE); }
+    $fields = ['limits' => [], 'features' => []];
+    foreach ($LIMIT_LABELS as $k => $l) $fields['limits'][] = ['key' => $k, 'label' => $l];
+    // default : valeur d'une nouvelle formule (celle de la colonne en base : 1 pour les fonctions de la grille)
+    foreach ($FEATURE_LABELS as $k => $l) $fields['features'][] = ['key' => $k, 'label' => $l,
+        'default' => in_array($k, $BOOL_DEFAULT_ON, true) || $k === 'feature_email_diffusion'];
+    try { echo json_encode(['ok' => true, 'plans' => plans_list($pdo, $INT_FIELDS, $BOOL_FIELDS), 'fields' => $fields], JSON_UNESCAPED_UNICODE); }
     catch (Throwable $e) { error_log('[app-founder-plans] ' . $e->getMessage()); plans_fail(500, 'server'); }
     exit;
 }
@@ -147,7 +183,7 @@ try {
         // (organizations.plan OU une ligne d'abonnement : sinon l'association perdrait son plan)
         $sq = $pdo->prepare("SELECT slug FROM asso_plans WHERE id = ?"); $sq->execute([$pid]);
         $slug = (string) $sq->fetchColumn();
-        if (in_array($slug, PLANS_SYSTEM, true)) plans_fail(409, 'system', 'Plan système (essai ou plan gratuit) : il ne peut pas être supprimé. Masquez-le si besoin.');
+        if (in_array($slug, PLANS_SYSTEM, true)) plans_fail(409, 'system', 'Formule utilisée par le système (essai, accès limité ou offre fondateur) : elle ne se supprime pas. Masquez-la si besoin.');
         [$used_orgs, $used_subs] = plans_usage($pdo, $pid, $slug);
         if ($used_orgs > 0 || $used_subs > 0) {
             plans_fail(409, 'in_use', $used_orgs > 0
@@ -184,10 +220,17 @@ try {
             'display_order' => (int) ($input['display_order'] ?? 0),
         ];
         foreach ($INT_FIELDS as $f) {
-            $v = $input[$f] ?? null;
-            $data[$f] = ($v === '' || $v === null) ? null : (int) $v;
+            // Champ non envoyé (ancienne version de l'appli) : la valeur en base ne bouge pas
+            if (!array_key_exists($f, $input)) continue;
+            $v = $input[$f];
+            $data[$f] = ($v === '' || $v === null) ? null : max(0, (int) $v);
         }
-        foreach ($BOOL_FIELDS as $f) $data[$f] = !empty($input[$f]) ? 1 : 0;
+        foreach ($BOOL_FIELDS as $f) {
+            if (array_key_exists($f, $input)) $data[$f] = !empty($input[$f]) ? 1 : 0;
+            elseif ($act === 'create') $data[$f] = (in_array($f, $BOOL_DEFAULT_ON, true) || $f === 'feature_email_diffusion') ? 1 : 0;
+        }
+        if (array_key_exists('bonus_ai_first_week', $input)) $data['bonus_ai_first_week'] = max(0, (int) $input['bonus_ai_first_week']);
+        // grille_version n'est jamais écrite ici : une relance de la migration n'écrase pas ces réglages
         // N'écrit que les colonnes qui existent (schéma de prod non versionné)
         $pcols = ak_db_columns($pdo, 'asso_plans');
         if ($pcols) $data = array_intersect_key($data, $pcols);
@@ -213,8 +256,9 @@ try {
             if ($old_slug === false) plans_fail(404, 'not_found', 'Plan introuvable.');
             $old_slug = (string) $old_slug;
             if ($slug !== $old_slug) {
-                // L'inscription cherche « pro-essai », la fin d'essai « demarrage » : ces slugs ne bougent pas
-                if (in_array($old_slug, PLANS_SYSTEM, true)) plans_fail(409, 'system', 'Le slug d’un plan système (essai ou plan gratuit) ne peut pas changer.');
+                // L'inscription cherche « pro-essai », la fin d'essai « demarrage », la migration et les liens
+                // ?plan= les slugs de la grille : ces slugs ne bougent pas
+                if (in_array($old_slug, PLANS_FIXED_SLUG, true)) plans_fail(409, 'system', 'Le slug d’une formule de la grille (essai, accès limité, offre fondateur, Essentiel, Pro, Équipe, Sur-mesure) ne peut pas changer.');
                 $c = $pdo->prepare("SELECT COUNT(*) FROM asso_plans WHERE slug = ? AND id <> ?");
                 $c->execute([$slug, $pid]);
                 if ((int) $c->fetchColumn() > 0) plans_fail(409, 'slug_used', 'Ce slug existe déjà.');

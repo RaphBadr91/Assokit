@@ -58,6 +58,11 @@ if ($trial_block = ak_trial_quote_send_block($pdo, $org_id, $quote_id)) {
     header('Location: /mon-asso-devis-edit?id=' . $quote_id); exit;
 }
 
+// Formule : signature en ligne des devis à partir de Pro (feature_signature_quotes). Sans elle, le
+// devis part quand même (envoi à l'unité, jamais bloqué ni compté), en pièce jointe, sans lien de signature.
+require_once __DIR__ . '/plan-controls.php';
+$sign_online = akc_has($pdo, $org_id, 'signature_quotes', false);
+
 try {
     $public_url = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'assokit.fr') . '/devis/' . $quote['public_uuid'];
 
@@ -76,7 +81,8 @@ try {
         "Bonjour {NOM_CLIENT},\n\n"
         . "Veuillez trouver ci-joint notre devis {NUMERO} d'un montant de {MONTANT_TTC}.\n\n"
         . "Validité : jusqu'au {DATE_VALIDITE}\n\n"
-        . "Pour accepter ce devis en ligne, cliquez ici :\n{LIEN_PUBLIC}\n\n"
+        . ($sign_online ? "Pour accepter ce devis en ligne, cliquez ici :\n{LIEN_PUBLIC}\n\n"
+                        : "Pour accepter ce devis, il vous suffit de nous contacter.\n\n")
         . "Cordialement,\n{NOM_ASSO}",
         $vars
     );

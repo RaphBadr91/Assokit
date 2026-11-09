@@ -50,34 +50,45 @@ if (!isset($catalog[$tool])) {
 }
 $tool_def = $catalog[$tool];
 
-// === [PACK 6.2] VÉRIFICATION DU PLAN AVANT QUOTA INTERNE ===
-// Si plan-helpers.php est disponible, on vérifie d'abord les limites du plan tarifaire
-if (function_exists('ak_can_use_ai_text') && function_exists('ak_can_use_ai_image')) {
-    // Détection texte vs image (les outils image commencent par "image-" dans le catalogue)
-    $is_image_tool = (strpos($tool, 'image-') === 0);
-
-    $plan_check = $is_image_tool
-        ? ak_can_use_ai_image($pdo, $org_id)
-        : ak_can_use_ai_text($pdo, $org_id);
-
-    if (!$plan_check['ok']) {
-        echo json_encode([
-            'ok'    => false,
-            'error' => $plan_check['reason'] . '. Passez au plan supérieur pour continuer.',
-            'quota' => [
-                'allowed' => false,
-                'reason'  => $plan_check['reason'],
-                'limit'   => $plan_check['limit'] ?? 0,
-                'current' => $plan_check['current'] ?? 0,
-            ],
-            'blocked_by_plan'  => true,
-            'blocked_by_quota' => true,
-            // Pas d'URL de montée en gamme dans l'app : le front en ferait un
-            // bouton d'achat, ce qu'Apple interdit (3.1.1).
-            'upgrade_url'      => ak_billing_hidden() ? null : '/mon-asso-plan',
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
+// === Formule : crédits IA du mois (registre unifié ai_usage_ledger, plan-helpers.php) ===
+// 1 texte rédigé = 1 crédit. Le quota par rôle (asso-ai-quotas.php) s'applique ensuite.
+// Aucun outil d'image n'existe dans le catalogue ; s'il en apparaissait un, ak_can_use_ai_image décide.
+require_once __DIR__ . '/plan-controls.php';
+$is_image_tool = (strpos($tool, 'image-') === 0);
+$plan_block = null; $plan_check = [];
+if ($is_image_tool) {
+    if (function_exists('ak_can_use_ai_image')) {
+        $plan_check = ak_can_use_ai_image($pdo, $org_id);
+        if (empty($plan_check['ok'])) $plan_block = (string)($plan_check['reason'] ?? 'Cette fonction n’est pas incluse dans votre formule.');
     }
+} else {
+    $plan_block = akc_ai_block($pdo, $org_id, 1);
+    // Grille pas encore appliquée en base : contrôle d'avant (limite IA de l'ancienne ligne de formule)
+    if ($plan_block === null && !akc_grille_live($pdo) && function_exists('ak_can_use_ai_text')) {
+        try {
+            $plan_check = ak_can_use_ai_text($pdo, $org_id);
+            if (empty($plan_check['ok'])) $plan_block = (string)($plan_check['reason'] ?? 'Crédits IA du mois épuisés.');
+        } catch (Throwable $e) {}
+    }
+}
+if ($plan_block !== null) {
+    echo json_encode([
+        'ok'    => false,
+        // Message neutre : il s'affiche aussi dans l'app (aucune incitation à payer, Apple 3.1.1)
+        'error' => $plan_block,
+        'quota' => [
+            'allowed' => false,
+            'reason'  => $plan_block,
+            'limit'   => $plan_check['limit'] ?? null,
+            'current' => $plan_check['current'] ?? null,
+        ],
+        'blocked_by_plan'  => true,
+        'blocked_by_quota' => true,
+        // Pas d'URL de montée en gamme dans l'app : le front en ferait un
+        // bouton d'achat, ce qu'Apple interdit (3.1.1).
+        'upgrade_url'      => ak_billing_hidden() ? null : '/mon-asso-plan',
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
 // === [PHASE 4.6] VÉRIFICATION QUOTA AVANT TOUT ===
@@ -121,7 +132,7 @@ try {
     $settings = ak_ai_get_settings($pdo, $org_id);
     $prompt   = ak_ai_build_prompt($tool, $inputs, $org, $settings);
 
-    $result = ak_ai_call_api($prompt['system'], $prompt['user']);
+    $result = ak_ai_call_api($prompt['system'], $prompt['user'], akc_ai_opts('hub', $org_id, $user_id));
 
     // Sauvegarde (succès ou erreur, pour traçabilité)
     $gen_id = ak_ai_save_generation($pdo, $org_id, $user_id, $tool, $inputs, $result);

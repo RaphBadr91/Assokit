@@ -14,6 +14,7 @@ ak_session_guard();
 require_once __DIR__ . '/../relances-engine.php';
 require_once __DIR__ . '/../rate-limit-helper.php';
 require_once __DIR__ . '/../trial-limits-helpers.php';   // essai gratuit : relances comptées dans le plafond d'envoi
+require_once __DIR__ . '/../plan-controls.php';          // formule : relances automatiques, crédits IA, e-mails du mois
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -71,7 +72,7 @@ try {
             $stage = max(1, min(3, (int)($body['stage'] ?? 1)));
             if ($trial_block = ak_trial_send_block($pdo, $org_id, 1)) { echo json_encode(['ok'=>false,'error'=>'trial_limit','message'=>$trial_block]); break; }
             $res = ak_rel_send_membership($pdo, $org_id, $mid, $stage, $uid);
-            echo json_encode(['ok'=>!empty($res['success']), 'message'=>$res['message'] ?? '']);
+            echo json_encode(['ok'=>!empty($res['success']), 'message'=>$res['message'] ?? ''], JSON_UNESCAPED_UNICODE);
             break;
         }
 
@@ -94,6 +95,8 @@ try {
             ak_rate_limit_or_die('relance_ai_org', 60, 60, 'org'.$org_id);
             require_once __DIR__ . '/../asso-ai-helpers.php';
             if (!function_exists('ak_ai_call_api')) { echo json_encode(['ok'=>false,'error'=>'ai_unavailable']); break; }
+            // Crédits IA du mois (1 crédit par proposition)
+            if ($ai_block = akc_ai_block($pdo, $org_id, 1)) { echo json_encode(['ok'=>false,'error'=>'ai_quota','message'=>$ai_block], JSON_UNESCAPED_UNICODE); break; }
 
             $type = (string)($body['target'] ?? '');
             $id   = (int)($body['id'] ?? 0);
@@ -138,7 +141,7 @@ try {
             $userMsg = "Stade de relance : $stageLbl.\nFaits (à utiliser tels quels) :\n".json_encode($facts, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT)
                 . "\n\nRédige l'objet et le corps du message (signé par l'émetteur). Tutoiement interdit, vouvoiement.";
 
-            $r = ak_ai_call_api($system, $userMsg);
+            $r = ak_ai_call_api($system, $userMsg, akc_ai_opts('relance-ia', $org_id, $uid));
             if (empty($r['ok'])) { echo json_encode(['ok'=>false,'error'=>'ai_error','detail'=>mb_substr((string)($r['error']??''),0,140)]); break; }
             $txt = trim((string)$r['text']);
             // Extraire le JSON même si entouré de texte.
@@ -152,6 +155,10 @@ try {
         case 'save-prefs': {
             $bit = fn($v)=> (!empty($v) && $v!=='0' && $v!=='false') ? 1 : 0;
             $maxs = max(1, min(3, (int)($body['max_stage'] ?? 2)));
+            // Relances automatiques : Pro et au-delà (feature_recurring_invoices). Les couper reste toujours permis.
+            if (($bit($body['auto_invoices'] ?? 0) || $bit($body['auto_memberships'] ?? 0)) && !akc_has($pdo, $org_id, 'recurring_invoices')) {
+                akc_deny_json($pdo, $org_id, 'recurring_invoices');
+            }
             $st = $pdo->prepare("INSERT INTO org_relance_prefs (org_id, auto_invoices, auto_memberships, max_stage, updated_at)
                                  VALUES (:o,:ai,:am,:ms,NOW())
                                  ON DUPLICATE KEY UPDATE auto_invoices=VALUES(auto_invoices),
@@ -178,6 +185,8 @@ try {
                 if (!$t['due_now']) continue;
                 if ($sent >= $cap) break;
                 if ($trial_block = ak_trial_send_block($pdo, $org_id, 1)) break;
+                // E-mails du mois (relances de cotisation comptées) : arrivé au plafond, on s'arrête
+                if ($trial_block = akc_email_block($pdo, $org_id, 1)) break;
                 $res = ak_rel_send_membership($pdo, $org_id, (int)$t['id'], (int)$t['stage'], $uid);
                 if (!empty($res['success'])) $sent++; else $failed++;
             }

@@ -31,7 +31,7 @@ if (!defined('CRON_EXECUTING') && !defined('CRON_ADMIN_UI')) {
  */
 function cron_email_render(string $type, array $vars): array
 {
-    // Prix de la formule Assokit (HT + TVA lus en base, includes-pricing.php) : jamais écrit en dur
+    // Prix des formules (HT + note de TVA, lus en base, includes-pricing.php) : jamais écrits en dur
     require_once __DIR__ . '/includes-pricing.php';
     $vars = array_merge([
         'first_name'     => 'bonjour',
@@ -96,54 +96,61 @@ function cron_email_render(string $type, array $vars): array
             $cta = ['label' => 'Régler maintenant', 'url' => $vars['billing_url']];
             break;
 
+        // Fin d'essai (grille 2026) : Pro mis en avant, « Gardez tout pour 29,99 € HT/mois », Essentiel
+        // et Équipe proposés, note de TVA. Ces e-mails partent sans adresse de réponse : pas de
+        // « répondez-nous ». Bouton vers /mon-asso-plan (site uniquement, jamais dans l'appli).
         case 'essai_j7':
             $subject = 'Plus qu\'une semaine pour découvrir Assokit 🌱';
-            $preheader = 'Il vous reste 7 jours d\'essai gratuit.';
+            $preheader = 'Il vous reste 7 jours d\'essai gratuit de la formule Pro.';
             $title = 'Votre essai se poursuit 🌱';
             $body = '
                 <p>Bonjour ' . htmlspecialchars($vars['first_name']) . ',</p>
-                <p>Vous avez encore 7 jours pour explorer toutes les possibilités d\'Assokit avec ' . htmlspecialchars($vars['asso_name']) . '.</p>
+                <p>Vous avez encore 7 jours pour explorer la formule Pro d\'Assokit avec ' . htmlspecialchars($vars['asso_name']) . '.</p>
                 <p>Votre essai gratuit se termine le <strong>' . htmlspecialchars($vars['trial_end_date']) . '</strong>.
                    C\'est le bon moment pour tester :</p>
                 <ul>
-                    <li>✨ Le copilote IA qui vous suggère les bonnes actions chaque jour</li>
-                    <li>📊 La génération automatique de votre bilan à la clôture d\'un projet</li>
-                    <li>👥 L\'annuaire adhérents et l\'envoi d\'emails en masse</li>
+                    <li>✨ Le copilote IA, qui vous propose chaque jour vos priorités</li>
+                    <li>🔔 Les relances automatiques des cotisations ou des impayés, à activer dans Relances</li>
+                    <li>✍️ Les devis signés en ligne, transformés en facture en un clic</li>
                 </ul>
-                <p>Une question ? Répondez-nous, on est là.</p>
+                <p>Une question ? Écrivez-nous depuis votre espace, rubrique Support : une personne de l\'équipe vous répond en moins de 24&nbsp;h ouvrées.</p>
             ';
-            $cta = ['label' => 'Continuer avec Assokit', 'url' => $vars['upgrade_url']];
+            $cta = ['label' => 'Voir les formules', 'url' => 'https://assokit.fr/mon-asso-plan'];
             break;
 
         case 'essai_j3':
-            $subject = 'Votre essai Assokit se termine dans 3 jours';
-            $preheader = 'Choisissez la formule Assokit pour garder toutes les fonctionnalités.';
+            $subject = 'Plus que 3 jours d’essai : on garde ce que vous avez construit ?';
+            $preheader = 'Gardez tout pour ' . ak_offer_price()['per_month'] . ', ou choisissez la formule qui vous va.';
             $title = 'Plus que 3 jours ✨';
             $body = '
                 <p>Bonjour ' . htmlspecialchars($vars['first_name']) . ',</p>
-                <p>Votre essai gratuit Assokit se termine dans <strong>3 jours</strong>, le ' . htmlspecialchars($vars['trial_end_date']) . '.</p>
-                <p>Pour que ' . htmlspecialchars($vars['asso_name']) . ' continue à bénéficier du copilote IA, des projets illimités,
-                   de l\'agenda partagé et des envois d\'e-mails, il vous suffit de choisir la formule Assokit :
-                   <strong>' . htmlspecialchars(ak_offer_price()['label']) . ', sans engagement.</strong></p>
-                <p>Sinon, vos données sont conservées : vous pourrez choisir votre formule plus tard.</p>
+                <p>Votre essai de la formule Pro se termine le <strong>' . htmlspecialchars($vars['trial_end_date']) . '</strong>.</p>
+                <p>Pour que tout continue comme aujourd’hui pour ' . htmlspecialchars($vars['asso_name']) . ' (relances automatiques, factures récurrentes,
+                   devis signés en ligne, copilote IA), <strong>gardez tout pour ' . htmlspecialchars(ak_offer_price()['per_month']) . '</strong> avec Pro,
+                   sans engagement. Vous n’avez rien à ressaisir.</p>
+                <p>Vous gérez surtout à la main ? <strong>Essentiel</strong> (' . htmlspecialchars(ak_plan_price('ak-essentiel')['per_month']) . ') garde toute votre gestion, avec la relance en un clic.
+                   Vous êtes plusieurs à gérer chaque jour ? <strong>Équipe</strong> (' . htmlspecialchars(ak_plan_price('ak-equipe')['per_month']) . ') donne à chacun ses priorités du jour.</p>
+                <p>Si vous ne choisissez rien, rien n’est prélevé, et vos données restent conservées et exportables.</p>
+                <p style="font-size:12px;color:#71717A;">' . htmlspecialchars(ak_vat_note()) . '</p>
             ';
-            $cta = ['label' => 'Choisir ma formule', 'url' => $vars['upgrade_url']];
+            $cta = ['label' => 'Choisir ma formule', 'url' => 'https://assokit.fr/mon-asso-plan'];
             break;
 
         case 'essai_j0':
-            $subject = 'Votre essai Assokit se termine aujourd\'hui';
-            $preheader = 'Dernier jour pour choisir votre formule et garder tous vos avantages.';
-            $title = 'Votre essai se termine aujourd\'hui';
+            $subject = 'Votre essai est terminé : vos données vous attendent';
+            $preheader = 'Rien n’a été prélevé. Reprenez où vous en étiez, quand vous voulez.';
+            $title = 'Votre essai est terminé';
             $body = '
                 <p>Bonjour ' . htmlspecialchars($vars['first_name']) . ',</p>
-                <p>Votre période d\'essai Assokit se termine <strong>aujourd\'hui</strong>.</p>
-                <p>Si vous souhaitez continuer avec toutes les fonctionnalités pour ' . htmlspecialchars($vars['asso_name']) . '
-                   (copilote IA complet, projets illimités, agenda, messagerie, envois d\'e-mails),
-                   choisissez dès maintenant la formule Assokit :
-                   <strong>' . htmlspecialchars(ak_offer_price()['label']) . ', sans engagement.</strong></p>
-                <p>Sinon, vos données sont conservées : vous pourrez choisir votre formule plus tard.</p>
+                <p>Votre essai de la formule Pro est terminé. Rien n’a été prélevé. Les données de ' . htmlspecialchars($vars['asso_name']) . ' et vos réglages sont bien là.
+                   Vous choisissez votre formule quand vous le souhaitez.</p>
+                <p>Pour reprendre exactement où vous en étiez, avec les relances qui partent sans vous,
+                   <strong>gardez tout pour ' . htmlspecialchars(ak_offer_price()['per_month']) . '</strong> avec Pro. Sans engagement, résiliable à tout moment.</p>
+                <p>Vous hésitez ? Essentiel (' . htmlspecialchars(ak_plan_price('ak-essentiel')['per_month']) . ') et Équipe (' . htmlspecialchars(ak_plan_price('ak-equipe')['per_month']) . ') sont sur la même page.
+                   Pour un réseau ou une collectivité, le Sur-mesure est sur devis. Écrivez-nous depuis votre espace, rubrique Support : nous vous aidons à choisir.</p>
+                <p style="font-size:12px;color:#71717A;">' . htmlspecialchars(ak_vat_note()) . '</p>
             ';
-            $cta = ['label' => 'Choisir ma formule', 'url' => $vars['upgrade_url']];
+            $cta = ['label' => 'Choisir ma formule', 'url' => 'https://assokit.fr/mon-asso-plan'];
             break;
 
         case 'renouvellement':
@@ -246,7 +253,7 @@ function cron_email_wrap(string $title, string $body, array $cta, string $prehea
               <strong style="color:#059669;">L'art de mener vos projets.</strong>
             </p>
             <p style="margin:0;">
-              Assokit — Hébergé en France · Conforme RGPD ·
+              Assokit — Hébergé en France · Respect du RGPD ·
               <a href="https://assokit.fr" style="color:#059669;text-decoration:none;">assokit.fr</a>
             </p>
           </td>

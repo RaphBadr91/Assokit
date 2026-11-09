@@ -104,7 +104,7 @@ require __DIR__ . '/_landing-premium.php';
         <a href="/signup" class="lp-btn lp-btn-primary">Essai gratuit, sans carte bancaire</a>
         <a href="/logiciel-association" class="lp-btn lp-btn-glass">Découvrir le logiciel de gestion</a>
       </div>
-      <small>Sans engagement · Hébergé en France · Conforme RGPD</small>
+      <small>Sans engagement · Hébergé en France · Respect du RGPD</small>
     </div>
   </div>
 </section>

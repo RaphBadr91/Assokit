@@ -90,6 +90,24 @@ $stmt = $pdo->prepare("
 $stmt->execute($params);
 $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Support prioritaire (formule Équipe, feature_priority_support) : les demandes en cours de ces
+// associations passent en tête de la file, avec un badge « Prioritaire ». Délai de réponse inchangé
+// (24 h ouvrées pour tous). Sans les fondations : ordre habituel, aucun badge.
+$prio_orgs = [];
+if (is_file(__DIR__ . '/plan-controls.php')) {
+    require_once __DIR__ . '/plan-controls.php';
+    $prio_orgs = akc_priority_support_orgs($pdo, array_column($tickets, 'org_id'));
+}
+if ($prio_orgs) {
+    $is_prio = fn(array $t): bool => isset($prio_orgs[(int)$t['org_id']]) && !in_array($t['status'], ['resolved', 'closed'], true);
+    $rank = [];
+    foreach ($tickets as $i => $t) $rank[$i] = $is_prio($t) ? 0 : 1;
+    // Tri stable : l'ordre de la requête (urgence, puis dernier message) est gardé dans chaque groupe
+    $idx = array_keys($tickets);
+    usort($idx, fn($a, $b) => ($rank[$a] <=> $rank[$b]) ?: ($a <=> $b));
+    $tickets = array_map(fn($i) => $tickets[$i] + ['_prioritaire' => $rank[$i] === 0], $idx);
+}
+
 // Stats pour les onglets
 $counts = ['open' => 0, 'unassigned' => 0, 'mine' => 0, 'all' => 0, 'resolved' => 0];
 try {
@@ -199,6 +217,9 @@ sa_render_sidebar('support');
             <td>
               <div class="sa-main-col">
                 #<?= (int) $t['id'] ?> — <?= h($t['title']) ?>
+                <?php if (!empty($t['_prioritaire'])): ?>
+                  <span style="display:inline-block; margin-left:6px; background:rgba(16,185,129,0.18); color:#10B981; font-size:10px; padding:1px 7px; border-radius:999px; font-weight:700;">Prioritaire</span>
+                <?php endif; ?>
                 <?php if ($t['nb_unread'] > 0): ?>
                   <span style="display:inline-block; margin-left:6px; background:#EF4444; color:white; font-size:10px; padding:1px 6px; border-radius:999px; font-weight:600;"><?= $t['nb_unread'] ?></span>
                 <?php endif; ?>

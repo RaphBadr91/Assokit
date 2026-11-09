@@ -57,6 +57,12 @@ try {
 if (!$tables_ready && !$widget_error) {
     return;
 }
+
+// Formule sans factures récurrentes (Essentiel, accès limité) et aucune récurrence : pas de widget
+// (il invitait à créer une récurrence que la formule n'inclut pas)
+if (function_exists('ak_recurrence_plan_ok') && !ak_recurrence_plan_ok($pdo, (int)$org_id) && (int)($counts['total'] ?? 0) === 0) {
+    return;
+}
 ?>
 <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:18px;font-family:Geist,system-ui,sans-serif;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">

@@ -2,7 +2,7 @@
 
 Guide pas à pas pour activer le paiement des abonnements Assokit par carte bancaire, Apple Pay, Google Pay et prélèvement SEPA. Aucune compétence technique n’est nécessaire, sauf pour les deux commandes de l’étape 1 sur le serveur.
 
-Prix vendu : formule **Assokit à 49,99 € HT par mois**, plus l’option **Domaine personnalisé à 10,00 € HT par mois**. Tant que RBPS est en franchise de TVA, ces montants sont prélevés tels quels (« TVA non applicable, art. 293 B du CGI »).
+Formules vendues (grille 2026) : **Essentiel à 19,99 € HT/mois**, **Pro à 29,99 € HT/mois** (slug technique `assokit`) et **Équipe à 59,99 € HT/mois**. Le **Sur-mesure** est sur devis (paiement sur facture ou par virement, jamais par carte). L’**offre fondateur** (clients de la première heure, 29,99 € HT/mois, masquée) n’est jamais vendue : elle est prélevée au prix Stripe de Pro. L’option **domaine personnel** n’est **plus vendue** tant que la fonction n’est pas livrée. Tant que RBPS est en franchise de TVA, ces montants sont prélevés tels quels : « TVA non applicable (art. 293 B du CGI) : le prix HT est le prix payé. »
 
 > **Noms des menus Stripe.** Le tableau de bord Stripe change régulièrement ses intitulés. Chaque étape donne le nom du menu **et** un lien direct : en cas de doute, suivez le lien. Pour passer du mode test au mode réel, utilisez l’interrupteur « Mode test » (ou « Environnement de test ») en haut à droite du tableau de bord.
 
@@ -12,7 +12,7 @@ Prix vendu : formule **Assokit à 49,99 € HT par mois**, plus l’option **Dom
 
 **Assokit le fait pour vous** (bouton « Configurer Stripe automatiquement ») :
 
-- le produit « Assokit » et son prix mensuel HT, le produit « Domaine personnalisé » et son prix ;
+- un produit et un prix mensuel HT (« hors taxes », TVA ajoutée par Stripe si elle s’applique un jour) pour **chaque formule vendue** : Essentiel, Pro et Équipe ; l’identifiant de chaque prix est gardé dans la formule (Pilotage › Plans tarifaires). L’offre fondateur reçoit le prix de Pro (même montant) ; le Sur-mesure n’a pas de prix ;
 - le taux de TVA, le jour où vous activez la TVA ;
 - le **webhook** (l’adresse à laquelle Stripe prévient Assokit de chaque paiement et de chaque carte enregistrée pendant un essai), abonné aux bons événements, avec son secret de signature ; recliquer sur le bouton après une mise à jour d’Assokit ajoute les nouveaux événements ;
 - le **portail client** (la page Stripe où l’association change de carte, voit ses factures et peut résilier) ;
@@ -35,9 +35,10 @@ git pull
 /usr/local/bin/php migrations/run.php 2026-10-28-stripe-mise-en-service.sql
 /usr/local/bin/php migrations/run.php 2026-10-29-stripe-souscription-pendant-essai.sql
 /usr/local/bin/php migrations/run.php 2026-10-30-paiements-en-ligne-associations.sql
+/usr/local/bin/php migrations/run.php 2026-11-09-grille-tarifaire.sql
 ```
 
-Chacune des trois commandes `migrations/run.php` doit afficher « Terminé : … instruction(s) OK, 0 erreur(s) ». Vous pouvez relancer ces commandes sans risque : elles ne créent que ce qui manque et ne suppriment rien. La seconde permet à une association en essai de souscrire en gardant ses jours d’essai (premier prélèvement à la fin de l’essai) ; tant qu’elle n’est pas passée, « Configurer Stripe automatiquement » affiche ✕ « Base de données prête ». La troisième prépare les paiements en ligne reçus par les associations (section « Paiements reçus par les associations ») ; sans elle, les abonnements fonctionnent quand même (seule la ligne Stripe Connect affiche ⚠).
+Chacune des commandes `migrations/run.php` doit afficher « Terminé : … instruction(s) OK, 0 erreur(s) ». Vous pouvez relancer ces commandes sans risque : elles ne créent que ce qui manque et ne suppriment rien. La seconde permet à une association en essai de souscrire en gardant ses jours d’essai (premier prélèvement à la fin de l’essai) ; tant qu’elle n’est pas passée, « Configurer Stripe automatiquement » affiche ✕ « Base de données prête ». La troisième prépare les paiements en ligne reçus par les associations (section « Paiements reçus par les associations ») ; sans elle, les abonnements fonctionnent quand même (seule la ligne Stripe Connect affiche ⚠).
 
 Vérifiez ensuite les **tâches planifiées** du cPanel (« Tâches Cron ») ; ces deux lignes doivent exister :
 
@@ -47,6 +48,41 @@ Vérifiez ensuite les **tâches planifiées** du cPanel (« Tâches Cron ») ; c
 | tous les jours à 8 h | `/usr/local/bin/php /home/pura7044/public_html/cron_subscriptions.php` |
 
 La seconde envoie l’e-mail « Fonctionnalités bloquées » 15 jours après un paiement refusé. Elle fonctionne maintenant en ligne de commande, comme les autres.
+
+### 1 bis — Grille 2026 : mise en service, d’une traite, dans cet ordre
+
+Les associations qui paient aujourd’hui 49,99 € HT passent sur l’**offre fondateur** : 29,99 € HT/mois, leurs fonctions actuelles gardées, prix et fonctions garantis 12 mois. L’ordre ci-dessous garantit qu’aucun client ne subit les plafonds de Pro, même une minute.
+
+Faites les étapes 1 à 6 **à la suite, sans pause**, juste après le `git pull`. Il n’y a pas de mode maintenance à activer : tant que l’étape 5 n’est pas faite, « Mon abonnement » n’affiche pas de prix pour Pro (« Pro : souscription disponible très prochainement, contactez-nous ») et aucun paiement de Pro n’est possible, ni par carte, ni par virement. Aucun client ne peut donc souscrire Pro à l’ancien prix pendant la mise en service.
+
+1. `git pull` (étape 1 ci-dessus).
+2. `/usr/local/bin/php migrations/run.php 2026-11-09-grille-tarifaire.sql` : la formule « fondateur » est créée ; la formule `assokit` n’est **pas** encore transformée en Pro tant qu’un vrai client en cours y est rattaché (un ancien client résilié ne compte pas). Les associations de démonstration (« demo… ») passent sur Sur-mesure, pour que la démo et le compte d’examen Apple montrent toutes les fonctions.
+3. `/usr/local/bin/php cli-rattacher-fondateur.php` : **liste** les associations concernées, sans rien écrire. Vérifiez la liste.
+4. `/usr/local/bin/php cli-rattacher-fondateur.php --apply --email` : les rattache et leur envoie l’annonce. **Mettez toujours `--email`** : cet e-mail (« votre abonnement passe de 49,99 € HT à 29,99 € HT… Prix et fonctions garantis jusqu’au JJ/MM/AAAA. Avant cette date, nous vous écrirons au moins 30 jours à l’avance, et vous pourrez résilier sans frais ») est la seule trace écrite de l’offre, à laquelle renvoient les CGU. Il n’est envoyé qu’aux associations qui payaient bien 49,99 € HT (hors « Offert ») ; le script signale les autres, à prévenir à la main. La ligne d’abonnement est seulement rattachée : un impayé reste un impayé, une résiliation reste une résiliation. Relancé, le script ne refait rien.
+5. Relancez la migration : `/usr/local/bin/php migrations/run.php 2026-11-09-grille-tarifaire.sql`. La formule `assokit` devient **Pro à 29,99 € HT**.
+6. **Contrôle** : dans phpMyAdmin, `SELECT slug, price_cents, grille_version FROM asso_plans WHERE slug = 'assokit';` doit donner `2999` et `202611`. Si `grille_version` est vide, un client y est encore rattaché : relancez l’étape 3 pour le voir, puis 4 et 5.
+7. Seulement ensuite, et quand vous activerez Stripe : « Configurer Stripe automatiquement » (étape 4) crée les trois prix.
+
+Une association déjà abonnée **par carte** (aucune aujourd’hui) est seulement signalée par le script : relancez-le avec `--stripe-prix` une fois Stripe configuré pour que son prélèvement passe à 29,99 € à la prochaine échéance (sans prorata). Une fois `assokit` transformée en Pro, le script refuse de tourner, sauf avec `--avant=AAAA-MM-JJ` (date de mise en service de la grille) : il ne rattache alors que les abonnements plus anciens, jamais un nouvel abonné Pro.
+
+### 1 ter — Point du lundi du trésorier (formule Équipe) : tâche cron à ajouter
+
+Ajoutez dans le cPanel (« Tâches Cron ») la ligne suivante, chaque lundi à 7 h 40 :
+
+| Fréquence | Commande |
+|---|---|
+| `40 7 * * 1` (le lundi à 7 h 40) | `/usr/local/bin/php /home/pura7044/public_html/cron-point-tresorier.php` |
+
+La page Tarifs n’annonce « un point envoyé au trésorier chaque lundi matin » qu’après un premier envoi réussi un lundi (journal `cron_runs`) : tant que cette tâche n’est pas installée, la promesse n’apparaît pas.
+
+### 1 quater — Accès limité de Démarrage : seulement après le préavis de 30 jours
+
+La migration ne change **rien** pour les comptes Démarrage existants (anciens comptes gratuits, essais terminés) : ni lecture seule, ni limites à zéro. Pour mettre l’accès limité en service :
+
+1. envoyez aux comptes Démarrage l’e-mail de préavis (CGU § 12 : 30 jours avant) ;
+2. 30 jours plus tard, ajoutez dans `config.php` (sur le serveur, jamais dans le dépôt) la ligne `define('AK_DEMARRAGE_READONLY_LIVE', true);`.
+
+À partir de là : l’espace des comptes Démarrage devient consultable et exportable seulement, les pages de cotisation déjà diffusées restent ouvertes 60 jours, et la page Tarifs comme les CGU l’annoncent.
 
 ---
 
@@ -142,12 +178,12 @@ Relisez la page **https://assokit.fr/cgu** (version du 29/10/2026) avant d’act
 
 ## Étape 5 — Tout essayer en mode test
 
-Créez une **association de test** avec une adresse e-mail à vous (page d’inscription du site) : elle démarre avec l’essai PRO de 14 jours. Ajoutez son numéro dans le bloc 3 (associations de test). Puis, connecté avec ce compte (dans un navigateur, pas dans l’application mobile, qui n’affiche jamais le paiement) : pour toutes les cartes de test, n’importe quelle date future, n’importe quel code à 3 chiffres.
+Créez une **association de test** avec une adresse e-mail à vous (page d’inscription du site) : elle démarre avec l’essai Pro de 14 jours. Ajoutez son numéro dans le bloc 3 (associations de test). Puis, connecté avec ce compte (dans un navigateur, pas dans l’application mobile, qui n’affiche jamais le paiement) : pour toutes les cartes de test, n’importe quelle date future, n’importe quel code à 3 chiffres.
 
-1. **Souscrire pendant l’essai** (le cas le plus courant) : **Mon abonnement › « Passer à Assokit »**. La page dit « Aucun prélèvement aujourd’hui. Premier prélèvement de 49,99 € le JJ/MM/AAAA, à la fin de votre essai. Vous pouvez annuler avant sans frais. » et le bouton est **« Souscrire · 0 € aujourd’hui »**. Enregistrez la carte **4242 4242 4242 4242** (ou, onglet « Prélèvement SEPA », l’IBAN de test **FR14 2004 1010 0505 0001 3M02 606**). Vérifiez :
+1. **Souscrire pendant l’essai** (le cas le plus courant) : **Mon abonnement › « Choisir une formule » › « Choisir Pro »** (ou Essentiel, ou Équipe). La page dit « Aucun prélèvement aujourd’hui. Premier prélèvement de 29,99 € le JJ/MM/AAAA, à la fin de votre essai. Vous pouvez annuler avant sans frais. » et le bouton est **« Souscrire · 0 € aujourd’hui »**. Enregistrez la carte **4242 4242 4242 4242** (ou, onglet « Prélèvement SEPA », l’IBAN de test **FR14 2004 1010 0505 0001 3M02 606**). Vérifiez :
    - la page « Abonnement souscrit ! » : aucun prélèvement aujourd’hui, date et montant du premier prélèvement ;
    - l’e-mail « Votre abonnement Assokit est souscrit » ;
-   - **Mon abonnement** : « Essai gratuit jusqu’au … · abonnement Assokit souscrit · premier prélèvement le … », « Carte enregistrée », « Changer ma CB » et « Annuler mon abonnement (sans frais) » ;
+   - **Mon abonnement** : « Essai gratuit jusqu’au … · abonnement souscrit · premier prélèvement le … », « Carte enregistrée », « Changer ma CB », « Annuler mon abonnement (sans frais) », et la carte de la formule choisie marquée « ✓ Formule choisie » (les autres proposent « Passer à … », « À la fin de l’essai, sans frais d’ici là ») ;
    - le cockpit (Associations › la fiche) : badge **« ESSAI · carte enregistrée · 1er prélèvement le … »** ;
    - dans Stripe › Facturation › Abonnements : l’abonnement est **« Essai »** jusqu’à la date de fin d’essai, avec une facture à 0 € (elle n’apparaît pas dans « Mes factures »).
 2. **Fin de l’essai et premier prélèvement** : Stripe prélève tout seul le jour de la fin de l’essai, et Assokit passe alors l’association en abonnement actif (e-mail « Votre abonnement Assokit est actif »). Pour l’essayer sans attendre 14 jours, utilisez une **horloge de test** Stripe :
@@ -159,7 +195,7 @@ Créez une **association de test** avec une adresse e-mail à vous (page d’ins
    À la fin de vos essais, videz le champ « Horloge de test » : les nouveaux clients suivent de nouveau l’heure réelle. Sans horloge, vous pouvez aussi terminer l’essai d’un abonnement dans Stripe › Facturation › Abonnements › l’abonnement (action « Terminer l’essai maintenant », ou « Mettre à jour l’abonnement » › fin de l’essai : maintenant, selon la version du tableau de bord).
 3. **Premier prélèvement refusé** : souscrivez pendant l’essai avec la carte **4000 0000 0000 0341** (acceptée à l’enregistrement, refusée au prélèvement), puis terminez l’essai (point 2). Assokit passe l’association « en retard de paiement » (15 jours de tolérance, accès complet) et envoie « Paiement à régulariser » ; « Changer ma CB » avec la carte 4242 4242 4242 4242 relance le paiement et l’abonnement devient actif.
 4. **Annulation pendant l’essai** : sur une association qui a souscrit, Mon abonnement › « Annuler mon abonnement (sans frais) » › « Annuler sans frais ». L’abonnement Stripe est arrêté tout de suite (rien n’est prélevé), l’e-mail « Annulation de votre abonnement Assokit enregistrée » arrive, et l’essai continue jusqu’à sa date puis se termine normalement (« Votre essai a pris fin »). Même résultat si l’association résilie depuis le portail Stripe (« Changer ma CB » › Annuler l’abonnement) : l’abonnement s’arrête à la fin de l’essai, sans prélèvement.
-5. **Paiement immédiat (après l’essai)** : depuis le cockpit, laissez se terminer (ou terminez) l’essai d’une association de test, puis Mon abonnement › « Choisir Assokit ». La page affiche « Payer 49,99 €/mois » : le premier mois est prélevé tout de suite. C’est aussi le cas pendant les 48 dernières heures de l’essai.
+5. **Paiement immédiat (après l’essai)** : depuis le cockpit, laissez se terminer (ou terminez) l’essai d’une association de test, puis Mon abonnement › « Choisir Pro ». La page affiche « Payer 29,99 € HT/mois » : le premier mois est prélevé tout de suite. C’est aussi le cas pendant les 48 dernières heures de l’essai.
 
    | Carte | Résultat attendu |
    |---|---|
@@ -178,7 +214,11 @@ Créez une **association de test** avec une adresse e-mail à vous (page d’ins
    - **Configuration Stripe › Activité récente** : les paiements apparaissent, avec la date de la dernière notification reçue de Stripe ;
    - **Cockpit › Associations** : la fiche de l’association de test est sur Assokit, payée par carte ;
    - dans Stripe : **Paiements**, **Abonnements** (menu Facturation) et **Développeurs › Webhooks** (les événements doivent être en « 200 OK »).
-9. (Facultatif) Échec d’une échéance mensuelle : sur une association déjà abonnée, **Changer ma CB** et enregistrez la carte **4000 0000 0000 0341**. Puis, dans Stripe › Facturation › Abonnements › l’abonnement, utilisez « Actions › Facturer maintenant » (ou avancez l’horloge de test d’un mois) : le prélèvement est refusé, Assokit passe l’association « en retard de paiement » (15 jours de tolérance) et envoie l’e-mail « Paiement à régulariser ». Remettez la carte 4242 4242 4242 4242 avec Changer ma CB : le paiement est relancé et l’abonnement redevient actif.
+9. **Changer de formule** sur une association de test abonnée par carte (Mon abonnement › « Changer de formule ») :
+   - **montée** (Pro → Équipe) : la page de confirmation dit « Le changement est immédiat… les jours restants sont facturés au prorata sur votre prochaine facture ». Après « Confirmer », « Mon abonnement » affiche Équipe tout de suite ; dans Stripe, l’abonnement porte le prix d’Équipe et une ligne de prorata attend la prochaine facture ;
+   - **baisse** (Équipe → Essentiel) : « Vous gardez la formule Équipe jusqu’au … ». « Mon abonnement » affiche le bandeau « Changement de formule prévu : passage à Essentiel le … » avec « Annuler ce changement ». Dans Stripe, le prix d’Essentiel est déjà posé (sans prorata) : il sera prélevé à la prochaine échéance. Avancez l’horloge de test au-delà de l’échéance : l’association passe sur Essentiel (e-mail « Votre formule Assokit est maintenant Essentiel ») ;
+   - une baisse est refusée si l’association a plus de membres ou de gestionnaires que la nouvelle formule n’en permet (le message le dit).
+10. (Facultatif) Échec d’une échéance mensuelle : sur une association déjà abonnée, **Changer ma CB** et enregistrez la carte **4000 0000 0000 0341**. Puis, dans Stripe › Facturation › Abonnements › l’abonnement, utilisez « Actions › Facturer maintenant » (ou avancez l’horloge de test d’un mois) : le prélèvement est refusé, Assokit passe l’association « en retard de paiement » (15 jours de tolérance) et envoie l’e-mail « Paiement à régulariser ». Remettez la carte 4242 4242 4242 4242 avec Changer ma CB : le paiement est relancé et l’abonnement redevient actif.
 
 ---
 
@@ -201,14 +241,20 @@ Créez une **association de test** avec une adresse e-mail à vous (page d’ins
 - **Souscription pendant l’essai** : l’association **garde tous ses jours d’essai**. Elle enregistre sa carte (ou son mandat SEPA, Apple Pay, Google Pay) sans rien payer ; le premier mois est prélevé **automatiquement le jour de la fin de l’essai**, puis chaque mois à cette date. Elle reçoit « Votre abonnement Assokit est souscrit », puis, 3 jours avant, « Premier prélèvement … le … » (sauf si elle a souscrit dans ces 3 jours). Le cockpit et l’application Fondateur affichent « ESSAI · carte enregistrée · 1er prélèvement le … ». Elle peut **annuler sans frais** avant cette date (Mon abonnement, ou portail Stripe) : rien n’est prélevé et l’essai se termine normalement. Une fois la date passée, le temps que Stripe prélève (« premier prélèvement en cours »), l’annulation sans frais n’est plus proposée ; elle pourra résilier dès que le prélèvement aura abouti (effet à la fin du mois payé). Le jour du prélèvement : payé → abonnement actif (« Votre abonnement Assokit est actif ») ; refusé → « en retard de paiement », comme une échéance refusée (15 jours de tolérance). Dans les 48 dernières heures de l’essai, ou après, le premier mois est prélevé tout de suite.
 - **Vous prolongez l’essai** d’une association qui a souscrit (cockpit, application, ou nouvelle date de fin d’essai dans Pilotage › Abonnements) : le premier prélèvement est déplacé à la nouvelle date chez Stripe. Si Stripe ne répond pas, rien n’est changé et un message vous demande de réessayer. **Vous la passez sur une autre formule** depuis le cockpit : sa souscription Stripe est annulée (rien n’est prélevé).
 - **Vous suspendez (« Abus »…) ou refusez une association qui a souscrit pendant son essai** : sa souscription est annulée chez Stripe, rien n’est prélevé ; elle reçoit « Votre abonnement Assokit est annulé : aucun prélèvement ». Si Stripe ne répond pas à ce moment-là, le cockpit (ou l’application) vous le dit : annulez l’abonnement dans Stripe avant la fin de l’essai. Sinon, à la fin de l’essai, Assokit l’arrête de lui-même, ne démarre aucun abonnement et vous envoie « Premier prélèvement à rembourser » s’il a été prélevé.
-- **Fin de l’essai sans souscription** : l’association passe en accès limité (plan Démarrage), ses données sont conservées ; elle reçoit « Votre essai a pris fin » et peut choisir Assokit à tout moment.
+- **Fin de l’essai sans souscription** : l’association passe en accès limité (Démarrage), ses données sont conservées ; elle reçoit « Votre essai a pris fin » et peut choisir une formule à tout moment.
+- **Changer de formule** (Mon abonnement › « Changer de formule », page `/stripe-change-plan`) :
+  - abonnement **par carte** : une **montée** (vers une formule plus chère) prend effet tout de suite ; Stripe facture les jours restants au prorata sur la prochaine facture. Une **baisse** prend effet à la fin du mois payé : le nouveau prix est posé chez Stripe sans prorata, la formule actuelle reste jusqu’à l’échéance, puis Assokit applique la nouvelle à la nouvelle période (notification de Stripe) ;
+  - souscription **pendant l’essai** : la formule choisie est remplacée chez Stripe, rien n’est prélevé avant la fin de l’essai ;
+  - paiement **sur facture ou par virement** (ou Stripe pas encore activé) : une baisse est programmée et appliquée par le renouvellement mensuel (cron `renouvellements`), avant la facture ; une montée crée une demande au support (ticket « Changement de formule ») et vous recevez un e-mail : appliquez-la depuis le cockpit (Plan) et ajustez la facture ;
+  - une baisse programmée s’annule d’un clic (« Annuler ce changement ») ; elle est oubliée si l’association résilie.
+- **Offre fondateur** : « Mon abonnement » affiche « Prix et fonctions garantis jusqu’au … ». Si l’association change de formule, la garantie prend fin (la page le dit avant la confirmation). Prélevée par carte, elle utilise le prix Stripe de Pro : la synchronisation ne la remplace jamais par Pro d’après le prix.
 - **Prélèvement SEPA** : la banque confirme en quelques jours ouvrés. Pendant ce temps l’essai ne se termine pas et aucun second paiement n’est possible ; l’abonnement s’active tout seul à la confirmation.
 - **Chaque mois** : Stripe prélève la carte ou le compte enregistré et envoie le reçu ; la facture apparaît dans « Mon abonnement › Mes factures ».
 - **Paiement refusé** : l’association reçoit un e-mail et voit « Régularisez sous N jours » (15 jours de tolérance, accès complet). « Régulariser » ouvre la facture Stripe à payer ; changer de carte dans le portail relance aussitôt le paiement. Après 15 jours sans paiement, l’Assistant IA et la diffusion d’e-mails sont bloqués (le reste de l’espace reste accessible). Si Stripe abandonne après ses relances (3 semaines), l’abonnement est arrêté : e-mail « Votre abonnement Assokit est arrêté », accès complet jusqu’à la fin de la tolérance si elle n’est pas finie, puis plan Démarrage.
 - **Résiliation** (« Annuler mon abonnement » ou portail Stripe) : confirmée par e-mail avec la date de fin d’accès ; effet à la fin du mois payé, puis plan Démarrage. Aucun remboursement automatique (pas de « satisfait ou remboursé »).
 - **Paiement impossible** (la page de paiement l’explique, avec « Nous contacter ») : association suspendue par vous pour un autre motif que la fin de l’essai ou un impayé (« Abus »…) ; association déjà abonnée sur facture ou par virement (pour passer à la carte, arrêtez d’abord la facturation manuelle à la fin de la période payée) ; association fermée.
 - **Association fermée ou supprimée** depuis le cockpit (ou l’application) : ses abonnements Stripe, y compris un premier paiement encore en attente, sont arrêtés. Si un prélèvement SEPA est malgré tout confirmé ensuite, Assokit arrête l’abonnement et vous alerte pour rembourser.
-- **Option Domaine personnalisé** : prélevée avec l’abonnement ; vous recevez une alerte et configurez le domaine à la main (Pilotage › Domaines).
+- **Option domaine personnel** : plus vendue tant que la fonction n’est pas livrée (aucun prix créé, aucun bouton). Le jour où elle l’est, définissez `AK_CUSTOM_DOMAIN_LIVE` : elle redevient proposée à 10 € HT/mois sur Pro, comprise dans les formules qui l’incluent (case « domaine » de la formule), jamais sur Essentiel. Une option déjà prélevée continue d’apparaître et d’être facturée.
 - **Application mobile** : aucun prix ni paiement n’y apparaît (règles d’Apple et de Google) ; tout se fait sur le site.
 
 ---
@@ -287,6 +333,7 @@ UPDATE org_payment_settings SET stripe_secret_key = NULL, stripe_webhook_secret 
 
 ## Prix et TVA
 
+- **Prix de l’offre fondateur** : gardez-le égal à celui de Pro (29,99 € HT) ; sinon « Configurer Stripe automatiquement » l’indique (⚠ « Offre fondateur ») et un éventuel abonnement par carte rattaché ne serait plus suivi par Stripe.
 - **Changer le prix** : modifiez-le dans Pilotage › **Plans tarifaires**, puis cliquez **tout de suite** sur « Configurer Stripe automatiquement ». Tant que ce n’est pas fait, le paiement en ligne est refusé (« momentanément indisponible », aucun montant prélevé) et vous recevez l’alerte « Paiement bloqué : prix Stripe à mettre à jour » : jamais un montant prélevé différent de celui affiché. Un nouveau prix Stripe est créé pour les **nouveaux** abonnements, l’ancien est archivé : les associations déjà abonnées gardent leur montant (Stripe ne change jamais le prix d’un abonnement en cours ; pour le leur appliquer, prévenez-les 30 jours avant, CGU § 4).
 - **Le jour où RBPS devient assujettie à la TVA** : la TVA est due sur **toutes** les ventes à partir de la date d’assujettissement, abonnements déjà en cours compris. Aucune facture sans TVA ne doit être émise après cette date.
   1. Assokit › Paramètres société : cochez « Société assujettie à la TVA » et saisissez le numéro de TVA de RBPS (il s’ajoute aux mentions des factures) ; ajoutez-le aussi dans Stripe (Paramètres › Détails de l’entreprise) ;
@@ -327,6 +374,11 @@ git pull
 /usr/local/bin/php migrations/run.php 2026-10-28-stripe-mise-en-service.sql
 /usr/local/bin/php migrations/run.php 2026-10-29-stripe-souscription-pendant-essai.sql
 /usr/local/bin/php migrations/run.php 2026-10-30-paiements-en-ligne-associations.sql
+/usr/local/bin/php migrations/run.php 2026-11-09-grille-tarifaire.sql
+/usr/local/bin/php cli-rattacher-fondateur.php            # liste, puis :
+/usr/local/bin/php cli-rattacher-fondateur.php --apply --email
+/usr/local/bin/php migrations/run.php 2026-11-09-grille-tarifaire.sql
+# contrôle : assokit.grille_version = 202611 et price_cents = 2999 (étape 1 bis, point 6)
 ```
 
-Tâches planifiées : `cron-trial-check.php` toutes les 10 minutes et `cron_subscriptions.php` chaque jour à 8 h, avec `/usr/local/bin/php` (voir l’étape 1).
+Tâches planifiées : `cron-trial-check.php` toutes les 10 minutes, `cron_subscriptions.php` chaque jour à 8 h et `cron-point-tresorier.php` le lundi à 7 h 40, avec `/usr/local/bin/php` (voir l’étape 1 et 1 ter).

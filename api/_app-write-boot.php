@@ -93,4 +93,20 @@ $ak_boot_no_org = in_array($ak_boot_script, ['app-change-password.php', 'app-upd
 if ($org_id <= 0 && !$ak_boot_no_org) {
     app_fail(400, 'org', 'Aucune association n’est rattachée à ce compte.');
 }
+
+// Accès limité (formule Démarrage : fin d'essai non convertie, résiliation, impayé), comme le site
+// (app-context.php, ak_readonly_guard) : l'espace reste consultable, mais rien ne se crée ni ne
+// s'envoie depuis l'appli. Restent ouverts le compte personnel (mot de passe, profil, suppression,
+// accord IA), les notifications et l'espace Fondateur ($ak_boot_no_org). Comptes plateforme jamais
+// concernés. Message neutre, sans prix ni bouton (règle Apple 3.1.1). Seulement une fois la grille
+// appliquée à la ligne demarrage (api/_app-plan.php) ; toute erreur ou fonction absente laisse passer.
+if ($org_id > 0 && !$ak_boot_no_org && is_file(__DIR__ . '/_app-plan.php')) {
+    require_once __DIR__ . '/_app-plan.php';
+    if (app_plan_readonly($pdo, $org_id, $user)) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => 'readonly', 'readonly' => true,
+                          'message' => app_plan_readonly_message() . ' Cette action n’a pas été enregistrée.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
 unset($ak_boot_script, $ak_boot_no_org);

@@ -25,6 +25,9 @@ $can_refresh = $today_data['can_refresh'] ?? true;
 $refresh_count = $today_data['refresh_count'] ?? 0;
 $has_error = $today_data['has_error'] ?? false;
 $today_pending = !empty($today_data['pending']);
+// Formule : repli statique (pas de priorités IA pour ce compte) ou crédits IA du mois épuisés
+$today_static = !empty($today_data['static']);
+$today_refresh_block = (string)($today_data['refresh_block'] ?? '');
 $today_csrf = function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_token'] ?? '');
 ?>
 
@@ -47,9 +50,9 @@ $today_csrf = function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_to
         <span class="today-copilot-pending" id="today-pending">Personnalisation en cours…</span>
       <?php endif; ?>
       <div class="today-date"><?= h($today_fr) ?></div>
-      <?php if (!empty($suggestions)): ?>
+      <?php if (!empty($suggestions) && !$today_static): ?>
         <button type="button" id="today-refresh-btn" onclick="todayRefresh()"
-                <?= !$can_refresh ? 'disabled title="Vous avez atteint la limite de 3 rafraîchissements par jour"' : 'title="Rafraîchir les suggestions"' ?>
+                <?= !$can_refresh ? 'disabled title="' . h($today_refresh_block !== '' ? $today_refresh_block : 'Vous avez atteint la limite de 3 rafraîchissements par jour') . '"' : 'title="Rafraîchir les suggestions"' ?>
                 style="background:transparent; border:1px solid var(--border); color:var(--ink-3); width:30px; height:30px; border-radius:8px; cursor:<?= $can_refresh ? 'pointer' : 'not-allowed' ?>; display:inline-flex; align-items:center; justify-content:center; transition:all 0.15s; opacity:<?= $can_refresh ? '1' : '0.4' ?>;"
                 onmouseover="if(!this.disabled){this.style.background='var(--bg-2)';this.style.borderColor='#7F77DD';this.style.color='#7F77DD'}"
                 onmouseout="if(!this.disabled){this.style.background='transparent';this.style.borderColor='var(--border)';this.style.color='var(--ink-3)'}">

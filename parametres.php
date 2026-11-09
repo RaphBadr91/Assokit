@@ -181,7 +181,7 @@ render_sidebar('parametres');
                 <div style="font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:<?= $plan_tone ? $plan_tone[2] : '#64748B' ?>;">Formule</div>
                 <div style="font-size:16px;font-weight:700;margin-top:2px;color:<?= $plan_tone ? $plan_tone[2] : 'inherit' ?>;"><?= h($plan_ti['label']) ?></div>
                 <?php if ($plan_ti['trial_expired'] && !ak_billing_hidden()): ?>
-                  <div style="font-size:13px;margin-top:2px;color:<?= $plan_tone[2] ?>;">Vos données sont conservées : choisissez une formule pour retrouver toutes les fonctionnalités.</div>
+                  <div style="font-size:13px;margin-top:2px;color:<?= $plan_tone[2] ?>;">Vos données sont conservées : choisissez une formule pour continuer.</div>
                 <?php elseif (!$plan_tone && in_array($plan_ti['badge_tone'], ['pending', 'suspended', 'cancelled'], true)): ?>
                   <div style="font-size:13px;margin-top:2px;color:#B45309;font-weight:600;"><?= h($plan_ti['badge']) ?></div>
                 <?php endif; ?>

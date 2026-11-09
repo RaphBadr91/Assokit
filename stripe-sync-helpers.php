@@ -383,12 +383,17 @@ if (!function_exists('ak_stripe_sub_items')) {
      * domaine. Une formule est reconnue par son prix (asso_plans.stripe_price_id_monthly), sinon par
      * son produit Stripe (ak_formule_<slug>, prix plus ancien remplacé depuis), sinon par
      * metadata[plan_slug] ; l'add-on par son prix (addon_domain_price_id) ou son produit.
-     * @return array{plan_id: ?int, plan_price_id: ?string, addon_item: ?array}
+     * Un même prix Stripe peut servir à deux formules (l'offre fondateur est prélevée au prix de Pro,
+     * 29,99 € HT : stripe-setup-helpers.php) : la formule actuelle de l'abonnement ($prefer_plan_id) est
+     * alors gardée, puis celle de metadata[plan_slug], puis la formule proposée (is_visible).
+     * @return array{plan_id: ?int, plan_price_id: ?string, addon_item: ?array, plan_item_id: ?string}
      */
-    function ak_stripe_sub_items(PDO $pdo, array $sub): array {
-        $out = ['plan_id' => null, 'plan_price_id' => null, 'addon_item' => null];
+    function ak_stripe_sub_items(PDO $pdo, array $sub, ?int $prefer_plan_id = null): array {
+        $out = ['plan_id' => null, 'plan_price_id' => null, 'addon_item' => null, 'plan_item_id' => null];
         $addon_price = (string)ak_stripe_config_get($pdo, 'addon_domain_price_id', '');
-        $has_col = isset(ak_db_columns($pdo, 'asso_plans')['stripe_price_id_monthly']);
+        $pcols = ak_db_columns($pdo, 'asso_plans');
+        $has_col = isset($pcols['stripe_price_id_monthly']);
+        $meta_slug = trim((string)($sub['metadata']['plan_slug'] ?? ''));
         foreach (($sub['items']['data'] ?? []) as $item) {
             $price = $item['price'] ?? ($item['plan'] ?? []);
             $price_id = is_array($price) ? (string)($price['id'] ?? '') : (string)$price;
@@ -399,11 +404,19 @@ if (!function_exists('ak_stripe_sub_items')) {
             }
             if ($out['plan_price_id'] !== null) continue;
             $out['plan_price_id'] = $price_id !== '' ? $price_id : null;
+            $out['plan_item_id'] = isset($item['id']) ? (string)$item['id'] : null;
             if ($price_id !== '' && $has_col) {
-                $sp = $pdo->prepare("SELECT id FROM asso_plans WHERE stripe_price_id_monthly = ? LIMIT 1");
+                $sp = $pdo->prepare("SELECT id, slug FROM asso_plans WHERE stripe_price_id_monthly = ? ORDER BY "
+                    . (isset($pcols['is_visible']) ? "COALESCE(is_visible, 0) DESC, " : "") . "id ASC");
                 $sp->execute([$price_id]);
-                $found = (int)$sp->fetchColumn();
-                if ($found) { $out['plan_id'] = $found; continue; }
+                $cands = $sp->fetchAll(PDO::FETCH_KEY_PAIR);   // id => slug
+                if ($cands) {
+                    $found = (int)array_key_first($cands);
+                    if ($prefer_plan_id && isset($cands[$prefer_plan_id])) $found = $prefer_plan_id;
+                    elseif ($meta_slug !== '' && ($k = array_search($meta_slug, $cands, true)) !== false) $found = (int)$k;
+                    $out['plan_id'] = $found;
+                    continue;
+                }
             }
             if (strpos($product, 'ak_formule_') === 0) {
                 $sp = $pdo->prepare("SELECT id FROM asso_plans WHERE slug = ? LIMIT 1");
@@ -504,9 +517,6 @@ if (!function_exists('ak_stripe_apply_subscription')) {
         $stripe_sub_id = (string)$sub['id'];
         $stripe_status = (string)($sub['status'] ?? 'unknown');
         $local_status = ak_stripe_local_status($stripe_status, $event_type === 'customer.subscription.deleted');
-        $items = ak_stripe_sub_items($pdo, $sub);
-        $plan_id = $items['plan_id'];
-        $stripe_price_id = $items['plan_price_id'];
         $cancel_at_period_end = !empty($sub['cancel_at_period_end']);
         $cpe_ts = ak_stripe_sub_period_end($sub);
         $current_period_end = $cpe_ts ? date('Y-m-d H:i:s', $cpe_ts) : null;
@@ -516,13 +526,21 @@ if (!function_exists('ak_stripe_apply_subscription')) {
         $pi_status = is_array($pi) ? (string)($pi['status'] ?? '') : '';
 
         // Ligne locale de cet abonnement
+        $scols = ak_db_columns($pdo, 'asso_subscriptions');
         $check = $pdo->prepare("SELECT id, status, plan_id, "
-            . (isset(ak_db_columns($pdo, 'asso_subscriptions')['grace_period_end']) ? "grace_period_end" : "NULL") . " AS grace_period_end
+            . (isset($scols['grace_period_end']) ? "grace_period_end" : "NULL") . " AS grace_period_end, "
+            . (isset($scols['pending_plan_id']) ? "pending_plan_id" : "NULL") . " AS pending_plan_id, "
+            . (isset($scols['pending_plan_at']) ? "pending_plan_at" : "NULL") . " AS pending_plan_at, "
+            . (isset($scols['stripe_price_id']) ? "stripe_price_id" : "NULL") . " AS stripe_price_id
             FROM asso_subscriptions WHERE stripe_subscription_id = ? ORDER BY id DESC LIMIT 1");
         $check->execute([$stripe_sub_id]);
         $existing_row = $check->fetch(PDO::FETCH_ASSOC) ?: null;
         $existing_id = $existing_row ? (int)$existing_row['id'] : 0;
         $before = (string)($existing_row['status'] ?? '');
+        // Formule d'après le prix Stripe ; à prix égal, la formule actuelle de la ligne est gardée (offre fondateur)
+        $items = ak_stripe_sub_items($pdo, $sub, $existing_row ? (int)$existing_row['plan_id'] : null);
+        $plan_id = $items['plan_id'];
+        $stripe_price_id = $items['plan_price_id'];
 
         // Abonnement souscrit pendant l'essai gratuit (période d'essai Stripe jusqu'à la fin de l'essai d'Assokit) :
         // rien n'est encore payé, l'association reste en essai (ak_stripe_apply_trial_subscription). Un abonnement
@@ -609,7 +627,24 @@ if (!function_exists('ak_stripe_apply_subscription')) {
             if ($livemode !== null) $data['stripe_livemode'] = $livemode;
             // Plus de retard : la tolérance et les notes de relance de l'épisode terminé sont effacées
             if ($local_status === 'active') $data['grace_period_end'] = null;
+            // Changement de formule (stripe-change-plan.php, ou prix changé dans le tableau de bord Stripe) :
+            // montée appliquée tout de suite ; baisse programmée (pending_plan_id) appliquée seulement à la
+            // nouvelle période. L'offre fondateur n'est jamais remplacée par Pro d'après le prix.
+            $change = in_array($local_status, ['active', 'overdue'], true)
+                ? ak_stripe_plan_change_decision($pdo, $existing_row, $plan_id, $cpe_ts, $stripe_price_id) : ['plan_id' => null, 'clear_pending' => false];
+            if ($change['plan_id']) {
+                $data['plan_id'] = $change['plan_id'];
+                if (isset($scols['previous_plan_id'])) $data['previous_plan_id'] = (int)$existing_row['plan_id'];
+            }
+            if ($change['clear_pending'] && isset($scols['pending_plan_id'])) {
+                $data['pending_plan_id'] = null;
+                if (isset($scols['pending_plan_at'])) $data['pending_plan_at'] = null;
+            }
             ak_db_update($pdo, 'asso_subscriptions', $existing_id, $data, ['updated_at' => 'NOW()']);
+            if ($change['plan_id']) {
+                ak_org_sync_plan_label($pdo, $org_id);
+                ak_stripe_notify_plan_changed($pdo, $org_id, (int)$existing_row['plan_id'], (int)$change['plan_id'], $stripe_sub_id);
+            }
             if ($local_status === 'active' && $before === 'overdue') ak_stripe_clear_overdue_notes($pdo, $existing_id);
         } else {
             // Aucune ligne locale pour un abonnement pas encore payé (incomplete) ou déjà arrêté : la ligne
@@ -748,6 +783,191 @@ if (!function_exists('ak_stripe_sync_addon')) {
         } catch (Throwable $e) {
             error_log('[stripe-sync] add-on org #' . $org_id . ' : ' . get_class($e) . ' ' . $e->getMessage());
         }
+    }
+}
+
+// ============================================================
+// Changement de formule en cours d'abonnement (grille 2026 : Essentiel, Pro, Équipe)
+// ============================================================
+// Montée : immédiate (Stripe : prix remplacé avec prorata sur la prochaine facture ; hors Stripe : sur
+// demande au support). Baisse : programmée pour la fin de la période payée, notée sur la ligne
+// d'abonnement (asso_subscriptions.pending_plan_id / pending_plan_at, migration 2026-11-09) et appliquée
+// par le webhook Stripe (nouvelle période) ou par cron-job-renouvellements.php (paiement sur facture).
+
+if (!function_exists('ak_stripe_plan_row')) {
+    /** Ligne asso_plans par identifiant (null si inconnue). */
+    function ak_stripe_plan_row(PDO $pdo, int $plan_id): ?array {
+        if ($plan_id <= 0) return null;
+        try {
+            $q = $pdo->prepare("SELECT * FROM asso_plans WHERE id = ?");
+            $q->execute([$plan_id]);
+            return $q->fetch(PDO::FETCH_ASSOC) ?: null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+}
+
+if (!function_exists('ak_stripe_plan_change_decision')) {
+    /**
+     * Formule à appliquer à une ligne d'abonnement Stripe d'après le prix lu chez Stripe ($mapped, plan
+     * d'ak_stripe_sub_items) et la baisse programmée de la ligne (pending_plan_id / pending_plan_at).
+     *   - baisse programmée arrivée à échéance (date passée, ou Stripe déjà sur la période suivante) : appliquée ;
+     *   - baisse programmée pas encore due : la formule payée reste (Stripe facture déjà le nouveau prix à la
+     *     prochaine échéance, sans prorata) ;
+     *   - autre formule chez Stripe (montée, changement fait dans le tableau de bord) : appliquée tout de suite,
+     *     la baisse programmée est oubliée ;
+     *   - offre fondateur facturée au prix de Pro (ou à l'ancien prix « assokit ») : jamais remplacée par Pro ;
+     *   - prix Stripe inchangé depuis la dernière synchronisation ($price_id = stripe_price_id de la ligne) alors que
+     *     la formule locale diffère : c'est le Fondateur qui a changé la formule à la main (cockpit) ; elle est gardée.
+     * @return array{plan_id: ?int, clear_pending: bool}
+     */
+    function ak_stripe_plan_change_decision(PDO $pdo, array $row, ?int $mapped, ?int $cpe_ts, ?string $price_id = null): array {
+        $none = ['plan_id' => null, 'clear_pending' => false];
+        $cur = (int)($row['plan_id'] ?? 0);
+        $pending = (int)($row['pending_plan_id'] ?? 0);
+        $pending_at = !empty($row['pending_plan_at']) ? strtotime((string)$row['pending_plan_at']) : 0;
+        if ($pending > 0 && $pending !== $cur && ak_stripe_plan_row($pdo, $pending)) {
+            $due = $pending_at > 0 && ($pending_at <= time() + 60 || ($cpe_ts && $cpe_ts > $pending_at + 3600));
+            if ($due) return ['plan_id' => $pending, 'clear_pending' => true];
+            if (!$mapped || $mapped === $pending || $mapped === $cur) return $none;
+            return ['plan_id' => $mapped, 'clear_pending' => true];
+        }
+        if ($pending > 0 && $pending === $cur) return ['plan_id' => null, 'clear_pending' => true];
+        if (!$mapped || $mapped === $cur) return $none;
+        $known_price = trim((string)($row['stripe_price_id'] ?? ''));
+        if ($known_price !== '' && $price_id !== null && $known_price === $price_id) return $none;
+        $from = ak_stripe_plan_row($pdo, $cur);
+        $to = ak_stripe_plan_row($pdo, $mapped);
+        if (!$to) return $none;
+        if ($from && ($from['slug'] ?? '') === 'fondateur' && ($to['slug'] ?? '') === 'assokit') return $none;
+        return ['plan_id' => $mapped, 'clear_pending' => $pending > 0];
+    }
+}
+
+if (!function_exists('ak_stripe_notify_plan_changed')) {
+    /** Formule changée (montée, ou baisse arrivée à échéance) : confirmation à l'association et au Fondateur, une fois. */
+    function ak_stripe_notify_plan_changed(PDO $pdo, int $org_id, int $from_id, int $to_id, string $ref): void {
+        $from = ak_stripe_plan_row($pdo, $from_id);
+        $to = ak_stripe_plan_row($pdo, $to_id);
+        if (!$to) return;
+        $to_l = ak_plan_label($to['slug'] ?? '', $to['name'] ?? null);
+        $from_l = $from ? ak_plan_label($from['slug'] ?? '', $from['name'] ?? null) : '';
+        ak_stripe_once($pdo, $org_id, 'formule:' . $ref . ':' . $from_id . '>' . $to_id . ':' . date('Ymd'), function () use ($pdo, $org_id, $from_l, $to_l) {
+            $sent = ak_stripe_notify_org($pdo, $org_id, 'Votre formule Assokit est maintenant ' . $to_l,
+                '<p>Bonjour,</p><p>La formule de « ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' » est maintenant <strong>' . ak_stripe_h($to_l) . '</strong>'
+                . ($from_l !== '' ? ' (auparavant ' . ak_stripe_h($from_l) . ')' : '') . '.</p>'
+                . '<p>Le détail de votre abonnement et vos factures sont dans « Mon abonnement ».</p>',
+                'Voir mon abonnement', 'https://assokit.fr/mon-asso-plan');
+            ak_stripe_notify_founder($pdo, '🔁 Changement de formule',
+                '<p>« ' . ak_stripe_h(ak_stripe_org_name($pdo, $org_id)) . ' » : ' . ak_stripe_h($from_l !== '' ? $from_l : '?') . ' → <strong>' . ak_stripe_h($to_l) . '</strong>.</p>', $org_id);
+            return $sent;
+        });
+    }
+}
+
+if (!function_exists('ak_sub_pending')) {
+    /**
+     * Baisse de formule programmée sur la ligne d'abonnement $sub_id : ['plan_id', 'slug', 'label', 'at',
+     * 'at_fr'], ou null (aucune, ou colonnes absentes : migration 2026-11-09 pas encore passée).
+     */
+    function ak_sub_pending(PDO $pdo, int $sub_id): ?array {
+        $cols = ak_db_columns($pdo, 'asso_subscriptions');
+        if ($sub_id <= 0 || !isset($cols['pending_plan_id'])) return null;
+        try {
+            $q = $pdo->prepare("SELECT s.pending_plan_id, " . (isset($cols['pending_plan_at']) ? "s.pending_plan_at" : "NULL") . " AS pending_plan_at, p.slug, p.name
+                                FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.pending_plan_id
+                                WHERE s.id = ? AND s.pending_plan_id IS NOT NULL AND s.pending_plan_id <> s.plan_id");
+            $q->execute([$sub_id]);
+            $r = $q->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            return null;
+        }
+        if (!$r) return null;
+        $at = (string)($r['pending_plan_at'] ?? '');
+        return ['plan_id' => (int)$r['pending_plan_id'], 'slug' => (string)$r['slug'], 'label' => ak_plan_label((string)$r['slug'], $r['name'] ?? null),
+                'at' => $at !== '' ? $at : null, 'at_fr' => $at !== '' && strtotime($at) ? date('d/m/Y', strtotime($at)) : ''];
+    }
+}
+
+if (!function_exists('ak_sub_set_pending')) {
+    /** Programme (ou retire, $plan_id null) la baisse de formule de la ligne $sub_id. @return bool fait */
+    function ak_sub_set_pending(PDO $pdo, int $sub_id, ?int $plan_id, ?string $at): bool {
+        $cols = ak_db_columns($pdo, 'asso_subscriptions');
+        if ($sub_id <= 0 || !isset($cols['pending_plan_id'])) return false;
+        try {
+            $sql = "UPDATE asso_subscriptions SET pending_plan_id = ?" . (isset($cols['pending_plan_at']) ? ", pending_plan_at = ?" : "")
+                 . (isset($cols['updated_at']) ? ", updated_at = NOW()" : "") . " WHERE id = ?";
+            $args = [$plan_id];
+            if (isset($cols['pending_plan_at'])) $args[] = $plan_id ? $at : null;
+            $args[] = $sub_id;
+            $pdo->prepare($sql)->execute($args);
+            return true;
+        } catch (Throwable $e) {
+            error_log('[stripe-sync] baisse programmée #' . $sub_id . ' : ' . get_class($e) . ' ' . $e->getMessage());
+            return false;
+        }
+    }
+}
+
+if (!function_exists('ak_sub_apply_pending')) {
+    /**
+     * Applique la baisse programmée de la ligne $sub_id (paiement sur facture : cron-job-renouvellements.php,
+     * à l'échéance) : plan_id = pending_plan_id, previous_plan_id = l'ancienne formule, baisse effacée ; ancien
+     * montant mensuel des comptes historiques (organizations.monthly_price_cents) aligné sur la nouvelle formule.
+     * Ni le statut ni l'échéance ne changent. @return bool appliquée
+     */
+    function ak_sub_apply_pending(PDO $pdo, int $sub_id): bool {
+        $cols = ak_db_columns($pdo, 'asso_subscriptions');
+        if (!isset($cols['pending_plan_id'])) return false;
+        try {
+            $q = $pdo->prepare("SELECT s.id, s.org_id, s.plan_id, s.pending_plan_id, p.price_cents
+                                FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.pending_plan_id
+                                WHERE s.id = ? AND s.pending_plan_id IS NOT NULL");
+            $q->execute([$sub_id]);
+            $r = $q->fetch(PDO::FETCH_ASSOC);
+            if (!$r) return false;
+            $data = ['plan_id' => (int)$r['pending_plan_id'], 'pending_plan_id' => null];
+            if (isset($cols['pending_plan_at'])) $data['pending_plan_at'] = null;
+            if (isset($cols['previous_plan_id']) && (int)$r['plan_id'] !== (int)$r['pending_plan_id']) $data['previous_plan_id'] = (int)$r['plan_id'];
+            ak_db_update($pdo, 'asso_subscriptions', (int)$r['id'], $data, isset($cols['updated_at']) ? ['updated_at' => 'NOW()'] : []);
+            $pdo->prepare("UPDATE organizations SET monthly_price_cents = ? WHERE id = ? AND COALESCE(monthly_price_cents, 0) > 0")
+                ->execute([(int)$r['price_cents'], (int)$r['org_id']]);
+            ak_org_sync_plan_label($pdo, (int)$r['org_id']);
+            if ((int)$r['plan_id'] !== (int)$r['pending_plan_id']) {
+                ak_stripe_notify_plan_changed($pdo, (int)$r['org_id'], (int)$r['plan_id'], (int)$r['pending_plan_id'], 'manuel-' . (int)$r['id']);
+            }
+            return true;
+        } catch (Throwable $e) {
+            error_log('[stripe-sync] baisse programmée #' . $sub_id . ' non appliquée : ' . get_class($e) . ' ' . $e->getMessage());
+            return false;
+        }
+    }
+}
+
+if (!function_exists('ak_sub_apply_due_pendings')) {
+    /**
+     * Baisses programmées arrivées à échéance sur les abonnements réglés HORS Stripe (sur facture, virement) :
+     * appliquées avant la facture de renouvellement (cron-job-renouvellements.php). Les abonnements Stripe
+     * suivent le webhook (nouvelle période). @return string[] associations concernées (journal du cron)
+     */
+    function ak_sub_apply_due_pendings(PDO $pdo): array {
+        $cols = ak_db_columns($pdo, 'asso_subscriptions');
+        if (!isset($cols['pending_plan_id'], $cols['pending_plan_at'])) return [];
+        $done = [];
+        try {
+            $stripe = (isset($cols['payment_mode']) ? "AND COALESCE(s.payment_mode, '') <> 'stripe' " : "")
+                    . (isset($cols['stripe_subscription_id']) ? "AND COALESCE(s.stripe_subscription_id, '') = '' " : "");
+            $q = $pdo->query("SELECT s.id, s.org_id FROM asso_subscriptions s
+                              WHERE s.pending_plan_id IS NOT NULL AND s.pending_plan_at IS NOT NULL AND DATE(s.pending_plan_at) <= CURDATE()
+                                AND s.status IN ('active', 'overdue') $stripe LIMIT 500");
+            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                if (ak_sub_apply_pending($pdo, (int)$r['id'])) $done[] = 'Org #' . (int)$r['org_id'] . ' — baisse de formule appliquée à l’échéance';
+            }
+        } catch (Throwable $e) {
+            error_log('[stripe-sync] baisses programmées : ' . get_class($e) . ' ' . $e->getMessage());
+        }
+        return $done;
     }
 }
 
@@ -1619,7 +1839,7 @@ if (!function_exists('ak_stripe_notify_stop')) {
                 . '<p>' . ($end_fr !== '' ? 'Vous gardez l’accès complet jusqu’au <strong>' . ak_stripe_h($end_fr) . '</strong>, puis votre association passe'
                                          : 'Votre association passe dès maintenant')
                 . ' en accès limité (plan Démarrage) ; vos données sont conservées.</p>'
-                . '<p>Pour retrouver toutes les fonctionnalités, reprenez Assokit à tout moment depuis la page « Mon abonnement ».</p>',
+                . '<p>Pour continuer à utiliser Assokit, choisissez une formule à tout moment depuis la page « Mon abonnement ».</p>',
                 'Reprendre Assokit', 'https://assokit.fr/mon-asso-plan');
         });
     }

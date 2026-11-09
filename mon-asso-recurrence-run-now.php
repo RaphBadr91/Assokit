@@ -22,6 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: /mon-asso-recurre
 require_once __DIR__ . '/finance-permissions.php';
 require_billing_access();
 if (!check_csrf($_POST['csrf_token'] ?? '')) { header('Location: /mon-asso-recurrences?error=csrf'); exit; }
+// Formule : factures récurrentes à partir de Pro (feature_recurring_invoices)
+if (!ak_recurrence_plan_ok($pdo, $org_id)) ak_recurrence_plan_refuse($pdo, $org_id);
 
 $rec_id = (int)($_POST['id'] ?? 0);
 $rec = ak_recurrence_load($pdo, $rec_id, $org_id);

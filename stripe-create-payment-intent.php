@@ -50,6 +50,8 @@ require_once __DIR__ . '/trial-helpers.php';
 require_once __DIR__ . '/stripe-sync-helpers.php';
 // Montant HT de l'option domaine (AK_ADDON_DOMAIN_HT_CENTS), vérifié contre le prix Stripe
 if (!defined('AK_ADDON_DOMAIN_HT_CENTS')) require_once __DIR__ . '/includes-pricing.php';
+// Formules vendues (Essentiel, Pro, Équipe), option domaine (ak_addon_domain_offer), limites de la formule choisie
+require_once __DIR__ . '/stripe-plan-change-helpers.php';
 
 // Aucun paiement ne peut naître d'une requête de l'app : masquer le bouton ne
 // suffirait pas, l'endpoint lui-même doit refuser (Apple 3.1.1).
@@ -165,12 +167,34 @@ if (!$plan) {
     exit;
 }
 
+// Mise en service de la grille en cours : ligne pas encore à son prix de /tarifs (Pro à l'ancien prix) :
+// jamais facturée à un autre montant que celui affiché sur le site.
+if (function_exists('ak_pc_plan_grid_pending') && ak_pc_plan_grid_pending($pdo, $plan)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Cette formule sera disponible à la souscription très prochainement : contactez-nous.']);
+    exit;
+}
+
 // Seules les formules payantes se souscrivent par carte : ni Démarrage (plus proposée), ni l'essai,
 // ni Sur-mesure (sur devis)
 if ((int)($plan['price_cents'] ?? 0) <= 0 || ($plan['slug'] ?? '') === 'sur-mesure' || !empty($plan['is_custom_quote'])
     || !empty($plan['is_trial']) || ($plan['slug'] ?? '') === 'pro-essai') {
     http_response_code(400);
-    echo json_encode(['error' => 'Cette formule ne se souscrit pas en ligne. Choisissez Assokit, ou contactez-nous pour le Sur-mesure.']);
+    echo json_encode(['error' => 'Cette formule ne se souscrit pas en ligne. Choisissez Essentiel, Pro ou Équipe, ou contactez-nous pour le Sur-mesure.']);
+    exit;
+}
+
+// Option domaine personnel : vendue seulement quand la fonction est livrée, jamais sur Essentiel (aujourd'hui : jamais)
+if ($with_addon_domain && ak_addon_domain_offer($plan) !== 'addon') {
+    http_response_code(400);
+    echo json_encode(['error' => 'L’option domaine personnel n’est pas proposée sur cette formule. Aucun montant n’a été prélevé.']);
+    exit;
+}
+
+// Membres (bureau compris) ou gestionnaires au-delà des limites de la formule choisie : même règle que la page
+if ($why_limits = ak_pc_usage_blockers($pdo, $org_id, $plan)) {
+    http_response_code(409);
+    echo json_encode(['error' => implode(' ', $why_limits) . ' Choisissez une formule plus grande. Aucun montant n’a été prélevé.', 'redirect' => '/mon-asso-plan#formules']);
     exit;
 }
 
@@ -361,7 +385,7 @@ try {
         'payment_behavior' => 'default_incomplete',
         'payment_settings[save_default_payment_method]' => 'on_subscription',
         'expand' => ['latest_invoice.payment_intent', 'pending_setup_intent'],
-        'description' => 'Abonnement Assokit — ' . ($user['org_name'] ?: ('association n°' . $org_id)),
+        'description' => 'Abonnement Assokit ' . ak_plan_label($plan_slug, $plan['name'] ?? null) . ' — ' . ($user['org_name'] ?: ('association n°' . $org_id)),
         'metadata[org_id]' => (string)$org_id,
         'metadata[user_id]' => (string)$user_id,
         'metadata[plan_slug]' => $plan_slug,

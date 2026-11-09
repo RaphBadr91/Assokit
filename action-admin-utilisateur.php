@@ -15,7 +15,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/demo-guard.php';
 require_once __DIR__ . '/activity-tracker.php';  // journal fondateur : qui a fait quoi, à la minute près
-@require_once __DIR__ . '/plan-helpers.php';     // limite d'utilisateurs du plan (ak_can_add_user)
+@require_once __DIR__ . '/plan-helpers.php';     // limites du plan (ak_can_add_user, ak_can_add_manager, ak_role_change_allowed)
 activity_log_request();
 
 require_login();
@@ -103,6 +103,15 @@ function plan_adherent_limit_error($pdo, $org_id) {
     return empty($chk['ok']) ? ($chk['reason'] ?: 'Limite d’adhérents de votre plan atteinte.') : null;
 }
 
+// Helper : limite de gestionnaires de la formule (admin, coordinateur, référent ; ak_can_add_manager).
+// Un compte de rôle gestionnaire de plus, créé ou réactivé. Renvoie le message de refus, ou null.
+function plan_manager_limit_error($pdo, $org_id, $role) {
+    if (!function_exists('ak_can_add_manager') || !function_exists('ak_manager_roles')) return null;
+    if (!in_array($role, ak_manager_roles(), true)) return null;
+    $chk = ak_can_add_manager($pdo, (int)$org_id, 1);
+    return empty($chk['ok']) ? ($chk['reason'] ?: 'Limite de gestionnaires de votre formule atteinte.') : null;
+}
+
 // Helper : rendre inutilisables les liens d'invitation et « mot de passe oublié » déjà envoyés
 function revoke_password_tokens($pdo, $user_id) {
     try {
@@ -185,6 +194,8 @@ if ($action === 'create') {
     if ($first_name === '') $errors[] = 'Prénom obligatoire';
     if ($last_name === '') $errors[] = 'Nom obligatoire';
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Email invalide';
+    // Limite de gestionnaires de la formule (administrateur, coordinateur, référent)
+    if ($mgr_err = plan_manager_limit_error($pdo, $org_id, $role)) $errors[] = $mgr_err;
 
     // Vérifier unicité de l'email
     $check = $pdo->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
@@ -301,6 +312,12 @@ if ($action === 'update') {
     if ($last_name === '') $errors[] = 'Nom obligatoire';
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Email invalide';
 
+    // Passage d'un compte actif à un rôle gestionnaire : limite de la formule (ak_role_change_allowed)
+    if (!$is_self && !empty($target['is_active']) && function_exists('ak_role_change_allowed')) {
+        $rc = ak_role_change_allowed($pdo, $org_id, (string)$target['role'], $role);
+        if (empty($rc['ok'])) $errors[] = $rc['reason'] ?: 'Limite de gestionnaires de votre formule atteinte.';
+    }
+
     // Vérifier unicité si email changé
     if ($email !== $target['email']) {
         $check = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1");
@@ -395,10 +412,14 @@ if ($action === 'reactivate') {
         header('Location: /admin?error=notfound');
         exit;
     }
-    // Un compte réactivé compte à nouveau dans les limites d'utilisateurs et d'adhérents du plan
+    // Un compte réactivé compte à nouveau dans les limites d'utilisateurs, d'adhérents et de
+    // gestionnaires de la formule
     if (empty($target['is_active'])
-        && ($limit_err = plan_user_limit_error($pdo, $org_id) ?? plan_adherent_limit_error($pdo, $org_id))) {
-        $_SESSION['form_errors'] = [rtrim($limit_err, '. ') . '. Passez à un plan supérieur pour réactiver ce compte.'];
+        && ($limit_err = plan_user_limit_error($pdo, $org_id) ?? plan_adherent_limit_error($pdo, $org_id)
+                         ?? plan_manager_limit_error($pdo, $org_id, (string)$target['role']))) {
+        // Dans l'appli (Apple 3.1.1) : aucune invitation à changer de formule
+        $billing_hidden = function_exists('ak_billing_hidden') && ak_billing_hidden();
+        $_SESSION['form_errors'] = [rtrim($limit_err, '. ') . ($billing_hidden ? '.' : '. Pour réactiver ce compte, changez de formule (Mon abonnement).')];
         header('Location: /admin-modifier-utilisateur/' . $target_id);
         exit;
     }

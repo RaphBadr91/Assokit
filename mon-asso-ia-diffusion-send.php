@@ -122,6 +122,11 @@ require_once __DIR__ . '/trial-limits-helpers.php';
 if ($trial_block = ak_trial_send_block($pdo, $org_id, count($recipients))) {
     dif_back('warning', $trial_block, '', true);
 }
+// Formule : e-mails groupés du mois (diffusions, invitations, convocations, relances)
+require_once __DIR__ . '/plan-controls.php';
+if ($quota_block = akc_email_block($pdo, (int)$org_id, count($recipients))) {
+    dif_back('warning', $quota_block, '', true);
+}
 
 // Construction HTML email avec template propre
 $body_html_inner = ak_ai_md_to_html($body_md);

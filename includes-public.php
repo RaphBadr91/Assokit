@@ -565,7 +565,7 @@ if (!function_exists('render_public_footer')) {
 
             <div class="pub-footer-bottom">
               <p>© <?= $year ?> Assokit · Édité par RBPS · Pensé en France 🇫🇷</p>
-              <p class="pub-footer-tagline">🌿 Hébergé en France · Conforme RGPD · Vos données restent les vôtres.</p>
+              <p class="pub-footer-tagline">🌿 Hébergé en France · Respect du RGPD · Vos données restent les vôtres.</p>
             </div>
           </div>
         </footer>

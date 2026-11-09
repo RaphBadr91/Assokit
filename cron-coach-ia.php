@@ -18,6 +18,8 @@ require_once __DIR__ . '/includes-coach-ia.php';
 @require_once __DIR__ . '/resend-helper.php';
 require_once __DIR__ . '/cron-lots.php';
 require_once __DIR__ . '/asso-invoice-helpers.php';   // ak_asso_org_active_sql()
+require_once __DIR__ . '/plan-controls.php';          // formule : accès limité (Démarrage) → pas de coach
+if (is_file(__DIR__ . '/trial-helpers.php')) require_once __DIR__ . '/trial-helpers.php';   // ak_sub_order()
 
 // php-cgi (/usr/bin/php sur O2Switch) : PHP_SAPI vaut « cgi-fcgi », sans REQUEST_METHOD ; c'est aussi la ligne de commande
 $is_cli = (PHP_SAPI === 'cli') || !isset($_SERVER['REQUEST_METHOD']);
@@ -52,6 +54,13 @@ $stmt = $pdo->prepare("SELECT o.id, o.name, o.legal_form AS type
       AND NOT EXISTS (SELECT 1 FROM coach_reports c
                        WHERE c.org_id = o.id AND c.week_start = ?
                          AND c.sent_email_at IS NOT NULL)
+      " . (akc_readonly_live($pdo) ? "
+      -- Formule Démarrage (accès limité : fin d'essai, résiliation, impayé), une fois la grille
+      -- appliquée : pas de coach. Écartée ici, et non dans la boucle, pour ne pas occuper le lot.
+      AND NOT EXISTS (SELECT 1 FROM asso_subscriptions sd JOIN asso_plans pd ON pd.id = sd.plan_id
+                       WHERE sd.id = (SELECT s2.id FROM asso_subscriptions s2 WHERE s2.org_id = o.id
+                                      ORDER BY " . (function_exists('ak_sub_order') ? ak_sub_order('s2') : "(s2.status = 'active') DESC, (s2.status = 'trial') DESC, s2.id DESC") . " LIMIT 1)
+                         AND pd.slug = 'demarrage')" : '') . "
     -- Les rapports jamais écrits d'abord ; les envois à reprendre (e-mail
     -- refusé au passage précédent) ensuite : une adresse en échec permanent
     -- ne doit pas occuper le lot et retarder les associations suivantes.
@@ -72,6 +81,8 @@ foreach ($orgs as $org) {
 
     $org_id = (int)$org['id'];
     echo "── Org #$org_id {$org['name']} ──\n";
+    // Accès limité (contrôle des fondations, ak_plan_is_readonly) : pas de coach
+    if (function_exists('akc_readonly') && akc_readonly($pdo, $org_id, false)) { echo "  – accès limité, coach coupé\n"; continue; }
     try {
         // Un rapport déjà écrit mais dont l'e-mail n'est pas parti : on
         // le renvoie tel quel. L'ancienne version relançait l'IA, donc
@@ -102,7 +113,8 @@ foreach ($orgs as $org) {
                 "Tu es AssoCoach, un coach Assokit hebdomadaire pour les responsables associatifs. Tu réponds UNIQUEMENT en JSON valide, sans markdown, sans texte autour.",
                 [['role' => 'user', 'content' => $prompt]],
                 1500,
-                ['purpose' => 'fast'] // coach hebdomadaire : modèle rapide (ai-models.php)
+                // coach hebdomadaire : modèle rapide (ai-models.php) ; registre IA « coach », 0 crédit
+                ['purpose' => 'fast', 'path' => 'coach', 'org_id' => $org_id, 'credits' => 0]
             );
             $raw = ($resp && !empty($resp['success'])) ? ($resp['content'] ?? '') : '';
             if (!$raw) { echo "  ✗ Pas de réponse Claude\n"; $stats['errors']++; continue; }

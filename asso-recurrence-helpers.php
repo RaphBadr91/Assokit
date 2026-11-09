@@ -651,7 +651,7 @@ if (!function_exists('ak_recurrence_run_due')) {
                   AND r.next_run_date <= CURRENT_DATE()
                   AND " . ak_asso_org_active_sql('o') . "
                 ORDER BY r.next_run_date ASC, r.id ASC
-                LIMIT 50
+                LIMIT 1000
             ");
             $st->execute();
             $due = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -660,8 +660,19 @@ if (!function_exists('ak_recurrence_run_due')) {
             return $stats;
         }
 
+        // Formule sans factures récurrentes (Essentiel, accès limité) : l'association est sautée,
+        // ses récurrences restent dues et reprennent si la formule change. Les associations sautées
+        // ne comptent pas dans le lot de 50 (sinon elles bloqueraient les autres).
+        $plan_ok = [];
+        $done = 0;
+        $stats['skipped_plan'] = 0;
         foreach ($due as $rec) {
             $rec_id = (int)$rec['id'];
+            $rec_org = (int)$rec['org_id'];
+            if (!isset($plan_ok[$rec_org])) $plan_ok[$rec_org] = ak_recurrence_plan_ok($pdo, $rec_org, false);
+            if (!$plan_ok[$rec_org]) { $stats['skipped_plan']++; continue; }
+            if ($done >= 50) break;
+            $done++;
 
             // Terminée (nombre max atteint ou date de fin dépassée) : rien à générer
             if ($ended = ak_recurrence_end_reason($rec)) {
@@ -824,6 +835,30 @@ if (!function_exists('ak_recurrence_run_one')) {
 if (!function_exists('ak_recurrence_flash')) {
     function ak_recurrence_flash(string $type, string $message): void {
         $_SESSION['flash_recurrences'] = ['type' => $type === 'success' ? 'success' : 'error', 'message' => $message];
+    }
+}
+
+// --------------------------------------------------------------
+// Formule : factures récurrentes et relances automatiques (feature_recurring_invoices,
+// Pro et au-delà ; plan-helpers.php). Sans les fondations : permis, comme avant.
+// --------------------------------------------------------------
+if (!function_exists('ak_recurrence_plan_ok')) {
+    /** La formule de l'association inclut-elle les factures récurrentes ? ($for_user = false dans un cron) */
+    function ak_recurrence_plan_ok(PDO $pdo, int $org_id, bool $for_user = true): bool {
+        if (!is_file(__DIR__ . '/plan-controls.php')) return true;
+        require_once __DIR__ . '/plan-controls.php';
+        return akc_has($pdo, $org_id, 'recurring_invoices', $for_user);
+    }
+}
+
+if (!function_exists('ak_recurrence_plan_refuse')) {
+    /** Action refusée par la formule : message sur la liste des récurrences, puis arrêt. */
+    function ak_recurrence_plan_refuse(PDO $pdo, int $org_id): void {
+        require_once __DIR__ . '/plan-controls.php';
+        ak_recurrence_flash('error', akc_gate_message($pdo, $org_id, 'recurring_invoices')
+            . ' Vos récurrences existantes sont conservées, sans génération automatique.');
+        header('Location: /mon-asso-recurrences');
+        exit;
     }
 }
 

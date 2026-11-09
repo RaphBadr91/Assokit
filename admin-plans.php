@@ -56,26 +56,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'price_cents'   => (int)round(((float)($_POST['price_eur'] ?? 0)) * 100),
                 'price_label'   => trim((string)($_POST['price_label'] ?? '')) ?: null,
                 'is_custom_quote' => !empty($_POST['is_custom_quote']) ? 1 : 0,
-                'limit_adherents'        => $_POST['limit_adherents'] === '' ? null : (int)$_POST['limit_adherents'],
-                'limit_invoices_total'   => $_POST['limit_invoices_total'] === '' ? null : (int)$_POST['limit_invoices_total'],
-                'limit_quotes_total'     => $_POST['limit_quotes_total'] === '' ? null : (int)$_POST['limit_quotes_total'],
-                'limit_contacts'         => $_POST['limit_contacts'] === '' ? null : (int)$_POST['limit_contacts'],
-                'limit_users'            => $_POST['limit_users'] === '' ? null : (int)$_POST['limit_users'],
-                'limit_ai_text_per_month'  => $_POST['limit_ai_text_per_month'] === '' ? null : (int)$_POST['limit_ai_text_per_month'],
-                'limit_ai_image_per_month' => $_POST['limit_ai_image_per_month'] === '' ? null : (int)$_POST['limit_ai_image_per_month'],
-                'limit_emails_per_month'   => $_POST['limit_emails_per_month'] === '' ? null : (int)$_POST['limit_emails_per_month'],
-                'bonus_ai_first_week'      => (int)($_POST['bonus_ai_first_week'] ?? 0),
-                'feature_recurring_invoices' => !empty($_POST['feature_recurring_invoices']) ? 1 : 0,
-                'feature_signature_quotes'   => !empty($_POST['feature_signature_quotes']) ? 1 : 0,
-                'feature_email_diffusion'    => !empty($_POST['feature_email_diffusion']) ? 1 : 0,
-                'feature_advanced_stats'     => !empty($_POST['feature_advanced_stats']) ? 1 : 0,
-                'feature_priority_support'   => !empty($_POST['feature_priority_support']) ? 1 : 0,
-                'feature_custom_domain'      => !empty($_POST['feature_custom_domain']) ? 1 : 0,
-                'feature_dedicated_support'  => !empty($_POST['feature_dedicated_support']) ? 1 : 0,
+                'bonus_ai_first_week'      => max(0, (int)($_POST['bonus_ai_first_week'] ?? 0)),
                 'is_featured' => !empty($_POST['is_featured']) ? 1 : 0,
                 'is_visible'  => !empty($_POST['is_visible']) ? 1 : 0,
                 'display_order' => (int)($_POST['display_order'] ?? 0),
             ];
+
+            // Limites (vide = illimité, 0 = bloqué) et fonctions : listes de la grille (plan-helpers.php)
+            foreach (ak_plan_limit_keys() as $k => $lbl) {
+                $v = trim((string)($_POST[$k] ?? ''));
+                $data[$k] = $v === '' ? null : max(0, (int)$v);
+            }
+            foreach (ak_plan_feature_keys() as $k => $lbl) {
+                $data[$k] = !empty($_POST[$k]) ? 1 : 0;
+            }
 
             if ($data['slug'] === '' || $data['name'] === '') throw new Exception('Slug et nom obligatoires');
 
@@ -93,6 +87,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } elseif ($action === 'delete') {
             $plan_id = (int)$_POST['plan_id'];
+            // Lignes système de la grille (accès limité, essai, offre fondateur) : jamais supprimées
+            $sl = $pdo->prepare("SELECT slug FROM asso_plans WHERE id = :id");
+            $sl->execute([':id' => $plan_id]);
+            if (in_array((string)$sl->fetchColumn(), ['demarrage', 'pro-essai', 'fondateur'], true)) {
+                throw new Exception('Cette formule est utilisée par le système (accès limité, essai ou offre fondateur) : elle ne se supprime pas.');
+            }
             // Vérifier qu'aucun abonnement actif ne l'utilise
             $st = $pdo->prepare("SELECT COUNT(*) FROM asso_subscriptions WHERE plan_id = :p");
             $st->execute([':p' => $plan_id]);
@@ -182,7 +182,12 @@ render_sidebar('admin-plans');
                   <span style="color:#64748B;font-size:12px;">/mois</span>
                 <?php endif; ?>
               </td>
-              <td style="padding:14px 12px;text-align:center;"><?= $p['limit_adherents'] === null ? '∞' : $p['limit_adherents'] ?></td>
+              <td style="padding:14px 12px;text-align:center;">
+                <?= ($p['limit_adherents'] ?? null) === null ? '∞' : $p['limit_adherents'] ?>
+                <?php if (array_key_exists('limit_managers', $p)): ?>
+                  <div style="color:#64748B;font-size:11px;"><?= $p['limit_managers'] === null ? '∞' : (int)$p['limit_managers'] ?> gest.</div>
+                <?php endif; ?>
+              </td>
               <td style="padding:14px 12px;text-align:center;"><?= $p['limit_invoices_total'] === null ? '∞' : $p['limit_invoices_total'] ?></td>
               <td style="padding:14px 12px;text-align:center;">
                 <?= $p['limit_ai_text_per_month'] === null ? '∞' : $p['limit_ai_text_per_month'] ?>
@@ -273,24 +278,15 @@ render_sidebar('admin-plans');
 
       <!-- Limites quotas -->
       <fieldset style="border:1px solid #E2E8F0;border-radius:10px;padding:18px;">
-        <legend style="font-weight:600;padding:0 8px;">Limites & quotas <span style="color:#64748B;font-weight:400;font-size:12px;">(vide = illimité, 0 = bloqué)</span></legend>
+        <legend style="font-weight:600;padding:0 8px;">Limites & quotas <span style="color:#64748B;font-weight:400;font-size:12px;">(vide = illimité, 0 = bloqué ; membres = bureau compris ; gestionnaires = administrateurs, coordinateurs, référents)</span></legend>
         <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:12px;">
           <?php
-          $fields = [
-              'limit_adherents' => 'Adhérents',
-              'limit_users' => 'Utilisateurs',
-              'limit_invoices_total' => 'Factures (total)',
-              'limit_quotes_total' => 'Devis (total)',
-              'limit_contacts' => 'Contacts',
-              'limit_ai_text_per_month' => 'IA texte/mois',
-              'limit_ai_image_per_month' => 'IA image/mois',
-              'limit_emails_per_month' => 'Emails/mois',
-          ];
+          $fields = ak_plan_limit_keys();
           foreach ($fields as $field => $label):
               $val = $editing[$field] ?? '';
           ?>
             <div>
-              <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;"><?= $label ?></label>
+              <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></label>
               <input type="number" min="0" name="<?= $field ?>" value="<?= $val === null ? '' : htmlspecialchars((string)$val) ?>" placeholder="∞" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;">
             </div>
           <?php endforeach; ?>
@@ -306,21 +302,13 @@ render_sidebar('admin-plans');
         <legend style="font-weight:600;padding:0 8px;">Fonctionnalités incluses</legend>
         <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;">
           <?php
-          $features = [
-              'feature_recurring_invoices' => '🔄 Factures récurrentes',
-              'feature_signature_quotes' => '✍️ Signature devis',
-              'feature_email_diffusion' => '📨 Diffusion email',
-              'feature_advanced_stats' => '📊 Stats avancées',
-              'feature_priority_support' => '⚡ Support prioritaire',
-              'feature_custom_domain' => '🌐 Domaine perso',
-              'feature_dedicated_support' => '👤 Support dédié',
-          ];
+          $features = ak_plan_feature_keys();
           foreach ($features as $key => $label):
               $checked = !empty($editing[$key]);
           ?>
             <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#F8FAFC;border-radius:8px;font-size:13px;cursor:pointer;">
               <input type="checkbox" name="<?= $key ?>" <?= $checked ? 'checked' : '' ?>>
-              <span><?= $label ?></span>
+              <span><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
             </label>
           <?php endforeach; ?>
         </div>

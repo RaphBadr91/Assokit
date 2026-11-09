@@ -17,7 +17,7 @@
  * asso_plans) le confirme : formule courante payante, active, réglée
  * hors Stripe, ni résiliée, ni en essai, ni offerte, ni Sur-mesure
  * (facturé à part), mensuelle.
- * Montant : asso_plans.price_cents est le prix HT (« 49,99 € HT/mois ») ;
+ * Montant : asso_plans.price_cents est le prix HT (« 29,99 € HT/mois » pour Pro et l'offre fondateur) ;
  * TVA = ak_manual_invoice_vat_rate() (includes-pricing.php : taux de la
  * plateforme, celui de Stripe, si la société est assujettie), TTC = HT
  * + TVA calculé par ak_create_invoice.
@@ -33,6 +33,12 @@
  * plusieurs mois ne déclenche pas de rafale de factures antidatées :
  * seule la période en cours est facturée, les périodes sautées sont
  * signalées dans « rattrapage ».
+ *
+ * Baisse de formule programmée (stripe-change-plan.php : asso_subscriptions.pending_plan_id, à la fin de
+ * la période payée) : appliquée AVANT la facture, qui porte donc le prix de la nouvelle formule. Les
+ * abonnements Stripe suivent le webhook. Offre fondateur (29,99 € HT, payée sur facture) : facturée ici
+ * comme toute formule ; les comptes historiques rattachés gardent organizations.monthly_price_cents = 2999
+ * (cli-rattacher-fondateur.php), sinon le montant serait « à confirmer ».
  * ============================================================
  */
 
@@ -49,6 +55,7 @@ require_once __DIR__ . '/company-helpers.php';
 require_once __DIR__ . '/org-billing-helpers.php';
 require_once __DIR__ . '/invoice-helpers.php';
 require_once __DIR__ . '/includes-pricing.php';   // ak_manual_invoice_vat_rate()
+require_once __DIR__ . '/stripe-sync-helpers.php';   // ak_sub_apply_due_pendings() (baisses de formule programmées)
 
 $stats = [
     'processed' => 0,
@@ -60,6 +67,9 @@ $stats = [
 
 $today = date('Y-m-d');
 $subCols = ak_db_columns($pdo, 'asso_subscriptions');
+
+// ----- 0) Baisses de formule arrivées à échéance (paiement sur facture) : appliquées avant la facture
+foreach (ak_sub_apply_due_pendings($pdo) as $msg) $stats['details']['ignorees'][] = $msg;
 // Ne pas facturer manuellement les organisations payant via Stripe (évite la double facturation)
 $notStripeSql = "o.id NOT IN (
           SELECT s.org_id FROM asso_subscriptions s
@@ -236,7 +246,7 @@ foreach ($orgs as $org) {
         if (!$existing) {
             // ----- 5) Facture : HT = prix de la formule (asso_plans.price_cents est HT, comme la grille,
             // le cockpit et Stripe) ; TVA de la plateforme si la société y est assujettie ; TTC = HT + TVA
-            // (ak_create_invoice). 49,99 € HT → 59,99 € TTC à 20 %, le prix payé par carte.
+            // (ak_create_invoice). 29,99 € HT → 35,99 € TTC à 20 %, le prix payé par carte.
             $ht = (int) $sub['price_cents'];
             $inv = ak_create_invoice($pdo, $orgId, [
                 'amount_ht_cents' => $ht,

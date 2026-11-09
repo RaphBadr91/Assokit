@@ -621,7 +621,7 @@ $sent = ($review && ($_GET['demande'] ?? '') === 'envoyee' && is_array($_SESSION
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
 <?php // Dans l'application (ak_billing_hidden) : ni « gratuit », ni « PRO », ni carte bancaire — rien qui évoque un achat (Apple 3.1.1 / 3.1.3 f) ?>
-<title><?= $review ? ($sent !== null ? 'Demande envoyée' : 'Demander la création de votre espace') : (ak_billing_hidden() ? 'Créer votre espace' : 'Essai PRO gratuit ' . (int)AK_TRIAL_DAYS . ' jours') ?> — Assokit</title>
+<title><?= $review ? ($sent !== null ? 'Demande envoyée' : 'Demander la création de votre espace') : (ak_billing_hidden() ? 'Créer votre espace' : 'Essai Pro gratuit ' . (int)AK_TRIAL_DAYS . ' jours') ?> — Assokit</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%23059669'/%3E%3Ccircle cx='22' cy='22' r='4.5' fill='%23FFFFFF'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -759,17 +759,17 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
 
   <div class="card">
 
-    <?php // Anciens liens ?plan= : « association » = formule Assokit, « organisation » = Sur-mesure ?>
+    <?php // Anciens liens ?plan= : « association » = formule Pro (slug assokit), « organisation » = Sur-mesure ?>
     <?php if ($review): // App iPhone : une demande, examinée par l'équipe (ni prix, ni essai, ni gratuité, ni abonnement) ?>
       <span class="plan-pill"><span class="plan-pill-dot"></span>Validation par notre équipe sous <?= (int)AK_SIGNUP_REVIEW_HOURS ?> h</span>
     <?php elseif (ak_billing_hidden()): ?>
       <span class="plan-pill"><span class="plan-pill-dot"></span>Aucun achat dans l’application</span>
     <?php elseif ($form['plan'] === 'association'): ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Assokit · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Pro · essai gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
     <?php elseif ($form['plan'] === 'organisation'): ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Sur-mesure · essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Formule Sur-mesure · essai Pro gratuit <?= (int)AK_TRIAL_DAYS ?> jours</span>
     <?php else: ?>
-      <span class="plan-pill"><span class="plan-pill-dot"></span>Essai PRO gratuit <?= (int)AK_TRIAL_DAYS ?> jours · sans carte bancaire</span>
+      <span class="plan-pill"><span class="plan-pill-dot"></span>Essai Pro gratuit <?= (int)AK_TRIAL_DAYS ?> jours · sans carte bancaire</span>
     <?php endif; ?>
 
     <?php // Dans l'application : aucun prix ni mot d'achat (règles de paiement Google Play, Apple 3.1.1 / 3.1.3 f).
@@ -782,11 +782,11 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
     <p class="sub">Votre demande est examinée par notre équipe sous <?= (int)AK_SIGNUP_REVIEW_HOURS ?> h. Un e-mail vous confirme l’activation de votre espace : vous pourrez alors vous connecter avec l’adresse e-mail et le mot de passe choisis ici.</p>
     <?php elseif (ak_billing_hidden()): ?>
     <h1>Créez l’espace de votre structure</h1>
-    <p class="sub">Toutes les fonctionnalités sont ouvertes dès l’inscription, pendant <?= (int)AK_TRIAL_DAYS ?> jours.</p>
+    <p class="sub">Les fonctions sont ouvertes dès l’inscription, pendant <?= (int)AK_TRIAL_DAYS ?> jours.</p>
     <?php else: ?>
-    <h1>Démarrez votre essai PRO gratuit</h1>
-    <p class="sub">Toutes les fonctionnalités PRO pendant <?= (int)AK_TRIAL_DAYS ?> jours, activées dès l’inscription. Sans carte bancaire, sans engagement.
-      Ensuite, si Assokit vous convient : <?= htmlspecialchars(ak_offer_price($pdo)['label']) ?>, résiliable à tout moment. Sinon, rien n’est prélevé.</p>
+    <h1>Démarrez votre essai Pro gratuit</h1>
+    <p class="sub">Toutes les fonctions de la formule Pro pendant <?= (int)AK_TRIAL_DAYS ?> jours, activées dès l’inscription. Sans carte bancaire, sans engagement.
+      Ensuite, si Assokit vous convient, choisissez votre formule <?= htmlspecialchars(ak_offer_from_price($pdo)) ?> (Pro : <?= htmlspecialchars(ak_offer_price($pdo)['per_month']) ?>), résiliable à tout moment. Sinon, rien n’est prélevé. <?= htmlspecialchars(function_exists('ak_vat_note') ? ak_vat_note($pdo) : '') ?></p>
     <?php endif; ?>
 
     <?php if ($sent !== null): ?>
@@ -963,7 +963,7 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
         <span>J'accepte les <a href="/cgu" target="_blank">conditions générales d'utilisation</a> et la <a href="/confidentialite" target="_blank">politique de confidentialité</a>.</span>
       </label>
 
-      <button type="submit" class="btn-submit" id="signupBtn"><?= $review ? 'Envoyer ma demande' : (ak_billing_hidden() ? 'Créer mon espace' : 'Activer mon essai PRO de ' . (int)AK_TRIAL_DAYS . ' jours') ?> →</button>
+      <button type="submit" class="btn-submit" id="signupBtn"><?= $review ? 'Envoyer ma demande' : (ak_billing_hidden() ? 'Créer mon espace' : 'Activer mon essai Pro de ' . (int)AK_TRIAL_DAYS . ' jours') ?> →</button>
     </form>
     <script>
       // Association / TPE : libellés, listes et champs propres à chaque type
@@ -1001,7 +1001,7 @@ form[data-type="asso"] .only-tpe, form[data-type="tpe"] .only-asso { display: no
 
     <div class="trust-line">
       <span>🇫🇷 Hébergé en France</span>
-      <span>🔒 Conforme RGPD</span>
+      <span>🔒 Respect du RGPD</span>
       <span>✨ IA incluse</span>
     </div>
 

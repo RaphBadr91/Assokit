@@ -18,6 +18,21 @@
  *   ak_can_use_feature($pdo, $org_id, $feature)
  *   ak_render_quota_banner($pdo, $org_id)       → HTML bandeau si limite proche
  *   ak_render_overdue_overlay($pdo, $org_id)    → HTML overlay régularisation
+ *
+ * Grille de novembre 2026 (Essentiel, Pro, Équipe, Sur-mesure ; section 3b) :
+ *   ak_plan_feature_keys() / ak_plan_limit_keys()   colonnes feature_* / limit_* et leurs libellés
+ *   ak_plan_by_slug($pdo, $slug)                    ligne asso_plans
+ *   ak_plan_has($pdo, $org_id, 'cle')               drapeau feature_* de la formule courante
+ *   ak_plan_required_label / ak_feature_gate / ak_render_feature_lock / ak_feature_denied_json
+ *   ak_manager_roles / ak_count_managers / ak_can_add_manager / ak_role_change_allowed
+ *   ak_plan_is_readonly / ak_readonly_message       Démarrage = accès limité (consultation, export)
+ *   ak_ai_credits_used_month / ak_ai_quota_block    crédits IA (registre ai_usage_ledger)
+ *   ak_mail_ai_batch_allowed                        lots de tri IA de la boîte mail
+ *   ak_emails_sent_month / ak_email_quota_block     e-mails groupés du mois civil
+ *   ak_plan_public_summary / ak_plan_badge          phrases sans prix, badge « Le plus choisi »
+ *   ak_fondateur_candidates($pdo)                   clients à rattacher à l'offre fondateur
+ * Règle d'appel pour les autres fichiers : toujours derrière function_exists() ; une fonction
+ * absente ou une erreur laisse passer (comportement d'avant la grille).
  * --------------------------------------------------------------
  */
 
@@ -32,7 +47,7 @@ if (is_file(__DIR__ . '/trial-helpers.php')) require_once __DIR__ . '/trial-help
 
 /**
  * Nom affiché d'un plan (ligne asso_plans ou ak_get_current_plan) :
- * « Essai PRO » pour le plan d'essai, jamais le slug brut.
+ * « Essai Pro » pour le plan d'essai, jamais le slug brut.
  */
 function ak_plan_display_name(?array $plan): string {
     if (!$plan) return '—';
@@ -41,7 +56,7 @@ function ak_plan_display_name(?array $plan): string {
 }
 
 /**
- * Nom de l'essai en cours : « Essai PRO » (plan d'essai), même quand la ligne courante est
+ * Nom de l'essai en cours : « Essai Pro » (plan d'essai), même quand la ligne courante est
  * un paiement Stripe en attente pris pendant l'essai (sinon on lirait « Essai Assokit »).
  * Sans plan d'essai dédié (ak_trial_plan retombe sur la formule payante) : « Essai <formule> ».
  */
@@ -52,7 +67,7 @@ function ak_plan_trial_name(PDO $pdo, string $plan_label): string {
         $l = ak_plan_label($tp['slug']);
         return stripos($l, 'essai') !== false ? $l : 'Essai ' . $l;
     }
-    return ($plan_label === '' || $plan_label === '—') ? 'Essai PRO' : 'Essai ' . $plan_label;
+    return ($plan_label === '' || $plan_label === '—') ? 'Essai Pro' : 'Essai ' . $plan_label;
 }
 
 /**
@@ -64,8 +79,8 @@ function ak_plan_trial_name(PDO $pdo, string $plan_label): string {
  *   days_left      jours restants (même calcul que le cockpit) — mêmes cas
  *   end_fr / end_short  'd/m/Y' / 'd/m' ('' sans date) ; ends_today : la fin tombe aujourd'hui
  *   plan_label, plan_slug, badge, badge_tone : repris tels quels
- *   trial_name     « Essai PRO » pendant l'essai en cours, sinon ''
- *   label          texte unique : « Essai PRO — jusqu’au 23/10 (J-14) », « Essai terminé le 08/10/2026 »,
+ *   trial_name     « Essai Pro » pendant l'essai en cours, sinon ''
+ *   label          texte unique : « Essai Pro — jusqu’au 23/10 (J-14) », « Essai terminé le 08/10/2026 »,
  *                  « Essai suspendu · fin prévue le 23/10/2026 », ou le nom du plan
  *   trial_subscribed  abonnement souscrit pendant l'essai (carte ou mandat SEPA enregistré) : premier
  *                  prélèvement le first_charge_fr (fin de l'essai), first_charge_cents (TTC), pm_type
@@ -244,12 +259,39 @@ function ak_get_current_plan(PDO $pdo, int $org_id): ?array {
             return null;
         }
 
+        $row = ak_plan_demarrage_overlay($row);
         $cache[$org_id] = $row;
         return $row;
     } catch (Throwable $e) {
         error_log('[ak_get_current_plan] ' . $e->getMessage());
         return null;
     }
+}
+
+/**
+ * Accès limité de Démarrage en service : le préavis de 30 jours aux comptes concernés est écoulé
+ * (cgu.php § 12) et le Fondateur a ajouté define('AK_DEMARRAGE_READONLY_LIVE', true); dans config.php.
+ */
+function ak_demarrage_restricted(): bool {
+    return defined('AK_DEMARRAGE_READONLY_LIVE') && AK_DEMARRAGE_READONLY_LIVE;
+}
+
+/**
+ * Ligne Démarrage : limites et fonctions de l'accès limité (toutes les fonctions à 0, plafonds de
+ * membres, de gestionnaires, d'IA et d'e-mails à 0) appliquées SEULEMENT une fois l'accès limité en
+ * service (ak_demarrage_restricted). Avant, la ligne garde exactement ses valeurs d'avant la grille :
+ * la migration ne les touche pas, rien ne change sans préavis pour les comptes existants.
+ */
+function ak_plan_demarrage_overlay(array $row): array {
+    if (($row['slug'] ?? '') !== 'demarrage' || !ak_demarrage_restricted()) return $row;
+    foreach (array_keys($row) as $k) {
+        if (strpos($k, 'feature_') === 0) $row[$k] = 0;
+    }
+    foreach (['limit_adherents', 'limit_managers', 'limit_ai_text_per_month', 'limit_ai_image_per_month',
+              'limit_emails_per_month', 'limit_mail_ai_batches_per_month', 'bonus_ai_first_week'] as $k) {
+        if (array_key_exists($k, $row)) $row[$k] = 0;
+    }
+    return $row;
 }
 
 /**
@@ -307,6 +349,8 @@ function ak_get_usage(PDO $pdo, int $org_id): array {
         'ai_text_month'    => 0,
         'ai_image_month'   => 0,
         'emails_month'     => 0,
+        'managers'         => 0,
+        'mail_ai_batches_month' => 0,
     ];
 
     try {
@@ -343,42 +387,19 @@ function ak_get_usage(PDO $pdo, int $org_id): array {
             try { $st->execute([':o' => $org_id]); $usage['contacts'] = (int)$st->fetchColumn(); } catch (Throwable $e) {}
         }
 
-        // IA texte / image sur le mois en cours : les générations réussies réellement enregistrées
-        // (asso_ai_generations, écrite par ak_ai_save_generation). L'ancienne table asso_ai_logs
-        // n'est alimentée nulle part : le compteur restait à 0 et la limite du plan jamais appliquée.
-        $ai_table = ak_table_exists($pdo, 'asso_ai_generations') ? 'asso_ai_generations'
-                  : (ak_table_exists($pdo, 'asso_ai_logs') ? 'asso_ai_logs' : null);
-        if ($ai_table !== null) {
-            // Générations supprimées comprises (suppression douce, statut « deleted ») : supprimer une
-            // génération ne rend pas de quota du mois (comme asso-ai-quotas.php et ak_ai_count_this_month).
-            $ok = $ai_table === 'asso_ai_generations' ? " AND status IN ('success', 'deleted')" : '';
-            $st = $pdo->prepare("
-                SELECT COUNT(*) FROM {$ai_table}
-                WHERE org_id = :o{$ok}
-                  AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')
-                  AND (tool_type IS NULL OR tool_type NOT LIKE 'image-%')
-            ");
-            try { $st->execute([':o' => $org_id]); $usage['ai_text_month'] = (int)$st->fetchColumn(); } catch (Throwable $e) {}
+        // IA texte : crédits du mois (registre unifié ai_usage_ledger, au moins les générations
+        // du hub déjà enregistrées : ak_ai_credits_used_month). IA image : générations « image-… »
+        // (aucun outil d'image n'existe aujourd'hui : reste à 0).
+        $usage['ai_text_month']  = ak_ai_credits_used_month($pdo, $org_id);
+        $usage['ai_image_month'] = ak_ai_generations_month($pdo, $org_id, true);
 
-            $st = $pdo->prepare("
-                SELECT COUNT(*) FROM {$ai_table}
-                WHERE org_id = :o{$ok}
-                  AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')
-                  AND tool_type LIKE 'image-%'
-            ");
-            try { $st->execute([':o' => $org_id]); $usage['ai_image_month'] = (int)$st->fetchColumn(); } catch (Throwable $e) {}
-        }
+        // E-mails groupés du mois civil (diffusions, invitations, convocations, relances ; jamais
+        // les factures ni les devis envoyés un par un)
+        $usage['emails_month'] = ak_emails_sent_month($pdo, $org_id);
 
-        // Emails sur le mois
-        if (ak_table_exists($pdo, 'asso_email_diffusions')) {
-            $st = $pdo->prepare("
-                SELECT COALESCE(SUM(recipient_count), 0) FROM asso_email_diffusions
-                WHERE org_id = :o
-                  AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')
-                  AND status = 'sent'
-            ");
-            try { $st->execute([':o' => $org_id]); $usage['emails_month'] = (int)$st->fetchColumn(); } catch (Throwable $e) {}
-        }
+        // Gestionnaires (admin, coordinateur, référent) et lots de tri IA de la boîte mail
+        $usage['managers'] = ak_count_managers($pdo, $org_id);
+        $usage['mail_ai_batches_month'] = ak_mail_ai_batches_month($pdo, $org_id);
 
     } catch (Throwable $e) {
         error_log('[ak_get_usage] ' . $e->getMessage());
@@ -452,7 +473,7 @@ function ak_can_add_adherent(PDO $pdo, int $org_id): array {
     $limit = (int)$plan['limit_adherents'];
 
     if ($current >= $limit) {
-        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} adhérents sur le plan " . ak_plan_display_name($plan), 'limit' => $limit, 'current' => $current];
+        return ['ok' => false, 'reason' => "Limite atteinte : {$current}/{$limit} membres (bureau compris) avec la formule " . ak_plan_display_name($plan), 'limit' => $limit, 'current' => $current];
     }
     return ['ok' => true, 'reason' => '', 'limit' => $limit, 'current' => $current];
 }
@@ -493,14 +514,16 @@ function ak_can_add_user(PDO $pdo, int $org_id): array {
 }
 
 /**
- * STRICT - Vérifie si l'IA texte peut être utilisée
- * Avec gestion bonus première semaine
+ * STRICT - Vérifie si l'IA texte peut être utilisée : crédits IA du mois (registre unifié
+ * ai_usage_ledger, ak_ai_credits_used_month), avec gestion bonus première semaine.
+ * $credits : crédits que l'appel va consommer (1 par défaut).
  */
-function ak_can_use_ai_text(PDO $pdo, int $org_id): array {
+function ak_can_use_ai_text(PDO $pdo, int $org_id, int $credits = 1): array {
     $plan = ak_get_current_plan($pdo, $org_id);
     if (!$plan) return ['ok' => false, 'reason' => 'Aucun plan actif', 'limit' => 0, 'current' => 0];
 
-    if ($plan['limit_ai_text_per_month'] === null) return ['ok' => true, 'reason' => '', 'limit' => null, 'current' => 0];
+    if (!isset($plan['limit_ai_text_per_month']) || $plan['limit_ai_text_per_month'] === '') return ['ok' => true, 'reason' => '', 'limit' => null, 'current' => 0];
+    $credits = max(0, $credits);
 
     $usage = ak_get_usage($pdo, $org_id);
     $current = (int)$usage['ai_text_month'];
@@ -517,12 +540,12 @@ function ak_can_use_ai_text(PDO $pdo, int $org_id): array {
     $effective_limit = $limit + $bonus;
 
     if ($limit === 0 && $bonus === 0) {
-        return ['ok' => false, 'reason' => "L'IA texte n'est pas incluse dans le plan " . ak_plan_display_name($plan), 'limit' => 0, 'current' => $current];
+        return ['ok' => false, 'reason' => "L'IA de rédaction n'est pas incluse dans la formule " . ak_plan_display_name($plan) . '.', 'limit' => 0, 'current' => $current];
     }
-    if ($current >= $effective_limit) {
-        $msg = "Limite atteinte : {$current}/{$effective_limit} générations IA texte ce mois";
-        if ($bonus > 0) $msg .= " (bonus 1ère semaine inclus)";
-        return ['ok' => false, 'reason' => $msg, 'limit' => $effective_limit, 'current' => $current];
+    if ($current >= $effective_limit || ($credits > 0 && $current + $credits > $effective_limit)) {
+        $msg = "Limite atteinte : {$current}/{$effective_limit} crédits IA utilisés ce mois-ci";
+        if ($bonus > 0) $msg .= " (bonus de la première semaine inclus)";
+        return ['ok' => false, 'reason' => $msg . '.', 'limit' => $effective_limit, 'current' => $current];
     }
     return ['ok' => true, 'reason' => '', 'limit' => $effective_limit, 'current' => $current, 'bonus' => $bonus];
 }
@@ -553,22 +576,25 @@ function ak_can_send_email(PDO $pdo, int $org_id, int $count = 1): array {
     $plan = ak_get_current_plan($pdo, $org_id);
     if (!$plan) return ['ok' => false, 'reason' => 'Aucun plan actif', 'limit' => 0, 'current' => 0];
 
-    // Si la feature email_diffusion est désactivée → bloqué
-    if (!$plan['feature_email_diffusion']) {
-        return ['ok' => false, 'reason' => "La diffusion email n'est pas incluse dans le plan " . ak_plan_display_name($plan), 'limit' => 0, 'current' => 0, 'feature_disabled' => true];
+    // Si la feature email_diffusion est désactivée → bloqué (colonne absente : permis, comme avant)
+    if (array_key_exists('feature_email_diffusion', $plan) && empty($plan['feature_email_diffusion'])) {
+        return ['ok' => false, 'reason' => "Les envois groupés d'e-mails ne sont pas inclus dans la formule " . ak_plan_display_name($plan) . '.', 'limit' => 0, 'current' => 0, 'feature_disabled' => true];
     }
 
-    if ($plan['limit_emails_per_month'] === null) return ['ok' => true, 'reason' => '', 'limit' => null, 'current' => 0];
+    if (!isset($plan['limit_emails_per_month']) || $plan['limit_emails_per_month'] === '') return ['ok' => true, 'reason' => '', 'limit' => null, 'current' => 0];
 
     $usage = ak_get_usage($pdo, $org_id);
     $current = (int)$usage['emails_month'];
     $limit = (int)$plan['limit_emails_per_month'];
 
     if ($limit === 0) {
-        return ['ok' => false, 'reason' => "La diffusion email n'est pas incluse dans le plan " . ak_plan_display_name($plan), 'limit' => 0, 'current' => $current, 'feature_disabled' => true];
+        return ['ok' => false, 'reason' => "Les envois groupés d'e-mails ne sont pas inclus dans la formule " . ak_plan_display_name($plan) . '.', 'limit' => 0, 'current' => $current, 'feature_disabled' => true];
     }
     if ($current + $count > $limit) {
-        return ['ok' => false, 'reason' => "Quota dépassé : {$current}+{$count} dépasse la limite de {$limit} emails/mois", 'limit' => $limit, 'current' => $current];
+        $left = max(0, $limit - $current);
+        return ['ok' => false, 'reason' => 'Votre formule inclut ' . ak_plan_fmt_int($limit) . ' e-mails par mois : '
+            . ($left === 0 ? 'ils sont tous utilisés ce mois-ci.' : 'il en reste ' . ak_plan_fmt_int($left) . ' ce mois-ci, pour ' . ak_plan_fmt_int($count) . ' prévus.'),
+            'limit' => $limit, 'current' => $current];
     }
     return ['ok' => true, 'reason' => '', 'limit' => $limit, 'current' => $current];
 }
@@ -583,7 +609,9 @@ function ak_can_use_feature(PDO $pdo, int $org_id, string $feature): bool {
 // ====== Features capees (ex: Bilan analytique en essai) ======
 function ak_feature_usage_count(PDO $pdo, int $org_id, string $key): int {
     try {
-        $st = $pdo->prepare("SELECT used_count FROM org_feature_usage WHERE org_id = :o AND feature_key = :k LIMIT 1");
+        // Somme : une table créée à la main sans clé unique a une ligne par usage
+        // (migrations/2026-11-09-grille-tarifaire.sql n'ajoute la clé que sans doublon)
+        $st = $pdo->prepare("SELECT COALESCE(SUM(used_count), 0) FROM org_feature_usage WHERE org_id = :o AND feature_key = :k");
         $st->execute([':o' => $org_id, ':k' => $key]);
         $v = $st->fetchColumn();
         return $v === false ? 0 : (int)$v;
@@ -620,6 +648,600 @@ function ak_bilan_analytique_gate(PDO $pdo, int $org_id): array {
     }
     ak_feature_usage_record($pdo, $org_id, 'bilan_analytique');
     return ['blocked'=>false,'unlimited'=>false,'used'=>$used+1,'cap'=>1,'plan'=>$plan];
+}
+
+// ============================================================
+// 3b. Grille de novembre 2026 : formules, fonctions, gestionnaires, crédits IA, e-mails
+// ============================================================
+// Lignes asso_plans de la grille (migrations/2026-11-09-grille-tarifaire.sql) :
+//   ak-essentiel (Essentiel, 19,99 € HT/mois), assokit (Pro, 29,99 €), ak-equipe (Équipe, 59,99 €),
+//   sur-mesure (sur devis), fondateur (masquée), pro-essai (Essai Pro), demarrage (accès limité).
+// Tout ce qui suit laisse passer en cas de doute (colonne absente, table absente, erreur) :
+// chaque chantier fonctionne avec ou sans les autres, avec ou sans Stripe.
+
+/** Fonctions des formules, dans l'ordre de la grille : ['feature_xxx' => libellé]. */
+function ak_plan_feature_keys(): array {
+    return [
+        'feature_email_diffusion'    => 'Envois groupés d’e-mails (diffusions, invitations, convocations)',
+        'feature_advanced_stats'     => 'Prévisions de trésorerie et comptabilité analytique illimitée',
+        'feature_recurring_invoices' => 'Relances automatiques et factures récurrentes',
+        'feature_signature_quotes'   => 'Devis signés en ligne',
+        'feature_ai_assistant'       => 'Copilote IA, priorités du jour, assistant de projet, lecture des justificatifs',
+        'feature_mail_inbox'         => 'Boîte Gmail intégrée et brouillons IA',
+        'feature_mail_ai_sort'       => 'Tri IA de la boîte mail',
+        'feature_ai_daily_all'       => 'Priorités IA du jour pour chaque membre',
+        'feature_anomalies'          => 'Détection des anomalies',
+        'feature_team_planning'      => 'Planning d’équipe et absences',
+        'feature_prospection'        => 'Prospection partagée',
+        'feature_activity_log'       => 'Journal d’activité de l’équipe',
+        'feature_shared_inbox'       => 'Boîte mail partagée (attribution des conversations)',
+        'feature_treasurer_digest'   => 'Point du lundi du trésorier',
+        'feature_priority_support'   => 'Support prioritaire',
+        'feature_custom_domain'      => 'Domaine personnel (pas encore disponible)',
+        'feature_dedicated_support'  => 'Interlocuteur unique',
+    ];
+}
+
+/** Limites des formules : ['limit_xxx' => libellé]. Vide = illimité, 0 = bloqué. */
+function ak_plan_limit_keys(): array {
+    return [
+        'limit_adherents'                 => 'Membres (bureau compris)',
+        'limit_managers'                  => 'Gestionnaires (administrateurs, coordinateurs, référents)',
+        'limit_users'                     => 'Comptes utilisateurs',
+        'limit_invoices_total'            => 'Factures (total)',
+        'limit_quotes_total'              => 'Devis (total)',
+        'limit_contacts'                  => 'Contacts',
+        'limit_ai_text_per_month'         => 'Crédits IA par mois',
+        'limit_ai_image_per_month'        => 'IA image par mois',
+        'limit_emails_per_month'          => 'E-mails par mois',
+        'limit_mail_ai_batches_per_month' => 'Lots de tri IA de la boîte mail par mois',
+    ];
+}
+
+/** Fonctions apparues avec la grille : 1 par défaut (colonne absente = permis, comme avant). */
+function ak_plan_default_on_keys(): array {
+    return ['feature_ai_assistant', 'feature_mail_inbox', 'feature_mail_ai_sort', 'feature_ai_daily_all',
+            'feature_anomalies', 'feature_team_planning', 'feature_prospection', 'feature_activity_log',
+            'feature_shared_inbox', 'feature_treasurer_digest'];
+}
+
+/** 'mail_inbox' ou 'feature_mail_inbox' → 'feature_mail_inbox' (null si le nom est invalide). */
+function ak_plan_feature_col(string $feature): ?string {
+    $f = strtolower(trim($feature));
+    if (strncmp($f, 'feature_', 8) !== 0) $f = 'feature_' . $f;
+    return preg_match('/^feature_[a-z0-9_]+$/', $f) ? $f : null;
+}
+
+/** Entier au format français : « 2 000 » (espace insécable). */
+function ak_plan_fmt_int($n): string {
+    return number_format((int)$n, 0, ',', "\u{00A0}");
+}
+
+/** « 1er décembre » : date à laquelle les quotas mensuels repartent. */
+function ak_plan_next_month_label(): string {
+    $mois = [1 => 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    return '1er ' . $mois[(int)date('n', strtotime('first day of next month'))];
+}
+
+/** Lignes asso_plans, lues une fois par requête. */
+function ak_plan_rows(PDO $pdo): array {
+    static $rows = null;
+    if ($rows !== null) return $rows;
+    try {
+        $rows = $pdo->query("SELECT * FROM asso_plans ORDER BY COALESCE(price_cents, 0) ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        error_log('[ak_plan_rows] ' . get_class($e));
+        $rows = [];
+    }
+    return $rows;
+}
+
+/** Ligne asso_plans d'après son slug, ou null. */
+function ak_plan_by_slug(PDO $pdo, string $slug): ?array {
+    foreach (ak_plan_rows($pdo) as $p) {
+        if ((string)($p['slug'] ?? '') === $slug) return $p;
+    }
+    return null;
+}
+
+/**
+ * La formule courante de l'association a-t-elle cette fonction ? $feature : 'mail_inbox' ou
+ * 'feature_mail_inbox'. S'appuie sur ak_can_use_feature. Laisse passer en cas de doute : pas
+ * d'association (compte plateforme), formule illisible, colonne absente d'une fonction apparue
+ * avec la grille (ak_plan_default_on_keys).
+ */
+function ak_plan_has(PDO $pdo, int $org_id, string $feature): bool {
+    $col = ak_plan_feature_col($feature);
+    if ($col === null) return false;
+    if ($org_id <= 0) return true;
+    try {
+        $plan = ak_get_current_plan($pdo, $org_id);
+    } catch (Throwable $e) {
+        return true;
+    }
+    if (!$plan) return true;
+    if (!array_key_exists($col, $plan)) return in_array($col, ak_plan_default_on_keys(), true) || $col === 'feature_email_diffusion';
+    return ak_can_use_feature($pdo, $org_id, substr($col, 8));
+}
+
+/**
+ * Nom de la formule la moins chère, proposée, payante, hors essai et hors devis, qui a la
+ * fonction (« Pro », « Équipe ») ; « Sur-mesure » à défaut.
+ */
+function ak_plan_required_label(PDO $pdo, string $feature): string {
+    $col = ak_plan_feature_col($feature);
+    if ($col !== null) {
+        foreach (ak_plan_rows($pdo) as $p) {
+            if (empty($p['is_visible']) || (int)($p['price_cents'] ?? 0) <= 0) continue;
+            if (!empty($p['is_trial']) || ($p['slug'] ?? '') === 'pro-essai' || !empty($p['is_custom_quote'])) continue;
+            if (!empty($p[$col])) return ak_plan_display_name($p);
+        }
+    }
+    $sm = ak_plan_by_slug($pdo, 'sur-mesure');
+    return $sm ? ak_plan_display_name($sm) : 'Sur-mesure';
+}
+
+/** Libellé lisible d'une fonction (ak_plan_feature_keys). */
+function ak_plan_feature_label(string $feature): string {
+    $col = ak_plan_feature_col($feature);
+    $keys = ak_plan_feature_keys();
+    return ($col !== null && isset($keys[$col])) ? $keys[$col] : 'Cette fonction';
+}
+
+/**
+ * Contrôle d'une fonction pour une association.
+ * @return array{ok:bool, message:string, required:string}
+ *   message (vide si ok) : sur le site « Cette fonction est incluse à partir de la formule Équipe. » ;
+ *   dans l'appli (ak_billing_hidden) « Cette fonction n'est pas incluse dans votre formule. »
+ */
+function ak_feature_gate(PDO $pdo, int $org_id, string $feature): array {
+    if (ak_plan_has($pdo, $org_id, $feature)) return ['ok' => true, 'message' => '', 'required' => ''];
+    $required = ak_plan_required_label($pdo, $feature);
+    $hidden = function_exists('ak_billing_hidden') && ak_billing_hidden();
+    return [
+        'ok' => false,
+        'message' => $hidden ? 'Cette fonction n’est pas incluse dans votre formule.'
+                             : 'Cette fonction est incluse à partir de la formule ' . $required . '.',
+        'required' => $required,
+    ];
+}
+
+/**
+ * Carte HTML « fonction non incluse » à afficher à la place d'une page. Bouton « Voir les
+ * formules » (/mon-asso-plan) seulement pour un administrateur, hors appli et hors compte
+ * d'examen (ak_billing_hidden). '' si la fonction est incluse.
+ */
+function ak_render_feature_lock(PDO $pdo, int $org_id, string $feature, string $title = ''): string {
+    $g = ak_feature_gate($pdo, $org_id, $feature);
+    if ($g['ok']) return '';
+    $e = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $title = trim($title) !== '' ? $title : ak_plan_feature_label($feature);
+    $u = function_exists('current_user') ? (current_user() ?: []) : [];
+    $is_admin = (($u['role'] ?? ($_SESSION['role'] ?? '')) === 'admin');
+    $hidden = function_exists('ak_billing_hidden') && ak_billing_hidden();
+    $html = '<div class="card ak-feature-lock" style="max-width:640px;margin:24px auto;padding:28px 26px;text-align:center;border:1px solid #E2E8F0;border-radius:16px;background:#fff;">'
+          . '<div style="font-size:40px;line-height:1;margin-bottom:12px;" aria-hidden="true">🔒</div>'
+          . '<h2 style="margin:0 0 8px;font-size:19px;color:#0F172A;">' . $e($title) . '</h2>'
+          . '<p style="margin:0;color:#475569;line-height:1.6;font-size:15px;">' . $e($g['message']) . '</p>';
+    if ($is_admin && !$hidden) {
+        $html .= '<p style="margin:18px 0 0;"><a href="/mon-asso-plan" class="btn btn-primary">Voir les formules</a></p>';
+    } elseif (!$hidden) {
+        $html .= '<p style="margin:14px 0 0;color:#64748B;font-size:13px;">Un administrateur de votre structure peut changer de formule.</p>';
+    }
+    return $html . '</div>';
+}
+
+/**
+ * Réponse JSON d'une API quand la fonction n'est pas incluse (HTTP 403), message neutre
+ * (aucune incitation à payer : l'appli l'affiche tel quel).
+ * @return array{ok:false, error:string, feature:string, message:string}
+ */
+function ak_feature_denied_json(PDO $pdo, int $org_id, string $feature): array {
+    if (!headers_sent()) http_response_code(403);
+    return ['ok' => false, 'error' => 'plan_feature', 'feature' => (string)ak_plan_feature_col($feature),
+            'message' => 'Cette fonction n’est pas incluse dans votre formule.'];
+}
+
+// ---------- Gestionnaires ----------
+
+/** Rôles comptés comme gestionnaires (limit_managers). */
+function ak_manager_roles(): array {
+    return ['admin', 'coordinator', 'referent'];
+}
+
+/** Comptes actifs, non supprimés, de rôle gestionnaire (comptes plateforme exclus). */
+function ak_count_managers(PDO $pdo, int $org_id): int {
+    if ($org_id <= 0) return 0;
+    try {
+        $cols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'users') : [];
+        $where = "org_id = ? AND role IN ('admin', 'coordinator', 'referent')";
+        if (!$cols || isset($cols['deleted_at']))     $where .= " AND deleted_at IS NULL";
+        if (!$cols || isset($cols['is_active']))      $where .= " AND is_active = 1";
+        if (isset($cols['is_super_admin']))           $where .= " AND COALESCE(is_super_admin, 0) = 0";
+        if (isset($cols['is_founder']))               $where .= " AND COALESCE(is_founder, 0) = 0";
+        if (isset($cols['is_platform_admin']))        $where .= " AND COALESCE(is_platform_admin, 0) = 0";
+        $st = $pdo->prepare("SELECT COUNT(*) FROM users WHERE $where");
+        $st->execute([$org_id]);
+        return (int)$st->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('[ak_count_managers] ' . get_class($e));
+        return 0;
+    }
+}
+
+/**
+ * Peut-on ajouter $n gestionnaires (création d'un compte admin / coordinateur / référent,
+ * passage d'un compte à un de ces rôles, réactivation) ?
+ * @return array{ok:bool, reason:string, limit:?int, current:int}
+ */
+function ak_can_add_manager(PDO $pdo, int $org_id, int $n = 1): array {
+    $ok = ['ok' => true, 'reason' => '', 'limit' => null, 'current' => 0];
+    if ($org_id <= 0 || $n <= 0) return $ok;
+    try {
+        $plan = ak_get_current_plan($pdo, $org_id);
+    } catch (Throwable $e) {
+        return $ok;
+    }
+    if (!$plan || !isset($plan['limit_managers']) || $plan['limit_managers'] === '') return $ok;
+    $limit = (int)$plan['limit_managers'];
+    $current = ak_count_managers($pdo, $org_id);
+    if ($current + $n <= $limit) return ['ok' => true, 'reason' => '', 'limit' => $limit, 'current' => $current];
+    $reason = $limit <= 0
+        ? 'Votre formule ne permet pas d’ajouter de gestionnaire (administrateur, coordinateur, référent).'
+        : 'Votre formule permet ' . ak_plan_fmt_int($limit) . ' gestionnaire' . ($limit > 1 ? 's' : '')
+          . ' (administrateurs, coordinateurs, référents) : limite atteinte.';
+    return ['ok' => false, 'reason' => $reason, 'limit' => $limit, 'current' => $current];
+}
+
+/**
+ * Changement de rôle d'un compte ACTIF : seul le passage d'un rôle non gestionnaire à un rôle
+ * gestionnaire est contrôlé (un admin qui devient coordinateur ne change pas le compte).
+ * @return array{ok:bool, reason:string}
+ */
+function ak_role_change_allowed(PDO $pdo, int $org_id, string $old_role, string $new_role): array {
+    $m = ak_manager_roles();
+    if (in_array($old_role, $m, true) || !in_array($new_role, $m, true)) return ['ok' => true, 'reason' => ''];
+    $c = ak_can_add_manager($pdo, $org_id, 1);
+    return ['ok' => (bool)$c['ok'], 'reason' => (string)$c['reason']];
+}
+
+// ---------- Démarrage : accès limité ----------
+
+/**
+ * L'association est-elle en accès limité (formule Démarrage : fin d'essai non convertie,
+ * résiliation, impayé) ? Faux pendant un essai en cours ou suspendu, et pour une suspension
+ * à la main (gérée à part par ak_org_access, app-context.php). Faux en cas de doute.
+ */
+function ak_plan_is_readonly(PDO $pdo, int $org_id): bool {
+    static $cache = [];
+    if ($org_id <= 0) return false;
+    if (isset($cache[$org_id])) return $cache[$org_id];
+    $ro = false;
+    try {
+        $plan = ak_get_current_plan($pdo, $org_id);
+        if ($plan && ($plan['slug'] ?? '') === 'demarrage') {
+            $ti = ak_plan_trial_info($pdo, $org_id);
+            $ro = empty($ti['in_trial']) && empty($ti['trial_paused']);
+            if ($ro) {
+                $st = $pdo->prepare("SELECT * FROM organizations WHERE id = ? LIMIT 1");
+                $st->execute([$org_id]);
+                $o = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+                // Suspension à la main (motif renseigné) : déjà coupée par ak_org_access
+                if (($o['status'] ?? '') === 'suspended' && trim((string)($o['suspended_reason'] ?? '')) !== '') $ro = false;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[ak_plan_is_readonly] org #' . $org_id . ' : ' . get_class($e));
+        $ro = false;
+    }
+    return $cache[$org_id] = $ro;
+}
+
+/** Texte du bandeau d'accès limité (sans prix ni lien : le bouton est ajouté par la page, hors appli). */
+function ak_readonly_message(): string {
+    return 'Votre espace est en accès limité : vos données restent consultables et exportables.';
+}
+
+// ---------- Crédits IA ----------
+
+/**
+ * Générations IA réussies du mois enregistrées par le hub (asso_ai_generations, ou l'ancienne
+ * asso_ai_logs) ; $image : générations « image-… » seulement, sinon le texte.
+ */
+function ak_ai_generations_month(PDO $pdo, int $org_id, bool $image = false): int {
+    if ($org_id <= 0) return 0;
+    $ai_table = ak_table_exists($pdo, 'asso_ai_generations') ? 'asso_ai_generations'
+              : (ak_table_exists($pdo, 'asso_ai_logs') ? 'asso_ai_logs' : null);
+    if ($ai_table === null) return 0;
+    // Générations supprimées comprises (suppression douce, statut « deleted ») : supprimer une
+    // génération ne rend pas de quota du mois (comme asso-ai-quotas.php et ak_ai_count_this_month).
+    $ok = $ai_table === 'asso_ai_generations' ? " AND status IN ('success', 'deleted')" : '';
+    $type = $image ? "tool_type LIKE 'image-%'" : "(tool_type IS NULL OR tool_type NOT LIKE 'image-%')";
+    try {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM {$ai_table}
+                             WHERE org_id = :o{$ok} AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00') AND $type");
+        $st->execute([':o' => $org_id]);
+        return (int)$st->fetchColumn();
+    } catch (Throwable $e) {
+        return 0;
+    }
+}
+
+/**
+ * Crédits IA consommés ce mois-ci : le plus grand de la somme des crédits du registre
+ * ai_usage_ledger (tous les usages : hub, générateur, copilote, justificatifs…) et du nombre de
+ * générations du hub déjà enregistrées (asso_ai_generations) — pas de remise à zéro le mois de
+ * la mise en service du registre.
+ */
+function ak_ai_credits_used_month(PDO $pdo, int $org_id): int {
+    if ($org_id <= 0) return 0;
+    $ledger = 0;
+    if (ak_table_exists($pdo, 'ai_usage_ledger')) {
+        try {
+            $st = $pdo->prepare("SELECT COALESCE(SUM(credits), 0) FROM ai_usage_ledger
+                                 WHERE org_id = ? AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')");
+            $st->execute([$org_id]);
+            $ledger = (int)$st->fetchColumn();
+        } catch (Throwable $e) {
+            $ledger = 0;
+        }
+    }
+    return max($ledger, ak_ai_generations_month($pdo, $org_id, false));
+}
+
+/**
+ * Appel IA lancé par un utilisateur et qui va consommer $credits : null = autorisé, sinon le
+ * message à afficher (texte brut). Toute erreur laisse passer.
+ */
+function ak_ai_quota_block(PDO $pdo, int $org_id, int $credits = 1): ?string {
+    if ($org_id <= 0 || $credits <= 0) return null;
+    try {
+        $plan = ak_get_current_plan($pdo, $org_id);
+        if (!$plan) return null;
+        $chk = ak_can_use_ai_text($pdo, $org_id, $credits);
+    } catch (Throwable $e) {
+        return null;
+    }
+    if (!empty($chk['ok'])) return null;
+    $limit = (int)($chk['limit'] ?? 0);
+    if ($limit <= 0) return 'L’IA de rédaction n’est pas incluse dans votre formule.';
+    return 'Votre formule inclut ' . ak_plan_fmt_int($limit) . ' crédits IA par mois : ils sont tous utilisés ce mois-ci. '
+         . 'Le compteur repart à zéro le ' . ak_plan_next_month_label() . '.';
+}
+
+/** Lots de tri IA de la boîte mail ce mois-ci (lignes « mail-tri » du registre). */
+function ak_mail_ai_batches_month(PDO $pdo, int $org_id): int {
+    if ($org_id <= 0 || !ak_table_exists($pdo, 'ai_usage_ledger')) return 0;
+    try {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM ai_usage_ledger
+                             WHERE org_id = ? AND path = 'mail-tri' AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')");
+        $st->execute([$org_id]);
+        return (int)$st->fetchColumn();
+    } catch (Throwable $e) {
+        return 0;
+    }
+}
+
+/**
+ * Un nouveau lot de tri IA de la boîte mail (15 conversations) est-il permis ? Fonction
+ * feature_mail_ai_sort, et lots du mois sous limit_mail_ai_batches_per_month (vide = illimité).
+ * Sinon, la boîte est triée par règles (mail_priority_fallback).
+ */
+function ak_mail_ai_batch_allowed(PDO $pdo, int $org_id): bool {
+    if ($org_id <= 0) return true;
+    if (!ak_plan_has($pdo, $org_id, 'mail_ai_sort')) return false;
+    try {
+        $plan = ak_get_current_plan($pdo, $org_id);
+    } catch (Throwable $e) {
+        return true;
+    }
+    if (!$plan || !isset($plan['limit_mail_ai_batches_per_month']) || $plan['limit_mail_ai_batches_per_month'] === '') return true;
+    return ak_mail_ai_batches_month($pdo, $org_id) < (int)$plan['limit_mail_ai_batches_per_month'];
+}
+
+// ---------- E-mails groupés ----------
+
+/**
+ * Destinataires d'e-mails groupés du mois civil : diffusions et invitations
+ * (communication_broadcasts, hors brouillons), diffusions rédigées avec l'IA, convocations d'AG,
+ * relances de cotisation. Les factures et devis envoyés un par un ne sont jamais comptés.
+ * Chaque source est lue à part : une table absente n'empêche pas de compter les autres.
+ */
+function ak_emails_sent_month(PDO $pdo, int $org_id): int {
+    if ($org_id <= 0) return 0;
+    $m = "DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')";
+    $src = [
+        ['communication_broadcasts', 'org_id', 'COALESCE(SUM(nb_total), 0)', "created_at >= $m AND (status IS NULL OR status <> 'draft')"],
+        ['asso_ai_diffusions', 'org_id', 'COALESCE(SUM(recipients_count), 0)', "created_at >= $m"],
+        ['assembly_attendees a JOIN assemblies g ON g.id = a.assembly_id', 'g.org_id', 'COUNT(*)', "a.invitation_sent_at >= $m"],
+        ['asso_membership_reminders', 'org_id', 'COUNT(*)', "sent_at >= $m"],
+    ];
+    $total = 0;
+    foreach ($src as [$from, $org_col, $val, $where]) {
+        try {
+            $q = $pdo->prepare("SELECT $val FROM $from WHERE $org_col = ? AND $where");
+            $q->execute([$org_id]);
+            $total += (int)$q->fetchColumn();
+        } catch (Throwable $e) {}
+    }
+    return $total;
+}
+
+/**
+ * Envoi groupé de $n destinataires : null = autorisé, sinon le message (texte brut). À appeler à
+ * côté de ak_trial_send_block, jamais pour une facture ou un devis envoyé à l'unité. Toute
+ * erreur laisse passer.
+ */
+function ak_email_quota_block(PDO $pdo, int $org_id, int $n): ?string {
+    if ($org_id <= 0 || $n <= 0) return null;
+    try {
+        $plan = ak_get_current_plan($pdo, $org_id);
+        if (!$plan) return null;
+        $chk = ak_can_send_email($pdo, $org_id, $n);
+    } catch (Throwable $e) {
+        return null;
+    }
+    if (!empty($chk['ok'])) return null;
+    if (!empty($chk['feature_disabled'])) {
+        return ($plan['slug'] ?? '') === 'demarrage' ? ak_readonly_message()
+             : 'Les envois groupés d’e-mails ne sont pas inclus dans votre formule.';
+    }
+    $limit = (int)($chk['limit'] ?? 0);
+    $left = max(0, $limit - (int)($chk['current'] ?? 0));
+    return 'Votre formule inclut ' . ak_plan_fmt_int($limit) . ' e-mails groupés par mois : '
+         . ($left === 0 ? 'ils sont tous utilisés ce mois-ci.' : 'il en reste ' . ak_plan_fmt_int($left) . ', pour ' . ak_plan_fmt_int($n) . ' destinataires prévus.')
+         . ' Le compteur repart à zéro le ' . ak_plan_next_month_label() . '.';
+}
+
+// ---------- Affichage sans prix (appli, Mon abonnement) ----------
+
+/**
+ * Phrases qui décrivent une formule, SANS prix : « Jusqu'à 2 000 membres (bureau compris) »,
+ * « 25 gestionnaires », « 500 crédits IA par mois », « 8 000 e-mails par mois ».
+ * Jamais « illimité » pour l'IA ni les e-mails (une limite vide n'est pas citée).
+ */
+function ak_plan_public_summary(?array $plan): array {
+    if (!$plan) return [];
+    if (($plan['slug'] ?? '') === 'demarrage') return ['Accès limité : vos données restent consultables et exportables'];
+    $v = function ($k) use ($plan) {
+        return (!array_key_exists($k, $plan) || $plan[$k] === null || $plan[$k] === '') ? null : (int)$plan[$k];
+    };
+    $out = [];
+    $ad = $v('limit_adherents');
+    $mg = $v('limit_managers');
+    if ($ad === null && $mg === null && array_key_exists('limit_managers', $plan)) {
+        $out[] = 'Sans plafond de membres ni de gestionnaires';
+    } else {
+        if ($ad === null && array_key_exists('limit_adherents', $plan)) $out[] = 'Membres sans plafond';
+        elseif ($ad > 0) $out[] = 'Jusqu’à ' . ak_plan_fmt_int($ad) . ' membres (bureau compris)';
+        if ($mg !== null && $mg > 0) $out[] = ak_plan_fmt_int($mg) . ' gestionnaire' . ($mg > 1 ? 's' : '');
+        elseif ($mg === null && array_key_exists('limit_managers', $plan)) $out[] = 'Gestionnaires sans plafond';
+    }
+    $ai = $v('limit_ai_text_per_month');
+    if ($ai !== null && $ai > 0) $out[] = ak_plan_fmt_int($ai) . ' crédit' . ($ai > 1 ? 's' : '') . ' IA par mois';
+    $em = $v('limit_emails_per_month');
+    if ($em !== null && $em > 0 && (!array_key_exists('feature_email_diffusion', $plan) || !empty($plan['feature_email_diffusion']))) {
+        $out[] = ak_plan_fmt_int($em) . ' e-mails par mois';
+    }
+    return $out;
+}
+
+/**
+ * Badge d'une formule : « Le plus choisi » seulement si c'est vrai (strictement le plus
+ * d'abonnements réellement payants et choisis, et au moins 5 en tout) ; sinon « Recommandé »
+ * pour la formule mise en avant (is_featured) ; sinon null. Allégation factuelle (art. L121-2
+ * du Code de la consommation) : jamais « Le plus choisi » en dur.
+ * Ne sont PAS comptés : les essais, les démos (slug « demo… »), l'association de l'éditeur,
+ * les abonnements « Offert » (payment_mode = free_grant), les associations qui ne sont pas
+ * actives (résiliées, suspendues…) et l'offre fondateur (anciens clients basculés
+ * automatiquement : ils n'ont pas choisi Pro).
+ */
+function ak_plan_badge(PDO $pdo, string $slug): ?string {
+    static $counts = null;
+    if ($counts === null) {
+        $counts = [];
+        try {
+            $paid = function_exists('ak_paid_sub_sql') ? ak_paid_sub_sql($pdo, 's', 'p')
+                  : "(s.status = 'active' AND COALESCE(p.price_cents, 0) > 0 AND p.slug <> 'pro-essai')";
+            $order = function_exists('ak_sub_order') ? ak_sub_order('s2') : "(s2.status = 'active') DESC, (s2.status = 'trial') DESC, s2.id DESC";
+            $scols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'asso_subscriptions') : [];
+            $not_free = isset($scols['payment_mode']) ? " AND COALESCE(s.payment_mode, '') <> 'free_grant'" : '';
+            $rows = $pdo->query("
+                SELECT p.slug, COUNT(*) AS n
+                FROM organizations o
+                JOIN asso_subscriptions s ON s.id = (SELECT s2.id FROM asso_subscriptions s2 JOIN asso_plans p2 ON p2.id = s2.plan_id
+                                                     WHERE s2.org_id = o.id ORDER BY $order LIMIT 1)
+                JOIN asso_plans p ON p.id = s.plan_id
+                WHERE o.deleted_at IS NULL AND o.status = 'active'
+                  AND COALESCE(o.slug, '') NOT LIKE 'demo%'
+                  AND COALESCE(o.slug, '') NOT IN ('assokit', 'assokit-editeur')
+                  AND p.slug <> 'fondateur'
+                  AND $paid$not_free
+                GROUP BY p.slug")->fetchAll(PDO::FETCH_KEY_PAIR);
+            foreach ($rows as $s => $n) {
+                $counts[(string)$s] = (int)$n;
+            }
+        } catch (Throwable $e) {
+            error_log('[ak_plan_badge] ' . get_class($e));
+            $counts = [];
+        }
+    }
+    $key = $slug;
+    $mine = ($slug === 'fondateur') ? 0 : ($counts[$key] ?? 0);
+    if (array_sum($counts) >= 5 && $mine > 0) {
+        $others = $counts;
+        unset($others[$key]);
+        if ($mine > ($others ? max($others) : 0)) return 'Le plus choisi';
+    }
+    $p = ak_plan_by_slug($pdo, $slug);
+    return ($p && !empty($p['is_featured'])) ? 'Recommandé' : null;
+}
+
+// ---------- Offre fondateur ----------
+
+/**
+ * Associations à rattacher à l'offre fondateur avant la transformation de la ligne assokit en
+ * Pro : MÊME règle que l'étape 6e de migrations/2026-11-09-grille-tarifaire.sql (pour
+ * cli-rattacher-fondateur.php). Hors démos (slug « demo… »), hors supprimées, hors essais, hors
+ * associations résiliées ou fermées (organizations.status 'cancelled' / 'closed') :
+ *   - ligne d'abonnement courante (ordre ak_sub_order) sur assokit, en cours (active, overdue,
+ *     past_due, pending_payment), ou résiliée mais dont la période payée court encore
+ *     (status 'cancelled' et current_period_end à venir : l'accès reste jusqu'à cette date) ;
+ *   - ou aucune ligne d'abonnement, association active, et un ancien libellé que
+ *     ak_legacy_plan_row rattache à assokit.
+ * Un ancien client résilié (période terminée) n'est jamais repris : il n'est pas rattaché,
+ * et sa ligne ne bloque pas la transformation d'assokit en Pro.
+ * Lecture seule : rien n'est écrit.
+ * @return array<int, array{org_id:int, name:string, slug:string, source:string, subscription_id:?int, monthly_price_cents:?int}>
+ */
+function ak_fondateur_candidates(PDO $pdo): array {
+    $out = [];
+    $assokit = ak_plan_by_slug($pdo, 'assokit');
+    if (!$assokit) return [];
+    $aid = (int)$assokit['id'];
+    try {
+        $order = function_exists('ak_sub_order') ? ak_sub_order('s2') : "(s2.status = 'active') DESC, (s2.status = 'trial') DESC, s2.id DESC";
+        $orgs = $pdo->query("
+            SELECT o.id, o.name, o.slug, o.status, o.monthly_price_cents,
+                   (SELECT s2.id FROM asso_subscriptions s2 JOIN asso_plans p2 ON p2.id = s2.plan_id
+                     WHERE s2.org_id = o.id ORDER BY $order LIMIT 1) AS cur_sub_id
+            FROM organizations o
+            WHERE o.deleted_at IS NULL AND COALESCE(o.slug, '') NOT LIKE 'demo%'
+            ORDER BY o.id")->fetchAll(PDO::FETCH_ASSOC);
+        $scols = function_exists('ak_db_columns') ? ak_db_columns($pdo, 'asso_subscriptions') : [];
+        $sub = $pdo->prepare("SELECT id, plan_id, status, "
+            . (!$scols || isset($scols['current_period_end']) ? "(current_period_end IS NOT NULL AND current_period_end > NOW())" : "0")
+            . " AS period_running FROM asso_subscriptions WHERE id = ?");
+        foreach ($orgs as $o) {
+            $ostatus = (string)($o['status'] ?? '');
+            if (in_array($ostatus, ['cancelled', 'closed', 'trial'], true)) continue;
+            $row = null;
+            if (!empty($o['cur_sub_id'])) {
+                $sub->execute([(int)$o['cur_sub_id']]);
+                $row = $sub->fetch(PDO::FETCH_ASSOC) ?: null;
+            }
+            $base = ['org_id' => (int)$o['id'], 'name' => (string)$o['name'], 'slug' => (string)$o['slug'],
+                     'monthly_price_cents' => $o['monthly_price_cents'] === null ? null : (int)$o['monthly_price_cents']];
+            if ($row) {
+                $sst = (string)($row['status'] ?? '');
+                $live = in_array($sst, ['active', 'overdue', 'past_due', 'pending_payment'], true)
+                     || ($sst === 'cancelled' && !empty($row['period_running']));
+                if ((int)$row['plan_id'] === $aid && $live) {
+                    $out[] = $base + ['source' => 'abonnement' . ($sst !== 'active' ? ' « ' . $sst . ' »' : ''),
+                                      'subscription_id' => (int)$row['id'], 'subscription_status' => $sst];
+                }
+                continue;
+            }
+            if (!in_array($ostatus, ['active', ''], true)) continue;
+            $legacy = ak_legacy_plan_row($pdo, (int)$o['id']);
+            if ($legacy && ($legacy['slug'] ?? '') === 'assokit') {
+                $out[] = $base + ['source' => 'ancien libellé « ' . (string)$legacy['legacy_plan'] . ' »', 'subscription_id' => null];
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[ak_fondateur_candidates] ' . get_class($e) . ' ' . $e->getMessage());
+    }
+    return $out;
 }
 
 // ============================================================
@@ -706,7 +1328,7 @@ function ak_get_subscription_status(PDO $pdo, int $org_id): array {
         'in_grace_period' => $in_grace,
         'days_remaining' => $days_remaining,
         'show_overlay' => $show_overlay,
-        'plan_name' => ak_plan_display_name($plan),   // « Essai PRO » pour le plan d'essai (asso_plans.name vaut « Essai »)
+        'plan_name' => ak_plan_display_name($plan),   // « Essai Pro » pour le plan d'essai (asso_plans.name vaut « Essai »)
         'plan_slug' => $plan['slug'],
         'plan_label' => ak_plan_display_name($plan),
     ] + $trial;
@@ -725,17 +1347,19 @@ function ak_render_quota_banner(PDO $pdo, int $org_id): string {
 
     // Vérifier chaque quota et alerter à 80%+
     $checks = [
-        ['adherents', 'limit_adherents', 'adhérents', '👥'],
+        ['adherents', 'limit_adherents', 'membres (bureau compris)', '👥'],
+        ['managers', 'limit_managers', 'gestionnaires', '🧑‍💼'],
         ['invoices_total', 'limit_invoices_total', 'factures', '📋'],
         ['quotes_total', 'limit_quotes_total', 'devis', '📝'],
-        ['ai_text_month', 'limit_ai_text_per_month', 'générations IA ce mois', '🤖'],
-        ['emails_month', 'limit_emails_per_month', 'emails ce mois', '📨'],
+        ['ai_text_month', 'limit_ai_text_per_month', 'crédits IA ce mois-ci', '🤖'],
+        ['emails_month', 'limit_emails_per_month', 'e-mails groupés ce mois-ci', '📨'],
     ];
 
     foreach ($checks as [$usage_key, $limit_key, $label, $emoji]) {
-        $limit = $plan[$limit_key];
-        if ($limit === null || $limit == 0) continue;
-        $current = (int)$usage[$usage_key];
+        if (!isset($plan[$limit_key]) || $plan[$limit_key] === '') continue;
+        $limit = (int)$plan[$limit_key];
+        if ($limit <= 0) continue;
+        $current = (int)($usage[$usage_key] ?? 0);
         $pct = ($current / $limit) * 100;
 
         if ($pct >= 100) {
@@ -768,8 +1392,11 @@ function ak_render_quota_banner(PDO $pdo, int $org_id): string {
     }
     $html .= '</div>';
 
-    if ($plan['slug'] === 'demarrage') {
-        $html .= '<a href="/mon-asso-plan" style="background:' . $c['border'] . ';color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">↗ Passer à Assokit</a>';
+    // Application mobile, compte d'examen : aucun lien vers les formules (Apple 3.1.1)
+    if (function_exists('ak_billing_hidden') && ak_billing_hidden()) {
+        // rien
+    } elseif ($plan['slug'] === 'demarrage') {
+        $html .= '<a href="/mon-asso-plan" style="background:' . $c['border'] . ';color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">Voir les formules</a>';
     } elseif (!empty($plan['is_trial']) || $plan['slug'] === 'pro-essai') {
         $html .= '<a href="/mon-asso-plan" style="background:' . $c['border'] . ';color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">⚡ Choisir une formule</a>';
     } else {
@@ -821,7 +1448,7 @@ function ak_render_overdue_overlay(PDO $pdo, int $org_id): string {
     $html .= '</div>';
 
     $html .= '<p style="color:#DC2626;font-size:12px;margin:18px 0 0;line-height:1.5;">';
-    $html .= '⚠️ <strong>Attention</strong> : en arrêtant votre abonnement, votre association passe en accès limité : vous perdrez la diffusion email, les factures récurrentes, les statistiques avancées et certaines fonctionnalités. Vos données existantes restent intactes.';
+    $html .= '⚠️ <strong>Attention</strong> : en arrêtant votre abonnement, votre association passe en accès limité : vos données restent intactes, consultables et exportables, mais les fonctions de votre formule ne sont plus disponibles.';
     $html .= '</p>';
     $html .= '</div></div>';
 

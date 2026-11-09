@@ -87,9 +87,9 @@ render_public_nav('a-propos');
       <p>Pour chaque utilisateur d'Assokit, on s'engage explicitement à :</p>
       <ul>
         <li>🇫🇷 <strong>Hébergement en France</strong> · serveurs O2Switch (Clermont-Ferrand)</li>
-        <li>🔒 <strong>Conformité RGPD native</strong> · vos données restent les vôtres</li>
+        <li>🔒 <strong>Respect du RGPD</strong> · vos données restent les vôtres</li>
         <li>🚫 <strong>Aucune revente de données</strong> · jamais, à personne</li>
-        <li>💬 <strong>Support humain &lt;24h</strong> · pas de bot, pas de FAQ tournante</li>
+        <li>💬 <strong>Support humain sous 24 h ouvrées</strong> · pas de bot, pas de FAQ tournante</li>
         <li>📦 <strong>Export libre à tout moment</strong> · vos données sont exportables en un clic</li>
         <li>📅 <strong>Pas d'engagement piégé</strong> · vous arrêtez quand vous voulez</li>
       </ul>

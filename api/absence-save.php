@@ -35,6 +35,13 @@ if ($org_id <= 0) {  // compte sans association (agent de collectivité) : pas d
     echo json_encode(['success' => false, 'error' => 'Accès refusé']);
     exit;
 }
+// Formule : planning d'équipe et absences à partir d'Équipe (feature_team_planning)
+require_once __DIR__ . '/../plan-controls.php';
+if (!akc_has($pdo, (int)$user['org_id'], 'team_planning')) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'ok' => false, 'error' => akc_gate_message($pdo, (int)$user['org_id'], 'team_planning'), 'plan_feature' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 $user_id = (int)$user['id'];
 
 // Édition des absences : réservée aux admins, ou à ses propres absences.

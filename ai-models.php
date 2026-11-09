@@ -22,6 +22,14 @@
  * Un identifiant laissé dans config.php (ANTHROPIC_MODEL, AK_AI_MODEL, réglage du blog) n'est
  * suivi que s'il désigne un modèle encore servi (ak_ai_model) : un ancien identifiant ne peut
  * plus faire tomber l'IA.
+ *
+ * Compteur IA unifié (grille de novembre 2026) : chaque appel réussi (ni erreur, ni refus) est
+ * noté dans ai_usage_ledger (ak_ai_ledger_record) avec son chemin (« hub », « copilote »,
+ * « mail-tri »…) et les crédits qu'il consomme (ak_ai_path_credits). Options acceptées par
+ * ak_ai_messages et ask_claude / ask_claude_stream (ai-helper.php) : path, org_id, user_id,
+ * credits, ledger (false = rien noter). Sans path, il est déduit du fichier appelant
+ * (ak_ai_guess_path) ; sans org_id, l'association de la session. Une table absente ou une
+ * erreur n'empêchent jamais l'appel.
  * --------------------------------------------------------------
  */
 
@@ -169,6 +177,10 @@ if (!function_exists('ak_ai_messages')) {
             $out['ok'] = true;
             $out['refusal'] = ak_ai_is_refusal($data);
             if (!empty($data['model'])) $out['model'] = (string)$data['model'];
+            // Compteur IA unifié : seulement un appel réussi et sans refus (jamais bloquant)
+            if (!$out['refusal'] && ($opts['ledger'] ?? true) !== false) {
+                ak_ai_ledger_record(ak_ai_ledger_context($opts, $purpose), $out['model'], $purpose, ak_ai_usage($data));
+            }
         }
         return $out;
     }
@@ -216,5 +228,117 @@ if (!function_exists('ak_ai_usage')) {
     /** [jetons d'entrée, jetons de sortie] (la sortie inclut la réflexion). */
     function ak_ai_usage(?array $data): array {
         return [(int)($data['usage']['input_tokens'] ?? 0), (int)($data['usage']['output_tokens'] ?? 0)];
+    }
+}
+
+if (!function_exists('ak_ai_path_credits')) {
+    /**
+     * Crédits IA consommés par un appel, selon son chemin. 1 crédit = 1 texte rédigé, 1 réponse
+     * du copilote ou 1 justificatif lu. Les tâches de fond (tri de la boîte mail, priorités du jour
+     * préparées automatiquement, coach hebdomadaire, blog, vérifications) ne coûtent rien.
+     * Chemin inconnu : 1 si une session utilisateur existe (hors CLI), 0 sinon.
+     */
+    function ak_ai_path_credits(string $path): int {
+        $map = [
+            'hub' => 1, 'generateur' => 1, 'copilote' => 1, 'projet' => 1, 'justificatif' => 1,
+            'mail-brouillon' => 1, 'priorites-refresh' => 1, 'relance-ia' => 1,
+            'appli-factures' => 1, 'appli-stats' => 1,
+            // Rapport du coach demandé à la main (« Générer maintenant », site et appli) : un texte
+            // rédigé à la demande, donc 1 crédit. Seul le coach HEBDOMADAIRE (cron) est gratuit.
+            'coach-manuel' => 1,
+            'mail-tri' => 0, 'priorites' => 0, 'coach' => 0, 'blog' => 0, 'systeme' => 0,
+        ];
+        $p = strtolower(trim($path));
+        if (isset($map[$p])) return $map[$p];
+        return (PHP_SAPI !== 'cli' && session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['user_id'])) ? 1 : 0;
+    }
+}
+
+if (!function_exists('ak_ai_guess_path')) {
+    /**
+     * Chemin d'un appel IA qui n'en précise pas : déduit du premier fichier appelant qui n'est pas
+     * une bibliothèque IA commune, sinon du script lancé. 'autre' si rien ne correspond.
+     */
+    function ak_ai_guess_path(string $purpose = 'write'): string {
+        $by_file = [
+            'copilote-engine.php' => 'copilote', 'mon-asso-copilote-ask.php' => 'copilote', 'mon-asso-copilote.php' => 'copilote',
+            'mon-asso-ia-generate.php' => 'hub', 'communication-generer.php' => 'generateur',
+            'action-ia.php' => 'projet', 'action-scan-facture.php' => 'justificatif',
+            'relance-action.php' => 'relance-ia', 'app-invoices-ai.php' => 'appli-factures', 'app-stats-ai.php' => 'appli-stats',
+            'action-coach-ia.php' => 'coach-manuel', 'cron-coach-ia.php' => 'coach', 'app-coach-generate.php' => 'coach-manuel', 'app-coach.php' => 'coach',
+            'today-ai-helper.php' => 'priorites', 'cli-ai-check.php' => 'systeme',
+        ];
+        $skip = ['ai-models.php', 'ai-helper.php', 'asso-ai-helpers.php', 'ai-consent-helper.php'];
+        $match = function (string $file) use ($by_file, $purpose): ?string {
+            $base = basename($file);
+            if ($base === 'mail-helpers.php') return $purpose === 'fast' ? 'mail-tri' : 'mail-brouillon';
+            if (strpos(str_replace('\\', '/', $file), '/admin-blog/') !== false) return 'blog';
+            return $by_file[$base] ?? null;
+        };
+        foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 16) as $f) {
+            $file = (string)($f['file'] ?? '');
+            if ($file === '' || in_array(basename($file), $skip, true)) continue;
+            $p = $match($file);
+            if ($p !== null) return $p;
+        }
+        $script = (string)($_SERVER['SCRIPT_FILENAME'] ?? '');
+        return ($script !== '' ? $match($script) : null) ?? 'autre';
+    }
+}
+
+if (!function_exists('ak_ai_ledger_context')) {
+    /**
+     * Contexte d'un appel pour le registre, d'après ses options : path (deviné sinon), org_id et
+     * user_id (session sinon), credits (ak_ai_path_credits sinon).
+     * @return array{path:string, org_id:?int, user_id:?int, credits:int}
+     */
+    function ak_ai_ledger_context(array $opts, string $purpose = 'write'): array {
+        $path = isset($opts['path']) && is_string($opts['path']) && trim($opts['path']) !== ''
+            ? substr(preg_replace('/[^a-z0-9_-]/', '', strtolower(trim($opts['path']))), 0, 40) : '';
+        if ($path === '') $path = ak_ai_guess_path($purpose);
+        $sess = (isset($_SESSION) && is_array($_SESSION)) ? $_SESSION : [];
+        $user_id = isset($opts['user_id']) ? (int)$opts['user_id'] : (int)($sess['user_id'] ?? 0);
+        $org_id = isset($opts['org_id']) ? (int)$opts['org_id'] : (int)($sess['org_id'] ?? 0);
+        // Session sans association en mémoire : celle du compte
+        if (!isset($opts['org_id']) && $org_id <= 0 && $user_id > 0 && isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO) {
+            try {
+                $st = $GLOBALS['pdo']->prepare("SELECT org_id FROM users WHERE id = ? LIMIT 1");
+                $st->execute([$user_id]);
+                $org_id = (int)$st->fetchColumn();
+            } catch (Throwable $e) {
+                $org_id = 0;
+            }
+        }
+        $credits = isset($opts['credits']) ? max(0, min(255, (int)$opts['credits'])) : ak_ai_path_credits($path);
+        return ['path' => $path, 'org_id' => $org_id > 0 ? $org_id : null, 'user_id' => $user_id > 0 ? $user_id : null, 'credits' => $credits];
+    }
+}
+
+if (!function_exists('ak_ai_ledger_record')) {
+    /**
+     * Note un appel IA réussi dans ai_usage_ledger. $ctx : ak_ai_ledger_context() ; $usage :
+     * [jetons d'entrée, jetons de sortie] (ak_ai_usage). Utilise $GLOBALS['pdo'] ; table absente
+     * ou toute erreur : rien n'est noté, l'appel n'échoue jamais (une ligne au journal par requête).
+     */
+    function ak_ai_ledger_record(array $ctx, string $model, string $purpose, array $usage): void {
+        static $warned = false;
+        $pdo = $GLOBALS['pdo'] ?? null;
+        if (!($pdo instanceof PDO)) return;
+        try {
+            $pdo->prepare("INSERT INTO ai_usage_ledger (org_id, user_id, path, purpose, model, tokens_in, tokens_out, credits, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())")
+                ->execute([
+                    isset($ctx['org_id']) && (int)$ctx['org_id'] > 0 ? (int)$ctx['org_id'] : null,
+                    isset($ctx['user_id']) && (int)$ctx['user_id'] > 0 ? (int)$ctx['user_id'] : null,
+                    substr((string)($ctx['path'] ?? 'autre'), 0, 40) ?: 'autre',
+                    $purpose === 'fast' ? 'fast' : 'write',
+                    substr($model, 0, 64),
+                    max(0, (int)($usage[0] ?? 0)),
+                    max(0, (int)($usage[1] ?? 0)),
+                    max(0, min(255, (int)($ctx['credits'] ?? 0))),
+                ]);
+        } catch (Throwable $e) {
+            if (!$warned) { $warned = true; error_log('[ai-models] registre IA non écrit : ' . get_class($e)); }
+        }
     }
 }

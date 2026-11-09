@@ -21,6 +21,25 @@ try {
     @require_once __DIR__ . '/../rate-limit-helper.php';
     if (function_exists('ak_rate_limit_or_die')) ak_rate_limit_or_die('app_ai', 10, 60, (string) ($_SESSION['user_id'] ?? ''));
 
+    // Formule (api/_app-plan.php) : analyses IA de l'appli = copilote IA, à partir de Pro
+    // (feature_ai_assistant), puis 1 crédit IA par analyse (chemin 'appli-stats'). Messages neutres,
+    // sans prix ni « Passer à… » (règle Apple 3.1.1). Grille absente ou fondations absentes : on laisse passer.
+    require_once __DIR__ . '/_app-plan.php';
+    $msg = null; $code = ''; $feature = '';
+    if (!app_plan_has($pdo, $org_id, 'ai_assistant', $user)) {
+        $d = app_plan_denied($pdo, $org_id, 'ai_assistant');
+        $msg = $d['message']; $code = 'plan_feature'; $feature = (string) $d['feature'];
+        http_response_code(200);   // réponse lisible par la version actuelle de l'appli (allowed:false)
+    } elseif (!app_plan_is_platform($user) && ($q = app_plan_ai_block($pdo, $org_id, 1)) !== null) {
+        $msg = $q; $code = 'ai_quota';
+    }
+    if ($msg !== null) {
+        echo json_encode(['ok' => true, 'allowed' => false, 'locked' => true, 'error' => $code, 'feature' => $feature,
+                          'message' => $msg, 'cockpit' => ['health' => '', 'summary' => $msg, 'insights' => [], 'actions' => []]],
+                         JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     $k = function_exists('ak_stats_global_kpis') ? ak_stats_global_kpis($pdo, $org_id) : [];
     $top = function_exists('ak_stats_top_clients') ? ak_stats_top_clients($pdo, $org_id, 5) : [];
     $monthly = function_exists('ak_stats_revenue_monthly') ? ak_stats_revenue_monthly($pdo, $org_id, 6) : ['labels' => [], 'paid' => []];
@@ -59,7 +78,8 @@ try {
     $resp = ask_claude(
         "Tu es AssoFinance, un directeur financier IA pour associations et TPE. Concis, chiffré, orienté action. Tu réponds UNIQUEMENT en JSON valide sans texte autour.",
         [['role' => 'user', 'content' => $prompt]],
-        900
+        900,
+        app_plan_ai_opts('appli-stats', $org_id, $uid)   // compteur IA unifié : 1 crédit
     );
     $raw = ($resp && !empty($resp['success'])) ? (string) ($resp['content'] ?? '') : '';
     // Accord pour l'IA manquant dans l'app (ai-consent-helper.php) : le motif s'affiche comme résumé

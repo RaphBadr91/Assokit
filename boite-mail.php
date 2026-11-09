@@ -36,8 +36,23 @@ if (!mail_can_access($user)) {
     exit;
 }
 
+// Formule : boîte Gmail intégrée à partir de Pro (feature_mail_inbox)
+if (!mail_plan_inbox_ok($pdo, $org)) {
+    if ($partial !== '') {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'error' => mail_plan_message($pdo, $org)], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    require_once __DIR__ . '/plan-controls.php';
+    akc_lock_page($pdo, $org, 'mail_inbox', 'Boîte mail', 'boite-mail');
+}
+
 $ready = mail_schema_ready($pdo);
 $acc = $ready ? mail_get_account($pdo, $org) : null;
+// Boîte partagée (formule Équipe) : attribution des conversations, filtre « Mes conversations »
+$shared = $ready && is_file(__DIR__ . '/boite-mail-attribuer.php') && mail_plan_shared_ok($pdo, $org);
+$assign = ['on' => $shared, 'me' => (int)$user['id'], 'users' => $shared ? mail_assignable_users($pdo, $org) : [], 'names' => []];
 $manage = mail_can_manage($user);
 $can_connect = mail_can_connect($user);
 $demo = ak_demo_session();
@@ -122,6 +137,7 @@ function bm_threads(PDO $pdo, int $org, string $scope, array $o): array {
     if ($o['cat']) { $w[] = 't.category_id = ?'; $args[] = (int)$o['cat']['id']; }
     elseif ($o['f'] === '' || $o['f'] === 'unread') { if ($o['promos_id']) { $w[] = '(t.category_id IS NULL OR t.category_id <> ?)'; $args[] = $o['promos_id']; } }
     if ($o['f'] === 'unread') $w[] = 't.unread = 1';
+    if ($o['f'] === 'mine') { $w[] = 't.assigned_user_id = ?'; $args[] = (int)$o['uid']; }
     if ($o['f'] === 'prio' && $o['has_prio']) {
         $w[] = "t.priority IN ('urgent','important') AND t.last_direction = 'in'";
         $order = "FIELD(t.priority, 'urgent', 'important'), t.last_message_at DESC";
@@ -139,8 +155,14 @@ function bm_threads(PDO $pdo, int $org, string $scope, array $o): array {
 }
 
 /** HTML des lignes, avec intertitres de date (sauf en vue « priorités »). */
-function bm_rows_html(array $rows, array $cat_by_id, bool $show_tag, string $last_group, bool $grouped, ?int $open_id): string {
+function bm_rows_html(array $rows, array $cat_by_id, bool $show_tag, string $last_group, bool $grouped, ?int $open_id, array $assign = []): string {
     $h = '';
+    // Boîte partagée : noms des personnes attribuées (une requête pour la page)
+    $names = [];
+    if (!empty($assign['on'])) {
+        global $pdo;
+        $names = ($assign['users'] ?? []) + mail_assignee_names($pdo, (int)($rows[0]['org_id'] ?? 0), array_column($rows, 'assigned_user_id'));
+    }
     foreach ($rows as $t) {
         if ($grouped) {
             $g = bm_group($t['last_message_at']);
@@ -158,8 +180,14 @@ function bm_rows_html(array $rows, array $cat_by_id, bool $show_tag, string $las
             . '<span class="bm-subj">' . h(mail_fix_mojibake((string)$t['subject'])) . '</span><span class="bm-snip"> — ' . h(mail_fix_mojibake((string)$t['snippet'])) . '</span></span>';
         $pill = bm_prio_pill($t);
         $tag = $c && $show_tag ? '<span class="bm-tag" style="--c:' . h($c['color']) . '" title="' . h($c['label']) . ($t['category_source'] === 'ai' ? ' · rangé par l’IA' : '') . '">' . h($c['label']) . '</span>' : '';
-        if ($pill !== '' || $tag !== '' || $reason !== '') {
-            $h .= '<span class="bm-r3">' . $pill . $tag . ($reason !== '' ? '<span class="bm-reason">' . h($reason) . '</span>' : '') . '</span>';
+        $who = '';
+        if (!empty($assign['on']) && !empty($t['assigned_user_id'])) {
+            $aid = (int)$t['assigned_user_id'];
+            $who = '<span class="bm-assigned' . ($aid === (int)($assign['me'] ?? 0) ? ' me' : '') . '">'
+                 . ($aid === (int)($assign['me'] ?? 0) ? 'À moi' : 'Attribuée à ' . h($names[$aid] ?? 'un membre')) . '</span>';
+        }
+        if ($pill !== '' || $tag !== '' || $reason !== '' || $who !== '') {
+            $h .= '<span class="bm-r3">' . $pill . $who . $tag . ($reason !== '' ? '<span class="bm-reason">' . h($reason) . '</span>' : '') . '</span>';
         }
         $h .= '</span></a>';
     }
@@ -201,8 +229,17 @@ function bm_thread_data(PDO $pdo, array $acc, array $user, int $org, int $id): ?
 }
 
 /** HTML du panneau de lecture. */
-function bm_reader_html(array $d, array $cats, array $cat_by_id, array $acc, bool $manage, bool $demo): string {
+function bm_reader_html(array $d, array $cats, array $cat_by_id, array $acc, bool $manage, bool $demo, array $assign = []): string {
     $t = $d['t'];
+    $a_on = !empty($assign['on']);
+    $a_id = (int)($t['assigned_user_id'] ?? 0);
+    $a_me = (int)($assign['me'] ?? 0);
+    $a_users = $assign['users'] ?? [];
+    $a_name = $a_id ? ($a_users[$a_id] ?? '') : '';
+    if ($a_on && $a_id && $a_name === '') {
+        global $pdo;
+        $a_name = mail_assignee_names($pdo, (int)$t['org_id'], [$a_id])[$a_id] ?? 'un membre';
+    }
     $cc = $cat_by_id[(int)$t['category_id']] ?? null;
     ob_start(); ?>
     <div class="bm-read-head">
@@ -223,6 +260,21 @@ function bm_reader_html(array $d, array $cats, array $cat_by_id, array $acc, boo
         <button type="button" class="bm-ic" data-act="<?= (int)$t['is_archived'] ? 'unarchive' : 'archive' ?>" title="<?= (int)$t['is_archived'] ? 'Désarchiver' : 'Archiver (touche E)' ?>"><?= ak_icon('download', 15) ?></button>
         <?php if ($acc['provider'] === 'gmail'): ?><a class="bm-ic" target="_blank" rel="noopener" title="Ouvrir dans Gmail" href="https://mail.google.com/mail/?authuser=<?= urlencode($acc['email']) ?>#all/<?= h(urlencode($t['gmail_thread_id'])) ?>"><?= ak_icon('external', 15) ?></a><?php endif; ?>
       </div>
+      <?php if ($a_on): ?>
+        <div class="bm-assign" data-assign-box>
+          <span class="bm-assign-who"><?= ak_icon('users', 14) ?> <?= $a_id ? ($a_id === $a_me ? 'Attribuée à vous' : 'Attribuée à ' . h($a_name)) : 'Non attribuée' ?></span>
+          <?php if ($a_id !== $a_me && isset($a_users[$a_me])): ?><button type="button" class="bm-btn ghost sm" data-assign="me">M’attribuer</button><?php endif; ?>
+          <?php if (count($a_users) > 1): ?>
+            <label class="bm-assign-sel"><span class="bm-sr">Attribuer à</span>
+              <select data-assign-sel>
+                <option value="">Attribuer à…</option>
+                <?php foreach ($a_users as $uid => $nom): if ((int)$uid === $a_id) continue; ?><option value="<?= (int)$uid ?>"><?= h($nom) ?></option><?php endforeach; ?>
+              </select>
+            </label>
+          <?php endif; ?>
+          <?php if ($a_id): ?><button type="button" class="bm-btn ghost sm" data-assign="none">Retirer</button><?php endif; ?>
+        </div>
+      <?php endif; ?>
       <?php if ($manage && $t['counterpart_email']):
           // Règle déjà en place pour cet expéditeur dans la catégorie du fil : case cochée (la décocher la retire)
           $has_rule = $cc && in_array(strtolower((string)$t['counterpart_email']), array_map(fn($k) => strtolower(trim($k)), explode(',', (string)$cc['keywords'])), true); ?>
@@ -281,12 +333,13 @@ function bm_reader_html(array $d, array $cats, array $cat_by_id, array $acc, boo
     <?php return ob_get_clean();
 }
 
-$opts = function () use ($cat_by_slug, $promos_id, $has_prio) {
-    $f = in_array($_GET['f'] ?? '', ['unread', 'archived', 'prio'], true) ? $_GET['f'] : '';
+$opts = function () use ($cat_by_slug, $promos_id, $has_prio, $shared, $user) {
+    $f = in_array($_GET['f'] ?? '', array_merge(['unread', 'archived', 'prio'], $shared ? ['mine'] : []), true) ? $_GET['f'] : '';
     return [
         'cat' => $cat_by_slug[(string)($_GET['c'] ?? '')] ?? null,
         'f' => $f, 'q' => mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100),
         'page' => min(10000, max(1, (int)($_GET['p'] ?? 1))), 'promos_id' => $promos_id, 'has_prio' => $has_prio,
+        'uid' => (int)$user['id'],
     ];
 };
 
@@ -302,7 +355,7 @@ if ($partial !== '') {
         [$rows, $more] = bm_threads($pdo, $org, $scope, $o);
         echo json_encode([
             'ok' => true,
-            'html' => bm_rows_html($rows, $cat_by_id, !$o['cat'], (string)($_GET['g'] ?? ''), $o['f'] !== 'prio', null),
+            'html' => bm_rows_html($rows, $cat_by_id, !$o['cat'], (string)($_GET['g'] ?? ''), $o['f'] !== 'prio', null, $assign),
             'more' => $more, 'page' => $o['page'], 'count' => count($rows),
             'counts' => bm_counts($pdo, $org, $scope, $promos_id, $has_prio),
         ], JSON_UNESCAPED_UNICODE);
@@ -314,7 +367,7 @@ if ($partial !== '') {
         echo json_encode([
             'ok' => true, 'id' => (int)$d['t']['id'],
             'title' => mail_fix_mojibake(mail_clean_subject((string)$d['t']['subject'])),
-            'html' => bm_reader_html($d, $cats, $cat_by_id, $acc, $manage, $demo),
+            'html' => bm_reader_html($d, $cats, $cat_by_id, $acc, $manage, $demo, $assign),
             'counts' => bm_counts($pdo, $org, $scope, $promos_id, $has_prio),
         ], JSON_UNESCAPED_UNICODE);
         exit;
@@ -338,7 +391,7 @@ if ($acc && $has_prio && !$o['cat'] && $o['f'] === '' && $o['q'] === '') {
     $s->execute([$org]);
     $urgents = $s->fetchAll(PDO::FETCH_ASSOC);
 }
-$view_label = $o['f'] === 'prio' ? 'À traiter en priorité' : ($o['f'] === 'archived' ? 'Archivés' : ($o['cat'] ? $o['cat']['label'] : 'Boîte principale'));
+$view_label = $o['f'] === 'prio' ? 'À traiter en priorité' : ($o['f'] === 'archived' ? 'Archivés' : ($o['f'] === 'mine' ? 'Mes conversations' : ($o['cat'] ? $o['cat']['label'] : 'Boîte principale')));
 
 render_head($cur ? mail_clean_subject((string)$cur['t']['subject']) . ' — Boîte mail' : 'Boîte mail');
 render_sidebar('boite-mail');
@@ -423,6 +476,9 @@ render_sidebar('boite-mail');
       <a class="bm-cat prio<?= $o['f'] === 'prio' ? ' on' : '' ?>" href="?f=prio" data-nav="f=prio"><span class="bm-cat-ic">⚡</span><span>Prioritaires</span><b data-count="prio"<?= $counts['prio'] ? '' : ' hidden' ?>><?= $counts['prio'] ?></b></a>
       <?php endif; ?>
       <a class="bm-cat<?= !$o['cat'] && in_array($o['f'], ['', 'unread'], true) ? ' on' : '' ?>" href="?" data-nav=""><?= ak_icon('inbox', 15) ?><span>Boîte principale</span><b data-count="main"<?= $counts['main_u'] ? '' : ' hidden' ?>><?= $counts['main_u'] ?></b></a>
+      <?php if ($shared): ?>
+      <a class="bm-cat<?= $o['f'] === 'mine' ? ' on' : '' ?>" href="?f=mine" data-nav="f=mine"><?= ak_icon('users', 15) ?><span>Mes conversations</span></a>
+      <?php endif; ?>
       <div class="bm-cats-sep"></div>
       <?php foreach ($cats as $c): $n = $counts['by'][(int)$c['id']] ?? ['n' => 0, 'u' => 0]; ?>
         <a class="bm-cat<?= $o['cat'] && $o['cat']['id'] === $c['id'] ? ' on' : '' ?><?= $c['slug'] === 'promos' ? ' muted' : '' ?>" href="?c=<?= h($c['slug']) ?>" data-nav="c=<?= h($c['slug']) ?>">
@@ -452,15 +508,15 @@ render_sidebar('boite-mail');
             <?php endforeach; ?>
           </div>
         <?php endif; ?>
-        <div id="bmRows"><?= bm_rows_html($rows, $cat_by_id, !$o['cat'], '', $o['f'] !== 'prio', $cur ? (int)$cur['t']['id'] : null) ?></div>
-        <div class="bm-none" id="bmNone"<?= $rows ? ' hidden' : '' ?>><?= ak_icon('inbox', 28, '1.5') ?><p><?= $o['q'] !== '' ? 'Aucun résultat.' : ($o['f'] === 'prio' ? 'Rien d’urgent : tout est traité.' : 'Aucun e-mail ici.') ?></p></div>
+        <div id="bmRows"><?= bm_rows_html($rows, $cat_by_id, !$o['cat'], '', $o['f'] !== 'prio', $cur ? (int)$cur['t']['id'] : null, $assign) ?></div>
+        <div class="bm-none" id="bmNone"<?= $rows ? ' hidden' : '' ?>><?= ak_icon('inbox', 28, '1.5') ?><p><?= $o['q'] !== '' ? 'Aucun résultat.' : ($o['f'] === 'prio' ? 'Rien d’urgent : tout est traité.' : ($o['f'] === 'mine' ? 'Aucune conversation ne vous est attribuée.' : 'Aucun e-mail ici.')) ?></p></div>
         <div class="bm-more" id="bmMore"<?= $more ? '' : ' hidden' ?>>Chargement…</div>
       </div>
     </section>
 
     <section class="bm-read" id="bmRead" data-id="<?= $cur ? (int)$cur['t']['id'] : '' ?>">
       <?php if ($cur): ?>
-        <?= bm_reader_html($cur, $cats, $cat_by_id, $acc, $manage, $demo) ?>
+        <?= bm_reader_html($cur, $cats, $cat_by_id, $acc, $manage, $demo, $assign) ?>
       <?php else: ?>
         <div class="bm-none big"><?= ak_icon('mail', 38, '1.4') ?><p>Choisissez une conversation.<br><span class="bm-muted">Raccourcis : J / K pour naviguer, E pour archiver.</span></p></div>
       <?php endif; ?>
@@ -558,6 +614,13 @@ render_sidebar('boite-mail');
 .bm-urgent-i { display: block; font-size: 12.5px; color: #7F1D1D; text-decoration: none; padding: 3px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bm-urgent-i:hover { text-decoration: underline; } .bm-urgent-i em { color: #B91C1C; }
 .bm-more { text-align: center; color: #94A3B8; font-size: 12.5px; padding: 14px; }
+/* Boîte partagée (formule Équipe) */
+.bm-assigned { flex-shrink: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; font-weight: 600; color: #3730A3; background: #EEF2FF; border-radius: 5px; padding: 1px 6px; }
+.bm-assigned.me { color: #065F46; background: #D1FAE5; }
+.bm-assign { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: #334155; }
+.bm-assign-who { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.bm-assign-sel select { font: inherit; font-size: 12.5px; padding: 5px 8px; border: 1px solid #E2E8F0; border-radius: 9px; background: #fff; max-width: 220px; }
+.bm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .bm-read { overflow-y: auto; padding: 18px 22px; position: relative; }
 .bm-read.loading::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,.6); }
@@ -722,7 +785,7 @@ render_sidebar('boite-mail');
 
   // Menu, titre et bouton « Non lus » alignés sur la liste demandée
   function syncNav() {
-    var key = state.c ? 'c=' + state.c : (state.f === 'prio' || state.f === 'archived' ? 'f=' + state.f : '');
+    var key = state.c ? 'c=' + state.c : (state.f === 'prio' || state.f === 'archived' || state.f === 'mine' ? 'f=' + state.f : '');
     var cur = document.querySelector('.bm-cat[data-nav="' + key + '"]');
     document.querySelectorAll('.bm-cat').forEach(function (x) { x.classList.toggle('on', x === cur); });
     if (cur) document.getElementById('bmView').textContent = cur.querySelector('span:not(.bm-cat-ic)').textContent;
@@ -810,6 +873,7 @@ render_sidebar('boite-mail');
     if ((b = e.target.closest('[data-html]'))) {
       var m = document.getElementById('bmHtml'); m.querySelector('iframe').src = b.getAttribute('data-html'); m.hidden = false; return;
     }
+    if ((b = e.target.closest('[data-assign]'))) { assign(b.getAttribute('data-assign')); return; }
     if ((b = e.target.closest('[data-act]'))) {
       var act = b.getAttribute('data-act'), id = current;
       call({ action: act, thread_id: id }).then(function (r) {
@@ -840,7 +904,21 @@ render_sidebar('boite-mail');
     }
 
   });
+  // Boîte partagée : m'attribuer, attribuer à un gestionnaire, retirer (boite-mail-attribuer.php)
+  function assign(to) {
+    var id = current; if (!id || !to) return;
+    fetch('/boite-mail-attribuer', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csrf_token: csrf, thread_id: id, to: to }) })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Réponse invalide (' + r.status + ')' }; }); })
+      .then(function (r) {
+        if (!r.ok) return toast(r.error || 'Attribution impossible');
+        toast(r.assigned_user_id ? 'Conversation attribuée à ' + (r.assigned_name || 'un membre') : 'Attribution retirée');
+        openThread(id, false); loadList(false);
+      }).catch(function () { toast('Connexion interrompue'); });
+  }
   reader.addEventListener('change', function (e) {
+    var asel = e.target.closest('[data-assign-sel]');
+    if (asel) { if (asel.value) assign(asel.value); return; }
     var sel = e.target.closest('[data-cat]'), learn = e.target.closest('[data-learn]');
     if (!sel && !learn) return;
     var catSel = reader.querySelector('[data-cat]'), lw = reader.querySelector('.bm-learn');

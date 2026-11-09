@@ -99,6 +99,15 @@ render_sidebar('support');
     <div>
       <h1 class="page-title">💬 Nouveau ticket</h1>
       <div class="page-sub">Notre équipe vous répondra dans les meilleurs délais.</div>
+      <?php
+        // Support prioritaire (formule Équipe, feature_priority_support) : la demande passe en tête
+        // de la file de l'équipe Assokit (super-admin-support.php). Délai de réponse inchangé pour tous.
+        require_once __DIR__ . '/plan-controls.php';
+        if (akc_priority_support_orgs($pdo, [$org_id])):
+            $sn_plan = akc_plan_name($pdo, $org_id);
+      ?>
+        <div class="page-sub" style="margin-top:6px;color:#047857;font-weight:600;">⚡ Votre formule <?= h($sn_plan !== '' ? $sn_plan : 'Équipe') ?> : votre demande passe en tête de file.</div>
+      <?php endif; ?>
     </div>
   </div>
 

@@ -182,7 +182,7 @@ if ($action === 'remove_attendee') {
             $st = $pdo->prepare("SELECT 1 FROM assembly_attendees WHERE id = ? AND assembly_id = ? AND invitation_sent_at >= NOW() - INTERVAL 1 DAY");
             $st->execute([$aid, $id]);
             if ($st->fetchColumn()) {
-                $_SESSION['flash_assemblee'] = ak_trial_msg('Pendant l’essai gratuit, un participant convoqué ne peut être retiré que 24 h après sa convocation. Passez à une formule Assokit pour lever la limite.');
+                $_SESSION['flash_assemblee'] = ak_trial_msg('Pendant l’essai gratuit, un participant convoqué ne peut être retiré que 24 h après sa convocation. Choisissez une formule pour lever la limite.');
                 header('Location: /assemblee/' . $id); exit;
             }
         } catch (Throwable $e) {}
@@ -312,12 +312,19 @@ if ($action === 'send_invitations') {
         } catch (Throwable $e) {}
         $n = $valid($atts);
         $trial_block = ($n_all > 0 && $n === 0)
-            ? ak_trial_msg('Pendant l’essai gratuit, une convocation ne peut être renvoyée qu’après 24 h : tous les participants ont déjà reçu la leur. Passez à une formule Assokit pour lever la limite.')
+            ? ak_trial_msg('Pendant l’essai gratuit, une convocation ne peut être renvoyée qu’après 24 h : tous les participants ont déjà reçu la leur. Choisissez une formule pour lever la limite.')
             : ak_trial_send_block($pdo, $org_id, $n);
         if ($trial_block) {
             $_SESSION['flash_assemblee'] = $trial_block;
             header('Location: /assemblee/' . $id); exit;
         }
+    }
+    // Formule : e-mails groupés du mois (convocations d'AG comprises)
+    require_once __DIR__ . '/plan-controls.php';
+    $n_conv = count(array_filter($atts, fn($a) => filter_var($a['email'], FILTER_VALIDATE_EMAIL)));
+    if ($quota_block = akc_email_block($pdo, (int)$org_id, $n_conv)) {
+        $_SESSION['flash_assemblee'] = $quota_block;
+        header('Location: /assemblee/' . $id); exit;
     }
 
     // Une convocation porte l'ordre du jour : présentation + résolutions, et le lien visio.

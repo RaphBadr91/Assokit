@@ -6,8 +6,8 @@
  *
  * Permet de :
  *   - Saisir les clés API Stripe (publique + secrète), en mode test puis en mode réel
- *   - « Configurer Stripe automatiquement » (stripe-setup-helpers.php) : produits et prix,
- *     option domaine, TVA, webhook (et son secret), portail client, domaine Apple Pay / Google Pay,
+ *   - « Configurer Stripe automatiquement » (stripe-setup-helpers.php) : un produit et un prix mensuel HT
+ *     par formule vendue (Essentiel, Pro, Équipe ; offre fondateur prélevée au prix de Pro), TVA, webhook (et son secret), portail client, domaine Apple Pay / Google Pay,
  *     avec une liste de contrôle ✓ / ✕ et ce qu'il faut faire quand une étape échoue
  *   - Activer / mettre en pause les paiements des associations
  *   - Activer/Désactiver la TVA (pour quand RBPS sera assujettie) ; le pied de facture de chaque client
@@ -415,7 +415,7 @@ render_sidebar('fondateur-stripe-config');
   <div style="<?= $card ?>border:2px solid #A7F3D0;">
     <h2 style="margin:0 0 6px;font-size:18px;">2. ⚙️ Configurer Stripe automatiquement</h2>
     <p style="color:#475569;font-size:13.5px;margin:0 0 14px;line-height:1.6;">
-      Crée ou retrouve chez Stripe, en mode <strong><?= $mode_fr ?></strong> : le produit et le prix mensuel HT de la formule Assokit, l’option Domaine personnalisé,
+      Crée ou retrouve chez Stripe, en mode <strong><?= $mode_fr ?></strong> : le produit et le prix mensuel HT de chaque formule vendue (<?= h(implode(', ', array_map(fn($p) => ak_plan_label($p['slug'], $p['name'] ?? null), $plans)) ?: 'Essentiel, Pro, Équipe') ?> ; l’offre fondateur est prélevée au prix de Pro, le Sur-mesure n’a pas de prix),
       la TVA si elle est activée, le webhook <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;"><?= h($webhook_url) ?></code> et son secret,
       le portail client (changer de carte, voir ses factures, résilier en fin de période), le domaine pour Apple Pay / Google Pay
       et, quand Stripe Connect est activé sur votre compte, le webhook des paiements reçus par les associations (<code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;"><?= h(ak_stripe_site_base() . '/stripe-connect-webhook') ?></code>).
@@ -660,8 +660,9 @@ render_sidebar('fondateur-stripe-config');
         <?php endforeach; ?>
       </tbody>
     </table>
+    <?php if ((defined('AK_CUSTOM_DOMAIN_LIVE') && AK_CUSTOM_DOMAIN_LIVE) || !empty($addon_price_id)): ?>
     <div style="margin-top:18px;padding:14px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;">
-      <div style="font-weight:700;font-size:14px;color:#1E40AF;">🏆 Option Domaine personnalisé (<?= h(ak_format_price_cents(AK_ADDON_DOMAIN_HT_CENTS)) ?> HT / mois)</div>
+      <div style="font-weight:700;font-size:14px;color:#1E40AF;">🏆 Option Domaine personnel (<?= h(ak_format_price_cents(AK_ADDON_DOMAIN_HT_CENTS)) ?> HT / mois)<?= (defined('AK_CUSTOM_DOMAIN_LIVE') && AK_CUSTOM_DOMAIN_LIVE) ? '' : ' — retirée de la vente (fonction pas encore livrée)' ?></div>
       <form method="post" action="" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
         <input type="hidden" name="action" value="save_addon_price">
         <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
@@ -669,6 +670,7 @@ render_sidebar('fondateur-stripe-config');
         <button type="submit" style="background:#1E40AF;color:white;padding:8px 16px;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600;">Enregistrer</button>
       </form>
     </div>
+    <?php endif; ?>
     <form method="post" action="" style="margin-top:18px;display:grid;gap:8px;">
       <input type="hidden" name="action" value="save_keys">
       <input type="hidden" name="csrf_token" value="<?= $csrf ?>">

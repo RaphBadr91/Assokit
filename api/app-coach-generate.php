@@ -15,6 +15,12 @@ if (($user['role'] ?? '') !== 'admin' && empty($user['is_founder'])) {
 if (!function_exists('ask_claude') || !function_exists('coach_build_context')) {
     app_fail(503, 'unavailable', 'IA non configurée.');
 }
+// Rapport demandé à la main : 1 crédit IA (chemin « coach-manuel »), contrôlé avant l'appel ;
+// seul le coach hebdomadaire (cron) est gratuit. Message neutre (aucun prix dans l'appli).
+if (function_exists('ak_ai_quota_block')) {
+    $why = ak_ai_quota_block($pdo, $org_id, 1);
+    if ($why !== null) app_fail(403, 'ai_quota', $why);
+}
 
 try {
     $ctx = coach_build_context($pdo, $org_id);
@@ -23,7 +29,9 @@ try {
         "Tu es AssoCoach, un coach IA hebdomadaire pour les responsables associatifs. Tu réponds UNIQUEMENT en JSON valide, sans markdown, sans texte autour.",
         [['role' => 'user', 'content' => $prompt]],
         1500,
-        ['purpose' => 'fast'] // coach hebdomadaire : modèle rapide (ai-models.php)
+        // rapport demandé à la main : modèle rapide (ai-models.php) ; compteur IA unifié : chemin
+        // 'coach-manuel', 1 crédit (coupé en accès limité par api/_app-write-boot.php)
+        ['purpose' => 'fast', 'path' => 'coach-manuel', 'org_id' => $org_id, 'user_id' => $uid, 'credits' => 1]
     );
     $raw = ($resp && !empty($resp['success'])) ? ($resp['content'] ?? '') : '';
     // Accord pour l'IA manquant dans l'app (ai-consent-helper.php) : le motif, pas une panne

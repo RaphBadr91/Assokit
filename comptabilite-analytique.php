@@ -7,13 +7,14 @@
 require_once __DIR__ . '/includes-public.php';
 require_once __DIR__ . '/includes-pricing.php';
 
-// Prix de la formule Assokit (ak_offer_price : dernier prix lu en base, la page n'ouvre pas la base).
+// Prix de la formule Pro (ak_offer_price : dernier prix lu en base, la page n'ouvre pas la base) :
+// les bilans analytiques sont sans limite dès Pro ; Essentiel en permet un export au total.
 // Coût annuel comparé à la prestation externalisée : TTC quand la TVA s'applique (ce que paie une
 // association non assujettie), sinon HT ; jamais écrit en dur.
 $offer = ak_offer_price($pdo ?? null);
 $trial_days = defined('AK_TRIAL_DAYS') ? (int)AK_TRIAL_DAYS : 14;
 $offer_year = (int)round(12 * ($offer['has_vat'] ? $offer['ttc_cents'] : $offer['ht_cents']) / 100);
-$offer_year_txt = number_format($offer_year, 0, ',', "\u{00A0}") . "\u{00A0}€" . ($offer['has_vat'] ? ' TTC' : ($offer['vat_known'] ? '' : ' HT'));
+$offer_year_txt = number_format($offer_year, 0, ',', "\u{00A0}") . "\u{00A0}€" . ($offer['has_vat'] ? "\u{00A0}TTC" : "\u{00A0}HT");
 $offer_saving_txt = number_format(max(0, 900 - $offer_year), 0, ',', "\u{00A0}") . "\u{00A0}€";
 
 $breadcrumb = build_breadcrumb_jsonld([
@@ -24,10 +25,10 @@ $breadcrumb = build_breadcrumb_jsonld([
 // FAQPage : reprend les questions visibles plus bas (rich results Google)
 $ca_faqs = [
     ['Dois-je vraiment garder un expert-comptable ?', "Oui. Assokit remplace la prestation de comptabilité analytique (la ventilation par projet et poste, que vous payiez en plus). Votre expert-comptable, lui, conserve son rôle : il contrôle et valide les comptes. Vous lui transmettez simplement un dossier déjà prêt."],
-    ['Quelles offres incluent la compta analytique illimitée ?', "Le bilan analytique est illimité dans l'abonnement Assokit (" . $offer['label'] . "), pendant l'essai PRO de " . $trial_days . " jours et en Sur-mesure."],
-    ['Puis-je tout exporter pour mon comptable ?', "Oui : le bilan analytique s'exporte en PDF et Excel, avec les pièces justificatives rattachées. En Sur-mesure, vous obtenez aussi des exports de données comptables avancés."],
+    ['Quelles formules incluent les bilans analytiques sans limite ?', "Les bilans analytiques sont sans limite dans les formules Pro (" . $offer['label'] . "), Équipe et Sur-mesure, ainsi que pendant l'essai Pro de " . $trial_days . " jours. La formule Essentiel en permet un export au total."],
+    ['Puis-je tout exporter pour mon comptable ?', "Oui : le bilan analytique s'exporte en PDF et Excel, avec les pièces justificatives rattachées, et la comptabilité en fichier des écritures comptables (FEC)."],
     // Sans montant de référence tant qu'aucune source ne l'étaye (données structurées comprises).
-    ['Combien vais-je réellement économiser ?', "Tout dépend du coût actuel de la ventilation analytique de vos comptes. Avec l'abonnement Assokit (≈ " . $offer_year_txt . "/an, tout le logiciel compris), elle est incluse : indiquez votre coût actuel dans le simulateur de cette page pour estimer votre économie."],
+    ['Combien vais-je réellement économiser ?', "Tout dépend du coût actuel de la ventilation analytique de vos comptes. Avec la formule Pro (≈ " . $offer_year_txt . "/an, tout le logiciel compris), elle est incluse : indiquez votre coût actuel dans le simulateur de cette page pour estimer votre économie."],
 ];
 $ca_faq_schema = [
     '@context'   => 'https://schema.org',
@@ -57,10 +58,10 @@ render_public_nav('');
     </div>
     <span class="pub-eyebrow ake-anim ake-d1">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-      Incluse dans votre abonnement
+      Incluse dès la formule Pro
     </span>
     <h1 class="pub-h1 ake-anim ake-d2" style="max-width:820px;margin-left:auto;margin-right:auto;">La comptabilité analytique de votre association, <em>incluse</em></h1>
-    <p class="pub-tagline ake-anim ake-d2" style="max-width:640px;">Suivez vos recettes et dépenses par projet et par poste, en temps réel. Dans l’abonnement Assokit, la compta analytique est <strong>illimitée et incluse</strong> — votre expert-comptable n'intervient plus que pour valider les comptes.</p>
+    <p class="pub-tagline ake-anim ake-d2" style="max-width:640px;">Suivez vos recettes et dépenses par projet et par poste, en temps réel. Dès la formule Pro, la compta analytique est <strong>incluse, bilans sans limite</strong> — votre expert-comptable n'intervient plus que pour valider les comptes.</p>
     <div class="ake-hero-cta ake-anim ake-d3">
       <a class="pub-btn pub-btn-primary pub-btn-lg" href="/contact">Réserver une démo gratuite
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
@@ -84,7 +85,7 @@ render_public_nav('');
           <span class="ake-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg></span>
           <div><h3>Sans Assokit</h3><span>Compta analytique externalisée</span></div>
         </div>
-        <div class="ake-price"><b>~900&nbsp;€</b><em>/ an en moyenne</em></div>
+        <div class="ake-price"><b>~900&nbsp;€</b><em>/ an (estimation, selon le coût de votre prestataire)</em></div>
         <ul class="ake-list">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg> Prestation de ventilation facturée chaque année</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg> Allers-retours de pièces, délais, ressaisie</li>
@@ -94,14 +95,14 @@ render_public_nav('');
       </article>
       <div class="ake-vs ake-anim ake-d2">VS</div>
       <article class="ake-card ake-card--avec ake-anim ake-d3">
-        <span class="ake-tag">ABONNEMENT ASSOKIT</span>
+        <span class="ake-tag">FORMULE PRO</span>
         <div class="ake-card__top">
           <span class="ake-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 4 12 14.01l-3-3"/></svg></span>
-          <div><h3>Avec Assokit</h3><span>Incluse dans l’abonnement, dès l’essai gratuit</span></div>
+          <div><h3>Avec Assokit</h3><span>Incluse dès la formule Pro, et pendant l’essai gratuit</span></div>
         </div>
-        <div class="ake-price"><b>Incluse</b><em><span class="ake-strike">~900&nbsp;€</span> dans votre abonnement</em></div>
+        <div class="ake-price"><b>Incluse</b><em>dans la formule Pro</em></div>
         <ul class="ake-list">
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Bilan analytique <strong>illimité</strong>, par projet & poste</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Bilans analytiques <strong>sans limite</strong>, par projet & poste</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Mis à jour en temps réel, toute l'année</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Export PDF / Excel + pièces justificatives</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Votre expert-comptable valide en quelques clics</li>
@@ -119,7 +120,7 @@ render_public_nav('');
         <div>
           <p class="ake-saving__lbl">Votre économie</p>
           <p class="ake-big">jusqu'à <b>900&nbsp;€</b> <small>/ an</small></p>
-          <p class="ake-saving__note">Le coût d'une compta analytique externalisée, désormais compris dans votre abonnement Assokit.</p>
+          <p class="ake-saving__note">Estimation : le coût d'une compta analytique externalisée, comparé au prix de la formule Pro.</p>
         </div>
         <div class="ake-calc">
           <p class="ake-calc__q">Combien vous coûte votre compta analytique aujourd'hui ?</p>
@@ -173,12 +174,12 @@ render_public_nav('');
   <div class="pub-container">
     <div class="pub-section-head">
       <span class="pub-section-eyebrow">Selon votre offre</span>
-      <h2 class="pub-h2">Compta analytique <em>illimitée dès l’essai</em></h2>
+      <h2 class="pub-h2">Bilans analytiques <em>sans limite dès Pro</em></h2>
     </div>
     <div class="ake-tiers">
-      <a href="/tarifs#offre-essai" class="ake-tier ake-anim ake-d2"><div class="ake-tier__name">Essai PRO</div><div class="ake-tier__val"><em>Illimité</em></div><small><?= $trial_days ?> jours gratuits</small></a>
-      <a href="/tarifs#offre-assokit" class="ake-tier ake-tier--pro ake-anim ake-d3"><div class="ake-tier__name">Assokit</div><div class="ake-tier__val"><em>Illimité</em></div><small><?= pub_h($offer['per_month']) ?></small></a>
-      <a href="/tarifs#offre-sur-mesure" class="ake-tier ake-anim ake-d4"><div class="ake-tier__name">Sur-mesure</div><div class="ake-tier__val"><em>Illimité</em></div><small>+ données comptables</small></a>
+      <a href="/tarifs#offre-essentiel" class="ake-tier ake-anim ake-d2"><div class="ake-tier__name">Essentiel</div><div class="ake-tier__val"><em>1 export</em></div><small>au total · <?= pub_h(ak_plan_price('ak-essentiel')['per_month']) ?></small></a>
+      <a href="/tarifs#offre-assokit" class="ake-tier ake-tier--pro ake-anim ake-d3"><div class="ake-tier__name">Pro</div><div class="ake-tier__val"><em>Sans limite</em></div><small><?= pub_h($offer['per_month']) ?> · essai <?= $trial_days ?> jours</small></a>
+      <a href="/tarifs#offre-equipe" class="ake-tier ake-anim ake-d4"><div class="ake-tier__name">Équipe</div><div class="ake-tier__val"><em>Sans limite</em></div><small><?= pub_h(ak_plan_price('ak-equipe')['per_month']) ?></small></a>
     </div>
     <div class="pub-text-center"><a class="pub-btn pub-btn-primary pub-btn-lg" href="/tarifs">Voir tous les tarifs</a></div>
   </div>
@@ -193,9 +194,9 @@ render_public_nav('');
     </div>
     <div class="ake-faq ake-anim ake-d2">
       <details open><summary>Dois-je vraiment garder un expert-comptable ?</summary><div class="ake-faq__body">Oui. Assokit remplace la <strong>prestation de comptabilité analytique</strong> (la ventilation par projet et poste, que vous payiez en plus). Votre expert-comptable, lui, conserve son rôle : il <strong>contrôle et valide</strong> les comptes. Vous lui transmettez simplement un dossier déjà prêt.</div></details>
-      <details><summary>Quelles offres incluent la compta analytique illimitée ?</summary><div class="ake-faq__body">Le bilan analytique est <strong>illimité</strong> dans l’abonnement <strong>Assokit</strong> (<?= pub_h($offer['label']) ?>), pendant l’<strong>essai PRO de <?= $trial_days ?> jours</strong> et en <strong>Sur-mesure</strong>.</div></details>
-      <details><summary>Puis-je tout exporter pour mon comptable ?</summary><div class="ake-faq__body">Oui : le bilan analytique s'exporte en <strong>PDF</strong> et <strong>Excel</strong>, avec les <strong>pièces justificatives</strong> rattachées. En Sur-mesure, vous obtenez aussi des exports de données comptables avancés.</div></details>
-      <details><summary>Combien vais-je réellement économiser ?</summary><div class="ake-faq__body">Tout dépend du coût actuel de la ventilation analytique de vos comptes. Avec l’abonnement Assokit (≈&nbsp;<?= pub_h($offer_year_txt) ?>/an, tout le logiciel compris), elle est <strong>incluse</strong> : indiquez votre coût actuel dans le simulateur de cette page pour estimer votre économie.</div></details>
+      <details><summary>Quelles formules incluent les bilans analytiques sans limite ?</summary><div class="ake-faq__body">Les bilans analytiques sont <strong>sans limite</strong> dans les formules <strong>Pro</strong> (<?= pub_h($offer['label']) ?>), <strong>Équipe</strong> et <strong>Sur-mesure</strong>, ainsi que pendant l’<strong>essai Pro de <?= $trial_days ?> jours</strong>. La formule Essentiel en permet un export au total.</div></details>
+      <details><summary>Puis-je tout exporter pour mon comptable ?</summary><div class="ake-faq__body">Oui : le bilan analytique s'exporte en <strong>PDF</strong> et <strong>Excel</strong>, avec les <strong>pièces justificatives</strong> rattachées, et la comptabilité en fichier des écritures comptables (<strong>FEC</strong>).</div></details>
+      <details><summary>Combien vais-je réellement économiser ?</summary><div class="ake-faq__body">Tout dépend du coût actuel de la ventilation analytique de vos comptes. Avec la formule Pro (≈&nbsp;<?= pub_h($offer_year_txt) ?>/an, tout le logiciel compris), elle est <strong>incluse</strong> : indiquez votre coût actuel dans le simulateur de cette page pour estimer votre économie.</div></details>
     </div>
   </div>
 </section>

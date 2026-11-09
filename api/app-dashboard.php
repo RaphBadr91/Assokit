@@ -395,6 +395,23 @@ try {
         }
     } catch (Throwable $e) {}
 
+    // Formule (grille de novembre 2026, api/_app-plan.php) : fonctions non incluses, pour griser
+    // les entrées de l'appli (cadenas, message neutre), et accès limité de Démarrage. Aucun prix,
+    // aucun nom de formule ici : ces deux champs servent aussi sur iPhone (aucune incitation à payer).
+    $plan_locked = []; $plan_readonly = false;
+    try {
+        require_once __DIR__ . '/_app-plan.php';
+        if ($has_org && !$mairie && !$is_founder) {
+            $plan_locked = app_plan_locked_features($pdo, $org_id, $user);
+            $plan_readonly = app_plan_readonly($pdo, $org_id, $user);
+        }
+    } catch (Throwable $e) {
+        error_log('[api/app-dashboard] formule : ' . get_class($e));
+    }
+    // Boîte mail hors formule : plus de compteurs (la synchronisation est arrêtée côté site)
+    $mail_locked = in_array('feature_mail_inbox', $plan_locked, true);
+    if ($mail_locked) { $mail_unread = 0; $mail_prio = 0; }
+
     echo json_encode([
         'ok'           => true,
         'profile'      => $mairie ? 'mairie' : $profile,
@@ -416,6 +433,10 @@ try {
         'mail_access'  => $mail_access,
         'mail_connected' => $mail_connected,
         'mail_prio'    => $mail_prio,
+        'mail_locked'  => $mail_locked,
+        'plan_locked'  => $plan_locked,      // clés feature_* non incluses dans la formule ([] sans la grille)
+        'plan_readonly' => $plan_readonly,   // accès limité (Démarrage) : consultation et export seulement
+        'plan_readonly_message' => $plan_readonly ? app_plan_readonly_message() : null,
         'first_name'   => $first_name,
         'org_name'     => $org_name,
         'org_initials' => $initials,
@@ -429,7 +450,7 @@ try {
         // information seulement, jamais de paiement dans l'appli
         'trial_subscribed' => !empty($plan_info['trial_subscribed']),
         'first_charge_at'  => !empty($plan_info['trial_subscribed']) ? ($plan_info['first_charge_at'] ?? null) : null,
-        // Pendant l'essai : « Essai PRO » (même si un paiement Stripe pris pendant l'essai est en attente)
+        // Pendant l'essai : « Essai Pro » (même si un paiement Stripe pris pendant l'essai est en attente)
         'plan_label'      => (string) (!empty($plan_info['in_trial']) && !empty($plan_info['trial_name']) ? $plan_info['trial_name']
                                        : ($plan_info['plan_label'] === '—' ? '' : $plan_info['plan_label'])),
         'today'        => $today,

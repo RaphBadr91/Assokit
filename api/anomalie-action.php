@@ -3,7 +3,7 @@
  * api/anomalie-action.php
  * ------------------------------------------------------------------
  * Endpoint JSON de la détection d'anomalies.
- * Actions : dismiss | restore
+ * Actions : dismiss | restore | digest-optout | digest-optin (point du lundi du trésorier)
  * Sécurité : login + can('manage_finances') + CSRF ; org_id = session.
  * ------------------------------------------------------------------
  */
@@ -21,6 +21,10 @@ $uid    = (int)($user['id'] ?? 0);
 if ($org_id <= 0) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'no_org']); exit; }
 if (!function_exists('can') || !can('manage_finances')) { http_response_code(403); echo json_encode(['ok'=>false,'error'=>'forbidden']); exit; }
 
+// Formule : détection des anomalies à partir d'Équipe (feature_anomalies)
+require_once __DIR__ . '/../plan-controls.php';
+if (!akc_has($pdo, $org_id, 'anomalies')) akc_deny_json($pdo, $org_id, 'anomalies');
+
 $body = json_decode(file_get_contents('php://input'), true);
 if (!is_array($body)) $body = $_POST;
 $csrf = (string)($body['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
@@ -28,7 +32,7 @@ if (!check_csrf($csrf)) { http_response_code(403); echo json_encode(['ok'=>false
 
 $action = (string)($body['action'] ?? '');
 $hash = (string)($body['hash'] ?? '');
-if (!preg_match('/^[0-9a-f]{40}$/', $hash)) { echo json_encode(['ok'=>false,'error'=>'bad_hash']); exit; }
+if (!in_array($action, ['digest-optout', 'digest-optin'], true) && !preg_match('/^[0-9a-f]{40}$/', $hash)) { echo json_encode(['ok'=>false,'error'=>'bad_hash']); exit; }
 $cat = mb_substr((string)($body['category'] ?? ''), 0, 48);
 
 try {
@@ -36,6 +40,15 @@ try {
         $st = $pdo->prepare("INSERT IGNORE INTO anomaly_dismissed (org_id, finding_hash, category, dismissed_by) VALUES (?,?,?,?)");
         $st->execute([$org_id, $hash, $cat, $uid]);
         echo json_encode(['ok'=>true]);
+    } elseif ($action === 'digest-optout' || $action === 'digest-optin') {
+        // Point du lundi du trésorier (cron-point-tresorier.php) : ne plus le recevoir / le recevoir de nouveau
+        if (!akc_has($pdo, $org_id, 'treasurer_digest')) akc_deny_json($pdo, $org_id, 'treasurer_digest');
+        if ($action === 'digest-optout') {
+            $pdo->prepare("INSERT IGNORE INTO treasurer_digest_optout (user_id, org_id, created_at) VALUES (?, ?, NOW())")->execute([$uid, $org_id]);
+        } else {
+            $pdo->prepare("DELETE FROM treasurer_digest_optout WHERE user_id = ?")->execute([$uid]);
+        }
+        echo json_encode(['ok'=>true, 'subscribed'=>$action === 'digest-optin']);
     } elseif ($action === 'restore') {
         $pdo->prepare("DELETE FROM anomaly_dismissed WHERE org_id = ? AND finding_hash = ?")->execute([$org_id, $hash]);
         echo json_encode(['ok'=>true]);

@@ -33,6 +33,7 @@ if (!$is_cli) {
 require_once __DIR__ . '/asso-invoice-helpers.php';
 require_once __DIR__ . '/asso-invoice-email-helpers.php';
 require_once __DIR__ . '/relances-engine.php';
+require_once __DIR__ . '/plan-controls.php';   // formule : relances automatiques (feature_recurring_invoices)
 
 if (!$is_cli) header('Content-Type: text/plain; charset=UTF-8');
 
@@ -44,6 +45,7 @@ $failed = 0;
 $deferred = 0;
 $waiting = 0;
 $skipped = 0;
+$plan_skipped = 0;   // associations écartées : formule sans relances automatiques
 
 try {
     // Notifs à envoyer : admin a répondu "not_paid" + validé envoi + pas encore envoyé.
@@ -98,6 +100,14 @@ try {
         foreach ($notifs as $notif) {
             if ($sent + $failed >= 50) break 2;
             if (isset($blocked_orgs[(int)$notif['invoice_org_id']])) continue;
+            // Formule sans relances automatiques (Essentiel, accès limité) : l'association est écartée
+            // pour ce passage, ses relances validées attendent (reprise si la formule change)
+            if (!akc_has($pdo, (int)$notif['invoice_org_id'], 'recurring_invoices', false)) {
+                echo "🔒 Facture {$notif['invoice_number']} : relances automatiques non incluses dans la formule, association écartée\n";
+                $blocked_orgs[(int)$notif['invoice_org_id']] = true;
+                $plan_skipped++;
+                continue;
+            }
             $tried[] = (int)$notif['id'];
             $inv_id = (int)$notif['invoice_id'];
 
@@ -176,6 +186,7 @@ try {
     if ($deferred) echo "Reportées (limite d'essai gratuit) : $deferred\n";
     if ($waiting) echo "En attente de leur date (cadence des relances) : $waiting\n";
     if ($skipped) echo "Classées sans envoi (déjà relancées ou pas encore échues) : $skipped\n";
+    if ($plan_skipped) echo "Associations écartées (formule sans relances automatiques) : $plan_skipped\n";
 
 } catch (Throwable $e) {
     echo "ERREUR : " . $e->getMessage() . "\n";

@@ -105,63 +105,25 @@ function ab_inv_badge($s) {
     return '<span style="display:inline-block;padding:3px 8px;background:'.$i[0].';color:'.$i[1].';border-radius:999px;font-size:11px;font-weight:600;">'.$i[2].'</span>';
 }
 
-// === Features détaillées par plan (alignées avec page publique pricing) ===
-$detailed_features = [
-  'essentiel' => [
-    'header' => 'INCLUS :',
-    'items'  => [
-      'Jusqu&rsquo;à <strong>30 contacts / adhérents / clients</strong>',
-      'Jusqu&rsquo;à <strong>2 utilisateurs</strong>',
-      '<strong>20 factures ou devis</strong> / mois',
-      '<strong>20 générations IA</strong> / mois',
-      '<strong>100 emails</strong> / mois',
-      'Tableau de bord basique',
-      'Gestion simple des contacts',
-      'Espace sécurisé',
-      'Support email',
-    ],
-  ],
-  'pro' => [
-    'header' => "TOUT D'ESSENTIEL, PLUS :",
-    'items'  => [
-      'Jusqu&rsquo;à <strong>400 adhérents actifs</strong>',
-      '<strong>Contacts / clients illimités</strong>',
-      'Jusqu&rsquo;à <strong>20 utilisateurs</strong>',
-      '<strong>Facturation illimitée</strong>',
-      '<strong>Devis illimités</strong> avec signature',
-      'Factures récurrentes',
-      '<strong>300 générations IA</strong> / mois',
-      '<strong>2 000 emails</strong> / mois',
-      'Modèles IA prêts à l&rsquo;emploi',
-      'Relances automatiques clients / adhérents',
-      'Gestion projets, tâches et suivis',
-      'Documents IA : convocations, CR, courriers',
-      'Statistiques avancées',
-      'Exports PDF & Excel',
-      'Sous-domaine personnalisé <em>tonasso.assokit.fr</em>',
-      'Logo & couleurs personnalisables',
-      'Domaine personnel : <strong>+10 € HT / mois</strong>',
-      'Support prioritaire &lt; 24h',
-    ],
-  ],
-  'sur-mesure' => [
-    'header' => 'TOUT DE PRO, PLUS :',
-    'items'  => [
-      '<strong>Contacts / adhérents / clients illimités</strong>',
-      '<strong>Utilisateurs illimités</strong>',
-      'Volume IA personnalisé ou <strong>illimité</strong>',
-      'Diffusion email sur volume personnalisé',
-      '<strong>Domaine personnel inclus</strong>',
-      '<strong>White-label</strong> possible',
-      'Tableau de bord avancé personnalisé',
-      'Exports avancés PDF, Excel et données comptables',
-      'Accompagnement à la mise en place',
-      'Formation de votre équipe',
-      'Support dédié',
-      'Développements spécifiques sur demande',
-    ],
-  ],
-];
+// === Fonctions par formule : lues dans asso_plans (grille 2026), plus de liste écrite en dur ===
+// Résumé sans prix (ak_plan_public_summary) puis fonctions incluses (ak_plan_feature_keys). Le
+// domaine personnel n'est jamais cité (fonction non livrée), ni la marque blanche.
+if (!function_exists('ak_plan_public_summary') && is_file(__DIR__ . '/plan-helpers.php')) require_once __DIR__ . '/plan-helpers.php';
+$detailed_features = [];
+foreach ($plans as $p) {
+    $items = function_exists('ak_plan_public_summary') ? array_map('h', ak_plan_public_summary($p)) : [];
+    if (function_exists('ak_plan_feature_keys')) {
+        foreach (ak_plan_feature_keys() as $col => $label) {
+            if ($col === 'feature_custom_domain') continue;
+            if (!empty($p[$col])) $items[] = h($label);
+        }
+    }
+    if ($items) $detailed_features[$p['slug']] = ['header' => 'INCLUS :', 'items' => $items];
+}
+// Badge factuel (ak_plan_badge) : « Le plus choisi » seulement si c'est vrai, sinon « Recommandé »
+$ab_badge = function (string $slug) use ($pdo): ?string {
+    try { return function_exists('ak_plan_badge') ? ak_plan_badge($pdo, $slug) : null; } catch (Throwable $e) { return null; }
+};
 
 $active = 'abonnement';
 render_head('Abonnement · Assokit');
@@ -256,8 +218,8 @@ render_sidebar($active);
                   ⏱ <?= $trial_days_left ?> jour<?= $trial_days_left > 1 ? 's' : '' ?> restant<?= $trial_days_left > 1 ? 's' : '' ?>
                 </span>
               <?php endif; ?>
-              <?php if ($current_plan && $current_plan['is_featured']): ?>
-                <span style="padding:4px 10px;background:#FEF3C7;color:#92400E;border-radius:999px;font-size:12px;font-weight:600;">⭐ Le plus choisi</span>
+              <?php $cur_badge = $current_plan ? $ab_badge((string)$current_plan['slug']) : null; if ($cur_badge): ?>
+                <span style="padding:4px 10px;background:#FEF3C7;color:#92400E;border-radius:999px;font-size:12px;font-weight:600;"><?= h($cur_badge) ?></span>
               <?php endif; ?>
             </div>
             <h2 style="margin:0 0 4px;font-size:26px;font-weight:700;color:#0A0A0B;">Plan <?= h($plan_name) ?></h2>
@@ -322,8 +284,7 @@ render_sidebar($active);
               'feature_email_diffusion' => 'Diffusion email',
               'feature_advanced_stats' => 'Statistiques avancées',
               'feature_priority_support' => 'Support prioritaire',
-              'feature_custom_domain' => 'Domaine personnalisé',
-              'feature_dedicated_support' => 'Support dédié',
+              'feature_dedicated_support' => 'Interlocuteur unique',
             ];
             foreach ($bf as $k => $l):
               if (empty($current_plan[$k])) continue;
@@ -353,10 +314,11 @@ render_sidebar($active);
             $is_featured = !empty($p['is_featured']);
             $is_custom   = !empty($p['is_custom_quote']);
             $df = $detailed_features[$p['slug']] ?? null;
+            $p_badge = $ab_badge((string)$p['slug']);
           ?>
           <div class="plan-card<?= $is_featured ? ' is-featured' : '' ?><?= $is_current ? ' is-current' : '' ?>">
             <div class="plan-chips">
-              <?php if ($is_featured): ?><span class="plan-chip chip-feat">★ Le plus choisi</span><?php endif; ?>
+              <?php if ($p_badge): ?><span class="plan-chip chip-feat"><?= h($p_badge) ?></span><?php endif; ?>
               <?php if ($is_current): ?><span class="plan-chip chip-active">✓ Votre formule</span><?php endif; ?>
             </div>
 
@@ -373,9 +335,6 @@ render_sidebar($active);
               <?php else: ?>
                 <span class="plan-amount"><?= number_format((int)$p['price_cents'] / 100, 2, ',', ' ') ?> €</span>
                 <span class="plan-unit">HT / mois</span>
-                <?php if ((int)$p['price_yearly_cents'] > 0): ?>
-                  <span class="plan-year">soit <?= number_format((int)$p['price_yearly_cents'] / 100, 0, ',', ' ') ?> € HT / an</span>
-                <?php endif; ?>
               <?php endif; ?>
             </div>
 

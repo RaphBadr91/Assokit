@@ -22,6 +22,12 @@ $rel_role = (string) ($user['role'] ?? '');
 $rel_ok   = in_array($rel_role, ['admin', 'coordinator'], true);
 if (!$rel_ok && function_exists('can')) $rel_ok = can('access_marketing');
 
+// Formule sans prospection partagée (feature_prospection, Équipe et au-delà) : pas de bandeau
+if ($rel_ok && !empty($user['org_id']) && is_file(__DIR__ . '/plan-controls.php')) {
+    require_once __DIR__ . '/plan-controls.php';
+    $rel_ok = akc_has($pdo, (int)$user['org_id'], 'prospection');
+}
+
 if ($rel_ok && !empty($user['org_id'])):
 
 $rel_org = (int) $user['org_id'];

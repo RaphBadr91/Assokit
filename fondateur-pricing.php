@@ -5,12 +5,25 @@ require_once __DIR__ . '/superadmin-layout.php';
 require_once __DIR__ . '/sa-permissions.php';
 require_once __DIR__ . '/includes-pricing.php';
 require_once __DIR__ . '/sa-plan-state-helpers.php';
+@require_once __DIR__ . '/plan-helpers.php';
+require_once __DIR__ . '/stripe-plan-change-helpers.php';
 require_login();
 $user = sa_require_super_admin();
 // Tarifs, plans et Stripe : Fondateur uniquement (section Pilotage Fondateur)
 sa_require_capability('can_manage_billing_config');
 
-$plans = $pdo->query("SELECT * FROM asso_plans WHERE is_visible = 1 ORDER BY display_order ASC")->fetchAll();
+// Grille 2026 : formules vendues (visibles), puis formules techniques jamais vendues (offre fondateur,
+// essai, Démarrage, lignes Sur-mesure propres à un client), avec le nombre d'abonnés de chacune
+$all_plans = $pdo->query("SELECT * FROM asso_plans ORDER BY is_visible DESC, display_order ASC, price_cents ASC, id ASC")->fetchAll();
+$plans = array_values(array_filter($all_plans, fn($p) => !empty($p['is_visible'])));
+$hidden_plans = array_values(array_filter($all_plans, fn($p) => empty($p['is_visible'])));
+$plan_subs = [];
+try {
+    $plan_subs = $pdo->query("SELECT s.plan_id, COUNT(*) FROM organizations o
+        JOIN asso_subscriptions s ON s.id = (SELECT s2.id FROM asso_subscriptions s2 JOIN asso_plans p2 ON p2.id = s2.plan_id WHERE s2.org_id = o.id ORDER BY " . ak_sub_order('s2') . " LIMIT 1)
+        WHERE o.deleted_at IS NULL AND COALESCE(o.slug, '') NOT LIKE 'demo%' AND s.status IN ('active', 'trial', 'overdue')
+        GROUP BY s.plan_id")->fetchAll(PDO::FETCH_KEY_PAIR);
+} catch (Throwable $e) {}
 $orgs  = $pdo->query("SELECT id, name, legal_form, vat_subject, siret, plan FROM organizations ORDER BY name LIMIT 200")->fetchAll();
 $sim_org_id = (int)($_GET['org'] ?? 0);
 $sim_cycle  = 'monthly';   // abonnement mensuel uniquement : la formule annuelle (-15 %) n'est plus vendue
@@ -42,7 +55,7 @@ sa_render_sidebar('fondateur-pricing');
     <div class="sa-pg-head">
       <div>
         <h1>💶 Tarifs &amp; facturation</h1>
-        <p>Plans publics, prix HT + TVA de la plateforme = TTC, abonnement mensuel sans engagement.</p>
+        <p>Formules Essentiel, Pro, Équipe et Sur-mesure : prix HT (TVA de la plateforme en sus si elle s’applique), abonnement mensuel sans engagement.</p>
       </div>
       <div style="display:flex;gap:8px;">
         <a href="/fondateur-plans" class="sa-btn sa-btn-ghost">⚙️ Modifier les plans</a>
@@ -90,48 +103,69 @@ sa_render_sidebar('fondateur-pricing');
 
     <section class="ap-plans-grid">
       <?php foreach ($plans as $plan):
-        $p = ak_price_split((int)$plan['price_cents'], $vat_rate);
         $is_featured = !empty($plan['is_featured']);
+        $is_quote = (!empty($plan['is_custom_quote']) || $plan['slug'] === 'sur-mesure') && (int)$plan['price_cents'] === 0;
+        $badge = $is_featured && function_exists('ak_plan_badge') ? ak_plan_badge($pdo, (string)$plan['slug']) : null;
+        $summary = function_exists('ak_plan_public_summary') ? ak_plan_public_summary($plan) : [];
+        $n_subs = (int)($plan_subs[$plan['id']] ?? 0);
       ?>
       <article class="ap-plan <?= $is_featured ? 'is-featured' : '' ?>">
         <header>
-          <h3><?= htmlspecialchars($plan['name']) ?></h3>
-          <?php if ($plan['tagline']): ?><div class="ap-plan-tag"><?= htmlspecialchars($plan['tagline']) ?></div><?php endif; ?>
+          <h3><?= h(ak_plan_label((string)$plan['slug'], $plan['name'] ?? null)) ?><?php if ($badge): ?> <span class="ap-tag ap-tag-badge"><?= h($badge) ?></span><?php endif; ?></h3>
+          <?php if (!empty($plan['tagline'])): ?><div class="ap-plan-tag"><?= h($plan['tagline']) ?></div><?php endif; ?>
         </header>
         <div class="ap-plan-prices">
-          <?php if ((!empty($plan['is_custom_quote']) || $plan['slug'] === 'sur-mesure') && (int)$plan['price_cents'] === 0): ?>
-            <div class="ap-plan-amt">Sur devis</div>
+          <?php if ($is_quote): ?>
+            <div class="ap-plan-amt"><?= h(defined('AK_PRICE_MASK') ? AK_PRICE_MASK : "****,**\u{00A0}€\u{00A0}HT/mois") ?></div>
+            <div class="ap-plan-detail">Sur devis — nous contacter</div>
           <?php elseif ((int)$plan['price_cents'] <= 0): ?>
-            <div class="ap-plan-amt">Gratuit</div>
-          <?php else: ?>
-            <div class="ap-plan-amt-billed">
-              <?= h($p['ht']) ?>
-              <span class="ap-plan-unit"><?= $p['has_vat'] || !$p['vat_known'] ? 'HT ' : '' ?><?= pricing_label_period($sim_cycle) ?></span>
-            </div>
+            <div class="ap-plan-amt">0 €</div>
+          <?php else: $p = ak_price_split((int)$plan['price_cents'], $vat_rate); ?>
+            <div class="ap-plan-amt-billed"><?= h($p['ht']) ?> <span class="ap-plan-unit">HT<?= pricing_label_period($sim_cycle) ?></span></div>
             <div class="ap-plan-detail">
-              <?php if ($p['has_vat']): ?>
-                + TVA <?= h($p['rate_label']) ?> (<?= h($p['vat']) ?>) = <?= h($p['ttc']) ?> TTC
-              <?php elseif ($p['vat_known']): ?>
-                TVA non applicable, art. 293 B du CGI
-              <?php else: ?>
-                TVA de la plateforme indisponible
-              <?php endif; ?>
+              <?php if ($p['has_vat']): ?>+ TVA <?= h($p['rate_label']) ?> (<?= h($p['vat']) ?>) = <?= h($p['ttc']) ?> TTC
+              <?php elseif ($p['vat_known']): ?><?= h(ak_pc_vat_note(0.0)) ?>
+              <?php else: ?>TVA de la plateforme indisponible<?php endif; ?>
             </div>
           <?php endif; ?>
         </div>
         <div class="ap-plan-limits">
           <ul>
-            <?php if ($plan['limit_adherents']): ?><li>👥 <?= (int)$plan['limit_adherents'] ?> adhérents</li><?php endif; ?>
-            <?php if ($plan['limit_users']): ?><li>👤 <?= (int)$plan['limit_users'] ?> utilisateurs</li><?php endif; ?>
-            <?php if ($plan['limit_invoices_total']): ?><li>📄 <?= (int)$plan['limit_invoices_total'] ?> factures/mois</li><?php endif; ?>
-            <?php if ($plan['limit_ai_text_per_month']): ?><li>✨ <?= (int)$plan['limit_ai_text_per_month'] ?> IA/mois</li><?php endif; ?>
-            <?php if ($plan['limit_emails_per_month']): ?><li>📧 <?= number_format((int)$plan['limit_emails_per_month'], 0, ',', ' ') ?> emails/mois</li><?php endif; ?>
-            <?php if (!$plan['limit_adherents'] && !$plan['limit_users']): ?><li>♾️ Illimité</li><?php endif; ?>
+            <?php foreach ($summary as $line): ?><li>✓ <?= h($line) ?></li><?php endforeach; ?>
+            <li class="ap-muted-li">🧾 <?= $n_subs ?> association<?= $n_subs > 1 ? 's' : '' ?> sur cette formule (hors démos)</li>
+            <?php if (!$is_quote && (int)$plan['price_cents'] > 0): ?>
+              <li class="ap-muted-li">💳 Prix Stripe : <?= !empty($plan['stripe_price_id_monthly']) ? '<code>' . h($plan['stripe_price_id_monthly']) . '</code>' : 'pas encore créé (« Configurer Stripe automatiquement »)' ?></li>
+            <?php endif; ?>
           </ul>
         </div>
       </article>
       <?php endforeach; ?>
     </section>
+
+    <?php if ($hidden_plans): ?>
+    <section class="sa-card">
+      <h2>🔒 Formules techniques (jamais vendues, jamais sur la page Tarifs)</h2>
+      <table class="ap-rules">
+        <thead><tr><th>Formule</th><th>Rôle</th><th>Prix</th><th>Volumes</th><th>Associations</th></tr></thead>
+        <tbody>
+        <?php foreach ($hidden_plans as $hp):
+            $role = $hp['slug'] === 'fondateur' ? 'Clients de la première heure : fonctions actuelles, prix garanti 12 mois (cli-rattacher-fondateur.php). Prélevée au prix Stripe de Pro.'
+                : ($hp['slug'] === 'pro-essai' || !empty($hp['is_trial']) ? 'Essai gratuit de 14 jours (fonctions Pro)'
+                : ($hp['slug'] === 'demarrage' ? 'Accès limité : fin d’essai non convertie, résiliation, impayé'
+                : (!empty($hp['is_custom_quote']) ? 'Sur-mesure propre à un client' : 'Ancienne formule, masquée'))); ?>
+          <tr>
+            <td><strong><?= h(ak_plan_label((string)$hp['slug'], $hp['name'] ?? null)) ?></strong> <code><?= h($hp['slug']) ?></code></td>
+            <td><?= h($role) ?></td>
+            <td style="white-space:nowrap;"><?= (int)$hp['price_cents'] > 0 ? h(ak_pc_price_label((int)$hp['price_cents'], $vat_rate)) : '—' ?></td>
+            <td><?= h(implode(' · ', function_exists('ak_plan_public_summary') ? ak_plan_public_summary($hp) : [])) ?></td>
+            <td><?= (int)($plan_subs[$hp['id']] ?? 0) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+      <p class="ap-foot">Changement de formule par les associations : montée immédiate au prorata, baisse à la fin du mois payé (stripe-change-plan). Sans Stripe : baisse programmée, montée sur demande au support.</p>
+    </section>
+    <?php endif; ?>
 
     <section class="sa-card">
       <h2>📋 Règles d'application TVA</h2>
@@ -161,6 +195,9 @@ sa_render_sidebar('fondateur-pricing');
 .ap-tag { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
 .ap-tag-co { background: #1E40AF; color: #DBEAFE; }
 .ap-tag-asso { background: #92400E; color: #FEF3C7; }
+.ap-tag-badge { background: #065F46; color: #D1FAE5; vertical-align: middle; margin-left: 6px; }
+.ap-muted-li { color: #94A3B8 !important; font-size: 12px !important; }
+.ap-plan-limits code, .ap-rules code { font-size: 11px; background: #0F172A; padding: 1px 5px; border-radius: 4px; color: #FCD34D; overflow-wrap: anywhere; }
 .ap-plans-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 18px; }
 .ap-plan { background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 20px 22px; }
 .ap-plan.is-featured { border: 2px solid #FCD34D; box-shadow: 0 8px 24px rgba(252,211,77,0.15); }

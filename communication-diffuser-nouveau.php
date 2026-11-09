@@ -113,6 +113,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_csrf($_POST['csrf_token'] ?? 
         if (!$error) {
             $error = ak_trial_send_block($pdo, $org_id, count($recipient_ids));
         }
+        // Formule : e-mails groupés du mois (diffusions, invitations, convocations, relances)
+        if (!$error) {
+            require_once __DIR__ . '/plan-controls.php';
+            $error = akc_email_block($pdo, (int)$org_id, count($recipient_ids));
+        }
 
         if (!$error && !function_exists('ak_comm_broadcast_send')) {
             $error = 'L’envoi d’e-mails n’est pas disponible pour le moment. Réessayez plus tard.';

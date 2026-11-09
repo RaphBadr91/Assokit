@@ -65,6 +65,23 @@ if (!empty($ia_project['archived_at']) || !empty($ia_project['folder_archived_at
     exit;
 }
 
+// Formule : assistant de projet à partir de Pro (feature_ai_assistant), dans la limite des crédits
+// IA du mois (1 crédit par réponse ou document). Message affiché dans l'onglet IA du projet.
+require_once __DIR__ . '/plan-controls.php';
+$ia_org = (int)($user['org_id'] ?? 0);
+$ia_block = !akc_has($pdo, $ia_org, 'ai_assistant') ? akc_gate_message($pdo, $ia_org, 'ai_assistant') : akc_ai_block($pdo, $ia_org, 1);
+if ($ia_block) {
+    if (($_POST['stream'] ?? '') === '1') {
+        header('Content-Type: text/event-stream; charset=utf-8');
+        header('Cache-Control: no-cache, no-transform');
+        echo 'data: ' . json_encode(['type' => 'error', 'error' => $ia_block], JSON_UNESCAPED_UNICODE) . "\n\n";
+        exit;
+    }
+    header('Location: /projet/' . $project_id . '/ia?err=' . urlencode($ia_block));
+    exit;
+}
+$ia_ledger = akc_ai_opts('projet', $ia_org, (int)($user['id'] ?? 0));
+
 if (!is_ai_enabled()) {
     header('Location: /projet/' . $project_id . '/ia?err=nokey');
     exit;
@@ -183,7 +200,7 @@ if ($mode === 'generate') {
 
         $result = ask_claude_stream($system, [['role' => 'user', 'content' => $p['user_msg']]], function ($t) use ($send) {
             $send(['type' => 'text', 'text' => $t]);
-        });
+        }, null, $ia_ledger);
         if (!$result['success']) {
             $send(['type' => 'error', 'error' => $result['error']]);
             exit;
@@ -198,7 +215,7 @@ if ($mode === 'generate') {
         exit;
     }
 
-    $result = ask_claude($system, [['role' => 'user', 'content' => $p['user_msg']]]);
+    $result = ask_claude($system, [['role' => 'user', 'content' => $p['user_msg']]], null, $ia_ledger);
 
     if (!$result['success']) {
         header('Location: /projet/' . $project_id . '/ia?err=' . urlencode($result['error']));
@@ -262,7 +279,7 @@ $pdo->prepare("INSERT INTO ai_messages (conversation_id, role, content) VALUES (
 
 // Appel à l'IA (session libérée : les autres onglets restent utilisables)
 session_write_close();
-$result = ask_claude($system, $messages);
+$result = ask_claude($system, $messages, null, $ia_ledger);
 
 if (!$result['success']) {
     header('Location: /projet/' . $project_id . '/ia?conv=' . $conv_id . '&err=' . urlencode($result['error']));

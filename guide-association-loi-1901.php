@@ -6,7 +6,7 @@
  * FAQPage + Breadcrumb. Liens statiques uniquement (aucune dépendance $pdo / blog_list).
  */
 require_once __DIR__ . '/includes-public.php';
-// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+// Grille Essentiel / Pro / Équipe (includes-pricing.php) : « dès 19,99 € HT/mois », lu comme sur /tarifs
 require_once __DIR__ . '/includes-pricing.php';
 $offer = ak_offer_price();
 
@@ -159,7 +159,7 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="lp-stat reveal" style="background:linear-gradient(135deg,#0f172a,#065f46);">
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Gérez votre association sans y passer vos soirées</h2>
-      <p>Adhérents, cotisations, comptabilité et assemblées réunis dans un seul outil, hébergé en France. Essai gratuit 14 jours, sans carte bancaire, puis <?= pub_h($offer['label']) ?>, sans engagement.</p>
+      <p>Adhérents, cotisations, comptabilité et assemblées réunis dans un seul outil, hébergé en France. Essai gratuit 14 jours, sans carte bancaire, puis <?= pub_h(ak_offer_from_price()) ?>, sans engagement.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
         <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>

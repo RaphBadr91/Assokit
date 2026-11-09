@@ -19,6 +19,23 @@ if ($org_id <= 0 || !can('manage_finances')) {
     header('Location: /dashboard'); exit;
 }
 $csrf = h($_SESSION['csrf_token'] ?? '');
+
+// Formule : détection des anomalies à partir d'Équipe (feature_anomalies)
+require_once __DIR__ . '/plan-controls.php';
+akc_lock_page($pdo, $org_id, 'anomalies', 'Détection d’anomalies', 'anomalies');
+
+// Point du lundi du trésorier (cron-point-tresorier.php, formule Équipe) : interrupteur pour les
+// destinataires (administrateurs et comptes « Gérer les finances »), une fois la fonction livrée
+$digest_on = false; $digest_sub = true;
+if (is_file(__DIR__ . '/cron-point-tresorier.php') && akc_has($pdo, $org_id, 'treasurer_digest')
+    && (($user['role'] ?? '') === 'admin' || !empty($user['can_manage_finances']))) {
+    try {
+        $st_d = $pdo->prepare("SELECT COUNT(*) FROM treasurer_digest_optout WHERE user_id = ?");
+        $st_d->execute([(int)$user['id']]);
+        $digest_sub = (int)$st_d->fetchColumn() === 0;
+        $digest_on = true;
+    } catch (Throwable $e) { $digest_on = false; }   // table absente : migration de la grille pas encore passée
+}
 $show_ignored = isset($_GET['ignored']);
 // /cotisations (liste des payeurs) est réservé aux administrateurs et coordinateurs : un
 // trésorier (« Gérer les finances ») voit l'anomalie, sans lien vers un écran qui le refuserait.
@@ -49,6 +66,13 @@ echo render_sidebar('anomalies');
         <button type="button" class="an-btn ghost" onclick="location.reload()"><?= ak_icon('refresh',14) ?> Relancer l'audit</button>
       </div>
     </div>
+
+<?php if ($digest_on): ?>
+    <label class="an-digest">
+      <input type="checkbox" id="anDigest"<?= $digest_sub ? ' checked' : '' ?>>
+      <span><strong>Recevoir le point du lundi</strong> — chaque lundi matin, un e-mail avec les nouvelles anomalies de la semaine, la trésorerie prévue à 3 mois et les impayés à relancer.</span>
+    </label>
+<?php endif; ?>
 
 <?php if (!$ready): ?>
     <div class="an-empty"><div class="an-empty-emoji"><?= ak_icon('wrench',44,'1.5') ?></div><h2>Initialisation requise</h2>
@@ -127,6 +151,9 @@ echo render_sidebar('anomalies');
 .an-kpi-val { font-size:22px; font-weight:750; color:#0F172A; }
 .an-red { color:#EF4444 !important; } .an-amber { color:#F59E0B !important; } .an-green { color:#10B981 !important; } .an-muted { color:#64748B !important; }
 .an-toolbar { margin-bottom:12px; }
+.an-digest { display:flex; gap:10px; align-items:flex-start; background:#fff; border:1px solid #E5E7EB; border-radius:12px; padding:12px 14px; margin:0 0 14px; font-size:13px; color:#475569; line-height:1.5; cursor:pointer; }
+.an-digest input { margin-top:3px; flex:none; width:16px; height:16px; accent-color:#059669; }
+.an-digest strong { color:#0F172A; }
 .an-chip { font-size:12.5px; color:#475569; text-decoration:none; background:#fff; border:1px solid #E5E7EB; padding:6px 12px; border-radius:999px; }
 .an-chip:hover { background:#F8FAFC; }
 .an-list { display:flex; flex-direction:column; gap:8px; }
@@ -153,6 +180,15 @@ echo render_sidebar('anomalies');
   function post(p){ return fetch('/api/anomalie-action.php',{method:'POST',credentials:'same-origin',
     headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},
     body:JSON.stringify(Object.assign({csrf_token:CSRF},p))}).then(function(r){return r.json();}); }
+
+  var dg=document.getElementById('anDigest');
+  if(dg) dg.addEventListener('change', function(){
+    var on=dg.checked; dg.disabled=true;
+    post({action: on ? 'digest-optin' : 'digest-optout'}).then(function(d){
+      dg.disabled=false;
+      if(!(d&&d.ok)){ dg.checked=!on; alert((d&&d.message)||'Réglage non enregistré. Réessayez.'); }
+    }).catch(function(){ dg.disabled=false; dg.checked=!on; });
+  });
 
   document.querySelectorAll('.an-card').forEach(function(card){
     var hash=card.getAttribute('data-hash'), cat=card.getAttribute('data-cat');

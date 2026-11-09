@@ -164,18 +164,19 @@ function h_dem($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 $org_configs = [
     'demo-evry' => ['icon' => '🤝', 'color' => '#10b981', 'tagline' => 'Petite asso de proximité', 'pitch' => 'Idéal pour démontrer Assokit à une petite asso loi 1901 qui démarre', 'cible_membres' => 50, 'cible_projets' => 20, 'cible_factures' => 40],
     'demo-corbeil' => ['icon' => '💜', 'color' => '#a855f7', 'tagline' => 'Asso dynamique de taille moyenne', 'pitch' => 'Parfait pour montrer la puissance d\'Assokit à une asso en croissance', 'cible_membres' => 120, 'cible_projets' => 50, 'cible_factures' => 120],
-    'demo-paris' => ['icon' => '🏛️', 'color' => '#3b82f6', 'tagline' => 'Grande asso parisienne — full max', 'pitch' => 'Démo VIP : version SUR-MESURE white-label, domaine perso, support dédié', 'cible_membres' => 250, 'cible_projets' => 80, 'cible_factures' => 300],
+    'demo-paris' => ['icon' => '🏛️', 'color' => '#3b82f6', 'tagline' => 'Grande asso parisienne — full max', 'pitch' => 'Démo VIP : formule Sur-mesure, volumes au devis, interlocuteur unique', 'cible_membres' => 250, 'cible_projets' => 80, 'cible_factures' => 300],
     'demo-formation' => ['icon' => '🎓', 'color' => '#6366f1', 'tagline' => 'Organisme de formation associatif (Qualiopi)', 'pitch' => 'La démo la plus complète : projets avec comptes-rendus d\'étape, financeurs, subventions, AG, facturation, IA — 5 comptes (admin, coordinateur, bénévole, adhérent, financeur)', 'cible_membres' => 120, 'cible_projets' => 19, 'cible_factures' => 160],
     'demo-tpe' => ['icon' => '🏢', 'color' => '#f59e0b', 'tagline' => 'Petite entreprise (TPE/SARL)', 'pitch' => 'Pour démontrer Assokit à un dirigeant de TPE — gestion équipe & facturation client', 'cible_membres' => 4, 'cible_projets' => 20, 'cible_factures' => 170],
 ];
 
-// Offre présentée aux prospects : Essai PRO (14 jours gratuits), Assokit (prix HT + TTC), Sur-mesure
+// Offre présentée aux prospects (grille 2026) : Essai Pro (14 jours gratuits), Pro (prix HT, includes-pricing.php),
+// Sur-mesure sur devis. Clés = anciens libellés organizations.plan des espaces de démonstration.
 require_once __DIR__ . '/includes-pricing.php';
 $demo_offer = ak_offer_price($pdo);
 $plan_display = [
-    'essentiel' => ['label' => 'ESSAI PRO', 'price' => 'Gratuit 14 j', 'subtitle' => 'Sans carte bancaire', 'color' => '#94a3b8'],
-    'association' => ['label' => 'ASSOKIT', 'price' => $demo_offer['per_month'], 'subtitle' => $demo_offer['ttc_note'] !== '' ? $demo_offer['ttc_note'] . ' · le plus choisi' : 'Le plus choisi', 'color' => '#10b981'],
-    'organisation' => ['label' => 'SUR-MESURE', 'price' => 'Sur devis', 'subtitle' => 'Full max', 'color' => '#3b82f6'],
+    'essentiel' => ['label' => 'Essai Pro', 'price' => 'Gratuit 14 j', 'subtitle' => 'Sans carte bancaire', 'color' => '#94a3b8'],
+    'association' => ['label' => 'PRO', 'price' => $demo_offer['per_month'], 'subtitle' => $demo_offer['has_vat'] ? $demo_offer['ttc_note'] . ' · sans engagement' : 'Sans engagement', 'color' => '#10b981'],
+    'organisation' => ['label' => 'SUR-MESURE', 'price' => 'Sur devis', 'subtitle' => 'Réseaux, fédérations, collectivités', 'color' => '#3b82f6'],
 ];
 ?><!DOCTYPE html>
 <html lang="fr">

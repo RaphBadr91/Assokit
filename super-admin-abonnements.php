@@ -319,7 +319,7 @@ try {
 
 // Assos avec subscription active (pour creer une facture)
 // Plan et statut = ak_org_plan_state (même vérité que la fiche et l'appli) : une association
-// en essai est affichée « Essai PRO · fin … · 0 € » et aucun montant n'est pré-rempli.
+// en essai est affichée « Essai Pro · fin … · 0 € » et aucun montant n'est pré-rempli.
 $orgs_with_sub = [];
 try {
     $sc = ak_db_columns($pdo, 'subscriptions');

@@ -17,6 +17,8 @@ require_once __DIR__ . '/demo-guard.php';
 require_login();
 $user = current_user();
 
+// Formule : boîte Gmail intégrée à partir de Pro (feature_mail_inbox)
+if (!mail_plan_inbox_ok($pdo, (int)($user['org_id'] ?? 0))) { header('Location: /boite-mail'); exit; }
 if (!mail_can_connect($user)) { header('Location: /boite-mail?err=' . urlencode('Seuls les administrateurs et coordinateurs peuvent relier la boîte mail.')); exit; }
 if (ak_demo_session())        { header('Location: /boite-mail?err=' . urlencode('Connexion Gmail désactivée dans l’espace de démonstration : la boîte de démo est déjà remplie.')); exit; }
 if (!mail_google_configured()) { header('Location: /boite-mail?err=' . urlencode('La connexion Google n’est pas configurée sur le serveur (GOOGLE_CLIENT_ID).')); exit; }

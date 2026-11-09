@@ -50,7 +50,7 @@ try { $nb_founders = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE is_foun
 // MRR — source de vérité : l'abonnement COURANT de chaque association (asso_subscriptions
 // + asso_plans, lu par ak_org_plan_state), et non la table legacy `subscriptions`.
 // Ne compte que les associations clientes : abonnement actif, ni essai (en cours ou terminé),
-// ni suspendue, ni résiliée. Un essai PRO et un plan « Offert » (free_grant) valent 0 € de revenu.
+// ni suspendue, ni résiliée. Un essai Pro et un plan « Offert » (free_grant) valent 0 € de revenu.
 $mrr = 0.00;
 foreach ($org_states as $ps) $mrr += sa_plan_state_mrr_cents($ps) / 100;
 
@@ -242,7 +242,7 @@ foreach ($expiring as $e) {
     $fin = $e['trial_ends_at'] ? date('d/m/Y', strtotime((string) $e['trial_ends_at'])) : '';
     $fc_signals[] = [
         'tone' => 'violet', 'ic' => '⏱',
-        't' => 'Essai PRO — ' . $e['name'],
+        't' => 'Essai Pro — ' . $e['name'],
         'd' => ($dl <= 0 ? 'Dernier jour d’essai' : 'Fin le ' . $fin . ' (J-' . $dl . ')') . ' · 0 € tant qu’il n’est pas converti',
         'go' => 'Convertir →', 'url' => '/super-admin/associations?id=' . (int) $e['id'] . '#essai',
     ];

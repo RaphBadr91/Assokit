@@ -63,6 +63,41 @@ try {
         } catch (Throwable $e2) {}
     }
 
+    // Support prioritaire (feature_priority_support, formule Équipe) : badge « Prioritaire » et tête
+    // de la file parmi les tickets ouverts, comme support-tickets.php. Aucun nouveau délai promis
+    // (24 h ouvrées pour tous). Grille pas en service ou fondations absentes : aucun ticket prioritaire.
+    $prio_orgs = [];
+    require_once __DIR__ . '/_app-plan.php';
+    // Lecture seule (pas d'ak_get_current_plan, qui peut créer une ligne Démarrage) : ligne d'abonnement
+    // courante (ak_sub_order), sinon l'ancien libellé (ak_legacy_plan_row)
+    if (app_plan_load() && app_plan_live($pdo)) {
+        $order = function_exists('ak_sub_order') ? ak_sub_order('s') : "(s.status = 'active') DESC, (s.status = 'trial') DESC, s.id DESC";
+        try {
+            $pq = $pdo->prepare("SELECT COALESCE(p.feature_priority_support, 0) FROM asso_subscriptions s
+                                 JOIN asso_plans p ON p.id = s.plan_id WHERE s.org_id = ? ORDER BY $order LIMIT 1");
+            foreach (array_unique(array_map(fn($r) => (int) ($r['org_id'] ?? 0), $rows)) as $oid) {
+                if ($oid <= 0) continue;
+                $pq->execute([$oid]);
+                $v = $pq->fetchColumn();
+                if ($v === false && function_exists('ak_legacy_plan_row')) {
+                    $lg = ak_legacy_plan_row($pdo, $oid);
+                    $v = $lg ? (int) ($lg['feature_priority_support'] ?? 0) : 0;
+                }
+                if ((int) $v === 1) $prio_orgs[$oid] = true;
+            }
+        } catch (Throwable $e) { $prio_orgs = []; }
+    }
+    if ($prio_orgs) {
+        // Tri stable : tickets ouverts / en cours prioritaires en tête, le reste dans l'ordre de la requête
+        $rank = function (array $r) use ($prio_orgs): int {
+            $live = in_array((string) ($r['status'] ?? ''), ['open', 'in_progress'], true);
+            return $live ? (isset($prio_orgs[(int) ($r['org_id'] ?? 0)]) ? 0 : 1) : 2;
+        };
+        $idx = 0;
+        foreach ($rows as &$r) { $r['_i'] = $idx++; } unset($r);
+        usort($rows, fn($a, $b) => [$rank($a), $a['_i']] <=> [$rank($b), $b['_i']]);
+    }
+
     $tickets = [];
     foreach ($rows as $r) {
         $status = (string) ($r['status'] ?? 'open');
@@ -77,6 +112,7 @@ try {
             'status_label' => $meta['label'],
             'status_kind'  => $meta['kind'],
             'unread'       => (int) ($r['unread'] ?? 0),
+            'priority_support' => isset($prio_orgs[(int) ($r['org_id'] ?? 0)]),
             'date'         => !empty($r['last_msg'] ?? $r['created_at']) ? date('d/m/Y', strtotime($r['last_msg'] ?? $r['created_at'])) : '',
         ];
     }

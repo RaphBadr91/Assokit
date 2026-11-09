@@ -70,6 +70,11 @@ $stmt = $pdo->prepare("
 $stmt->execute($params);
 $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Support prioritaire (formule Équipe)
+require_once __DIR__ . '/plan-controls.php';
+$st_priority = (bool)akc_priority_support_orgs($pdo, [$org_id]);
+$st_plan_name = $st_priority ? akc_plan_name($pdo, $org_id) : '';
+
 // Helpers
 function h_st($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
@@ -172,6 +177,13 @@ if (function_exists('render_head')) {
     <div>
         <h1>🎫 Support — Mes tickets</h1>
         <p>Suivez vos demandes auprès de l'équipe Assokit</p>
+        <?php
+          // Support prioritaire (formule Équipe, feature_priority_support) : badge sur les demandes
+          // en cours, qui passent en tête de la file de l'équipe Assokit (super-admin-support.php)
+          if ($st_priority):
+        ?>
+        <p style="margin-top:6px;color:#34d399;font-weight:600;">⚡ Votre formule <?= h_st($st_plan_name !== '' ? $st_plan_name : 'Équipe') ?> : vos demandes passent en tête de file.</p>
+        <?php endif; ?>
     </div>
     <a href="/support/nouveau" class="st-cta">+ Nouveau ticket</a>
 </div>
@@ -242,7 +254,7 @@ if (function_exists('render_head')) {
             <div class="st-row">
                 <div class="st-id">#<?= str_pad((string)$ticket['id'], 5, '0', STR_PAD_LEFT) ?></div>
                 <div>
-                    <div class="st-title"><?= h_st($ticket['title']) ?></div>
+                    <div class="st-title"><?= h_st($ticket['title']) ?><?php if ($st_priority && !in_array($ticket['status'], ['resolved', 'closed'], true)): ?> <span class="st-badge" style="background:rgba(16,185,129,0.15);color:#34d399;font-size:10px;">Prioritaire</span><?php endif; ?></div>
                     <div class="st-meta">
                         Par <?= h_st($ticket['author_first'] . ' ' . substr($ticket['author_last'], 0, 1) . '.') ?> · 
                         <span class="st-badge-prio" style="color: <?= $prio_cfg['color'] ?>;"><?= h_st($prio_cfg['label']) ?></span>

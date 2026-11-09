@@ -64,7 +64,8 @@ $send_email = !empty($input['send_welcome_email']);
 $period_days = max(1, (int) ($input['period_days'] ?? 30));
 $payment_mode = (string) ($input['payment_mode'] ?? 'free_grant');
 if (!in_array($payment_mode, ['free_grant', 'manual', 'wire_transfer', 'stripe'], true)) $payment_mode = 'free_grant';
-$with_addon_domain = !empty($input['with_addon_domain']);
+// Option « domaine personnalisé » retirée de la vente : la fonction n'existe pas (fondateur-domains.php,
+// page d'attente). Le champ with_addon_domain d'une ancienne version de l'appli est ignoré.
 $custom_password = trim((string) ($input['custom_password'] ?? ''));
 
 if ($org_name === '') oorg_fail(400, 'org_name', 'Nom de l\'organisation obligatoire.');
@@ -127,19 +128,11 @@ try {
                     'org_id' => $new_org_id,
                     'plan' => ak_db_pick($pdo, 'subscriptions', 'plan', ['pro', 'association', 'essentiel']) ?? 'pro',
                     'status' => $legacy_status, 'billing_cycle' => ak_db_pick($pdo, 'subscriptions', 'billing_cycle', ['monthly']) ?? 'monthly',
-                    'price_ht' => 49.99, 'tva_rate' => 20.00, 'current_period_end' => $period_end,
+                    // Même ligne que l'inscription (trial-helpers.php) : prix de Pro, 29,99 € HT
+                    'price_ht' => 29.99, 'tva_rate' => 20.00, 'current_period_end' => $period_end,
                 ], ['started_at' => 'NOW()', 'current_period_start' => 'NOW()', 'created_at' => 'NOW()']);
             }
         } catch (Throwable $e) { error_log('[app-founder-create-org] essai historique : ' . get_class($e)); }
-    }
-
-    // Add-on domaine personnalisé si demandé (10 €/mois), comme sur le web
-    if ($with_addon_domain && $new_sub_id > 0) {
-        try {
-            $pdo->prepare("INSERT INTO asso_subscription_addons (subscription_id, org_id, addon_type, addon_name, price_cents_monthly, status)
-                           VALUES (?, ?, 'custom_domain', 'Domaine personnalisé', 1000, 'active')")
-                ->execute([$new_sub_id, $new_org_id]);
-        } catch (Throwable $e) {}
     }
 
     // organizations.plan (ancien libellé) = slug du plan, seulement si la colonne l'accepte

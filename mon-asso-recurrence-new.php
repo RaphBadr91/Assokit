@@ -20,6 +20,11 @@ if ($org_id <= 0) { header('Location: /'); exit; }
 // [PACK 6.5 - SECURITY] Accès finances obligatoire
 require_once __DIR__ . '/finance-permissions.php';
 require_billing_access('recurrences', 'la création de récurrences');
+// Formule : factures récurrentes à partir de Pro (feature_recurring_invoices)
+if (!ak_recurrence_plan_ok($pdo, $org_id)) {
+    require_once __DIR__ . '/plan-controls.php';
+    akc_lock_page($pdo, $org_id, 'recurring_invoices', 'Factures récurrentes', 'recurrences');
+}
 
 $page_error = null;
 $clients = [];

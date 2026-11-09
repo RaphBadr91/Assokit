@@ -93,7 +93,7 @@ $css = <<<'CSS'
 .f4-sub { font-size: 9pt; color: #D1FAE5; line-height: 1.5; }
 
 .plans { padding: 0 8mm; }
-.plan { background: rgba(255,255,255,0.06); border-radius: 5pt; padding: 4mm 5mm; margin-bottom: 3mm; border: 1px solid rgba(167,243,208,0.18); }
+.plan { background: rgba(255,255,255,0.06); border-radius: 5pt; padding: 3mm 5mm; margin-bottom: 2.5mm; border: 1px solid rgba(167,243,208,0.18); }
 .plan.featured { background: #fff; color: #064E3B; border: 2pt solid #A7F3D0; }
 .plan-row { width: 100%; }
 .plan-row td { vertical-align: top; }
@@ -208,13 +208,13 @@ $mpdf->WriteHTML($css . <<<'HTML'
   <div class="f-body">
     <div class="module-card">
       <div class="module-title">📄 Devis &amp; factures</div>
-      <div class="module-desc">Logo, signature électronique, statut temps réel. Modèles personnalisables.</div>
+      <div class="module-desc">Logo, signature en ligne (Pro), statut temps réel. Modèles personnalisables.</div>
       <div class="module-feats">✓ HT/TVA/TTC · Récurrentes · PDF auto</div>
     </div>
 
     <div class="module-card amber">
       <div class="module-title">⚡ Relances clients automatiques</div>
-      <div class="module-desc">J+15, J+30, J+45. Emails IA personnalisés. +35% de recouvrement.</div>
+      <div class="module-desc">Formule Pro : rappel dès le lendemain, relance ferme, mise en demeure. Modèles prêts à l’emploi.</div>
       <div class="module-feats">✓ Suivi paiements · Historique · Export comptable</div>
     </div>
 
@@ -240,73 +240,97 @@ $mpdf->WriteHTML($css . <<<'HTML'
 HTML);
 
 // Page 4 - TARIFS + CONTACT
-// Offre en vigueur (tarifs.php) : Essai PRO gratuit, formule Assokit (prix HT + TVA lus en base par
-// ak_offer_price, jamais écrits en dur), Sur-mesure sur devis. Aucune formule gratuite.
+// Offre en vigueur (tarifs.php, grille 2026) : Essentiel, Pro (mis en avant), Équipe (prix HT lus par
+// ak_pricing_state, jamais écrits en dur), Sur-mesure à prix masqué sur devis. Essai Pro gratuit, sans carte.
+// Document imprimé : la note de TVA (ak_vat_note) vaut tant que la franchise s'applique ; si la TVA
+// devient due, régénérer le flyer et retirer les exemplaires imprimés.
 require_once __DIR__ . '/includes-pricing.php';
-$offer = ak_offer_price($pdo ?? null);
 $trial_days = defined('AK_TRIAL_DAYS') ? (int)AK_TRIAL_DAYS : 14;
-$fl_price = htmlspecialchars(str_replace("\u{00A0}€", '€', $offer['ht']), ENT_QUOTES, 'UTF-8');
-$fl_unit = (($offer['has_vat'] || !$offer['vat_known']) ? '/mois HT' : '/mois')
-    . ($offer['ttc_note'] !== '' ? '<br>' . htmlspecialchars($offer['ttc_note'], ENT_QUOTES, 'UTF-8') : '');   // « 59,99 € TTC » ou « TVA non applicable »
+$fl_p = [];
+foreach (['ak-essentiel', 'assokit', 'ak-equipe'] as $fl_s) {
+    $o = ak_plan_price($fl_s, $pdo ?? null);
+    $fl_p[$fl_s] = [
+        'price' => htmlspecialchars(str_replace("\u{00A0}€", '€', $o['ht']), ENT_QUOTES, 'UTF-8'),
+        'unit'  => 'HT/mois' . ($o['has_vat'] ? '<br>' . htmlspecialchars($o['ttc_note'], ENT_QUOTES, 'UTF-8') : ''),
+    ];
+}
+$fl_mask = htmlspecialchars(str_replace("\u{00A0}€\u{00A0}HT/mois", '€', AK_PRICE_MASK), ENT_QUOTES, 'UTF-8');
+$fl_vat = htmlspecialchars(ak_vat_note($pdo ?? null), ENT_QUOTES, 'UTF-8');
+$fl_ess = $fl_p['ak-essentiel']; $fl_pro = $fl_p['assokit']; $fl_equ = $fl_p['ak-equipe'];
 
 $mpdf->AddPage();
 $mpdf->WriteHTML($css . <<<HTML
 <div class="page face4">
   <div class="f4-head">
-    <div class="f4-eyebrow">💎 TARIFS SIMPLES</div>
-    <div class="f4-title">Une seule <em>formule</em>.</div>
-    <div class="f4-sub">Sans engagement. Essai gratuit {$trial_days} jours. Sans carte bancaire.</div>
+    <div class="f4-eyebrow">💎 TARIFS CLAIRS</div>
+    <div class="f4-title">Trois formules, <em>sans engagement</em>.</div>
+    <div class="f4-sub">Essai gratuit {$trial_days} jours sur Pro. Sans carte bancaire.</div>
   </div>
 
   <div class="plans">
     <div class="plan">
       <table class="plan-row"><tr>
         <td>
-          <div class="plan-name">Essai PRO</div>
-          <div class="plan-tag">POUR DÉCOUVRIR</div>
+          <div class="plan-name">Essentiel</div>
+          <div class="plan-tag">PETITES STRUCTURES</div>
         </td>
         <td style="text-align:right;">
-          <div class="plan-price">Gratuit</div>
-          <div class="plan-unit">{$trial_days} jours · sans carte bancaire</div>
+          <div class="plan-price">{$fl_ess['price']}</div>
+          <div class="plan-unit">{$fl_ess['unit']}</div>
         </td>
       </tr></table>
-      <div class="plan-feats">Toutes les fonctionnalités · Aucun prélèvement · Vos données conservées</div>
+      <div class="plan-feats">Adhérents · Factures et devis · Compta et FEC · AG · Relance en un clic · Appli mobile</div>
     </div>
 
     <div class="plan featured">
       <table class="plan-row"><tr>
         <td>
-          <div class="plan-name">Assokit ⭐</div>
-          <div class="plan-tag">TOUT INCLUS</div>
+          <div class="plan-name">Pro ⭐</div>
+          <div class="plan-tag">ASSOCIATIONS ACTIVES ET TPE</div>
         </td>
         <td style="text-align:right;">
-          <div class="plan-price">{$fl_price}</div>
-          <div class="plan-unit">{$fl_unit}</div>
+          <div class="plan-price">{$fl_pro['price']}</div>
+          <div class="plan-unit">{$fl_pro['unit']}</div>
         </td>
       </tr></table>
-      <div class="plan-feats">Adhérents · Projets · Facturation · Compta · Subventions · IA · Appli mobile · Sous-domaine inclus</div>
+      <div class="plan-feats">Tout Essentiel + relances automatiques · Factures récurrentes · Devis signés en ligne · Copilote IA</div>
+    </div>
+
+    <div class="plan">
+      <table class="plan-row"><tr>
+        <td>
+          <div class="plan-name">Équipe</div>
+          <div class="plan-tag">STRUCTURES AVEC UNE ÉQUIPE</div>
+        </td>
+        <td style="text-align:right;">
+          <div class="plan-price">{$fl_equ['price']}</div>
+          <div class="plan-unit">{$fl_equ['unit']}</div>
+        </td>
+      </tr></table>
+      <div class="plan-feats">Tout Pro + priorités IA pour toute l’équipe · Planning · Anomalies · Prise en main en visio</div>
     </div>
 
     <div class="plan">
       <table class="plan-row"><tr>
         <td>
           <div class="plan-name">Sur-mesure</div>
-          <div class="plan-tag">GRANDS COMPTES</div>
+          <div class="plan-tag">RÉSEAUX · COLLECTIVITÉS</div>
         </td>
         <td style="text-align:right;">
-          <div class="plan-price">Sur devis</div>
-          <div class="plan-unit">réseaux · fédérations</div>
+          <div class="plan-price">{$fl_mask}</div>
+          <div class="plan-unit">HT/mois<br>Sur devis — nous contacter</div>
         </td>
       </tr></table>
-      <div class="plan-feats">Domaine perso · White-label · Support dédié · Collectivités</div>
+      <div class="plan-feats">Volumes au devis · Portail collectivité · Reprise des données · Formation</div>
     </div>
+    <div class="plan-unit" style="text-align:center;">{$fl_vat}</div>
   </div>
 
   <div class="f4-bottom">
     <div class="cta-line">📞 Parlons de votre projet</div>
     <div class="cta-tel">+33 7 56 89 73 36</div>
     <div class="cta-url">www.<strong>assokit.fr</strong> · contact@assokit.fr</div>
-    <div class="editor">🇫🇷 Édité par RBPS · Hébergé en France · Conforme RGPD</div>
+    <div class="editor">🇫🇷 Édité par RBPS · Hébergé en France · Respect du RGPD</div>
   </div>
 </div>
 HTML);

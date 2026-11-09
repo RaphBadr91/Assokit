@@ -133,8 +133,14 @@ if ($is_post && !$csrf_ok) {
     } elseif (!$adherent['is_active'] && $form['is_active'] === '1' && function_exists('ak_can_add_adherent')
               && empty(($plan_check = ak_can_add_adherent($pdo, $org_id))['ok'])) {
         // Réactiver un compte le remet dans le décompte du plan, comme un ajout ou une restauration.
-        $error = 'Impossible de réactiver ce compte : ' . ($plan_check['reason'] ?? 'limite d’adhérents atteinte')
-               . '. Passez au plan supérieur ou désactivez un autre adhérent.';
+        $error = 'Impossible de réactiver ce compte : ' . lcfirst(rtrim((string)($plan_check['reason'] ?? 'limite de membres atteinte'), '.'))
+               . '. Cette limite est celle de votre formule : désactivez d’abord un autre compte.';
+    } elseif ($form['is_active'] === '1' && function_exists('ak_can_add_manager') && function_exists('ak_manager_roles')
+              && in_array($form['role'], ak_manager_roles(), true)
+              && !($adherent['is_active'] && in_array((string)$adherent['role'], ak_manager_roles(), true))
+              && empty(($mgr_check = ak_can_add_manager($pdo, $org_id, 1))['ok'])) {
+        // Un gestionnaire actif de plus (rôle changé ou compte réactivé) : limite de la formule
+        $error = $mgr_check['reason'];
     } else {
         // Verifier email doublon (sauf si c'est le sien)
         $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1");

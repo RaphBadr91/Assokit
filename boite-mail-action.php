@@ -30,6 +30,13 @@ if (!mail_schema_ready($pdo)) $out(['ok' => false, 'error' => 'Migration boîte 
 $org = (int)$user['org_id'];
 $acc = mail_get_account($pdo, $org);
 $action = (string)($in['action'] ?? '');
+
+// Formule : boîte Gmail intégrée à partir de Pro (feature_mail_inbox). Déconnecter la boîte reste
+// toujours permis (effacer la copie des e-mails). Message neutre dans l'appli (ak_billing_hidden).
+if ($action !== 'disconnect' && !mail_plan_inbox_ok($pdo, $org)) {
+    $msg = mail_plan_message($pdo, $org);
+    $out(['ok' => false, 'error' => $msg, 'message' => $msg, 'plan_feature' => true], 403);
+}
 $manage = mail_can_manage($user);
 
 // Limite de fréquence : message lisible dans « error » (le site et l'appli affichent ce champ)
@@ -132,7 +139,8 @@ case 'settings':
         mb_substr(trim((string)($in['signature'] ?? '')), 0, 2000) ?: null,
         max(1, min(365, (int)($in['sync_days'] ?? 30))),
         max(1, min(120, (int)($in['retention_months'] ?? 24))),
-        !empty($in['ai_sort']) ? 1 : 0,
+        // Tri par l'IA : seulement si la formule l'inclut (Équipe et au-delà) ; sinon l'option reste coupée
+        (!empty($in['ai_sort']) && mail_plan_ai_sort_ok($pdo, $org)) ? 1 : 0,
         $acc['id'],
     ]);
     $out(['ok' => true]);

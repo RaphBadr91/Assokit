@@ -483,7 +483,7 @@ function orgTrialInfo(k) {
   }
   if (!inTrial) return null;
   const pl = String(k.plan_label || '').trim();
-  const name = !pl ? 'Essai PRO' : (/essai/i.test(pl) ? pl : 'Essai ' + pl);
+  const name = !pl ? 'Essai Pro' : (/essai/i.test(pl) ? pl : 'Essai ' + pl);
   const jx = left === null ? '' : (left <= 0 ? ' · dernier jour' : ' · J-' + left);
   return { expired: false, text: name + (end ? ' jusqu’au ' + end : '') + jx };
 }
@@ -1138,6 +1138,14 @@ function NativeHome({ data, loading, onRefresh, onGoto, profile, error, onQuick,
             <View style={styles.fgTrialPill} accessible accessibilityLabel={trial.text}>
               <Ionicons name={trial.expired ? 'alert-circle-outline' : 'hourglass-outline'} size={13} color="#FDE68A" />
               <Text style={styles.fgTrialTxt} numberOfLines={1}>{trial.text}</Text>
+            </View>
+          ) : null}
+          {/* Accès limité (formule Démarrage, api/app-dashboard.php) : information neutre, sans bouton
+              ni prix (règle 3.1.1 d'Apple), aussi sur iPhone */}
+          {data && data.plan_readonly === true ? (
+            <View style={[styles.fgTrialPill, { borderRadius: 12 }]} accessible accessibilityLabel={data.plan_readonly_message || 'Accès limité'}>
+              <Ionicons name="lock-closed-outline" size={13} color="#FDE68A" />
+              <Text style={[styles.fgTrialTxt, { fontWeight: '600' }]} numberOfLines={3}>{data.plan_readonly_message || 'Votre espace est en accès limité : vos données restent consultables et exportables.'}</Text>
             </View>
           ) : null}
         </LinearGradient>
@@ -1895,9 +1903,9 @@ function NativeProjectDetail({ entry, onBack, onRefresh, onWeb, onAddExpense, on
         ) : bilan.ok === false ? (
           <View style={styles.dCard}><Text style={styles.dMuted}>{bilan.message || 'Bilan indisponible pour le moment. Tirez vers le bas pour réessayer.'}</Text></View>
         ) : bilan.allowed === false ? (
-          <View style={styles.upsellCard}>
-            <Ionicons name="lock-closed" size={22} color="#B45309" />
-            <Text style={styles.upsellTxt}>Cette fonctionnalité n'est pas disponible pour votre organisation.</Text>
+          <View style={styles.dLockCard}>
+            <Ionicons name="lock-closed" size={18} color="#8A968F" />
+            <Text style={styles.dLockTxt}>{(typeof bilan.message === 'string' && bilan.message.trim()) || 'Cette fonction n’est pas incluse dans votre formule.'}</Text>
           </View>
         ) : (bilan.count || 0) === 0 ? (
           <View style={styles.dCard}><Text style={styles.dMuted}>Aucune dépense enregistrée. Scannez une facture pour l'ajouter au projet.</Text></View>
@@ -4685,7 +4693,7 @@ const FC_MINI = [
 const FC_TILES = [
   { key: 'associations', icon: 'business', color: '#059669', bg: '#ECFDF5', title: 'Associations', desc: 'Gérer · valider · suspendre' },
   { key: 'billing', icon: 'card', color: '#2563EB', bg: '#EFF6FF', title: 'Abonnements', desc: 'MRR · impayés · relances' },
-  { key: 'plans', icon: 'pricetags', color: '#0D9488', bg: '#F0FDFA', title: 'Plans tarifaires', desc: 'Prix · quotas · options' },
+  { key: 'plans', icon: 'pricetags', color: '#0D9488', bg: '#F0FDFA', title: 'Formules', desc: 'Prix · limites · fonctions' },
   { key: 'support', icon: 'chatbubbles', color: '#7C3AED', bg: '#F5F3FF', title: 'Support', desc: 'Tickets & messages' },
   { key: 'contacts', icon: 'mail', color: '#DB2777', bg: '#FDF2F8', title: 'Contacts', desc: 'Demandes du site · prospects' },
   { key: 'stats', icon: 'stats-chart', color: '#0891B2', bg: '#ECFEFF', title: 'Statistiques', desc: 'Croissance · emails · SMS' },
@@ -5099,7 +5107,7 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
     { label: 'Application installée', value: (activity.apps || []).length ? activity.apps.join(' et ') : 'Non' },
     activity.unpaid_nb > 0 ? { label: 'Impayés', value: activity.unpaid_nb + ' facture' + (activity.unpaid_nb > 1 ? 's' : '') + ' · ' + fmtEuro(activity.unpaid_total) } : null,
   ] : [];
-  // Prix de la formule (mêmes textes que le sélecteur : « 49,99 €/mois », « Gratuit », « Sur devis ») ; rien pendant un essai
+  // Prix de la formule, espace Fondateur seulement (mêmes textes que le sélecteur : « 29,99 € HT/mois », « Gratuit », « Sur devis ») ; rien pendant un essai
   const curPlan = o.plan_id ? (plans.find((p) => p.id === o.plan_id) || null) : null;
   const priceTxt = o.is_trial || o.trial_expired ? ''
     : curPlan && curPlan.price_text ? curPlan.price_text
@@ -5153,6 +5161,16 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
           </View>
           {showBadge ? <Text style={[styles.odPlanBadge, { color: tone.color }]}>{o.badge}</Text>
             : (o.badge_tone === undefined && o.trial_ends ? <Text style={[styles.odPlanBadge, { color: PLAN_TONE.trial.color }]}>ESSAI · fin {o.trial_ends}</Text> : null)}
+          {/* Limites et compteurs du mois (api/app-founder-org-detail.php › plan_card, sans prix) */}
+          {data.plan_card && Array.isArray(data.plan_card.summary) && data.plan_card.summary.length > 0 ? (
+            <Text style={[styles.odHint, { marginTop: 10, marginBottom: 0 }]}>{data.plan_card.summary.join(' · ')}</Text>
+          ) : null}
+          {data.plan_card && Array.isArray(data.plan_card.usage) && data.plan_card.usage.length > 0 ? (
+            <Text style={[styles.odHint, { marginTop: 4, marginBottom: 0 }]}>{data.plan_card.usage.map((u) => u.text).join('\n')}</Text>
+          ) : null}
+          {data.plan_card && Array.isArray(data.plan_card.states) ? data.plan_card.states.filter((st) => st.tone !== 'trial').map((st, i) => (
+            <Text key={'pcs' + i} style={[styles.odHint, { marginTop: 4, marginBottom: 0, fontWeight: '600' }]}>{st.text}</Text>
+          )) : null}
           {o.can_extend_trial && !locked ? (
             <View style={styles.odExtendRow}>
               {[7, 14].map((d) => (
@@ -5294,68 +5312,116 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
   );
 }
 
-/* Fondateur — Gestion des plans tarifaires (natif) : liste + créer/éditer/supprimer */
+/* Fondateur — Gestion des formules (natif) : liste + créer/éditer/supprimer.
+   Grille de novembre 2026 : Essentiel (ak-essentiel), Pro (assokit), Équipe (ak-equipe), Sur-mesure,
+   et les lignes masquées Offre fondateur, Essai Pro (pro-essai) et Démarrage (accès limité).
+   Limites et fonctions : la liste vient du serveur (api/app-founder-plans.php › fields, lue dans
+   ak_plan_limit_keys / ak_plan_feature_keys de plan-helpers.php, la même que /fondateur-plans) ;
+   les listes ci-dessous ne servent que de libellés courts et de repli (ancien serveur).
+   Vide = illimité, 0 = bloqué. Écran du Fondateur seulement : les prix n'y sont jamais vus d'un client. */
 const PLAN_QUOTAS = [
-  { key: 'limit_adherents', label: 'Adhérents' }, { key: 'limit_users', label: 'Utilisateurs' },
-  { key: 'limit_invoices_total', label: 'Factures' }, { key: 'limit_quotes_total', label: 'Devis' },
-  { key: 'limit_contacts', label: 'Contacts' }, { key: 'limit_ai_text_per_month', label: 'IA texte/mois' },
-  { key: 'limit_ai_image_per_month', label: 'IA image/mois' }, { key: 'limit_emails_per_month', label: 'Emails/mois' },
+  { key: 'limit_adherents', label: 'Membres (bureau compris)' }, { key: 'limit_managers', label: 'Gestionnaires' },
+  { key: 'limit_users', label: 'Comptes utilisateurs' }, { key: 'limit_invoices_total', label: 'Factures (total)' },
+  { key: 'limit_quotes_total', label: 'Devis (total)' }, { key: 'limit_contacts', label: 'Contacts' },
+  { key: 'limit_ai_text_per_month', label: 'Crédits IA / mois' }, { key: 'limit_ai_image_per_month', label: 'IA image / mois' },
+  { key: 'limit_emails_per_month', label: 'E-mails / mois' }, { key: 'limit_mail_ai_batches_per_month', label: 'Lots de tri IA / mois' },
 ];
+// def : valeur d'une nouvelle formule (colonne en base : 1 pour les fonctions apparues avec la grille)
 const PLAN_FEATURES = [
-  { key: 'feature_recurring_invoices', label: 'Factures récurrentes' }, { key: 'feature_signature_quotes', label: 'Devis signés' },
-  { key: 'feature_email_diffusion', label: 'Diffusion email' }, { key: 'feature_advanced_stats', label: 'Stats avancées' },
-  { key: 'feature_priority_support', label: 'Support prioritaire' }, { key: 'feature_custom_domain', label: 'Domaine perso' },
-  { key: 'feature_dedicated_support', label: 'Support dédié' },
+  { key: 'feature_email_diffusion', label: 'Envois groupés d’e-mails', def: true },
+  { key: 'feature_advanced_stats', label: 'Prévisions et analytique illimitée' },
+  { key: 'feature_recurring_invoices', label: 'Relances automatiques et factures récurrentes' },
+  { key: 'feature_signature_quotes', label: 'Devis signés en ligne' },
+  { key: 'feature_ai_assistant', label: 'Copilote IA et priorités du jour', def: true },
+  { key: 'feature_mail_inbox', label: 'Boîte Gmail intégrée', def: true },
+  { key: 'feature_mail_ai_sort', label: 'Tri IA de la boîte mail', def: true },
+  { key: 'feature_ai_daily_all', label: 'Priorités IA pour chaque membre', def: true },
+  { key: 'feature_anomalies', label: 'Détection des anomalies', def: true },
+  { key: 'feature_team_planning', label: 'Planning d’équipe et absences', def: true },
+  { key: 'feature_prospection', label: 'Prospection partagée', def: true },
+  { key: 'feature_activity_log', label: 'Journal d’activité', def: true },
+  { key: 'feature_shared_inbox', label: 'Boîte mail partagée', def: true },
+  { key: 'feature_treasurer_digest', label: 'Point du lundi du trésorier', def: true },
+  { key: 'feature_priority_support', label: 'Support prioritaire' },
+  { key: 'feature_custom_domain', label: 'Domaine personnel (pas encore disponible)' },
+  { key: 'feature_dedicated_support', label: 'Interlocuteur unique' },
 ];
-function blankPlan() {
+// Liste du serveur (ordre et clés), libellé court local quand la clé est connue ; repli : liste locale
+function planFieldList(server, local) {
+  if (!Array.isArray(server) || server.length === 0) return local;
+  const byKey = {};
+  local.forEach((x) => { byKey[x.key] = x; });
+  return server.filter((x) => x && typeof x.key === 'string').map((x) => ({
+    key: x.key,
+    label: (byKey[x.key] && byKey[x.key].label) || String(x.label || x.key),
+    def: typeof x.default === 'boolean' ? x.default : !!(byKey[x.key] && byKey[x.key].def),
+  }));
+}
+function blankPlan(quotas, features) {
   const p = { id: 0, slug: '', name: '', tagline: '', price_eur: '', price_label: '', is_custom_quote: false, is_featured: false, is_visible: true, display_order: 0 };
-  PLAN_QUOTAS.forEach((q) => { p[q.key] = ''; });
-  PLAN_FEATURES.forEach((f) => { p[f.key] = false; });
+  (quotas || PLAN_QUOTAS).forEach((q) => { p[q.key] = ''; });
+  (features || PLAN_FEATURES).forEach((f) => { p[f.key] = !!f.def; });
   return p;
+}
+// « 500 membres · 10 gest. » pour la liste (limites vides = illimité)
+function planLimitsLine(p) {
+  const n = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+  const fr = (v) => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
+  const ad = n(p.limit_adherents), mg = n(p.limit_managers);
+  const parts = [];
+  if (ad !== null) parts.push(fr(ad) + ' membres');
+  if (mg !== null) parts.push(fr(mg) + ' gest.');
+  return parts.join(' · ');
 }
 function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, onDelete, onToggle }) {
   const plans = data ? (data.plans || []) : null;
+  const quotas = planFieldList(data && data.fields && data.fields.limits, PLAN_QUOTAS);
+  const features = planFieldList(data && data.fields && data.fields.features, PLAN_FEATURES);
   const [form, setForm] = useState(null); // null = liste ; objet = édition/création
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Édition d'un plan existant
+  // Édition d'une formule existante
   const openEdit = (p) => {
-    const f = { ...blankPlan(), ...p };
-    PLAN_QUOTAS.forEach((q) => { f[q.key] = (p[q.key] === null || p[q.key] === undefined) ? '' : String(p[q.key]); });
+    const f = { ...blankPlan(quotas, features), ...p };
+    quotas.forEach((q) => { f[q.key] = (p[q.key] === null || p[q.key] === undefined) ? '' : String(p[q.key]); });
     f.price_eur = p.price_eur != null ? String(p.price_eur) : '';
     setForm(f);
   };
 
   // Plans et prix : Fondateur seul (403 forbidden pour un super-admin, comme sur le site)
   if (data && data.ok === false) {
-    return <DetailError title="Plans tarifaires" onBack={onBack} onRetry={onRefresh}
+    return <DetailError title="Formules" onBack={onBack} onRetry={onRefresh}
       data={data.error === 'forbidden' ? { ...data, message: 'Réservé au Fondateur.' } : data} />;
   }
 
   if (form) {
     const isNew = !form.id;
+    const slugLocked = !!(form.is_system || form.slug_fixed);
     const canSave = form.slug.trim().length > 0 && form.name.trim().length > 0 && !busy;
     return (
       <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
-        <DetailHeader title={isNew ? 'Nouveau plan' : 'Modifier le plan'} onBack={() => setForm(null)} />
+        <DetailHeader title={isNew ? 'Nouvelle formule' : 'Modifier la formule'} onBack={() => setForm(null)} />
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1.3 }}><Text style={styles.blogLabel}>Nom</Text><TextInput style={styles.blogInput} value={form.name} onChangeText={(v) => setF('name', v)} placeholder="Ex : Association" placeholderTextColor="#9AA7A1" /></View>
-            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Slug</Text><TextInput style={[styles.blogInput, form.is_system && { color: '#8A968F' }]} value={form.slug} editable={!form.is_system} onChangeText={(v) => setF('slug', v.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="association" placeholderTextColor="#9AA7A1" autoCapitalize="none" /></View>
+            <View style={{ flex: 1.3 }}><Text style={styles.blogLabel}>Nom</Text><TextInput style={styles.blogInput} value={form.name} onChangeText={(v) => setF('name', v)} placeholder="Ex : Sur-mesure Réseau" placeholderTextColor="#9AA7A1" /></View>
+            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Slug</Text><TextInput style={[styles.blogInput, slugLocked && { color: '#8A968F' }]} value={form.slug} editable={!slugLocked} onChangeText={(v) => setF('slug', v.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="sur-mesure-reseau" placeholderTextColor="#9AA7A1" autoCapitalize="none" /></View>
           </View>
-          {form.is_system ? (
-            <Text style={styles.odHint}>{form.is_trial ? 'Plan d’essai attribué à l’inscription (' + (form.label || form.name) + ').' : 'Plan gratuit attribué à la fin d’un essai.'} Son slug ne peut pas changer et il ne peut pas être supprimé.</Text>
+          {form.system_hint ? (
+            <Text style={styles.odHint}>{form.system_hint}{form.is_system ? ' Son slug ne peut pas changer et elle ne peut pas être supprimée.' : ''}</Text>
+          ) : form.is_system ? (
+            <Text style={styles.odHint}>{form.is_trial ? 'Formule d’essai attribuée à l’inscription (' + (form.label || form.name) + ').' : 'Accès limité attribué à la fin d’un essai.'} Son slug ne peut pas changer et elle ne peut pas être supprimée.</Text>
           ) : null}
           <Text style={styles.blogLabel}>Accroche</Text>
-          <TextInput style={styles.blogInput} value={form.tagline} onChangeText={(v) => setF('tagline', v)} placeholder="Ex : Pour les assos qui grandissent" placeholderTextColor="#9AA7A1" />
+          <TextInput style={styles.blogInput} value={form.tagline} onChangeText={(v) => setF('tagline', v)} placeholder="Ex : Associations actives et TPE" placeholderTextColor="#9AA7A1" />
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Prix (€/mois HT)</Text><TextInput style={styles.blogInput} value={form.price_eur} onChangeText={(v) => setF('price_eur', v.replace(/[^0-9.,]/g, '').replace(',', '.'))} placeholder="49.99" placeholderTextColor="#9AA7A1" keyboardType="decimal-pad" /></View>
+            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Prix (€ HT/mois)</Text><TextInput style={styles.blogInput} value={form.price_eur} onChangeText={(v) => setF('price_eur', v.replace(/[^0-9.,]/g, '').replace(',', '.'))} placeholder="29.99" placeholderTextColor="#9AA7A1" keyboardType="decimal-pad" /></View>
             <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Libellé prix</Text><TextInput style={styles.blogInput} value={form.price_label} onChangeText={(v) => setF('price_label', v)} placeholder="Sur devis…" placeholderTextColor="#9AA7A1" /></View>
           </View>
 
-          <Text style={[styles.blogLabel, { marginTop: 16 }]}>Quotas <Text style={{ color: '#9AA7A1', fontWeight: '400' }}>(vide = illimité)</Text></Text>
+          <Text style={[styles.blogLabel, { marginTop: 16 }]}>Limites <Text style={{ color: '#9AA7A1', fontWeight: '400' }}>(vide = illimité, 0 = bloqué)</Text></Text>
+          <Text style={styles.odHint}>Gestionnaires : administrateurs, coordinateurs et référents. Un lot de tri IA = 15 conversations.</Text>
           <View style={styles.plnGrid}>
-            {PLAN_QUOTAS.map((q) => (
+            {quotas.map((q) => (
               <View key={q.key} style={styles.plnQuota}>
                 <Text style={styles.plnQuotaLbl}>{q.label}</Text>
                 <TextInput style={styles.plnQuotaInp} value={String(form[q.key] ?? '')} onChangeText={(v) => setF(q.key, v.replace(/[^0-9]/g, ''))} placeholder="∞" placeholderTextColor="#B8C4C0" keyboardType="number-pad" />
@@ -5363,9 +5429,9 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
             ))}
           </View>
 
-          <Text style={[styles.blogLabel, { marginTop: 16 }]}>Fonctionnalités incluses</Text>
+          <Text style={[styles.blogLabel, { marginTop: 16 }]}>Fonctions incluses</Text>
           <View style={styles.plnPanel}>
-            {PLAN_FEATURES.map((ft, i) => (
+            {features.map((ft, i) => (
               <View key={ft.key} style={[styles.plnFeat, i > 0 && styles.odMemberBorder]}>
                 <Text style={styles.plnFeatLbl}>{ft.label}</Text>
                 <Switch value={!!form[ft.key]} onValueChange={(v) => setF(ft.key, v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} />
@@ -5375,23 +5441,23 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
 
           <View style={styles.plnPanel}>
             <View style={styles.plnFeat}><Text style={styles.plnFeatLbl}>Visible sur la page tarifs</Text><Switch value={!!form.is_visible} onValueChange={(v) => setF('is_visible', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
-            <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Plan mis en avant</Text><Switch value={!!form.is_featured} onValueChange={(v) => setF('is_featured', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
+            <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Formule mise en avant</Text><Switch value={!!form.is_featured} onValueChange={(v) => setF('is_featured', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
             <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Sur devis (prix masqué)</Text><Switch value={!!form.is_custom_quote} onValueChange={(v) => setF('is_custom_quote', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
           </View>
 
           <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave}
             onPress={() => {
               const payload = { action: isNew ? 'create' : 'update', plan_id: form.id || undefined, slug: form.slug.trim(), name: form.name.trim(), tagline: form.tagline.trim(), price_eur: parseFloat(form.price_eur) || 0, price_label: form.price_label.trim(), is_custom_quote: form.is_custom_quote ? 1 : 0, is_featured: form.is_featured ? 1 : 0, is_visible: form.is_visible ? 1 : 0, display_order: form.display_order || 0 };
-              PLAN_QUOTAS.forEach((q) => { payload[q.key] = form[q.key] === '' ? '' : parseInt(form[q.key], 10); });
-              PLAN_FEATURES.forEach((f) => { payload[f.key] = form[f.key] ? 1 : 0; });
+              quotas.forEach((q) => { payload[q.key] = form[q.key] === '' ? '' : parseInt(form[q.key], 10); });
+              features.forEach((f) => { payload[f.key] = form[f.key] ? 1 : 0; });
               onSave(payload, () => setForm(null));
             }}>
-            {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>{isNew ? 'Créer le plan' : 'Enregistrer'}</Text></>}
+            {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>{isNew ? 'Créer la formule' : 'Enregistrer'}</Text></>}
           </TouchableOpacity>
           {!isNew && !form.is_system && (
             <TouchableOpacity accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 14 }} activeOpacity={0.7}
-              onPress={() => Alert.alert('Supprimer ce plan ?', 'Action définitive (impossible si des orgs l\'utilisent).', [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: () => onDelete(form.id, () => setForm(null)) }])}>
-              <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 14 }}>Supprimer le plan</Text>
+              onPress={() => Alert.alert('Supprimer cette formule ?', 'Action définitive (impossible si une association l’utilise).', [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: () => onDelete(form.id, () => setForm(null)) }])}>
+              <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 14 }}>Supprimer la formule</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -5401,17 +5467,17 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
 
   return (
     <View style={styles.detailWrap}>
-      <DetailHeader title="Plans tarifaires" onBack={onBack} />
+      <DetailHeader title="Formules" onBack={onBack} />
       {!plans ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={!!loading} onRefresh={onRefresh} tintColor={BRAND} colors={[BRAND]} />}>
-          <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, { alignSelf: 'flex-start', marginBottom: 14 }]} activeOpacity={0.85} onPress={() => setForm(blankPlan())}>
-            <Ionicons name="add" size={18} color="#fff" /><Text style={styles.projNewTxt}>Nouveau plan</Text>
+          <TouchableOpacity accessibilityRole="button" style={[styles.projNewBtn, { alignSelf: 'flex-start', marginBottom: 14 }]} activeOpacity={0.85} onPress={() => setForm(blankPlan(quotas, features))}>
+            <Ionicons name="add" size={18} color="#fff" /><Text style={styles.projNewTxt}>Nouvelle formule</Text>
           </TouchableOpacity>
           {plans.length === 0 ? (
-            <View style={styles.emptyBox}><Ionicons name="pricetags-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucun plan</Text></View>
+            <View style={styles.emptyBox}><Ionicons name="pricetags-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune formule</Text></View>
           ) : plans.map((p) => (
             <TouchableOpacity accessibilityRole="button" key={p.id} style={styles.plnCard} activeOpacity={0.85} onPress={() => openEdit(p)}>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -5422,9 +5488,10 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
                   {!p.is_visible && <View style={[styles.fcChip, { backgroundColor: '#F1F5F4' }]}><Text style={[styles.fcChipTxt, { color: '#5F6D66' }]}>Masqué</Text></View>}
                 </View>
                 <Text style={styles.plnSub} numberOfLines={1}>{p.slug} · {p.adoption} org{p.adoption > 1 ? 's' : ''}{p.tagline ? ' · ' + p.tagline : ''}</Text>
+                {planLimitsLine(p) ? <Text style={styles.plnSub} numberOfLines={1}>{planLimitsLine(p)}</Text> : null}
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.plnPrice}>{p.is_trial ? 'Essai' : (p.is_custom_quote || (p.slug === 'sur-mesure' && !(p.price_eur > 0))) ? 'Sur devis' : (p.price_eur > 0 ? fmtEuro2(p.price_eur) : 'Gratuit')}</Text>
+                <Text style={styles.plnPrice}>{p.is_trial ? 'Essai' : (p.is_custom_quote || (p.slug === 'sur-mesure' && !(p.price_eur > 0))) ? 'Sur devis' : (p.price_eur > 0 ? fmtEuro2(p.price_eur) + ' HT' : (p.slug === 'demarrage' ? 'Accès limité' : 'Gratuit'))}</Text>
                 <Ionicons name="chevron-forward" size={16} color="#CBD5D1" style={{ marginTop: 3 }} />
               </View>
             </TouchableOpacity>
@@ -6159,6 +6226,8 @@ function NativeFounderSupport({ data, loading, filter, onFilter, onBack, onRefre
                 <Text style={styles.fcOrgSub} numberOfLines={1}>{t.org} · {t.date}</Text>
               </View>
               {t.unread > 0 && <View style={styles.fcUnread}><Text style={styles.fcUnreadTxt}>{t.unread}</Text></View>}
+              {/* Support prioritaire (formule Équipe, api/app-founder-support.php) : en tête de file */}
+              {t.priority_support === true && <View style={[styles.fcChip, { backgroundColor: '#FEF3C7', marginRight: 6 }]}><Text style={[styles.fcChipTxt, { color: '#B45309' }]}>Prioritaire</Text></View>}
               <View style={[styles.fcChip, { backgroundColor: km.bg }]}><Text style={[styles.fcChipTxt, { color: km.color }]}>{t.status_label}</Text></View>
             </TouchableOpacity>
           );
@@ -6242,7 +6311,6 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
   const [pass, setPass] = useState('');
   const [payMode, setPayMode] = useState('free_grant');
   const [periodDays, setPeriodDays] = useState(30);
-  const [addonDomain, setAddonDomain] = useState(false);
   const [sendMail, setSendMail] = useState(true);
   const list = plans || [];
   const chosen = list.find((p) => p.id === planId) || null;
@@ -6338,16 +6406,13 @@ function NativeFounderCreateOrg({ plans, busy, result, error, onSubmit, onBack, 
           ))}
         </View>
 
-        <View style={styles.blogSwitchRow}>
-          <View style={{ flex: 1 }}><Text style={styles.blogSwitchTitle}>Domaine personnalisé</Text><Text style={styles.blogSwitchSub}>Add-on marque blanche · +10 €/mois</Text></View>
-          <Switch value={addonDomain} onValueChange={setAddonDomain} trackColor={{ true: BRAND, false: '#CBD5D1' }} />
-        </View>
+        {/* Option « domaine personnalisé » retirée : la fonction n'existe pas encore (fondateur-domains.php) */}
         <View style={styles.blogSwitchRow}>
           <View style={{ flex: 1 }}><Text style={styles.blogSwitchTitle}>Envoyer l'email de bienvenue</Text><Text style={styles.blogSwitchSub}>Avec les identifiants de connexion</Text></View>
           <Switch value={sendMail} onValueChange={setSendMail} trackColor={{ true: BRAND, false: '#CBD5D1' }} />
         </View>
         <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSubmit && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSubmit}
-          onPress={() => onSubmit({ org_name: name.trim(), first_name: first.trim(), last_name: last.trim(), billing_email: email.trim(), plan_id: planId, custom_password: pass.trim(), payment_mode: payMode, period_days: periodDays, with_addon_domain: addonDomain ? 1 : 0, send_welcome_email: sendMail ? 1 : 0 })}>
+          onPress={() => onSubmit({ org_name: name.trim(), first_name: first.trim(), last_name: last.trim(), billing_email: email.trim(), plan_id: planId, custom_password: pass.trim(), payment_mode: payMode, period_days: periodDays, send_welcome_email: sendMail ? 1 : 0 })}>
           {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="add-circle" size={18} color="#fff" /><Text style={styles.lgBtnTxt}>Créer l'organisation</Text></>}
         </TouchableOpacity>
       </ScrollView>
@@ -7339,10 +7404,18 @@ function NativeCoach({ data, loading, generating, onGenerate, onRefresh, onBack,
             )}
           </>
         )}
+        {/* Accès limité (formule Démarrage, api/app-coach.php) : plus de nouveau rapport, message neutre */}
+        {data.can_generate === false ? (
+          <View style={styles.dLockCard}>
+            <Ionicons name="lock-closed" size={18} color="#8A968F" />
+            <Text style={styles.dLockTxt}>{data.notice || 'Votre espace est en accès limité : vos données restent consultables et exportables.'}</Text>
+          </View>
+        ) : (
         <TouchableOpacity accessibilityRole="button" accessibilityHint={aiOff ? 'Fonctions IA désactivées' : undefined} style={[styles.dPrimaryBtn, generating ? { opacity: 0.6 } : null, aiOff ? { opacity: 0.45 } : null]} activeOpacity={0.85} onPress={generating ? undefined : onGenerate}>
           {generating ? <ActivityIndicator color="#fff" /> : <Ionicons name="sparkles" size={18} color="#fff" />}
           <Text style={styles.dPrimaryBtnTxt}>{generating ? 'Génération…' : (aiOff ? 'Fonctions IA désactivées' : (r ? 'Générer un nouveau rapport' : 'Générer mon rapport'))}</Text>
         </TouchableOpacity>
+        )}
       </ScrollView>
     </View>
   );
@@ -7390,6 +7463,63 @@ function SuspendedScreen({ message, refused, onAccount, onLogout, onRetry, onWit
   );
 }
 
+/* Carte « Ma formule » (écran Paramètres) : textes préparés par le serveur (api/_app-plan.php,
+   app_plan_card). Information seulement : aucun prix, aucun bouton, aucun lien vers une page de
+   paiement (règle 3.1.1 d'Apple, règles de Google Play). Cadenas gris pour les limites : ce n'est pas une erreur. */
+const PLAN_STATE_TONE = {
+  trial: { bg: '#FFFBEB', color: '#92400E', icon: 'hourglass-outline' },
+  info:  { bg: '#ECFDF5', color: '#047857', icon: 'shield-checkmark-outline' },
+  limit: { bg: '#F1F5F4', color: '#45544D', icon: 'lock-closed-outline' },
+};
+function PlanCard({ card }) {
+  const summary = Array.isArray(card.summary) ? card.summary : [];
+  const usage = Array.isArray(card.usage) ? card.usage : [];
+  const states = Array.isArray(card.states) ? card.states : [];
+  const notes = Array.isArray(card.notes) ? card.notes : [];
+  return (
+    <View style={styles.planCardBox}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={[styles.setPlanIc, { backgroundColor: card.readonly ? '#F1F5F4' : '#ECFDF5' }]}>
+          <Ionicons name={card.readonly ? 'lock-closed-outline' : 'ribbon-outline'} size={18} color={card.readonly ? '#5F6D66' : BRAND} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.setPlanLbl}>VOTRE FORMULE</Text>
+          <Text style={styles.setPlanVal}>{card.name}</Text>
+          {card.tagline ? <Text style={styles.planCardSub}>{card.tagline}</Text> : null}
+        </View>
+      </View>
+      {summary.length > 0 ? <Text style={styles.planCardSum}>{summary.join(' · ')}</Text> : null}
+      {states.map((st, i) => {
+        const t = PLAN_STATE_TONE[st.tone] || PLAN_STATE_TONE.limit;
+        return (
+          <View key={'s' + i} style={[styles.planCardState, { backgroundColor: t.bg }]} accessible accessibilityLabel={st.text}>
+            <Ionicons name={t.icon} size={15} color={t.color} />
+            <Text style={[styles.planCardStateTxt, { color: t.color }]}>{st.text}</Text>
+          </View>
+        );
+      })}
+      {usage.length > 0 ? (
+        <View style={styles.planCardUsage}>
+          <Text style={styles.planCardUsageTitle}>Ce mois-ci</Text>
+          {usage.map((u) => {
+            const pct = u.limit ? Math.max(2, Math.min(100, Math.round((Number(u.used) || 0) * 100 / u.limit))) : 0;
+            return (
+              <View key={u.key} style={{ marginTop: 8 }} accessible accessibilityLabel={u.text}>
+                <Text style={styles.planCardUsageTxt}>{u.text}</Text>
+                {u.limit ? (
+                  <View style={styles.fdProgTrack}><View style={[styles.fdProgFill, { width: pct + '%' }, u.full ? { backgroundColor: '#8A968F' } : null]} /></View>
+                ) : null}
+              </View>
+            );
+          })}
+          {notes.map((n, i) => <Text key={'n' + i} style={styles.planCardNote}>{n}</Text>)}
+        </View>
+      ) : null}
+      {card.footer ? <Text style={styles.planCardNote}>{card.footer}</Text> : null}
+    </View>
+  );
+}
+
 function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy, onDelete, onLogout, onWeb, onNav, plan, onLegal, aiConsent, aiSaving, onAiConsent }) {
   const a = (data && data.account) || null;
   const [f, setF] = useState(null);
@@ -7417,8 +7547,12 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <DetailHeader title="Paramètres" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        {/* Formule de l'association : jamais sur iPhone (IOS_SIGNUP_REQUEST, règle 3.1.1 d'Apple) */}
-        {!IOS_SIGNUP_REQUEST && plan && (plan.trial || plan.label) ? (
+        {/* Formule de l'association : jamais sur iPhone (IOS_SIGNUP_REQUEST, règle 3.1.1 d'Apple).
+            « Ma formule » (api/app-account.php › plan) : nom, résumé SANS prix, compteurs du mois, états ;
+            ni prix, ni bouton de paiement, ni « Passer à… », ni badge. Ancien serveur : la simple carte. */}
+        {!IOS_SIGNUP_REQUEST && data.plan && data.plan.name ? (
+          <PlanCard card={data.plan} />
+        ) : !IOS_SIGNUP_REQUEST && plan && (plan.trial || plan.label) ? (
           <View style={styles.setPlanCard} accessible accessibilityLabel={'Formule : ' + (plan.trial ? plan.trial.text : plan.label)}>
             <View style={[styles.setPlanIc, { backgroundColor: plan.trial ? (plan.trial.expired ? '#FEE2E2' : '#FEF3C7') : '#ECFDF5' }]}>
               <Ionicons name={plan.trial ? (plan.trial.expired ? 'alert-circle-outline' : 'hourglass-outline') : 'ribbon-outline'} size={18} color={plan.trial ? (plan.trial.expired ? '#B91C1C' : '#B45309') : BRAND} />
@@ -9095,10 +9229,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         setFdPlansMBusy(false);
         const r = msg.__akfdplanact;
         if (r && r.ok) {
-          if (r.plans) setFdPlansM({ ok: true, plans: r.plans });
+          // Les listes de limites et de fonctions (fields) restent celles de la dernière lecture
+          if (r.plans) setFdPlansM((prev) => ({ ok: true, plans: r.plans, fields: (r.fields || (prev && prev.fields)) || undefined }));
           if (fdPlanCloseRef.current) { fdPlanCloseRef.current(); fdPlanCloseRef.current = null; }
         } else if (r && r.error === 'forbidden') {
-          Alert.alert('Plans tarifaires', 'Réservé au Fondateur.');
+          Alert.alert('Formules', 'Réservé au Fondateur.');
         } else { Alert.alert('Opération impossible', (r && r.message) || 'Réessaie dans un instant.'); }
       }
       if (msg && msg.__akfdbill) { setFdBilling(msg.__akfdbill); setFdBillingLoading(false); }
@@ -9718,6 +9853,16 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <GatedList title="Communication" data={broadcasts} loading={secLoading} onRefresh={fetchBroadcasts} onBack={menuBack}
                 itemsKey="items" emptyIcon="mail-outline" emptyLabel="Aucune diffusion"
                 renderStats={(s) => (<View style={styles.miniKpiRow}><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.sent || 0}</Text><Text style={styles.miniKpiLbl}>Envoyées</Text></View><View style={styles.miniKpi}><Text style={styles.miniKpiVal}>{s.nb || 0}</Text><Text style={styles.miniKpiLbl}>Total</Text></View></View>)}
+                renderTop={(d) => (d && d.email_quota && d.email_quota.text ? (
+                  // Volume d'e-mails groupés du mois (formule) : information neutre, sans prix ni bouton
+                  <View style={[styles.dLockCard, { marginTop: 4, marginBottom: 12 }]} accessible accessibilityLabel={d.email_quota.text}>
+                    <Ionicons name={d.email_quota.full ? 'lock-closed-outline' : 'mail-outline'} size={18} color="#5F6D66" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.dLockTxt, { fontWeight: '700', color: INK }]}>{d.email_quota.text}</Text>
+                      {d.email_quota.note ? <Text style={[styles.dLockTxt, { marginTop: 4, fontSize: 12 }]}>{d.email_quota.note}</Text> : null}
+                    </View>
+                  </View>
+                ) : null)}
                 renderItem={(it) => (<StatusItemCard key={it.id} title={it.subject} sub={[it.date, it.nb_sent ? it.nb_sent + ' envoyé' + (it.nb_sent > 1 ? 's' : '') : ''].filter(Boolean).join(' · ')} statusLabel={it.status_label} kind={it.status_kind} />)} />
             ) : menuScreen === 'tickets' ? (
               <GatedList title="Support" data={tickets} loading={secLoading} onRefresh={fetchTickets} onBack={menuBack}
@@ -10583,6 +10728,15 @@ const styles = StyleSheet.create({
   logoBox: { width: 64, height: 64, borderRadius: 16, backgroundColor: '#F1F5F4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   logoImg: { width: 64, height: 64, borderRadius: 16 },
   settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 12, padding: 15, marginTop: 10, shadowColor: '#0B1A13', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
+  planCardBox: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 18, borderWidth: 1, borderColor: '#E7EDEA' },
+  planCardSub: { fontSize: 12.5, color: '#5F6D66', marginTop: 2 },
+  planCardSum: { fontSize: 13, color: '#45544D', lineHeight: 19, marginTop: 10 },
+  planCardState: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 10 },
+  planCardStateTxt: { flex: 1, fontSize: 12.5, lineHeight: 18, fontWeight: '600' },
+  planCardUsage: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#EEF2F0' },
+  planCardUsageTitle: { fontSize: 10.5, fontWeight: '800', color: '#8A9A92', letterSpacing: 0.6, textTransform: 'uppercase' },
+  planCardUsageTxt: { fontSize: 13, color: INK, fontWeight: '600', marginBottom: 4 },
+  planCardNote: { fontSize: 11.5, color: '#8A968F', lineHeight: 16, marginTop: 8 },
   setPlanCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 18, borderWidth: 1, borderColor: '#E7EDEA' },
   setPlanIc: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   setPlanLbl: { fontSize: 10.5, fontWeight: '800', color: '#8A9A92', letterSpacing: 0.6 },

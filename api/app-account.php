@@ -58,8 +58,24 @@ try {
     $org_suspended = $org_id > 0 && function_exists('ak_org_access') && ak_org_access($pdo, $org_id) === 'suspended'
         && !(function_exists('ak_user_is_platform') && ak_user_is_platform($user));
 
+    // Carte « Ma formule » (api/_app-plan.php) : nom de la formule, résumé SANS prix, compteurs du mois
+    // (gestionnaires seulement), états particuliers. Jamais de prix, de bouton de paiement ni de
+    // « Passer à… » (règle Apple 3.1.1). App iPhone : rien (ni formule ni essai, IOS_SIGNUP_REQUEST).
+    $plan_card = null;
+    if ($org_id > 0 && !(function_exists('ak_is_ios_app') && ak_is_ios_app())) {
+        try {
+            require_once __DIR__ . '/_app-plan.php';
+            $is_manager = in_array((string) ($u['role'] ?? ''), ['admin', 'coordinator', 'referent'], true);
+            $plan_card = app_plan_card($pdo, $org_id, $is_manager);
+        } catch (Throwable $e) {
+            error_log('[api/app-account] formule : ' . get_class($e));
+            $plan_card = null;
+        }
+    }
+
     echo json_encode([
         'ok' => true,
+        'plan' => $plan_card,
         'account' => [
             'first_name' => (string) ($u['first_name'] ?? ''),
             'last_name'  => (string) ($u['last_name'] ?? ''),

@@ -57,7 +57,36 @@ try {
         ];
     }
 
-    echo json_encode(['ok' => true, 'stats' => ['nb' => count($items), 'sent' => $sent], 'items' => $items], JSON_UNESCAPED_UNICODE);
+    // Volume d'e-mails groupés du mois (formule, api/_app-plan.php) : information seulement, l'envoi se
+    // fait sur le site, qui applique le quota (ak_email_quota_block). Jamais de prix ni de « Passer à… ».
+    $email_quota = null;
+    try {
+        require_once __DIR__ . '/_app-plan.php';
+        if (app_plan_load() && app_plan_live($pdo) && function_exists('ak_get_current_plan') && function_exists('ak_emails_sent_month')) {
+            $plan = ak_get_current_plan($pdo, $org_id);
+            $lim = ($plan && array_key_exists('limit_emails_per_month', $plan) && $plan['limit_emails_per_month'] !== null && $plan['limit_emails_per_month'] !== '')
+                 ? (int) $plan['limit_emails_per_month'] : null;
+            $diff_on = !$plan || !array_key_exists('feature_email_diffusion', $plan) || !empty($plan['feature_email_diffusion']);
+            if ($lim !== null && $lim > 0 && $diff_on) {
+                $used = ak_emails_sent_month($pdo, $org_id);
+                $email_quota = [
+                    'used'  => $used,
+                    'limit' => $lim,
+                    'full'  => $used >= $lim,
+                    'text'  => 'E-mails envoyés ce mois-ci : ' . app_plan_int($used) . ' sur ' . app_plan_int($lim),
+                    'note'  => $used >= $lim
+                        ? 'Le volume d’e-mails de ce mois est atteint. Il sera de nouveau disponible le ' . app_plan_next_month() . '. Les factures et devis envoyés un par un ne sont pas concernés.'
+                        : 'Sont comptés : diffusions, invitations, convocations d’AG et relances. Les factures et devis envoyés un par un ne sont jamais comptés.',
+                ];
+            } elseif (!$diff_on) {
+                $email_quota = ['used' => 0, 'limit' => 0, 'full' => true,
+                                'text' => app_plan_readonly($pdo, $org_id, $user) ? app_plan_readonly_message() : 'Les envois groupés d’e-mails ne sont pas inclus dans votre formule.',
+                                'note' => ''];
+            }
+        }
+    } catch (Throwable $e) { $email_quota = null; }
+
+    echo json_encode(['ok' => true, 'stats' => ['nb' => count($items), 'sent' => $sent], 'items' => $items, 'email_quota' => $email_quota], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-broadcasts] ' . $e->getMessage());
     http_response_code(500);

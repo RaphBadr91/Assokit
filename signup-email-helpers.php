@@ -126,7 +126,7 @@ function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_
         $intro   = '<p>' . ($remind ? 'Cette demande attend votre décision depuis plus de 24 h. ' : '')
                  . 'Une structure a demandé la création de son espace depuis l’<strong>application iPhone</strong>. '
                  . 'Rien n’est actif tant que vous ne l’avez pas validée&nbsp;: l’administrateur ne peut pas se connecter, '
-                 . 'et l’essai PRO de ' . (int)$days . ' jours démarrera à la validation. Réponse promise au demandeur <strong>sous '
+                 . 'et l’essai Pro de ' . (int)$days . ' jours démarrera à la validation. Réponse promise au demandeur <strong>sous '
                  . (int)(defined('AK_SIGNUP_REVIEW_HOURS') ? AK_SIGNUP_REVIEW_HOURS : 48) . '&nbsp;h</strong>.</p>';
         $cta     = ['Ouvrir la demande dans le cockpit', 'https://assokit.fr/super-admin/associations?id=' . (int)$org_id];
         // Deux boutons : chacun ouvre une page qui montre la demande et demande confirmation (rien ne
@@ -155,9 +155,9 @@ function ak_signup_alert_founder(PDO $pdo, array $lead, string $kind, ?int $org_
         $intro   = '<p>L’espace est créé et le prospect est connecté, mais un élément de l’essai n’a pas pu être préparé (voir ci-dessous).</p>';
         $cta     = ['👉 Ouvrir l’association', 'https://assokit.fr/super-admin/associations?id=' . (int)$org_id];
     } else {
-        $subject = 'Nouvel essai PRO ' . $days . ' j : ' . $org . ' (' . (($lead['type'] ?? '') === 'tpe' ? 'TPE' : 'association') . ')';
-        $title   = 'Nouvel essai PRO activé &#128640;';
-        $intro   = '<p>Un prospect vient de remplir la demande d’essai : son essai PRO de ' . (int)$days . ' jours est <strong>déjà actif</strong>. '
+        $subject = 'Nouvel essai Pro ' . $days . ' j : ' . $org . ' (' . (($lead['type'] ?? '') === 'tpe' ? 'TPE' : 'association') . ')';
+        $title   = 'Nouvel essai Pro activé &#128640;';
+        $intro   = '<p>Un prospect vient de remplir la demande d’essai : son essai Pro de ' . (int)$days . ' jours est <strong>déjà actif</strong>. '
                  . 'Voici toutes les informations qu’il a saisies &mdash; c’est le bon moment pour l’appeler.</p>';
         $cta     = ['👉 Ouvrir l’association', 'https://assokit.fr/super-admin/associations?id=' . (int)$org_id];
     }
@@ -484,10 +484,10 @@ function send_demo_welcome_email(string $email, string $first_name, string $org_
         ? 'clients, devis, factures, relances, projets, comptabilité analytique'
         : 'projets, adhérents, cotisations, factures, subventions, comptabilité analytique';
 
-    $content = '<h1 style="font-size:22px;margin:0 0 14px;color:#1C1917">Votre essai PRO Assokit est activé &#127881;</h1>'
+    $content = '<h1 style="font-size:22px;margin:0 0 14px;color:#1C1917">Votre essai Pro Assokit est activé &#127881;</h1>'
              . '<p>Bonjour ' . ak_signup_h($first_name) . ',</p>'
              . '<p>L’espace de <strong>' . ak_signup_h($org_name) . '</strong> est prêt&nbsp;: ' . $features . '&hellip; '
-             . 'Vous profitez de toutes les fonctionnalités <strong>PRO</strong> pendant <strong>' . (int)$days . ' jours</strong>'
+             . 'Vous profitez de toutes les fonctions de la formule <strong>Pro</strong> pendant <strong>' . (int)$days . ' jours</strong>'
              . ($trial_end_label !== '' ? ', jusqu’au <strong>' . ak_signup_h($trial_end_label) . '</strong>' : '') . ', sans carte bancaire.</p>'
              . '<p>Confirmez votre adresse e-mail pour sécuriser votre accès&nbsp;:</p>'
              . '<div style="background:#ECFDF5;border-left:3px solid #059669;padding:12px 16px;border-radius:6px;margin:16px 0;font-size:13px;color:#065F46;line-height:1.6;">'
@@ -500,7 +500,7 @@ function send_demo_welcome_email(string $email, string $first_name, string $org_
         : $content . '<p><a href="' . ak_signup_h($verify_url) . '">Confirmer mon e-mail</a></p>';
 
     try {
-        $res = send_transactional_email($email, 'Votre essai PRO Assokit est activé', $html,
+        $res = send_transactional_email($email, 'Votre essai Pro Assokit est activé', $html,
             ['tag' => 'demo_welcome', 'reply_to' => defined('AK_DEMO_NOTIFY_EMAIL') ? AK_DEMO_NOTIFY_EMAIL : 'contact@assokit.fr']);
         return !empty($res['success']);
     } catch (Throwable $e) {

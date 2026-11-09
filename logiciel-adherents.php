@@ -5,7 +5,7 @@
  * Cible : « gestion des adhérents », « gestion des adhésions », « logiciel gestion des membres ».
  */
 require_once __DIR__ . '/includes-public.php';
-// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+// Grille Essentiel / Pro / Équipe (includes-pricing.php) : « dès 19,99 € HT/mois », lu comme sur /tarifs
 require_once __DIR__ . '/includes-pricing.php';
 require_once __DIR__ . '/_landing-seo.php';
 $offer = ak_offer_price();
@@ -18,15 +18,15 @@ $breadcrumb = build_breadcrumb_jsonld([
 $faqs = [
     ['Quel logiciel pour gérer les adhérents d\'une association ?', "Un logiciel de gestion des adhérents doit centraliser l'annuaire, les rôles, les cotisations et la communication. Assokit réunit tout ça : fiche complète par adhérent, rôles personnalisés, espaces membres, relances de cotisation et emailing ciblé — pensé pour les associations loi 1901."],
     ['Peut-on gérer différents rôles et niveaux d\'adhérents ?', "Oui : bureau, coordinateurs, membres, sympathisants… avec des droits et des espaces adaptés à chacun. Vous gardez la maîtrise de qui voit et fait quoi."],
-    ['Le logiciel relance-t-il les adhérents pour les cotisations ?', "Oui : les adhésions à renouveler se relancent en un clic, ou automatiquement si vous activez la relance automatique, et chaque règlement enregistré met la fiche à jour en temps réel. Fini les fichiers éparpillés et les doublons."],
+    ['Le logiciel relance-t-il les adhérents pour les cotisations ?', "Oui : les adhésions à renouveler se relancent en un clic, ou automatiquement avec la formule Pro, si vous activez la relance automatique, et chaque règlement enregistré met la fiche à jour en temps réel. Fini les fichiers éparpillés et les doublons."],
     ['Les adhérents ont-ils un espace dédié ?', "Oui : chaque adhérent peut accéder à son espace (informations, documents, suivi de sa cotisation), ce qui allège le travail du bureau."],
     ['Peut-on importer sa liste d\'adhérents existante ?', "Oui : import de votre fichier (CSV/Excel) en quelques minutes, sans perdre vos données. Et export à tout moment — vos données restent les vôtres."],
     ['Comment gérer le fichier des adhérents d\'une association ?', "Le fichier des adhérents se gère dans une base centralisée plutôt que dans un tableur fragile et vite dépassé. Chaque adhérent a une fiche unique (coordonnées, rôle, historique, cotisations, documents) tenue à jour en temps réel. Assokit centralise ce fichier adhérents, évite la double-saisie, trace chaque modification et permet l'export à tout moment — pour un suivi fiable des adhésions, des renouvellements et de la communication."],
     ['Un logiciel de gestion des adhérents est-il conforme au RGPD ?', "Oui, à condition qu'il encadre les données personnelles. Assokit est hébergé en France, chiffre les données, journalise les accès et vous permet de répondre aux droits des adhérents (accès, rectification, effacement, export). Vous restez responsable de traitement, mais l'outil facilite la conformité RGPD : durées de conservation, radiation d'un membre et purge des anciens adhérents sont maîtrisées."],
     ['Peut-on importer sa liste d\'adhérents depuis Excel ?', "Oui : l'import depuis un fichier Excel ou CSV se fait en quelques minutes. Vous téléversez votre tableur, faites correspondre les colonnes (nom, email, rôle, statut de cotisation) et vos adhérents sont créés sans ressaisie. Aucune donnée n'est perdue, et vous pouvez ré-exporter votre base quand vous le souhaitez."],
-    ['Comment relancer les adhésions à renouveler ?', "Assokit repère automatiquement les adhésions arrivant à échéance : vous relancez les adhérents concernés par e-mail en un clic, ou la relance automatique s'en charge si vous l'activez. Chaque règlement enregistré met la fiche à jour en temps réel, et vous pilotez la communication ciblée (par rôle, par équipe ou par statut) sans lister manuellement les retardataires — un gain de temps direct pour les bénévoles du bureau."],
+    ['Comment relancer les adhésions à renouveler ?', "Assokit repère automatiquement les adhésions arrivant à échéance : vous relancez les adhérents concernés par e-mail en un clic, ou la relance automatique (formule Pro) s'en charge si vous l'activez. Chaque règlement enregistré met la fiche à jour en temps réel, et vous pilotez la communication ciblée (par rôle, par équipe ou par statut) sans lister manuellement les retardataires — un gain de temps direct pour les bénévoles du bureau."],
     ['Comment gérer les adhésions d\'une association ?', "Chaque membre a sa fiche, avec la date de fin de son adhésion. À chaque cotisation enregistrée, cette date se prolonge ; les adhésions qui arrivent à échéance apparaissent dans la page Relances, d'où vous relancez un membre ou tout un groupe. Vous voyez à tout moment qui est à jour et qui doit renouveler, sans tenir de tableur à part."],
-    ['Existe-t-il un logiciel de gestion des membres d\'une association gratuit ?', "Un tableur gratuit suffit pour quelques dizaines de membres, au prix de ressaisies et de relances à la main. Assokit n'est pas gratuit à vie : vous le testez gratuitement 14 jours, sans carte bancaire, puis l'abonnement est de " . $offer['per_month'] . ", toutes fonctionnalités comprises."],
+    ['Existe-t-il un logiciel de gestion des membres d\'une association gratuit ?', "Un tableur gratuit suffit pour quelques dizaines de membres, au prix de ressaisies et de relances à la main. Assokit n'est pas gratuit à vie : vous le testez gratuitement 14 jours, sans carte bancaire, puis vous choisissez votre formule, " . ak_offer_from_price() . ", sans engagement."],
 ];
 $faq_schema = ak_landing_faq_jsonld($faqs);
 $soft_schema = ak_landing_software_jsonld(
@@ -98,10 +98,10 @@ require __DIR__ . '/_landing-premium.php';
       <p class="pub-section-lead">De la reprise de votre fichier adhérents jusqu'à la fidélisation, chaque étape est pensée pour les bénévoles — sans double-saisie ni fichiers éparpillés.</p></div>
     <div class="lp-grid">
       <?php foreach ([
-        ['1','Centraliser la base adhérents','Importez votre fichier adhérents depuis Excel ou CSV et rassemblez tout dans une base centralisée et conforme RGPD : coordonnées, rôles, documents et historique par adhérent, hébergés en France.'],
+        ['1','Centraliser la base adhérents','Importez votre fichier adhérents depuis Excel ou CSV et rassemblez tout dans une base centralisée, dans le respect du RGPD : coordonnées, rôles, documents et historique par adhérent, hébergés en France.'],
         ['2','Suivre adhésions &amp; cotisations','Chaque adhésion, renouvellement et cotisation se met à jour en temps réel. Le statut « à jour / en retard » est visible d\'un coup d\'œil, et l\'export reste possible à tout moment.'],
         ['3','Communiquer (email / IA)','Lancez une communication ciblée par rôle, équipe ou statut. L\'assistant IA vous aide à rédiger relances de renouvellement, convocations et newsletters en quelques secondes.'],
-        ['4','Fidéliser vos membres','Espaces membres, historique complet et relances automatiques renforcent le lien : moins d\'adhérents perdus, un bureau soulagé et des bénévoles concentrés sur l\'essentiel.'],
+        ['4','Fidéliser vos membres','Espaces membres, historique complet et relances (automatiques avec la formule Pro) renforcent le lien : moins d\'adhérents perdus, un bureau soulagé et des bénévoles concentrés sur l\'essentiel.'],
       ] as $s): ?>
         <div class="lp-card reveal"><div class="lp-ic"><?= $s[0] ?></div><h3><?= $s[1] ?></h3><p><?= $s[2] ?></p></div>
       <?php endforeach; ?>
@@ -132,7 +132,7 @@ require __DIR__ . '/_landing-premium.php';
             ['Historique par adhérent', 'Non', 'Oui', 'Complet &amp; daté'],
             ['Application mobile', 'Non', 'Selon l\'éditeur', 'iOS &amp; Android'],
             ['Hébergement en France', 'Selon votre stockage', 'Selon l\'éditeur', '🇫🇷 Oui'],
-            ['Prix', 'Gratuit mais chronophage', '€€ par utilisateur', $offer['per_month'] . ' · essai gratuit 14 j'],
+            ['Prix', 'Gratuit mais chronophage', '€€ par utilisateur', ucfirst(ak_offer_from_price()) . ' · essai gratuit 14 j'],
           ] as $j => $r): ?>
             <tr style="border-top:1px solid var(--c-border-soft);<?= $j % 2 ? 'background:var(--c-creme);' : '' ?>">
               <td style="padding:13px 18px;font-weight:600;color:var(--c-encre);"><?= $r[0] ?></td>
@@ -156,7 +156,7 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Pourquoi c'est décisif</span><h2 class="pub-h2">Un fichier adhérents à jour, une association qui <em>fidélise</em></h2></div>
     <div class="reveal" style="max-width:760px;margin:0 auto;color:var(--c-text-2);line-height:1.8;font-size:16px;">
-      <p style="margin:0 0 20px;"><strong style="color:var(--c-encre);">Une base à jour et conforme au RGPD.</strong> Le premier bénéfice d'un logiciel de gestion des adhérents, c'est d'avoir un fichier adhérents unique, vivant et fiable. Fini les versions d'un tableur qui circulent par email : la base est centralisée, chaque adhésion et chaque radiation de membre sont tracées, et les données personnelles sont encadrées. Hébergement en France, journalisation des accès, gestion des durées de conservation et de l'effacement : vous répondez sereinement aux obligations RGPD et aux droits de vos adhérents, tout en gardant la maîtrise de l'export de vos données.</p>
+      <p style="margin:0 0 20px;"><strong style="color:var(--c-encre);">Une base à jour, dans le respect du RGPD.</strong> Le premier bénéfice d'un logiciel de gestion des adhérents, c'est d'avoir un fichier adhérents unique, vivant et fiable. Fini les versions d'un tableur qui circulent par email : la base est centralisée, chaque adhésion et chaque radiation de membre sont tracées, et les données personnelles sont encadrées. Hébergement en France, journalisation des accès, gestion des durées de conservation et de l'effacement : vous répondez sereinement aux obligations RGPD et aux droits de vos adhérents, tout en gardant la maîtrise de l'export de vos données.</p>
       <p style="margin:0 0 20px;"><strong style="color:var(--c-encre);">Une communication qui fidélise vraiment.</strong> Un adhérent bien informé est un adhérent qui reste. En reliant le suivi des cotisations à la communication ciblée, vous adressez le bon message à la bonne personne : relance de renouvellement à ceux dont l'adhésion arrive à échéance, convocation aux membres du bureau, newsletter aux bénévoles actifs. L'assistant IA rédige ces messages en quelques secondes, et le suivi des ouvertures vous montre ce qui fonctionne. Résultat : moins d'adhérents perdus faute de relance, et un lien entretenu tout au long de l'année.</p>
       <p style="margin:0;"><strong style="color:var(--c-encre);">Zéro double-saisie, plus de temps pour l'essentiel.</strong> Chaque règlement de cotisation enregistré met la fiche à jour automatiquement ; chaque nouvel adhérent s'ajoute à la base sans ressaisie ; chaque export part propre et daté. Les bénévoles ne recopient plus les mêmes informations d'un tableur à un logiciel de comptabilité : l'information saisie une fois circule partout. C'est autant d'heures rendues aux projets de l'association plutôt qu'à l'administratif.</p>
     </div>

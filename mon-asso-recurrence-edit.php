@@ -18,6 +18,11 @@ if ($org_id <= 0) { header('Location: /'); exit; }
 
 require_once __DIR__ . '/finance-permissions.php';
 require_billing_access('recurrences', "l'edition de recurrences");
+// Formule : factures récurrentes à partir de Pro (feature_recurring_invoices)
+if (!ak_recurrence_plan_ok($pdo, $org_id)) {
+    require_once __DIR__ . '/plan-controls.php';
+    akc_lock_page($pdo, $org_id, 'recurring_invoices', 'Factures récurrentes', 'recurrences');
+}
 
 $rec_id = (int)($_GET['id'] ?? 0);
 $rec = ak_recurrence_load($pdo, $rec_id, $org_id);

@@ -78,6 +78,21 @@ if (!ak_user_can_add_expense($pdo, $user, $project_id)) {
     exit;
 }
 
+// Formule : lecture IA des justificatifs à partir de Pro (feature_ai_assistant), 1 crédit IA par
+// justificatif lu. Sans elle, la facture se saisit à la main (formulaire habituel).
+require_once __DIR__ . '/plan-controls.php';
+$scan_org = (int)($user['org_id'] ?? 0);
+if (!akc_has($pdo, $scan_org, 'ai_assistant')) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => akc_gate_message($pdo, $scan_org, 'ai_assistant') . ' Saisissez la facture à la main.', 'plan_feature' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+if ($scan_quota = akc_ai_block($pdo, $scan_org, 1)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => $scan_quota . ' Saisissez la facture à la main.', 'ai_quota' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // Vérifier le fichier uploadé
 if (!isset($_FILES['invoice_file']) || $_FILES['invoice_file']['error'] !== UPLOAD_ERR_OK) {
     http_response_code(400);
@@ -234,6 +249,8 @@ $r = ak_ai_messages([
     'model_override' => defined('ANTHROPIC_MODEL') ? ANTHROPIC_MODEL : null,
     'api_key' => ANTHROPIC_API_KEY,
     'timeout' => 90,
+    // Registre IA : 1 justificatif lu = 1 crédit
+    'path' => 'justificatif', 'org_id' => $scan_org, 'user_id' => (int)($user['id'] ?? 0),
 ]);
 
 if ($r['curl_error'] !== '') {

@@ -196,7 +196,7 @@ render_public_nav('blog');
           ['ic'=>'🏗️','t'=>'Sachez enfin quel chantier vous rapporte vraiment','p'=>'Un projet par client/chantier : budget, factures rattachées, rentabilité réelle poste par poste. Le pilotage clair de votre activité, sur mobile comme au bureau.','a'=>['/fonctionnalites','Voir les fonctionnalités'],'b'=>['/contact','Réserver une démo']],
         ],
         'juridique' => [
-          ['ic'=>'🛡️','t'=>'Restez conforme sans y penser','p'=>'Registres tenus automatiquement, traçabilité des décisions, RGPD natif, archivage horodaté. Avec Assokit, votre conformité est <strong>construite par défaut</strong>, pas rattrapée en catastrophe.','a'=>['/pour-associations','Découvrir Assokit'],'b'=>['/fonctionnalites','Les fonctionnalités']],
+          ['ic'=>'🛡️','t'=>'Des obligations suivies sans effort','p'=>'Registres tenus automatiquement, traçabilité des décisions, respect du RGPD, archivage horodaté. Avec Assokit, vos obligations sont <strong>suivies au fil de l’eau</strong>, pas rattrapées en catastrophe.','a'=>['/pour-associations','Découvrir Assokit'],'b'=>['/fonctionnalites','Les fonctionnalités']],
           ['ic'=>'📁','t'=>'Toutes vos pièces au même endroit, retrouvables en 2 clics','p'=>'Statuts, PV, contrats, justificatifs : centralisés et sécurisés, hébergés en France. En cas de contrôle ou de passation, tout est prêt.','a'=>['/pour-associations','Pour les associations'],'b'=>['/contact','Réserver une démo']],
         ],
         'communication' => [

@@ -40,7 +40,8 @@ render_head('Coach Assokit');
       <form method="POST" action="/action-coach-ia">
         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
         <input type="hidden" name="action" value="generate_now">
-        <button type="submit" class="ci-btn-primary" onclick="this.disabled=true;this.textContent='⏳ Génération…';this.form.submit();">✨ Générer maintenant</button>
+        <button type="submit" class="ci-btn-primary" title="Un rapport demandé à la main utilise 1 crédit IA ; le rapport du lundi n’en utilise aucun." onclick="this.disabled=true;this.textContent='⏳ Génération…';this.form.submit();">✨ Générer maintenant</button>
+        <div style="font-size:12px;color:var(--ink-3,#6b7280);margin-top:4px;">1 crédit IA (le rapport du lundi n’en utilise aucun)</div>
       </form>
     </div>
 

@@ -746,7 +746,11 @@ if (!function_exists('ak_ai_build_prompt')) {
 // Appel API Claude
 // --------------------------------------------------------------
 if (!function_exists('ak_ai_call_api')) {
-    function ak_ai_call_api(string $system, string $user_msg): array {
+    /**
+     * $ledger : options du registre IA (ai_usage_ledger, ai-models.php) — 'path', 'org_id',
+     * 'user_id', 'credits', 'ledger'. Sans elles, le chemin est déduit du fichier appelant.
+     */
+    function ak_ai_call_api(string $system, string $user_msg, array $ledger = []): array {
         // Dans l'app : accord préalable pour l'envoi à Anthropic (règle 5.1.2(i) d'Apple, ai-consent-helper.php)
         if (!function_exists('ak_ai_app_gate')) require_once __DIR__ . '/ai-consent-helper.php';
         if (($ak_gate = ak_ai_app_gate()) !== null) {
@@ -768,7 +772,7 @@ if (!function_exists('ak_ai_call_api')) {
         ], [
             'purpose' => 'write', 'model_override' => AK_AI_MODEL, 'api_key' => $api_key,
             'url' => AK_AI_API_URL, 'timeout' => 230, 'connect_timeout' => 10,
-        ]);
+        ] + array_intersect_key($ledger, array_flip(['path', 'org_id', 'user_id', 'credits', 'ledger'])));
         $resp = $r['curl_error'] !== '' ? false : $r['raw'];
         $code = $r['code'];
         $err  = $r['curl_error'];

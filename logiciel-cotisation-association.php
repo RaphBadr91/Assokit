@@ -5,7 +5,7 @@
  * Route : /logiciel-cotisation-association. Premium + FAQPage + Breadcrumb + SoftwareApplication.
  */
 require_once __DIR__ . '/includes-public.php';
-// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+// Grille Essentiel / Pro / Équipe (includes-pricing.php) : « dès 19,99 € HT/mois », lu comme sur /tarifs
 require_once __DIR__ . '/includes-pricing.php';
 require_once __DIR__ . '/_landing-seo.php';
 $offer = ak_offer_price();
@@ -21,7 +21,7 @@ $breadcrumb = build_breadcrumb_jsonld([
 $faqs = [
     ['Comment gérer les cotisations d\'une association avec un logiciel ?', "Avec Assokit, vous créez une campagne de cotisation et ses tarifs, puis vous enregistrez chaque règlement reçu (chèque, virement, espèces) en quelques secondes. L'adhésion du membre est prolongée d'elle-même et le tableau de bord montre en temps réel qui est à jour et ce qu'il reste à encaisser."],
     ['Peut-on encaisser les cotisations par carte bancaire dans Assokit ?', "Pas encore : le paiement en ligne des cotisations n'est pas proposé aujourd'hui. Vous enregistrez les règlements reçus par chèque, virement ou espèces, et Assokit tient le suivi à jour pour chaque adhérent et chaque campagne."],
-    ['Comment relancer les adhérents qui n\'ont pas renouvelé ?', "La page Relances liste les adhésions arrivées ou bientôt arrivées à échéance : vous relancez en un clic, un adhérent ou tout un groupe. Vous pouvez aussi activer la relance automatique : jusqu'à trois rappels, à l'échéance puis après, dans la limite que vous choisissez."],
+    ['Comment relancer les adhérents qui n\'ont pas renouvelé ?', "La page Relances liste les adhésions arrivées ou bientôt arrivées à échéance : vous relancez en un clic, un adhérent ou tout un groupe. Avec la formule Pro, vous pouvez aussi activer la relance automatique : jusqu'à trois rappels, à l'échéance puis après, dans la limite que vous choisissez."],
     ['Peut-on créer plusieurs niveaux ou tarifs de cotisation ?', "Oui : tarifs différents par catégorie de membre (étudiant, famille, bienfaiteur…), pour chaque campagne de cotisation. Tout est paramétrable."],
     ['Comment organiser la collecte des cotisations ?', "Créez votre campagne de cotisation dans Assokit, définissez le ou les tarifs, puis prévenez vos adhérents par e-mail depuis Assokit. À chaque règlement reçu, vous l'enregistrez en quelques secondes : l'adhésion est prolongée et le total collecté se met à jour."],
     ['Puis-je suivre qui est à jour de sa cotisation ?', "Oui, en temps réel : pour chaque campagne, vous voyez qui a réglé, qui doit encore payer et le montant collecté. Chaque règlement reste rattaché à la fiche de l'adhérent."],
@@ -97,7 +97,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="lp-grid">
       <div class="lp-card reveal"><div class="lp-ic">1️⃣</div><h3>Définir cotisations &amp; tarifs</h3><p>Créez votre appel à cotisation et vos tarifs (étudiant, famille, bienfaiteur…), fixez le montant et l'échéancier. Chaque adhérent sait exactement quoi payer, et quand.</p></div>
       <div class="lp-card reveal"><div class="lp-ic">2️⃣</div><h3>Enregistrer les règlements</h3><p>Chèque, virement, espèces : enregistrez chaque règlement en quelques secondes. Il est rattaché au bon adhérent et au bon tarif, et son adhésion est prolongée.</p></div>
-      <div class="lp-card reveal"><div class="lp-ic">3️⃣</div><h3>Relancer les retardataires</h3><p>Depuis la page Relances, relancez les adhésions à renouveler en un clic, ou activez la relance automatique. Le trésorier ne court plus après personne.</p></div>
+      <div class="lp-card reveal"><div class="lp-ic">3️⃣</div><h3>Relancer les retardataires</h3><p>Depuis la page Relances, relancez les adhésions à renouveler en un clic, ou, avec la formule Pro, activez la relance automatique. Le trésorier ne court plus après personne.</p></div>
       <div class="lp-card reveal"><div class="lp-ic">4️⃣</div><h3>Suivre en temps réel</h3><p>Le tableau de bord montre qui est à jour, qui doit encore payer et combien est collecté, campagne par campagne.</p></div>
     </div>
   </div>
@@ -150,7 +150,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="reveal" style="max-width:760px;margin:0 auto;font-size:16px;line-height:1.72;color:var(--c-text-2);">
       <p style="margin:0 0 18px;">Dans beaucoup d'associations loi 1901, la collecte des cotisations repose encore sur un tableur, une pile de chèques et la mémoire du trésorier. Résultat : des relances oubliées, des adhérents perdus de vue et une trésorerie difficile à projeter. Un <strong>logiciel de gestion des cotisations</strong> change la donne : chaque appel à cotisation est suivi, chaque adhérent a un statut clair (à jour ou en retard) et vous savez à tout instant combien il reste à encaisser.</p>
       <p style="margin:0 0 18px;">Le <strong>suivi des règlements</strong> devient immédiat. Chaque chèque, virement ou paiement en espèces est enregistré en quelques secondes et rattaché au bon adhérent et au bon tarif ; l'adhésion est prolongée d'elle-même et le total collecté se met à jour. Fini le rapprochement de fin d'exercice entre la pile de chèques et le tableur.</p>
-      <p style="margin:0;">Enfin, les <strong>relances</strong> font le travail ingrat à votre place. Assokit liste les adhésions à renouveler et vous relancez en un clic ; activez la relance automatique et les rappels partent d'eux-mêmes, dans la limite que vous fixez. Le trésorier gagne des heures chaque trimestre, et l'association sécurise ses recettes.</p>
+      <p style="margin:0;">Enfin, les <strong>relances</strong> font le travail ingrat à votre place. Assokit liste les adhésions à renouveler et vous relancez en un clic ; avec la formule Pro, activez la relance automatique et les rappels partent d'eux-mêmes, dans la limite que vous fixez. Le trésorier gagne des heures chaque trimestre, et l'association sécurise ses recettes.</p>
     </div>
   </div>
 </section>
@@ -187,7 +187,7 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="lp-stat reveal" style="background:linear-gradient(135deg,#0f172a,#065f46);">
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Fini de courir après les cotisations</h2>
-      <p>Campagnes, suivi et relances au même endroit. 14 jours d’essai PRO gratuits, sans carte bancaire.</p>
+      <p>Campagnes, suivi et relances au même endroit. 14 jours d’essai Pro gratuits, sans carte bancaire.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
         <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>

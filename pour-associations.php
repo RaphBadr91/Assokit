@@ -4,6 +4,9 @@
  * Route : /pour-associations. SEO + FAQPage + Breadcrumb. Style glass/4D via _landing-premium.php.
  */
 require_once __DIR__ . '/includes-public.php';
+// Grille Essentiel / Pro / Équipe : bloc « Tarif » commun (ak_landing_pricing, « dès 19,99 € HT/mois »)
+require_once __DIR__ . '/includes-pricing.php';
+require_once __DIR__ . '/_landing-seo.php';
 
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil',            'url' => '/'],
@@ -11,11 +14,11 @@ $breadcrumb = build_breadcrumb_jsonld([
 ]);
 
 $faqs = [
-    ['Assokit convient-il aux petites associations ?', "Oui. Que vous ayez 5 ou 500 adhérents, Assokit s'adapte. Vous testez tout gratuitement pendant 14 jours, sans carte bancaire, puis un seul abonnement tout inclus, sans engagement. Aucune compétence technique requise."],
-    ['Peut-on gérer les adhérents et les cotisations ?', "Absolument : annuaire des adhérents avec rôles (bureau, bénévoles, membres), suivi des cotisations et relances automatiques des adhésions, et espace membre dédié. Fini les tableurs qui se cassent."],
+    ['Assokit convient-il aux petites associations ?', "Oui. Que vous ayez 5 ou 500 adhérents, Assokit s'adapte. Vous testez gratuitement pendant 14 jours, sans carte bancaire, puis vous choisissez votre formule, " . ak_offer_from_price() . ", sans engagement. Aucune compétence technique requise."],
+    ['Peut-on gérer les adhérents et les cotisations ?', "Absolument : annuaire des adhérents avec rôles (bureau, bénévoles, membres), suivi des cotisations et relances des adhésions (automatiques avec la formule Pro), et espace membre dédié. Fini les tableurs qui se cassent."],
     ['Assokit aide-t-il pour l\'assemblée générale ?', "Oui. Convocations, émargement, procès-verbal, suivi des présents et des votes : votre AG se prépare et s'archive en quelques clics."],
-    ['La comptabilité analytique est-elle incluse ?', "Oui, elle est incluse dans l'abonnement Assokit : bilan par projet et par poste, exportable en PDF et Excel pour votre expert-comptable, sans module à acheter en plus."],
-    ['Mes données sont-elles en sécurité ?', "100 %. Hébergement en France (Clermont-Ferrand), conformité RGPD, double authentification, export de vos données à tout moment. Vos données restent les vôtres."],
+    ['La comptabilité analytique est-elle incluse ?', "Oui, sans module à acheter en plus : bilan par projet et par poste, exportable en PDF et Excel pour votre expert-comptable. Les bilans analytiques sont sans limite dès la formule Pro ; la formule Essentiel en permet un export au total."],
+    ['Mes données sont-elles en sécurité ?', "Oui. Hébergement en France (Clermont-Ferrand), dans le respect du RGPD, double authentification, export de vos données à tout moment. Vos données restent les vôtres."],
 ];
 $faq_schema = [
     '@context' => 'https://schema.org', '@type' => 'FAQPage',
@@ -52,8 +55,8 @@ require __DIR__ . '/_landing-premium.php';
         <a href="/comptabilite-analytique" class="lp-glass reveal" style="display:flex;align-items:center;gap:14px;margin-top:20px;padding:15px 18px;border-radius:16px;text-decoration:none;max-width:520px;">
           <span style="width:44px;height:44px;flex:none;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;background:linear-gradient(135deg,#FEF3C7,#FDE68A);box-shadow:0 8px 18px rgba(245,158,11,.2);">📊</span>
           <span style="min-width:0;">
-            <span style="display:block;font-size:14.5px;font-weight:800;color:var(--c-encre);">Comptabilité analytique incluse dès le départ</span>
-            <span style="display:block;font-size:13px;color:var(--c-text-2);margin-top:1px;">Bilan par projet · ~900 €/an économisés · votre comptable n'a plus qu'à valider</span>
+            <span style="display:block;font-size:14.5px;font-weight:800;color:var(--c-encre);">Comptabilité analytique : bilans sans limite dès la formule Pro</span>
+            <span style="display:block;font-size:13px;color:var(--c-text-2);margin-top:1px;">Bilan par projet · votre comptable n'a plus qu'à valider</span>
           </span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--c-emeraude-dark)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-left:auto;"><path d="M9 6l6 6-6 6"/></svg>
         </a>
@@ -64,9 +67,9 @@ require __DIR__ . '/_landing-premium.php';
           <div class="lp-mock-bar"><span class="lp-mock-dot" style="background:#F87171"></span><span class="lp-mock-dot" style="background:#FBBF24"></span><span class="lp-mock-dot" style="background:#34D399"></span><span class="lp-mock-title">Assokit — Mon association</span></div>
           <div class="lp-mock-body">
             <div class="lp-mrow"><span class="ic" style="background:#E0F2FE">👥</span><div style="flex:1"><div class="t">Adhérents à jour</div><div class="s">248 membres · 12 nouveaux ce mois</div></div><span class="lp-chip" style="background:#D1FAE5;color:#047857">+12</span></div>
-            <div class="lp-mrow"><span class="ic" style="background:#FCE7F3">💸</span><div style="flex:1"><div class="t">Cotisations</div><div class="s">Relances envoyées automatiquement</div></div><span class="v">94% payées</span></div>
+            <div class="lp-mrow"><span class="ic" style="background:#FCE7F3">💸</span><div style="flex:1"><div class="t">Cotisations</div><div class="s">Relances automatiques (Pro)</div></div><span class="v">94% payées</span></div>
             <div class="lp-mrow"><span class="ic" style="background:#EDE9FE">🗳️</span><div style="flex:1"><div class="t">Assemblée générale</div><div class="s">Émargement · PV · votes</div></div><span class="lp-chip" style="background:#EDE9FE;color:#6D28D9">Prête</span></div>
-            <div class="lp-mrow"><span class="ic" style="background:#FEF3C7">📊</span><div style="flex:1"><div class="t">Compta analytique</div><div class="s">Bilan par projet · incluse</div></div><span class="v">-900€/an</span></div>
+            <div class="lp-mrow"><span class="ic" style="background:#FEF3C7">📊</span><div style="flex:1"><div class="t">Compta analytique</div><div class="s">Bilan par projet</div></div><span class="v">Pro</span></div>
           </div>
         </div>
       </div>
@@ -84,10 +87,10 @@ require __DIR__ . '/_landing-premium.php';
     <div class="lp-grid">
       <?php
       $pains = [
-        ['📋', 'Le fichier des adhérents dans tous les sens', 'Un annuaire vivant, à jour, avec rôles et relances de cotisation automatiques.'],
+        ['📋', 'Le fichier des adhérents dans tous les sens', 'Un annuaire vivant, à jour, avec rôles et relances de cotisation (automatiques avec la formule Pro).'],
         ['💸', 'Les cotisations qu\'on court après', 'Campagnes et tarifs, règlements enregistrés, relances des adhésions, suivi en temps réel.'],
         ['🗳️', 'L\'AG qui vire au casse-tête', 'Convocations, émargement, PV, votes : préparés et archivés en quelques clics.'],
-        ['📊', 'Le comptable qui coûte cher', 'Comptabilité analytique incluse dans l\'abonnement. ~900 € économisés par an.'],
+        ['📊', 'Le comptable qui coûte cher', 'Comptabilité analytique par projet, bilans sans limite dès la formule Pro.'],
         ['📣', 'La com qui prend un temps fou', 'Diffusion email ciblée + rédaction assistée par l\'IA. Vos messages partent en 2 minutes.'],
         ['🎯', 'Les projets et subventions éparpillés', 'Chaque projet suivi étape par étape, budget alloué vs dépensé, factures rattachées.'],
       ];
@@ -107,13 +110,13 @@ require __DIR__ . '/_landing-premium.php';
 <section class="pub-section">
   <div class="pub-container">
     <div class="pub-section-head reveal">
-      <span class="pub-section-eyebrow">Tout inclus</span>
+      <span class="pub-section-eyebrow">Un seul outil</span>
       <h2 class="pub-h2">Un seul outil pour <em>toute la vie associative</em></h2>
-      <p class="pub-section-lead">Pas de version « light » bridée. Toutes les associations méritent les mêmes outils.</p>
+      <p class="pub-section-lead">Adhérents, cotisations, factures, comptabilité et AG dans toutes les formules ; les relances automatiques et le copilote IA commencent avec Pro.</p>
     </div>
     <ul class="lp-checks reveal">
       <?php
-      $feats = ['Comptabilité analytique incluse', 'Adhérents & bénévoles avec rôles', 'Cotisations & relances auto', 'Assemblées générales & PV', 'Projets & suivi de subventions', 'Devis & factures', 'Diffusion email ciblée', 'IA de rédaction intégrée', 'Espace membre dédié', 'Application mobile', 'Hébergement France · RGPD', 'Export de vos données'];
+      $feats = ['Comptabilité analytique par projet', 'Adhérents & bénévoles avec rôles', 'Cotisations & relances', 'Assemblées générales & PV', 'Projets & suivi de subventions', 'Devis & factures', 'Diffusion email ciblée', 'IA de rédaction intégrée', 'Espace membre dédié', 'Application mobile', 'Hébergement France · RGPD', 'Export de vos données'];
       foreach ($feats as $f): ?>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><?= pub_h($f) ?></li>
       <?php endforeach; ?>
@@ -176,17 +179,19 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="lp-stat reveal">
       <span class="pub-section-eyebrow" style="position:relative;color:#A7F3D0;">De l'argent rendu à vos actions</span>
-      <div class="big">−900 € / an</div>
-      <p>C'est ce que coûte une comptabilité analytique chez un prestataire. Chez vous, elle est <strong>incluse dans l'abonnement Assokit</strong> — soit près de <strong>2&nbsp;700&nbsp;€ sur 3&nbsp;ans</strong> qui repartent dans vos projets, vos bénévoles et vos adhérents. <span style="opacity:.85;">Pas dans la paperasse.</span></p>
+      <div class="big">Jusqu’à −900 € / an*</div>
+      <p>* Estimation : c'est ce que peut coûter une comptabilité analytique chez un prestataire, selon son tarif. Avec la formule Pro d'Assokit, elle est <strong>incluse</strong>, bilans sans limite : l'argent repart dans vos projets, vos bénévoles et vos adhérents. <span style="opacity:.85;">Pas dans la paperasse.</span></p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:4px 0 22px;">
-        <span class="lp-badge" style="background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22);color:#fff;"><span style="text-decoration:line-through;opacity:.75;">Externalisée&nbsp;: ~900&nbsp;€/an</span></span>
-        <span class="lp-badge" style="background:rgba(255,255,255,.16);border-color:rgba(167,243,208,.5);color:#fff;">✓ Avec Assokit&nbsp;: 0&nbsp;€, incluse</span>
+        <span class="lp-badge" style="background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22);color:#fff;"><span style="opacity:.85;">Externalisée&nbsp;: ~900&nbsp;€/an (estimation)</span></span>
+        <span class="lp-badge" style="background:rgba(255,255,255,.16);border-color:rgba(167,243,208,.5);color:#fff;">✓ Avec Assokit Pro&nbsp;: incluse</span>
       </div>
       <a href="/comptabilite-analytique" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Comment on fait ça
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
     </div>
   </div>
 </section>
+
+<?php ak_landing_pricing(); ?>
 
 <!-- ===== FAQ ===== -->
 <section class="pub-section">

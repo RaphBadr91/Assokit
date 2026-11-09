@@ -110,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                     $error = ak_signup_review_withdrawn_message();
                 } elseif ($rv['state'] === 'validated') {
                     sa_log_action((int) $user['id'], 'validate_org', $target_id, null, ['trial_ends_at' => $rv['trial_end'], 'demande' => 'app iPhone']);
-                    $success = '✓ Demande validée : l’essai PRO de ' . (int) AK_TRIAL_DAYS . ' jours court jusqu’au ' . ak_trial_end_label($rv['trial_end']) . '. '
+                    $success = '✓ Demande validée : l’essai Pro de ' . (int) AK_TRIAL_DAYS . ' jours court jusqu’au ' . ak_trial_end_label($rv['trial_end']) . '. '
                              . ($rv['mailed'] ? 'L’administrateur a reçu l’e-mail « Votre espace Assokit est activé ».' : 'L’e-mail d’activation n’a pas pu partir : prévenez l’administrateur.')
                              . ($rv['warnings'] ? ' À vérifier : ' . implode(' ', $rv['warnings']) : '');
                 } else {
@@ -659,7 +659,7 @@ if ($view_id > 0) {
                 <div style="font-size:13px; color:var(--sa-ink-2); margin-bottom:14px;">
                     <?php if ($is_request): ?>
                         Demandée le <?= h(ak_signup_review_when($org['created_at'] ?? null)) ?> — réponse promise sous <?= (int) AK_SIGNUP_REVIEW_HOURS ?> h.
-                        Rien n’est actif : l’administrateur ne peut pas se connecter. <strong>Valider</strong> démarre l’essai PRO de <?= (int) AK_TRIAL_DAYS ?> jours
+                        Rien n’est actif : l’administrateur ne peut pas se connecter. <strong>Valider</strong> démarre l’essai Pro de <?= (int) AK_TRIAL_DAYS ?> jours
                         et lui envoie l’e-mail « Votre espace Assokit est activé » ; <strong>Refuser</strong> lui envoie un e-mail poli et garde l’espace fermé.
                         La fiche saisie est plus bas (« Demande d’inscription »).
                     <?php else: ?>
@@ -724,7 +724,7 @@ if ($view_id > 0) {
     <div class="sa-card sa-trial<?= $plan_state['trial_expired'] || $trial_paused ? ' is-expired' : '' ?>" id="essai">
         <div class="sa-trial-top">
             <div class="sa-trial-main">
-                <span class="sa-trial-tag"><?= $trial_paused ? '⏸ ESSAI SUSPENDU' : ($plan_state['trial_expired'] ? '⌛ ESSAI TERMINÉ' : '⏱ ESSAI PRO') ?></span>
+                <span class="sa-trial-tag"><?= $trial_paused ? '⏸ ESSAI SUSPENDU' : ($plan_state['trial_expired'] ? '⌛ ESSAI TERMINÉ' : '⏱ Essai Pro') ?></span>
                 <?php if ($trial_paused): ?>
                     <div class="sa-trial-title">Association suspendue pendant son essai — fin d’essai prévue le <?= h($trial_end_fr) ?></div>
                     <div class="sa-trial-text">

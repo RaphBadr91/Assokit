@@ -4,7 +4,7 @@
  * Route : /logiciel-comptabilite-association. Design premium + FAQPage + Breadcrumb + SoftwareApplication.
  */
 require_once __DIR__ . '/includes-public.php';
-// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+// Grille Essentiel / Pro / Équipe (includes-pricing.php) : « dès 19,99 € HT/mois », lu comme sur /tarifs
 require_once __DIR__ . '/includes-pricing.php';
 require_once __DIR__ . '/_landing-seo.php';
 $offer = ak_offer_price();
@@ -16,7 +16,7 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 $faqs = [
     ['Quel logiciel de comptabilité pour une association ?', "Le meilleur logiciel de comptabilité pour une association loi 1901 relie la compta au quotidien : factures, cotisations et dépenses se comptabilisent automatiquement, avec un plan comptable adapté et une comptabilité analytique par projet. C'est exactement ce que fait Assokit."],
-    ['La comptabilité analytique est-elle incluse ?', "Oui, elle est incluse dans l'abonnement Assokit : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Aucun module à acheter en plus ; votre expert-comptable n'a plus qu'à valider."],
+    ['La comptabilité analytique est-elle incluse ?', "Oui, sans module à acheter en plus : bilan par projet et par poste, en temps réel, exportable en PDF et Excel. Les bilans analytiques sont sans limite dès la formule Pro ; la formule Essentiel en permet un export au total. Votre expert-comptable n'a plus qu'à valider."],
     ['Faut-il des connaissances comptables pour l\'utiliser ?', "Non. Assokit est pensé pour les trésoriers bénévoles : catégorisation guidée, justificatifs centralisés, préparation automatique du bilan. Pas besoin d'être comptable."],
     ['Peut-on exporter les comptes pour l\'expert-comptable ?', "Oui : exports PDF et Excel du bilan analytique avec les pièces justificatives rattachées. Vous transmettez un dossier propre et daté, prêt à valider."],
     ['Le logiciel gère-t-il aussi la facturation et les cotisations ?', "Oui, tout est lié : devis, factures, relances de paiement, règlements de cotisations enregistrés — chaque opération alimente automatiquement votre comptabilité."],
@@ -25,7 +25,7 @@ $faqs = [
     ['Comment faire le bilan d\'une association loi 1901 ?', "Le bilan présente à une date donnée le patrimoine de l'association : actif (trésorerie, créances) et passif (dettes, fonds propres, fonds dédiés). Avec Assokit, le bilan et le compte de résultat se construisent automatiquement au fil des écritures ; vous les exportez en PDF ou Excel pour l'assemblée générale et l'expert-comptable."],
     ['Faut-il un expert-comptable pour une association ?', "Ce n'est obligatoire que pour les grandes associations (au-delà de certains seuils de subventions ou d'activité, un commissaire aux comptes peut être requis). Pour la plupart des petites structures, un trésorier bénévole outillé suffit : Assokit prépare un dossier propre et daté que l'expert-comptable n'a plus qu'à valider si vous en sollicitez un."],
     ['Excel ou logiciel de comptabilité pour une association ?', "Un tableur gratuit convient pour une petite association avec peu d'opérations : un journal des recettes et des dépenses suffit. Il montre ses limites dès qu'il faut rattacher les justificatifs, suivre plusieurs projets ou subventions, ou transmettre des comptes propres à un expert-comptable. Un logiciel de comptabilité d'association relie ces opérations aux cotisations et aux factures, sans ressaisie."],
-    ['Existe-t-il un logiciel de comptabilité gratuit pour association ?', "Il existe des tableurs et quelques logiciels gratuits, souvent limités en fonctionnalités ou en nombre d'écritures. Assokit n'est pas gratuit à vie : il s'essaie gratuitement 14 jours, sans carte bancaire, puis l'abonnement est de " . $offer['per_month'] . ", comptabilité analytique comprise."],
+    ['Existe-t-il un logiciel de comptabilité gratuit pour association ?', "Il existe des tableurs et quelques logiciels gratuits, souvent limités en fonctionnalités ou en nombre d'écritures. Assokit n'est pas gratuit à vie : il s'essaie gratuitement 14 jours, sans carte bancaire, puis vous choisissez votre formule, " . ak_offer_from_price() . ", sans engagement."],
     ['Assokit sert-il aussi de logiciel de trésorerie ?', "Oui pour le suivi : encaissements de cotisations et de factures, dépenses et budget par projet sont visibles en temps réel, et les factures impayées sont relancées. Assokit n'est pas connecté à votre compte bancaire : le rapprochement avec les relevés reste à faire de votre côté."],
 ];
 $faq_schema = ak_landing_faq_jsonld($faqs);
@@ -58,7 +58,7 @@ require __DIR__ . '/_landing-premium.php';
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
           <a href="/contact" class="lp-btn lp-btn-glass">Réserver une démo</a>
         </div>
-        <div class="lp-trust reveal"><span>✓ Compta analytique incluse</span><span>🔒 Conforme RGPD</span><span>🇫🇷 Hébergé en France</span></div>
+        <div class="lp-trust reveal"><span>✓ Compta analytique (sans limite dès Pro)</span><span>🔒 Respect du RGPD</span><span>🇫🇷 Hébergé en France</span></div>
       </div>
       <div class="lp-mock-wrap reveal">
         <div class="lp-mock lp-glass" style="transform:perspective(1400px) rotateY(-7deg) rotateX(3deg);">
@@ -83,7 +83,7 @@ require __DIR__ . '/_landing-premium.php';
       <?php foreach ([
         ['🧾','Facturation intégrée','Devis, factures, relances de paiement — comptabilisés automatiquement.'],
         ['💸','Cotisations','Campagnes, règlements enregistrés et suivi ; tout remonte dans la compta.'],
-        ['📊','Comptabilité analytique','Bilan par projet et par poste, en temps réel, incluse dans l\'abonnement.'],
+        ['📊','Comptabilité analytique','Bilan par projet et par poste, en temps réel, sans limite dès la formule Pro.'],
         ['📁','Justificatifs centralisés','Chaque pièce rattachée à la bonne opération, exportable en archive.'],
         ['📅','Échéances &amp; alertes','Ne manquez plus une date fiscale ou administrative clé.'],
         ['✅','Prêt pour le comptable','Export PDF / Excel daté — votre expert-comptable n\'a plus qu\'à valider.'],
@@ -99,8 +99,8 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="lp-stat reveal">
       <span class="pub-section-eyebrow" style="position:relative;color:#A7F3D0;">L'économie</span>
-      <div class="big">Incluse dans l'abonnement</div>
-      <p>La comptabilité analytique par projet, souvent externalisée à prix fort, est <strong>incluse dans l'abonnement Assokit</strong> — l'argent retourne à vos projets, pas à la paperasse.</p>
+      <div class="big">Incluse dès la formule Pro</div>
+      <p>La comptabilité analytique par projet, souvent externalisée à prix fort, est <strong>incluse dans la formule Pro d'Assokit</strong> — l'argent retourne à vos projets, pas à la paperasse.</p>
       <a href="/comptabilite-analytique" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Comment ça marche
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
     </div>
@@ -142,7 +142,7 @@ require __DIR__ . '/_landing-premium.php';
             ['Export expert-comptable','Copier-coller','Oui, technique','PDF &amp; Excel datés'],
             ['Hébergement France / RGPD','Selon vos fichiers','Variable','Hébergé en France 🇫🇷'],
             ['Prise en main','Vous faites tout','Formation comptable','Pensé pour bénévoles'],
-            ['Prix','« Gratuit » mais chronophage','Prestation externe',$offer['per_month'] . ' · essai gratuit 14 j'],
+            ['Prix','« Gratuit » mais chronophage','Prestation externe',ucfirst(ak_offer_from_price()) . ' · essai gratuit 14 j'],
           ] as $r): ?>
           <tr>
             <td style="text-align:left;padding:14px 18px;border-bottom:1px solid var(--c-border);color:var(--c-encre);font-weight:600;"><?= $r[0] ?></td>
@@ -167,7 +167,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">En détail</span><h2 class="pub-h2">Un logiciel de comptabilité <em>vraiment</em> adapté aux associations</h2></div>
     <div class="reveal" style="max-width:760px;margin:0 auto;">
       <p style="margin:0 0 20px;color:var(--c-encre-2);line-height:1.7;">Un logiciel de comptabilité pour association ne se limite pas à additionner des recettes et des dépenses. Il doit parler le langage du secteur associatif : plan comptable associatif, cotisations, ventilation des subventions par projet. Assokit intègre nativement ces spécificités, là où un logiciel comptable généraliste oblige le trésorier à contourner un outil pensé pour les entreprises commerciales.</p>
-      <p style="margin:0 0 20px;color:var(--c-encre-2);line-height:1.7;">La comptabilité analytique par projet est au cœur de la démarche. Chaque action — un événement, un atelier, une action financée par une subvention — dispose de son propre bilan recettes/dépenses en temps réel. Cette lecture par projet, souvent estimée autour de 900 € par an en prestation externalisée, est incluse dans l'abonnement Assokit. Elle rassure les financeurs, simplifie l'assemblée générale et donne au bureau une vision claire de la santé financière de l'association.</p>
+      <p style="margin:0 0 20px;color:var(--c-encre-2);line-height:1.7;">La comptabilité analytique par projet est au cœur de la démarche. Chaque action — un événement, un atelier, une action financée par une subvention — dispose de son propre bilan recettes/dépenses en temps réel. Cette lecture par projet, qui peut coûter plusieurs centaines d’euros par an en prestation externalisée (estimation, selon le coût de votre prestataire), est incluse dans l'abonnement Assokit. Elle rassure les financeurs, simplifie l'assemblée générale et donne au bureau une vision claire de la santé financière de l'association.</p>
       <p style="margin:0;color:var(--c-encre-2);line-height:1.7;">Enfin, la comptabilité se relie au quotidien de la structure : règlements de cotisations enregistrés, factures émises, justificatifs centralisés et échéances fiscales rappelées. Tout converge vers un dossier propre, exportable en PDF et Excel, prêt pour l'expert-comptable ou le contrôle d'un financeur. Le trésorier bénévole gagne du temps, réduit le risque d'erreur et garde une comptabilité à jour tout au long de l'exercice.</p>
     </div>
   </div>
@@ -212,7 +212,7 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="lp-stat reveal" style="background:linear-gradient(135deg,#0f172a,#065f46);">
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Simplifiez la compta de votre association</h2>
-      <p>14 jours d’essai PRO gratuits, sans carte bancaire, puis comptabilité analytique incluse dans l'abonnement. Sans engagement.</p>
+      <p>14 jours d’essai Pro gratuits, sans carte bancaire, puis bilans analytiques sans limite dès la formule Pro. Sans engagement.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
         <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Réserver une démo</a>

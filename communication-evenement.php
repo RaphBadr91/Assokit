@@ -74,6 +74,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'diffu
         header('Location: /communication-evenement?id=' . $event_id);
         exit;
     }
+    // Formule : e-mails groupés du mois (diffusions, invitations, convocations, relances)
+    require_once __DIR__ . '/plan-controls.php';
+    if ($quota_block = akc_email_block($pdo, (int)$org_id, count($users))) {
+        $_SESSION['flash_communication'] = ['type' => 'error', 'message' => $quota_block];
+        header('Location: /communication-evenement?id=' . $event_id);
+        exit;
+    }
 
     if (!function_exists('ak_comm_broadcast_send')) {
         $_SESSION['flash_communication'] = ['type' => 'error', 'message' => 'L’envoi d’e-mails n’est pas disponible pour le moment. Réessayez plus tard.'];

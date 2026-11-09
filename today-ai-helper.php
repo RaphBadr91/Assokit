@@ -45,6 +45,50 @@ if (!defined('TODAY_AI_MODEL')) {
 }
 
 /**
+ * Formule (plan-helpers.php, via plan-controls.php) : priorités du jour rédigées par l'IA ?
+ *   - sans feature_ai_assistant (Essentiel, accès limité) : non, repli statique sans appel IA ;
+ *   - avec feature_ai_assistant mais sans feature_ai_daily_all (Pro) : seulement pour les
+ *     gestionnaires (admin, coordinateur, référent) ; les autres membres reçoivent le repli ;
+ *   - avec feature_ai_daily_all (Équipe, Sur-mesure) : pour chaque membre (hors suiveurs).
+ * Sans les fondations : oui, comme avant.
+ */
+function today_plan_ai_allowed(PDO $pdo, array $user): bool
+{
+    if (!is_file(__DIR__ . '/plan-controls.php')) return true;
+    require_once __DIR__ . '/plan-controls.php';
+    $org = (int)($user['org_id'] ?? 0);
+    if ($org <= 0 || akc_is_platform()) return true;
+    if (!akc_has($pdo, $org, 'ai_assistant')) return false;
+    if (akc_is_manager_role((string)($user['role'] ?? ''))) return true;
+    return akc_has($pdo, $org, 'ai_daily_all');
+}
+
+/**
+ * Rafraîchissement manuel (bouton ↻) : 1 crédit IA (chemin « priorites-refresh »). null = permis,
+ * sinon le message (crédits du mois épuisés). La génération automatique du jour ne coûte rien.
+ */
+function today_plan_refresh_block(PDO $pdo, array $user): ?string
+{
+    if (!is_file(__DIR__ . '/plan-controls.php')) return null;
+    require_once __DIR__ . '/plan-controls.php';
+    return akc_ai_block($pdo, (int)($user['org_id'] ?? 0), 1);
+}
+
+/** Repli statique servi quand la formule n'inclut pas les priorités IA pour ce compte (aucun appel). */
+function today_plan_static(PDO $pdo, array $user): array
+{
+    $profile = today_get_user_profile($pdo, $user);
+    return [
+        'suggestions' => today_fallback_suggestions(today_collect_context($pdo, $user, $profile)),
+        'from_cache' => false,
+        'refresh_count' => 0,
+        'can_refresh' => false,
+        'has_error' => false,
+        'static' => true,
+    ];
+}
+
+/**
  * Determine le profil effectif d'un user.
  * - admin / coordinator → 'admin'
  * - si referent de >= 1 projet actif → 'referent'
@@ -490,7 +534,7 @@ function today_collect_context(PDO $pdo, array $user, string $profile): array
         }
 
         // Abonnement Assokit : formule et essai lus comme partout ailleurs (ak_org_plan_state,
-        // via ak_plan_trial_info) — l'IA voit « Essai PRO jusqu'au … », jamais un slug brut.
+        // via ak_plan_trial_info) — l'IA voit « Essai Pro jusqu'au … », jamais un slug brut.
         //   status     : 'trial' (essai en cours), 'trial_expired' (essai terminé), sinon statut de l'abonnement
         //   plan_type  : nom affiché de la formule (clé gardée pour les anciens appelants)
         //   days_until : jours avant la fin de l'essai, ou avant l'échéance d'une formule payante
@@ -674,8 +718,8 @@ function today_build_prompt(array $ctx): string
         $prompt .= "🔔 ABONNEMENT ASSOKIT :\n";
         $pl = trim((string)($sub['plan_label'] ?? ''));
         $trial_name = trim((string)($sub['trial_name'] ?? ''));
-        if ($trial_name === '') $trial_name = ($pl === '' || $pl === '—') ? 'Essai PRO' : (stripos($pl, 'essai') !== false ? $pl : 'Essai ' . $pl);
-        $prompt .= "- Plan actuel : {$trial_name} (essai gratuit de " . (defined('AK_TRIAL_DAYS') ? (int)AK_TRIAL_DAYS : 14) . " jours, toutes les fonctionnalités — ce n'est PAS un plan gratuit)\n";
+        if ($trial_name === '') $trial_name = ($pl === '' || $pl === '—') ? 'Essai Pro' : (stripos($pl, 'essai') !== false ? $pl : 'Essai ' . $pl);
+        $prompt .= "- Plan actuel : {$trial_name} (essai gratuit de " . (defined('AK_TRIAL_DAYS') ? (int)AK_TRIAL_DAYS : 14) . " jours, toutes les fonctions de la formule Pro — ce n'est PAS un plan gratuit)\n";
         if ($days !== null) {
             $prompt .= "- " . ($days <= 0 || !empty($sub['ends_today']) ? "L'essai se termine aujourd'hui" : "Fin de l'essai dans {$days} jour" . ($days > 1 ? 's' : ''))
                      . (!empty($sub['trial_ends_fr']) ? " (le {$sub['trial_ends_fr']})" : '') . "\n";
@@ -767,7 +811,7 @@ function today_build_prompt(array $ctx): string
  * Appelle l'API Claude et retourne le JSON parsé.
  * Retourne ['ok' => bool, 'suggestions' => array, 'tokens_in' => int, 'tokens_out' => int, 'error' => string]
  */
-function today_call_claude(string $prompt): array
+function today_call_claude(string $prompt, array $ledger = []): array
 {
     if (!defined('CLAUDE_API_KEY') || CLAUDE_API_KEY === '') {
         return ['ok' => false, 'error' => 'CLAUDE_API_KEY non configurée', 'suggestions' => []];
@@ -789,7 +833,7 @@ function today_call_claude(string $prompt): array
         'url' => TODAY_AI_API_URL,
         'timeout' => TODAY_AI_TIMEOUT_SECONDS,
         'connect_timeout' => 5,
-    ]);
+    ] + array_intersect_key($ledger, array_flip(['path', 'org_id', 'user_id', 'credits'])));
     $data = $r['data'];
 
     if ($r['curl_error'] !== '') {
@@ -918,8 +962,18 @@ function today_get_for_display(PDO $pdo, array $user): array
     if (($user['role'] ?? '') === 'follower') {
         return ['suggestions' => [], 'from_cache' => false, 'refresh_count' => 0, 'can_refresh' => false];
     }
+    // Formule sans priorités IA pour ce compte : repli statique, aucune génération en arrière-plan
+    if (!today_plan_ai_allowed($pdo, $user)) return today_plan_static($pdo, $user);
     $cached = today_cache_row($pdo, (int)$user['id'], date('Y-m-d'));
     $count = (int)($cached['refresh_count'] ?? 0);
+    // Crédits IA du mois épuisés : le bouton ↻ est désactivé, avec le message
+    $refresh_block = today_plan_refresh_block($pdo, $user);
+    if ($refresh_block !== null) {
+        $out = today_get_for_display_cached($pdo, $user, $cached, $count);
+        $out['can_refresh'] = false;
+        $out['refresh_block'] = $refresh_block;
+        return $out;
+    }
 
     if ($cached && (empty($cached['has_error']) || today_error_is_recent($cached))) {
         $suggestions = json_decode((string)($cached['suggestions_json'] ?? ''), true);
@@ -946,6 +1000,21 @@ function today_get_for_display(PDO $pdo, array $user): array
     ];
 }
 
+/** Affichage à partir du cache du jour ou du repli, quand le rafraîchissement n'est pas permis. */
+function today_get_for_display_cached(PDO $pdo, array $user, ?array $cached, int $count): array
+{
+    $suggestions = $cached ? json_decode((string)($cached['suggestions_json'] ?? ''), true) : null;
+    if (is_array($suggestions) && $suggestions) {
+        return ['suggestions' => $suggestions, 'from_cache' => true, 'refresh_count' => $count,
+                'can_refresh' => false, 'has_error' => !empty($cached['has_error'])];
+    }
+    // Pas encore de suggestions aujourd'hui : la génération automatique ne coûte pas de crédit
+    $profile = today_get_user_profile($pdo, $user);
+    return ['suggestions' => today_fallback_suggestions(today_collect_context($pdo, $user, $profile)),
+            'from_cache' => false, 'refresh_count' => $count, 'can_refresh' => false,
+            'has_error' => true, 'pending' => today_ai_enabled()];
+}
+
 /**
  * Lit le cache ou génère les suggestions du jour.
  * Si force = true, régénère même si cache présent (pour refresh manuel).
@@ -956,6 +1025,8 @@ function today_get_or_generate(PDO $pdo, array $user, bool $force = false): arra
     if (($user['role'] ?? '') === 'follower') {
         return ['suggestions' => [], 'from_cache' => false, 'refresh_count' => 0, 'can_refresh' => false];
     }
+    // Formule sans priorités IA pour ce compte : repli statique, aucun appel
+    if (!today_plan_ai_allowed($pdo, $user)) return today_plan_static($pdo, $user);
     $user_id = (int)$user['id'];
     $today = date('Y-m-d');
 
@@ -963,6 +1034,21 @@ function today_get_or_generate(PDO $pdo, array $user, bool $force = false): arra
     $cached = today_cache_row($pdo, $user_id, $today);
     $count = (int)($cached['refresh_count'] ?? 0);
     $cached_suggestions = $cached ? (json_decode((string)($cached['suggestions_json'] ?? ''), true) ?: []) : [];
+
+    // Rafraîchissement manuel : 1 crédit IA. Crédits du mois épuisés : rien n'est appelé, les
+    // suggestions du jour (ou le repli) restent affichées.
+    if ($force && ($refresh_block = today_plan_refresh_block($pdo, $user)) !== null) {
+        $profile = today_get_user_profile($pdo, $user);
+        return [
+            'suggestions' => $cached_suggestions ?: today_fallback_suggestions(today_collect_context($pdo, $user, $profile)),
+            'from_cache' => (bool)$cached_suggestions,
+            'refresh_count' => $count,
+            'can_refresh' => false,
+            'has_error' => true,
+            'kept_previous' => (bool)$cached_suggestions,
+            'refresh_block' => $refresh_block,
+        ];
+    }
 
     // Cache servi tel quel : réponse IA du jour, ou échec récent (pas de nouvel appel avant 30 min)
     if ($cached && !$force && $cached_suggestions
@@ -1071,7 +1157,13 @@ function today_generate_and_save(PDO $pdo, array $user, bool $force, ?array $cac
     $profile = today_get_user_profile($pdo, $user);
     $ctx = today_collect_context($pdo, $user, $profile);
     $prompt = today_build_prompt($ctx);
-    $result = today_call_claude($prompt);
+    // Registre IA : génération automatique du jour « priorites » (0 crédit), rafraîchissement
+    // manuel « priorites-refresh » (1 crédit)
+    $result = today_call_claude($prompt, [
+        'path' => $force ? 'priorites-refresh' : 'priorites',
+        'org_id' => (int)($user['org_id'] ?? 0),
+        'user_id' => (int)($user['id'] ?? 0),
+    ]);
 
     // Un rafraîchissement manuel compte dans la limite du jour, même s'il échoue
     // (sinon chaque clic relance un appel payant ou une attente de 30 s).
@@ -1597,8 +1689,8 @@ function today_fallback_suggestions(array $ctx): array
         if ($sub_status === 'trial' && isset($sub['days_until']) && $days_until <= 7 && empty($sub['trial_subscribed'])) {
             $out[] = [
                 'icon' => '⚡',
-                'title' => ($days_until <= 0 || !empty($sub['ends_today'])) ? 'Ton essai PRO se termine aujourd’hui'
-                         : 'Ton essai PRO se termine dans ' . $days_until . ' jour' . ($days_until > 1 ? 's' : ''),
+                'title' => ($days_until <= 0 || !empty($sub['ends_today'])) ? 'Ton essai Pro se termine aujourd’hui'
+                         : 'Ton essai Pro se termine dans ' . $days_until . ' jour' . ($days_until > 1 ? 's' : ''),
                 'description' => (!empty($sub['trial_ends_fr']) ? 'Fin le ' . $sub['trial_ends_fr'] . ' · ' : '')
                                . 'choisis ta formule pour continuer à profiter d’Assokit',
                 'link' => '/mon-asso-plan',
@@ -1609,7 +1701,7 @@ function today_fallback_suggestions(array $ctx): array
             $out[] = [
                 'icon' => '⏳',
                 'title' => (string)($sub['label'] ?? 'Essai terminé'),
-                'description' => 'Tes données sont conservées · choisis une formule pour retrouver toutes les fonctionnalités',
+                'description' => 'Tes données sont conservées · choisis une formule pour continuer',
                 'link' => '/mon-asso-plan',
                 'link_label' => 'Choisir une formule',
                 'priority' => 'urgent',

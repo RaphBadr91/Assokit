@@ -33,6 +33,13 @@ try {
     } catch (Throwable $e) {}
 } catch (Throwable $e) { $ready = false; error_log('[relances] '.$e->getMessage()); }
 
+// Formule : relances automatiques (feature_recurring_invoices, Pro et au-delà). La relance
+// manuelle en un clic reste ouverte à toutes les formules (sauf l'accès limité, app-context.php).
+require_once __DIR__ . '/plan-controls.php';
+$auto_allowed = akc_has($pdo, $org_id, 'recurring_invoices');
+$auto_lock_msg = $auto_allowed ? '' : akc_gate_message($pdo, $org_id, 'recurring_invoices');
+$auto_lock_link = !$auto_allowed && ($user['role'] ?? '') === 'admin' && !(function_exists('ak_billing_hidden') && ak_billing_hidden());
+
 $inv_due   = array_filter($invoices, fn($t)=>$t['due_now']);
 $mem_due   = array_filter($members,  fn($t)=>$t['due_now']);
 $inv_total = array_sum(array_map(fn($t)=>$t['amount_cents'], $invoices));
@@ -67,9 +74,13 @@ echo render_sidebar('relances');
 
     <!-- Automatisation -->
     <details class="rel-auto">
-      <summary><span class="rel-sum-lbl"><?= ak_icon('robot',16) ?> Automatiser les relances</span><span class="rel-auto-hint"><?= ($prefs['auto_invoices']||$prefs['auto_memberships']) ? 'Auto activé' : 'Manuel (recommandé au démarrage)' ?></span></summary>
+      <summary><span class="rel-sum-lbl"><?= ak_icon('robot',16) ?> Automatiser les relances</span><span class="rel-auto-hint"><?= !$auto_allowed ? 'Non incluse dans votre formule' : (($prefs['auto_invoices']||$prefs['auto_memberships']) ? 'Auto activé' : 'Manuel (recommandé au démarrage)') ?></span></summary>
       <div class="rel-auto-body">
-        <p class="rel-note">Quand c'est activé, le cron quotidien envoie automatiquement les relances dues, dans la limite du stade choisi. Vous gardez la main : désactivez à tout moment.</p>
+<?php if (!$auto_allowed): ?>
+        <p class="rel-note"><?= ak_icon('lock',13) ?> <?= h($auto_lock_msg) ?> La relance manuelle en un clic, ci-dessous, reste disponible.</p>
+        <?php if ($auto_lock_link): ?><div><a href="/mon-asso-plan" class="rel-btn ghost sm">Voir les formules</a></div><?php endif; ?>
+<?php else: ?>
+        <p class="rel-note">Une fois l’option activée, Assokit envoie automatiquement les relances dues, avec des modèles de relance prêts à l’emploi, dans la limite du stade choisi. Vous gardez la main : désactivez à tout moment.</p>
         <label class="rel-check"><input type="checkbox" id="autoInv" <?= $prefs['auto_invoices']?'checked':'' ?>> Factures : relances automatiques</label>
         <label class="rel-check"><input type="checkbox" id="autoMem" <?= $prefs['auto_memberships']?'checked':'' ?>> Cotisations : relances automatiques</label>
         <label class="rel-check">Stade maximal en automatique :
@@ -80,6 +91,7 @@ echo render_sidebar('relances');
           </select>
         </label>
         <div><button type="button" class="rel-btn ghost sm" id="relSavePrefs">Enregistrer</button> <span id="relPrefsOk" style="display:none;color:#059669;font-size:12.5px;">✓ Enregistré</span></div>
+<?php endif; ?>
       </div>
     </details>
 
@@ -267,8 +279,8 @@ echo render_sidebar('relances');
     if(!confirm('Envoyer toutes les relances recommandées maintenant ?')) return;
     batch.disabled=true; batch.textContent='Envoi en cours…';
     post({action:'batch'}).then(function(d){
-      if(d&&d.ok){ alert(d.sent+' relance(s) envoyée(s)'+(d.failed?', '+d.failed+' échec(s)':'')+'.'); location.reload(); }
-      else { batch.disabled=false; batch.textContent='Tout relancer'; alert('Erreur.'); }
+      if(d&&d.ok){ alert(d.sent+' relance(s) envoyée(s)'+(d.failed?', '+d.failed+' échec(s)':'')+'.'+(d.message?'\n'+d.message:'')); location.reload(); }
+      else { batch.disabled=false; batch.textContent='Tout relancer'; alert((d&&d.message)||'Erreur.'); }
     }).catch(function(){ batch.disabled=false; });
   });
 
@@ -281,6 +293,7 @@ echo render_sidebar('relances');
       max_stage:parseInt(document.getElementById('maxStage').value,10)}).then(function(d){
       savePrefs.disabled=false;
       if(d&&d.ok){ var ok=document.getElementById('relPrefsOk'); ok.style.display='inline'; setTimeout(function(){ok.style.display='none';},2500); }
+      else alert((d&&d.message)||'Enregistrement impossible.');
     }).catch(function(){ savePrefs.disabled=false; });
   });
 
@@ -311,6 +324,7 @@ echo render_sidebar('relances');
       stage:parseInt(curRow.getAttribute('data-stage'),10), tone:curTone}).then(function(d){
       regen.disabled=false;
       if(d&&d.ok){ mSubject.value=d.subject||''; mBody.value=d.body||''; mState.textContent='Proposition générée — relisez et ajustez avant l\'envoi.'; }
+      else if(d&&d.message){ mState.textContent=d.message+' Rédigez le message à la main.'; }
       else { mState.textContent='IA indisponible ('+((d&&d.error)||'erreur')+'). Rédigez le message à la main.'; }
     }).catch(function(){ regen.disabled=false; mState.textContent='Erreur réseau.'; });
   });

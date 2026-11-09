@@ -30,6 +30,129 @@ const MAIL_INITIAL_CAP = 400;   // e-mails au plus lors de la première synchro
 // DISPONIBILITÉ, DROITS
 // ============================================================
 
+// ---------- Formule (plan-helpers.php, via plan-controls.php) ----------
+// feature_mail_inbox : boîte Gmail intégrée et brouillons IA (Pro et au-delà) ;
+// feature_mail_ai_sort : tri par l'IA (Équipe et au-delà), par lots de 15 conversations dans la
+// limite de limit_mail_ai_batches_per_month ; au-delà, tri par règles (mail_priority_fallback).
+// Sans les fondations : permis, comme avant.
+
+/** La formule de l'association inclut-elle la boîte Gmail ? ($for_user = false dans un cron) */
+function mail_plan_inbox_ok(PDO $pdo, int $org_id, bool $for_user = true): bool {
+    if (!is_file(__DIR__ . '/plan-controls.php')) return true;
+    require_once __DIR__ . '/plan-controls.php';
+    return akc_has($pdo, $org_id, 'mail_inbox', $for_user);
+}
+
+/** Tri par l'IA inclus dans la formule (sans regarder le volume du mois) ? */
+function mail_plan_ai_sort_ok(PDO $pdo, int $org_id): bool {
+    if (!is_file(__DIR__ . '/plan-controls.php')) return true;
+    require_once __DIR__ . '/plan-controls.php';
+    return akc_has($pdo, $org_id, 'mail_ai_sort', false);
+}
+
+/** Un nouveau lot de tri par l'IA est-il permis ce mois-ci (fonction et volume) ? */
+function mail_plan_ai_batch_ok(PDO $pdo, int $org_id): bool {
+    if (!is_file(__DIR__ . '/plan-controls.php')) return true;
+    require_once __DIR__ . '/plan-controls.php';
+    if (!akc_load() || !function_exists('ak_mail_ai_batch_allowed')) return true;
+    try { return (bool)ak_mail_ai_batch_allowed($pdo, $org_id); } catch (Throwable $e) { return true; }
+}
+
+/** Message de verrou de la boîte mail (site : formule requise ; appli : message neutre). */
+function mail_plan_message(PDO $pdo, int $org_id, string $feature = 'mail_inbox'): string {
+    if (!is_file(__DIR__ . '/plan-controls.php')) return 'Cette fonction n’est pas incluse dans votre formule.';
+    require_once __DIR__ . '/plan-controls.php';
+    return akc_gate_message($pdo, $org_id, $feature);
+}
+
+// ---------- Boîte partagée : attribution des conversations (formule Équipe, N2) ----------
+// Colonnes mail_threads.assigned_user_id / assigned_at / assigned_by
+// (migrations/2026-11-09-grille-tarifaire.sql). Sans elles, ou sans la fonction
+// feature_shared_inbox, rien ne s'affiche et l'attribution est refusée.
+
+/** Colonnes d'attribution présentes ? */
+function mail_assign_ready(PDO $pdo): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { $pdo->query("SELECT assigned_user_id, assigned_at, assigned_by FROM mail_threads LIMIT 0"); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** Boîte partagée disponible pour cette association (fonction de la formule et colonnes) ? */
+function mail_plan_shared_ok(PDO $pdo, int $org_id): bool {
+    if (!mail_assign_ready($pdo)) return false;
+    if (!is_file(__DIR__ . '/plan-controls.php')) return true;
+    require_once __DIR__ . '/plan-controls.php';
+    return akc_has($pdo, $org_id, 'shared_inbox');
+}
+
+/**
+ * Membres à qui une conversation peut être attribuée : comptes actifs de l'association, de rôle
+ * gestionnaire (administrateur, coordinateur, référent). @return array<int, string> id => nom
+ */
+function mail_assignable_users(PDO $pdo, int $org_id): array {
+    static $cache = [];
+    if (isset($cache[$org_id])) return $cache[$org_id];
+    $out = [];
+    try {
+        $s = $pdo->prepare("SELECT id, TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) AS nom, email
+                              FROM users WHERE org_id = ? AND is_active = 1 AND deleted_at IS NULL
+                               AND role IN ('admin', 'coordinator', 'referent')
+                             ORDER BY first_name, last_name, id");
+        $s->execute([$org_id]);
+        foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $r) $out[(int)$r['id']] = $r['nom'] !== '' ? $r['nom'] : (string)$r['email'];
+    } catch (Throwable $e) {
+        error_log('[mail_assignable_users] ' . get_class($e));
+    }
+    return $cache[$org_id] = $out;
+}
+
+/** Noms des personnes à qui des conversations sont attribuées (même association), id => nom. */
+function mail_assignee_names(PDO $pdo, int $org_id, array $ids): array {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+    if (!$ids) return [];
+    try {
+        $s = $pdo->prepare("SELECT id, TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) FROM users
+                             WHERE org_id = ? AND id IN (" . implode(',', $ids) . ")");
+        $s->execute([$org_id]);
+        return array_map('strval', $s->fetchAll(PDO::FETCH_KEY_PAIR));
+    } catch (Throwable $e) { return []; }
+}
+
+/**
+ * Attribue une conversation ($to : id d'un gestionnaire de l'association) ou retire
+ * l'attribution ($to = null). Prévient la personne désignée (notification interne).
+ * @return array{ok:bool, error?:string, assigned_user_id?:?int, assigned_name?:string}
+ */
+function mail_assign(PDO $pdo, array $user, array $thread, ?int $to): array {
+    $org = (int)$thread['org_id'];
+    if ($to !== null) {
+        $team = mail_assignable_users($pdo, $org);
+        if (!isset($team[$to])) return ['ok' => false, 'error' => 'Cette personne ne fait pas partie des gestionnaires de votre structure.'];
+    }
+    try {
+        $pdo->prepare("UPDATE mail_threads SET assigned_user_id = ?, assigned_at = " . ($to === null ? 'NULL' : 'NOW()') . ", assigned_by = ? WHERE id = ? AND org_id = ?")
+            ->execute([$to, $to === null ? null : (int)$user['id'], (int)$thread['id'], $org]);
+    } catch (Throwable $e) {
+        error_log('[mail_assign] ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'L’attribution n’a pas pu être enregistrée. Réessayez dans un instant.'];
+    }
+    // Notification à la personne désignée (sauf si elle se l'attribue elle-même)
+    if ($to !== null && $to !== (int)$user['id']) {
+        if (!function_exists('ak_notif_create') && is_file(__DIR__ . '/notification-helpers.php')) require_once __DIR__ . '/notification-helpers.php';
+        if (function_exists('ak_notif_create')) {
+            $who = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
+            $subj = mail_fix_mojibake(mail_clean_subject((string)($thread['subject'] ?? '')));
+            ak_notif_create($pdo, $to, 'mail_assigned', 'Conversation attribuée : ' . ($subj !== '' ? $subj : '(sans objet)'),
+                ($who !== '' ? $who . ' vous a attribué' : 'On vous a attribué') . ' cette conversation de la boîte mail.',
+                '/boite-mail?t=' . (int)$thread['id'], null, null, null, (int)$user['id']);
+        }
+    }
+    $names = $to !== null ? mail_assignable_users($pdo, $org) : [];
+    return ['ok' => true, 'assigned_user_id' => $to, 'assigned_name' => $to !== null ? ($names[$to] ?? '') : ''];
+}
+
 function mail_google_configured(): bool {
     return defined('GOOGLE_CLIENT_ID') && GOOGLE_CLIENT_ID !== '' && GOOGLE_CLIENT_ID !== 'METS_TON_CLIENT_ID_ICI'
         && defined('GOOGLE_CLIENT_SECRET') && GOOGLE_CLIENT_SECRET !== ''
@@ -954,7 +1077,8 @@ function mail_classify_pending(PDO $pdo, array $acc, int $limit = 60): int {
     foreach ($todo as $t) $seen[(int)$t['id']] = true;
 
     $save = $pdo->prepare("UPDATE mail_threads SET category_id = ?, category_source = ?, priority = ?, priority_reason = ?, ai_done = ? WHERE id = ?");
-    $ai_on = !empty($acc['ai_sort']) && function_exists('ask_claude') && function_exists('is_ai_enabled') && is_ai_enabled();
+    $ai_on = !empty($acc['ai_sort']) && function_exists('ask_claude') && function_exists('is_ai_enabled') && is_ai_enabled()
+          && mail_plan_ai_sort_ok($pdo, $org);   // formule : tri par l'IA (Équipe et au-delà)
     $pour_ia = [];
     foreach ($todo as $t) {
         $t['rule'] = mail_rule_category($cats, (string)$t['subject'], (string)$t['counterpart_email']);
@@ -971,7 +1095,10 @@ function mail_classify_pending(PDO $pdo, array $acc, int $limit = 60): int {
     }
 
     foreach (array_chunk($pour_ia, 15) as $lot) {
-        $ai = mail_ai_triage($cats, $lot);
+        // Volume du mois (limit_mail_ai_batches_per_month), vérifié avant chaque lot : au-delà, ce lot
+        // et les suivants sont triés par règles (mail_priority_fallback), sans nouvel essai de l'IA.
+        $lot_ia = mail_plan_ai_batch_ok($pdo, $org);
+        $ai = $lot_ia ? mail_ai_triage($cats, $lot, $org) : [];
         foreach ($lot as $t) {
             $bulk = (int)$t['is_bulk'] === 1;
             $res = $ai[(string)$t['id']] ?? null;
@@ -988,7 +1115,7 @@ function mail_classify_pending(PDO $pdo, array $acc, int $limit = 60): int {
             }
             // IA muette pour ce fil : le repli est enregistré et l'IA retentée au passage suivant
             $done = 1;
-            if (!$res) {
+            if (!$res && $lot_ia) {
                 $echecs = ((int)$t['ai_done'] >= 2 ? (int)$t['ai_done'] - 1 : 0) + 1;
                 $done = $echecs < MAIL_AI_TRIES ? $echecs + 1 : 1;
             }
@@ -1011,7 +1138,7 @@ function mail_classify_has_pending(PDO $pdo, int $org): bool {
  * IA : catégorie + priorité + raison pour un lot de conversations.
  * @return array id => ['c' => slug, 'p' => priorité, 'r' => raison]
  */
-function mail_ai_triage(array $cats, array $lot): array {
+function mail_ai_triage(array $cats, array $lot, int $org_id = 0): array {
     $guide = mail_category_guide();
     $liste = '';
     foreach ($cats as $c) {
@@ -1040,8 +1167,10 @@ function mail_ai_triage(array $cats, array $lot): array {
     // Tri réglé pour toute l'association par un administrateur, sur le site (« Tri par l'IA », qui
     // nomme Anthropic) : il ne dépend pas de l'accord de la personne dont la requête l'a déclenché
     // (bouton « Synchroniser » de l'app). Voir ai-consent-helper.php.
-    $call = function () use ($prompt) {
-        return ask_claude('Tu es l\'assistant de tri d\'une boîte mail associative. Tu réponds uniquement en JSON valide, sans texte autour.', [['role' => 'user', 'content' => $prompt]], 1500, ['purpose' => 'fast']);
+    // Registre IA : un lot = une ligne « mail-tri » (0 crédit), comptée dans limit_mail_ai_batches_per_month
+    $call = function () use ($prompt, $org_id) {
+        return ask_claude('Tu es l\'assistant de tri d\'une boîte mail associative. Tu réponds uniquement en JSON valide, sans texte autour.', [['role' => 'user', 'content' => $prompt]], 1500,
+                          ['purpose' => 'fast', 'path' => 'mail-tri', 'credits' => 0] + ($org_id > 0 ? ['org_id' => $org_id] : []));
     };
     $r = function_exists('ak_ai_org_process') ? ak_ai_org_process($call) : $call();
     if (empty($r['success'])) return [];
@@ -1238,6 +1367,12 @@ function mail_draft_tones(): array {
 function mail_ai_draft(PDO $pdo, array $acc, array $t, array $user, string $consigne = '', array $opts = []): array {
     if (!function_exists('ask_claude') || !is_ai_enabled()) return ['ok' => false, 'texte' => '', 'erreur' => 'IA non configurée.', 'a_completer' => 0];
     $org = (int)$acc['org_id'];
+    // Formule : brouillons IA avec la boîte Gmail (Pro et au-delà), 1 crédit IA par brouillon
+    if (!mail_plan_inbox_ok($pdo, $org)) return ['ok' => false, 'texte' => '', 'erreur' => mail_plan_message($pdo, $org), 'a_completer' => 0];
+    if (is_file(__DIR__ . '/plan-controls.php')) {
+        require_once __DIR__ . '/plan-controls.php';
+        if ($quota = akc_ai_block($pdo, $org, 1)) return ['ok' => false, 'texte' => '', 'erreur' => $quota, 'a_completer' => 0];
+    }
     $ton = array_key_exists($opts['ton'] ?? '', mail_draft_tones()) ? $opts['ton'] : 'auto';
     $brut = trim((string)($opts['texte'] ?? ''));
     if ($acc['signature'] ?? '') $brut = trim(str_replace(trim((string)$acc['signature']), '', $brut));
@@ -1321,7 +1456,8 @@ function mail_ai_draft(PDO $pdo, array $acc, array $t, array $user, string $cons
         $prompt .= "Rédige la réponse au dernier message reçu. Donne uniquement le texte final de l'e-mail.";
     }
 
-    $r = ask_claude($system, [['role' => 'user', 'content' => $prompt]], 1600);
+    $r = ask_claude($system, [['role' => 'user', 'content' => $prompt]], 1600,
+                    ['path' => 'mail-brouillon', 'org_id' => $org, 'user_id' => (int)($user['id'] ?? 0)]);
     if (empty($r['success'])) return ['ok' => false, 'texte' => '', 'erreur' => $r['error'] ?? 'IA indisponible', 'a_completer' => 0];
     $txt = trim((string)$r['content']);
     $txt = preg_replace(['/^\s*objet\s*:.*\R+/iu', '/\*\*(.+?)\*\*/u', '/^```\w*\R?|```$/m'], ['', '$1', ''], $txt);
@@ -1351,6 +1487,7 @@ function mail_purge_old(PDO $pdo, array $acc): int {
  */
 function mail_unread_count(PDO $pdo, array $user): int {
     if (!mail_can_access($user) || !mail_schema_ready($pdo)) return 0;
+    if (!mail_plan_inbox_ok($pdo, (int)($user['org_id'] ?? 0))) return 0;   // formule sans boîte mail : pas de pastille
     try {
         $cats = mail_visible_categories($pdo, (int)$user['org_id'], $user);
         if (!$cats) return 0;

@@ -25,6 +25,10 @@ $user = current_user();
 if (empty($user['org_id'])) { http_response_code(403); die('Aucune association rattachée à ce compte.'); }
 $org_id = (int) $user['org_id'];
 
+// Formule : prospection partagée à partir d'Équipe (feature_prospection)
+require_once __DIR__ . '/plan-controls.php';
+akc_lock_page($pdo, $org_id, 'prospection', 'Prospection partagée', 'prospection');
+
 // Même porte que la page elle-même.
 $role = (string) ($user['role'] ?? '');
 $autorise = in_array($role, ['admin', 'coordinator'], true);

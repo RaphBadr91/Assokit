@@ -4,7 +4,7 @@
  * Route : /guide-comptabilite-association. Design premium + FAQPage + Breadcrumb.
  */
 require_once __DIR__ . '/includes-public.php';
-// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+// Grille Essentiel / Pro / Équipe (includes-pricing.php) : « dès 19,99 € HT/mois », lu comme sur /tarifs
 require_once __DIR__ . '/includes-pricing.php';
 $offer = ak_offer_price();
 
@@ -170,7 +170,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="lp-stat reveal">
       <span class="pub-section-eyebrow" style="position:relative;color:#A7F3D0;">Le raccourci</span>
       <div class="big">Une compta qui se tient toute seule</div>
-      <p>Reliez cotisations, factures, subventions et projets : chaque opération alimente votre comptabilité et prépare le bilan. Comptabilité analytique incluse dans l'abonnement.</p>
+      <p>Reliez cotisations, factures, subventions et projets : chaque opération alimente votre comptabilité et prépare le bilan. Bilans analytiques sans limite dès la formule Pro.</p>
       <a href="/logiciel-comptabilite-association" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Découvrir le logiciel
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
     </div>
@@ -214,7 +214,7 @@ require __DIR__ . '/_landing-premium.php';
   <div class="pub-container">
     <div class="lp-stat reveal" style="background:linear-gradient(135deg,#0f172a,#065f46);">
       <h2 style="position:relative;color:#fff;font-size:clamp(24px,4vw,34px);margin:0 0 10px;">Passez de la théorie à la pratique</h2>
-      <p>Mettez ce guide en application avec un outil pensé pour les trésoriers bénévoles. Essai gratuit 14 jours, sans carte bancaire, puis <?= pub_h($offer['label']) ?>, sans engagement.</p>
+      <p>Mettez ce guide en application avec un outil pensé pour les trésoriers bénévoles. Essai gratuit 14 jours, sans carte bancaire, puis <?= pub_h(ak_offer_from_price()) ?>, sans engagement.</p>
       <div style="position:relative;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
         <a href="/signup" class="lp-btn lp-btn-primary">Essayer gratuitement 14 jours</a>
         <a href="/contact" class="lp-btn lp-btn-glass" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)">Poser une question</a>

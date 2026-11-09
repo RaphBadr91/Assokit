@@ -38,6 +38,20 @@ if (!$campaign || !$org || !empty($org['deleted_at'])) {
     exit;
 }
 
+// Formule Démarrage (accès limité) : une page de cotisation ou de dons déjà diffusée reste ouverte
+// 60 jours après le passage en accès limité, puis se ferme (plan-controls.php)
+if (is_file(__DIR__ . '/plan-controls.php')) {
+    require_once __DIR__ . '/plan-controls.php';
+    if (!akc_public_pages_open($pdo, (int)$campaign['org_id'])) {
+        http_response_code(410);
+        ak_pay_head('Paiement en ligne fermé', (string)$org['name']);
+        echo '<div class="pp-card"><div class="pp-body"><p><strong>Cette page de paiement n’est plus active.</strong></p><p class="pp-muted">Pour régler votre cotisation ou faire un don, contactez directement '
+           . htmlspecialchars((string)$org['name'], ENT_QUOTES, 'UTF-8') . '.</p></div></div>';
+        ak_pay_foot((string)$org['name'], false);
+        exit;
+    }
+}
+
 $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 $is_don = ak_connect_campaign_is_don($campaign);
 $org_name = (string)$org['name'];

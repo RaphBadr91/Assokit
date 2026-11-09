@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'resto
 
     // Verifier que cet adherent est bien dans la corbeille et dans notre asso
     $stmt = $pdo->prepare("
-        SELECT id, first_name, last_name, email
+        SELECT id, first_name, last_name, email, role
         FROM users
         WHERE id = ? AND org_id = ? AND deleted_at IS NOT NULL
     ");
@@ -50,6 +50,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'resto
 
     // Limite d'adhérents du plan : restaurer remet un adhérent dans le compte, comme un ajout.
     $plan_check = ($to_restore && function_exists('ak_can_add_adherent')) ? ak_can_add_adherent($pdo, $org_id) : ['ok' => true];
+    // Limite de gestionnaires : un administrateur, coordinateur ou référent restauré
+    // reprend son rôle, il compte donc comme un gestionnaire ajouté.
+    $manager_check = ['ok' => true];
+    if ($to_restore && function_exists('ak_can_add_manager')) {
+        $mroles = function_exists('ak_manager_roles') ? ak_manager_roles() : ['admin', 'coordinator', 'referent'];
+        if (in_array((string)($to_restore['role'] ?? ''), $mroles, true)) {
+            $manager_check = ak_can_add_manager($pdo, $org_id, 1);
+        }
+    }
 
     if ($to_restore) {
         // Adresse libérée par une réinscription dans une autre association (« deleted_<id>__adresse ») :
@@ -61,7 +70,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'resto
         if ($stmt->fetch()) {
             $flash = ['type' => 'error', 'message' => 'Impossible de restaurer : un autre utilisateur a déjà cet email.'];
         } elseif (empty($plan_check['ok'])) {
-            $flash = ['type' => 'error', 'message' => 'Impossible de restaurer : ' . ($plan_check['reason'] ?? 'limite d’adhérents atteinte') . '. Passez au plan supérieur ou supprimez un autre adhérent.'];
+            $flash = ['type' => 'error', 'message' => 'Impossible de restaurer ce membre (' . lcfirst(rtrim((string)($plan_check['reason'] ?? 'limite de membres atteinte'), '.')) . '). Cette limite est celle de votre formule.'];
+        } elseif (empty($manager_check['ok'])) {
+            $flash = ['type' => 'error', 'message' => 'Impossible de restaurer ce compte avec son rôle : ' . lcfirst((string)($manager_check['reason'] ?? 'limite de gestionnaires atteinte'))];
         } else {
             $stmt = $pdo->prepare("
                 UPDATE users

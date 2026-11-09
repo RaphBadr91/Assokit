@@ -5,6 +5,8 @@
  * Présente le pilotage des associations du territoire + mockups dashboard.
  */
 require_once __DIR__ . '/includes-public.php';
+// Offre Sur-mesure : prix masqué, sur devis (includes-pricing.php, AK_PRICE_MASK)
+require_once __DIR__ . '/includes-pricing.php';
 $breadcrumb = build_breadcrumb_jsonld([
     ['name' => 'Accueil',    'url' => '/'],
     ['name' => 'Pour les organismes', 'url' => '/pour-organismes'],
@@ -321,7 +323,7 @@ render_public_nav('');
           <li>✓ Ciblage par domaine ou par statut</li>
           <li>✓ Modèles d'e-mails réutilisables</li>
           <li>✓ Suivi des envois</li>
-          <li>✓ Conforme RGPD</li>
+          <li>✓ Respect du RGPD</li>
         </ul>
       </div>
     </div>
@@ -333,7 +335,9 @@ render_public_nav('');
   <div class="pub-container" style="text-align:center;">
     <h2 class="pub-h2" style="color:#fff;">Vous représentez une collectivité ou un organisme ?</h2>
     <p class="pub-section-lead" style="color:#DBEAFE;max-width:620px;margin:0 auto 28px;">Découvrez comment Assokit peut simplifier le pilotage de la vie associative de votre territoire. Démonstration personnalisée et sans engagement.</p>
-    <a href="/contact" style="display:inline-block;background:#fff;color:#1D4ED8;font-weight:700;font-size:16px;padding:15px 34px;border-radius:10px;text-decoration:none;">Demander une démo</a>
+    <p style="color:#fff;font-weight:800;font-size:22px;margin:0 0 4px;">Offre Sur-mesure : <span aria-hidden="true"><?= pub_h(AK_PRICE_MASK) ?></span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Prix sur devis</span></p>
+    <p style="color:#DBEAFE;margin:0 0 24px;">Sur devis — nous contacter. Reprise de vos données, formation de vos équipes, paiement sur facture.</p>
+    <a href="/contact?plan=collectivite" style="display:inline-block;background:#fff;color:#1D4ED8;font-weight:700;font-size:16px;padding:15px 34px;border-radius:10px;text-decoration:none;">Collectivités : nous contacter</a>
   </div>
 </section>
 

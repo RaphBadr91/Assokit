@@ -16,6 +16,13 @@ require_login();
 $user = current_user();
 $org = (int)$user['org_id'];
 if (!mail_can_manage($user) || !mail_schema_ready($pdo)) { header('Location: /boite-mail'); exit; }
+// Formule : boîte Gmail intégrée à partir de Pro ; tri par l'IA à partir d'Équipe
+if (!mail_plan_inbox_ok($pdo, $org)) {
+    require_once __DIR__ . '/plan-controls.php';
+    akc_lock_page($pdo, $org, 'mail_inbox', 'Boîte mail', 'boite-mail');
+}
+$ai_sort_ok = mail_plan_ai_sort_ok($pdo, $org) || (function_exists('akc_is_platform') && akc_is_platform());
+$ai_sort_msg = $ai_sort_ok ? '' : mail_plan_message($pdo, $org, 'mail_ai_sort');
 $acc = mail_get_account($pdo, $org);
 $cats = mail_categories($pdo, $org);
 $csrf = $_SESSION['csrf_token'] ?? '';
@@ -61,7 +68,10 @@ render_sidebar('boite-mail');
             <?php foreach ([6 => '6 mois', 12 => '1 an', 24 => '2 ans', 36 => '3 ans', 60 => '5 ans'] as $v => $l): ?><option value="<?= $v ?>"<?= (int)$acc['retention_months'] === $v ? ' selected' : '' ?>><?= $l ?></option><?php endforeach; ?>
           </select></label>
         </div>
-        <label class="bp-check"><input type="checkbox" name="ai_sort" value="1"<?= (int)$acc['ai_sort'] ? ' checked' : '' ?>> Ranger par l’IA les e-mails qu’aucune règle ne reconnaît (objet, expéditeur et début du message envoyés à Anthropic, États-Unis, notre sous-traitant d’IA, uniquement pour ce tri ; ils ne servent pas à entraîner ses modèles)</label>
+        <?php if (!$ai_sort_ok): ?>
+        <p class="bp-muted" style="margin:0;"><?= ak_icon('lock', 13) ?> Tri par l’IA : <?= h($ai_sort_msg) ?> Les e-mails sont rangés par vos règles (objet, expéditeur), avec une priorité calculée sans IA.</p>
+        <?php endif; ?>
+        <label class="bp-check"<?= $ai_sort_ok ? '' : ' style="opacity:.55;"' ?>><input type="checkbox" name="ai_sort" value="1"<?= ((int)$acc['ai_sort'] && $ai_sort_ok) ? ' checked' : '' ?><?= $ai_sort_ok ? '' : ' disabled' ?>> Ranger par l’IA les e-mails qu’aucune règle ne reconnaît (objet, expéditeur et début du message envoyés à Anthropic, États-Unis, notre sous-traitant d’IA, uniquement pour ce tri ; ils ne servent pas à entraîner ses modèles)</label>
         <p class="bp-muted">La copie locale des conversations plus anciennes que la durée de conservation est effacée chaque nuit ; les e-mails restent dans Gmail.</p>
         <div><button class="bp-btn primary" type="submit">Enregistrer</button></div>
       </form>

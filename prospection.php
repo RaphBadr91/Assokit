@@ -35,6 +35,11 @@ $allowed = in_array($role, ['admin', 'coordinator'], true);
 if (!$allowed && function_exists('can')) $allowed = can('access_marketing');
 if (!$allowed) { http_response_code(403); die('Accès refusé.'); }
 
+// Formule : prospection partagée de l'association à partir d'Équipe (feature_prospection).
+// Page et écritures (POST). Les codes QR (mon-asso-qr) ne sont jamais concernés.
+require_once __DIR__ . '/plan-controls.php';
+akc_lock_page($pdo, $org_id, 'prospection', 'Prospection partagée', 'prospection');
+
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 $csrf = $_SESSION['csrf_token'];
 

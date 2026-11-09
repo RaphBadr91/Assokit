@@ -4,7 +4,7 @@
  * Route : /logiciel-gestion-tpe. Premium + FAQPage + Breadcrumb + SoftwareApplication.
  */
 require_once __DIR__ . '/includes-public.php';
-// Prix de la formule Assokit (HT + TTC, includes-pricing.php)
+// Grille Essentiel / Pro / Équipe (includes-pricing.php) : « dès 19,99 € HT/mois », lu comme sur /tarifs
 require_once __DIR__ . '/includes-pricing.php';
 require_once __DIR__ . '/_landing-seo.php';
 $offer = ak_offer_price();
@@ -16,9 +16,9 @@ $breadcrumb = build_breadcrumb_jsonld([
 
 $faqs = [
     ['Quel logiciel de gestion pour une TPE ou un indépendant ?', "Un bon logiciel de gestion TPE réunit devis, factures, clients, projets/chantiers, trésorerie et agenda dans un seul outil, sans logiciel comptable en plus. Assokit est conçu pour ça : simple, français, hébergé en France, utilisable sur mobile comme au bureau."],
-    ['Existe-t-il un logiciel de gestion TPE gratuit ?', "Assokit n'est pas un logiciel gratuit à vie, mais vous pouvez le tester gratuitement : pendant 14 jours, sans carte bancaire et sans engagement, vous utilisez toutes les fonctionnalités (devis, factures, suivi), puis vous choisissez votre formule."],
+    ['Existe-t-il un logiciel de gestion TPE gratuit ?', "Assokit n'est pas un logiciel gratuit à vie, mais vous pouvez le tester gratuitement : pendant 14 jours, sans carte bancaire et sans engagement, vous utilisez toutes les fonctions de la formule Pro (devis, factures, suivi), puis vous choisissez votre formule."],
     ['Le logiciel gère-t-il les chantiers et projets ?', "Oui. Chaque client ou chantier devient un projet : étapes, budget alloué vs dépensé, factures rattachées, collègues assignés. Vous savez en un coup d'œil où en est chaque affaire."],
-    ['Puis-je suivre ma trésorerie et mes rendez-vous ?', "Oui : suivi des encaissements en temps réel, relances de paiement automatiques, et agenda intégré pour vos rendez-vous — tout au même endroit."],
+    ['Puis-je suivre ma trésorerie et mes rendez-vous ?', "Oui : suivi des encaissements en temps réel, relances de paiement (automatiques avec la formule Pro), et agenda intégré pour vos rendez-vous — tout au même endroit."],
     ['Assokit fonctionne-t-il sur mobile ?', "Oui, application iOS et Android : gérez devis, factures, projets et RDV depuis votre téléphone, même sur le terrain."],
     ['Quel logiciel de gestion pour une TPE ?', "Le meilleur logiciel de gestion pour une TPE réunit devis, factures, clients, chantiers, trésorerie et rentabilité dans un seul outil, sans suite comptable lourde à côté. Privilégiez une solution simple à prendre en main, dotée d'une appli mobile et hébergée en France : c'est exactement le parti pris d'Assokit, avec 14 jours d'essai gratuit pour démarrer."],
     ['Un indépendant a-t-il besoin d\'un logiciel de gestion ?', "Oui. Même seul, un indépendant ou un artisan doit éditer des devis et des factures conformes, relancer les impayés et suivre sa trésorerie. Un logiciel de gestion évite les tableurs dispersés et les oublis de relance, peut faire gagner plusieurs heures par semaine et donne une vision claire de la rentabilité de chaque client."],
@@ -61,7 +61,7 @@ require __DIR__ . '/_landing-premium.php';
           <div class="lp-mock-body">
             <div class="lp-mrow"><span class="ic" style="background:#DBEAFE">🧾</span><div style="flex:1"><div class="t">Factures du mois</div><div class="s">6 payées · 2 en attente</div></div><span class="v">8 400 €</span></div>
             <div class="lp-mrow"><span class="ic" style="background:#EDE9FE">🏗️</span><div style="flex:1"><div class="t">Chantier Villa Sud</div><div class="s">Budget suivi · 3 factures</div></div><span class="lp-chip" style="background:#DBEAFE;color:#1D4ED8">62%</span></div>
-            <div class="lp-mrow"><span class="ic" style="background:#FEF3C7">💶</span><div style="flex:1"><div class="t">Trésorerie</div><div class="s">Relances auto activées</div></div><span class="lp-chip" style="background:#D1FAE5;color:#047857">Sain</span></div>
+            <div class="lp-mrow"><span class="ic" style="background:#FEF3C7">💶</span><div style="flex:1"><div class="t">Trésorerie</div><div class="s">Relances auto (Pro) activées</div></div><span class="lp-chip" style="background:#D1FAE5;color:#047857">Sain</span></div>
             <div class="lp-mrow"><span class="ic" style="background:#DCFCE7">📅</span><div style="flex:1"><div class="t">RDV 14h30</div><div class="s">Rappel activé</div></div><span class="lp-chip" style="background:#F1F5F9;color:#475569">Auj.</span></div>
           </div>
         </div>
@@ -75,7 +75,7 @@ require __DIR__ . '/_landing-premium.php';
     <div class="pub-section-head reveal"><span class="pub-section-eyebrow">Un seul outil</span><h2 class="pub-h2">Le logiciel qui remplace <em>vos 10 applis</em></h2></div>
     <div class="lp-grid">
       <?php foreach ([
-        ['🧾','Devis &amp; factures','Créés en 2 minutes, relances automatiques, export comptable.'],
+        ['🧾','Devis &amp; factures','Créés en 2 minutes, relance en un clic (automatique avec la formule Pro), export comptable.'],
         ['🏗️','Projets &amp; chantiers','Budget, étapes, factures rattachées, équipe assignée.'],
         ['💶','Trésorerie','Encaissements suivis en temps réel, impayés relancés tout seuls.'],
         ['📊','Comptabilité analytique','La rentabilité réelle de chaque chantier, poste par poste.'],
@@ -126,7 +126,7 @@ require __DIR__ . '/_landing-premium.php';
             ['Application mobile','Non','Rarement fluide','iOS &amp; Android'],
             ['Hébergement en France','Selon l\'outil','Selon l\'éditeur','🇫🇷 Oui, RGPD'],
             ['Prise en main','Rapide mais limité','Plusieurs jours','Immédiate, sans formation'],
-            ['Prix','Faible mais chronophage','Élevé, engagement',$offer['per_month'] . ' · essai gratuit 14 j'],
+            ['Prix','Faible mais chronophage','Élevé, engagement',ucfirst(ak_offer_from_price()) . ' · essai gratuit 14 j'],
           ] as $j => $row): ?>
             <tr style="border-top:1px solid var(--c-border);<?= $j % 2 ? 'background:#F8FBFA;' : '' ?>">
               <td style="padding:13px 18px;font-weight:700;color:var(--c-encre);"><?= $row[0] ?></td>
