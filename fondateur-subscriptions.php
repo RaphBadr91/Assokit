@@ -7,7 +7,10 @@
  * Plan et statut affichés = ak_org_plan_state() (trial-helpers.php), la même
  * vérité que la fiche association, l'appli et l'espace de l'association.
  * Tout changement de plan passe par ak_org_set_plan() : abonnement courant,
- * organizations.plan et état d'essai changent ensemble.
+ * organizations.plan et état d'essai changent ensemble (offre fondateur : garantie de 12 mois posée).
+ * Sur-mesure : le montant du devis (€ HT/mois) crée ou met à jour la formule propre au client
+ * (sa_custom_quote_plan, ligne « sur-mesure-<client> »), puis l'attribue.
+ * Usage : membres, gestionnaires, crédits IA et e-mails du mois face aux limites (sa_plan_usage_lines).
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
@@ -16,6 +19,8 @@ require_once __DIR__ . '/trial-helpers.php';
 require_once __DIR__ . '/sa-auth-helpers.php';
 require_once __DIR__ . '/sa-plan-state-helpers.php';
 require_once __DIR__ . '/signup-review-helpers.php';   // demandes d'espace de l'app iPhone : jamais ouvertes par un plan
+// Garantie de l'offre fondateur (ak_pc_price_locked_until), en lecture seule
+if (is_file(__DIR__ . '/stripe-plan-change-helpers.php')) require_once __DIR__ . '/stripe-plan-change-helpers.php';
 
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 
@@ -57,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Ligne d'abonnement courante (même ordre que ak_get_current_plan / ak_org_plan_state)
     $current_sub_id = function (int $org_id) use ($pdo): int {
         $st = $pdo->prepare("SELECT s.id FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
-                             WHERE s.org_id = ? ORDER BY (s.status = 'active') DESC, s.id DESC LIMIT 1");
+                             WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1");
         $st->execute([$org_id]);
         return (int)$st->fetchColumn();
     };
@@ -90,6 +95,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pl->execute([$plan_id]);
             $plan = $pl->fetch(PDO::FETCH_ASSOC);
             if (!$plan) throw new RuntimeException('Plan inconnu.');
+            // Sur-mesure : montant du devis (€ HT/mois). Vide = Sur-mesure « sur devis » (ou la formule déjà
+            // propre au client, inchangée) ; sinon la formule « sur-mesure-<client> » à ce prix.
+            $quote_cents = sa_is_custom_quote_slug((string)$plan['slug']) ? sa_quote_cents_from_input($_POST['quote_eur'] ?? '') : 0;
+            if ($quote_cents === null) throw new RuntimeException('Montant du devis invalide : indiquez un montant en euros HT par mois, par exemple 450 ou 450,00.');
             $to_trial = !empty($plan['is_trial']) || $plan['slug'] === 'pro-essai';
             $before = ak_org_plan_state($pdo, $org_id);
             // La date du formulaire est pré-remplie : on ne la prend en compte que si elle a été modifiée
@@ -117,6 +126,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $same_plan = (int)$before['plan_id'] === $plan_id;
 
             $pdo->beginTransaction();
+            if ($quote_cents > 0) {
+                $plan_id = sa_custom_quote_plan($pdo, $org_id, $quote_cents);
+                $same_plan = (int)$before['plan_id'] === $plan_id;
+            }
             if ($to_trial && $date_changed && $period_end !== '') {
                 // Fin d'essai choisie : ak_org_set_plan conserve une fin future déjà posée. Abonnement souscrit pendant
                 // l'essai : la date du premier prélèvement suit chez Stripe, sinon rien n'est changé (AkTrialBlocked)
@@ -151,7 +164,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->commit();
             $after = ak_org_plan_state($pdo, $org_id);
-            $_SESSION['flash_fondateur_subs'] = ['type' => 'success', 'msg' => "« {$name} » : {$before['plan_label']} → {$after['plan_label']} ({$after['badge']})."];
+            $extra = '';
+            if ($quote_cents > 0) $extra .= ' Devis : ' . sa_plan_price_label($quote_cents) . '.';
+            if ($after['plan_slug'] === 'fondateur' && function_exists('ak_pc_price_locked_until') && ($cid = $current_sub_id($org_id))
+                && ($lock = ak_pc_price_locked_until($pdo, $cid)) !== '') {
+                $extra .= " Prix et fonctions garantis jusqu’au {$lock}.";
+            }
+            $_SESSION['flash_fondateur_subs'] = ['type' => 'success', 'msg' => "« {$name} » : {$before['plan_label']} → {$after['plan_label']} ({$after['badge']}).{$extra}"];
         } elseif ($action === 'mark_overdue') {
             $org_id = (int)($_POST['org_id'] ?? 0);
             $name = $org_name($org_id);
@@ -223,7 +242,7 @@ $sql = "
     FROM organizations o
     LEFT JOIN asso_subscriptions s ON s.id = (
         SELECT s2.id FROM asso_subscriptions s2 JOIN asso_plans p2 ON p2.id = s2.plan_id
-        WHERE s2.org_id = o.id ORDER BY (s2.status = 'active') DESC, s2.id DESC LIMIT 1)
+        WHERE s2.org_id = o.id ORDER BY " . ak_sub_order('s2') . " LIMIT 1)
     WHERE " . implode(' AND ', $where) . "
     ORDER BY o.id DESC
 ";
@@ -288,7 +307,7 @@ render_sidebar('fondateur-subscriptions');
       <select name="plan_id" style="padding:9px 12px;border:1px solid #E2E8F0;border-radius:8px;">
         <option value="0">Tous les plans</option>
         <?php foreach ($plans_list as $p): ?>
-          <option value="<?= (int)$p['id'] ?>" <?= $filter_plan === (int)$p['id'] ? 'selected' : '' ?>><?= h($p['label']) ?></option>
+          <option value="<?= (int)$p['id'] ?>" <?= $filter_plan === (int)$p['id'] ? 'selected' : '' ?>><?= h($p['label'] . (!empty($p['client_specific']) ? ' (' . $p['slug'] . ')' : '')) ?></option>
         <?php endforeach; ?>
       </select>
       <select name="status" style="padding:9px 12px;border:1px solid #E2E8F0;border-radius:8px;">
@@ -320,8 +339,14 @@ render_sidebar('fondateur-subscriptions');
         </thead>
         <tbody>
           <?php foreach ($rows as $row):
-            $usage = $row['org_id'] ? ak_get_usage($pdo, (int)$row['org_id']) : null;
             $ps = $states[(int)$row['org_id']];
+            // Usage du mois face aux limites de la formule (lecture seule)
+            $usage_lines = $row['org_id'] ? sa_plan_usage_lines($pdo, $ps, (int)$row['org_id']) : [];
+            // Offre fondateur : fin de la garantie de 12 mois (vide hors offre fondateur)
+            $locked_until = function_exists('ak_pc_price_locked_until') && !empty($row['sub_id']) ? ak_pc_price_locked_until($pdo, (int)$row['sub_id']) : '';
+            $org_plans = sa_plans_for_org($plans_list, $ps['plan_id'] !== null ? (int)$ps['plan_id'] : null);
+            $cur_quote = !empty($ps['plan_id']) && strpos((string)$ps['plan_slug'], 'sur-mesure-') === 0 && (int)$ps['price_cents'] > 0
+                ? number_format((int)$ps['price_cents'] / 100, 2, ',', '') : '';
             $in_trial = $ps['is_trial'] || $ps['trial_expired'];
             $sc = $tone_colors[$ps['badge_tone']] ?? ['bg' => '#F1F5F9', 'fg' => '#64748B'];
             $trial_end = $ps['trial_ends_at'] ? date('d/m/Y', strtotime((string)$ps['trial_ends_at'])) : '';
@@ -339,9 +364,10 @@ render_sidebar('fondateur-subscriptions');
                 <?php if ($ps['plan_id']): ?>
                   <strong<?= $ps['badge_tone'] === 'trial' ? ' style="color:#5B21B6;"' : '' ?>><?= h($ps['plan_label']) ?></strong>
                   <div style="color:<?= $in_trial ? '#6D28D9' : '#64748B' ?>;font-size:12px;"><?= h(sa_plan_state_price($ps)) ?></div>
+                  <?php if ($locked_until !== ''): ?><div style="color:#047857;font-size:12px;">Garantie jusqu’au <?= h($locked_until) ?></div><?php endif; ?>
                 <?php else: ?>
-                  <span style="color:#DC2626;">Aucun abonnement</span>
-                  <?php if ($ps['plan_label'] !== '—'): ?><div style="color:#64748B;font-size:12px;">ancien plan : <?= h($ps['plan_label']) ?></div><?php endif; ?>
+                  <strong><?= h($ps['plan_label']) ?></strong>
+                  <div style="color:#DC2626;font-size:12px;">Aucune ligne d’abonnement<?= ($ps['legacy_slug'] ?? '') !== '' && (int)($ps['legacy_cents'] ?? 0) > 0 ? ' · ' . h(sa_plan_price_label((int)$ps['legacy_cents'])) . ' (ancien tarif)' : '' ?></div>
                 <?php endif; ?>
               </td>
               <td style="padding:14px 12px;">
@@ -361,10 +387,10 @@ render_sidebar('fondateur-subscriptions');
                 <?php endif; ?>
               </td>
               <td style="padding:14px 12px;font-size:12px;">
-                <?php if ($usage): ?>
-                  <div>👥 <?= (int)$usage['adherents'] ?> · 📋 <?= (int)$usage['invoices_total'] ?> · 🤖 <?= (int)$usage['ai_text_month'] ?>/mois</div>
-                  <div style="color:#64748B;">📨 <?= (int)$usage['emails_month'] ?> e-mails ce mois</div>
-                <?php endif; ?>
+                <?php foreach ($usage_lines as $ul): ?>
+                  <div style="white-space:nowrap;<?= $ul['warn'] ? 'color:#B45309;font-weight:700;' : ($ul['key'] === 'ai' || $ul['key'] === 'emails' ? 'color:#64748B;' : '') ?>"<?= $ul['warn'] ? ' title="90 % de la limite atteints ou plus"' : '' ?>><?= $ul['warn'] ? '⚠ ' : '' ?><?= h($ul['text']) ?></div>
+                <?php endforeach; ?>
+                <?php if ($usage_lines): ?><div style="color:#94A3B8;font-size:11px;">IA et e-mails : ce mois-ci</div><?php endif; ?>
               </td>
               <td style="padding:14px 12px;text-align:right;">
                 <details style="display:inline-block;text-align:left;">
@@ -375,14 +401,19 @@ render_sidebar('fondateur-subscriptions');
                       <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
                       <input type="hidden" name="org_id" value="<?= (int)$row['org_id'] ?>">
                       <label style="font-size:12px;font-weight:600;">Plan</label>
-                      <select name="plan_id" style="padding:8px;border:1px solid #E2E8F0;border-radius:6px;">
+                      <select name="plan_id" data-quote-select style="padding:8px;border:1px solid #E2E8F0;border-radius:6px;">
                         <?php if (!$ps['plan_id']): ?><option value="" selected disabled>— Choisir un plan —</option><?php endif; ?>
-                        <?php foreach ($plans_list as $p): ?>
-                          <option value="<?= (int)$p['id'] ?>" <?= (int)$ps['plan_id'] === (int)$p['id'] ? 'selected' : '' ?>>
+                        <?php foreach ($org_plans as $p): ?>
+                          <option value="<?= (int)$p['id'] ?>" data-quote="<?= sa_is_custom_quote_slug($p['slug']) ? '1' : '0' ?>" <?= (int)$ps['plan_id'] === (int)$p['id'] ? 'selected' : '' ?>>
                             <?= h($p['option']) ?>
                           </option>
                         <?php endforeach; ?>
                       </select>
+                      <div data-quote-field style="display:<?= sa_is_custom_quote_slug((string)$ps['plan_slug']) && $ps['plan_id'] ? 'flex' : 'none' ?>;flex-direction:column;gap:4px;">
+                        <label style="font-size:12px;font-weight:600;">Montant du devis (€ HT/mois)</label>
+                        <input type="text" name="quote_eur" inputmode="decimal" value="<?= h($cur_quote) ?>" placeholder="ex. 450,00" style="padding:8px;border:1px solid #E2E8F0;border-radius:6px;">
+                        <div style="font-size:11px;color:#64748B;line-height:1.4;">Crée la formule Sur-mesure propre à ce client, à ce prix (fonctions et limites de Sur-mesure). Vide : Sur-mesure sur devis.</div>
+                      </div>
                       <label style="font-size:12px;font-weight:600;">Statut (plans hors essai)</label>
                       <select name="status" style="padding:8px;border:1px solid #E2E8F0;border-radius:6px;">
                         <option value="active" <?= !in_array($ps['sub_status'], ['overdue', 'cancelled'], true) ? 'selected' : '' ?>>Actif</option>
@@ -422,5 +453,17 @@ render_sidebar('fondateur-subscriptions');
     </div>
   </div>
 </main>
+
+<script>
+// Champ « Montant du devis » : seulement quand une formule Sur-mesure est choisie
+document.querySelectorAll('select[data-quote-select]').forEach(function (sel) {
+  var field = sel.form && sel.form.querySelector('[data-quote-field]');
+  if (!field) return;
+  sel.addEventListener('change', function () {
+    var opt = sel.options[sel.selectedIndex];
+    field.style.display = opt && opt.getAttribute('data-quote') === '1' ? 'flex' : 'none';
+  });
+});
+</script>
 
 <?php render_foot(); ?>

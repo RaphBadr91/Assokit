@@ -340,17 +340,21 @@ foreach ($orgs_with_sub as &$o) {
     $ps = $org_states[(int) $o['id']] ?? null;
     $o['_trial'] = $ps && ($ps['is_trial'] || $ps['trial_expired']);
     // Facturable : plan payant ou sur devis ; un ancien compte sans abonnement garde son ancien tarif
-    $billable = $ps && !$o['_trial'] && (!$ps['plan_id'] || (int) $ps['price_cents'] > 0 || $ps['plan_slug'] === 'sur-mesure');
+    $billable = $ps && !$o['_trial'] && (!$ps['plan_id'] || (int) $ps['price_cents'] > 0 || strpos((string) $ps['plan_slug'], 'sur-mesure') === 0);
     if ($o['_trial']) {
         $o['_label'] = $o['name'] . ' — ' . $ps['plan_label'] . ' · '
                      . ($ps['trial_expired'] ? $ps['badge'] : ($ps['trial_ends_at'] ? 'fin ' . date('d/m/Y', strtotime((string) $ps['trial_ends_at'])) : 'essai')) . ' · 0 €';
         $o['price_ht'] = null;
     } else {
         if (!$billable) $o['price_ht'] = null;   // plan gratuit : jamais l'ancien tarif
+        // Formule en place : son prix HT (asso_plans.price_cents) ; l'ancien tarif (subscriptions.price_ht)
+        // ne sert plus qu'aux comptes historiques sans ligne d'abonnement
+        elseif ($ps['plan_id']) $o['price_ht'] = (int) $ps['price_cents'] > 0 ? round((int) $ps['price_cents'] / 100, 2) : null;
+        elseif ((float) ($o['price_ht'] ?? 0) <= 0 && (int) ($ps['legacy_cents'] ?? 0) > 0) $o['price_ht'] = round((int) $ps['legacy_cents'] / 100, 2);
         $price = (float) ($o['price_ht'] ?? 0) > 0
             ? number_format((float) $o['price_ht'], 2, ',', ' ') . ' € HT'
             : ($ps && $ps['plan_id'] ? sa_plan_price_label((int) $ps['price_cents'], (string) $ps['plan_slug']) : '');
-        $o['_label'] = $o['name'] . ($ps ? ' — ' . ($ps['plan_id'] ? '' : 'ancien plan ') . $ps['plan_label'] : '') . ($price !== '' ? ' (' . $price . ')' : '');
+        $o['_label'] = $o['name'] . ($ps ? ' — ' . $ps['plan_label'] : '') . ($price !== '' ? ' (' . $price . ')' : '');
     }
 }
 unset($o);

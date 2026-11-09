@@ -87,6 +87,26 @@ $active_sub = $active_sub ?? [];
 $plan_label = function_exists('ak_plan_label')
     ? ak_plan_label($active_sub['plan_slug'] ?? '', $active_sub['plan_name'] ?? null)
     : (string)($active_sub['plan_name'] ?? '');
+// Période de transition (grille pas encore en base, ou ligne assokit encore à l'ancienne offre) : jamais
+// « Pro » pour l'ancienne offre, ni les formules de la nouvelle grille avant leur mise en vente (même règle
+// que Mon abonnement : ak_pc_plan_grid_pending). $plan_named = false : « votre formule actuelle », sans nom.
+if (!function_exists('ak_pc_plan_grid_pending') && is_file(__DIR__ . '/stripe-plan-change-helpers.php')) require_once __DIR__ . '/stripe-plan-change-helpers.php';
+$grid_ready = !function_exists('ak_pc_grid_ready') || ak_pc_grid_ready($pdo);
+$plan_named = true;
+$cur_slug_cancel = (string)($active_sub['plan_slug'] ?? '');
+if ($cur_slug_cancel !== '' && $cur_slug_cancel !== 'demarrage' && $cur_slug_cancel !== 'pro-essai' && function_exists('ak_pc_plan_grid_pending')) {
+    try {
+        $gq = $pdo->prepare("SELECT * FROM asso_plans WHERE slug = ? LIMIT 1");
+        $gq->execute([$cur_slug_cancel]);
+        $grow = $gq->fetch(PDO::FETCH_ASSOC);
+        $quote_row = $cur_slug_cancel === 'sur-mesure' || strncmp($cur_slug_cancel, 'sur-mesure-', 11) === 0 || !empty($grow['is_custom_quote']);
+        if ($grow && !$quote_row && empty($grow['is_trial']) && ak_pc_plan_grid_pending($pdo, $grow)) $plan_named = false;
+    } catch (Throwable $e) {
+        error_log('[annuler-abonnement] grille : ' . get_class($e));
+    }
+}
+// « votre formule Pro » / « votre formule actuelle »
+$plan_phrase = $plan_named && $plan_label !== '' ? 'votre formule ' . $plan_label : 'votre formule actuelle';
 // Essai (en cours, ou terminé sans formule payante) : rien à annuler. Annuler la ligne d'essai
 // la sortait de la bascule de fin d'essai (elle gardait le plan d'essai après la date de fin).
 // Un abonnement Stripe pris pendant l'essai (paiement en cours) reste, lui, annulable.
@@ -113,6 +133,13 @@ if ($is_already_cancelled) {
     $access_until = ak_sub_cancel_end_date($pdo, $org_id, $active_sub['current_period_end'] ?? null);
 }
 $access_until_fr = $access_until ? date('d/m/Y', strtotime($access_until)) : '';
+// Offre fondateur : la garantie (prix et fonctions) prend fin avec l'abonnement, l'offre n'est plus proposée
+$is_fondateur = ($active_sub['plan_slug'] ?? '') === 'fondateur';
+$fondateur_until_fr = '';
+if ($is_fondateur) {
+    if (!function_exists('ak_pc_price_locked_until') && is_file(__DIR__ . '/stripe-plan-change-helpers.php')) require_once __DIR__ . '/stripe-plan-change-helpers.php';
+    if (function_exists('ak_pc_price_locked_until')) $fondateur_until_fr = ak_pc_price_locked_until($pdo, (int)($active_sub['id'] ?? 0));
+}
 
 $flash_msg = null;
 $flash_type = 'success';
@@ -126,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($trial_card || $is_trial_sub || $i
             ? 'Votre essai est terminé : il n’y a pas d’abonnement payant à annuler.'
             : 'Votre association est en essai : il n’y a pas d’abonnement à annuler.';
     } elseif ($is_free_sub) {
-        $_SESSION['flash_error'] = 'Votre association est sur le plan gratuit Démarrage : il n’y a pas d’abonnement à annuler.';
+        $_SESSION['flash_error'] = 'Aucun abonnement à annuler : votre association n’a pas d’abonnement payant en cours.';
     } else {
         $_SESSION['flash_error'] = 'Votre abonnement est déjà résilié' . ($access_until_fr !== '' ? ' : vous gardez votre formule jusqu’au ' . $access_until_fr . '.' : '.');
     }
@@ -183,14 +210,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Confirmation par e-mail tout de suite (le webhook customer.subscription.updated, qui arrive
                 // ensuite, ne la renvoie pas : même clé, même échéance)
                 ak_stripe_notify_resiliation($pdo, $org_id, $stripe_sub_id, $stripe_end ?: ($active_sub['current_period_end'] ?? null));
-                $flash_msg = 'Résiliation enregistrée. Vous gardez votre formule ' . $plan_label . ($end !== '' ? ' jusqu’au ' . $end : ' jusqu’à la fin de la période payée')
+                $flash_msg = 'Résiliation enregistrée. Vous gardez ' . $plan_phrase . ($end !== '' ? ' jusqu’au ' . $end : ' jusqu’à la fin de la période payée')
                            . ', puis votre association passe en accès limité (Démarrage). Aucun nouveau prélèvement.';
             } else {
                 // Annulation manuelle (mode manual / wire_transfer / free_grant) : la formule reste jusqu'à
                 // la fin de la période, puis Démarrage (ak_sub_expire_cancelled)
                 $end = ak_sub_cancel_manual($pdo, $active_sub, $org_id);
                 ak_stripe_notify_resiliation($pdo, $org_id, 'manuel-' . (int)$active_sub['id'], $end);
-                $flash_msg = 'Résiliation enregistrée. Vous gardez votre formule ' . $plan_label . ' jusqu’au ' . date('d/m/Y', strtotime($end))
+                $flash_msg = 'Résiliation enregistrée. Vous gardez ' . $plan_phrase . ' jusqu’au ' . date('d/m/Y', strtotime($end))
                            . ', puis votre association passe en accès limité (Démarrage).';
             }
 
@@ -310,7 +337,7 @@ render_sidebar('mon-asso-plan');
         <div style="font-size:54px;margin-bottom:14px;">✓</div>
         <h1 style="margin:0 0 12px;font-size:22px;color:#92400E;">Annulation déjà en cours</h1>
         <p style="color:#78350F;line-height:1.65;font-size:14.5px;margin:0 0 22px;">
-          Votre abonnement <strong><?= h($plan_label) ?></strong> a déjà été annulé.<br>
+          Votre abonnement<?= $plan_named ? ' <strong>' . h($plan_label) . '</strong>' : '' ?> a déjà été annulé.<br>
           <?php if ($access_until_fr !== ''): ?>
             Vous gardez l'accès jusqu'au <strong><?= h($access_until_fr) ?></strong>, puis votre association passe en accès limité (Démarrage).
           <?php else: ?>
@@ -325,9 +352,9 @@ render_sidebar('mon-asso-plan');
       <!-- Formule gratuite : rien à annuler -->
       <div style="background:#F8FAFC;border:2px solid #E2E8F0;border-radius:18px;padding:36px 32px;text-align:center;">
         <div style="font-size:54px;margin-bottom:14px;">📋</div>
-        <h1 style="margin:0 0 12px;font-size:22px;color:#0F172A;">Plan gratuit <?= h($plan_label) ?></h1>
+        <h1 style="margin:0 0 12px;font-size:22px;color:#0F172A;">Aucun abonnement à annuler</h1>
         <p style="color:#475569;line-height:1.65;font-size:14.5px;margin:0 0 22px;">
-          Votre association est sur le plan gratuit : il n’y a pas d’abonnement à annuler et rien ne vous est facturé.
+          Votre association n’a pas d’abonnement payant en cours<?= $plan_named && $plan_label !== '' ? ' (formule <strong>' . h($plan_label) . '</strong>)' : '' ?> : rien n’est à annuler et rien ne vous est facturé.
         </p>
         <a href="/mon-asso-plan" style="background:#0F172A;color:white;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">← Retour</a>
       </div>
@@ -339,11 +366,11 @@ render_sidebar('mon-asso-plan');
         <div style="text-align:center;margin-bottom:22px;">
           <div style="font-size:54px;margin-bottom:10px;">↓</div>
           <h1 style="margin:0 0 8px;font-size:22px;color:#0F172A;">Arrêter mon abonnement</h1>
-          <p style="color:#64748B;font-size:14px;margin:0;">Plan actuel : <strong><?= h($plan_label) ?></strong> · paiement en retard</p>
+          <p style="color:#64748B;font-size:14px;margin:0;"><?= $plan_named ? 'Formule actuelle : <strong>' . h($plan_label) . '</strong>' : 'Votre formule actuelle' ?> · paiement en retard</p>
         </div>
 
         <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:12px;padding:18px 20px;margin-bottom:22px;color:#78350F;line-height:1.7;font-size:13.5px;">
-          Le dernier paiement de votre abonnement <strong><?= h($plan_label) ?></strong> n’a pas abouti. En confirmant :
+          Le dernier paiement de votre abonnement<?= $plan_named ? ' <strong>' . h($plan_label) . '</strong>' : '' ?> n’a pas abouti. En confirmant :
           <ul style="margin:8px 0 0;padding-left:20px;">
             <li>l’abonnement est <strong>arrêté tout de suite</strong> : plus aucun prélèvement ;</li>
             <li>votre association passe en <strong>accès limité</strong> (formule Démarrage : sans diffusion email, factures récurrentes ni statistiques avancées) ;</li>
@@ -378,22 +405,25 @@ render_sidebar('mon-asso-plan');
         <div style="text-align:center;margin-bottom:22px;">
           <div style="font-size:54px;margin-bottom:10px;">😢</div>
           <h1 style="margin:0 0 8px;font-size:22px;color:#0F172A;">Annuler mon abonnement</h1>
-          <p style="color:#64748B;font-size:14px;margin:0;">Formule actuelle : <strong><?= h($plan_label) ?></strong></p>
+          <p style="color:#64748B;font-size:14px;margin:0;"><?= $plan_named ? 'Formule actuelle : <strong>' . h($plan_label) . '</strong>' : 'Votre formule actuelle' ?></p>
         </div>
 
         <!-- Conséquences -->
         <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:12px;padding:18px 20px;margin-bottom:22px;">
           <div style="font-weight:700;color:#92400E;margin-bottom:10px;font-size:14px;">⚠️ Avant de partir, voici ce que vous perdrez :</div>
           <ul style="margin:0;padding-left:20px;color:#78350F;line-height:1.85;font-size:13.5px;">
-            <li>L’accès à la formule <strong><?= h($plan_label) ?></strong></li>
+            <?php if ($is_fondateur): ?>
+            <li><strong>L’offre fondateur et sa garantie</strong><?= $fondateur_until_fr !== '' ? ' (prix et fonctions garantis jusqu’au <strong>' . h($fondateur_until_fr) . '</strong>)' : '' ?> : elle est réservée aux associations déjà clientes et <strong>ne pourra pas être reprise</strong> après l’annulation.</li>
+            <?php else: ?>
+            <li>L’accès à <?= $plan_named ? 'la formule <strong>' . h($plan_label) . '</strong>' : 'votre formule actuelle' ?></li>
+            <?php endif; ?>
             <?php
-            // Seulement les fonctions que la formule actuelle comprend vraiment (grille 2026)
-            $lost = ['feature_email_diffusion' => 'La diffusion d’e-mails à vos membres', 'feature_recurring_invoices' => 'Les relances automatiques et les factures récurrentes',
-                     'feature_ai_assistant' => 'Le copilote IA et les priorités du jour', 'feature_mail_inbox' => 'La boîte Gmail intégrée',
-                     'feature_advanced_stats' => 'Les prévisions de trésorerie et la comptabilité analytique', 'feature_team_planning' => 'Le planning d’équipe et les absences',
-                     'feature_anomalies' => 'La détection d’anomalies dans vos comptes'];
+            // Seulement les fonctions que la formule actuelle comprend vraiment (ak_plan_feature_keys de la
+            // ligne courante ; le domaine personnel, pas encore livré, n'est jamais cité)
             $cur_row = null;
             try { $cq = $pdo->prepare("SELECT * FROM asso_plans WHERE id = ?"); $cq->execute([(int)($active_sub['plan_id'] ?? 0)]); $cur_row = $cq->fetch(PDO::FETCH_ASSOC) ?: null; } catch (Throwable $e) {}
+            $lost = function_exists('ak_plan_feature_keys') ? ak_plan_feature_keys() : [];
+            unset($lost['feature_custom_domain']);
             foreach ($lost as $col => $txt):
                 if (!$cur_row || !array_key_exists($col, $cur_row) || empty($cur_row[$col])) continue; ?>
             <li><?= h($txt) ?></li>
@@ -411,7 +441,7 @@ render_sidebar('mon-asso-plan');
             <li><strong>Vous gardez l'accès</strong> jusqu'à la fin de la période payée<?php if ($access_until_fr !== ''): ?> (<?= h($access_until_fr) ?>)<?php endif; ?>, puis votre association passe en accès limité (Démarrage)</li>
             <li><strong>Vos données sont conservées</strong> (vous pouvez les exporter à tout moment)</li>
             <li><strong>Aucun frais d'annulation</strong></li>
-            <li><strong>Vous pouvez vous réabonner</strong> à tout moment, vos données seront restaurées</li>
+            <li><strong>Vous pouvez vous réabonner</strong><?= $grid_ready ? ' (Essentiel, Pro ou Équipe)' : '' ?> à tout moment, vos données seront restaurées</li>
           </ul>
         </div>
 

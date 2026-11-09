@@ -1392,15 +1392,11 @@ function ak_render_quota_banner(PDO $pdo, int $org_id): string {
     }
     $html .= '</div>';
 
-    // Application mobile, compte d'examen : aucun lien vers les formules (Apple 3.1.1)
-    if (function_exists('ak_billing_hidden') && ak_billing_hidden()) {
-        // rien
-    } elseif ($plan['slug'] === 'demarrage') {
-        $html .= '<a href="/mon-asso-plan" style="background:' . $c['border'] . ';color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">Voir les formules</a>';
-    } elseif (!empty($plan['is_trial']) || $plan['slug'] === 'pro-essai') {
-        $html .= '<a href="/mon-asso-plan" style="background:' . $c['border'] . ';color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">⚡ Choisir une formule</a>';
-    } else {
-        $html .= '<a href="/mon-asso-plan" style="background:' . $c['border'] . ';color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">Voir mon plan</a>';
+    // Lien vers « Mon abonnement » : administrateur seulement (seul rôle qui ouvre la page), jamais dans
+    // l'application ni pour le compte d'examen (Apple 3.1.1)
+    $u = function_exists('current_user') ? (current_user() ?: []) : [];
+    if (($u['role'] ?? '') === 'admin' && !(function_exists('ak_billing_hidden') && ak_billing_hidden())) {
+        $html .= '<a href="/mon-asso-plan" style="background:' . $c['border'] . ';color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">Mon abonnement</a>';
     }
 
     $html .= '</div>';

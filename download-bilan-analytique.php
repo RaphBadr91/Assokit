@@ -131,7 +131,9 @@ if (PHP_SAPI !== 'cli') {
                . '<h1 style="font-size:20px;margin:14px 0 8px;">Compta analytique : 1 export inclus</h1>'
                . '<p style="font-size:14px;color:#475569;line-height:1.55;">Votre offre' . $pn . ' inclut 1 export de compta analytique.' . (ak_billing_hidden() ? '' : ' Les exports sont illimités à partir de la formule ' . htmlspecialchars(function_exists('ak_plan_required_label') ? ak_plan_required_label($pdo, 'advanced_stats') : 'Pro', ENT_QUOTES, 'UTF-8') . '.') . '</p>'
                . (ak_billing_hidden() ? ''
-                  : '<a href="/mon-asso-plan" style="display:inline-block;margin-top:18px;background:#1D4ED8;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:14px;">Voir les formules</a>')
+                  : ((current_user()['role'] ?? '') === 'admin'
+                     ? '<a href="/mon-asso-plan" style="display:inline-block;margin-top:18px;background:#1D4ED8;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:14px;">Voir les formules</a>'
+                     : '<p style="font-size:13px;color:#64748B;margin:14px 0 0;">Un administrateur de votre structure peut changer de formule.</p>'))
                . '</div>';
             exit;
         }

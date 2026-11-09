@@ -580,10 +580,40 @@ if (!function_exists('ak_plan_label')) {
     }
 }
 
+if (!function_exists('ak_legacy_plan_equiv')) {
+    /**
+     * Compte historique SANS ligne d'abonnement : formule équivalente d'après l'ancien libellé
+     * organizations.plan et l'ancien montant mensuel (organizations.monthly_price_cents), avec la même
+     * règle qu'ak_legacy_plan_row (plan-helpers.php), mais sans lire la base :
+     *   - « association » / « pro », ou un ancien montant mensuel payant → Pro (slug assokit) ;
+     *   - « organisation » → Sur-mesure ;
+     *   - un slug de la grille (ak-essentiel, assokit, ak-equipe, sur-mesure, fondateur) → cette formule ;
+     *   - « essentiel » (l'ancienne offre gratuite), « gratuit », libellé vide ou inconnu sans montant → Démarrage.
+     * Libellé d'essai (pro-essai, trial, essai) : libellé habituel, rien n'est rattaché.
+     * @return array{slug:string, label:string} slug '' : rien de payant n'est rattaché (Démarrage, essai).
+     */
+    function ak_legacy_plan_equiv(?string $org_plan, $monthly_price_cents = null): array {
+        $l = strtolower(trim((string)$org_plan));
+        $paid = (int)($monthly_price_cents ?? 0) > 0;
+        if (in_array($l, ['pro-essai', 'trial', 'essai'], true)) return ['slug' => '', 'label' => ak_plan_label($l)];
+        if (in_array($l, ['demarrage', 'gratuit', 'free'], true) || ($l === 'essentiel' && !$paid)) {
+            return ['slug' => '', 'label' => 'Démarrage'];
+        }
+        if (in_array($l, ['ak-essentiel', 'assokit', 'ak-equipe', 'sur-mesure', 'fondateur'], true)) {
+            return ['slug' => $l, 'label' => ak_plan_label($l) . ' (sans abonnement)'];
+        }
+        if ($l === 'organisation') return ['slug' => 'sur-mesure', 'label' => 'Sur-mesure (ancien compte)'];
+        if (in_array($l, ['association', 'pro'], true) || $paid) {
+            return ['slug' => 'assokit', 'label' => 'Pro (ancien compte, sans abonnement)'];
+        }
+        return ['slug' => '', 'label' => 'Démarrage'];
+    }
+}
+
 if (!function_exists('ak_plan_state_compute')) {
     /**
      * État du plan à partir d'une ligne déjà lue — LE calcul commun (fiche, listes du cockpit, appli).
-     * Clés lues : org_status, org_plan, trial_ends_at, payment_pending_until (organizations, facultative) ;
+     * Clés lues : org_status, org_plan, trial_ends_at, payment_pending_until, monthly_price_cents (organizations, facultatives) ;
      * plan_id, slug, name, is_trial, price_cents, sub_status, stripe_subscription_id (ligne courante,
      * plan_id null s'il n'y en a pas).
      *
@@ -608,12 +638,16 @@ if (!function_exists('ak_plan_state_compute')) {
      *               days_left:?int, price_cents:int, badge:string, badge_tone:string, trial_subscribed:bool,
      *               trial_charge_at:?string, trial_charge_cents:?int, trial_pm_type:string}
      *  badge / badge_tone : texte et ton communs ('trial', 'expired', 'active', 'suspended', 'cancelled', 'pending').
+     *  Sans ligne d'abonnement (compte historique, hors essai) : plan_label = formule équivalente
+     *  (ak_legacy_plan_equiv : « Pro (ancien compte, sans abonnement) », « Sur-mesure (ancien compte) »,
+     *  « Démarrage »), legacy_slug = son slug ('' si rien de payant), legacy_cents = ancien montant mensuel HT.
      */
     function ak_plan_state_compute(array $r): array {
         $st = ['plan_id' => null, 'plan_slug' => '', 'plan_label' => '—', 'sub_status' => '', 'org_status' => '',
                'is_trial' => false, 'trial_expired' => false, 'trial_paused' => false, 'is_paid' => false,
                'trial_ends_at' => null, 'days_left' => null, 'price_cents' => 0, 'payment_pending' => false,
                'trial_subscribed' => false, 'trial_charge_at' => null, 'trial_charge_cents' => null, 'trial_pm_type' => '',
+               'legacy_slug' => '', 'legacy_cents' => 0, 'legacy_billed' => false,
                'badge' => '—', 'badge_tone' => 'gray'];
         $st['org_status'] = (string)($r['org_status'] ?? '');
         $st['trial_ends_at'] = $r['trial_ends_at'] ?? null;
@@ -629,8 +663,21 @@ if (!function_exists('ak_plan_state_compute')) {
             $row_trial = $plan_trial || $st['sub_status'] === 'trial';
             $st['is_paid'] = $st['sub_status'] === 'active' && !$plan_trial
                 && ($st['price_cents'] > 0 || $st['plan_slug'] === 'sur-mesure' || !empty($r['stripe_subscription_id']));
-        } else {
+        } elseif ($st['org_status'] === 'trial') {
             $st['plan_label'] = ak_plan_label($st['plan_slug']);
+        } else {
+            // Compte historique sans ligne d'abonnement : formule équivalente (jamais « Association »
+            // ou « Essentiel », des libellés de l'ancienne grille)
+            $eq = ak_legacy_plan_equiv($st['plan_slug'], $r['monthly_price_cents'] ?? null);
+            $st['plan_label'] = $eq['label'];
+            $st['legacy_slug'] = $eq['slug'];
+            $st['legacy_cents'] = max(0, (int)($r['monthly_price_cents'] ?? 0));
+            // Facturé par le renouvellement (cron-job-renouvellements, échéancier historique) ? Jamais une démo
+            // (slug « demo-… »), et seulement avec une échéance. Clés absentes (ancien appelant) : on ne sait pas, compté.
+            $slug_known = array_key_exists('org_slug', $r);
+            $end_known = array_key_exists('legacy_period_end', $r);
+            $st['legacy_billed'] = (!$slug_known || strpos((string)$r['org_slug'], 'demo-') !== 0)
+                && (!$end_known || trim((string)$r['legacy_period_end']) !== '');
         }
         $st['is_trial'] = !$st['is_paid'] && ($row_trial || $st['org_status'] === 'trial');
         $end = $st['trial_ends_at'] ? strtotime((string)$st['trial_ends_at']) : false;
@@ -693,6 +740,50 @@ if (!function_exists('ak_plan_state_compute')) {
     }
 }
 
+if (!function_exists('ak_org_monthly_price_col')) {
+    /** « o.monthly_price_cents » (ancien montant mensuel HT des comptes historiques), ou NULL si la colonne est absente. */
+    function ak_org_monthly_price_col(PDO $pdo, string $o = 'o'): string {
+        return (isset(ak_db_columns($pdo, 'organizations')['monthly_price_cents']) ? "$o.monthly_price_cents" : "NULL") . " AS monthly_price_cents";
+    }
+}
+
+if (!function_exists('ak_org_legacy_bill_cols')) {
+    /**
+     * « o.slug AS org_slug, o.current_period_end AS legacy_period_end » : de quoi savoir si le renouvellement
+     * facture un compte historique sans ligne d'abonnement (ni démo, échéance renseignée), comme
+     * cron-job-renouvellements. Colonnes absentes : NULL (slug) ou une valeur non vide (échéance inconnue).
+     */
+    function ak_org_legacy_bill_cols(PDO $pdo, string $o = 'o'): string {
+        $oc = ak_db_columns($pdo, 'organizations');
+        return (isset($oc['slug']) ? "$o.slug" : "NULL") . " AS org_slug, "
+             . (isset($oc['current_period_end']) ? "$o.current_period_end" : "'?'") . " AS legacy_period_end";
+    }
+}
+
+if (!function_exists('ak_fondateur_lock_guarantee')) {
+    /**
+     * Offre fondateur : prix et fonctions garantis 12 mois (asso_subscriptions.price_locked_until, lu par
+     * ak_pc_price_locked_until). Posée UNE fois sur la ligne $sub_id, jamais repoussée ensuite (un second
+     * passage à l'offre fondateur garde la date), avec une note datée. Colonne absente (grille pas encore en
+     * base) : rien. Renvoie la date de fin (« AAAA-MM-JJ HH:MM:SS ») ou null.
+     */
+    function ak_fondateur_lock_guarantee(PDO $pdo, int $sub_id): ?string {
+        $cols = ak_db_columns($pdo, 'asso_subscriptions');
+        if ($sub_id <= 0 || !isset($cols['price_locked_until'])) return null;
+        $q = $pdo->prepare("SELECT price_locked_until FROM asso_subscriptions WHERE id = ?");
+        $q->execute([$sub_id]);
+        $cur = $q->fetchColumn();
+        if ($cur !== false && $cur !== null && trim((string)$cur) !== '' && strpos((string)$cur, '0000-00-00') !== 0) return (string)$cur;
+        $until = date('Y-m-d 23:59:59', strtotime('+12 months'));
+        $pdo->prepare("UPDATE asso_subscriptions SET price_locked_until = COALESCE(price_locked_until, ?) WHERE id = ?")->execute([$until, $sub_id]);
+        if (isset($cols['notes'])) {
+            $note = '|fondateur:' . date('Y-m-d') . ' offre fondateur attribuée, prix et fonctions garantis jusqu’au ' . date('d/m/Y', strtotime($until)) . '|';
+            $pdo->prepare("UPDATE asso_subscriptions SET notes = CONCAT(COALESCE(notes, ''), ?) WHERE id = ?")->execute([$note, $sub_id]);
+        }
+        return $until;
+    }
+}
+
 if (!function_exists('ak_org_plan_state')) {
     /**
      * État du plan d'UNE association (voir ak_plan_state_compute pour les clés et les règles).
@@ -700,13 +791,15 @@ if (!function_exists('ak_org_plan_state')) {
     function ak_org_plan_state(PDO $pdo, int $org_id): array {
         $r = [];
         try {
-            $o = $pdo->prepare("SELECT o.status, o.plan, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . ", " . ak_org_trial_card_cols($pdo) . " FROM organizations o WHERE o.id = ?");
+            $o = $pdo->prepare("SELECT o.status, o.plan, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . ", " . ak_org_trial_card_cols($pdo)
+                               . ", " . ak_org_monthly_price_col($pdo) . ", " . ak_org_legacy_bill_cols($pdo) . " FROM organizations o WHERE o.id = ?");
             $o->execute([$org_id]);
             $org = $o->fetch(PDO::FETCH_ASSOC) ?: [];
             $r = ['org_status' => $org['status'] ?? '', 'org_plan' => $org['plan'] ?? '', 'trial_ends_at' => $org['trial_ends_at'] ?? null,
-                  'payment_pending_until' => $org['payment_pending_until'] ?? null,
+                  'payment_pending_until' => $org['payment_pending_until'] ?? null, 'monthly_price_cents' => $org['monthly_price_cents'] ?? null,
                   'trial_sub_id' => $org['trial_sub_id'] ?? null, 'trial_charge_at' => $org['trial_charge_at'] ?? null,
-                  'trial_charge_cents' => $org['trial_charge_cents'] ?? null, 'trial_pm_type' => $org['trial_pm_type'] ?? null];
+                  'trial_charge_cents' => $org['trial_charge_cents'] ?? null, 'trial_pm_type' => $org['trial_pm_type'] ?? null,
+                  'org_slug' => $org['org_slug'] ?? null, 'legacy_period_end' => $org['legacy_period_end'] ?? null];
             $s = $pdo->prepare("SELECT " . ak_sub_state_cols($pdo) . "
                                 FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
                                 WHERE s.org_id = ? ORDER BY " . ak_sub_order('s') . " LIMIT 1");
@@ -793,6 +886,8 @@ if (!function_exists('ak_org_set_plan')) {
      * essai : il est arrêté chez Stripe d'abord (ak_stripe_trial_sub_cancel) ; si Stripe refuse, AkTrialBlocked.
      * organizations.plan (ancien libellé, parfois un ENUM) n'est écrit que s'il accepte la valeur.
      * Demande d'espace de l'app iPhone en attente : refusé (ak_org_review_guard).
+     * Offre fondateur : garantie de 12 mois posée sur la ligne courante (ak_fondateur_lock_guarantee).
+     * Formule payante : subscriptions.price_ht (ancienne table) suit son prix HT.
      */
     function ak_org_set_plan(PDO $pdo, int $org_id, int $plan_id): void {
         ak_org_review_guard($pdo, $org_id);
@@ -868,6 +963,36 @@ if (!function_exists('ak_org_set_plan')) {
         } else {
             ak_db_insert($pdo, 'asso_subscriptions', ['org_id' => $org_id, 'plan_id' => $plan_id, 'status' => $status,
                 'current_period_end' => $is_trial ? $end : $first_end], ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
+        }
+
+        // Offre fondateur (cockpit web, appli, création de compte) : prix et fonctions garantis 12 mois,
+        // posés une seule fois sur la ligne courante (un second passage ne repousse pas la date)
+        if ($plan['slug'] === 'fondateur') {
+            $cur->execute([$org_id]);
+            ak_fondateur_lock_guarantee($pdo, (int)(($cur->fetch(PDO::FETCH_ASSOC) ?: [])['id'] ?? 0));
+        }
+        // Ancienne table subscriptions (facturation manuelle, fiche du cockpit) : son montant suit la formule
+        // payante choisie, jamais l'ancien tarif (49,99 € HT). Formule gratuite ou sur devis à 0 € : inchangé.
+        if ($paid_plan && (int)$plan['price_cents'] > 0) {
+            try {
+                if (isset(ak_db_columns($pdo, 'subscriptions')['price_ht'])) {
+                    $pdo->prepare("UPDATE subscriptions SET price_ht = ? WHERE org_id = ? ORDER BY id DESC LIMIT 1")
+                        ->execute([round((int)$plan['price_cents'] / 100, 2), $org_id]);
+                }
+            } catch (Throwable $e) {
+                error_log('[ak_org_set_plan] subscriptions.price_ht : ' . get_class($e));
+            }
+            // Échéancier historique (organizations.monthly_price_cents, facturé par cron-job-renouvellements) :
+            // l'ancien montant suit lui aussi la formule, comme cli-rattacher-fondateur et ak_sub_apply_pending.
+            // Sinon le renouvellement s'arrête sur « ancien montant différent du prix de la formule ».
+            try {
+                if (isset(ak_db_columns($pdo, 'organizations')['monthly_price_cents'])) {
+                    $pdo->prepare("UPDATE organizations SET monthly_price_cents = ? WHERE id = ? AND COALESCE(monthly_price_cents, 0) > 0")
+                        ->execute([(int)$plan['price_cents'], $org_id]);
+                }
+            } catch (Throwable $e) {
+                error_log('[ak_org_set_plan] organizations.monthly_price_cents : ' . get_class($e));
+            }
         }
 
         $set_label = ak_db_accepts($pdo, 'organizations', 'plan', (string)$plan['slug']);

@@ -133,12 +133,20 @@ try {
 // pas l'ancien libellé organizations.plan. Les essais sont regroupés à part (en cours / terminés).
 $plans_split = [];      // libellé => nombre
 $plans_split_key = [];  // libellé => clé de couleur
+$mrr_by_plan = ['rows' => [], 'trial' => ['count' => 0], 'devis' => ['count' => 0], 'offert' => ['count' => 0], 'total_cents' => 0, 'paying' => 0];
 try {
     $ids = $pdo->query("SELECT id FROM organizations WHERE deleted_at IS NULL")->fetchAll(PDO::FETCH_COLUMN);
-    foreach (sa_org_plan_states($pdo, $ids) as $ps) {
+    $all_states = sa_org_plan_states($pdo, $ids);
+    // MRR par formule : même règle que la carte MRR du tableau de bord (sa_plan_state_mrr_cents)
+    $mrr_by_plan = sa_mrr_by_plan($all_states);
+    foreach ($all_states as $ps) {
         if ($ps['badge_tone'] === 'trial') { $lbl = $ps['plan_label'] . ' (essai en cours)'; $key = 'trial'; }
         elseif ($ps['badge_tone'] === 'expired') { $lbl = 'Essai terminé'; $key = 'expired'; }
-        else { $lbl = $ps['plan_label'] . ($ps['plan_id'] ? '' : ' (ancien plan)'); $key = $ps['plan_id'] ? $ps['plan_slug'] : 'legacy'; }
+        else {
+            $lbl = $ps['plan_label'];
+            $key = $ps['plan_id'] ? (strpos((string) $ps['plan_slug'], 'sur-mesure-') === 0 ? 'sur-mesure' : $ps['plan_slug']) : ((string) ($ps['legacy_slug'] ?? '') !== '' ? 'legacy' : 'demarrage');
+            if ($key === 'sur-mesure') $lbl = 'Sur-mesure';
+        }
         $plans_split[$lbl] = ($plans_split[$lbl] ?? 0) + 1;
         $plans_split_key[$lbl] = $key;
     }
@@ -348,6 +356,40 @@ sa_render_sidebar('dashboard');
             <?php endforeach; ?>
         </div>
     </div>
+</div>
+
+<!-- ============ MRR PAR FORMULE ============ -->
+<div class="sa-page-head" style="margin-top: 12px;">
+    <h2 class="sa-page-title" style="font-size: 16px;">💶 MRR par formule</h2>
+</div>
+
+<div class="sa-card" style="margin-bottom:24px;">
+    <div class="sa-card-title">Revenu mensuel récurrent (HT) · <?= number_format($mrr_by_plan['total_cents'] / 100, 2, ',', ' ') ?> € · <?= (int) $mrr_by_plan['paying'] ?> client<?= $mrr_by_plan['paying'] > 1 ? 's' : '' ?> payant<?= $mrr_by_plan['paying'] > 1 ? 's' : '' ?></div>
+    <table class="sa-table" style="margin-top:10px;">
+        <thead><tr><th>Formule</th><th style="text-align:right;">Clients</th><th style="text-align:right;">MRR (HT)</th><th style="text-align:right;">Part</th></tr></thead>
+        <tbody>
+            <?php if (!$mrr_by_plan['rows']): ?>
+                <tr><td colspan="4" style="color:var(--sa-ink-4);">Aucun client payant pour l’instant.</td></tr>
+            <?php endif; ?>
+            <?php foreach ($mrr_by_plan['rows'] as $r): ?>
+                <tr>
+                    <td><?= h($r['label']) ?></td>
+                    <td style="text-align:right;"><?= (int) $r['count'] ?></td>
+                    <td style="text-align:right;"><?= number_format($r['mrr_cents'] / 100, 2, ',', ' ') ?> €</td>
+                    <td style="text-align:right;"><?= $mrr_by_plan['total_cents'] > 0 ? number_format($r['mrr_cents'] / $mrr_by_plan['total_cents'] * 100, 1, ',', ' ') : '0' ?> %</td>
+                </tr>
+            <?php endforeach; ?>
+            <?php foreach (['trial' => 'Essais (en cours ou terminés)', 'devis' => 'Sur-mesure, devis pas encore chiffré', 'offert' => 'Offert ou gratuit'] as $k => $lbl): if ((int) ($mrr_by_plan[$k]['count'] ?? 0) === 0) continue; ?>
+                <tr style="color:var(--sa-ink-3);">
+                    <td><?= h($lbl) ?></td>
+                    <td style="text-align:right;"><?= (int) $mrr_by_plan[$k]['count'] ?></td>
+                    <td style="text-align:right;">0,00 €</td>
+                    <td style="text-align:right;">—</td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <div style="font-size:11.5px; color:var(--sa-ink-4); margin-top:8px;">Comptes historiques sans ligne d’abonnement : leur ancien montant mensuel. Plans « Offert » et essais : aucun revenu.</div>
 </div>
 
 <?php sa_render_foot(); ?>

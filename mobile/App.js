@@ -4204,7 +4204,7 @@ function NativeMailbox({ data, loading, view, onView, onSearch, onOpen, onMore, 
       {!data ? (
         <View style={styles.homeLoader}><ActivityIndicator size="large" color={BRAND} /></View>
       ) : data.ok === false ? (
-        <View style={styles.emptyBox}><Ionicons name="lock-closed-outline" size={44} color="#CBD5D1" /><Text style={styles.emptyTxt}>{data.error || data.message || 'Boîte mail indisponible.'}</Text></View>
+        <View style={styles.emptyBox}><Ionicons name="lock-closed-outline" size={44} color="#CBD5D1" /><Text style={styles.emptyTxt}>{(data.error === 'plan_feature' ? (data.message || PLAN_LOCKED_TEXT) : (data.error || data.message)) || 'Boîte mail indisponible.'}</Text></View>
       ) : !acc ? (
         <View style={styles.emptyBox}>
           <Ionicons name="mail-outline" size={48} color={BRAND} />
@@ -4493,8 +4493,9 @@ const MORE_GROUPS = [
   {
     title: 'Communication',
     items: [
-      { label: 'Boîte mail', icon: 'mail-unread', nav: { screen: 'mail' }, badge: 'mail', mail: true },
-      { label: 'Copilote IA', icon: 'sparkles', nav: { web: '/mon-asso-copilote', ai: 'répondre à vos questions sur votre structure' }, admin: true },
+      // feature : fonction de la formule (kpi.plan_locked) ; non incluse → entrée grisée, message neutre
+      { label: 'Boîte mail', icon: 'mail-unread', nav: { screen: 'mail' }, badge: 'mail', mail: true, feature: 'feature_mail_inbox' },
+      { label: 'Copilote IA', icon: 'sparkles', nav: { web: '/mon-asso-copilote', ai: 'répondre à vos questions sur votre structure' }, admin: true, feature: 'feature_ai_assistant' },
       { label: 'Messages', icon: 'chatbubbles', nav: { screen: 'messages' }, badge: 'msg', noFollower: true },
       { label: 'Notifications', icon: 'notifications', nav: { screen: 'notifications' }, badge: 'notif', noOrg: true },
       { label: 'Communication', icon: 'mail', nav: { screen: 'broadcasts' }, admin: true },
@@ -4519,9 +4520,25 @@ const FOUNDER_SHORTCUTS = [
   { label: 'Pilotage', icon: 'grid', fk: 'cockpit' },
 ];
 
+/* Fonction absente de la formule de l'association (api/app-dashboard.php › plan_locked) : l'entrée
+   reste visible, grisée avec un cadenas ; un appui n'ouvre qu'un message neutre (règle 3.1.1 d'Apple :
+   ni prix, ni nom d'une autre formule, ni lien d'achat), sans navigation ni demande d'accord IA. */
+const PLAN_LOCKED_TEXT = 'Cette fonction n’est pas incluse dans votre formule.';
+function planLockedAlert(label) { Alert.alert(label || 'Fonction non incluse', PLAN_LOCKED_TEXT); }
+/* En-tête de Plus : « Formule Pro », « Offre fondateur » (texte seul, sans lien). Le détail entre
+   parenthèses (« ancien compte… ») reste dans Paramètres. Vide → null. */
+function planHeadText(label) {
+  const l = String(label || '').replace(/\s*\(.*\)\s*$/, '').trim();
+  if (!l || l === '—') return null;
+  return /^(formule|offre|essai)\b/i.test(l) ? l : 'Formule ' + l;
+}
+
 // noOrg : compte sans association (Fondateur, super-admin) : seulement Notifications, Paramètres, Support
-function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, canMail, canBill, isTpe, isFollower, counts, onNav, onLogout, trial, noOrg }) {
+// locked : clés feature_* non incluses dans la formule ; planLabel : nom de la formule (en-tête)
+function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, canMail, canBill, isTpe, isFollower, counts, onNav, onLogout, trial, noOrg, locked, planLabel }) {
   const cnt = counts || {};
+  const lockedSet = Array.isArray(locked) ? locked : [];
+  const planHead = noOrg ? null : planHeadText(planLabel);
   return (
     <View style={styles.detailWrap}>
       <View style={styles.moreHeader}>
@@ -4532,7 +4549,7 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, ca
           <Text style={styles.moreOrg} numberOfLines={1}>{orgName || (noOrg ? 'Assokit' : 'Mon organisation')}</Text>
           {trial ? (
             <Text style={[styles.moreSub, { color: trial.expired ? '#B91C1C' : '#B45309', fontWeight: '700' }]} numberOfLines={1}>{trial.text}</Text>
-          ) : <Text style={styles.moreSub}>{noOrg ? 'Aucune association rattachée' : 'Tous vos outils'}</Text>}
+          ) : <Text style={styles.moreSub} numberOfLines={1}>{noOrg ? 'Aucune association rattachée' : (planHead || 'Tous vos outils')}</Text>}
         </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
@@ -4572,15 +4589,18 @@ function NativeMore({ orgName, initials, logo, isFounder, isAdmin, canManage, ca
             </View>
             <View style={styles.moreGrid}>
               {items.map((it) => {
-                const n = it.badge ? (cnt[it.badge] || 0) : 0;
+                const off = !!(it.feature && lockedSet.indexOf(it.feature) !== -1);
+                const n = !off && it.badge ? (cnt[it.badge] || 0) : 0;
                 return (
-                  <TouchableOpacity accessibilityRole="button" key={it.label} style={styles.moreItem} activeOpacity={0.8} onPress={() => onNav(it.nav)}>
-                    {it.admin && isAdmin && !g.admin ? <View style={styles.adminTagCorner}><Text style={styles.adminTagTxt}>Admin</Text></View> : null}
-                    <View style={styles.moreItemIcon}>
-                      <Ionicons name={it.icon} size={22} color={BRAND} />
+                  <TouchableOpacity accessibilityRole="button" key={it.label} style={[styles.moreItem, off && { opacity: 0.55 }]} activeOpacity={0.8}
+                    accessibilityLabel={off ? it.label + ', non incluse dans votre formule' : undefined}
+                    onPress={() => (off ? planLockedAlert(it.label) : onNav(it.nav))}>
+                    {it.admin && isAdmin && !g.admin && !off ? <View style={styles.adminTagCorner}><Text style={styles.adminTagTxt}>Admin</Text></View> : null}
+                    <View style={[styles.moreItemIcon, off && { backgroundColor: '#F1F5F4' }]}>
+                      <Ionicons name={off ? 'lock-closed-outline' : it.icon} size={22} color={off ? '#8A968F' : BRAND} />
                       {n > 0 && <View style={styles.moreBadge}><Text style={styles.moreBadgeTxt}>{n > 99 ? '99+' : n}</Text></View>}
                     </View>
-                    <Text style={styles.moreItemTxt} numberOfLines={1}>{it.label}</Text>
+                    <Text style={[styles.moreItemTxt, off && { color: '#8A968F' }]} numberOfLines={1}>{it.label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -4687,7 +4707,7 @@ const plural = (n, one, many) => (n > 1 ? many : one);
 const FC_MINI = [
   { key: 'orgs', color: '#059669', bg: '#ECFDF5', icon: 'business', label: 'Associations', fmt: (k) => String(k.orgs_total ?? 0), sub: (k) => (k.orgs_active ?? 0) + ' ' + plural(k.orgs_active ?? 0, 'active', 'actives') + ' · ' + (k.orgs_trial ?? 0) + ' ' + plural(k.orgs_trial ?? 0, 'essai', 'essais') },
   { key: 'users', color: '#7C3AED', bg: '#F5F3FF', icon: 'people', label: 'Utilisateurs', fmt: (k) => String(k.users ?? 0), sub: () => 'tous rôles' },
-  { key: 'ia', color: '#2563EB', bg: '#EFF6FF', icon: 'sparkles', label: 'Générations IA', fmt: (k) => String(k.ia_nb ?? 0), sub: (k) => fmtEuro(k.ia_cost) + ' dépensés' },
+  { key: 'ia', color: '#2563EB', bg: '#EFF6FF', icon: 'sparkles', label: 'Générations IA', fmt: (k) => String(k.ia_nb ?? 0), sub: (k) => (k.ia_credits != null ? String(Number(k.ia_credits) || 0) + ' crédits ce mois-ci' : fmtEuro(k.ia_cost) + ' dépensés') },
 ];
 
 const FC_TILES = [
@@ -5053,7 +5073,9 @@ function NativeFounderOrgDetail({ data, loading, busy, onBack, onRefresh, onEdit
       : 'Passage en ' + targetLabel + ' : essai de ' + trialDays + ' jours à partir d’aujourd’hui.')
     : (inTrial
       ? 'L’essai prendra fin : l’association passera en formule ' + targetLabel + ' (active).'
-      : 'La formule passera de ' + orgPlanLabel(o) + ' à ' + targetLabel + '.');
+      : 'La formule passera de ' + orgPlanLabel(o) + ' à ' + targetLabel + '.')
+      // Offre fondateur : ak_org_set_plan pose la garantie de 12 mois (une garantie déjà posée est gardée)
+      + (target.slug === 'fondateur' ? ' Ses fonctions et son prix seront garantis 12 mois à partir d’aujourd’hui (une garantie déjà en place est conservée).' : '');
   const save = () => {
     const payload = { org_id: o.id, action: 'edit', name: name.trim(), billing_email: email.trim(), plan, plan_id: target ? target.id : undefined, note };
     if (!planChanged) { onEdit(payload); return; }
@@ -5358,7 +5380,7 @@ function planFieldList(server, local) {
   }));
 }
 function blankPlan(quotas, features) {
-  const p = { id: 0, slug: '', name: '', tagline: '', price_eur: '', price_label: '', is_custom_quote: false, is_featured: false, is_visible: true, display_order: 0 };
+  const p = { id: 0, slug: '', name: '', tagline: '', price_eur: '', price_label: '', is_custom_quote: false, is_featured: false, is_visible: false, display_order: 0 };
   (quotas || PLAN_QUOTAS).forEach((q) => { p[q.key] = ''; });
   (features || PLAN_FEATURES).forEach((f) => { p[f.key] = !!f.def; });
   return p;
@@ -5373,6 +5395,9 @@ function planLimitsLine(p) {
   if (mg !== null) parts.push(fr(mg) + ' gest.');
   return parts.join(' · ');
 }
+// Slugs des lignes de la grille (plan-catalog-helpers.php, AK_PLAN_FIXED_SLUGS) : repli si le serveur
+// n'envoie pas slug_fixed
+const PLAN_GRID_SLUGS = ['ak-essentiel', 'assokit', 'ak-equipe', 'sur-mesure', 'fondateur', 'pro-essai', 'demarrage'];
 function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, onDelete, onToggle }) {
   const plans = data ? (data.plans || []) : null;
   const quotas = planFieldList(data && data.fields && data.fields.limits, PLAN_QUOTAS);
@@ -5397,6 +5422,8 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
   if (form) {
     const isNew = !form.id;
     const slugLocked = !!(form.is_system || form.slug_fixed);
+    // Offre fondateur, essai, accès limité : jamais proposés à la souscription (le serveur le force aussi)
+    const neverVisible = !!form.never_visible;
     const canSave = form.slug.trim().length > 0 && form.name.trim().length > 0 && !busy;
     return (
       <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
@@ -5414,7 +5441,7 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
           <Text style={styles.blogLabel}>Accroche</Text>
           <TextInput style={styles.blogInput} value={form.tagline} onChangeText={(v) => setF('tagline', v)} placeholder="Ex : Associations actives et TPE" placeholderTextColor="#9AA7A1" />
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Prix (€ HT/mois)</Text><TextInput style={styles.blogInput} value={form.price_eur} onChangeText={(v) => setF('price_eur', v.replace(/[^0-9.,]/g, '').replace(',', '.'))} placeholder="29.99" placeholderTextColor="#9AA7A1" keyboardType="decimal-pad" /></View>
+            <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Prix (€ HT/mois)</Text><TextInput style={[styles.blogInput, !isNew && form.slug === 'fondateur' && { color: '#8A968F' }]} editable={isNew || form.slug !== 'fondateur'} value={form.price_eur} onChangeText={(v) => setF('price_eur', v.replace(/[^0-9.,]/g, '').replace(',', '.'))} placeholder="29.99" placeholderTextColor="#9AA7A1" keyboardType="decimal-pad" /></View>
             <View style={{ flex: 1 }}><Text style={styles.blogLabel}>Libellé prix</Text><TextInput style={styles.blogInput} value={form.price_label} onChangeText={(v) => setF('price_label', v)} placeholder="Sur devis…" placeholderTextColor="#9AA7A1" /></View>
           </View>
 
@@ -5439,22 +5466,28 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
             ))}
           </View>
 
+          <Text style={styles.blogLabel}>Ordre d’affichage</Text>
+          <TextInput style={styles.blogInput} value={String(form.display_order ?? '')} onChangeText={(v) => setF('display_order', v.replace(/[^0-9]/g, ''))} placeholder="0" placeholderTextColor="#9AA7A1" keyboardType="number-pad" />
+          <Text style={styles.odHint}>Les plus petits nombres passent en premier (Mon abonnement, sélecteurs du cockpit).</Text>
+
           <View style={styles.plnPanel}>
-            <View style={styles.plnFeat}><Text style={styles.plnFeatLbl}>Visible sur la page tarifs</Text><Switch value={!!form.is_visible} onValueChange={(v) => setF('is_visible', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
+            <View style={styles.plnFeat}><Text style={[styles.plnFeatLbl, neverVisible && { color: '#8A968F' }]}>Proposée à la souscription</Text><Switch value={!neverVisible && !!form.is_visible} disabled={neverVisible} onValueChange={(v) => setF('is_visible', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
             <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Formule mise en avant</Text><Switch value={!!form.is_featured} onValueChange={(v) => setF('is_featured', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
             <View style={[styles.plnFeat, styles.odMemberBorder]}><Text style={styles.plnFeatLbl}>Sur devis (prix masqué)</Text><Switch value={!!form.is_custom_quote} onValueChange={(v) => setF('is_custom_quote', v)} trackColor={{ true: BRAND, false: '#CBD5D1' }} /></View>
           </View>
+          <Text style={styles.odHint}>{neverVisible ? 'Cette formule reste toujours masquée : elle ne se souscrit jamais.' : 'La page Tarifs affiche toujours Essentiel, Pro, Équipe et Sur-mesure, avec son propre texte.'}</Text>
 
           <TouchableOpacity accessibilityRole="button" style={[styles.lgBtn, !canSave && styles.lgBtnOff]} activeOpacity={0.9} disabled={!canSave}
             onPress={() => {
-              const payload = { action: isNew ? 'create' : 'update', plan_id: form.id || undefined, slug: form.slug.trim(), name: form.name.trim(), tagline: form.tagline.trim(), price_eur: parseFloat(form.price_eur) || 0, price_label: form.price_label.trim(), is_custom_quote: form.is_custom_quote ? 1 : 0, is_featured: form.is_featured ? 1 : 0, is_visible: form.is_visible ? 1 : 0, display_order: form.display_order || 0 };
+              const payload = { action: isNew ? 'create' : 'update', plan_id: form.id || undefined, slug: form.slug.trim(), name: form.name.trim(), tagline: form.tagline.trim(), price_eur: parseFloat(form.price_eur) || 0, price_label: form.price_label.trim(), is_custom_quote: form.is_custom_quote ? 1 : 0, is_featured: form.is_featured ? 1 : 0, is_visible: form.is_visible && !neverVisible ? 1 : 0, display_order: parseInt(form.display_order, 10) || 0 };
               quotas.forEach((q) => { payload[q.key] = form[q.key] === '' ? '' : parseInt(form[q.key], 10); });
               features.forEach((f) => { payload[f.key] = form[f.key] ? 1 : 0; });
               onSave(payload, () => setForm(null));
             }}>
             {busy ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save" size={17} color="#fff" /><Text style={styles.lgBtnTxt}>{isNew ? 'Créer la formule' : 'Enregistrer'}</Text></>}
           </TouchableOpacity>
-          {!isNew && !form.is_system && (
+          {/* Lignes de la grille (slug figé) : jamais supprimées, on les masque (plan-catalog-helpers.php) */}
+          {!isNew && !form.is_system && !form.slug_fixed && (
             <TouchableOpacity accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 14 }} activeOpacity={0.7}
               onPress={() => Alert.alert('Supprimer cette formule ?', 'Action définitive (impossible si une association l’utilise).', [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: () => onDelete(form.id, () => setForm(null)) }])}>
               <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 14 }}>Supprimer la formule</Text>
@@ -5478,15 +5511,21 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
           </TouchableOpacity>
           {plans.length === 0 ? (
             <View style={styles.emptyBox}><Ionicons name="pricetags-outline" size={40} color="#CBD5D1" /><Text style={styles.emptyTxt}>Aucune formule</Text></View>
-          ) : plans.map((p) => (
+          ) : plans.map((p) => {
+            const shown = p.label || p.name;
+            // Ligne de la grille pas encore passée par la migration (grille_version vide) ; ancien serveur : rien
+            const notGrid = p.grille === false && (p.slug_fixed === true || PLAN_GRID_SLUGS.indexOf(p.slug) !== -1);
+            return (
             <TouchableOpacity accessibilityRole="button" key={p.id} style={styles.plnCard} activeOpacity={0.85} onPress={() => openEdit(p)}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={styles.plnName} numberOfLines={1}>{p.name}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Text style={styles.plnName} numberOfLines={1}>{shown}</Text>
+                  {notGrid && <View style={[styles.fcChip, { backgroundColor: '#FFEDD5' }]}><Text style={[styles.fcChipTxt, { color: '#C2410C' }]}>Pas encore à la grille</Text></View>}
                   {p.is_trial && <View style={[styles.fcChip, { backgroundColor: PLAN_TONE.trial.bg }]}><Text style={[styles.fcChipTxt, { color: PLAN_TONE.trial.color }]}>ESSAI</Text></View>}
                   {p.is_featured && <View style={[styles.fcChip, { backgroundColor: '#FEF3C7' }]}><Text style={[styles.fcChipTxt, { color: '#B45309' }]}>Mis en avant</Text></View>}
                   {!p.is_visible && <View style={[styles.fcChip, { backgroundColor: '#F1F5F4' }]}><Text style={[styles.fcChipTxt, { color: '#5F6D66' }]}>Masqué</Text></View>}
                 </View>
+                {p.name && p.name !== shown ? <Text style={styles.plnSub} numberOfLines={1}>nom en base : {p.name}</Text> : null}
                 <Text style={styles.plnSub} numberOfLines={1}>{p.slug} · {p.adoption} org{p.adoption > 1 ? 's' : ''}{p.tagline ? ' · ' + p.tagline : ''}</Text>
                 {planLimitsLine(p) ? <Text style={styles.plnSub} numberOfLines={1}>{planLimitsLine(p)}</Text> : null}
               </View>
@@ -5495,7 +5534,8 @@ function NativeFounderPlans({ data, loading, busy, onRefresh, onBack, onSave, on
                 <Ionicons name="chevron-forward" size={16} color="#CBD5D1" style={{ marginTop: 3 }} />
               </View>
             </TouchableOpacity>
-          ))}
+            );
+          })}
         </ScrollView>
       )}
     </View>
@@ -5935,7 +5975,7 @@ function NativeFounderStats({ data, loading, onBack, onRefresh }) {
     { icon: 'alert-circle', color: PLAN_TONE.expired.color, bg: PLAN_TONE.expired.bg, v: String(o.trial_expired ?? 0), l: 'Essais terminés', s: 'sans formule payante' },
     { icon: 'people', color: '#2563EB', bg: '#EFF6FF', v: String(u.total ?? 0), l: 'Utilisateurs', s: '+' + (u.new30 ?? 0) + ' /30j' },
     { icon: 'alert-circle', color: '#DC2626', bg: '#FEF2F2', v: fmtEuro(r.unpaid_total), l: 'Impayés', s: (r.unpaid_nb ?? 0) + ' facture' + ((r.unpaid_nb ?? 0) > 1 ? 's' : '') + (r.unpaid_orgs > 0 ? ' · ' + r.unpaid_orgs + ' asso' + (r.unpaid_orgs > 1 ? 's' : '') : '') },
-    { icon: 'sparkles', color: '#D97706', bg: '#FFFBEB', v: String(ia.nb ?? 0), l: 'Générations IA', s: fmtEuro(ia.cost) + ' dépensés' },
+    { icon: 'sparkles', color: '#D97706', bg: '#FFFBEB', v: String(ia.nb ?? 0), l: 'Générations IA', s: ia.credits != null ? String(Number(ia.credits) || 0) + ' crédits ce mois-ci' : fmtEuro(ia.cost) + ' dépensés' },
   ];
   return (
     <View style={styles.detailWrap}>
@@ -7473,8 +7513,10 @@ const PLAN_STATE_TONE = {
 };
 function PlanCard({ card }) {
   const summary = Array.isArray(card.summary) ? card.summary : [];
+  const included = Array.isArray(card.included) ? card.included.filter((x) => typeof x === 'string' && x.trim() !== '') : [];
   const usage = Array.isArray(card.usage) ? card.usage : [];
-  const states = Array.isArray(card.states) ? card.states : [];
+  // iPhone : rien de l'essai (règle 3.1.1), même si un ancien serveur l'envoie
+  const states = (Array.isArray(card.states) ? card.states : []).filter((st) => st && !(IOS_SIGNUP_REQUEST && st.tone === 'trial'));
   const notes = Array.isArray(card.notes) ? card.notes : [];
   return (
     <View style={styles.planCardBox}>
@@ -7489,6 +7531,11 @@ function PlanCard({ card }) {
         </View>
       </View>
       {summary.length > 0 ? <Text style={styles.planCardSum}>{summary.join(' · ')}</Text> : null}
+      {included.length > 0 ? (
+        <Text style={styles.planCardSum} accessible accessibilityLabel={'Fonctions avancées incluses : ' + included.join(', ')}>
+          <Text style={{ fontWeight: '700' }}>Fonctions avancées incluses : </Text>{included.join(' · ')}
+        </Text>
+      ) : null}
       {states.map((st, i) => {
         const t = PLAN_STATE_TONE[st.tone] || PLAN_STATE_TONE.limit;
         return (
@@ -7547,12 +7594,15 @@ function NativeSettings({ data, onBack, onSave, saving, error, onLogo, logoBusy,
     <KeyboardAvoidingView style={styles.detailWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <DetailHeader title="Paramètres" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        {/* Formule de l'association : jamais sur iPhone (IOS_SIGNUP_REQUEST, règle 3.1.1 d'Apple).
-            « Ma formule » (api/app-account.php › plan) : nom, résumé SANS prix, compteurs du mois, états ;
-            ni prix, ni bouton de paiement, ni « Passer à… », ni badge. Ancien serveur : la simple carte. */}
-        {!IOS_SIGNUP_REQUEST && data.plan && data.plan.name ? (
+        {/* « Ma formule » (api/app-account.php › plan) : nom, résumé SANS prix, fonctions incluses,
+            compteurs du mois, états ; ni prix, ni bouton de paiement, ni « Passer à… », ni badge.
+            iPhone (choix du Fondateur, règle 3.1.1 d'Apple) : la carte s'affiche aussi, mais rien de
+            l'essai (le serveur et PlanCard retirent l'état « essai » ; orgTrialInfo vaut null).
+            Retour en arrière : remettre !IOS_SIGNUP_REQUEST devant les deux conditions ci-dessous.
+            Ancien serveur : la simple carte. */}
+        {data.plan && data.plan.name ? (
           <PlanCard card={data.plan} />
-        ) : !IOS_SIGNUP_REQUEST && plan && (plan.trial || plan.label) ? (
+        ) : plan && (plan.trial || plan.label) ? (
           <View style={styles.setPlanCard} accessible accessibilityLabel={'Formule : ' + (plan.trial ? plan.trial.text : plan.label)}>
             <View style={[styles.setPlanIc, { backgroundColor: plan.trial ? (plan.trial.expired ? '#FEE2E2' : '#FEF3C7') : '#ECFDF5' }]}>
               <Ionicons name={plan.trial ? (plan.trial.expired ? 'alert-circle-outline' : 'hourglass-outline') : 'ribbon-outline'} size={18} color={plan.trial ? (plan.trial.expired ? '#B91C1C' : '#B45309') : BRAND} />
@@ -8962,7 +9012,11 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
         if (!(kpiRef.current && kpiRef.current.profile === 'mairie')) fetchKpisRef.current(true);
       }
       const blocked = !!(pwKey || suspKey || mairieKey);
-      const failedKey = blocked ? null : DATA_KEYS.find((k) => msg[k] && msg[k].ok === false);
+      // Fonction non incluse, limite ou crédits de la formule, accès limité (403 plan_feature, plan_limit,
+      // ai_quota, readonly, ou locked:true) : l'écran affiche le message neutre, ce n'est pas une panne
+      const PLAN_CODES = ['plan_feature', 'plan_limit', 'ai_quota', 'readonly'];
+      const planRefusal = (r) => !!r && (r.locked === true || PLAN_CODES.indexOf(r.code) !== -1 || PLAN_CODES.indexOf(r.error) !== -1);
+      const failedKey = blocked ? null : DATA_KEYS.find((k) => msg[k] && msg[k].ok === false && !planRefusal(msg[k]));
       if (failedKey && Date.now() - (lastLoadAlert.current || 0) > 5000) {
         lastLoadAlert.current = Date.now();
         Alert.alert('Chargement impossible', (msg[failedKey].message) || 'Vérifie ta connexion, puis tire vers le bas pour rafraîchir.');
@@ -9232,6 +9286,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
           // Les listes de limites et de fonctions (fields) restent celles de la dernière lecture
           if (r.plans) setFdPlansM((prev) => ({ ok: true, plans: r.plans, fields: (r.fields || (prev && prev.fields)) || undefined }));
           if (fdPlanCloseRef.current) { fdPlanCloseRef.current(); fdPlanCloseRef.current = null; }
+          // Prix modifié sur une formule déjà reliée à Stripe : configuration à relancer sur le site
+          if (r.warning) Alert.alert('Formule enregistrée', String(r.warning));
         } else if (r && r.error === 'forbidden') {
           Alert.alert('Formules', 'Réservé au Fondateur.');
         } else { Alert.alert('Opération impossible', (r && r.message) || 'Réessaie dans un instant.'); }
@@ -9727,7 +9783,7 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
               <NativeHome data={kpi} loading={kpiLoading} onRefresh={fetchKpis} onGoto={onGoto} profile={profile} error={kpiError}
                 onQuick={onQuick} quickActions={QUICK_ACTIONS} onNotifs={() => { notifsBack.current = null; openMenuScreen('notifications'); }}
                 notifCount={notifCount}
-                showMail={!!kpi && (kpi.mail_access === true || (kpi.mail_access === undefined && canManageOrg))}
+                showMail={!!kpi && (kpi.mail_access === true || (kpi.mail_access === undefined && canManageOrg)) && kpi.mail_locked !== true}
                 onMail={() => openMenuScreen('mail')} />
             )}
           </View>
@@ -10004,6 +10060,8 @@ function AppShell({ startPath, pushToken, autoCreds, onSaveCreds, onClearCreds, 
                 onLogout={doLogout}
                 trial={orgTrialInfo(kpi)}
                 noOrg={noOrg}
+                locked={kpi && Array.isArray(kpi.plan_locked) ? kpi.plan_locked : []}
+                planLabel={kpi && !kpi.trial ? kpi.plan_label : ''}
               />
             )}
           </View>

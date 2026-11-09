@@ -68,8 +68,8 @@ function ak_nav_familles(array $ctx): array
     $admin       = !empty($ctx['peut_admin']) || $estAdmin;
     $active      = (string)($ctx['active'] ?? '');
 
-    // Archives et Abonnement ne se montraient que si l'on était déjà dans
-    // cette zone. Comportement conservé tel quel.
+    // Archives ne se montrait que si l'on était déjà dans cette zone.
+    // Comportement conservé tel quel (Mon abonnement est désormais toujours là).
     $zoneAdmin   = in_array($active, ['admin', 'archives', 'abonnement'], true);
     $facturation = !function_exists('ak_billing_hidden') || !ak_billing_hidden();
 
@@ -148,7 +148,9 @@ function ak_nav_familles(array $ctx): array
                 ['journal-equipe', '/journal-equipe', 'Journal d’activité', $estAdmin && is_file(__DIR__ . '/journal-equipe.php'), ['journal-equipe'], null, false, ak_nav_verrou('activity_log')],
                 ['mon-asso-sso', '/mon-asso-sso', 'Intégration WordPress', $admin, ['mon-asso-sso']],
                 ['archives',     '/archives',     'Archives',              $admin && $zoneAdmin, ['archives']],
-                ['abonnement',   '/abonnement',   'Abonnement',            $admin && $zoneAdmin && $facturation, ['abonnement']],
+                // Mon abonnement (formule, factures, moyen de paiement) : administrateur seulement, sur toutes les
+                // pages, comme la page (mon-asso-plan.php) ; jamais dans l'appli ni pour le compte d'examen
+                ['abonnement',   '/mon-asso-plan', 'Mon abonnement',       $estAdmin && $facturation, ['abonnement', 'mon-asso-plan', 'mon-asso-paiement']],
             ],
         ],
     ];

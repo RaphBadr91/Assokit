@@ -42,6 +42,14 @@ const DASHBOARD = {
   // Droits du rôle (api/app-dashboard.php) : faux → montants à null, cartes masquées par l'appli
   can_view_finances: true,
   can_access_billing: true,
+  // Formule Pro (grille de novembre 2026, api/_app-plan.php) : rien de verrouillé. Profil Essentiel
+  // (Boîte mail et Copilote IA grisés) : ?role=essentiel dans l'adresse de l'aperçu
+  trial: false,
+  trial_expired: false,
+  plan_label: 'Pro',
+  plan_locked: [],
+  plan_readonly: false,
+  plan_readonly_message: null,
   kpis: {
     projets_actifs: 7,
     membres: 248,
@@ -68,10 +76,14 @@ const DASHBOARD_ROLES = {
   suiveur: { ...DASHBOARD, role: 'follower', can_create_projects: false, msg_unread: 0, can_view_finances: false, can_access_billing: false,
     kpis: { ...DASHBOARD.kpis, ...NO_MONEY, projets_actifs: 2, membres: null, membres_nouveaux: null, evenements: 2 },
     head_line: '1 échéance cette semaine', today: DASHBOARD.today.filter((t) => t.kind === 'event') },
+  // Formule Essentiel : Boîte mail et Copilote IA non inclus → entrées grisées dans Plus, carte Boîte
+  // mail absente de l'accueil, /api/app-mail.php répond 403 plan_feature (aucune alerte de chargement)
+  essentiel: { ...DASHBOARD, plan_label: 'Essentiel', mail_access: true, mail_connected: false, mail_unread: 0, mail_prio: 0,
+    mail_locked: true, plan_locked: ['feature_mail_inbox', 'feature_ai_assistant'] },
 };
 function previewRole() {
   try {
-    const m = /[?&]role=(membre|suiveur)\b/.exec((typeof window !== 'undefined' && window.location && window.location.search) || '');
+    const m = /[?&]role=(membre|suiveur|essentiel)\b/.exec((typeof window !== 'undefined' && window.location && window.location.search) || '');
     return m ? m[1] : null;
   } catch (e) { return null; }
 }
@@ -411,10 +423,63 @@ const DASHBOARD_FULL = {
   ],
 };
 
+/* Carte « Ma formule » (api/app-account.php › plan, app_plan_card) : sans prix ni bouton.
+   Profil par défaut : Pro ; ?role=essentiel : la carte Essentiel (PLAN_ESSENTIEL). */
+const PLAN_ESSENTIEL = {
+  slug: 'ak-essentiel',
+  name: 'Essentiel',
+  tagline: 'Petites associations et indépendants',
+  summary: ['Jusqu’à 50 membres (bureau compris)', '3 gestionnaires', '30 crédits IA par mois', '500 e-mails par mois'],
+  included: ['Envois groupés d’e-mails (diffusions, invitations, convocations)'],
+  trial: false,
+  usage: [
+    { key: 'members', label: 'Membres', used: 47, limit: 50, full: false, text: 'Membres : 47 sur 50' },
+    { key: 'managers', label: 'Gestionnaires', used: 3, limit: 3, full: true, text: 'Gestionnaires : 3 sur 3' },
+    { key: 'ai', label: 'Crédits IA', used: 28, limit: 30, full: false, text: 'Crédits IA : 28 sur 30' },
+    { key: 'emails', label: 'E-mails envoyés', used: 120, limit: 500, full: false, text: 'E-mails envoyés : 120 sur 500' },
+  ],
+  states: [
+    { tone: 'limit', text: 'Votre formule permet 3 gestionnaires (administrateurs, coordinateurs, référents) : limite atteinte.' },
+  ],
+  readonly: false,
+  notes: [
+    'Les crédits IA et les e-mails repartent à zéro le 1er de chaque mois.',
+    '1 crédit IA = 1 texte rédigé, 1 réponse du copilote ou 1 justificatif lu. Les tâches de fond ne consomment pas de crédit. '
+      + 'Les factures et devis envoyés un par un ne sont pas comptés dans les e-mails.',
+  ],
+  footer: 'Votre formule est gérée par l’administrateur de votre structure. Une question ? Écrivez au support depuis l’onglet Plus, rubrique Support.',
+};
 const ACCOUNT = {
   ok: true,
+  plan: {
+    slug: 'assokit',
+    name: 'Pro',
+    tagline: 'Associations actives et TPE',
+    summary: ['Jusqu’à 500 membres (bureau compris)', '10 gestionnaires', '300 crédits IA par mois', '3\u00A0000 e-mails par mois'],
+    included: ['Envois groupés d’e-mails (diffusions, invitations, convocations)', 'Prévisions de trésorerie et comptabilité analytique illimitée',
+      'Copilote IA, priorités du jour, assistant de projet, lecture des justificatifs', 'Boîte Gmail intégrée et brouillons IA'],
+    trial: false,
+    usage: [
+      { key: 'members', label: 'Membres', used: 248, limit: 500, full: false, text: 'Membres : 248 sur 500' },
+      { key: 'managers', label: 'Gestionnaires', used: 4, limit: 10, full: false, text: 'Gestionnaires : 4 sur 10' },
+      { key: 'ai', label: 'Crédits IA', used: 86, limit: 300, full: false, text: 'Crédits IA : 86 sur 300' },
+      { key: 'emails', label: 'E-mails envoyés', used: 420, limit: 3000, full: false, text: 'E-mails envoyés : 420 sur 3\u00A0000' },
+    ],
+    states: [],
+    readonly: false,
+    notes: PLAN_ESSENTIEL.notes,
+    footer: PLAN_ESSENTIEL.footer,
+  },
   account: { first_name: 'Raphaël', last_name: 'Badr', email: 'raphael@exemple.fr', phone: '06 12 34 56 78', city: 'Évry', role: 'admin', can_delete: true },
   org: { name: 'Latitude 91', logo: null, is_admin: true },
+};
+
+/* Boîte mail hors formule (api/app-mail.php, HTTP 403) : message neutre, aucune alerte de chargement. */
+const MAIL_LOCKED = {
+  ok: false,
+  error: 'plan_feature',
+  feature: 'feature_mail_inbox',
+  message: 'Cette fonction n’est pas incluse dans votre formule.',
 };
 
 const ORG_SETTINGS = {
@@ -486,6 +551,8 @@ export function mockResponse(url, isPost) {
   }
   const role = previewRole();
   if (role && path === '/api/app-dashboard.php') return DASHBOARD_ROLES[role];
+  if (role === 'essentiel' && path === '/api/app-account.php') return { ...ACCOUNT, plan: PLAN_ESSENTIEL };
+  if (role === 'essentiel' && path === '/api/app-mail.php') return MAIL_LOCKED;
   if (role === 'suiveur' && path === '/api/app-dashboard-full.php') {
     return { ...DASHBOARD_FULL, kpis: { ...DASHBOARD_FULL.kpis, members: null, new_members: null } };
   }

@@ -15,11 +15,12 @@ if (($user['role'] ?? '') !== 'admin' && empty($user['is_founder'])) {
 if (!function_exists('ask_claude') || !function_exists('coach_build_context')) {
     app_fail(503, 'unavailable', 'IA non configurée.');
 }
-// Rapport demandé à la main : 1 crédit IA (chemin « coach-manuel »), contrôlé avant l'appel ;
-// seul le coach hebdomadaire (cron) est gratuit. Message neutre (aucun prix dans l'appli).
-if (function_exists('ak_ai_quota_block')) {
-    $why = ak_ai_quota_block($pdo, $org_id, 1);
-    if ($why !== null) app_fail(403, 'ai_quota', $why);
+// Rapport demandé à la main : 1 crédit IA (chemin « coach-manuel »), contrôlé avant l'appel une fois
+// la grille en service (api/_app-plan.php, app_plan_ai_block) ; seul le coach hebdomadaire (cron) est
+// gratuit. Fondateur et super-admin : jamais bloqués. Message neutre (aucun prix dans l'appli).
+require_once __DIR__ . '/_app-plan.php';
+if (!app_plan_is_platform($user) && ($why = app_plan_ai_block($pdo, $org_id, 1)) !== null) {
+    app_fail(403, 'ai_quota', $why);
 }
 
 try {

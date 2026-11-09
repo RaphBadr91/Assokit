@@ -208,6 +208,15 @@ try {
     $sstatus = (string) ($sig['status'] ?? '');
     $refused_request = !$withdrawn && ak_signup_review_refused($pdo, $o);
     $SIG_STATUS = ['pending' => $is_request ? 'En attente de validation' : ($refused_request ? 'Refusée' : 'En cours'), 'completed' => 'Espace ouvert', 'blocked' => 'Non ouverte automatiquement', 'withdrawn' => 'Retirée'];
+    // Formule cochée sur le formulaire d'inscription (public_signups.plan_choice, « essentiel » par défaut
+    // dans signup.php) : traduite dans la grille actuelle, jamais un libellé de l'ancienne grille
+    $plan_choice_label = function (string $c): string {
+        $c = strtolower(trim($c));
+        if ($c === '' || $c === 'essentiel') return 'Essai Pro (aucune formule choisie)';
+        $map = ['association' => 'Pro', 'organisation' => 'Sur-mesure', 'collectivite' => 'Sur-mesure (collectivité)'];
+        if (isset($map[$c])) return $map[$c];
+        return function_exists('ak_plan_label') ? ak_plan_label($c) : $c;
+    };
     $signup = null;
     if ($from_signup || $sig) {
         $err = trim((string) ($sig['error_message'] ?? ''));
@@ -219,7 +228,7 @@ try {
             // Retrait : la ligne est close (« completed ») sans que l'espace ait jamais été ouvert
             'completed'   => $withdrawn ? '' : fd_when($sig['completed_at'] ?? ''),
             // Formule vue sur le site : jamais dans l'app iPhone (aucun prix ni formule, règle 3.1.1)
-            'plan_choice' => $source === 'ios' || empty($sig['plan_choice']) ? '' : (function_exists('ak_plan_label') ? ak_plan_label((string) $sig['plan_choice']) : (string) $sig['plan_choice']),
+            'plan_choice' => $source === 'ios' || !$sig ? '' : $plan_choice_label((string) ($sig['plan_choice'] ?? '')),
             'status'      => $withdrawn ? 'withdrawn' : $sstatus,
             'status_label'=> $withdrawn ? 'Retirée par le demandeur' : ($SIG_STATUS[$sstatus] ?? ''),
             // Note de refus / de retrait, ou cause d'un échec d'ouverture (jamais affichée à l'association)

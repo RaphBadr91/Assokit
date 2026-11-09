@@ -80,6 +80,12 @@ foreach ($orgs as &$o) {
     $ps = $org_states[(int)$o['id']] ?? null;
     $o['plan_display'] = !$ps ? (string)$o['plan']
         : (($ps['is_trial'] || $ps['trial_expired']) ? $ps['plan_label'] . ' · ' . sa_plan_state_short($ps) . ' · 0 €' : $ps['plan_label']);
+    // Prix HT d'un mois de la formule (centimes) pour pré-remplir le montant : formule payante en place,
+    // ou ancien montant d'un compte historique ; rien pendant un essai ni pour une formule gratuite
+    $o['price_ht_cents'] = 0;
+    if ($ps && !$ps['is_trial'] && !$ps['trial_expired']) {
+        $o['price_ht_cents'] = $ps['plan_id'] ? max(0, (int)$ps['price_cents']) : max(0, (int)($ps['legacy_cents'] ?? 0));
+    }
 }
 unset($o);
 
@@ -159,11 +165,12 @@ render_sidebar('abonnements');
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:18px; margin-bottom:18px;">
                 <div>
                     <label style="display:block; font-size:12px; color:#065F46; margin-bottom:6px; font-weight:600;">Association</label>
-                    <select name="org_id" required style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #A7F3D0; font-size:14px; background:white;">
+                    <select name="org_id" id="sel-org" required onchange="fillFromPlan(true)" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #A7F3D0; font-size:14px; background:white;">
                         <?php foreach ($orgs as $o): ?>
-                            <option value="<?= (int)$o['id'] ?>"><?= h($o['name']) ?> (<?= h($o['plan_display']) ?>)</option>
+                            <option value="<?= (int)$o['id'] ?>" data-price="<?= $o['price_ht_cents'] > 0 ? h(number_format($o['price_ht_cents'] / 100, 2, '.', '')) : '' ?>"><?= h($o['name']) ?> (<?= h($o['plan_display']) ?>)</option>
                         <?php endforeach; ?>
                     </select>
+                    <div id="price-hint" style="font-size:11.5px; color:#065F46; margin-top:4px;"></div>
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; color:#065F46; margin-bottom:6px; font-weight:600;">💶 Montant TTC (€)</label>
@@ -298,6 +305,31 @@ render_sidebar('abonnements');
 </style>
 
 <script>
+// Montant pré-rempli d'après la formule de l'association choisie (prix HT d'un mois + TVA cochée) ;
+// une saisie à la main n'est plus remplacée tant que l'association ne change pas
+var genAuto = true;
+function fillFromPlan(changed) {
+    const sel = document.getElementById('sel-org');
+    const opt = sel ? sel.options[sel.selectedIndex] : null;
+    const ht = opt ? parseFloat(opt.getAttribute('data-price') || '') : NaN;
+    const hint = document.getElementById('price-hint');
+    genAuto = true;
+    if (!isNaN(ht) && ht > 0) {
+        const rateInput = document.querySelector('input[name="vat_rate"]:checked');
+        const rate = rateInput ? parseFloat(rateInput.value) : 0;
+        document.getElementById('inp-ttc').value = (Math.round(ht * (1 + rate / 100) * 100) / 100).toFixed(2);
+        if (hint) hint.textContent = 'Formule : ' + ht.toFixed(2).replace('.', ',') + ' € HT par mois.';
+    } else {
+        // Autre association sans prix de formule : le montant de la précédente ne reste pas dans le champ
+        if (changed) document.getElementById('inp-ttc').value = '';
+        if (hint) hint.textContent = 'Aucun prix de formule : indiquez le montant.';
+    }
+    recalcGen();
+}
+document.getElementById('inp-ttc').addEventListener('input', function () { genAuto = false; });
+document.querySelectorAll('input[name="vat_rate"]').forEach(function (r) {
+    r.addEventListener('change', function () { if (genAuto) fillFromPlan(); });
+});
 function recalcGen() {
     const ttc = parseFloat(document.getElementById('inp-ttc').value) || 0;
     const rateInput = document.querySelector('input[name="vat_rate"]:checked');
@@ -318,7 +350,7 @@ function recalcGen() {
     document.getElementById('calc-ttc').textContent = fmt(ttc);
     document.getElementById('calc-vat-rate-label').textContent = rate > 0 ? '(' + rate.toString().replace('.', ',') + '%)' : '(non applicable)';
 }
-recalcGen();
+fillFromPlan();
 </script>
 
 <?php render_foot(); ?>

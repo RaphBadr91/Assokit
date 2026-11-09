@@ -53,6 +53,8 @@ try { $nb_founders = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE is_foun
 // ni suspendue, ni résiliée. Un essai Pro et un plan « Offert » (free_grant) valent 0 € de revenu.
 $mrr = 0.00;
 foreach ($org_states as $ps) $mrr += sa_plan_state_mrr_cents($ps) / 100;
+// MRR par formule (même règle que la carte MRR), essais et formules offertes à part
+$mrr_by_plan = sa_mrr_by_plan($org_states);
 
 // Impayes — même périmètre que l'appli (fd_unpaid_summary, api/_app-founder-plan.php) :
 // les factures des associations supprimées ne comptent plus
@@ -67,11 +69,13 @@ try {
     $total_unpaid = (float) $row['total'];
 } catch (Throwable $e) {}
 
-// IA
-$ia_stats = ['nb' => 0, 'cost' => 0.00];
+// IA du mois civil : registre unifié ai_usage_ledger (tous les usages : hub, générateur, copilote,
+// justificatifs…), le même que les crédits IA des formules (ak_ai_credits_used_month)
+$ia_stats = ['nb' => 0, 'credits' => 0];
 try {
-    $stmt = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(ai_cost_euros), 0) AS cost FROM communication_campaigns WHERE ai_generated = 1");
-    $ia_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(credits), 0) AS credits FROM ai_usage_ledger
+                         WHERE created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')");
+    $ia_stats = $stmt->fetch(PDO::FETCH_ASSOC) ?: $ia_stats;
 } catch (Throwable $e) {}
 
 // Dernieres assos
@@ -198,6 +202,23 @@ try {
           AND COALESCE(o.status, '') <> 'trial'"
           . (isset($sub_cols['payment_mode']) ? " AND COALESCE(s.payment_mode, '') <> 'free_grant'" : "") . "
     ");
+    // Comptes historiques sans ligne d'abonnement, facturés par le renouvellement (ni démo, échéance
+    // renseignée, ancien montant payant) : comptés aussi dans les mois passés, comme dans la carte MRR
+    // (sa_plan_state_mrr_cents), sinon la courbe sautait au mois en cours.
+    $q_legacy = null;
+    $org_cols = ak_db_columns($pdo, 'organizations');
+    if (isset($org_cols['monthly_price_cents'], $org_cols['current_period_end'], $org_cols['slug'])) {
+        $q_legacy = $pdo->prepare("
+            SELECT COALESCE(SUM(o.monthly_price_cents), 0) / 100
+            FROM organizations o
+            WHERE o.created_at <= :end AND (o.deleted_at IS NULL OR o.deleted_at > :end2)
+              AND COALESCE(o.status, '') IN ('active', '')
+              AND o.monthly_price_cents > 0
+              AND o.current_period_end IS NOT NULL
+              AND o.slug NOT LIKE 'demo-%'
+              AND NOT EXISTS (SELECT 1 FROM asso_subscriptions s WHERE s.org_id = o.id)
+        ");
+    }
     for ($i = 11; $i >= 0; $i--) {
         $end = date('Y-m-t 23:59:59', strtotime("first day of -$i month"));
         $m = (int) date('n', strtotime("first day of -$i month"));
@@ -205,7 +226,11 @@ try {
         $q_assos->execute([':end' => $end]);
         $growth_assos[] = (int) $q_assos->fetchColumn();
         $q_mrr->execute([':end' => $end]);
-        $growth_mrr[] = round((float) $q_mrr->fetchColumn(), 2);
+        $m_mrr = (float) $q_mrr->fetchColumn();
+        if ($q_legacy) {
+            try { $q_legacy->execute([':end' => $end, ':end2' => $end]); $m_mrr += (float) $q_legacy->fetchColumn(); } catch (Throwable $e) {}
+        }
+        $growth_mrr[] = round($m_mrr, 2);
     }
     // Mois en cours : exactement la carte MRR (même règle, même chiffre)
     if ($growth_mrr) $growth_mrr[count($growth_mrr) - 1] = round($mrr, 2);
@@ -460,10 +485,10 @@ foreach ($trials_ended as $e) {
     </div>
 
     <div class="panel fc-kpi k-blue">
-      <div class="fc-kpi-top"><span class="fc-kpi-lab">Générations IA</span><span class="fc-kpi-ic">✨</span></div>
+      <div class="fc-kpi-top"><span class="fc-kpi-lab">Générations IA ce mois-ci</span><span class="fc-kpi-ic">✨</span></div>
       <div class="fc-kpi-val num"><?= number_format((int) $ia_stats['nb'], 0, ',', ' ') ?></div>
       <svg class="fc-spark" viewBox="0 0 120 30" preserveAspectRatio="none"><path d="M0 22 L20 24 L40 20 L60 23 L80 17 L100 18 L120 11" fill="none" stroke="#60A5FA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="120" cy="11" r="2.6" fill="#60A5FA"/></svg>
-      <div class="fc-kpi-foot"><span class="fc-kpi-sub"><?= number_format((float) $ia_stats['cost'], 2, ',', ' ') ?> € dépensés</span></div>
+      <div class="fc-kpi-foot"><span class="fc-kpi-sub"><?= number_format((int) $ia_stats['credits'], 0, ',', ' ') ?> crédit<?= (int) $ia_stats['credits'] > 1 ? 's' : '' ?> IA consommé<?= (int) $ia_stats['credits'] > 1 ? 's' : '' ?></span></div>
     </div>
   </section>
 
@@ -481,6 +506,7 @@ foreach ($trials_ended as $e) {
         <span class="fc-lg"><i style="background:#34D399"></i> Associations</span>
       </div>
       <div class="fc-chart-wrap"><canvas id="fcGrowth" width="740" height="180"></canvas></div>
+      <div style="font-size:11.5px;color:var(--fc-ink-3);margin-top:6px">MRR des mois passés : historique reconstitué aux prix actuels des formules (anciens comptes sans abonnement : à leur montant actuel).</div>
     </div>
 
     <div class="panel">
@@ -501,6 +527,41 @@ foreach ($trials_ended as $e) {
       </div>
     </div>
   </section>
+
+  <!-- ===== MRR par formule ===== -->
+  <div class="fc-sech"><div class="fc-sect">💶 MRR par formule</div><?php if (!empty($ctx['can_view_platform_stats'])): ?><a href="/super-admin/stats" class="fc-plink">Stats approfondies →</a><?php endif; ?></div>
+  <div class="panel fc-tbl-wrap" style="margin-bottom:18px">
+    <table>
+      <thead><tr><th>Formule</th><th>Clients</th><th>MRR (HT)</th><th>Part</th></tr></thead>
+      <tbody>
+        <?php if (!$mrr_by_plan['rows']): ?>
+          <tr><td colspan="4" style="color:var(--fc-ink-3)">Aucun client payant pour l’instant.</td></tr>
+        <?php endif; ?>
+        <?php foreach ($mrr_by_plan['rows'] as $r): ?>
+          <tr>
+            <td><span class="fc-chip fc-chip-gray"><?= h($r['label']) ?></span></td>
+            <td class="num"><?= (int) $r['count'] ?></td>
+            <td class="num"><?= number_format($r['mrr_cents'] / 100, 2, ',', ' ') ?> €</td>
+            <td class="num"><?= $mrr_by_plan['total_cents'] > 0 ? number_format($r['mrr_cents'] / $mrr_by_plan['total_cents'] * 100, 1, ',', ' ') : '0' ?> %</td>
+          </tr>
+        <?php endforeach; ?>
+        <?php foreach ([$mrr_by_plan['trial'], $mrr_by_plan['devis'] ?? ['count' => 0], $mrr_by_plan['offert']] as $r): if ((int) $r['count'] === 0) continue; ?>
+          <tr style="opacity:.75">
+            <td><span class="fc-chip <?= $r['key'] === 'trial' ? 'fc-chip-violet' : 'fc-chip-gray' ?>"><?= h($r['label']) ?></span></td>
+            <td class="num"><?= (int) $r['count'] ?></td>
+            <td class="num">0,00 €</td>
+            <td class="num">—</td>
+          </tr>
+        <?php endforeach; ?>
+        <tr>
+          <td><strong>Total</strong></td>
+          <td class="num"><strong><?= (int) $mrr_by_plan['paying'] ?></strong></td>
+          <td class="num"><strong><?= number_format($mrr_by_plan['total_cents'] / 100, 2, ',', ' ') ?> €</strong></td>
+          <td class="num">100 %</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
   <!-- ===== diffusion (Fondateur) ===== -->
   <?php if ($ctx['is_founder'] && $advanced_stats): ?>

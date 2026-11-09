@@ -21,12 +21,12 @@ if (!in_array($role_me, ['admin', 'coordinator'], true)
 }
 $roles_reserved = $role_me === 'admin' ? [] : ($role_me === 'coordinator' ? ['admin'] : ['admin', 'coordinator']);
 
-// Meme blocage de limite de plan. Message neutre, sans invitation à changer de formule (règle Apple 3.1.1)
-if (function_exists('ak_can_add_adherent')) {
-    $check = ak_can_add_adherent($pdo, $org_id);
-    if (empty($check['ok'])) {
-        app_fail(403, 'plan_limit', rtrim((string) ($check['reason'] ?? '') ?: 'Limite de membres atteinte', '.') . '.');
-    }
+// Limite de membres de la formule (bureau compris), une fois la grille en service (api/_app-plan.php,
+// app_plan_member_block) : message neutre, sans nom de formule ni invitation à en changer (règle
+// Apple 3.1.1). Fondateur et super-admin (y compris en incarnation) : jamais bloqués.
+require_once __DIR__ . '/_app-plan.php';
+if (function_exists('app_plan_member_block') && ($mem_block = app_plan_member_block($pdo, $org_id, $user)) !== null) {
+    app_fail(403, 'plan_limit', $mem_block);
 }
 
 $first = trim((string) ($input['first_name'] ?? ''));
@@ -43,9 +43,11 @@ if (!in_array($role, $valid_roles, true)) $role = 'member';
 if (in_array($role, $roles_reserved, true)) $role = 'member';
 
 // Limite de gestionnaires de la formule (administrateur, coordinateur, référent : ak_can_add_manager),
-// comme nouveau-adherent.php. Message des fondations, neutre.
-require_once __DIR__ . '/_app-plan.php';
-if (($mgr_block = app_plan_manager_block($pdo, $org_id, $role)) !== null) app_fail(403, 'plan_limit', $mgr_block);
+// comme nouveau-adherent.php. Message des fondations, neutre. Comptes plateforme connectés en leur nom :
+// jamais bloqués. En incarnation, la limite s'applique (comme sur le site) : un gestionnaire de plus
+// changerait ce que la formule de l'association permet.
+if (!app_plan_is_platform($user)
+    && ($mgr_block = app_plan_manager_block($pdo, $org_id, $role)) !== null) app_fail(403, 'plan_limit', $mgr_block);
 
 if ($first === '' || $last === '') app_fail(422, 'invalid', 'Le prénom et le nom sont obligatoires.');
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) app_fail(422, 'invalid', 'Email invalide.');

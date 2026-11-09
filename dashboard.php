@@ -1141,6 +1141,35 @@ render_sidebar('accueil');
     </div>
   </div>
 
+  <!-- ====== MA FORMULE (gestionnaires) : quotas proches, paiement en attente, jauges du mois ====== -->
+  <?php
+  // Gestionnaires (administrateur, coordinateur, référent) : bandeaux de quota et de paiement, puis la
+  // carte compacte « Ma formule » (sans prix). Le lien vers Mon abonnement n'apparaît que pour
+  // l'administrateur, et jamais dans l'appli (ak_render_quota_banner, ak_render_plan_usage_card).
+  if (!function_exists('ak_get_current_plan') && is_file(__DIR__ . '/plan-helpers.php')) require_once __DIR__ . '/plan-helpers.php';
+  if (!function_exists('ak_render_plan_usage_card') && is_file(__DIR__ . '/includes-plan-usage.php')) require_once __DIR__ . '/includes-plan-usage.php';
+  $dash_manager_roles = function_exists('ak_manager_roles') ? ak_manager_roles() : ['admin', 'coordinator', 'referent'];
+  if ($org_id > 0 && in_array($role, $dash_manager_roles, true)) {
+      try {
+          // Paiement en retard : le bandeau « 💳 Régulariser » (page de paiement réservée à l'administrateur)
+          // seulement pour l'administrateur ; les autres gestionnaires lisent une phrase neutre, sans lien
+          if ($role === 'admin') {
+              if (function_exists('ak_render_grace_banner')) echo ak_render_grace_banner($pdo, $org_id);
+          } elseif (function_exists('ak_get_subscription_status') && !(function_exists('ak_billing_hidden') && ak_billing_hidden())) {
+              $dash_sub = ak_get_subscription_status($pdo, $org_id);
+              if (!empty($dash_sub['in_grace_period'])) {
+                  echo '<div style="background:#FFF7ED;border:1px solid #FDBA74;color:#9A3412;padding:12px 16px;border-radius:12px;margin-bottom:18px;font-size:13.5px;line-height:1.55;">'
+                     . '⏳ Un paiement de l’abonnement est en attente ; l’administrateur de votre structure a été prévenu. Vos accès restent complets d’ici là.</div>';
+              }
+          }
+          if (function_exists('ak_render_quota_banner')) echo ak_render_quota_banner($pdo, $org_id);
+          if (function_exists('ak_render_plan_usage_card')) echo ak_render_plan_usage_card($pdo, $org_id, true);
+      } catch (Throwable $e) {
+          error_log('[dashboard] carte Ma formule : ' . get_class($e));
+      }
+  }
+  ?>
+
   <!-- ====== RAPPELS DE PROSPECTION (compte exact, avant les suggestions) ====== -->
   <?php // Placé avant le copilote : c'est une échéance datée, pas une
         // suggestion. Ce qui est dû passe avant ce qui est conseillé. ?>
@@ -1306,11 +1335,14 @@ render_sidebar('accueil');
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2z"/></svg>
           </span>
           <div class="ai-coach-title-txt">
-            <b>Votre coach AssoKit IA</b>
+            <?php // Conseils calculés à partir des projets (pas rédigés par l'IA) : « IA » et « Suggestions
+                  // personnalisées » seulement si la formule inclut l'IA (comme la pastille des Priorités du jour)
+                  $coach_ai = !function_exists('akc_has') || akc_has($pdo, (int)$org_id, 'ai_assistant'); ?>
+            <b>Votre coach AssoKit<?= $coach_ai ? ' IA' : '' ?></b>
             <small><?= count($dash_coach) ?> conseil<?= count($dash_coach) > 1 ? 's' : '' ?> pour faire avancer vos projets</small>
           </div>
         </div>
-        <span class="ai-coach-tag">✦ Suggestions personnalisées</span>
+        <span class="ai-coach-tag"><?= $coach_ai ? '✦ Suggestions personnalisées' : '✦ Conseils' ?></span>
       </div>
       <div class="ai-coach-list">
         <?php foreach ($dash_coach as $a): ?>

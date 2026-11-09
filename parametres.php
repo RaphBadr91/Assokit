@@ -179,7 +179,16 @@ render_sidebar('parametres');
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
               <div>
                 <div style="font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:<?= $plan_tone ? $plan_tone[2] : '#64748B' ?>;">Formule</div>
-                <div style="font-size:16px;font-weight:700;margin-top:2px;color:<?= $plan_tone ? $plan_tone[2] : 'inherit' ?>;"><?= h($plan_ti['label']) ?></div>
+                <?php
+                  // Pendant l'essai : « Essai Pro · 9 jours restants » (ou « dernier jour »)
+                  $plan_txt = $plan_ti['label'];
+                  if ($plan_ti['in_trial']) {
+                      $plan_dl = $plan_ti['days_left'];
+                      $plan_txt = ($plan_ti['trial_name'] !== '' ? $plan_ti['trial_name'] : 'Essai Pro')
+                          . ($plan_dl === null ? '' : ' · ' . ($plan_dl <= 0 ? 'dernier jour' : $plan_dl . ' jour' . ($plan_dl > 1 ? 's restants' : ' restant')));
+                  }
+                ?>
+                <div style="font-size:16px;font-weight:700;margin-top:2px;color:<?= $plan_tone ? $plan_tone[2] : 'inherit' ?>;"><?= h($plan_txt) ?></div>
                 <?php if ($plan_ti['trial_expired'] && !ak_billing_hidden()): ?>
                   <div style="font-size:13px;margin-top:2px;color:<?= $plan_tone[2] ?>;">Vos données sont conservées : choisissez une formule pour continuer.</div>
                 <?php elseif (!$plan_tone && in_array($plan_ti['badge_tone'], ['pending', 'suspended', 'cancelled'], true)): ?>
@@ -187,11 +196,22 @@ render_sidebar('parametres');
                 <?php endif; ?>
               </div>
               <?php if (!ak_billing_hidden()): ?>
-                <a href="/mon-asso-plan" class="pa-btn-primary" style="text-decoration:none;"><?= ($plan_ti['in_trial'] || $plan_ti['trial_expired']) ? 'Choisir une formule' : 'Mon abonnement' ?></a>
+                <a href="<?= ($plan_ti['in_trial'] || $plan_ti['trial_expired']) ? '/mon-asso-plan#formules' : '/mon-asso-plan' ?>" class="pa-btn-primary" style="text-decoration:none;"><?= ($plan_ti['in_trial'] || $plan_ti['trial_expired']) ? 'Choisir une formule' : 'Mon abonnement' ?></a>
               <?php endif; ?>
             </div>
           </div>
         <?php endif; ?>
+        <?php
+          // Ce que comprend la formule (version compacte, sans prix), avec la garantie de l'offre fondateur.
+          // Le lien vers Mon abonnement est déjà dans la carte ci-dessus.
+          if ($plan_ti && !$plan_ti['trial_expired'] && !ak_is_ios_app()
+              && !function_exists('ak_render_plan_usage_card') && is_file(__DIR__ . '/includes-plan-usage.php')) {
+              require_once __DIR__ . '/includes-plan-usage.php';
+          }
+          if ($plan_ti && !$plan_ti['trial_expired'] && !ak_is_ios_app() && function_exists('ak_render_plan_usage_card')) {
+              echo ak_render_plan_usage_card($pdo, $org_id, true, ['link' => false, 'title' => 'Utilisation de votre formule']);
+          }
+        ?>
         <form method="POST" action="/action-parametres" enctype="multipart/form-data" class="pa-form-card">
           <input type="hidden" name="action" value="update_organization">
           <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">

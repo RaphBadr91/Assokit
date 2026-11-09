@@ -24,11 +24,11 @@ try {
     require_once __DIR__ . '/../platform-flags.php';
     if (!user_can_access_billing(ak_platform_flags($user))) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
-    // Contrôle de la formule sans effet de bord (ne consomme pas l'export de bilan d'Essentiel)
-    $allowed = true;
-    if (function_exists('ak_can_use_feature')) {
-        $allowed = (bool) ak_can_use_feature($pdo, $org_id, 'advanced_stats');
-    }
+    // Contrôle de la formule sans effet de bord (ne consomme pas l'export de bilan d'Essentiel) : mêmes
+    // règles que les autres écrans de l'appli (api/_app-plan.php, app_plan_has) — permis tant que la
+    // grille n'est pas en service, pour un compte plateforme et en cas de doute
+    require_once __DIR__ . '/_app-plan.php';
+    $allowed = app_plan_has($pdo, $org_id, 'advanced_stats', $user);
 
     if (!$allowed) {
         // Message neutre (règle Apple 3.1.1) : ni nom de formule supérieure, ni prix

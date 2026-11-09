@@ -9,7 +9,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/company-helpers.php';
 require_once __DIR__ . '/org-billing-helpers.php';
 require_once __DIR__ . '/invoice-helpers.php';
-require_once __DIR__ . '/trial-helpers.php';   // ak_db_update (colonnes selon le schéma)
+require_once __DIR__ . '/trial-helpers.php';   // ak_db_update (colonnes selon le schéma), ak_org_plan_state
 
 require_login();
 $user = current_user();
@@ -82,6 +82,29 @@ if ($vat_rate_input > 0) {
     $vat_rate_db = null;
 }
 
+// Formule réelle de l'association (même vérité que la fiche) : code et libellé de la facture.
+// Sans formule connue : « association » (ancien code), comme avant.
+$inv_plan = ak_org_plan_state($pdo, $org_id);
+$inv_plan_code = trim((string)($inv_plan['plan_id'] ? $inv_plan['plan_slug'] : ($inv_plan['legacy_slug'] ?? '')));
+$inv_plan_label = $inv_plan_code !== '' ? ak_plan_label($inv_plan_code, (string)$inv_plan['plan_label']) : '';
+if ($inv_plan_code !== '' && strpos($inv_plan_code, 'sur-mesure-') === 0) $inv_plan_label = 'Sur-mesure';
+// Grille pas encore en base (ou ligne Pro encore à l'ancienne offre) : pas de nom de formule sur la facture,
+// qui contredirait la page Tarifs (« formule Pro » pour l'ancienne offre à 49,99 €)
+if ($inv_plan_label !== '') {
+    if (!function_exists('ak_pc_plan_grid_pending') && is_file(__DIR__ . '/stripe-plan-change-helpers.php')) require_once __DIR__ . '/stripe-plan-change-helpers.php';
+    if (function_exists('ak_pc_plan_grid_pending')) {
+        try {
+            $gq = $pdo->prepare("SELECT * FROM asso_plans WHERE slug = ? LIMIT 1");
+            $gq->execute([$inv_plan_code]);
+            $grow = $gq->fetch(PDO::FETCH_ASSOC);
+            if ($grow && ak_pc_plan_grid_pending($pdo, $grow)) $inv_plan_label = '';
+        } catch (Throwable $e) {
+            error_log('[facture-generate] grille : ' . get_class($e));
+        }
+    }
+}
+if ($inv_plan_code === '') $inv_plan_code = 'association';
+
 try {
     $result = ak_create_invoice_v2($pdo, $org_id, [
         'amount_ht_cents'  => $amount_ht_cents,
@@ -89,8 +112,8 @@ try {
         'amount_ttc_cents' => $amount_ttc_cents,
         'vat_rate'         => $vat_rate_db,
         // « (test) » seulement sur un spécimen (société non immatriculée), jamais sur une facture légale
-        'description'      => 'Abonnement Assokit' . (ak_invoice_is_test_mode() ? ' (test)' : ''),
-        'plan_code'        => 'association',
+        'description'      => 'Abonnement Assokit' . ($inv_plan_label !== '' ? ' — formule ' . $inv_plan_label : '') . (ak_invoice_is_test_mode() ? ' (test)' : ''),
+        'plan_code'        => mb_substr($inv_plan_code, 0, 50),
         'period_start'     => date('Y-m-d'),
         'period_end'       => date('Y-m-d', strtotime('+1 month')),
         'due_days'         => 30,

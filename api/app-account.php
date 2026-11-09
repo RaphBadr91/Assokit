@@ -58,15 +58,34 @@ try {
     $org_suspended = $org_id > 0 && function_exists('ak_org_access') && ak_org_access($pdo, $org_id) === 'suspended'
         && !(function_exists('ak_user_is_platform') && ak_user_is_platform($user));
 
-    // Carte « Ma formule » (api/_app-plan.php) : nom de la formule, résumé SANS prix, compteurs du mois
-    // (gestionnaires seulement), états particuliers. Jamais de prix, de bouton de paiement ni de
-    // « Passer à… » (règle Apple 3.1.1). App iPhone : rien (ni formule ni essai, IOS_SIGNUP_REQUEST).
+    // Carte « Ma formule » (api/_app-plan.php) : nom de la formule, résumé SANS prix, fonctions incluses,
+    // compteurs du mois (gestionnaires seulement), états particuliers. Jamais de prix, de bouton de
+    // paiement ni de « Passer à… » (règle Apple 3.1.1). Choix du Fondateur : la carte est aussi
+    // envoyée à l'app iPhone, information seulement, mais sans rien de l'essai (ni « Essai Pro »,
+    // ni date de fin, ni état « essai ») : un compte à rebours sans moyen de prolonger l'accès dans
+    // l'app est ce que la règle 3.1.1 sanctionne. Retour en arrière : remettre la condition
+    // !ak_is_ios_app() ici et !IOS_SIGNUP_REQUEST dans mobile/App.js (NativeSettings).
     $plan_card = null;
-    if ($org_id > 0 && !(function_exists('ak_is_ios_app') && ak_is_ios_app())) {
+    if ($org_id > 0) {
         try {
             require_once __DIR__ . '/_app-plan.php';
             $is_manager = in_array((string) ($u['role'] ?? ''), ['admin', 'coordinator', 'referent'], true);
             $plan_card = app_plan_card($pdo, $org_id, $is_manager);
+            if (is_array($plan_card) && function_exists('ak_is_ios_app') && ak_is_ios_app()) {
+                $plan_card['states'] = array_values(array_filter((array) ($plan_card['states'] ?? []),
+                    fn($st) => (string) ($st['tone'] ?? '') !== 'trial'));
+                $trial_row = (string) ($plan_card['slug'] ?? '') === 'pro-essai' || stripos((string) ($plan_card['name'] ?? ''), 'essai') !== false;
+                if (!empty($plan_card['trial'])) {
+                    // Pendant l'essai : ni « Essai Pro » ni « Pro » (les limites affichées sont celles de l'essai,
+                    // pas celles de Pro) : un nom neutre (« VOTRE FORMULE · Formule actuelle »), comme la carte du site dans l'appli
+                    $plan_card['name'] = 'Formule actuelle';
+                } elseif ($trial_row) {
+                    // Essai terminé ou suspendu : l'association n'a plus de formule à présenter ; aucune carte
+                    // (comme l'accueil, qui n'affiche alors aucun nom de formule)
+                    $plan_card = null;
+                }
+                if (is_array($plan_card)) $plan_card['trial'] = false;
+            }
         } catch (Throwable $e) {
             error_log('[api/app-account] formule : ' . get_class($e));
             $plan_card = null;

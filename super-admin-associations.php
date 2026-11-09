@@ -25,6 +25,9 @@ require_once __DIR__ . '/sa-permissions.php';
 require_once __DIR__ . '/trial-helpers.php';
 require_once __DIR__ . '/sa-plan-state-helpers.php';
 require_once __DIR__ . '/signup-review-helpers.php';   // demandes d'espace de l'app iPhone : valider / refuser
+// Garantie de l'offre fondateur (ak_pc_price_locked_until) et taux de TVA appliqué : lecture seule
+if (is_file(__DIR__ . '/stripe-plan-change-helpers.php')) require_once __DIR__ . '/stripe-plan-change-helpers.php';
+if (!function_exists('ak_vat_applicable_rate') && is_file(__DIR__ . '/stripe-config-helpers.php')) require_once __DIR__ . '/stripe-config-helpers.php';
 require_login();
 $user = sa_require_super_admin();
 $ctx = sa_get_permissions_context();
@@ -35,11 +38,13 @@ $can_plan = !empty($ctx['can_manage_subscriptions']);
  * Sortie d'essai : ak_org_set_plan efface aussi la fin d'essai restée comme « échéance » et passe
  * le mode « Offert » de l'inscription en « manuel » si le nouveau plan est payant.
  */
-function sa_assoc_set_plan(PDO $pdo, int $org_id, int $plan_id): ?string {
+function sa_assoc_set_plan(PDO $pdo, int $org_id, int $plan_id, bool $own_tx = true): ?string {
+    // $own_tx = false : l'appelant a déjà ouvert la transaction (devis Sur-mesure écrit juste avant) et la
+    // valide lui-même ; un échec l'annule en entier, devis compris
     try {
-        $pdo->beginTransaction();
+        if ($own_tx || !$pdo->inTransaction()) { $pdo->beginTransaction(); $own_tx = true; }
         ak_org_set_plan($pdo, $org_id, $plan_id);
-        $pdo->commit();
+        if ($own_tx) $pdo->commit();
         return null;
     } catch (InvalidArgumentException $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
@@ -53,6 +58,35 @@ function sa_assoc_set_plan(PDO $pdo, int $org_id, int $plan_id): ?string {
         error_log('[super-admin-associations] set_plan: ' . get_class($e) . ' ' . $e->getMessage());
         return 'Le plan n’a pas pu être changé (erreur technique). Rien n’a été modifié.';
     }
+}
+
+/**
+ * Sur-mesure avec un montant de devis (champ « quote_eur », € HT/mois) : crée ou met à jour la formule propre
+ * au client (sa_custom_quote_plan) et rend son id ; sinon $plan_id tel quel. $error : message si le montant
+ * est invalide ou si la formule Sur-mesure manque. $quote_cents : montant retenu (0 sans devis).
+ */
+function sa_assoc_quote_plan(PDO $pdo, int $org_id, int $plan_id, $raw, ?string &$error, int &$quote_cents): int {
+    $error = null;
+    $quote_cents = 0;
+    if ($plan_id <= 0) return $plan_id;
+    $q = $pdo->prepare("SELECT slug FROM asso_plans WHERE id = ?");
+    $q->execute([$plan_id]);
+    $slug = (string) $q->fetchColumn();
+    if (!sa_is_custom_quote_slug($slug)) return $plan_id;
+    $cents = sa_quote_cents_from_input($raw);
+    if ($cents === null) { $error = 'Montant du devis invalide : indiquez un montant en euros HT par mois, par exemple 450 ou 450,00.'; return 0; }
+    if ($cents === 0) return $plan_id;
+    try {
+        $quote_cents = $cents;
+        return sa_custom_quote_plan($pdo, $org_id, $cents);
+    } catch (RuntimeException $e) {
+        $error = $e->getMessage();
+    } catch (Throwable $e) {
+        error_log('[super-admin-associations] quote_plan: ' . get_class($e) . ' ' . $e->getMessage());
+        $error = 'Le devis n’a pas pu être enregistré (erreur technique). Rien n’a été modifié.';
+    }
+    $quote_cents = 0;
+    return 0;
 }
 
 /**
@@ -167,6 +201,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
             $notes = trim($_POST['notes_superadmin'] ?? '');
             $new_plan_id = (int) ($_POST['plan_id'] ?? 0);
             $view_id = $target_id;
+            $quote_err = null; $quote_cents = 0;
 
             if ($name === '') {
                 $error = 'Nom requis.';
@@ -174,7 +209,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 // Le plan ne change QUE s'il diffère du plan courant (jamais d'écriture « par défaut »)
                 $before = ak_org_plan_state($pdo, $target_id);
                 $plan_change = $new_plan_id > 0 && $new_plan_id !== (int) $before['plan_id'];
-                if ($plan_change && !$can_plan) {
+                // Sur-mesure avec un montant de devis : formule propre au client, au prix du devis
+                $quote_raw = trim((string) ($_POST['quote_eur'] ?? ''));
+                $quote_tx = false;
+                if ($can_plan && $new_plan_id > 0 && $quote_raw !== '' && !ak_signup_review_pending($org) && !ak_signup_review_withdrawn($org)) {
+                    // Devis et changement de formule dans une même transaction : si l'attribution échoue,
+                    // la formule du devis n'est ni créée ni modifiée
+                    $pdo->beginTransaction();
+                    $quote_tx = true;
+                    $old_price = (int) $before['price_cents'];
+                    $new_plan_id = sa_assoc_quote_plan($pdo, $target_id, $new_plan_id, $quote_raw, $quote_err, $quote_cents);
+                    $plan_change = $new_plan_id > 0 && $new_plan_id !== (int) $before['plan_id'];
+                    $quote_only = $quote_cents > 0 && !$plan_change && $quote_cents !== $old_price;
+                }
+                if ($quote_err !== null) {
+                    $error = $quote_err;
+                } elseif ($plan_change && !$can_plan) {
                     $error = 'Vous n’avez pas le droit de changer le plan d’une association.';
                 } elseif ($plan_change && ak_signup_review_pending($org)) {
                     // Demande de l'app iPhone en attente : un plan l'ouvrirait sans validation
@@ -183,24 +233,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                     // Demande retirée par le demandeur : un plan rouvrirait l'espace fermé
                     $error = ak_signup_review_withdrawn_message();
                 } else {
-                    $stmt = $pdo->prepare("UPDATE organizations SET name = ?, notes_superadmin = ? WHERE id = ?");
-                    $stmt->execute([$name, $notes, $target_id]);
                     $log = ['name' => $name];
                     $success = 'Association mise à jour.';
+                    // Formule d'abord (dans la transaction du devis s'il y en a un), puis nom et notes
+                    $err = $plan_change ? sa_assoc_set_plan($pdo, $target_id, $new_plan_id, !$quote_tx) : null;
+                    if ($pdo->inTransaction()) $pdo->commit();
+                    $stmt = $pdo->prepare("UPDATE organizations SET name = ?, notes_superadmin = ? WHERE id = ?");
+                    $stmt->execute([$name, $notes, $target_id]);
                     if ($plan_change) {
-                        $err = sa_assoc_set_plan($pdo, $target_id, $new_plan_id);
                         if ($err) {
                             $error = $err;
                             $success = 'Nom et notes enregistrés. Le plan n’a pas changé.';
                         } else {
                             $after = ak_org_plan_state($pdo, $target_id);
                             $log['plan'] = ['from' => $before['plan_slug'], 'to' => $after['plan_slug'], 'status' => $after['badge']];
-                            $success = 'Association mise à jour. Plan : ' . $before['plan_label'] . ' → ' . $after['plan_label'] . ' (' . $after['badge'] . ').';
+                            $success = 'Association mise à jour. Plan : ' . $before['plan_label'] . ' → ' . $after['plan_label'] . ' (' . $after['badge'] . ').'
+                                     . ($quote_cents > 0 ? ' Devis : ' . sa_plan_price_label($quote_cents) . '.' : '');
                             if ($sid = ak_stripe_left_on_free($pdo, $target_id, $sfree)) $error = sa_stripe_left_message($sid, (bool) $sfree);
                         }
+                    } elseif (!empty($quote_only)) {
+                        $log['quote_cents'] = $quote_cents;
+                        $success = 'Association mise à jour. Devis Sur-mesure : ' . sa_plan_price_label($quote_cents) . '.';
                     }
                     sa_log_action((int) $user['id'], 'update_org', $target_id, null, $log);
                 }
+                // Refus (droits, demande iPhone, devis invalide) : le devis écrit plus haut est annulé
+                if ($pdo->inTransaction()) $pdo->rollBack();
             }
         }
         // ---- ESSAI : PROLONGER ----
@@ -241,13 +299,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
             $plan_id = (int) ($_POST['plan_id'] ?? 0);
             $before = ak_org_plan_state($pdo, $target_id);
             $view_id = $target_id;
+            $quote_err = null; $quote_cents = 0;
+            // Devis et attribution dans une même transaction : si l'attribution échoue (demande iPhone en
+            // attente, essai payé par carte que Stripe n'arrête pas…), la formule du devis n'est pas écrite
+            $quote_tx = false;
+            if ($can_plan && $plan_id > 0) {
+                $pdo->beginTransaction();
+                $quote_tx = true;
+                $plan_id = sa_assoc_quote_plan($pdo, $target_id, $plan_id, $_POST['quote_eur'] ?? '', $quote_err, $quote_cents);
+            }
             if (!$can_plan) {
                 $error = 'Vous n’avez pas le droit de changer le plan d’une association.';
+            } elseif ($quote_err !== null) {
+                $error = $quote_err;
             } elseif ($plan_id <= 0) {
                 $error = 'Choisissez un plan.';
-            } elseif ($err = sa_assoc_set_plan($pdo, $target_id, $plan_id)) {
+            } elseif ($err = sa_assoc_set_plan($pdo, $target_id, $plan_id, !$quote_tx)) {
                 $error = $err;
             } else {
+                if ($pdo->inTransaction()) $pdo->commit();
                 $after = ak_org_plan_state($pdo, $target_id);
                 sa_log_action((int) $user['id'], 'set_plan', $target_id, null, [
                     'from' => $before['plan_slug'], 'to' => $after['plan_slug'],
@@ -272,6 +342,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && function_exists('check_csrf') && ch
                 } catch (Throwable $e) {}
                 if ($sid = ak_stripe_left_on_free($pdo, $target_id, $sfree)) $error = sa_stripe_left_message($sid, (bool) $sfree);
             }
+            // Refus (devis invalide, formule absente) : le devis écrit plus haut est annulé
+            if ($pdo->inTransaction()) $pdo->rollBack();
         }
         // ---- SUSPEND ----
         elseif ($action === 'suspend') {
@@ -488,8 +560,13 @@ if ($view_id > 0) {
     // Plan et statut : la même vérité que l'appli et l'espace de l'association
     $plan_state = ak_org_plan_state($pdo, $view_id);
     $in_trial = $plan_state['is_trial'] || $plan_state['trial_expired'];
-    $plans = sa_plans_list($pdo);
+    $plans = sa_plans_for_org(sa_plans_list($pdo), $plan_state['plan_id'] !== null ? (int) $plan_state['plan_id'] : null);
     $paid_plans = array_values(array_filter($plans, fn($p) => !$p['is_trial']));
+    // Usage du mois face aux limites de la formule (lecture seule)
+    $usage_lines = sa_plan_usage_lines($pdo, $plan_state, $view_id);
+    // Devis Sur-mesure en place (ligne propre au client) : pré-remplit le champ « Montant du devis »
+    $cur_quote = !empty($plan_state['plan_id']) && strpos((string) $plan_state['plan_slug'], 'sur-mesure-') === 0 && (int) $plan_state['price_cents'] > 0
+        ? number_format((int) $plan_state['price_cents'] / 100, 2, ',', '') : '';
 
     // Ligne d'abonnement courante (asso_subscriptions, même ordre que ak_get_current_plan)
     $asso_sub = null;
@@ -514,8 +591,13 @@ if ($view_id > 0) {
         $stmt->execute([$view_id]);
         $subscription = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     } catch (Throwable $e) {}
-    $show_manual_billing = $subscription && !$in_trial && isset($subscription['price_ht'])
-        && (!$plan_state['plan_id'] || (int) $plan_state['price_cents'] > 0 || $plan_state['plan_slug'] === 'sur-mesure');
+    // Ancien tarif de la table subscriptions : seulement pour un compte historique SANS formule (ligne
+    // d'abonnement) ; avec une formule, le prix facturé est celui de la formule (price_cents HT + TVA)
+    $show_manual_billing = $subscription && !$in_trial && isset($subscription['price_ht']) && !$plan_state['plan_id'];
+    $vat_rate = function_exists('ak_vat_applicable_rate') ? ak_vat_applicable_rate($pdo) : (float) ($subscription['tva_rate'] ?? 20);
+    $plan_billing = !$in_trial && $plan_state['plan_id'] && (int) $plan_state['price_cents'] > 0;
+    // Offre fondateur : fin de la garantie de 12 mois
+    $locked_until = function_exists('ak_pc_price_locked_until') && $asso_sub ? ak_pc_price_locked_until($pdo, (int) $asso_sub['id']) : '';
 
     // Demande d'inscription en ligne (lecture seule)
     $signup = null;
@@ -804,11 +886,15 @@ if ($view_id > 0) {
                 <input type="hidden" name="action" value="set_plan">
                 <input type="hidden" name="org_id" value="<?= (int) $org['id'] ?>">
                 <label for="trial-to-plan" style="font-size:12.5px; color:var(--sa-ink-2);">Passer en abonnement :</label>
-                <select name="plan_id" id="trial-to-plan" required>
+                <select name="plan_id" id="trial-to-plan" required data-quote-select>
                     <?php foreach ($paid_plans as $p): ?>
-                        <option value="<?= (int) $p['id'] ?>" <?= $p['slug'] === 'assokit' ? 'selected' : '' ?>><?= h($p['option']) ?></option>
+                        <option value="<?= (int) $p['id'] ?>" data-quote="<?= sa_is_custom_quote_slug($p['slug']) ? '1' : '0' ?>" <?= $p['slug'] === 'assokit' ? 'selected' : '' ?>><?= h($p['option']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <span data-quote-field style="display:none; align-items:center; gap:6px;">
+                    <label for="trial-quote" style="font-size:12.5px; color:var(--sa-ink-2);">Montant du devis (€ HT/mois) :</label>
+                    <input type="text" name="quote_eur" id="trial-quote" inputmode="decimal" placeholder="ex. 450,00" style="width:110px;">
+                </span>
                 <button type="submit" class="sa-btn sa-btn-violet sa-btn-sm">✓ Passer en abonnement</button>
             </form>
             <?php endif; ?>
@@ -837,12 +923,15 @@ if ($view_id > 0) {
             <?php if ($in_trial): ?>
                 <div class="sa-kpi-value" style="font-size:22px;">0 €</div>
                 <div class="sa-kpi-trend">essai gratuit</div>
+            <?php elseif (!$plan_state['plan_id'] && ($plan_state['legacy_slug'] ?? '') !== '' && (int) ($plan_state['legacy_cents'] ?? 0) > 0): ?>
+                <div class="sa-kpi-value" style="font-size:22px;"><?= number_format($plan_state['legacy_cents'] / 100, 2, ',', ' ') ?> €</div>
+                <div class="sa-kpi-trend">HT/mois · ancien tarif, sans abonnement</div>
             <?php elseif (!$plan_state['plan_id']): ?>
                 <div class="sa-kpi-value" style="font-size:22px;">—</div>
                 <div class="sa-kpi-trend">aucun abonnement (ancien plan)</div>
             <?php elseif ((int) $plan_state['price_cents'] > 0): ?>
                 <div class="sa-kpi-value" style="font-size:22px;"><?= number_format($plan_state['price_cents'] / 100, 2, ',', ' ') ?> €</div>
-                <div class="sa-kpi-trend">HT/mois</div>
+                <div class="sa-kpi-trend">HT/mois<?= $locked_until !== '' ? ' · garanti jusqu’au ' . h($locked_until) : '' ?></div>
             <?php else: ?>
                 <div class="sa-kpi-value" style="font-size:22px;"><?= h(sa_plan_price_label(0, (string) $plan_state['plan_slug'])) ?></div>
             <?php endif; ?>
@@ -871,16 +960,21 @@ if ($view_id > 0) {
                     <div class="sa-group">
                         <label for="org-plan">Plan tarifaire</label>
                         <?php if ($can_plan && $plans): ?>
-                        <select name="plan_id" id="org-plan">
+                        <select name="plan_id" id="org-plan" data-quote-select>
                             <?php if (!$plan_state['plan_id']): ?>
-                                <option value="0" selected>— Aucun abonnement (ancien plan : <?= h($plan_state['plan_label']) ?>) —</option>
+                                <option value="0" selected data-quote="0">— Aucun abonnement (<?= h($plan_state['plan_label']) ?>) —</option>
                             <?php endif; ?>
                             <?php foreach ($plans as $p): ?>
-                                <option value="<?= (int) $p['id'] ?>" <?= (int) $plan_state['plan_id'] === $p['id'] ? 'selected' : '' ?>>
+                                <option value="<?= (int) $p['id'] ?>" data-quote="<?= sa_is_custom_quote_slug($p['slug']) ? '1' : '0' ?>" <?= (int) $plan_state['plan_id'] === $p['id'] ? 'selected' : '' ?>>
                                     <?= h($p['option']) ?><?= (int) $plan_state['plan_id'] === $p['id'] ? ' · actuel' : '' ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
+                        <div data-quote-field style="display:<?= $plan_state['plan_id'] && sa_is_custom_quote_slug((string) $plan_state['plan_slug']) ? 'block' : 'none' ?>; margin-top:8px;">
+                            <label for="org-quote" style="font-size:12px;">Montant du devis (€ HT/mois)</label>
+                            <input type="text" name="quote_eur" id="org-quote" inputmode="decimal" value="<?= h($cur_quote) ?>" placeholder="ex. 450,00">
+                            <div style="font-size:11.5px; color:var(--sa-ink-4); margin-top:4px;">Crée la formule Sur-mesure propre à cette association, à ce prix (fonctions et limites de Sur-mesure). Vide : Sur-mesure sur devis.</div>
+                        </div>
                         <div style="font-size:11.5px; color:var(--sa-ink-4); margin-top:5px;">
                             Actuellement : <?= h($plan_state['plan_label']) ?> · <?= h($plan_state['badge']) ?>.
                             Le plan n’est modifié que si vous en choisissez un autre<?= $in_trial ? ' ; choisir un plan payant ou gratuit met fin à l’essai' : '' ?>.
@@ -1044,6 +1138,11 @@ if ($view_id > 0) {
                     <div>Prix :</div>
                     <div><?= h(sa_plan_state_price($plan_state)) ?></div>
 
+                    <?php if ($locked_until !== ''): ?>
+                        <div>Garantie :</div>
+                        <div>Offre fondateur : prix et fonctions garantis jusqu’au <strong><?= h($locked_until) ?></strong></div>
+                    <?php endif; ?>
+
                     <?php if ($in_trial && $trial_end_fr !== ''): ?>
                         <div><?= $trial_paused ? 'Fin d’essai prévue :' : 'Fin d’essai :' ?></div>
                         <div><?= h($trial_end_fr) ?></div>
@@ -1060,7 +1159,18 @@ if ($view_id > 0) {
                         <div><?= h($pay_modes[$asso_sub['payment_mode']] ?? $asso_sub['payment_mode']) ?></div>
                     <?php endif; ?>
 
-                    <?php if ($show_manual_billing): ?>
+                    <?php if ($plan_billing): ?>
+                        <div>Facturation :</div>
+                        <div>
+                            <?php if ($vat_rate > 0): ?>
+                            <?= number_format((int) $plan_state['price_cents'] / 100, 2, ',', ' ') ?> € HT
+                            + TVA <?= h(rtrim(rtrim(number_format($vat_rate, 2, ',', ''), '0'), ',')) ?> %
+                            = <strong><?= number_format(round((int) $plan_state['price_cents'] * (1 + $vat_rate / 100)) / 100, 2, ',', ' ') ?> € TTC</strong>/mois
+                            <?php else: ?>
+                            <?= number_format((int) $plan_state['price_cents'] / 100, 2, ',', ' ') ?> € HT/mois · TVA non applicable
+                            <?php endif; ?>
+                        </div>
+                    <?php elseif ($show_manual_billing): ?>
                         <div>Facturation :</div>
                         <div>
                             <?= number_format((float) $subscription['price_ht'], 2, ',', ' ') ?> € HT
@@ -1101,8 +1211,37 @@ if ($view_id > 0) {
                 </a>
             </div>
 
+            <?php if ($usage_lines): ?>
+            <!-- Usage du mois face aux limites de la formule (lecture seule) -->
+            <div class="sa-card" style="margin-top:16px;">
+                <div class="sa-card-title">📈 Usage du mois</div>
+                <div class="sa-card-sub">Formule <?= h($plan_state['plan_label']) ?> · crédits IA et e-mails depuis le 1er du mois</div>
+                <div class="sa-dl" style="margin-top:10px;">
+                    <?php foreach ($usage_lines as $ul): ?>
+                        <div><?= h(ucfirst($ul['label'])) ?> :</div>
+                        <div<?= $ul['warn'] ? ' style="color:#FCD34D; font-weight:700;" title="90 % de la limite atteints ou plus"' : '' ?>><?= $ul['warn'] ? '⚠ ' : '' ?><?= h($ul['text']) ?><?= $ul['pct'] !== null ? ' · ' . (int) $ul['pct'] . ' %' : '' ?></div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
         </div>
     </div>
+
+    <script>
+    // Champ « Montant du devis » : seulement quand une formule Sur-mesure est choisie
+    document.querySelectorAll('select[data-quote-select]').forEach(function (sel) {
+        var field = sel.form && sel.form.querySelector('[data-quote-field]');
+        if (!field) return;
+        var show = field.style.display === 'none' ? (field.tagName === 'SPAN' ? 'inline-flex' : 'block') : field.style.display;
+        var sync = function () {
+            var opt = sel.options[sel.selectedIndex];
+            field.style.display = opt && opt.getAttribute('data-quote') === '1' ? show : 'none';
+        };
+        sel.addEventListener('change', sync);
+        sync();
+    });
+    </script>
 
     <?php
     sa_render_foot();
@@ -1116,6 +1255,14 @@ $filter_status = (string) ($_GET['status'] ?? '');
 if (!in_array($filter_status, ['', 'active', 'trial', 'trial_expired', 'suspended', 'cancelled'], true)) $filter_status = '';
 $filter_validation = $_GET['filter'] ?? '';  // pending, validated, rejected
 $search = trim($_GET['q'] ?? '');
+// Filtre « Formule » (slug) : formules réelles, Sur-mesure regroupe les devis propres à un client
+$plan_filters = [];
+foreach (sa_plans_list($pdo) as $p) {
+    if (!empty($p['client_specific'])) continue;
+    $plan_filters[$p['slug']] = $p['label'];
+}
+$filter_plan = is_string($_GET['plan'] ?? null) ? (string) $_GET['plan'] : '';
+if (!isset($plan_filters[$filter_plan])) $filter_plan = '';
 
 $where = [];
 $params = [];
@@ -1156,6 +1303,15 @@ foreach ($orgs as &$o) {
     $o['_ps'] = $plan_states[(int) $o['id']] ?? ak_org_plan_state($pdo, (int) $o['id']);
 }
 unset($o);
+if ($filter_plan !== '') {
+    $orgs = array_values(array_filter($orgs, function ($o) use ($filter_plan) {
+        $ps = $o['_ps'];
+        // Compte historique sans ligne : sa formule équivalente (Démarrage si rien de payant)
+        $slug = $ps['plan_id'] ? (string) $ps['plan_slug'] : ((string) ($ps['legacy_slug'] ?? '') ?: 'demarrage');
+        if ($filter_plan === 'sur-mesure') return sa_is_custom_quote_slug($slug);
+        return $slug === $filter_plan;
+    }));
+}
 if ($filter_status !== '') {
     $orgs = array_values(array_filter($orgs, function ($o) use ($filter_status) {
         $ps = $o['_ps'];
@@ -1221,8 +1377,15 @@ sa_render_sidebar('associations');
         <option value="cancelled" <?= $filter_status === 'cancelled' ? 'selected' : '' ?>>Résiliées</option>
     </select>
 
+    <select name="plan" style="padding:8px 12px; background:var(--sa-bg-2); border:1px solid var(--sa-border-strong); border-radius:8px; color:var(--sa-ink); font-family:inherit;">
+        <option value="">Toutes les formules</option>
+        <?php foreach ($plan_filters as $slug => $lbl): ?>
+            <option value="<?= h($slug) ?>" <?= $filter_plan === $slug ? 'selected' : '' ?>><?= h($lbl) ?></option>
+        <?php endforeach; ?>
+    </select>
+
     <button type="submit" class="sa-btn sa-btn-ghost">Filtrer</button>
-    <?php if ($filter_status || $search): ?>
+    <?php if ($filter_status || $search || $filter_plan): ?>
         <a href="/super-admin/associations<?= $filter_validation ? '?filter=' . h($filter_validation) : '' ?>" class="sa-btn sa-btn-ghost">Effacer</a>
     <?php endif; ?>
 </form>

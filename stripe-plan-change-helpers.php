@@ -28,6 +28,7 @@
 require_once __DIR__ . '/trial-helpers.php';
 require_once __DIR__ . '/stripe-sync-helpers.php';
 if (!function_exists('ak_price_split') && is_file(__DIR__ . '/includes-pricing.php')) require_once __DIR__ . '/includes-pricing.php';
+if (!defined('AK_PLAN_NEVER_VISIBLE') && is_file(__DIR__ . '/plan-catalog-helpers.php')) require_once __DIR__ . '/plan-catalog-helpers.php';
 
 if (!function_exists('ak_pc_price_label')) {
     /**
@@ -100,9 +101,13 @@ if (!function_exists('ak_pc_plan_is_sellable')) {
     /**
      * Formule proposée à la souscription en ligne : visible, payante, ni essai, ni sur devis, et à son
      * prix de la grille (ak_pc_plan_grid_pending) : jamais un montant différent de celui de /tarifs.
+     * Offre fondateur, essai et accès limité (AK_PLAN_NEVER_VISIBLE) : jamais vendus, même rendus
+     * visibles par erreur (l'offre fondateur s'attribue depuis le cockpit, ak_org_set_plan).
      */
     function ak_pc_plan_is_sellable(?array $p): bool {
         if (!$p) return false;
+        $never = defined('AK_PLAN_NEVER_VISIBLE') ? AK_PLAN_NEVER_VISIBLE : ['fondateur', 'pro-essai', 'demarrage'];
+        if (in_array((string)($p['slug'] ?? ''), $never, true)) return false;
         if (empty($p['is_visible']) || (int)($p['price_cents'] ?? 0) <= 0) return false;
         if (!empty($p['is_trial']) || ($p['slug'] ?? '') === 'pro-essai') return false;
         if (ak_pc_plan_grid_pending(null, $p)) return false;

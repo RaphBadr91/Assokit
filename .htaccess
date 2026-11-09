@@ -178,7 +178,6 @@ RewriteRule ^mon-asso-devis-send/?$       mon-asso-devis-send.php [L,QSA]
 RewriteRule ^mon-asso-devis-convert/?$    mon-asso-devis-convert.php [L,QSA]
 RewriteRule ^mon-asso-stats/?$    mon-asso-stats.php [L,QSA]
 RewriteRule ^mon-asso-plan/?$ mon-asso-plan.php [L,QSA]
-RewriteRule ^admin-plans/?$ admin-plans.php [L,QSA]
 RewriteRule ^admin-subscriptions/?$ admin-subscriptions.php [L,QSA]
 
 # Page publique signature
@@ -269,7 +268,6 @@ RewriteCond %{THE_REQUEST} \s/+(fonctionnalites|tarifs|a-propos|contact|mentions
 RewriteRule ^ /%1 [R=301,L]
 
 RewriteRule ^mon-asso-plan/?$ mon-asso-plan.php [L,QSA]
-RewriteRule ^admin-plans/?$ admin-plans.php [L,QSA]
 RewriteRule ^admin-subscriptions/?$ admin-subscriptions.php [L,QSA]
 RewriteRule ^diffusion-email/?$ diffusion-email.php [L,QSA]
 

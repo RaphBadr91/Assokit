@@ -27,6 +27,8 @@ require_once __DIR__ . '/includes-layout.php';
 @require_once __DIR__ . '/stripe-sync-helpers.php';
 require_once __DIR__ . '/stripe-plan-change-helpers.php';
 require_once __DIR__ . '/includes-pricing.php';
+// Carte « Ce que comprend votre formule » (jauges du mois, fonctions incluses, sans prix)
+if (is_file(__DIR__ . '/includes-plan-usage.php')) require_once __DIR__ . '/includes-plan-usage.php';
 
 require_login();
 // Apple 3.1.1 : aucun tunnel d'achat ne doit s'ouvrir dans l'app.
@@ -132,6 +134,19 @@ if ($cur_slug === 'demarrage' && !$trial_lineage && $active_sub && !empty($activ
     } catch (Throwable $e) {}
 }
 
+// Démarrage : « Accès limité » seulement une fois l'accès limité en service (akc_readonly :
+// AK_DEMARRAGE_READONLY_LIVE et grille en base). Avant, Démarrage garde ses fonctions d'avant la grille.
+$readonly_live = function_exists('akc_readonly') && akc_readonly($pdo, $org_id, false);
+$demarrage_txt = 'Formule Démarrage, sans abonnement payant : choisissez une formule pour profiter de toutes les fonctions.';
+// Client Sur-mesure (ligne sur-mesure, ou ligne de devis sur-mesure-<client>) : la carte Sur-mesure est
+// sa formule actuelle, et toute autre formule est une baisse (limites contrôlées : $blockers)
+$is_quote_client = $cur_plan && ($cur_slug === 'sur-mesure' || strncmp($cur_slug, 'sur-mesure-', 11) === 0 || !empty($cur_plan['is_custom_quote']));
+// Période de transition : formule pas encore à son prix de la grille (ligne assokit à l'ancien prix,
+// ou grille pas encore en base) : jamais « Pro · 49,99 € », le montant facturé sous « Votre formule actuelle »
+$grid_pending_cur = $cur_plan && $cur_slug !== 'demarrage' && $cur_slug !== 'pro-essai' && empty($cur_plan['is_trial'])
+    && (int)($cur_plan['price_cents'] ?? 0) > 0
+    && function_exists('ak_pc_plan_grid_pending') && ak_pc_plan_grid_pending($pdo, $cur_plan);
+
 // URL "Régulariser" dynamique
 $regularize_url = function_exists('ak_get_regularize_url') ? ak_get_regularize_url($pdo, $org_id) : '/contact?subject=billing';
 // Premier prélèvement SEPA en cours de vérification par la banque : ni « Choisir une formule », ni second paiement
@@ -203,9 +218,11 @@ render_sidebar('mon-asso-plan');
   if ($is_trial) { $bg_color = '#ECFDF5'; $border_color = '#A7F3D0'; $accent_color = '#047857'; }
   if ($trial_over) { $bg_color = '#FEF3C7'; $border_color = '#FCD34D'; $accent_color = '#92400E'; $emoji = '⏳'; }
   if ($trial_paused) { $bg_color = '#FEF3C7'; $border_color = '#FCD34D'; $accent_color = '#92400E'; $emoji = '⏸'; }
-  if ($after_paid && !$trial_over) { $bg_color = '#FEF3C7'; $border_color = '#FCD34D'; $accent_color = '#92400E'; $emoji = '🔒'; }
+  if ($after_paid && !$trial_over) { $bg_color = '#FEF3C7'; $border_color = '#FCD34D'; $accent_color = '#92400E'; $emoji = $readonly_live ? '🔒' : '📋'; }
   // Essai terminé (cron passé ou non) : aucune formule choisie, Démarrage n'est pas une offre
-  $plan_title = $trial_over ? 'Essai terminé' : ($after_paid ? 'Accès limité' : ($subscription_status['plan_name'] ?? 'Démarrage'));
+  $plan_title = $trial_over ? 'Essai terminé' : ($after_paid ? ($readonly_live ? 'Accès limité' : 'Démarrage') : ($subscription_status['plan_name'] ?? 'Démarrage'));
+  // Formule pas encore à son prix de la grille : le montant facturé, sans le nom de la nouvelle formule
+  if ($grid_pending_cur && !$trial_over && !$after_paid) $plan_title = 'Votre formule actuelle';
   // Premier prélèvement SEPA en cours de vérification : ni « Essai terminé, choisissez votre formule », ni offre à souscrire
   if ($sepa_pending_until) { $plan_title = 'Paiement en cours'; $bg_color = '#FEF3C7'; $border_color = '#FCD34D'; $accent_color = '#92400E'; $emoji = '⏳'; }
   // Formule gratuite (Démarrage) : rien ne se renouvelle ni ne se prélève (Sur-mesure, facturé à part, n'en est pas une)
@@ -236,9 +253,9 @@ render_sidebar('mon-asso-plan');
         <?php elseif ($is_cancel_scheduled): ?>
           🛑 Résiliation programmée<?= $access_until_fr !== '' ? ' le ' . htmlspecialchars($access_until_fr) : '' ?> · aucun nouveau prélèvement · puis accès limité (Démarrage)
         <?php elseif ($after_paid && !$trial_over): ?>
-          🔒 Abonnement arrêté — vos données sont conservées · choisissez une formule pour continuer
+          <?= $readonly_live ? '🔒' : '📋' ?> Abonnement arrêté — vos données sont conservées · choisissez une formule pour continuer
         <?php elseif ($is_active && ($is_free_plan || ($stripe_on_free && $stripe_on_free_plan))): ?>
-          🔒 Accès limité : vos données restent consultables et exportables
+          <?= $readonly_live ? '🔒 Accès limité : vos données restent consultables et exportables' : htmlspecialchars($demarrage_txt) ?>
         <?php elseif ($is_active && $stripe_on_free): ?>
           ✅ Abonnement actif
         <?php elseif ($is_active && $payment_mode === 'stripe'): ?>
@@ -264,9 +281,12 @@ render_sidebar('mon-asso-plan');
         <?php elseif ($is_trial): ?>
           🎁 Essai gratuit<?= $trial_end_fr !== '' ? ' jusqu’au ' . $trial_end_fr . ' · ' . ($trial_days_left === 0 ? 'dernier jour' : $trial_days_left . ' jour' . ($trial_days_left > 1 ? 's' : '') . ' restant' . ($trial_days_left > 1 ? 's' : '')) : '' ?> · toutes les fonctions de la formule Pro
         <?php else: ?>
-          🔒 Accès limité : vos données restent consultables et exportables
+          <?= $readonly_live ? '🔒 Accès limité : vos données restent consultables et exportables' : htmlspecialchars($demarrage_txt) ?>
         <?php endif; ?>
       </div>
+      <?php if ($grid_pending_cur && !$trial_over && !$after_paid): ?>
+      <div style="font-size:13px;color:<?= $accent_color ?>;margin-top:4px;opacity:0.9;">Votre formule passe à la nouvelle grille très prochainement : rien ne change d’ici là.</div>
+      <?php endif; ?>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <?php if ($is_grace || $is_pending || $is_overdue): ?>
@@ -326,13 +346,20 @@ render_sidebar('mon-asso-plan');
   </div>
   <?php endif; ?>
 
+  <?php
+  // Ce que comprend la formule : jauges du mois et fonctions incluses (garantie fondateur déjà affichée au-dessus)
+  if (!$trial_over && !$sepa_pending_until && function_exists('ak_render_plan_usage_card')) {
+      echo ak_render_plan_usage_card($pdo, $org_id, false, ['guarantee' => false, 'status_note' => false]);
+  }
+  ?>
+
 <?php
 // ======= CHOIX DE LA FORMULE (grille 2026) =======
 // Essentiel, Pro (mis en avant, présélectionné), Équipe ; Sur-mesure « Nous contacter », sans prix.
 // Ordre : ordinateur Essentiel · Pro · Équipe ; téléphone Pro · Équipe · Essentiel (propriété CSS order).
 $offers = ak_pc_offer_plans($pdo);
 $choose_first = in_array($pc['mode'], ['subscribe'], true) && !$sepa_pending_until;
-$render_offers = function () use ($pdo, $org_id, $offers, $pc, $pending, $offer_vat, $trial_card, $is_trial, $trial_over, $trial_paused, $after_paid, $sepa_pending_until): string {
+$render_offers = function () use ($pdo, $org_id, $offers, $pc, $pending, $offer_vat, $trial_card, $is_trial, $trial_over, $trial_paused, $after_paid, $sepa_pending_until, $is_quote_client): string {
     if (!$offers['paid'] && !$offers['quote'] && empty($offers['pending_pro'])) return '';
     $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
     $csrf = function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_token'] ?? '');
@@ -360,7 +387,8 @@ $render_offers = function () use ($pdo, $org_id, $offers, $pc, $pending, $offer_
             $is_pending = $pending && (int)$pending['plan_id'] === (int)$p['id'];
             $featured = !empty($p['is_featured']);
             $badge = function_exists('ak_plan_badge') && $featured ? ak_plan_badge($pdo, $slug) : null;
-            $kind = ak_pc_kind((int)$pc['cur_price'], $p);
+            // Client Sur-mesure : toute formule affichée est une baisse (limites contrôlées ci-dessous)
+            $kind = $is_quote_client ? 'downgrade' : ak_pc_kind((int)$pc['cur_price'], $p);
             $blockers = (($kind === 'downgrade' && !$subscribe) || $subscribe) && !$is_current ? ak_pc_usage_blockers($pdo, $org_id, $p) : [];
             $summary = function_exists('ak_plan_public_summary') ? ak_plan_public_summary($p) : [];
             $css_order = $order[$slug] ?? (int)($p['display_order'] ?? 5) + 3;
@@ -402,7 +430,7 @@ $render_offers = function () use ($pdo, $org_id, $offers, $pc, $pending, $offer_
           </div>
         <?php endif; ?>
         <?php if ($offers['quote']): ?>
-          <div class="akp-card akp-quote" style="order:9;">
+          <div class="akp-card akp-quote<?= $is_quote_client && !$subscribe ? ' is-current' : '' ?>" style="order:9;">
             <div class="akp-name">Sur-mesure</div>
             <?php
             // Seuils d'Équipe lus en base (ak_pricing_state, comme /tarifs), jamais écrits en dur ;
@@ -416,7 +444,13 @@ $render_offers = function () use ($pdo, $org_id, $offers, $pc, $pending, $offer_
             <div class="akp-tagline"><?= $h(($offers['quote']['tagline'] ?? '') !== '' ? $offers['quote']['tagline'] : 'Fédérations, ligues, collectivités territoriales') ?></div>
             <div class="akp-price">Sur devis</div>
             <p class="akp-quote-txt"><?= $sm_over ? $h(ucfirst(implode(', ', $sm_over))) . ', ou plusieurs' : 'Plusieurs' ?> structures à suivre, chacune avec son propre espace (grande fédération, ligue, comité, tête de réseau, collectivité territoriale) ? Parlons de votre projet.</p>
-            <div class="akp-cta"><a href="/contact?plan=sur-mesure" class="akp-btn"><?= ak_icon('phone',14) ?> Nous contacter</a></div>
+            <div class="akp-cta">
+            <?php if ($is_quote_client && !$subscribe): ?>
+              <div class="akp-state akp-state-ok" style="background:white;color:#0F172A;">✓ Formule actuelle</div>
+            <?php else: ?>
+              <a href="/contact?plan=sur-mesure" class="akp-btn"><?= ak_icon('phone',14) ?> Nous contacter</a>
+            <?php endif; ?>
+            </div>
           </div>
         <?php endif; ?>
         </div>
@@ -452,6 +486,7 @@ $render_offers = function () use ($pdo, $org_id, $offers, $pc, $pending, $offer_
 .akp-state-wait { background:#FEF3C7; color:#92400E; }
 .akp-state-no { background:#FEF2F2; color:#991B1B; font-weight:600; }
 .akp-quote { background:#0F172A; border-color:#0F172A; }
+.akp-quote.is-current { outline-color:#059669; }
 .akp-quote .akp-name, .akp-quote .akp-price { color:white; }
 .akp-quote .akp-tagline, .akp-quote-txt { color:#CBD5E1; }
 .akp-quote-txt { font-size:12.5px; line-height:1.5; margin:0 0 12px; }
@@ -484,7 +519,7 @@ $render_offers = function () use ($pdo, $org_id, $offers, $pc, $pending, $offer_
         $total_split = ak_price_split((int)$pricing['total_cents'], $detail_vat_rate ?? 0.0);
         ?>
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9;font-size:14px;">
-          <div>Formule <?= htmlspecialchars($subscription_status['plan_name'] ?? '') ?></div>
+          <div><?= $grid_pending_cur ? 'Votre formule actuelle' : 'Formule ' . htmlspecialchars($subscription_status['plan_name'] ?? '') ?></div>
           <div style="font-weight:600;"><?= htmlspecialchars(ak_price_eur((int)$pricing['plan_cents']) . $ht_suffix) ?>/mois</div>
         </div>
         <?php foreach ($pricing['addons'] as $addon): ?>

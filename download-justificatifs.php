@@ -109,13 +109,18 @@ if (PHP_SAPI !== 'cli') {
             http_response_code(402);
             header('Content-Type: text/html; charset=utf-8');
             $pn = htmlspecialchars(!empty($__g['plan']) && function_exists('ak_plan_display_name') ? ak_plan_display_name($__g['plan']) : (string)($__g['plan']['name'] ?? 'Essai Pro'), ENT_QUOTES, 'UTF-8');
-            echo '<!doctype html><meta charset="utf-8"><title>Export limite</title>'
+            echo '<!doctype html><meta charset="utf-8"><title>Export limité</title>'
                . '<div style="max-width:540px;margin:80px auto;font-family:system-ui,Segoe UI,Arial,sans-serif;text-align:center;color:#1e293b;">'
                . '<div style="font-size:42px;">🔒</div>'
-               . '<h1 style="font-size:20px;margin:14px 0 8px;">Export réservé à 1 génération en essai</h1>'
-               . '<p style="font-size:14px;color:#475569;line-height:1.55;">Votre offre <strong>' . $pn . '</strong> autorise cet export une seule fois en essai.</p>'
+               // Appli (iPhone notamment) : rien de l'essai, un texte neutre (règle 3.1.1 d'Apple)
+               . (ak_billing_hidden()
+                  ? '<p style="font-size:14px;color:#475569;line-height:1.55;margin-top:14px;">Cet export n’est plus disponible pour votre formule.</p>'
+                  : '<h1 style="font-size:20px;margin:14px 0 8px;">Export réservé à 1 génération en essai</h1>'
+                    . '<p style="font-size:14px;color:#475569;line-height:1.55;">Votre offre <strong>' . $pn . '</strong> autorise cet export une seule fois en essai.</p>')
                . (ak_billing_hidden() ? ''
-                  : '<a href="/mon-asso-plan" style="display:inline-block;margin-top:18px;background:#1D4ED8;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:14px;">Choisir une formule</a>')
+                  : ((current_user()['role'] ?? '') === 'admin'
+                     ? '<a href="/mon-asso-plan#formules" style="display:inline-block;margin-top:18px;background:#1D4ED8;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:14px;">Choisir une formule</a>'
+                     : '<p style="font-size:13px;color:#64748B;margin:14px 0 0;">Un administrateur de votre structure peut changer de formule.</p>'))
                . '</div>';
             exit;
         }

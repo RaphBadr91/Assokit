@@ -178,6 +178,70 @@ if (!function_exists('app_plan_load')) {
         }
     }
 
+    /**
+     * L'incarnation en cours (session du site partagée avec l'appli) a-t-elle été lancée par un compte
+     * plateforme (Fondateur, super-admin) ? Pendant l'incarnation, current_user() est le compte de la
+     * cible : le compte réel est relu en base (impersonation_admin_user_id). Faux en cas de doute.
+     */
+    function app_plan_impersonator_is_platform(PDO $pdo): bool {
+        if (session_status() !== PHP_SESSION_ACTIVE) return false;
+        $admin = (int) ($_SESSION['impersonation_admin_user_id'] ?? 0);
+        if ($admin <= 0 || empty($_SESSION['impersonation_target_user_id'])) return false;
+        try {
+            $st = $pdo->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
+            $st->execute([$admin]);
+            $a = $st->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            return false;
+        }
+        if (!$a) return false;
+        if (!empty($a['is_super_admin']) || !empty($a['is_founder']) || !empty($a['is_platform_admin'])
+            || in_array((string) ($a['role'] ?? ''), ['super_admin', 'founder'], true)) return true;
+        $email = strtolower(trim((string) ($a['email'] ?? '')));
+        return $email !== '' && function_exists('app_founder_emails') && in_array($email, (array) app_founder_emails(), true);
+    }
+
+    /**
+     * Ajout d'un membre (fiche adhérent, bureau compris) : null = permis, sinon le message, neutre et
+     * sans nom de formule : « Votre formule permet 50 membres (bureau compris) : limite atteinte. »
+     * null tant que la grille n'est pas en service, pour un compte plateforme (Fondateur, super-admin,
+     * y compris quand il incarne un compte de l'association) et en cas de doute.
+     */
+    function app_plan_member_block(PDO $pdo, int $org_id, ?array $user = null): ?string {
+        if ($org_id <= 0) return null;
+        if ($user !== null && app_plan_is_platform($user)) return null;
+        if (app_plan_impersonator_is_platform($pdo)) return null;
+        if (!app_plan_load() || !app_plan_live($pdo) || !function_exists('ak_can_add_adherent')) return null;
+        try {
+            if (function_exists('ak_get_current_plan') && !ak_get_current_plan($pdo, $org_id)) return null;   // formule illisible : on laisse passer
+            $r = ak_can_add_adherent($pdo, $org_id);
+        } catch (Throwable $e) {
+            error_log('[app_plan_member_block] ' . get_class($e));
+            return null;
+        }
+        if (!empty($r['ok'])) return null;
+        $l = isset($r['limit']) && $r['limit'] !== null ? (int) $r['limit'] : 0;
+        if ($l <= 0) return 'Votre formule ne permet pas d’ajouter de membre.';
+        return 'Votre formule permet ' . app_plan_int($l) . ' membre' . ($l > 1 ? 's' : '') . ' (bureau compris) : limite atteinte.';
+    }
+
+    /**
+     * Fonctions incluses dans une formule (ligne ak_get_current_plan) : libellés d'ak_plan_feature_keys()
+     * dont la colonne vaut 1, dans l'ordre de la grille. Jamais le domaine personnel (pas encore
+     * disponible). Colonne absente (migration pas encore passée) : fonction non citée.
+     */
+    function app_plan_included(?array $plan): array {
+        if (!$plan || !function_exists('ak_plan_feature_keys')) return [];
+        if (($plan['slug'] ?? '') === 'demarrage') return [];
+        $out = [];
+        foreach (ak_plan_feature_keys() as $k => $label) {
+            if ($k === 'feature_custom_domain') continue;
+            if (!array_key_exists($k, $plan) || empty($plan[$k])) continue;
+            $out[] = (string) $label;
+        }
+        return $out;
+    }
+
     /** Options du compteur IA unifié (ai_usage_ledger) pour ask_claude() : chemin, association, utilisateur. */
     function app_plan_ai_opts(string $path, int $org_id = 0, int $user_id = 0, array $extra = []): array {
         $o = ['path' => $path];
@@ -231,10 +295,13 @@ if (!function_exists('app_plan_load')) {
             $states[] = ['tone' => 'trial', 'text' => 'Essai Pro en cours' . (!empty($ti['end_fr']) ? ', jusqu’au ' . $ti['end_fr'] : '')
                 . '. Pendant l’essai, les envois et les imports sont plafonnés.'];
         }
-        // Offre fondateur : garantie lue dans asso_subscriptions.price_locked_until (jamais de prix)
-        if (!empty($plan['subscription_id'])) {
+        // Offre fondateur : garantie lue dans asso_subscriptions.price_locked_until (jamais de prix), seulement
+        // tant que la ligne est sur l'offre fondateur : la date reste en base après un passage à Pro
+        // (garantie posée une seule fois), mais la garantie prend fin en quittant l'offre (ak_pc_price_locked_until)
+        if (!empty($plan['subscription_id']) && $slug === 'fondateur') {
             try {
-                $q = $pdo->prepare("SELECT price_locked_until FROM asso_subscriptions WHERE id = ? LIMIT 1");
+                $q = $pdo->prepare("SELECT s.price_locked_until FROM asso_subscriptions s JOIN asso_plans p ON p.id = s.plan_id
+                                    WHERE s.id = ? AND p.slug = 'fondateur' LIMIT 1");
                 $q->execute([(int) $plan['subscription_id']]);
                 $locked = (string) ($q->fetchColumn() ?: '');
                 if ($locked !== '' && strtotime($locked) > time()) {
@@ -288,11 +355,18 @@ if (!function_exists('app_plan_load')) {
             }
         }
 
+        // Démarrage sans l'accès limité en service (AK_DEMARRAGE_READONLY_LIVE) : ni « Accès limité » en
+        // accroche, ni le résumé de l'accès limité (même règle que le site, akc_readonly)
+        $demarrage_open = $slug === 'demarrage' && !$readonly;
         return [
             'slug'    => $slug,
             'name'    => $name,
-            'tagline' => $readonly ? '' : trim((string) ($plan['tagline'] ?? '')),
-            'summary' => $readonly ? [] : $summary,
+            // Accroche de la formule : rien pendant l'essai ni pour la ligne d'essai (texte commercial)
+            'tagline' => ($readonly || $in_trial || $slug === 'pro-essai' || $demarrage_open) ? '' : trim((string) ($plan['tagline'] ?? '')),
+            'summary' => ($readonly || $demarrage_open) ? [] : $summary,
+            // Fonctions incluses (libellés, sans prix ni domaine personnel) : liste « Inclus : … »
+            'included' => $readonly ? [] : app_plan_included($plan),
+            'trial'   => $in_trial,
             'usage'   => $usage,
             'states'  => $states,
             'readonly' => $readonly,

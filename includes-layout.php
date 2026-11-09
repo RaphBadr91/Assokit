@@ -219,19 +219,25 @@ function render_trial_banner() {
         if ($subscribed && $end_ts <= time()) {
             $msg = "terminé &middot; abonnement souscrit, premier prélèvement en cours";
         } elseif ($subscribed) {
-            $msg = ($days_left === 0 ? "se termine <strong>aujourd'hui</strong>" : ($days_left === 1 ? "se termine <strong>demain</strong>" : "Plus que <strong>" . $days_left . " jours</strong>"))
+            $msg = ($days_left === 0 ? "dernier jour" : $days_left . " jour" . ($days_left > 1 ? "s restants" : " restant"))
                  . " &middot; abonnement souscrit, premier prélèvement le " . $charge_fr;
         } elseif ($expired && !$can_pay) {
             $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, l’administrateur de votre association peut choisir une formule pour continuer";
         } elseif ($expired) {
             $msg = "terminé le " . $end_fr . " &middot; vos données sont conservées, choisissez une formule pour continuer";
         } elseif ($days_left === 0) {
-            $msg = "se termine <strong>aujourd'hui</strong>";
-        } elseif ($days_left === 1) {
-            $msg = "se termine <strong>demain</strong> (" . $end_fr . ")";
+            $msg = "dernier jour &middot; fin le " . $end_fr;
         } else {
-            $msg = "Plus que <strong>" . $days_left . " jours</strong> &middot; fin le " . $end_fr;
+            $msg = $days_left . " jour" . ($days_left > 1 ? "s restants" : " restant") . " &middot; fin le " . $end_fr;
         }
+        // Nom de l'essai (« Essai Pro ») : même texte que Mon abonnement et Paramètres (ak_plan_trial_info)
+        $trial_name = '';
+        if (!function_exists('ak_plan_trial_info') && is_file(__DIR__ . '/plan-helpers.php')) require_once __DIR__ . '/plan-helpers.php';
+        if (!$expired && function_exists('ak_plan_trial_info')) {
+            $trial_name = (string)(ak_plan_trial_info($pdo, $org_id)['trial_name'] ?? '');
+        }
+        if ($trial_name === '' && function_exists('ak_plan_trial_name')) $trial_name = ak_plan_trial_name($pdo, (string)($ps['plan_label'] ?? ''));
+        if ($trial_name === '') $trial_name = 'Essai Pro';
         ?>
 <style id="ak-trial-banner-css">
 .ak-trial-banner { grid-column: 1 / -1; background: linear-gradient(135deg,#FEF3C7,#FDE68A); border-bottom: 2px solid #F59E0B; padding: 10px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
@@ -252,13 +258,13 @@ function render_trial_banner() {
 <div class="ak-trial-banner">
   <div class="ak-trial-banner-info">
     <span class="ak-trial-banner-icon"><?= $expired ? '⏳' : ($subscribed ? '✅' : '🚀') ?></span>
-    <div class="ak-trial-banner-text"><strong>Essai gratuit</strong> &middot; <?= $msg ?></div>
+    <div class="ak-trial-banner-text"><strong><?= htmlspecialchars($trial_name, ENT_QUOTES, 'UTF-8') ?></strong> &middot; <?= $msg ?></div>
   </div>
   <?php if ($subscribed && $can_pay): ?>
   <a href="/mon-asso-plan" class="ak-trial-banner-btn">Mon abonnement</a>
   <?php elseif ($subscribed): ?>
   <?php elseif ($can_pay): ?>
-  <a href="/mon-asso-paiement?plan=assokit" class="ak-trial-banner-btn">⚡ <?= $expired ? 'Choisir ma formule' : "S'abonner" ?></a>
+  <a href="/mon-asso-plan#formules" class="ak-trial-banner-btn"><?= $expired ? 'Choisir ma formule' : 'Voir les formules' ?></a>
   <?php elseif (!$expired): ?>
   <span class="ak-trial-banner-note">Pour vous abonner, parlez-en à l’administrateur de votre association.</span>
   <?php endif; ?>

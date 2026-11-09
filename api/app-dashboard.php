@@ -222,10 +222,16 @@ try {
     } catch (Throwable $e) {
         error_log('[api/app-dashboard] plan: ' . get_class($e));
     }
-    // App iPhone : ni essai ni formule à l'écran (règle 3.1.1 d'Apple ; mobile/App.js,
-    // IOS_SIGNUP_REQUEST). Même vide côté serveur, quelle que soit la version de l'app.
+    // App iPhone : jamais rien de l'essai à l'écran (règle 3.1.1 d'Apple ; mobile/App.js,
+    // IOS_SIGNUP_REQUEST), quelle que soit la version de l'app. Choix du Fondateur : le nom de la
+    // formule reste affiché hors essai (information, sans prix) ; pendant l'essai ou après un essai
+    // terminé, aucun nom. Retour en arrière : remettre 'plan_label' => '—' sans condition.
     if (function_exists('ak_is_ios_app') && ak_is_ios_app()) {
-        $plan_info = ['in_trial' => false, 'trial_expired' => false, 'trial_ends_at' => null, 'days_left' => null, 'plan_label' => '—'];
+        $ios_label = (string) ($plan_info['plan_label'] ?? '');
+        if (!empty($plan_info['in_trial']) || !empty($plan_info['trial_expired']) || !empty($plan_info['trial_paused'])
+            || stripos($ios_label, 'essai') !== false) $ios_label = '—';
+        $plan_info = ['in_trial' => false, 'trial_expired' => false, 'trial_ends_at' => null, 'days_left' => null,
+                      'plan_label' => $ios_label !== '' ? $ios_label : '—'];
     }
 
     // Accord pour les fonctions IA dans l'app (règle 5.1.2(i) d'Apple) : null = jamais demandé

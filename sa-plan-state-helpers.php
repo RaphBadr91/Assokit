@@ -54,6 +54,11 @@ if (!function_exists('sa_org_plan_states')) {
             $extra[] = (isset($sc[$c]) ? 's.' . $c : 'NULL') . ' AS sub_' . $c;
         }
         $extra[] = (isset(ak_db_columns($pdo, 'organizations')['current_period_end']) ? 'o.current_period_end' : 'NULL') . ' AS org_period_end';
+        // Ancien montant mensuel des comptes historiques sans ligne d'abonnement (libellé et MRR)
+        $extra[] = function_exists('ak_org_monthly_price_col') ? ak_org_monthly_price_col($pdo)
+                 : (isset(ak_db_columns($pdo, 'organizations')['monthly_price_cents']) ? 'o.monthly_price_cents' : 'NULL') . ' AS monthly_price_cents';
+        // Compte historique facturé par le renouvellement ? (ni démo, échéance renseignée : sa_plan_state_mrr_cents)
+        if (function_exists('ak_org_legacy_bill_cols')) $extra[] = ak_org_legacy_bill_cols($pdo);
         try {
             foreach (array_chunk($ids, 500) as $chunk) {
                 $in = implode(',', $chunk); // entiers uniquement
@@ -115,9 +120,67 @@ if (!function_exists('sa_plan_state_mrr_cents')) {
      * $st : un élément de sa_org_plan_states().
      */
     function sa_plan_state_mrr_cents(array $st): int {
-        if ($st['badge_tone'] !== 'active' || $st['sub_status'] !== 'active') return 0;
+        if ($st['badge_tone'] !== 'active') return 0;
+        // Compte historique sans ligne d'abonnement, rattaché à une formule payante (ak_legacy_plan_row) :
+        // son ancien montant mensuel (organizations.monthly_price_cents), seulement s'il est facturé par le
+        // renouvellement (cron-job-renouvellements : ni démo « demo-… », échéance renseignée)
+        if (empty($st['plan_id'])) {
+            return (string)($st['legacy_slug'] ?? '') !== '' && in_array((string)$st['org_status'], ['active', ''], true)
+                && ($st['legacy_billed'] ?? true) !== false
+                ? max(0, (int)($st['legacy_cents'] ?? 0)) : 0;
+        }
+        if ($st['sub_status'] !== 'active') return 0;
         if (($st['payment_mode'] ?? null) === 'free_grant') return 0;
         return max(0, (int)$st['price_cents']);
+    }
+}
+
+if (!function_exists('sa_mrr_by_plan')) {
+    /**
+     * MRR par formule (centimes HT) à partir de sa_org_plan_states() : une ligne par formule payante
+     * ['key', 'label', 'count', 'mrr_cents'], triée par revenu, puis à part (sans revenu) les essais en
+     * cours ou terminés (« trial »), les Sur-mesure sur devis pas encore chiffré (« devis ») et les formules
+     * offertes ou gratuites (« offert »).
+     * Les lignes « sur-mesure-<client> » sont regroupées sous Sur-mesure ; les comptes historiques sous
+     * leur formule équivalente (« … (ancien compte) »).
+     * @return array{rows: array, trial: array, devis: array, offert: array, total_cents: int, paying: int}
+     */
+    function sa_mrr_by_plan(array $states): array {
+        $rows = [];
+        $trial = ['key' => 'trial', 'label' => 'Essais (en cours ou terminés)', 'count' => 0, 'mrr_cents' => 0];
+        $devis = ['key' => 'devis', 'label' => 'Sur-mesure, devis pas encore chiffré', 'count' => 0, 'mrr_cents' => 0];
+        $offert = ['key' => 'offert', 'label' => 'Offert ou gratuit', 'count' => 0, 'mrr_cents' => 0];
+        $total = 0; $paying = 0;
+        foreach ($states as $st) {
+            if (!empty($st['is_trial']) || !empty($st['trial_expired'])) {
+                if (in_array($st['badge_tone'], ['trial', 'expired'], true)) $trial['count']++;
+                continue;
+            }
+            if (($st['badge_tone'] ?? '') !== 'active') continue;
+            $cents = sa_plan_state_mrr_cents($st);
+            if ($cents <= 0) {
+                $sm_slug = !empty($st['plan_id']) ? (string)($st['plan_slug'] ?? '') : (string)($st['legacy_slug'] ?? '');
+                $free_grant = ($st['payment_mode'] ?? null) === 'free_grant';
+                if (!$free_grant && strpos($sm_slug, 'sur-mesure') === 0) $devis['count']++; else $offert['count']++;
+                continue;
+            }
+            if (empty($st['plan_id'])) {
+                $key = 'ancien:' . (string)$st['legacy_slug'];
+                $label = (string)$st['plan_label'];
+            } else {
+                $slug = (string)$st['plan_slug'];
+                $key = strpos($slug, 'sur-mesure') === 0 ? 'sur-mesure' : $slug;
+                $label = $key === 'sur-mesure' ? 'Sur-mesure' : (string)$st['plan_label'];
+            }
+            if (!isset($rows[$key])) $rows[$key] = ['key' => $key, 'label' => $label, 'count' => 0, 'mrr_cents' => 0];
+            $rows[$key]['count']++;
+            $rows[$key]['mrr_cents'] += $cents;
+            $total += $cents;
+            $paying++;
+        }
+        $rows = array_values($rows);
+        usort($rows, fn($a, $b) => [$b['mrr_cents'], $b['count']] <=> [$a['mrr_cents'], $a['count']]);
+        return ['rows' => $rows, 'trial' => $trial, 'devis' => $devis, 'offert' => $offert, 'total_cents' => $total, 'paying' => $paying];
     }
 }
 
@@ -149,11 +212,15 @@ if (!function_exists('sa_plan_tone_class')) {
 }
 
 if (!function_exists('sa_plan_price_label')) {
-    /** Prix lisible d'un plan (asso_plans.price_cents est HT) : « 49,99 € HT/mois », « Gratuit », « Sur devis ». */
-    function sa_plan_price_label(int $price_cents, string $slug = '', bool $is_trial = false): string {
+    /**
+     * Prix lisible d'un plan (asso_plans.price_cents est HT) : « 29,99 € HT/mois », « Gratuit », « Sur devis ».
+     * Un devis Sur-mesure chiffré (ligne « sur-mesure-<client> » à 450 €) affiche son prix ; « Sur devis »
+     * seulement à 0 € (Sur-mesure, ou toute ligne sur devis).
+     */
+    function sa_plan_price_label(int $price_cents, string $slug = '', bool $is_trial = false, bool $is_custom_quote = false): string {
         if ($is_trial) return 'Gratuit pendant l’essai';
-        if ($price_cents > 0) return number_format($price_cents / 100, 2, ',', ' ') . ' € HT/mois';
-        return $slug === 'sur-mesure' ? 'Sur devis' : 'Gratuit';
+        if ($price_cents > 0) return number_format($price_cents / 100, 2, ',', "\u{00A0}") . "\u{00A0}€ HT/mois";
+        return ($is_custom_quote || strpos($slug, 'sur-mesure') === 0) ? 'Sur devis' : 'Gratuit';
     }
 }
 
@@ -164,7 +231,11 @@ if (!function_exists('sa_plan_state_price')) {
      */
     function sa_plan_state_price(array $st): string {
         if ($st['is_trial'] || $st['trial_expired']) return '0 € (essai gratuit)';
-        if (empty($st['plan_id'])) return 'Aucun abonnement (ancien plan)';
+        if (empty($st['plan_id'])) {
+            return (string)($st['legacy_slug'] ?? '') !== '' && (int)($st['legacy_cents'] ?? 0) > 0
+                ? sa_plan_price_label((int)$st['legacy_cents']) . ' (ancien tarif, sans abonnement)'
+                : 'Aucun abonnement (ancien plan)';
+        }
         return sa_plan_price_label((int)$st['price_cents'], (string)$st['plan_slug']);
     }
 }
@@ -185,7 +256,7 @@ if (!function_exists('sa_trial_exit_cleanup')) {
         $cols = ak_db_columns($pdo, 'asso_subscriptions');
         $sets = [];
         if ($clear_period_end && isset($cols['current_period_end'])) $sets[] = 'current_period_end = NULL';
-        $paid = (int) $after['price_cents'] > 0 || $after['plan_slug'] === 'sur-mesure';
+        $paid = (int) $after['price_cents'] > 0 || strpos((string) $after['plan_slug'], 'sur-mesure') === 0;
         if ($paid && isset($cols['payment_mode']) && ak_db_accepts($pdo, 'asso_subscriptions', 'payment_mode', 'manual')) {
             $sets[] = "payment_mode = IF(payment_mode = 'free_grant', 'manual', payment_mode)";
         }
@@ -197,36 +268,231 @@ if (!function_exists('sa_trial_exit_cleanup')) {
     }
 }
 
+if (!function_exists('sa_pro_grid_pending')) {
+    /**
+     * Ligne « assokit » pas encore passée à la grille (ancienne offre à 49,99 €, migration de la grille à
+     * relancer) : ak_pc_plan_grid_pending si stripe-plan-change-helpers.php est chargé, sinon même règle
+     * sur la colonne grille_version (absente : en attente). Les autres lignes : false.
+     */
+    function sa_pro_grid_pending(PDO $pdo, array $p): bool {
+        if (($p['slug'] ?? '') !== 'assokit') return false;
+        if (function_exists('ak_pc_plan_grid_pending')) return ak_pc_plan_grid_pending($pdo, $p);
+        $v = defined('AK_GRID_VERSION') ? (int)AK_GRID_VERSION : 202611;
+        return !array_key_exists('grille_version', $p) || (int)$p['grille_version'] < $v;
+    }
+}
+
 if (!function_exists('sa_plans_list')) {
     /**
      * Plans réels (asso_plans) pour les listes déroulantes, dans l'ordre d'affichage :
-     * [['id', 'slug', 'label', 'price_cents', 'is_trial', 'is_visible', 'option']].
-     * « option » = libellé prêt à afficher : « Assokit — 49,99 € HT/mois ».
+     * [['id', 'slug', 'label', 'price_cents', 'is_trial', 'is_visible', 'is_custom_quote', 'client_specific', 'option']].
+     * « option » = libellé prêt à afficher : « Pro — 29,99 € HT/mois », « Sur-mesure — sur devis »,
+     * « Offre fondateur — 29,99 € HT/mois · garantie 12 mois ».
+     * client_specific : ligne « sur-mesure-<client> » (devis d'une seule association, sa_custom_quote_plan) ;
+     * sa_plans_for_org() ne la propose qu'à cette association.
      */
     function sa_plans_list(PDO $pdo): array {
         $cols = ak_db_columns($pdo, 'asso_plans');
         $sel = "id, slug, name, COALESCE(price_cents, 0) AS price_cents"
              . (isset($cols['is_trial']) ? ", COALESCE(is_trial, 0) AS is_trial" : ", 0 AS is_trial")
-             . (isset($cols['is_visible']) ? ", COALESCE(is_visible, 1) AS is_visible" : ", 1 AS is_visible");
+             . (isset($cols['is_visible']) ? ", COALESCE(is_visible, 1) AS is_visible" : ", 1 AS is_visible")
+             . (isset($cols['is_custom_quote']) ? ", COALESCE(is_custom_quote, 0) AS is_custom_quote" : ", 0 AS is_custom_quote")
+             . (isset($cols['grille_version']) ? ", grille_version" : "");
         $order = isset($cols['display_order']) ? "display_order ASC, id ASC" : "id ASC";
         $out = [];
         try {
             foreach ($pdo->query("SELECT $sel FROM asso_plans ORDER BY $order")->fetchAll(PDO::FETCH_ASSOC) as $p) {
-                $is_trial = !empty($p['is_trial']) || $p['slug'] === 'pro-essai';
-                $label = ak_plan_label($p['slug'], $p['name']);
+                $slug = (string)$p['slug'];
+                $is_trial = !empty($p['is_trial']) || $slug === 'pro-essai';
+                $quote = !empty($p['is_custom_quote']);
+                $client = strpos($slug, 'sur-mesure-') === 0;
+                $label = ak_plan_label($slug, $p['name']);
                 if ($is_trial) $price = 'essai gratuit de ' . (int)AK_TRIAL_DAYS . ' jours';
-                elseif ((int)$p['price_cents'] > 0) $price = sa_plan_price_label((int)$p['price_cents'], (string)$p['slug']);
-                else $price = $p['slug'] === 'sur-mesure' ? 'sur devis' : 'gratuit';
+                elseif ((int)$p['price_cents'] > 0) $price = sa_plan_price_label((int)$p['price_cents'], $slug, false, $quote);
+                else $price = ($quote || strpos($slug, 'sur-mesure') === 0) ? 'sur devis' : ($slug === 'demarrage' ? 'gratuit, accès limité' : 'gratuit');
+                $suffix = '';
+                if ($slug === 'fondateur') $suffix = ' · garantie 12 mois';
+                elseif ($client) $suffix = ' · devis de ce client';
+                elseif (!$is_trial && empty($p['is_visible'])) $suffix = ' (masqué)';
+                // Période de transition : l'ancienne offre n'est pas présentée comme le Pro de la page Tarifs
+                if (sa_pro_grid_pending($pdo, $p)) { $price = 'en attente, ancienne offre ' . number_format((int)$p['price_cents'] / 100, 2, ',', "\u{00A0}") . "\u{00A0}€"; $suffix = ''; }
                 $out[] = [
-                    'id' => (int)$p['id'], 'slug' => (string)$p['slug'], 'label' => $label,
+                    'id' => (int)$p['id'], 'slug' => $slug, 'label' => $label,
                     'price_cents' => (int)$p['price_cents'], 'is_trial' => $is_trial, 'is_visible' => !empty($p['is_visible']),
-                    'option' => $label . ' — ' . $price . (!$is_trial && empty($p['is_visible']) ? ' (masqué)' : ''),
+                    'is_custom_quote' => $quote, 'client_specific' => $client,
+                    'option' => $label . ' — ' . $price . $suffix,
                 ];
             }
         } catch (Throwable $e) {
             error_log('[sa_plans_list] ' . get_class($e));
         }
         return $out;
+    }
+}
+
+if (!function_exists('sa_plans_for_org')) {
+    /**
+     * Liste de sa_plans_list() pour le sélecteur de formule d'UNE association : les lignes
+     * « sur-mesure-<client> » des autres associations sont retirées (seule la sienne, sa formule actuelle, reste).
+     */
+    function sa_plans_for_org(array $plans, ?int $current_plan_id = null): array {
+        return array_values(array_filter($plans, fn($p) => empty($p['client_specific']) || (int)$p['id'] === (int)$current_plan_id));
+    }
+}
+
+if (!function_exists('sa_is_custom_quote_slug')) {
+    /** Slug Sur-mesure (« sur-mesure » ou « sur-mesure-<client> ») : le champ « Montant du devis » s'applique. */
+    function sa_is_custom_quote_slug(string $slug): bool {
+        return $slug === 'sur-mesure' || strpos($slug, 'sur-mesure-') === 0;
+    }
+}
+
+if (!function_exists('sa_quote_cents_from_input')) {
+    /**
+     * Montant du devis saisi (« 450 », « 450,00 », « 1 250,50 ») en centimes HT ; 0 si vide ; null si invalide.
+     */
+    function sa_quote_cents_from_input($raw): ?int {
+        $v = str_replace(["\u{00A0}", "\u{202F}", ' ', '€'], '', trim((string)$raw));
+        if ($v === '') return 0;
+        $v = str_replace(',', '.', $v);
+        if (!preg_match('/^\d{1,6}(\.\d{1,2})?$/', $v)) return null;
+        return (int)round((float)$v * 100);
+    }
+}
+
+if (!function_exists('sa_custom_quote_plan')) {
+    /**
+     * Devis Sur-mesure d'une association : crée (ou met à jour) la ligne asso_plans « sur-mesure-<slug du
+     * client> », sur devis (is_custom_quote = 1), jamais proposée à la souscription (is_visible = 0), au prix
+     * du devis ($cents HT/mois). À la création, limites et fonctions sont copiées de la ligne « sur-mesure » ;
+     * ensuite, seul le prix change (les réglages faits pour ce client dans Formules sont gardés).
+     * N'attribue PAS la formule : l'appelant passe l'id rendu à ak_org_set_plan().
+     * @throws InvalidArgumentException montant invalide ; RuntimeException association ou ligne Sur-mesure absente.
+     */
+    function sa_custom_quote_plan(PDO $pdo, int $org_id, int $cents): int {
+        if ($cents <= 0 || $cents > 100000000) throw new InvalidArgumentException('Montant du devis invalide.');
+        $o = $pdo->prepare("SELECT id, slug, name FROM organizations WHERE id = ?");
+        $o->execute([$org_id]);
+        $org = $o->fetch(PDO::FETCH_ASSOC);
+        if (!$org) throw new RuntimeException('Association introuvable.');
+        $cslug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower((string)$org['slug'])), '-');
+        if ($cslug === '') $cslug = 'asso-' . (int)$org_id;
+        $slug = substr('sur-mesure-' . $cslug, 0, 120);
+        $cols = ak_db_columns($pdo, 'asso_plans');
+        $find = $pdo->prepare("SELECT * FROM asso_plans WHERE slug = ? LIMIT 1");
+        $find->execute([$slug]);
+        $row = $find->fetch(PDO::FETCH_ASSOC);
+        // Deux slugs d'association peuvent donner le même slug de devis (« LotB_Equipe » et « lotb-equipe ») :
+        // une ligne déjà attribuée à une AUTRE association n'est jamais reprise (son prix changerait),
+        // celle-ci reçoit alors « sur-mesure-<slug>-<id> »
+        if ($row) {
+            $other = $pdo->prepare("SELECT COUNT(*) FROM asso_subscriptions WHERE plan_id = ? AND org_id <> ?");
+            $other->execute([(int)$row['id'], $org_id]);
+            $taken = (int)$other->fetchColumn() > 0;
+            if (!$taken) {
+                $other = $pdo->prepare("SELECT COUNT(*) FROM organizations WHERE plan = ? AND id <> ?");
+                $other->execute([$slug, $org_id]);
+                $taken = (int)$other->fetchColumn() > 0;
+            }
+            if ($taken) {
+                $slug = substr('sur-mesure-' . $cslug, 0, 108) . '-' . (int)$org_id;
+                $find->execute([$slug]);
+                $row = $find->fetch(PDO::FETCH_ASSOC);
+            }
+        }
+        if ($row) {
+            $data = ['price_cents' => $cents];
+            if (isset($cols['is_custom_quote'])) $data['is_custom_quote'] = 1;
+            if (isset($cols['is_visible'])) $data['is_visible'] = 0;
+            ak_db_update($pdo, 'asso_plans', (int)$row['id'], $data, isset($cols['updated_at']) ? ['updated_at' => 'NOW()'] : []);
+            return (int)$row['id'];
+        }
+        $find->execute(['sur-mesure']);
+        $base = $find->fetch(PDO::FETCH_ASSOC);
+        if (!$base) throw new RuntimeException('Formule Sur-mesure absente : passez d’abord la grille tarifaire en base (migrations/2026-11-09-grille-tarifaire.sql).');
+        $data = $base;
+        foreach (['id', 'created_at', 'updated_at', 'stripe_price_id_monthly', 'stripe_price_id_yearly', 'stripe_product_id'] as $k) unset($data[$k]);
+        $data['slug'] = $slug;
+        $data['name'] = 'Sur-mesure';
+        $data['price_cents'] = $cents;
+        if (isset($cols['is_custom_quote'])) $data['is_custom_quote'] = 1;
+        if (isset($cols['is_visible'])) $data['is_visible'] = 0;
+        if (isset($cols['is_featured'])) $data['is_featured'] = 0;
+        if (isset($cols['is_trial'])) $data['is_trial'] = 0;
+        if (isset($cols['price_label'])) $data['price_label'] = null;
+        if (isset($cols['display_order'])) $data['display_order'] = (int)($base['display_order'] ?? 0) + 50;
+        return ak_db_insert($pdo, 'asso_plans', $data, isset($cols['created_at']) ? ['created_at' => 'NOW()'] : []);
+    }
+}
+
+if (!function_exists('sa_plan_usage_lines')) {
+    /**
+     * Usage du mois face aux limites de la formule courante, en LECTURE seule (ak_get_usage, plan-helpers.php,
+     * et les limit_* de la ligne asso_plans $ps['plan_id'], ou de la formule équivalente d'un compte historique) :
+     * membres (bureau compris), gestionnaires, crédits IA du mois, e-mails groupés du mois.
+     * Chaque ligne : ['key', 'label', 'used', 'limit' (null = sans plafond, 0 = non inclus), 'pct' (null),
+     * 'warn' (≥ 90 %), 'text' (« 47/50 membres », « 12 crédits IA (sans plafond) », « 0 e-mail (non inclus) »)].
+     * $ps : un élément de sa_org_plan_states() / ak_org_plan_state() ; il doit porter org_id ou être passé avec.
+     */
+    function sa_plan_usage_lines(PDO $pdo, array $ps, ?int $org_id = null): array {
+        $org_id = (int)($org_id ?? ($ps['org_id'] ?? 0));
+        if (!function_exists('ak_get_usage') && is_file(__DIR__ . '/plan-helpers.php')) require_once __DIR__ . '/plan-helpers.php';
+        if ($org_id <= 0 || !function_exists('ak_get_usage')) return [];
+        $usage = ak_get_usage($pdo, $org_id);
+        $plan = [];
+        $cols = ak_db_columns($pdo, 'asso_plans');
+        $keys = array_values(array_filter(['limit_adherents', 'limit_managers', 'limit_ai_text_per_month', 'limit_emails_per_month'], fn($k) => isset($cols[$k])));
+        try {
+            if ($keys) {
+                if (!empty($ps['plan_id'])) {
+                    $q = $pdo->prepare("SELECT slug, " . implode(', ', $keys) . " FROM asso_plans WHERE id = ?");
+                    $q->execute([(int)$ps['plan_id']]);
+                    $plan = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+                } elseif (empty($ps['is_trial']) && empty($ps['trial_expired'])) {
+                    // Compte historique : sa formule équivalente, Démarrage si rien de payant n'est rattaché.
+                    // Ligne équivalente absente (Sur-mesure avant la grille) : même repli qu'ak_legacy_plan_row
+                    // (ancien montant payant → Pro), pour montrer les limites que l'association a vraiment.
+                    $q = $pdo->prepare("SELECT slug, " . implode(', ', $keys) . " FROM asso_plans WHERE slug = ? LIMIT 1");
+                    $try = (string)($ps['legacy_slug'] ?? '') !== '' ? [(string)$ps['legacy_slug']] : ['demarrage'];
+                    if ((string)($ps['legacy_slug'] ?? '') !== '' && (int)($ps['legacy_cents'] ?? 0) > 0) $try[] = 'assokit';
+                    foreach ($try as $tslug) {
+                        $q->execute([$tslug]);
+                        if ($plan = $q->fetch(PDO::FETCH_ASSOC) ?: []) break;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            $plan = [];
+        }
+        if ($plan && function_exists('ak_plan_demarrage_overlay')) $plan = ak_plan_demarrage_overlay($plan);
+        $spec = [
+            ['members', 'adherents', 'limit_adherents', 'membre', 'membres'],
+            ['managers', 'managers', 'limit_managers', 'gestionnaire', 'gestionnaires'],
+            ['ai', 'ai_text_month', 'limit_ai_text_per_month', 'crédit IA', 'crédits IA'],
+            ['emails', 'emails_month', 'limit_emails_per_month', 'e-mail', 'e-mails'],
+        ];
+        $fmt = fn($n) => number_format((int)$n, 0, ',', "\u{00A0}");
+        $out = [];
+        foreach ($spec as [$key, $ukey, $lkey, $one, $many]) {
+            $used = (int)($usage[$ukey] ?? 0);
+            $raw = $plan[$lkey] ?? null;
+            $limit = ($raw === null || $raw === '') ? null : (int)$raw;
+            $word = max($used, (int)$limit) > 1 ? $many : $one;
+            $pct = $limit !== null && $limit > 0 ? (int)round($used / $limit * 100) : null;
+            if ($limit === null) $text = $fmt($used) . ' ' . $word . ' (sans plafond)';
+            elseif ($limit === 0) $text = $fmt($used) . ' ' . $word . ' (non inclus)';
+            else $text = $fmt($used) . '/' . $fmt($limit) . ' ' . $word;
+            $out[] = ['key' => $key, 'label' => $many, 'used' => $used, 'limit' => $limit, 'pct' => $pct,
+                      'warn' => $pct !== null && $pct >= 90, 'text' => $text];
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('sa_plan_usage_summary')) {
+    /** « 47/50 membres · 3/3 gestionnaires · 12/150 crédits IA · 80/1 000 e-mails » (texte brut). */
+    function sa_plan_usage_summary(array $lines): string {
+        return implode(' · ', array_column($lines, 'text'));
     }
 }
 

@@ -46,8 +46,16 @@ try {
     $unpaid_total = $unpaid['total'];
     $unpaid_nb = $unpaid['nb'];
 
-    $ia = ['nb' => 0, 'cost' => 0.0];
-    try { $ia = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(ai_cost_euros),0) AS cost FROM communication_campaigns WHERE ai_generated=1")->fetch(PDO::FETCH_ASSOC) ?: $ia; } catch (Throwable $e) {}
+    // IA du mois civil : registre unifié ai_usage_ledger (tous les usages), comme le cockpit web.
+    // « cost » : ancien cumul en euros des campagnes rédigées par l'IA (seule source chiffrée en euros),
+    // gardé pour les versions de l'appli qui l'affichent.
+    $ia = ['nb' => 0, 'credits' => 0, 'cost' => 0.0];
+    try {
+        $r = $pdo->query("SELECT COUNT(*) AS nb, COALESCE(SUM(credits), 0) AS credits FROM ai_usage_ledger
+                          WHERE created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')")->fetch(PDO::FETCH_ASSOC);
+        if ($r) { $ia['nb'] = (int) $r['nb']; $ia['credits'] = (int) $r['credits']; }
+    } catch (Throwable $e) {}
+    try { $ia['cost'] = (float) $pdo->query("SELECT COALESCE(SUM(ai_cost_euros),0) FROM communication_campaigns WHERE ai_generated=1")->fetchColumn(); } catch (Throwable $e) {}
 
     // Emails & SMS envoyés — plateforme (semaine / mois / trimestre / année) : mêmes règles que
     // le cockpit web (super-admin.php) — envois réussis seulement (les échecs sont aussi journalisés,
@@ -81,8 +89,9 @@ try {
                    'paying' => $pc['paying'], 'free' => $pc['free'], 'pending_payment' => $pc['pending_payment'],
                    'trial_expired' => $pc['trial_expired'], 'expiring' => $pc['expiring'], 'cancelled' => $pc['cancelled']],
         'users' => ['total' => $users_total, 'new30' => $users_new30],
-        'revenue' => ['mrr' => round($mrr, 2), 'paying' => $pc['paying'], 'ca_paid' => round($ca_paid, 2), 'ca_paid_30' => round($ca_paid_30, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb, 'unpaid_orgs' => $unpaid['orgs']],
-        'ia' => ['nb' => (int) $ia['nb'], 'cost' => round((float) $ia['cost'], 2)],
+        // by_plan : MRR par formule (formules payantes, puis essais et formules offertes sans revenu)
+        'revenue' => ['mrr' => round($mrr, 2), 'paying' => $pc['paying'], 'by_plan' => $pc['by_plan'] ?? [], 'ca_paid' => round($ca_paid, 2), 'ca_paid_30' => round($ca_paid_30, 2), 'unpaid_total' => round($unpaid_total, 2), 'unpaid_nb' => $unpaid_nb, 'unpaid_orgs' => $unpaid['orgs']],
+        'ia' => ['nb' => (int) $ia['nb'], 'credits' => (int) $ia['credits'], 'period' => 'month', 'cost' => round((float) $ia['cost'], 2)],
         'emails' => $emails,
         'sms' => $sms,
         'curve' => $curve,

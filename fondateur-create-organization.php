@@ -7,7 +7,9 @@
  * Cas d'usage :
  *   1. Démo / onboarding personnalisé (client convaincu en visio)
  *   2. Cadeau / amis / famille (compte gratuit ou plan offert)
- *   3. Sur-mesure (paiement par virement, activation manuelle)
+ *   3. Sur-mesure (paiement par virement, activation manuelle) : avec un montant de devis, la formule
+ *      propre au client (« sur-mesure-<client> », sa_custom_quote_plan) est créée à ce prix
+ *   4. Offre fondateur (masquée) : prix et fonctions garantis 12 mois (ak_fondateur_lock_guarantee)
  *
  * Workflow :
  *   1. Fondateur remplit formulaire (asso, email, plan, mode paiement)
@@ -19,6 +21,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes-layout.php';
 require_once __DIR__ . '/trial-helpers.php';
+require_once __DIR__ . '/sa-plan-state-helpers.php'; // devis Sur-mesure (sa_custom_quote_plan)
 require_once __DIR__ . '/superadmin-layout.php'; // sa_log_action()
 require_once __DIR__ . '/sa-permissions.php';    // sa_notify_all_founders()
 require_once __DIR__ . '/sa-auth-helpers.php';
@@ -60,9 +63,10 @@ try {
     $pc = ak_db_columns($pdo, 'asso_plans');
     $opt = fn(string $c, string $def) => isset($pc[$c]) || !$pc ? $c : "$def AS $c";
     $trial_where = isset($pc['is_trial']) || !$pc ? "is_trial = 1 OR slug = 'pro-essai'" : "slug = 'pro-essai'";
+    // Formules proposées : visibles, essai, et l'offre fondateur (masquée, attribuée à la main)
     $plans = $pdo->query("SELECT id, name, slug, price_cents, " . $opt('tagline', 'NULL') . ", " . $opt('is_trial', '0') . ", " . $opt('trial_converts_to', 'NULL') . ", " . $opt('is_custom_quote', '0') . "
-                          FROM asso_plans WHERE " . (isset($pc['is_visible']) || !$pc ? "is_visible = 1 OR $trial_where" : "1 = 1") . "
-                          ORDER BY is_trial ASC, price_cents ASC")->fetchAll(PDO::FETCH_ASSOC);
+                          FROM asso_plans WHERE " . (isset($pc['is_visible']) || !$pc ? "is_visible = 1 OR $trial_where OR slug = 'fondateur'" : "1 = 1") . "
+                          ORDER BY is_trial ASC, " . (isset($pc['display_order']) || !$pc ? "display_order ASC, " : "") . "price_cents ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($plans as &$__pp) $__pp['is_trial'] = !empty($__pp['is_trial']) || $__pp['slug'] === 'pro-essai';
     unset($__pp);
 } catch (Throwable $e) {
@@ -83,6 +87,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $period_days = (int)($_POST['period_days'] ?? 30);
         $send_welcome_email = !empty($_POST['send_welcome_email']);
         $custom_password = trim((string)($_POST['custom_password'] ?? ''));
+        // Sur-mesure : montant du devis (€ HT/mois), facultatif (lu seulement si Sur-mesure est choisi)
+        $quote_raw = (string)($_POST['quote_eur'] ?? '');
+        $quote_cents = 0;
 
         // Validations
         if (empty($org_name)) throw new Exception('Nom de l\'organisation obligatoire');
@@ -154,6 +161,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Colonnes écrites selon le schéma réel (ak_db_insert) ; le plan doit exister
         if (!$chosen_plan) throw new Exception('Plan inconnu : choisissez un plan de la liste');
+        // Sur-mesure avec un montant de devis : formule propre au client, à ce prix (masquée, sur devis)
+        if (sa_is_custom_quote_slug((string)$chosen_slug)) {
+            $quote_cents = sa_quote_cents_from_input($quote_raw);
+            if ($quote_cents === null) throw new Exception('Montant du devis invalide : indiquez un montant en euros HT par mois, par exemple 450 ou 450,00');
+        }
+        if ($quote_cents > 0) {
+            $plan_id = sa_custom_quote_plan($pdo, $new_org_id, $quote_cents);
+            $chosen_plan = ['id' => $plan_id, 'slug' => 'sur-mesure', 'name' => 'Sur-mesure', 'price_cents' => $quote_cents, 'is_trial' => false, 'is_custom_quote' => 1, 'tagline' => null];
+            $qs = $pdo->prepare("SELECT slug FROM asso_plans WHERE id = ?");
+            $qs->execute([$plan_id]);
+            $chosen_slug = (string)$qs->fetchColumn();
+        }
         $new_sub_id = ak_db_insert($pdo, 'asso_subscriptions', [
             'org_id' => $new_org_id,
             'plan_id' => $plan_id,
@@ -161,6 +180,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'status' => $sub_status,
             'current_period_end' => $period_end,
         ], ['started_at' => 'NOW()', 'created_at' => 'NOW()', 'updated_at' => 'NOW()']);
+        // Offre fondateur : prix et fonctions garantis 12 mois, comme un passage depuis le cockpit
+        if ($chosen_slug === 'fondateur') ak_fondateur_lock_guarantee($pdo, (int)$new_sub_id);
 
         // 4. Add-on domaine si demandé
         if ($with_addon_domain) {
@@ -289,6 +310,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'is_trial' => $is_trial_plan,
             'plan_label' => $chosen_plan ? ak_plan_label($chosen_plan['slug'], $chosen_plan['name']) : '',
         ];
+        if ($quote_cents > 0 && sa_is_custom_quote_slug((string)$chosen_slug)) $created_credentials['plan_label'] .= ' (devis ' . sa_plan_price_label($quote_cents) . ')';
 
         $flash_msg = '✅ Compte créé avec succès !';
 
@@ -433,11 +455,13 @@ render_sidebar('fondateur-create-organization');
           if (!empty($p['is_trial'])) {
               $price_str = 'Essai gratuit · 0 € · durée choisie ci-dessous';
           } else {
-              $price_str = (int)$p['price_cents'] > 0 ? ak_format_price_cents((int)$p['price_cents']) . '/mois'
-                         : (!empty($p['is_custom_quote']) || $p['slug'] === 'sur-mesure' ? 'Sur devis' : 'Gratuit');
+              $price_str = (int)$p['price_cents'] > 0 ? ak_format_price_cents((int)$p['price_cents']) . "\u{00A0}HT/mois"
+                         : (!empty($p['is_custom_quote']) || $p['slug'] === 'sur-mesure' ? 'Sur devis' : ($p['slug'] === 'demarrage' ? 'Gratuit, accès limité' : 'Gratuit'));
+              if ($p['slug'] === 'fondateur') $price_str .= ' · prix et fonctions garantis 12 mois';
           }
+          $is_quote_plan = sa_is_custom_quote_slug((string)$p['slug']);
         ?>
-        <label data-plan style="display:block;padding:14px;background:#FAF8F5;border:2px solid #E2E8F0;border-radius:10px;cursor:pointer;transition:all 0.15s;" onclick="this.querySelector('input').checked=true;document.querySelectorAll('label[data-plan]').forEach(l=>{l.style.borderColor='#E2E8F0';l.style.background='#FAF8F5';});this.style.borderColor='#059669';this.style.background='#ECFDF5';">
+        <label data-plan data-quote="<?= $is_quote_plan ? '1' : '0' ?>" style="display:block;padding:14px;background:#FAF8F5;border:2px solid #E2E8F0;border-radius:10px;cursor:pointer;transition:all 0.15s;" onclick="this.querySelector('input').checked=true;document.querySelectorAll('label[data-plan]').forEach(l=>{l.style.borderColor='#E2E8F0';l.style.background='#FAF8F5';});this.style.borderColor='#059669';this.style.background='#ECFDF5';document.getElementById('quote-field').style.display=this.getAttribute('data-quote')==='1'?'block':'none';">
           <input type="radio" name="plan_id" value="<?= (int)$p['id'] ?>" required <?= $i === 0 ? '' : '' ?> style="display:none;">
           <div style="font-weight:700;color:<?= !empty($p['is_trial']) ? '#5B21B6' : '#0F172A' ?>;font-size:14px;"><?= htmlspecialchars(ak_plan_label($p['slug'], $p['name'])) ?><?php if (!empty($p['is_trial'])): ?> <span style="background:#EDE9FE;color:#5B21B6;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.03em;">ESSAI</span><?php endif; ?></div>
           <div style="font-size:13px;color:#64748B;margin-top:4px;"><?= htmlspecialchars($price_str) ?></div>
@@ -446,6 +470,13 @@ render_sidebar('fondateur-create-organization');
           <?php endif; ?>
         </label>
         <?php endforeach; ?>
+      </div>
+
+      <!-- Sur-mesure : montant du devis (affiché quand Sur-mesure est choisi) -->
+      <div id="quote-field" style="display:none;margin:-4px 0 18px;padding:12px 14px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;">
+        <label for="quote-eur" style="display:block;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px;">Montant du devis (€ HT/mois)</label>
+        <input type="text" name="quote_eur" id="quote-eur" inputmode="decimal" placeholder="ex. 450,00" style="width:180px;padding:10px 14px;border:1px solid #E2E8F0;border-radius:8px;font-size:14px;">
+        <div style="font-size:11.5px;color:#64748B;margin-top:4px;">Crée la formule Sur-mesure propre à ce client, à ce prix (fonctions et limites de Sur-mesure). Vide : Sur-mesure sur devis.</div>
       </div>
 
       <!-- Option domaine retirée : le domaine personnel n'est pas encore disponible (fondateur-domains.php, phase 1) -->

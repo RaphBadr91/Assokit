@@ -108,7 +108,7 @@ render_sidebar('admin-domains');
       <div style="background:#94A3B8;color:white;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">2</div>
       <div style="flex:1;min-width:0;">
         <div style="font-weight:700;color:#0F172A;margin-bottom:4px;">⏳ Phase 2 — Sous-domaines <code>*.assokit.fr</code> <span style="background:#94A3B8;color:white;font-size:10px;padding:2px 8px;border-radius:999px;margin-left:6px;">APRÈS STRIPE</span></div>
-        <div style="font-size:13.5px;color:#64748B;line-height:1.55;">Activation des sous-domaines pour les clients du plan Assokit. URL personnalisée du type <code>latitude91.assokit.fr</code>.</div>
+        <div style="font-size:13.5px;color:#64748B;line-height:1.55;">Activation des sous-domaines pour les clients Pro, Équipe, Sur-mesure et offre fondateur. URL personnalisée du type <code>latitude91.assokit.fr</code>.</div>
       </div>
     </div>
 

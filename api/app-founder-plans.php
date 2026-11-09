@@ -6,8 +6,8 @@
  * POST update    → met à jour un plan.
  * POST delete    → supprime un plan (si aucune org ne l'utilise).
  * POST toggle    → bascule la visibilité.
- * Réservé au Fondateur, comme /fondateur-plans et /admin-plans (sa-permissions.php :
- * can_manage_billing_config). Porte la logique de fondateur-plans.php. NE MODIFIE PAS le site.
+ * Réservé au Fondateur, comme /fondateur-plans (sa-permissions.php : can_manage_billing_config).
+ * Mêmes règles que fondateur-plans.php (plan-catalog-helpers.php). NE MODIFIE PAS le site.
  */
 ob_start();
 require_once __DIR__ . '/../config.php';
@@ -29,7 +29,7 @@ require_once __DIR__ . '/_app-founder-plan.php';
 if (!app_is_founder($pdo, $user)) plans_fail(403, 'forbidden');
 
 // Champs entiers-nullable (limites) et booléens (fonctions) : listes de la grille (plan-helpers.php,
-// ak_plan_limit_keys / ak_plan_feature_keys, les mêmes que /fondateur-plans et /admin-plans), sinon
+// ak_plan_limit_keys / ak_plan_feature_keys, les mêmes que /fondateur-plans), sinon
 // les anciennes listes. Vide = illimité, 0 = bloqué.
 require_once __DIR__ . '/_app-plan.php';
 app_plan_load();
@@ -47,11 +47,12 @@ $BOOL_FIELDS = array_keys($FEATURE_LABELS);
 // Nouvelles fonctions de la grille : 1 par défaut (colonne absente ou nouvelle ligne = comme avant)
 $BOOL_DEFAULT_ON = function_exists('ak_plan_default_on_keys') ? ak_plan_default_on_keys() : [];
 
+// Règles du catalogue, communes avec /fondateur-plans : slugs de la grille figés et jamais supprimés
+// (AK_PLAN_FIXED_SLUGS), offre fondateur, essai et accès limité toujours masqués (AK_PLAN_NEVER_VISIBLE)
+require_once __DIR__ . '/../plan-catalog-helpers.php';
 // Plans dont dépendent l'inscription (essai), la fin d'essai (accès limité) et l'offre fondateur
-// (cli-rattacher-fondateur.php, migration de la grille) : slug figé, suppression refusée, comme /fondateur-plans
-const PLANS_SYSTEM = ['pro-essai', 'demarrage', 'fondateur'];
-// Lignes de la grille : slug figé (lu par la migration, les liens ?plan= et les prix de secours)
-const PLANS_FIXED_SLUG = ['pro-essai', 'demarrage', 'fondateur', 'assokit', 'ak-essentiel', 'ak-equipe', 'sur-mesure'];
+// (cli-rattacher-fondateur.php, migration de la grille) : marqués « système » dans l'éditeur de l'appli
+const PLANS_SYSTEM = AK_PLAN_NEVER_VISIBLE;
 
 /** Rôle d'une ligne système, affiché dans l'éditeur de l'appli. */
 function plans_system_hint(string $slug): string {
@@ -60,43 +61,34 @@ function plans_system_hint(string $slug): string {
         case 'demarrage': return 'Accès limité (consultation et export) attribué à la fin d’un essai non converti, à la résiliation ou en cas d’impayé.';
         case 'fondateur': return 'Offre fondateur : formule masquée des clients de la première heure.';
     }
-    return in_array($slug, PLANS_FIXED_SLUG, true) ? 'Formule de la grille : son slug ne peut pas changer.' : '';
+    return ak_plan_slug_fixed($slug) ? 'Formule de la grille : son slug ne peut pas changer.' : '';
 }
 
 /**
- * Adoption : nombre d'associations par plan, d'après leur abonnement COURANT (même ligne
- * qu'ak_org_plan_state) ; sans abonnement, d'après l'ancien libellé organizations.plan.
+ * Adoption : nombre d'associations par plan, d'après leur formule COURANTE (sa_org_plan_states, même
+ * vérité que /fondateur-plans, la fiche association et l'appli, lecture seule) ; sans abonnement,
+ * d'après l'ancien libellé organizations.plan.
  * @return array [plan_id => nb]
  */
 function plans_adoption(PDO $pdo, array $rows): array {
     $by_id = [];
+    $slug_id = [];
+    foreach ($rows as $p) $slug_id[(string) ($p['slug'] ?? '')] = (int) $p['id'];
+    $del = isset(ak_db_columns($pdo, 'organizations')['deleted_at']) ? " WHERE deleted_at IS NULL" : "";
     try {
-        $q = $pdo->query("
-            SELECT s.plan_id, COUNT(*) AS nb
-            FROM organizations o
-            INNER JOIN asso_subscriptions s ON s.id = (
-                SELECT s2.id FROM asso_subscriptions s2 INNER JOIN asso_plans p2 ON p2.id = s2.plan_id
-                WHERE s2.org_id = o.id ORDER BY (s2.status = 'active') DESC, s2.id DESC LIMIT 1)
-            WHERE o.deleted_at IS NULL
-            GROUP BY s.plan_id");
-        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $a) $by_id[(int) $a['plan_id']] = (int) $a['nb'];
-        $slug_id = [];
-        foreach ($rows as $p) $slug_id[(string) ($p['slug'] ?? '')] = (int) $p['id'];
-        $q = $pdo->query("
-            SELECT o.plan, COUNT(*) AS nb FROM organizations o
-            WHERE o.deleted_at IS NULL
-              AND NOT EXISTS (SELECT 1 FROM asso_subscriptions s INNER JOIN asso_plans p ON p.id = s.plan_id WHERE s.org_id = o.id)
-            GROUP BY o.plan");
-        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $a) {
-            $pid = $slug_id[(string) $a['plan']] ?? 0;
-            if ($pid) $by_id[$pid] = ($by_id[$pid] ?? 0) + (int) $a['nb'];
+        if (!function_exists('sa_org_plan_states') && is_file(__DIR__ . '/../sa-plan-state-helpers.php')) require_once __DIR__ . '/../sa-plan-state-helpers.php';
+        if (!function_exists('sa_org_plan_states')) throw new RuntimeException('sa_org_plan_states');
+        $orgs = $pdo->query("SELECT id, plan FROM organizations$del")->fetchAll(PDO::FETCH_KEY_PAIR);
+        foreach (sa_org_plan_states($pdo, array_keys($orgs)) as $oid => $ps) {
+            $pid = (int) ($ps['plan_id'] ?? 0);
+            if (!$pid) $pid = $slug_id[(string) ($orgs[$oid] ?? '')] ?? 0;
+            if ($pid) $by_id[$pid] = ($by_id[$pid] ?? 0) + 1;
         }
     } catch (Throwable $e) {
-        // Pas de table d'abonnement lisible : ancien comptage par organizations.plan
+        // États illisibles : ancien comptage par organizations.plan
+        $by_id = [];
         try {
-            $slug_id = [];
-            foreach ($rows as $p) $slug_id[(string) ($p['slug'] ?? '')] = (int) $p['id'];
-            foreach ($pdo->query("SELECT plan, COUNT(*) AS nb FROM organizations WHERE deleted_at IS NULL GROUP BY plan")->fetchAll(PDO::FETCH_ASSOC) as $a) {
+            foreach ($pdo->query("SELECT plan, COUNT(*) AS nb FROM organizations$del GROUP BY plan")->fetchAll(PDO::FETCH_ASSOC) as $a) {
                 $pid = $slug_id[(string) $a['plan']] ?? 0;
                 if ($pid) $by_id[$pid] = ($by_id[$pid] ?? 0) + (int) $a['nb'];
             }
@@ -132,7 +124,8 @@ function plans_list(PDO $pdo, array $INT_FIELDS, array $BOOL_FIELDS): array {
             'name'          => (string) ($p['name'] ?? ''),
             'label'         => ak_plan_label($p['slug'] ?? '', $p['name'] ?? null),
             'is_system'     => in_array((string) ($p['slug'] ?? ''), PLANS_SYSTEM, true),
-            'slug_fixed'    => in_array((string) ($p['slug'] ?? ''), PLANS_FIXED_SLUG, true),
+            'slug_fixed'    => ak_plan_slug_fixed((string) ($p['slug'] ?? '')),
+            'never_visible' => ak_plan_never_visible((string) ($p['slug'] ?? '')),
             'system_hint'   => plans_system_hint((string) ($p['slug'] ?? '')),
             'grille'        => !empty($p['grille_version']),
             'tagline'       => (string) ($p['tagline'] ?? ''),
@@ -181,9 +174,14 @@ try {
         if ($pid <= 0) plans_fail(400, 'plan_id');
         // Refuse la suppression d'un plan système, ou d'un plan encore référencé
         // (organizations.plan OU une ligne d'abonnement : sinon l'association perdrait son plan)
-        $sq = $pdo->prepare("SELECT slug FROM asso_plans WHERE id = ?"); $sq->execute([$pid]);
-        $slug = (string) $sq->fetchColumn();
-        if (in_array($slug, PLANS_SYSTEM, true)) plans_fail(409, 'system', 'Formule utilisée par le système (essai, accès limité ou offre fondateur) : elle ne se supprime pas. Masquez-la si besoin.');
+        $sq = $pdo->prepare("SELECT * FROM asso_plans WHERE id = ?"); $sq->execute([$pid]);
+        $old = $sq->fetch(PDO::FETCH_ASSOC);
+        if (!$old) plans_fail(404, 'not_found', 'Plan introuvable.');
+        $slug = (string) ($old['slug'] ?? '');
+        // Les 7 lignes de la grille (Essentiel, Pro, Équipe, Sur-mesure, essai, accès limité, offre fondateur)
+        $none = [];
+        try { ak_plan_catalog_guard($pdo, $old, $none, 'delete'); }
+        catch (AkPlanCatalogException $e) { plans_fail(409, 'system', $e->getMessage()); }
         [$used_orgs, $used_subs] = plans_usage($pdo, $pid, $slug);
         if ($used_orgs > 0 || $used_subs > 0) {
             plans_fail(409, 'in_use', $used_orgs > 0
@@ -198,7 +196,18 @@ try {
     if ($act === 'toggle') {
         $pid = (int) ($input['plan_id'] ?? 0);
         if ($pid <= 0) plans_fail(400, 'plan_id');
-        $pdo->prepare("UPDATE asso_plans SET is_visible = 1 - COALESCE(is_visible,0) WHERE id = ?")->execute([$pid]);
+        $sq = $pdo->prepare("SELECT slug FROM asso_plans WHERE id = ?"); $sq->execute([$pid]);
+        $slug = $sq->fetchColumn();
+        if ($slug === false) plans_fail(404, 'not_found', 'Plan introuvable.');
+        // Offre fondateur, essai, accès limité : jamais proposés à la souscription
+        if (ak_plan_never_visible((string) $slug)) {
+            // Déjà masquée : refus. Visible par erreur (base modifiée à la main) : on la masque.
+            $vq = $pdo->prepare("SELECT COALESCE(is_visible,0) FROM asso_plans WHERE id = ?"); $vq->execute([$pid]);
+            if ((int) $vq->fetchColumn() === 0) plans_fail(409, 'never_visible', 'Cette formule reste toujours masquée : l’offre fondateur, l’essai et l’accès limité ne se souscrivent jamais.');
+            $pdo->prepare("UPDATE asso_plans SET is_visible = 0 WHERE id = ?")->execute([$pid]);
+        } else {
+            $pdo->prepare("UPDATE asso_plans SET is_visible = 1 - COALESCE(is_visible,0) WHERE id = ?")->execute([$pid]);
+        }
         echo json_encode(['ok' => true, 'plans' => plans_list($pdo, $INT_FIELDS, $BOOL_FIELDS)], JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -236,10 +245,10 @@ try {
         if ($pcols) $data = array_intersect_key($data, $pcols);
 
         if ($act === 'create') {
-            // Unicité du slug
-            $c = $pdo->prepare("SELECT COUNT(*) FROM asso_plans WHERE slug = ?");
-            $c->execute([$slug]);
-            if ((int) $c->fetchColumn() > 0) plans_fail(409, 'slug_used', 'Ce slug existe déjà.');
+            // Unicité du slug ; offre fondateur, essai, accès limité toujours masqués
+            try { ak_plan_catalog_guard($pdo, null, $data, 'create'); }
+            catch (AkPlanCatalogException $e) { plans_fail(409, ak_plan_slug_fixed($slug) ? 'system' : 'slug_used', $e->getMessage()); }
+            if ($pcols) $data = array_intersect_key($data, $pcols);
             $cols = array_keys($data);
             $ph = implode(', ', array_map(fn($c) => ':' . $c, $cols));
             $st = $pdo->prepare("INSERT INTO asso_plans (" . implode(', ', $cols) . ") VALUES ($ph)");
@@ -251,18 +260,16 @@ try {
         } else {
             $pid = (int) ($input['plan_id'] ?? 0);
             if ($pid <= 0) plans_fail(400, 'plan_id');
-            $oq = $pdo->prepare("SELECT slug FROM asso_plans WHERE id = ?"); $oq->execute([$pid]);
-            $old_slug = $oq->fetchColumn();
-            if ($old_slug === false) plans_fail(404, 'not_found', 'Plan introuvable.');
-            $old_slug = (string) $old_slug;
-            if ($slug !== $old_slug) {
-                // L'inscription cherche « pro-essai », la fin d'essai « demarrage », la migration et les liens
-                // ?plan= les slugs de la grille : ces slugs ne bougent pas
-                if (in_array($old_slug, PLANS_FIXED_SLUG, true)) plans_fail(409, 'system', 'Le slug d’une formule de la grille (essai, accès limité, offre fondateur, Essentiel, Pro, Équipe, Sur-mesure) ne peut pas changer.');
-                $c = $pdo->prepare("SELECT COUNT(*) FROM asso_plans WHERE slug = ? AND id <> ?");
-                $c->execute([$slug, $pid]);
-                if ((int) $c->fetchColumn() > 0) plans_fail(409, 'slug_used', 'Ce slug existe déjà.');
-            }
+            $oq = $pdo->prepare("SELECT * FROM asso_plans WHERE id = ?"); $oq->execute([$pid]);
+            $old = $oq->fetch(PDO::FETCH_ASSOC);
+            if (!$old) plans_fail(404, 'not_found', 'Plan introuvable.');
+            $old_slug = (string) ($old['slug'] ?? '');
+            // L'inscription cherche « pro-essai », la fin d'essai « demarrage », la migration et les liens
+            // ?plan= les slugs de la grille : ces slugs ne bougent pas ; un slug reste unique
+            try { ak_plan_catalog_guard($pdo, $old, $data, 'update'); }
+            catch (AkPlanCatalogException $e) { plans_fail(409, $slug === $old_slug ? 'locked' : (ak_plan_slug_fixed($old_slug) || ak_plan_slug_fixed($slug) ? 'system' : 'slug_used'), $e->getMessage()); }
+            if ($pcols) $data = array_intersect_key($data, $pcols);
+            $warning = ak_plan_catalog_price_warning($old, $data);
             $set = implode(', ', array_map(fn($c) => "$c = :$c", array_keys($data)));
             $pdo->beginTransaction();
             $st = $pdo->prepare("UPDATE asso_plans SET $set WHERE id = :id");
@@ -270,9 +277,12 @@ try {
             $st->bindValue(':id', $pid, PDO::PARAM_INT);
             $st->execute();
             // organizations.plan (ancien libellé) suit le slug, comme le fait ak_org_set_plan()
-            if ($slug !== $old_slug) $pdo->prepare("UPDATE organizations SET plan = ? WHERE plan = ?")->execute([$slug, $old_slug]);
+            ak_plan_slug_rename($pdo, $old_slug, $slug);
             $pdo->commit();
-            echo json_encode(['ok' => true, 'plan_id' => $pid, 'plans' => plans_list($pdo, $INT_FIELDS, $BOOL_FIELDS)], JSON_UNESCAPED_UNICODE);
+            $out = ['ok' => true, 'plan_id' => $pid, 'plans' => plans_list($pdo, $INT_FIELDS, $BOOL_FIELDS)];
+            // Prix changé sur une formule qui a déjà un prix Stripe : à relancer dans Configuration Stripe
+            if ($warning !== '') $out['warning'] = $warning;
+            echo json_encode($out, JSON_UNESCAPED_UNICODE);
             exit;
         }
     }

@@ -42,6 +42,9 @@ if (!function_exists('fd_plan_fields')) {
             'trial_ends'    => $show_end ? date('d/m/Y', $end) : '',
             'days_left'     => $st['days_left'] !== null ? (int) $st['days_left'] : null,
             'price_cents'   => (int) $st['price_cents'],
+            // Compte historique sans ligne d'abonnement : formule équivalente ('' = Démarrage) et ancien montant HT
+            'legacy_slug'   => (string) ($st['legacy_slug'] ?? ''),
+            'legacy_cents'  => (int) ($st['legacy_cents'] ?? 0),
             'badge'         => (string) $st['badge'],
             'badge_tone'    => (string) $st['badge_tone'],
         ];
@@ -91,9 +94,10 @@ if (!function_exists('fd_tone_of')) {
      * et les listes du cockpit web. Ce qui suit n'ajoute que « payante » (MRR).
      */
     function fd_tone_of(array $r): array {
-        $st = ak_plan_state_compute([
+        $in = [
             'org_status'             => $r['org_status'] ?? ($r['status'] ?? ''),
             'org_plan'               => $r['org_plan'] ?? '',
+            'monthly_price_cents'    => $r['monthly_price_cents'] ?? null,
             'trial_ends_at'          => $r['trial_ends_at'] ?? null,
             'payment_pending_until'  => $r['payment_pending_until'] ?? null,
             'trial_sub_id'           => $r['trial_sub_id'] ?? null,
@@ -107,16 +111,27 @@ if (!function_exists('fd_tone_of')) {
             'price_cents'            => $r['price_cents'] ?? 0,
             'sub_status'             => $r['sub_status'] ?? '',
             'stripe_subscription_id' => $r['stripe_subscription_id'] ?? null,
-        ]);
+        ];
+        // Compte historique facturé par le renouvellement ? (clés lues seulement si la requête les a)
+        foreach (['org_slug', 'legacy_period_end'] as $k) if (array_key_exists($k, $r)) $in[$k] = $r[$k];
+        $st = ak_plan_state_compute($in);
         $plan_trial = $st['plan_id'] !== null && (!empty($r['is_trial'] ?? ($r['plan_is_trial'] ?? 0)) || $st['plan_slug'] === 'pro-essai');
         // Payante = abonnement courant actif, sur un plan payant hors essai, association ni en essai,
         // ni en fin d'essai, ni suspendue, ni résiliée, et pas « Offert » (payment_mode = free_grant) :
         // même règle que le MRR du cockpit web (sa_plan_state_mrr_cents).
-        $paying = $st['badge_tone'] === 'active' && $st['sub_status'] === 'active' && !$plan_trial && $st['price_cents'] > 0
-               && ($r['payment_mode'] ?? null) !== 'free_grant';
+        // Compte historique sans ligne, rattaché à une formule payante : son ancien montant (sa_plan_state_mrr_cents).
+        $state = $st + ['payment_mode' => $r['payment_mode'] ?? null];
+        if (function_exists('sa_plan_state_mrr_cents')) {
+            $mrr_cents = sa_plan_state_mrr_cents($state);
+            $paying = $mrr_cents > 0;
+        } else {
+            $paying = $st['badge_tone'] === 'active' && $st['sub_status'] === 'active' && !$plan_trial && $st['price_cents'] > 0
+                   && ($r['payment_mode'] ?? null) !== 'free_grant';
+            $mrr_cents = $paying ? (int) $st['price_cents'] : 0;
+        }
         return ['tone' => $st['badge_tone'], 'is_trial' => $st['is_trial'], 'trial_expired' => $st['trial_expired'],
                 'trial_paused' => $st['trial_paused'], 'days_left' => $st['days_left'],
-                'paying' => $paying, 'price_cents' => $st['plan_id'] !== null ? $st['price_cents'] : 0];
+                'paying' => $paying, 'price_cents' => $mrr_cents, 'state' => $state];
     }
 }
 
@@ -128,8 +143,12 @@ if (!function_exists('fd_org_tones')) {
             // Ligne courante = même ordre que ak_get_current_plan / ak_org_plan_state (ak_sub_order).
             // payment_mode : un plan « Offert » ne compte pas dans le MRR (fd_tone_of).
             $pay = isset(ak_db_columns($pdo, 'asso_subscriptions')['payment_mode']) ? 's.payment_mode' : 'NULL';
+            // o.plan et l'ancien montant : libellé et MRR des comptes historiques sans ligne d'abonnement
+            $legacy = function_exists('ak_org_monthly_price_col') ? ", o.plan AS org_plan, " . ak_org_monthly_price_col($pdo) : "";
+            // Compte historique facturé par le renouvellement ? (ni démo, échéance : sa_plan_state_mrr_cents)
+            if (function_exists('ak_org_legacy_bill_cols')) $legacy .= ", " . ak_org_legacy_bill_cols($pdo);
             $rows = $pdo->query("
-                SELECT o.id, o.status AS org_status, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . ", " . ak_org_trial_card_cols($pdo) . ", " . ak_sub_state_cols($pdo) . ", $pay AS payment_mode
+                SELECT o.id, o.status AS org_status, o.trial_ends_at, " . ak_org_payment_pending_col($pdo) . ", " . ak_org_trial_card_cols($pdo) . ", " . ak_sub_state_cols($pdo) . ", $pay AS payment_mode$legacy
                 FROM organizations o
                 LEFT JOIN asso_subscriptions s ON s.id = (
                     SELECT s2.id FROM asso_subscriptions s2 INNER JOIN asso_plans p2 ON p2.id = s2.plan_id
@@ -154,11 +173,21 @@ if (!function_exists('fd_plan_counts')) {
      * Compteurs du cockpit + MRR. Les essais (en cours ou terminés) ne sont JAMAIS des revenus.
      *   active  = ni essai, ni fin d'essai, ni suspendue, ni résiliée (= paying + free + paiement en attente)
      *   paying  = compte dans le MRR ; free = plan gratuit ou « Offert » ; trial = essai en cours ; trial_expired = essai terminé
+     *   by_plan = MRR par formule (sa_mrr_by_plan, la même règle que le cockpit web) :
+     *             [{key, label, count, mrr_cents, mrr, kind: paying|trial|free}], formules payantes d'abord
      */
     function fd_plan_counts(PDO $pdo): array {
         $c = ['total' => 0, 'active' => 0, 'paying' => 0, 'free' => 0, 'pending_payment' => 0, 'trial' => 0,
-              'trial_expired' => 0, 'expiring' => 0, 'suspended' => 0, 'cancelled' => 0, 'mrr_cents' => 0];
-        foreach (fd_org_tones($pdo) as $t) {
+              'trial_expired' => 0, 'expiring' => 0, 'suspended' => 0, 'cancelled' => 0, 'mrr_cents' => 0, 'by_plan' => []];
+        $tones = fd_org_tones($pdo);
+        if (function_exists('sa_mrr_by_plan')) {
+            $bp = sa_mrr_by_plan(array_column($tones, 'state'));
+            foreach ($bp['rows'] as $r) $c['by_plan'][] = $r + ['mrr' => round($r['mrr_cents'] / 100, 2), 'kind' => 'paying'];
+            foreach (['trial' => 'trial', 'devis' => 'free', 'offert' => 'free'] as $k => $kind) {
+                if (isset($bp[$k]) && (int) $bp[$k]['count'] > 0) $c['by_plan'][] = $bp[$k] + ['mrr' => 0.0, 'kind' => $kind];
+            }
+        }
+        foreach ($tones as $t) {
             $c['total']++;
             switch ($t['tone']) {
                 case 'active':
@@ -184,17 +213,20 @@ if (!function_exists('fd_price_text')) {
     function fd_price_text(array $p): string {
         if (!empty($p['is_trial'])) return 'Essai ' . (int) AK_TRIAL_DAYS . ' j';
         $c = (int) ($p['price_cents'] ?? 0);
-        // Même règle que le cockpit web (sa_plan_price_label) : prix HT, Sur-mesure sans prix = sur devis
-        if (!empty($p['is_custom_quote']) || ($c <= 0 && ($p['slug'] ?? '') === 'sur-mesure')) return 'Sur devis';
-        return $c > 0 ? number_format($c / 100, 2, ',', "\u{202F}") . "\u{00A0}€\u{00A0}HT/mois" : 'Gratuit';
+        // Même règle que le cockpit web (sa_plan_price_label) : un prix HT d'abord (devis Sur-mesure chiffré
+        // compris : « 450,00 € HT/mois ») ; « Sur devis » seulement à 0 €
+        if ($c > 0) return number_format($c / 100, 2, ',', "\u{202F}") . "\u{00A0}€\u{00A0}HT/mois";
+        if (!empty($p['is_custom_quote']) || strpos((string) ($p['slug'] ?? ''), 'sur-mesure') === 0) return 'Sur devis';
+        return ($p['slug'] ?? '') === 'demarrage' ? 'Gratuit, accès limité' : 'Gratuit';
     }
 }
 
 if (!function_exists('fd_plan_choices')) {
     /**
      * Plans proposés au Fondateur pour changer la formule d'une association : plans visibles,
-     * plan d'essai (même masqué), plan actuel de l'association (même masqué), et les formules
-     * masquées attribuées à la main : offre fondateur et lignes « sur-mesure-<client> » (sur devis).
+     * plan d'essai (même masqué), plan actuel de l'association (même masqué), Démarrage (masqué), et
+     * les formules masquées attribuées à la main : offre fondateur (garantie de 12 mois posée par
+     * ak_org_set_plan) et Sur-mesure (la ligne « sur-mesure-<client> » d'un devis seulement pour son client).
      */
     function fd_plan_choices(PDO $pdo, ?int $current_plan_id = null): array {
         $cols = ak_db_columns($pdo, 'asso_plans');
@@ -203,14 +235,17 @@ if (!function_exists('fd_plan_choices')) {
         $sel = "id, slug, name, COALESCE(price_cents, 0) AS price_cents, "
              . ($has_trial ? "COALESCE(is_trial, 0)" : "(slug = 'pro-essai')") . " AS is_trial, "
              . ($has_vis ? "COALESCE(is_visible, 1)" : "1") . " AS is_visible, "
-             . (isset($cols['is_custom_quote']) ? "COALESCE(is_custom_quote, 0)" : "0") . " AS is_custom_quote";
+             . (isset($cols['is_custom_quote']) ? "COALESCE(is_custom_quote, 0)" : "0") . " AS is_custom_quote"
+             . (isset($cols['grille_version']) ? ", grille_version" : "");
         $where = [];
         if ($has_vis) {
             $where[] = "is_visible = 1";
             $where[] = $has_trial ? "is_trial = 1" : "slug = 'pro-essai'";
             if ($current_plan_id) $where[] = "id = " . (int) $current_plan_id;
             $where[] = "slug = 'fondateur'";
-            if (isset($cols['is_custom_quote'])) $where[] = "(COALESCE(is_custom_quote, 0) = 1 AND slug LIKE 'sur-mesure%')";
+            $where[] = "slug = 'demarrage'";
+            // Sur-mesure générique ; une ligne « sur-mesure-<client> » n'est proposée qu'à son client (plan actuel)
+            $where[] = "slug = 'sur-mesure'";
         }
         $order = $has_trial ? "is_trial ASC, " : "";
         $order .= isset($cols['display_order']) ? "display_order ASC, price_cents ASC, id ASC" : "price_cents ASC, id ASC";
@@ -226,7 +261,10 @@ if (!function_exists('fd_plan_choices')) {
                 'label'       => ak_plan_label($p['slug'], $p['name']),
                 'price_cents' => (int) $p['price_cents'],
                 'price'       => round(((int) $p['price_cents']) / 100, 2),
-                'price_text'  => fd_price_text($p),
+                // Période de transition (ligne assokit pas encore à la grille) : jamais « Pro — 49,99 € HT/mois »
+                'price_text'  => (function_exists('sa_pro_grid_pending') && sa_pro_grid_pending($pdo, $p))
+                    ? 'En attente, ancienne offre ' . number_format(((int) $p['price_cents']) / 100, 2, ',', "\u{202F}") . "\u{00A0}€"
+                    : fd_price_text($p),
                 'is_trial'    => !empty($p['is_trial']),
                 'is_visible'  => !empty($p['is_visible']),
                 'is_custom_quote' => !empty($p['is_custom_quote']),

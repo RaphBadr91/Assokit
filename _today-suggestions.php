@@ -29,6 +29,14 @@ $today_pending = !empty($today_data['pending']);
 $today_static = !empty($today_data['static']);
 $today_refresh_block = (string)($today_data['refresh_block'] ?? '');
 $today_csrf = function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_token'] ?? '');
+// Repli statique pour un administrateur, sur le site seulement (jamais dans l'appli : Apple 3.1.1) :
+// une ligne discrète dit à partir de quelle formule les priorités sont rédigées par l'IA (sans prix)
+$today_plan_hint = '';
+if ($today_static && ($user['role'] ?? '') === 'admin' && !(function_exists('ak_billing_hidden') && ak_billing_hidden())
+    && function_exists('ak_plan_required_label')) {
+    try { $today_plan_hint = 'Priorités rédigées par l’IA : incluses à partir de la formule ' . ak_plan_required_label($pdo, 'ai_assistant') . '.'; }
+    catch (Throwable $e) { $today_plan_hint = ''; }
+}
 ?>
 
 <section class="today today-copilot">
@@ -45,7 +53,7 @@ $today_csrf = function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_to
       </div>
     </div>
     <div style="display:flex; align-items:center; gap:12px; position:relative;">
-      <span class="today-copilot-pill" id="today-pill"<?= (!empty($suggestions) && !$has_error) ? '' : ' style="display:none;"' ?>>✦ Suggestions personnalisées</span>
+      <span class="today-copilot-pill" id="today-pill"<?= (!empty($suggestions) && !$has_error && !$today_static) ? '' : ' style="display:none;"' ?>>✦ Suggestions personnalisées</span>
       <?php if ($today_pending): ?>
         <span class="today-copilot-pending" id="today-pending">Personnalisation en cours…</span>
       <?php endif; ?>
@@ -67,6 +75,10 @@ $today_csrf = function_exists('csrf_token') ? csrf_token() : ($_SESSION['csrf_to
   </div>
 
   <div class="today-notice" id="today-notice" role="status" style="display:none;"></div>
+
+  <?php if ($today_plan_hint !== ''): ?>
+    <div class="today-plan-hint" style="font-size:12px; color:var(--ink-3); margin:2px 0 8px; position:relative;"><?= h($today_plan_hint) ?></div>
+  <?php endif; ?>
 
   <?php if (empty($suggestions)): ?>
 

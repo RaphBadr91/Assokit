@@ -1,7 +1,10 @@
 <?php
 /**
  * api/app-founder-orgs.php — Liste native des associations pour le cockpit Fondateur.
- * GET ?filter=all|pending|unpaid|trial  · réservé Fondateur/Super Admin.
+ * GET ?filter=all|pending|unpaid|trial [&plan=<slug>]  · réservé Fondateur/Super Admin.
+ * ?plan=<slug> : seulement les associations de cette formule (ak-essentiel, assokit, ak-equipe, fondateur,
+ * demarrage, pro-essai…) ; « sur-mesure » regroupe les devis propres à un client (sur-mesure-<client>) ;
+ * un compte historique sans ligne d'abonnement compte pour sa formule équivalente (Démarrage sinon).
  * Chaque association porte l'état de son plan tel que le donne ak_org_plan_state()
  * (plan_label, is_trial, trial_expired, trial_ends_at, days_left, badge, badge_tone) :
  * le même que le cockpit web et l'espace de l'association.
@@ -27,6 +30,8 @@ $is_sa = $is_founder || !empty($user['is_super_admin']) || (($user['role'] ?? ''
 if (!$is_sa) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
 
 $filter = (is_string($_GET['filter'] ?? null) ? $_GET['filter'] : 'all');   // ?filter[]=… : valeur par défaut, sans avertissement
+$plan_filter = is_string($_GET['plan'] ?? null) ? strtolower(trim((string) $_GET['plan'])) : '';
+if (!preg_match('/^[a-z0-9-]{1,120}$/', $plan_filter)) $plan_filter = '';
 
 try {
     // Impayés par org (défensif : la table peut varier)
@@ -77,6 +82,11 @@ try {
         if ($filter === 'unpaid' && $up['nb'] === 0) continue;
         $ps = $plan_states[$oid] ?? fd_org_plan($pdo, $oid);
         if ($filter === 'trial' && !$ps['is_trial'] && !$ps['trial_expired']) continue;
+        if ($plan_filter !== '') {
+            $eff = $ps['plan_id'] !== null ? (string) $ps['plan_slug'] : ((string) ($ps['legacy_slug'] ?? '') ?: 'demarrage');
+            $match = $plan_filter === 'sur-mesure' ? ($eff === 'sur-mesure' || strpos($eff, 'sur-mesure-') === 0) : $eff === $plan_filter;
+            if (!$match) continue;
+        }
         $name = (string) $o['name'];
         $ini = function_exists('mb_substr') ? mb_strtoupper(mb_substr($name, 0, 2)) : strtoupper(substr($name, 0, 2));
         $vs = (string) $o['validation_status'];
@@ -105,7 +115,7 @@ try {
         });
     }
 
-    echo json_encode(['ok' => true, 'filter' => $filter, 'orgs' => $orgs], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'filter' => $filter, 'plan' => $plan_filter, 'orgs' => $orgs], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     error_log('[api/app-founder-orgs] ' . $e->getMessage());
     http_response_code(500);
