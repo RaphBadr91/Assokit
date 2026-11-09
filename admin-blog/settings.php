@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/article-helper.php';
+require_once __DIR__ . '/../ai-models.php';
 
 send_security_headers();
 auth_require();
@@ -16,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'save_general') {
             $api_key = trim((string) ($_POST['claude_api_key'] ?? ''));
-            $model   = trim((string) ($_POST['claude_model'] ?? 'claude-sonnet-4-5'));
+            $model   = ak_ai_model('write', trim((string) ($_POST['claude_model'] ?? '')));
             $author  = trim((string) ($_POST['default_author'] ?? 'L\'équipe Assokit'));
             $apd     = max(1, min(10, (int) ($_POST['articles_per_day'] ?? 3)));
             $cron_on = !empty($_POST['cron_enabled']) ? '1' : '0';
@@ -102,13 +103,12 @@ include __DIR__ . '/includes/header.php';
         <label class="form-label">
             Modèle Claude
             <select name="claude_model">
-                <option value="claude-opus-4-7" <?= config_get('claude_model') === 'claude-opus-4-7' ? 'selected' : '' ?>>Claude Opus 4.7 (le plus puissant, plus cher)</option>
-                <option value="claude-opus-4-6" <?= config_get('claude_model') === 'claude-opus-4-6' ? 'selected' : '' ?>>Claude Opus 4.6</option>
-                <option value="claude-sonnet-4-6" <?= config_get('claude_model') === 'claude-sonnet-4-6' ? 'selected' : '' ?>>Claude Sonnet 4.6 (équilibre qualité/prix)</option>
-                <option value="claude-sonnet-4-5" <?= in_array((string) config_get('claude_model'), ['claude-sonnet-4-5', '', 'claude-sonnet-4-5-20250929'], true) ? 'selected' : '' ?>>Claude Sonnet 4.5 (recommandé pour articles)</option>
-                <option value="claude-haiku-4-5-20251001" <?= config_get('claude_model') === 'claude-haiku-4-5-20251001' ? 'selected' : '' ?>>Claude Haiku 4.5 (rapide, économique)</option>
+<?php $ak_blog_model = ak_ai_model('write', (string) config_get('claude_model', '')); ?>
+                <option value="claude-sonnet-5-5" <?= $ak_blog_model === 'claude-sonnet-5-5' ? 'selected' : '' ?>>Claude Sonnet 5.5 (recommandé pour articles)</option>
+                <option value="claude-opus-5-5" <?= $ak_blog_model === 'claude-opus-5-5' ? 'selected' : '' ?>>Claude Opus 5.5 (qualité maximale, plus cher)</option>
+                <option value="claude-haiku-5-5" <?= $ak_blog_model === 'claude-haiku-5-5' ? 'selected' : '' ?>>Claude Haiku 5.5 (rapide, économique)</option>
             </select>
-            <span class="dim small">Sonnet 4.5 = excellent rapport qualité/prix pour articles SEO. Opus = qualité max si budget OK.</span>
+            <span class="dim small">Sonnet 5.5 = excellent rapport qualité/prix pour les articles SEO. Opus 5.5 = qualité maximale si le budget le permet.</span>
         </label>
 
         <label class="form-label">

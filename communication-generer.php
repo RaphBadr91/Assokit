@@ -713,32 +713,18 @@ function fallback_claude_call(string $system, string $user_message): string
     if (!defined('ANTHROPIC_API_KEY') || !ANTHROPIC_API_KEY) {
         throw new RuntimeException('Clé API Anthropic non configurée.');
     }
-    $payload = [
-        'model'      => 'claude-sonnet-4-5',
+    if (!function_exists('ak_ai_messages')) require_once __DIR__ . '/ai-models.php';
+    $r = ak_ai_messages([
         'max_tokens' => 4000,
         'system'     => $system,
         'messages'   => [['role' => 'user', 'content' => $user_message]],
-    ];
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode($payload),
-        CURLOPT_HTTPHEADER     => [
-            'Content-Type: application/json',
-            'x-api-key: ' . ANTHROPIC_API_KEY,
-            'anthropic-version: 2023-06-01',
-        ],
-        CURLOPT_TIMEOUT => 180,
-    ]);
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($http_code !== 200) {
-        throw new RuntimeException("Erreur API Anthropic ($http_code) : $response");
+    ], ['purpose' => 'write', 'api_key' => ANTHROPIC_API_KEY, 'timeout' => 180]);
+    if ($r['curl_error'] !== '' || $r['code'] !== 200) {
+        throw new RuntimeException("Erreur API Anthropic ({$r['code']}) : " . ($r['curl_error'] ?: $r['raw']));
     }
-    $data = json_decode($response, true);
-    return $data['content'][0]['text'] ?? '(Pas de contenu retourné)';
+    if ($r['refusal']) throw new RuntimeException(AK_AI_REFUSAL_MESSAGE);
+    $text = ak_ai_response_text($r['data']);
+    return $text !== '' ? $text : '(Pas de contenu retourné)';
 }
 
 render_head($config['title']);

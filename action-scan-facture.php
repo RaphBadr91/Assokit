@@ -223,49 +223,37 @@ if ($media_type !== 'application/pdf') {
     ];
 }
 
-// Appel direct à l'API (on ne peut pas utiliser ask_claude() qui attend des messages simples)
-$payload = [
-    'model' => ANTHROPIC_MODEL,
+// Appel direct à l'API (on ne peut pas utiliser ask_claude() qui attend des messages simples).
+// Modèle de rédaction (Sonnet 5.5) : lire un montant sur une photo demande de la précision.
+$r = ak_ai_messages([
     'max_tokens' => 1024,
     'system' => $system_prompt,
     'messages' => $messages,
-];
-
-$ch = curl_init('https://api.anthropic.com/v1/messages');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'x-api-key: ' . ANTHROPIC_API_KEY,
-    'anthropic-version: 2023-06-01',
+], [
+    'purpose' => 'write',
+    'model_override' => defined('ANTHROPIC_MODEL') ? ANTHROPIC_MODEL : null,
+    'api_key' => ANTHROPIC_API_KEY,
+    'timeout' => 90,
 ]);
-curl_setopt($ch, CURLOPT_TIMEOUT, 90);
 
-$response = curl_exec($ch);
-$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curl_err = curl_error($ch);
-curl_close($ch);
-
-if ($curl_err) {
-    echo json_encode(['success' => false, 'error' => 'Problème de connexion à l\'IA : ' . $curl_err]);
+if ($r['curl_error'] !== '') {
+    echo json_encode(['success' => false, 'error' => 'Problème de connexion à l\'IA : ' . $r['curl_error']]);
     exit;
 }
 
-$data = json_decode($response, true);
-if ($http_code !== 200) {
-    $msg = $data['error']['message'] ?? 'Code HTTP ' . $http_code;
+$data = $r['data'];
+if ($r['code'] !== 200 || !$r['ok']) {
+    $msg = $data['error']['message'] ?? 'Code HTTP ' . $r['code'];
     echo json_encode(['success' => false, 'error' => 'Erreur API : ' . $msg]);
     exit;
 }
-
-// Extraire la réponse texte
-$response_text = '';
-foreach ($data['content'] ?? [] as $block) {
-    if (($block['type'] ?? '') === 'text') {
-        $response_text .= $block['text'];
-    }
+if ($r['refusal']) {
+    echo json_encode(['success' => false, 'error' => AK_AI_REFUSAL_MESSAGE]);
+    exit;
 }
+
+// Extraire la réponse texte (blocs « text » seulement : la réponse peut commencer par un bloc de réflexion)
+$response_text = ak_ai_response_text($data);
 
 // Parser le JSON retourné par Claude
 // Claude peut parfois entourer sa réponse de ```json ... ``` ou d'espaces, on nettoie

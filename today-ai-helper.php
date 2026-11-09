@@ -34,13 +34,14 @@ if (!defined('TODAY_AI_ERROR_RETRY_SECONDS')) {
     // Après un échec, on sert le repli statique sans rappeler l'IA pendant 30 min
     define('TODAY_AI_ERROR_RETRY_SECONDS', 1800);
 }
+require_once __DIR__ . '/ai-models.php';
 if (!defined('TODAY_AI_API_URL')) {
-    define('TODAY_AI_API_URL', defined('ANTHROPIC_API_URL') ? ANTHROPIC_API_URL : 'https://api.anthropic.com/v1/messages');
+    define('TODAY_AI_API_URL', ak_ai_api_url());
 }
 if (!defined('TODAY_AI_MODEL')) {
-    // Même modèle que le reste de l'appli (config.php) : l'ancien identifiant
-    // « claude-3-5-haiku-latest » n'est plus servi et faisait échouer l'appel.
-    define('TODAY_AI_MODEL', defined('ANTHROPIC_MODEL') ? ANTHROPIC_MODEL : 'claude-sonnet-4-5');
+    // Tâche de fond courte et répétée (une liste JSON de priorités) : modèle rapide
+    // (ai-models.php). Un TODAY_AI_MODEL laissé dans config.php n'est suivi que s'il est encore servi.
+    define('TODAY_AI_MODEL', AK_AI_MODEL_FAST);
 }
 
 /**
@@ -776,48 +777,39 @@ function today_call_claude(string $prompt): array
     }
     if (function_exists('set_time_limit')) @set_time_limit(TODAY_AI_TIMEOUT_SECONDS + 30);
 
-    $payload = [
-        'model' => TODAY_AI_MODEL,
+    $r = ak_ai_messages([
         'max_tokens' => 1000,
         'messages' => [
             ['role' => 'user', 'content' => $prompt],
         ],
-    ];
-
-    $ch = curl_init(TODAY_AI_API_URL);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_TIMEOUT => TODAY_AI_TIMEOUT_SECONDS,
-        CURLOPT_CONNECTTIMEOUT => 5,
-        CURLOPT_NOSIGNAL => true,
-        CURLOPT_HTTPHEADER => [
-            'x-api-key: ' . CLAUDE_API_KEY,
-            'anthropic-version: 2023-06-01',
-            'content-type: application/json',
-        ],
+    ], [
+        'purpose' => 'fast',
+        'model_override' => TODAY_AI_MODEL,
+        'api_key' => CLAUDE_API_KEY,
+        'url' => TODAY_AI_API_URL,
+        'timeout' => TODAY_AI_TIMEOUT_SECONDS,
+        'connect_timeout' => 5,
     ]);
+    $data = $r['data'];
 
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curl_err = curl_error($ch);
-    curl_close($ch);
-
-    if ($response === false || $curl_err) {
-        return ['ok' => false, 'error' => 'CURL: ' . $curl_err, 'suggestions' => []];
+    if ($r['curl_error'] !== '') {
+        return ['ok' => false, 'error' => 'CURL: ' . $r['curl_error'], 'suggestions' => []];
     }
 
-    if ($http_code !== 200) {
-        return ['ok' => false, 'error' => "HTTP $http_code: " . mb_substr($response, 0, 200), 'suggestions' => []];
+    if ($r['code'] !== 200) {
+        return ['ok' => false, 'error' => "HTTP {$r['code']}: " . mb_substr($r['raw'], 0, 200), 'suggestions' => []];
     }
 
-    $data = json_decode($response, true);
-    if (!$data || empty($data['content'][0]['text'])) {
+    if ($r['refusal']) {
+        return ['ok' => false, 'error' => 'refusal', 'suggestions' => []];
+    }
+
+    // Blocs « text » seulement : la réponse peut commencer par un bloc de réflexion
+    $text = $data ? ak_ai_response_text($data) : '';
+    if (trim($text) === '') {
         return ['ok' => false, 'error' => 'Réponse API invalide', 'suggestions' => []];
     }
 
-    $text = $data['content'][0]['text'];
     // Nettoyer les ```json ```
     $text = preg_replace('/^```(?:json)?\s*|\s*```$/m', '', trim($text));
 

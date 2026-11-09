@@ -6,13 +6,12 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/article-helper.php';
+require_once __DIR__ . '/../../ai-models.php';
 
 class ClaudeAPI
 {
-    private const API_URL = 'https://api.anthropic.com/v1/messages';
-    private const API_VERSION = '2023-06-01';
     private const MAX_RETRIES = 2;
-    private const TIMEOUT = 120;
+    private const TIMEOUT = 240; // articles longs, avec réflexion
 
     public static function callMessages(string $system_prompt, string $user_prompt, int $max_tokens = 4096): string
     {
@@ -20,29 +19,45 @@ class ClaudeAPI
         if ($api_key === '') {
             throw new RuntimeException('Clé API Claude non configurée. Va dans Paramètres pour la définir.');
         }
-        $model = trim((string) config_get('claude_model', 'claude-sonnet-4-5'));
-        if ($model === '') {
-            $model = 'claude-sonnet-4-5';
-        }
-
-        $payload = [
-            'model'      => $model,
-            'max_tokens' => $max_tokens,
-            'system'     => $system_prompt,
-            'messages'   => [
-                ['role' => 'user', 'content' => $user_prompt],
-            ],
-        ];
+        // Réglage du blog suivi seulement s'il désigne un modèle encore servi (ai-models.php) :
+        // un ancien « claude-sonnet-4-5 » enregistré passe sur Sonnet 5.5 sans rien toucher
+        $model = ak_ai_model('write', (string) config_get('claude_model', ''));
 
         $last_error = '';
         for ($attempt = 1; $attempt <= self::MAX_RETRIES; $attempt++) {
             try {
-                $response = self::httpPost(self::API_URL, $payload, [
-                    'x-api-key: ' . $api_key,
-                    'anthropic-version: ' . self::API_VERSION,
-                    'content-type: application/json',
+                $r = ak_ai_messages([
+                    'max_tokens' => $max_tokens,
+                    'system'     => $system_prompt,
+                    'messages'   => [
+                        ['role' => 'user', 'content' => $user_prompt],
+                    ],
+                ], [
+                    'purpose' => 'write',
+                    'model_override' => $model,
+                    // Articles longs (SEO) : un peu plus de réflexion que les textes courts
+                    'effort' => $max_tokens >= 4096 ? 'medium' : 'low',
+                    'api_key' => $api_key,
+                    'url' => ak_ai_api_url(),
+                    'timeout' => self::TIMEOUT,
+                    'connect_timeout' => 30,
                 ]);
-                return self::extractText($response);
+                if ($r['curl_error'] !== '') {
+                    throw new RuntimeException("cURL error: {$r['curl_error']}");
+                }
+                if ($r['code'] < 200 || $r['code'] >= 300) {
+                    throw new RuntimeException("HTTP {$r['code']}: " . substr($r['raw'], 0, 500));
+                }
+                if (!is_array($r['data'])) {
+                    throw new RuntimeException('Invalid JSON response');
+                }
+                if ($r['refusal']) {
+                    // Pas de nouvel essai : la même demande serait refusée de nouveau
+                    throw new LogicException(AK_AI_REFUSAL_MESSAGE);
+                }
+                return self::extractText($r['data']);
+            } catch (LogicException $e) {
+                throw new RuntimeException($e->getMessage());
             } catch (Throwable $e) {
                 $last_error = $e->getMessage();
                 if ($attempt < self::MAX_RETRIES) {
@@ -51,40 +66,6 @@ class ClaudeAPI
             }
         }
         throw new RuntimeException('Erreur API Claude après ' . self::MAX_RETRIES . ' tentatives : ' . $last_error);
-    }
-
-    private static function httpPost(string $url, array $payload, array $headers): array
-    {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            CURLOPT_HTTPHEADER     => $headers,
-            CURLOPT_TIMEOUT        => self::TIMEOUT,
-            CURLOPT_CONNECTTIMEOUT => 30,
-            CURLOPT_SSL_VERIFYPEER => true,
-        ]);
-        $body = curl_exec($ch);
-        $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err  = curl_error($ch);
-        curl_close($ch);
-
-        if ($body === false) {
-            throw new RuntimeException("cURL error: {$err}");
-        }
-        if ($http < 200 || $http >= 300) {
-            throw new RuntimeException("HTTP {$http}: " . substr((string) $body, 0, 500));
-        }
-        $decoded = json_decode((string) $body, true);
-        if (!is_array($decoded)) {
-            throw new RuntimeException('Invalid JSON response');
-        }
-        if (!empty($decoded['error'])) {
-            $msg = $decoded['error']['message'] ?? 'unknown';
-            throw new RuntimeException("Claude error: {$msg}");
-        }
-        return $decoded;
     }
 
     private static function extractText(array $response): string

@@ -8,14 +8,15 @@
  * Configuration requise dans config.php :
  *   define('CLAUDE_API_KEY', 'sk-ant-...');
  *   // Optionnels :
- *   // define('AK_AI_MODEL', 'claude-sonnet-4-5');
  *   // define('AK_AI_MAX_TOKENS', 2048);
+ *   // (AK_AI_MODEL n'est suivi que s'il désigne un modèle encore servi : ai-models.php)
  * --------------------------------------------------------------
  */
 
-if (!defined('AK_AI_MODEL'))      define('AK_AI_MODEL', 'claude-sonnet-4-5');
+require_once __DIR__ . '/ai-models.php';
+if (!defined('AK_AI_MODEL'))      define('AK_AI_MODEL', AK_AI_MODEL_WRITE);
 if (!defined('AK_AI_MAX_TOKENS')) define('AK_AI_MAX_TOKENS', 2048);
-if (!defined('AK_AI_API_URL'))    define('AK_AI_API_URL', 'https://api.anthropic.com/v1/messages');
+if (!defined('AK_AI_API_URL'))    define('AK_AI_API_URL', ak_ai_api_url());
 
 // --------------------------------------------------------------
 // Catalogue des DOSSIERS (6 thèmes)
@@ -750,39 +751,27 @@ if (!function_exists('ak_ai_call_api')) {
         if (!function_exists('ak_ai_app_gate')) require_once __DIR__ . '/ai-consent-helper.php';
         if (($ak_gate = ak_ai_app_gate()) !== null) {
             return ['ok' => false, 'text' => '', 'tokens_in' => 0, 'tokens_out' => 0, 'error' => $ak_gate,
-                    'error_detail' => 'ai_consent', 'consent_required' => true, 'model' => defined('AK_AI_MODEL') ? AK_AI_MODEL : ''];
+                    'error_detail' => 'ai_consent', 'consent_required' => true, 'model' => ak_ai_model('write', AK_AI_MODEL)];
         }
         if (function_exists('set_time_limit')) @set_time_limit(250);
         $api_key = defined('CLAUDE_API_KEY') ? CLAUDE_API_KEY : (getenv('CLAUDE_API_KEY') ?: '');
         if (!$api_key) {
             return ['ok' => false, 'text' => '', 'tokens_in' => 0, 'tokens_out' => 0,
                     'error' => 'Le service IA n’est pas configuré sur ce serveur. Prévenez l’équipe Assokit.',
-                    'error_detail' => 'CLAUDE_API_KEY manquante', 'model' => AK_AI_MODEL];
+                    'error_detail' => 'CLAUDE_API_KEY manquante', 'model' => ak_ai_model('write', AK_AI_MODEL)];
         }
-        $payload = [
-            'model'      => AK_AI_MODEL,
+        $model = ak_ai_model('write', AK_AI_MODEL);
+        $r = ak_ai_messages([
             'max_tokens' => AK_AI_MAX_TOKENS,
             'system'     => $system,
             'messages'   => [['role' => 'user', 'content' => $user_msg]],
-        ];
-        $ch = curl_init(AK_AI_API_URL);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
-            CURLOPT_HTTPHEADER     => [
-                'x-api-key: ' . $api_key,
-                'anthropic-version: 2023-06-01',
-                'content-type: application/json',
-            ],
-            CURLOPT_TIMEOUT        => 230,
-            CURLOPT_NOSIGNAL       => true,
-            CURLOPT_CONNECTTIMEOUT => 10,
+        ], [
+            'purpose' => 'write', 'model_override' => AK_AI_MODEL, 'api_key' => $api_key,
+            'url' => AK_AI_API_URL, 'timeout' => 230, 'connect_timeout' => 10,
         ]);
-        $resp = curl_exec($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err  = curl_error($ch);
-        curl_close($ch);
+        $resp = $r['curl_error'] !== '' ? false : $r['raw'];
+        $code = $r['code'];
+        $err  = $r['curl_error'];
 
         // Message affiché à l'utilisateur : en français et compréhensible.
         // Le détail technique (anglais, cURL…) va dans error_detail, gardé
@@ -791,7 +780,7 @@ if (!function_exists('ak_ai_call_api')) {
             error_log('[ak_ai_call_api] réseau : ' . ($err ?: 'inconnue'));
             return ['ok' => false, 'text' => '', 'tokens_in' => 0, 'tokens_out' => 0,
                     'error' => 'Le service IA est injoignable pour le moment. Réessayez dans une minute.',
-                    'error_detail' => 'Erreur réseau : ' . ($err ?: 'inconnue'), 'model' => AK_AI_MODEL];
+                    'error_detail' => 'Erreur réseau : ' . ($err ?: 'inconnue'), 'model' => $model];
         }
         $data = json_decode($resp, true);
         if ($code < 200 || $code >= 300) {
@@ -805,19 +794,20 @@ if (!function_exists('ak_ai_call_api')) {
                 $msg = 'Le service IA est momentanément indisponible. Réessayez dans quelques minutes.';
             }
             return ['ok' => false, 'text' => '', 'tokens_in' => 0, 'tokens_out' => 0,
-                    'error' => $msg, 'error_detail' => $detail, 'model' => AK_AI_MODEL];
+                    'error' => $msg, 'error_detail' => $detail, 'model' => $model];
         }
-        $text = '';
-        if (isset($data['content']) && is_array($data['content'])) {
-            foreach ($data['content'] as $block) {
-                if (($block['type'] ?? '') === 'text' && isset($block['text'])) $text .= $block['text'];
-            }
+        if (ak_ai_is_refusal($data)) {
+            return ['ok' => false, 'text' => '', 'tokens_in' => (int)($data['usage']['input_tokens'] ?? 0),
+                    'tokens_out' => (int)($data['usage']['output_tokens'] ?? 0),
+                    'error' => AK_AI_REFUSAL_MESSAGE, 'error_detail' => 'refusal', 'model' => $data['model'] ?? $model];
         }
+        // Blocs « text » seulement : la réponse peut commencer par un bloc de réflexion
+        $text = ak_ai_response_text($data);
         return [
             'ok' => true, 'text' => trim($text),
             'tokens_in'  => (int)($data['usage']['input_tokens']  ?? 0),
             'tokens_out' => (int)($data['usage']['output_tokens'] ?? 0),
-            'error' => null, 'model' => $data['model'] ?? AK_AI_MODEL,
+            'error' => null, 'model' => $data['model'] ?? $model,
         ];
     }
 }
@@ -842,7 +832,7 @@ if (!function_exists('ak_ai_save_generation')) {
                 ':title' => $title,
                 ':inp' => json_encode($inputs, JSON_UNESCAPED_UNICODE),
                 ':out' => $result['text'] ?? '',
-                ':model' => $result['model'] ?? AK_AI_MODEL,
+                ':model' => $result['model'] ?? ak_ai_model('write', AK_AI_MODEL),
                 ':tin' => (int)($result['tokens_in']  ?? 0),
                 ':tout' => (int)($result['tokens_out'] ?? 0),
                 ':status' => !empty($result['ok']) ? 'success' : 'error',

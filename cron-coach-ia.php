@@ -101,7 +101,8 @@ foreach ($orgs as $org) {
             $resp = ask_claude(
                 "Tu es AssoCoach, un coach Assokit hebdomadaire pour les responsables associatifs. Tu réponds UNIQUEMENT en JSON valide, sans markdown, sans texte autour.",
                 [['role' => 'user', 'content' => $prompt]],
-                1500
+                1500,
+                ['purpose' => 'fast'] // coach hebdomadaire : modèle rapide (ai-models.php)
             );
             $raw = ($resp && !empty($resp['success'])) ? ($resp['content'] ?? '') : '';
             if (!$raw) { echo "  ✗ Pas de réponse Claude\n"; $stats['errors']++; continue; }

@@ -168,7 +168,7 @@ function df_seed_ia(): void
         $gid[$i] = df_ins('asso_ai_generations', [
             'org_id' => DF::$org, 'user_id' => $par, 'tool_type' => $outil, 'folder' => $catalogue[$outil]['folder'] ?? null,
             'title' => $titre, 'input_data' => $champs + ['tone' => 'professionnel', 'length' => 'medium'], 'output_text' => $md,
-            'model' => 'claude-sonnet-4-5', 'tokens_input' => df_entre(300, 900), 'tokens_output' => df_entre(400, 1800),
+            'model' => 'claude-sonnet-5-5', 'tokens_input' => df_entre(300, 900), 'tokens_output' => df_entre(400, 1800),
             'status' => 'success', 'error_message' => null, 'is_favorite' => $fav ? 1 : 0,
             'created_at' => df_jh(-$j, sprintf('%02d:%02d', df_entre(9, 19), df_entre(0, 59))),
         ]);

@@ -35,7 +35,8 @@ if ($action === 'generate_now') {
         $resp = ask_claude(
             "Tu es AssoCoach, un coach IA hebdomadaire pour les responsables associatifs. Tu réponds UNIQUEMENT en JSON valide, sans markdown, sans texte autour.",
             [['role' => 'user', 'content' => $prompt]],
-            1500
+            1500,
+            ['purpose' => 'fast'] // coach hebdomadaire : modèle rapide (ai-models.php)
         );
         $raw = ($resp && !empty($resp['success'])) ? ($resp['content'] ?? '') : '';
         if (!$raw) {

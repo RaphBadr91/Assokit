@@ -18,6 +18,8 @@ if (!defined('ANTHROPIC_API_KEY')) {
 }
 // ak_ai_app_gate() : dans l'app, aucun envoi à l'IA sans l'accord de l'utilisateur (règle 5.1.2(i) d'Apple)
 require_once __DIR__ . '/ai-consent-helper.php';
+// Modèles Claude et appel commun (Sonnet 4.5 retiré le 30/11/2026)
+require_once __DIR__ . '/ai-models.php';
 
 /**
  * Vérifie que l'IA est configurée (clé API présente).
@@ -271,9 +273,11 @@ PROMPT;
  * @param string $system_prompt Instructions système (personnalité + contexte)
  * @param array  $messages      [['role'=>'user'|'assistant', 'content'=>'...'], ...]
  * @param int    $max_tokens    Longueur max de la réponse
+ * @param array  $opts          purpose : 'write' (rédaction, défaut) ou 'fast' (tri, tâches de fond) ;
+ *                              effort : 'low' (défaut), 'medium'… (ai-models.php)
  * @return array ['success' => bool, 'content' => string, 'error' => string|null, 'tokens' => int]
  */
-function ask_claude($system_prompt, $messages, $max_tokens = null) {
+function ask_claude($system_prompt, $messages, $max_tokens = null, array $opts = []) {
     if (!is_ai_enabled()) {
         return [
             'success' => false,
@@ -289,42 +293,32 @@ function ask_claude($system_prompt, $messages, $max_tokens = null) {
 
     $max_tokens = $max_tokens ?: AI_MAX_TOKENS;
 
-    $payload = [
-        'model' => ANTHROPIC_MODEL,
+    $r = ak_ai_messages([
         'max_tokens' => (int)$max_tokens,
         'system' => $system_prompt,
         'messages' => $messages,
-    ];
-
-    $ch = curl_init(defined('ANTHROPIC_API_URL') ? ANTHROPIC_API_URL : 'https://api.anthropic.com/v1/messages');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'x-api-key: ' . ANTHROPIC_API_KEY,
-        'anthropic-version: 2023-06-01',
+    ], [
+        'purpose' => $opts['purpose'] ?? 'write',
+        'effort' => $opts['effort'] ?? null,
+        // ANTHROPIC_MODEL (config.php) n'est suivi que pour la rédaction et s'il est encore servi
+        'model_override' => ($opts['purpose'] ?? 'write') === 'write' && defined('ANTHROPIC_MODEL') ? ANTHROPIC_MODEL : null,
+        'api_key' => ANTHROPIC_API_KEY,
+        'timeout' => 180,
     ]);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 180);
 
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curl_err = curl_error($ch);
-    curl_close($ch);
-
-    if ($curl_err) {
+    if ($r['curl_error'] !== '') {
         return [
             'success' => false,
             'content' => '',
-            'error' => 'Problème de connexion à l\'IA : ' . $curl_err,
+            'error' => 'Problème de connexion à l\'IA : ' . $r['curl_error'],
             'tokens' => 0,
         ];
     }
 
-    $data = json_decode($response, true);
+    $data = $r['data'];
 
-    if ($http_code !== 200) {
-        $msg = $data['error']['message'] ?? 'Erreur inconnue (code ' . $http_code . ')';
+    if ($r['code'] !== 200 || !$r['ok']) {
+        $msg = $data['error']['message'] ?? 'Erreur inconnue (code ' . $r['code'] . ')';
         return [
             'success' => false,
             'content' => '',
@@ -333,21 +327,19 @@ function ask_claude($system_prompt, $messages, $max_tokens = null) {
         ];
     }
 
-    // Extraction du texte
-    $content_text = '';
-    foreach ($data['content'] ?? [] as $block) {
-        if (($block['type'] ?? '') === 'text') {
-            $content_text .= $block['text'];
-        }
+    [$t_in, $t_out] = ak_ai_usage($data);
+    if ($r['refusal']) {
+        return ['success' => false, 'content' => '', 'error' => AK_AI_REFUSAL_MESSAGE, 'tokens' => $t_in + $t_out, 'refusal' => true];
     }
 
-    $tokens = ($data['usage']['input_tokens'] ?? 0) + ($data['usage']['output_tokens'] ?? 0);
+    // Extraction du texte (blocs « text » seulement : la réponse peut commencer par un bloc de réflexion)
+    $content_text = ak_ai_response_text($data);
 
     return [
         'success' => true,
         'content' => $content_text,
         'error' => null,
-        'tokens' => $tokens,
+        'tokens' => $t_in + $t_out,
     ];
 }
 
@@ -360,7 +352,7 @@ function ask_claude($system_prompt, $messages, $max_tokens = null) {
  * @param callable $on_text function(string $morceau): void
  * @return array Même forme que ask_claude() (content = texte complet)
  */
-function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_tokens = null) {
+function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_tokens = null, array $opts = []) {
     if (!is_ai_enabled()) {
         return [
             'success' => false,
@@ -375,79 +367,92 @@ function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_to
     }
 
     $max_tokens = $max_tokens ?: AI_MAX_TOKENS;
-
-    $payload = [
-        'model' => ANTHROPIC_MODEL,
+    $req = [
         'max_tokens' => (int)$max_tokens,
         'system' => $system_prompt,
         'messages' => $messages,
-        'stream' => true,
+    ];
+    $req_opts = [
+        'purpose' => $opts['purpose'] ?? 'write',
+        'effort' => $opts['effort'] ?? null,
+        'model_override' => ($opts['purpose'] ?? 'write') === 'write' && defined('ANTHROPIC_MODEL') ? ANTHROPIC_MODEL : null,
+        'api_key' => ANTHROPIC_API_KEY,
     ];
 
-    $buffer = '';       // flux SSE pas encore découpé en événements
-    $raw = '';          // corps brut si l'API répond une erreur (JSON, pas SSE)
-    $content_text = '';
-    $tokens_in = 0;
-    $tokens_out = 0;
-    $stream_err = null;
+    // Deux essais au plus : le second, sans le repli côté serveur, seulement si l'API a refusé ce paramètre
+    foreach ([true, false] as $with_fallbacks) {
+        [$url, $body, $headers, $has_fallbacks] = ak_ai_stream_request($req, $req_opts, $with_fallbacks);
 
-    $ch = curl_init(defined('ANTHROPIC_API_URL') ? ANTHROPIC_API_URL : 'https://api.anthropic.com/v1/messages');
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Accept: text/event-stream',
-        'x-api-key: ' . ANTHROPIC_API_KEY,
-        'anthropic-version: 2023-06-01',
-    ]);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 300);
-    // Coupe si plus rien n'arrive pendant 60 s (le serveur envoie des pings)
-    curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, 1);
-    curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, 60);
-    curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $chunk) use (&$buffer, &$raw, &$content_text, &$tokens_in, &$tokens_out, &$stream_err, $on_text) {
-        if ((int)curl_getinfo($ch, CURLINFO_HTTP_CODE) !== 200) {
-            $raw .= $chunk;
-            return strlen($chunk);
-        }
-        $buffer .= str_replace("\r\n", "\n", $chunk);
-        while (($pos = strpos($buffer, "\n\n")) !== false) {
-            $event = substr($buffer, 0, $pos);
-            $buffer = substr($buffer, $pos + 2);
-            $data = '';
-            foreach (explode("\n", $event) as $line) {
-                if (strncmp($line, 'data:', 5) === 0) {
-                    $data .= ltrim(substr($line, 5));
+        $buffer = '';       // flux SSE pas encore découpé en événements
+        $raw = '';          // corps brut si l'API répond une erreur (JSON, pas SSE)
+        $content_text = '';
+        $tokens_in = 0;
+        $tokens_out = 0;
+        $stream_err = null;
+        $stop_reason = '';
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+        // Coupe si plus rien n'arrive pendant 60 s (le serveur envoie des pings)
+        curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, 1);
+        curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, 60);
+        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $chunk) use (&$buffer, &$raw, &$content_text, &$tokens_in, &$tokens_out, &$stream_err, &$stop_reason, $on_text) {
+            if ((int)curl_getinfo($ch, CURLINFO_HTTP_CODE) !== 200) {
+                $raw .= $chunk;
+                return strlen($chunk);
+            }
+            $buffer .= str_replace("\r\n", "\n", $chunk);
+            while (($pos = strpos($buffer, "\n\n")) !== false) {
+                $event = substr($buffer, 0, $pos);
+                $buffer = substr($buffer, $pos + 2);
+                $data = '';
+                foreach (explode("\n", $event) as $line) {
+                    if (strncmp($line, 'data:', 5) === 0) {
+                        $data .= ltrim(substr($line, 5));
+                    }
+                }
+                $ev = $data !== '' ? json_decode($data, true) : null;
+                if (!is_array($ev)) continue;
+                switch ($ev['type'] ?? '') {
+                    case 'message_start':
+                        $tokens_in = (int)($ev['message']['usage']['input_tokens'] ?? 0);
+                        break;
+                    case 'content_block_delta':
+                        // Seul le texte est affiché : les deltas de réflexion (thinking_delta,
+                        // signature_delta) arrivent aussi et sont ignorés
+                        if (($ev['delta']['type'] ?? '') === 'text_delta') {
+                            $t = (string)($ev['delta']['text'] ?? '');
+                            $content_text .= $t;
+                            if ($t !== '') $on_text($t);
+                        }
+                        break;
+                    case 'message_delta':
+                        $tokens_out = (int)($ev['usage']['output_tokens'] ?? $tokens_out);
+                        if (!empty($ev['delta']['stop_reason'])) $stop_reason = (string)$ev['delta']['stop_reason'];
+                        break;
+                    case 'error':
+                        $stream_err = $ev['error']['message'] ?? 'Erreur pendant la génération';
+                        break;
                 }
             }
-            $ev = $data !== '' ? json_decode($data, true) : null;
-            if (!is_array($ev)) continue;
-            switch ($ev['type'] ?? '') {
-                case 'message_start':
-                    $tokens_in = (int)($ev['message']['usage']['input_tokens'] ?? 0);
-                    break;
-                case 'content_block_delta':
-                    if (($ev['delta']['type'] ?? '') === 'text_delta') {
-                        $t = (string)($ev['delta']['text'] ?? '');
-                        $content_text .= $t;
-                        if ($t !== '') $on_text($t);
-                    }
-                    break;
-                case 'message_delta':
-                    $tokens_out = (int)($ev['usage']['output_tokens'] ?? $tokens_out);
-                    break;
-                case 'error':
-                    $stream_err = $ev['error']['message'] ?? 'Erreur pendant la génération';
-                    break;
-            }
-        }
-        return strlen($chunk);
-    });
+            return strlen($chunk);
+        });
 
-    curl_exec($ch);
-    $http_code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curl_err = curl_error($ch);
-    curl_close($ch);
+        curl_exec($ch);
+        $http_code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_err = curl_error($ch);
+        curl_close($ch);
+
+        if ($with_fallbacks && $has_fallbacks && ak_ai_fallback_rejected($http_code, $raw)) {
+            error_log('[ai-models] repli serveur refusé par l\'API (flux), nouvel essai sans : ' . mb_substr($raw, 0, 200));
+            continue;
+        }
+        break;
+    }
 
     if ($http_code !== 200) {
         $data = json_decode($raw, true);
@@ -457,6 +462,17 @@ function ask_claude_stream($system_prompt, $messages, callable $on_text, $max_to
             'content' => '',
             'error' => $http_code ? 'L\'IA a répondu avec une erreur : ' . $msg : 'Problème de connexion à l\'IA : ' . $msg,
             'tokens' => 0,
+        ];
+    }
+
+    // Refus de sécurité (avant ou pendant la rédaction) : le texte partiel n'est pas gardé
+    if ($stop_reason === 'refusal') {
+        return [
+            'success' => false,
+            'content' => '',
+            'error' => AK_AI_REFUSAL_MESSAGE,
+            'tokens' => $tokens_in + $tokens_out,
+            'refusal' => true,
         ];
     }
 
@@ -576,50 +592,38 @@ PROMPT;
         ['role' => 'user', 'content' => $content_blocks],
     ];
 
-    // Appel API direct (on n'utilise pas ask_claude car la structure du message est différente)
-    $payload = [
-        'model' => ANTHROPIC_MODEL,
+    // Appel API direct (on n'utilise pas ask_claude car la structure du message est différente).
+    // Rédaction (Sonnet 5.5) : la lecture d'un montant sur une photo demande de la précision.
+    $r = ak_ai_messages([
         'max_tokens' => 1024,
         'system' => $system_prompt,
         'messages' => $messages,
-    ];
-
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'x-api-key: ' . ANTHROPIC_API_KEY,
-        'anthropic-version: 2023-06-01',
+    ], [
+        'purpose' => 'write',
+        'model_override' => defined('ANTHROPIC_MODEL') ? ANTHROPIC_MODEL : null,
+        'api_key' => ANTHROPIC_API_KEY,
+        'timeout' => 90, // Un peu plus long car analyse d'image
     ]);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 90); // Un peu plus long car analyse d'image
 
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curl_err = curl_error($ch);
-    curl_close($ch);
-
-    if ($curl_err) {
-        return ['success' => false, 'data' => [], 'error' => 'Erreur de connexion : ' . $curl_err, 'tokens' => 0];
+    if ($r['curl_error'] !== '') {
+        return ['success' => false, 'data' => [], 'error' => 'Erreur de connexion : ' . $r['curl_error'], 'tokens' => 0];
     }
 
-    $data = json_decode($response, true);
+    $data = $r['data'];
 
-    if ($http_code !== 200) {
-        $msg = $data['error']['message'] ?? 'Erreur ' . $http_code;
+    if ($r['code'] !== 200 || !$r['ok']) {
+        $msg = $data['error']['message'] ?? 'Erreur ' . $r['code'];
         return ['success' => false, 'data' => [], 'error' => 'L\'IA n\'a pas pu lire le document : ' . $msg, 'tokens' => 0];
     }
 
-    // Récupère le texte de la réponse
-    $content_text = '';
-    foreach ($data['content'] ?? [] as $block) {
-        if (($block['type'] ?? '') === 'text') {
-            $content_text .= $block['text'];
-        }
+    [$t_in, $t_out] = ak_ai_usage($data);
+    $tokens = $t_in + $t_out;
+    if ($r['refusal']) {
+        return ['success' => false, 'data' => [], 'error' => AK_AI_REFUSAL_MESSAGE, 'tokens' => $tokens];
     }
 
-    $tokens = ($data['usage']['input_tokens'] ?? 0) + ($data['usage']['output_tokens'] ?? 0);
+    // Récupère le texte de la réponse (blocs « text » seulement)
+    $content_text = ak_ai_response_text($data);
 
     // On parse le JSON retourné par l'IA
     // Au cas où l'IA entoure son JSON de ```json ... ```, on nettoie

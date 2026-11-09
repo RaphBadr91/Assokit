@@ -1041,7 +1041,7 @@ function mail_ai_triage(array $cats, array $lot): array {
     // nomme Anthropic) : il ne dépend pas de l'accord de la personne dont la requête l'a déclenché
     // (bouton « Synchroniser » de l'app). Voir ai-consent-helper.php.
     $call = function () use ($prompt) {
-        return ask_claude('Tu es l\'assistant de tri d\'une boîte mail associative. Tu réponds uniquement en JSON valide, sans texte autour.', [['role' => 'user', 'content' => $prompt]], 1500);
+        return ask_claude('Tu es l\'assistant de tri d\'une boîte mail associative. Tu réponds uniquement en JSON valide, sans texte autour.', [['role' => 'user', 'content' => $prompt]], 1500, ['purpose' => 'fast']);
     };
     $r = function_exists('ak_ai_org_process') ? ak_ai_org_process($call) : $call();
     if (empty($r['success'])) return [];
