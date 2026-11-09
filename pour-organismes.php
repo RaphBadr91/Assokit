@@ -13,7 +13,7 @@ $breadcrumb = build_breadcrumb_jsonld([
 ]);
 render_public_head([
     'title'       => 'Mairies & collectivités : suivi des associations · Assokit',
-    'description' => 'Mairies, départements, CAF : centralisez le suivi des associations de votre territoire. Annuaire, subventions, messagerie, tableau de bord en temps réel.',
+    'description' => 'Mairies, départements, régions, CAF, fédérations : centralisez le suivi des associations de votre territoire ou de votre réseau. Annuaire, subventions, messagerie, tableau de bord en temps réel.',
     'path'        => '/pour-organismes',
     'og_image'    => AK_PUBLIC_DOMAIN . '/assets/og-organismes.jpg',
     'schema_jsonld' => [$breadcrumb],
@@ -94,13 +94,15 @@ render_public_nav('');
     <span class="pub-eyebrow" style="color:#1D4ED8;">🏛️ Collectivités &amp; organismes publics</span>
     <h1 class="pub-h1" style="max-width:820px;">Pilotez les <em>associations de votre territoire</em>, depuis un seul tableau de bord.</h1>
     <p class="pub-tagline" style="max-width:700px;">
-      Mairies, départements, préfectures, CAF : centralisez l'annuaire associatif, le suivi des subventions, la communication et les échanges. <strong>Une vision claire, en temps réel.</strong>
+      Mairies, intercommunalités, départements, régions, préfectures, CAF, fédérations : centralisez l'annuaire associatif, le suivi des subventions, la communication et les échanges. <strong>Une vision claire, en temps réel.</strong>
     </p>
     <div class="org-badge-row">
       <span class="org-badge">🏛️ Mairie</span>
       <span class="org-badge">🗺️ Département</span>
+      <span class="org-badge">🏞️ Région</span>
       <span class="org-badge">🏢 Préfecture</span>
       <span class="org-badge">👨‍👩‍👧 CAF</span>
+      <span class="org-badge">🤝 Fédération</span>
     </div>
   </div>
 </section>

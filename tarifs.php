@@ -67,14 +67,14 @@ if ($badge !== 'Le plus choisi') $badge = 'Recommandé';
 
 $nb = "\u{00A0}";
 $fi = fn($n) => number_format((int)$n, 0, ',', "\u{00A0}");
-// « jusqu'à 100 membres et 3 gestionnaires » (une limite vide = sans plafond)
+// « jusqu'à 50 membres et 3 gestionnaires » (une limite vide = sans plafond)
 $who = function (string $slug, bool $bureau = false) use ($P, $fi, $nb): string {
     $a = $P[$slug]['adherents']; $m = $P[$slug]['managers'];
     $ta = $a === null ? 'membres sans plafond' : 'jusqu’à ' . $fi($a) . ' membres' . ($bureau ? ' (bureau compris)' : '');
     $tm = $m === null ? 'gestionnaires sans plafond' : $fi($m) . ' gestionnaire' . ($m > 1 ? 's' : '');
     return $ta . ' et ' . $tm;
 };
-// « jusqu'à 2 000 membres (bureau compris), 25 gestionnaires, 500 crédits IA et 8 000 e-mails par mois »
+// « jusqu'à 3 000 membres (bureau compris), 25 gestionnaires, 500 crédits IA et 8 000 e-mails par mois »
 $volumes = function (string $slug, bool $with_ai) use ($P, $fi): string {
     $a = $P[$slug]['adherents']; $m = $P[$slug]['managers'];
     $parts = [$a === null ? 'membres sans plafond' : 'jusqu’à ' . $fi($a) . ' membres (bureau compris)',
@@ -84,6 +84,19 @@ $volumes = function (string $slug, bool $with_ai) use ($P, $fi): string {
     $last = array_pop($parts);
     return implode(', ', $parts) . ' et ' . $last;
 };
+// « au-delà de 500 membres ou de 10 gestionnaires » : seuils d'une formule ('' si elle est sans plafond)
+$beyond = function (string $slug) use ($P, $fi): string {
+    $a = $P[$slug]['adherents']; $m = $P[$slug]['managers'];
+    $t = array_filter([$a === null ? null : $fi($a) . ' membres', $m === null ? null : $fi($m) . ' gestionnaires']);
+    return $t ? 'au-delà de ' . implode(' ou de ', $t) : '';
+};
+// [« plus de 3 000 membres », « plus de 25 gestionnaires »] : seuils au-delà desquels on passe à la
+// formule suivante ; une limite vide (sans plafond) n'est pas citée, jamais un chiffre de repli
+$over = function (string $slug) use ($P, $fi): array {
+    $a = $P[$slug]['adherents']; $m = $P[$slug]['managers'];
+    return array_values(array_filter([$a === null ? null : 'plus de ' . $fi($a) . ' membres', $m === null ? null : 'plus de ' . $fi($m) . ' gestionnaires']));
+};
+$sm_over = $over('ak-equipe');
 $ai = fn(string $slug) => $P[$slug]['ai'] === null ? 'Crédits IA au devis' : $fi($P[$slug]['ai']) . ' crédits IA par mois';
 $em = fn(string $slug) => $P[$slug]['emails'] === null ? 'e-mails au devis' : $fi($P[$slug]['emails']) . ' e-mails par mois';
 $conv_equipe = $P['ak-equipe']['mail_ai'] === null ? null : (int)$P['ak-equipe']['mail_ai'] * 15;   // lots de 15 conversations
@@ -109,11 +122,13 @@ $tarifs_faqs[] = ['L’essai est-il vraiment gratuit ?',
     'Oui. Pendant ' . $trial_days . ' jours, vous utilisez toutes les fonctions de la formule Pro, sans carte bancaire et sans engagement. Pendant l’essai : 100 crédits IA, envois et imports plafonnés. À la fin, vous choisissez votre formule ou vous vous arrêtez : si vous n’avez pas choisi de formule, rien n’est prélevé.'
     . ($stripe_on ? ' Si vous choisissez une formule pendant l’essai, vous gardez tous vos jours d’essai : le premier mois est prélevé le jour de la fin de l’essai, et vous pouvez annuler sans frais jusque-là.' : '')];
 $tarifs_faqs[] = ['Quelle formule choisir ?',
-    'Essentiel (' . $price['ak-essentiel']['per_month'] . ') : pour gérer à la main une petite structure, ' . $who('ak-essentiel') . '. '
-    . 'Pro (' . $price['assokit']['per_month'] . ') : pour que les relances, les factures récurrentes et le copilote IA travaillent à votre place, ' . $who('assokit') . '. '
+    'Essentiel (' . $price['ak-essentiel']['per_month'] . ') : pour gérer à la main une petite structure, ' . $who('ak-essentiel', true) . '. '
+    . 'Pro (' . $price['assokit']['per_month'] . ') : pour que les relances, les factures récurrentes et le copilote IA travaillent à votre place, ' . $who('assokit', true) . '. '
     . ($badge === 'Le plus choisi' ? 'C’est la formule la plus choisie. ' : 'C’est la formule que nous recommandons aux associations actives et aux TPE. ')
-    . 'Équipe (' . $price['ak-equipe']['per_month'] . ') : quand plusieurs personnes gèrent chaque jour, ' . $who('ak-equipe') . '. '
-    . 'Au-delà, ou pour un réseau : Sur-mesure, sur devis.'];
+    . 'Équipe (' . $price['ak-equipe']['per_month'] . ') : ' . ($beyond('assokit') !== '' ? $beyond('assokit') . ', ' : '')
+    . 'quand plusieurs personnes gèrent chaque jour, ou pour une petite fédération qui réunit ses membres dans un seul espace ; ' . $who('ak-equipe', true) . '. '
+    . 'Sur-mesure, sur devis : ' . ($beyond('ak-equipe') !== '' ? $beyond('ak-equipe') . ', ou ' : '')
+    . 'pour suivre plusieurs structures qui gardent chacune leur propre espace (grande fédération, ligue, collectivité territoriale, intercommunalité).'];
 $tarifs_faqs[] = ['Puis-je changer de formule ?', $change_plan_live
     ? 'Oui, depuis Mon abonnement. Une montée prend effet tout de suite, au prorata ; une baisse prend effet à la fin du mois payé.'
     : 'Oui, sur simple demande au support : nous faisons le changement pour vous.'];
@@ -132,7 +147,11 @@ $tarifs_faqs[] = ['Le support est-il humain ? Et la facture électronique ?',
     'Oui. Une équipe répond en français, par e-mail, en moins de 24 h ouvrées, dans toutes les formules. Avec Équipe, une séance de prise en main d’une heure en visio est incluse (à demander dans les 3 mois suivant la souscription)' . ($live_n4 ? ', et vos demandes passent en tête de file' : '') . '. '
     . 'Facture électronique : vos factures sont au format Factur-X ; le raccordement à une plateforme agréée est en préparation.'];
 $tarifs_faqs[] = ['Mes données sont-elles hébergées en France ?', 'Oui. Assokit est hébergé en France chez O2Switch, à Clermont-Ferrand, avec des sauvegardes quotidiennes, dans le respect du RGPD. Vos données vous appartiennent : vous pouvez exporter vos adhérents, vos factures et votre fichier des écritures comptables (FEC) à tout moment.'];
-$tarifs_faqs[] = ['Pour qui est l’offre Sur-mesure ?', 'Au-delà de ' . $fi($P['ak-equipe']['adherents'] ?? 2000) . ' membres ou de ' . $fi($P['ak-equipe']['managers'] ?? 25) . ' gestionnaires, ou pour plusieurs structures (réseau, fédération, collectivité) : volumes fixés au devis, reprise de vos données, formation de vos équipes, paiement sur facture.'];
+$tarifs_faqs[] = ['Pour qui est l’offre Sur-mesure ?', ($sm_over ? 'Pour les structures de ' . implode(' ou de ', $sm_over) . ', et pour' : 'Pour')
+    . ' celles qui en suivent plusieurs, chacune gardant son propre espace : fédérations nationales ou régionales, ligues régionales, comités départementaux et régionaux, têtes de réseau, collectivités territoriales (communes, départements, régions) et intercommunalités. '
+    . 'Le portail de pilotage leur permet de suivre les associations qui leur sont rattachées et de leur écrire. '
+    . 'Avec Équipe, en revanche, tous vos membres sont réunis dans un seul espace (' . $who('ak-equipe', true) . '). '
+    . 'Nombre de structures et volumes fixés au devis, reprise de vos données, formation de vos équipes, paiement sur facture.'];
 $tarifs_faqs[] = ['Peut-on voir Assokit avant de s’inscrire ?', 'Oui. Demandez une démonstration : nous vous présentons Assokit en visio, en partant de vos besoins concrets. Sans engagement.'];
 // Typographie : espace insécable avant « : ; ? ! » et dans « 24 h »
 $tarifs_faqs = array_map(fn($qa) => array_map(fn($t) => preg_replace(['/ ([:;?!»])/u', '/« /u', '/(\d) h /u'], ["{$nb}$1", "«{$nb}", "$1{$nb}h "], $t), $qa), $tarifs_faqs);
@@ -227,7 +246,7 @@ $ae = fn(string $a, string $e) => '<span data-v="a">' . $a . '</span><span data-
           <span class="ak-pcard-amt"><?= pub_h($amt($price['ak-essentiel'])) ?></span><span class="ak-pcard-per"><?= pub_h($per($price['ak-essentiel'])) ?></span>
         </div>
         <?php if ($price['ak-essentiel']['has_vat']): ?><p class="ak-pcard-ttc"><?= pub_h($ttc_line($price['ak-essentiel'])) ?></p><?php endif; ?>
-        <p class="ak-pcard-sub">Sans engagement · <?= pub_h($who('ak-essentiel')) ?><?= $is_ref ? ' · environ 0,67&nbsp;€&nbsp;HT par jour' : '' ?></p>
+        <p class="ak-pcard-sub">Sans engagement · <?= pub_h($who('ak-essentiel', true)) ?><?= $is_ref ? ' · environ 0,67&nbsp;€&nbsp;HT par jour' : '' ?></p>
         <p class="ak-pcard-desc">Fini les classeurs, les tableurs éparpillés et les reçus dans une boîte à chaussures : toute votre gestion tient au même endroit, prête le jour où le comptable ou le bureau vous la demande.</p>
         <a href="/signup" class="ak-pcard-cta ak-pcard-cta-ghost">Commencer gratuitement</a>
         <p class="ak-pcard-reassure">L’essai gratuit de <?= $trial_days ?>&nbsp;jours se fait sur Pro, sans carte bancaire. À la fin, choisissez Essentiel si cela vous suffit.</p>
@@ -262,7 +281,7 @@ $ae = fn(string $a, string $e) => '<span data-v="a">' . $a . '</span><span data-
           <span class="ak-pcard-amt"><?= pub_h($amt($price['assokit'])) ?></span><span class="ak-pcard-per"><?= pub_h($per($price['assokit'])) ?></span>
         </div>
         <?php if ($price['assokit']['has_vat']): ?><p class="ak-pcard-ttc"><?= pub_h($ttc_line($price['assokit'])) ?></p><?php endif; ?>
-        <p class="ak-pcard-sub"><?= $is_ref ? 'Environ 1&nbsp;€&nbsp;HT par jour · 10&nbsp;€&nbsp;HT de plus qu’Essentiel' : 'Sans engagement · ' . pub_h($who('assokit')) ?></p>
+        <p class="ak-pcard-sub"><?= $is_ref ? 'Environ 1&nbsp;€&nbsp;HT par jour · 10&nbsp;€&nbsp;HT de plus qu’Essentiel, pour 10 fois plus de membres' : 'Sans engagement · ' . pub_h($who('assokit')) ?></p>
         <p class="ak-pcard-desc">Les tâches qui vous suivaient le soir (relancer, refacturer, faire signer, chercher par où commencer) se font sans vous, ou en deux clics.</p>
         <a href="/signup" class="ak-pcard-cta ak-pcard-cta-primary">Essayer gratuitement <?= $trial_days ?>&nbsp;jours</a>
         <p class="ak-pcard-reassure">Sans carte bancaire · si vous ne choisissez pas de formule, rien n’est prélevé · vos données restent à vous</p>
@@ -291,7 +310,7 @@ $ae = fn(string $a, string $e) => '<span data-v="a">' . $a . '</span><span data-
         <header class="ak-pcard-head">
           <div class="ak-pcard-nick">L’équipage · <span class="ak-pcard-label">Le plus complet à prix affiché</span></div>
           <h2 class="ak-pcard-name">Équipe</h2>
-          <div class="ak-pcard-tag">Structures avec une équipe</div>
+          <div class="ak-pcard-tag">Structures avec une équipe et petites fédérations</div>
         </header>
         <p class="ak-pcard-sign">Chacun sait quoi faire.</p>
         <div class="ak-pcard-price">
@@ -299,7 +318,7 @@ $ae = fn(string $a, string $e) => '<span data-v="a">' . $a . '</span><span data-
         </div>
         <?php if ($price['ak-equipe']['has_vat']): ?><p class="ak-pcard-ttc"><?= pub_h($ttc_line($price['ak-equipe'])) ?></p><?php endif; ?>
         <p class="ak-pcard-sub"><?= $is_ref
-            ? 'Pour 2 fois le prix de Pro : 4 fois plus de membres, 2,5 fois plus de gestionnaires, 2,7 fois plus d’e-mails. Soit 2,40&nbsp;€&nbsp;HT par gestionnaire avec une équipe de 25, et 0,03&nbsp;€&nbsp;HT par membre avec 2&nbsp;000 membres.'
+            ? 'Pour 2 fois le prix de Pro : 6 fois plus de membres, 2,5 fois plus de gestionnaires, 2,7 fois plus d’e-mails. Soit 2,40&nbsp;€&nbsp;HT par gestionnaire avec une équipe de 25, et environ 0,02&nbsp;€&nbsp;HT par membre avec 3&nbsp;000 membres.'
             : 'Sans engagement · ' . pub_h($who('ak-equipe')) ?></p>
         <p class="ak-pcard-desc">Quand plusieurs personnes gèrent chaque jour, moins de choses tombent entre deux chaises : chacun reçoit ses priorités, chacun voit qui s’occupe de quoi, et le trésorier a moins de mauvaises surprises.</p>
         <a href="/signup" class="ak-pcard-cta ak-pcard-cta-dark">Essayer gratuitement <?= $trial_days ?>&nbsp;jours</a>
@@ -317,28 +336,29 @@ $ae = fn(string $a, string $e) => '<span data-v="a">' . $a . '</span><span data-
               '<strong>Des erreurs courantes repérées avant le comptable</strong> : détection automatique d’anomalies dans vos comptes (numérotation des factures, doublons, TVA incohérente, montants inhabituels, cotisations en double), réunies sur une page dédiée'
                   . ($live_n3 ? ', et un point envoyé au trésorier chaque lundi matin' : '') . '.',
               $live_n1 ? '<strong>Qui a fait quoi, et quand</strong> : le journal d’activité de l’équipe.' : null,
-              '<strong>Taillé pour les grandes structures</strong> : ' . pub_h($volumes('ak-equipe', true)) . '.',
+              '<strong>Taillé pour les grandes structures et les petites fédérations</strong>, dans un seul espace : ' . pub_h($volumes('ak-equipe', true)) . '.',
               '<strong>Bien accompagné dès le départ</strong> : ' . ($live_n4 ? 'support prioritaire, ' : '') . 'une séance de prise en main d’une heure en visio, et la reprise de votre ' . $ae('fichier d’adhérents', 'fichier clients') . ' par nos soins (tableur CSV ou Excel, une fois, à demander dans les 3 mois suivant la souscription).',
           ]))); ?>
         </ul>
-        <p class="ak-pcard-fine"><strong>Idéal pour</strong> <?= $ae('l’association employeuse, le club à plusieurs sections, la structure où salariés et bénévoles gèrent ensemble.', 'la TPE avec une équipe (accueil, commercial, comptabilité) qui partage les mêmes clients et la même boîte mail.') ?></p>
+        <p class="ak-pcard-fine"><strong>Idéal pour</strong> <?= $ae('l’association employeuse, le club à plusieurs sections, la structure où salariés et bénévoles gèrent ensemble, et la petite fédération, l’union ou le comité qui réunit dans un seul espace les membres de quelques clubs ou associations.', 'la TPE avec une équipe (accueil, commercial, comptabilité) qui partage les mêmes clients et la même boîte mail.') ?></p>
       </article>
     </div>
 
     <!-- SUR-MESURE : bandeau pleine largeur, prix masqué -->
     <aside class="ak-sm" id="offre-sur-mesure" aria-labelledby="ak-sm-title">
       <div class="ak-sm-main">
-        <div class="ak-sm-eyebrow">La flotte · Réseaux, fédérations, collectivités</div>
+        <div class="ak-sm-eyebrow">La flotte · Fédérations, ligues, collectivités territoriales</div>
         <h2 class="ak-sm-title" id="ak-sm-title">Sur-mesure</h2>
-        <p class="ak-sm-sign">À l’échelle de votre réseau.</p>
+        <p class="ak-sm-sign">À l’échelle de votre réseau ou de votre territoire.</p>
         <div class="ak-sm-price"><span aria-hidden="true"><?= pub_h(AK_PRICE_MASK) ?></span><span class="sr-only">Prix sur devis</span></div>
         <p class="ak-sm-quote">Sur devis — nous contacter</p>
-        <p class="ak-sm-text">Plus de <?= $fi($P['ak-equipe']['adherents'] ?? 2000) ?> membres, plus de <?= $fi($P['ak-equipe']['managers'] ?? 25) ?> gestionnaires, ou plusieurs structures (réseau, fédération, collectivité)&nbsp;? Parlons de votre projet.</p>
+        <p class="ak-sm-text"><?= $sm_over ? pub_h(ucfirst(implode(', ', $sm_over))) . ', ou plusieurs' : 'Plusieurs' ?> structures à suivre, chacune avec son propre espace&nbsp;? Fédérations nationales ou régionales, ligues régionales, comités départementaux et régionaux, têtes de réseau, collectivités territoriales et intercommunalités&nbsp;: parlons de votre projet.</p>
+        <p class="ak-sm-text">Équipe ou Sur-mesure&nbsp;? Avec Équipe, tous vos membres sont réunis dans un seul espace, <?= pub_h($who('ak-equipe', true)) ?>. Avec Sur-mesure, vous allez au-delà, ou vous suivez plusieurs structures qui gardent chacune leur propre espace. Nombre de structures et volumes fixés au devis.</p>
       </div>
       <div class="ak-sm-side">
         <ul class="ak-sm-list">
           <li>Tout Équipe, sans plafond de membres ni de gestionnaires.</li>
-          <li>Portail collectivité : la mairie voit les associations de son territoire et leur écrit.</li>
+          <li>Portail de pilotage pour la collectivité ou la fédération : chaque association garde son propre espace, et le portail permet de suivre celles qui lui sont rattachées (projets, subventions) et de leur écrire.</li>
           <li>Reprise de vos données et formation de vos équipes.</li>
           <li>Volumes IA et e-mails fixés au devis.</li>
           <li>Paiement par virement ou sur facture, et un interlocuteur unique.</li>
@@ -373,7 +393,7 @@ $ae = fn(string $a, string $e) => '<span data-v="a">' . $a . '</span><span data-
       <table class="ak-cmp ak-cmp-2">
         <thead><tr><th scope="col"></th><th scope="col">Pro (<?= pub_h($price['assokit']['per_month']) ?>)</th><th scope="col">Équipe (<?= pub_h($price['ak-equipe']['per_month']) ?>)</th><th scope="col">Ce que cela change pour vous</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Membres (bureau compris)</th><td>500</td><td><strong>2&nbsp;000</strong> (4 fois plus)</td><td>Jusqu’à 2&nbsp;000 adhérents, toutes sections comprises, dans un seul espace</td></tr>
+          <tr><th scope="row">Membres (bureau compris)</th><td>500</td><td><strong>3&nbsp;000</strong> (6 fois plus)</td><td>Jusqu’à 3&nbsp;000 adhérents, toutes sections comprises, dans un seul espace</td></tr>
           <tr><th scope="row">Gestionnaires</th><td>10</td><td><strong>25</strong> (2,5 fois plus)</td><td>Chaque responsable a son propre accès</td></tr>
           <tr><th scope="row">E-mails par mois</th><td>3&nbsp;000</td><td><strong>8&nbsp;000</strong> (2,7 fois plus)</td><td>Vos diffusions de saison avec plus de marge</td></tr>
           <tr><th scope="row">Crédits IA par mois</th><td>300</td><td><strong>500</strong></td><td>Plus de courriers rédigés et plus de questions au copilote</td></tr>
@@ -396,7 +416,7 @@ $ae = fn(string $a, string $e) => '<span data-v="a">' . $a . '</span><span data-
         <thead><tr><th scope="col"></th><th scope="col">Pro</th><th scope="col">Équipe</th></tr></thead>
         <tbody>
           <tr><th scope="row">Par gestionnaire et par mois</th><td>3,00&nbsp;€&nbsp;HT</td><td><strong>2,40&nbsp;€&nbsp;HT</strong></td></tr>
-          <tr><th scope="row">Par membre et par mois</th><td>0,06&nbsp;€&nbsp;HT</td><td><strong>0,03&nbsp;€&nbsp;HT</strong></td></tr>
+          <tr><th scope="row">Par membre et par mois</th><td>0,06&nbsp;€&nbsp;HT</td><td><strong>0,02&nbsp;€&nbsp;HT</strong></td></tr>
           <tr><th scope="row">Pour 100 e-mails</th><td>1,00&nbsp;€&nbsp;HT</td><td><strong>0,75&nbsp;€&nbsp;HT</strong></td></tr>
         </tbody>
       </table>
@@ -452,7 +472,7 @@ $ae = fn(string $a, string $e) => '<span data-v="a">' . $a . '</span><span data-
               ['<strong>Une équipe coordonnée</strong> (planning, absences, prospection partagée' . ($live_n1 ? ', journal d’activité' : '') . ')', $no, $no, $yes, $yes],
               ['<strong>Toucher tout le monde</strong> : e-mails par mois (diffusions, invitations, convocations, relances)', $n('ak-essentiel', 'emails'), '<strong>' . $n('assokit', 'emails') . '</strong>', $n('ak-equipe', 'emails'), 'Au devis'],
               ['<strong>Quelqu’un à vos côtés</strong>', 'E-mail, réponse sous 24&nbsp;h ouvrées', '<strong>E-mail, réponse sous 24&nbsp;h ouvrées</strong>',
-                  ($live_n4 ? 'Support prioritaire, ' : '') . '1&nbsp;h de visio + reprise du fichier', 'Interlocuteur unique, formation, portail collectivité'],
+                  ($live_n4 ? 'Support prioritaire, ' : '') . '1&nbsp;h de visio + reprise du fichier', 'Interlocuteur unique, formation, portail collectivité ou fédération'],
           ];
           foreach ($rows as $r): ?>
           <tr>

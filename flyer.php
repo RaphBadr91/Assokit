@@ -300,7 +300,7 @@ $mpdf->WriteHTML($css . <<<HTML
       <table class="plan-row"><tr>
         <td>
           <div class="plan-name">Équipe</div>
-          <div class="plan-tag">STRUCTURES AVEC UNE ÉQUIPE</div>
+          <div class="plan-tag">ÉQUIPES ET PETITES FÉDÉRATIONS</div>
         </td>
         <td style="text-align:right;">
           <div class="plan-price">{$fl_equ['price']}</div>
@@ -314,14 +314,14 @@ $mpdf->WriteHTML($css . <<<HTML
       <table class="plan-row"><tr>
         <td>
           <div class="plan-name">Sur-mesure</div>
-          <div class="plan-tag">RÉSEAUX · COLLECTIVITÉS</div>
+          <div class="plan-tag">FÉDÉRATIONS · LIGUES · COLLECTIVITÉS</div>
         </td>
         <td style="text-align:right;">
           <div class="plan-price">{$fl_mask}</div>
           <div class="plan-unit">HT/mois<br>Sur devis — nous contacter</div>
         </td>
       </tr></table>
-      <div class="plan-feats">Volumes au devis · Portail collectivité · Reprise des données · Formation</div>
+      <div class="plan-feats">Volumes au devis · Portail collectivité ou fédération · Reprise des données · Formation</div>
     </div>
     <div class="plan-unit" style="text-align:center;">{$fl_vat}</div>
   </div>

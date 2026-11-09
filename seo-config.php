@@ -171,7 +171,7 @@ const AK_SEO_FAQS = [
         ],
         [
             'q' => 'Quelles formules propose Assokit ?',
-            'a' => 'Essentiel pour gérer à la main une petite structure, Pro pour les relances automatiques, les factures récurrentes et le copilote IA, Équipe quand plusieurs personnes gèrent chaque jour, et Sur-mesure sur devis pour les réseaux et les collectivités. Prix et détails sur la page Tarifs.',
+            'a' => 'Essentiel pour gérer à la main une petite structure, Pro pour les relances automatiques, les factures récurrentes et le copilote IA, Équipe quand plusieurs personnes gèrent chaque jour ou pour une petite fédération réunie dans un seul espace, et Sur-mesure sur devis pour les grandes fédérations, les ligues, les têtes de réseau et les collectivités territoriales qui suivent plusieurs structures. Prix et détails sur la page Tarifs.',
         ],
         [
             'q' => 'Comment fonctionne l\'IA d\'Assokit ?',
@@ -182,7 +182,7 @@ const AK_SEO_FAQS = [
     'plans' => [
         [
             'q' => 'Quelle est la différence entre Essentiel, Pro, Équipe et Sur-mesure ?',
-            'a' => 'Toutes les formules comprennent adhérents, cotisations, factures et devis, comptabilité, assemblées générales et application mobile. Essentiel convient à une petite structure gérée à la main ; Pro ajoute les relances automatiques, les factures récurrentes, les devis signés en ligne et le copilote IA ; Équipe ajoute les priorités du jour pour toute l’équipe, le planning et la détection d’anomalies. Sur-mesure, sur devis, fixe les volumes pour les réseaux et les collectivités. L’essai Pro est gratuit pendant 14 jours, sans carte bancaire.',
+            'a' => 'Toutes les formules comprennent adhérents, cotisations, factures et devis, comptabilité, assemblées générales et application mobile. Essentiel convient à une petite structure gérée à la main ; Pro ajoute les relances automatiques, les factures récurrentes, les devis signés en ligne et le copilote IA ; Équipe ajoute les priorités du jour pour toute l’équipe, le planning et la détection d’anomalies. Équipe convient aussi aux petites fédérations qui réunissent leurs membres dans un seul espace. Sur-mesure, sur devis, va au-delà des volumes d’Équipe et fixe les volumes pour les grandes fédérations, les ligues, les têtes de réseau et les collectivités territoriales qui suivent plusieurs structures. L’essai Pro est gratuit pendant 14 jours, sans carte bancaire.',
         ],
         [
             'q' => 'Y a-t-il un engagement ?',
@@ -209,7 +209,7 @@ const AK_SEO_FAQS = [
         ],
         [
             'q' => 'Puis-je gérer plusieurs associations avec un seul compte ?',
-            'a' => 'Une organisation par compte. Si vous gérez plusieurs associations, créez un compte par structure. Le tarif Sur-mesure offre des conditions préférentielles pour les fédérations.',
+            'a' => 'Une organisation par compte. Si vous gérez plusieurs associations, créez un compte par structure. Pour une grande fédération, une ligue ou une tête de réseau qui suit plusieurs structures, chacune avec son propre compte, l’offre Sur-mesure est établie sur devis.',
         ],
         [
             'q' => 'Comment se passe la migration depuis un autre logiciel ?',

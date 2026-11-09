@@ -64,18 +64,21 @@ if (!function_exists('ak_trial_mail_offer')) {
         $pro = ak_plan_price('assokit', $pdo)['per_month'];
         $ess = ak_plan_price('ak-essentiel', $pdo)['per_month'];
         $equ = ak_plan_price('ak-equipe', $pdo)['per_month'];
+        // Limite de membres d'Essentiel lue en base (vide = sans plafond, rien n'est cité)
+        $ess_lim = ak_pricing_state($pdo)['plans']['ak-essentiel']['adherents'] ?? null;
+        $ess_txt = $ess_lim === null ? '' : ', jusqu’à ' . number_format((int)$ess_lim, 0, ',', "\u{00A0}") . ' membres, bureau compris';
         $per_day = ak_grid_is_reference($pdo) ? ", soit environ 1\u{00A0}€\u{00A0}HT par jour" : '';
         $h = fn($t) => htmlspecialchars($t, ENT_QUOTES, 'UTF-8');
         if ($ended) {
             $html = "Pour reprendre exactement où vous en étiez, avec les relances qui partent sans vous, "
                   . "<strong>gardez tout pour " . $h($pro) . "</strong> avec Pro. Sans engagement, résiliable à tout moment."
                   . "<br><br>Vous hésitez ? Essentiel (" . $h($ess) . ") et Équipe (" . $h($equ) . ") sont sur la même page. "
-                  . "Pour un réseau ou une collectivité, le Sur-mesure est sur devis. Écrivez-nous depuis votre espace, rubrique Support : nous vous aidons à choisir.";
+                  . "Pour une grande fédération, un réseau ou une collectivité territoriale, le Sur-mesure est sur devis. Écrivez-nous depuis votre espace, rubrique Support : nous vous aidons à choisir.";
         } else {
             $html = "Pour que tout continue comme aujourd’hui (relances automatiques, factures récurrentes, devis signés en ligne, copilote IA), "
                   . "<strong>gardez tout pour " . $h($pro) . "</strong> avec Pro" . $h($per_day) . ", sans engagement. Vous n’avez rien à ressaisir."
-                  . "<br><br>Vous gérez surtout à la main ? <strong>Essentiel</strong> (" . $h($ess) . ") garde toute votre gestion, avec la relance en un clic."
-                  . "<br>Vous êtes plusieurs à gérer chaque jour ? <strong>Équipe</strong> (" . $h($equ) . ") donne à chacun ses priorités du jour."
+                  . "<br><br>Vous gérez surtout à la main ? <strong>Essentiel</strong> (" . $h($ess . $ess_txt) . ") garde toute votre gestion, avec la relance en un clic."
+                  . "<br>Vous êtes plusieurs à gérer chaque jour, ou vous êtes une petite fédération ? <strong>Équipe</strong> (" . $h($equ) . ") donne à chacun ses priorités du jour."
                   . "<br><br>Si vous ne choisissez rien, rien n’est prélevé, et vos données restent conservées et exportables."
                   . "<br><br>Une question ? Écrivez-nous depuis votre espace, rubrique Support : une personne de l’équipe vous répond en moins de 24\u{00A0}h ouvrées.";
         }

@@ -29,7 +29,7 @@ $home_faqs = [
     ],
     [
         'q' => "Combien coûte Assokit ?",
-        'a' => "Assokit se teste gratuitement pendant 14 jours, sans carte bancaire et sans engagement, avec toutes les fonctions de la formule Pro. Ensuite, vous choisissez votre formule, " . $offer_from . " : Essentiel (" . ak_plan_price('ak-essentiel')['per_month'] . "), Pro (" . ak_plan_price('assokit')['per_month'] . ") ou Équipe (" . ak_plan_price('ak-equipe')['per_month'] . "), résiliable à tout moment. Les réseaux, fédérations et collectivités peuvent demander une offre Sur-mesure, sur devis.",
+        'a' => "Assokit se teste gratuitement pendant 14 jours, sans carte bancaire et sans engagement, avec toutes les fonctions de la formule Pro. Ensuite, vous choisissez votre formule, " . $offer_from . " : Essentiel (" . ak_plan_price('ak-essentiel')['per_month'] . "), Pro (" . ak_plan_price('assokit')['per_month'] . ") ou Équipe (" . ak_plan_price('ak-equipe')['per_month'] . "), résiliable à tout moment. Équipe convient aussi aux petites fédérations qui réunissent leurs membres dans un seul espace ; les grandes fédérations, les ligues, les têtes de réseau et les collectivités territoriales qui suivent plusieurs structures peuvent demander une offre Sur-mesure, sur devis.",
     ],
     [
         'q' => "La comptabilité analytique est-elle incluse ?",
@@ -1246,7 +1246,7 @@ render_public_nav('');
         <div class="pub-promise-ico">📈</div>
         <h3>Un outil qui grandit avec vous</h3>
         <p class="pub-promise-tagline">Essentiel, Pro, Équipe · vos données vous suivent.</p>
-        <p>Vous démarrez petit, vous grandissez tranquillement : de 100 à 2&nbsp;000 membres, vous changez de formule sans rien migrer ni ressaisir. Au-delà, ou pour un réseau, l’offre Sur-mesure prend le relais.</p>
+        <p>Vous démarrez petit, vous grandissez tranquillement : de 50 à 3&nbsp;000 membres, vous changez de formule sans rien migrer ni ressaisir. Au-delà, ou pour une grande fédération, un réseau ou une collectivité qui suit plusieurs structures, l’offre Sur-mesure prend le relais.</p>
       </div>
 
       <!-- 7 — Prix clairs (l'ancienne promesse « domaine personnel » est retirée : fonction non livrée) -->

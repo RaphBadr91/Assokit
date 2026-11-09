@@ -119,6 +119,9 @@ function cron_email_render(string $type, array $vars): array
             break;
 
         case 'essai_j3':
+            // Limite de membres d'Essentiel lue en base (vide = sans plafond, rien n'est cité)
+            $j3_ess = ak_pricing_state()['plans']['ak-essentiel']['adherents'] ?? null;
+            $j3_ess_txt = $j3_ess === null ? '' : ', jusqu’à ' . number_format((int)$j3_ess, 0, ',', "\u{00A0}") . ' membres, bureau compris';
             $subject = 'Plus que 3 jours d’essai : on garde ce que vous avez construit ?';
             $preheader = 'Gardez tout pour ' . ak_offer_price()['per_month'] . ', ou choisissez la formule qui vous va.';
             $title = 'Plus que 3 jours ✨';
@@ -128,8 +131,8 @@ function cron_email_render(string $type, array $vars): array
                 <p>Pour que tout continue comme aujourd’hui pour ' . htmlspecialchars($vars['asso_name']) . ' (relances automatiques, factures récurrentes,
                    devis signés en ligne, copilote IA), <strong>gardez tout pour ' . htmlspecialchars(ak_offer_price()['per_month']) . '</strong> avec Pro,
                    sans engagement. Vous n’avez rien à ressaisir.</p>
-                <p>Vous gérez surtout à la main ? <strong>Essentiel</strong> (' . htmlspecialchars(ak_plan_price('ak-essentiel')['per_month']) . ') garde toute votre gestion, avec la relance en un clic.
-                   Vous êtes plusieurs à gérer chaque jour ? <strong>Équipe</strong> (' . htmlspecialchars(ak_plan_price('ak-equipe')['per_month']) . ') donne à chacun ses priorités du jour.</p>
+                <p>Vous gérez surtout à la main ? <strong>Essentiel</strong> (' . htmlspecialchars(ak_plan_price('ak-essentiel')['per_month'] . $j3_ess_txt) . ') garde toute votre gestion, avec la relance en un clic.
+                   Vous êtes plusieurs à gérer chaque jour, ou vous êtes une petite fédération ? <strong>Équipe</strong> (' . htmlspecialchars(ak_plan_price('ak-equipe')['per_month']) . ') donne à chacun ses priorités du jour.</p>
                 <p>Si vous ne choisissez rien, rien n’est prélevé, et vos données restent conservées et exportables.</p>
                 <p style="font-size:12px;color:#71717A;">' . htmlspecialchars(ak_vat_note()) . '</p>
             ';
@@ -147,7 +150,7 @@ function cron_email_render(string $type, array $vars): array
                 <p>Pour reprendre exactement où vous en étiez, avec les relances qui partent sans vous,
                    <strong>gardez tout pour ' . htmlspecialchars(ak_offer_price()['per_month']) . '</strong> avec Pro. Sans engagement, résiliable à tout moment.</p>
                 <p>Vous hésitez ? Essentiel (' . htmlspecialchars(ak_plan_price('ak-essentiel')['per_month']) . ') et Équipe (' . htmlspecialchars(ak_plan_price('ak-equipe')['per_month']) . ') sont sur la même page.
-                   Pour un réseau ou une collectivité, le Sur-mesure est sur devis. Écrivez-nous depuis votre espace, rubrique Support : nous vous aidons à choisir.</p>
+                   Pour une grande fédération, un réseau ou une collectivité territoriale, le Sur-mesure est sur devis. Écrivez-nous depuis votre espace, rubrique Support : nous vous aidons à choisir.</p>
                 <p style="font-size:12px;color:#71717A;">' . htmlspecialchars(ak_vat_note()) . '</p>
             ';
             $cta = ['label' => 'Choisir ma formule', 'url' => 'https://assokit.fr/mon-asso-plan'];

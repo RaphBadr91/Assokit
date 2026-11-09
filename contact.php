@@ -300,11 +300,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p class="contact-form-subtitle">Décrivez votre besoin, nous reviendrons rapidement vers vous.</p>
             <?php if ($prefill_plan === 'sur-mesure' || $prefill_plan === 'collectivite'): ?>
               <p class="contact-form-subtitle" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 14px;color:#065F46;">
-                <strong>Offre Sur-mesure</strong> : réseaux, fédérations, grandes structures, collectivités. Indiquez votre téléphone et quelques mots sur votre structure : nous vous rappelons pour construire votre devis.
+                <strong>Offre Sur-mesure</strong> : au-delà des volumes de la formule Équipe, ou pour suivre plusieurs structures (grandes fédérations, ligues et comités, têtes de réseau, collectivités territoriales et intercommunalités). Indiquez votre téléphone et quelques mots sur votre structure : nous vous rappelons pour construire votre devis.
               </p>
             <?php elseif ($prefill_plan === 'ak-equipe'): ?>
               <p class="contact-form-subtitle" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 14px;color:#065F46;">
-                <strong>Formule Équipe</strong> : dites-nous combien de personnes gèrent avec vous et combien de membres compte votre structure ; un conseiller vous répond.
+                <strong>Formule Équipe</strong> (structures avec une équipe et petites fédérations) : dites-nous combien de personnes gèrent avec vous et combien de membres compte votre structure ; un conseiller vous répond.
               </p>
             <?php endif; ?>
 

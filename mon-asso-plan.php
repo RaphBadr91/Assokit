@@ -404,9 +404,18 @@ $render_offers = function () use ($pdo, $org_id, $offers, $pc, $pending, $offer_
         <?php if ($offers['quote']): ?>
           <div class="akp-card akp-quote" style="order:9;">
             <div class="akp-name">Sur-mesure</div>
-            <div class="akp-tagline"><?= $h($offers['quote']['tagline'] ?? 'Réseaux, fédérations, collectivités') ?></div>
+            <?php
+            // Seuils d'Équipe lus en base (ak_pricing_state, comme /tarifs), jamais écrits en dur ;
+            // une limite vide (Équipe sans plafond) n'est pas citée, aucun chiffre de repli
+            $sm_eq = ak_pricing_state($pdo)['plans']['ak-equipe'] ?? [];
+            $sm_over = array_values(array_filter([
+                ($sm_eq['adherents'] ?? null) === null ? null : 'plus de ' . number_format((int)$sm_eq['adherents'], 0, ',', "\u{00A0}") . ' membres',
+                ($sm_eq['managers'] ?? null) === null ? null : 'plus de ' . number_format((int)$sm_eq['managers'], 0, ',', "\u{00A0}") . ' gestionnaires',
+            ]));
+            ?>
+            <div class="akp-tagline"><?= $h(($offers['quote']['tagline'] ?? '') !== '' ? $offers['quote']['tagline'] : 'Fédérations, ligues, collectivités territoriales') ?></div>
             <div class="akp-price">Sur devis</div>
-            <p class="akp-quote-txt">Plus de 2 000 membres, plus de 25 gestionnaires, ou plusieurs structures (réseau, fédération, collectivité) ? Parlons de votre projet.</p>
+            <p class="akp-quote-txt"><?= $sm_over ? $h(ucfirst(implode(', ', $sm_over))) . ', ou plusieurs' : 'Plusieurs' ?> structures à suivre, chacune avec son propre espace (grande fédération, ligue, comité, tête de réseau, collectivité territoriale) ? Parlons de votre projet.</p>
             <div class="akp-cta"><a href="/contact?plan=sur-mesure" class="akp-btn"><?= ak_icon('phone',14) ?> Nous contacter</a></div>
           </div>
         <?php endif; ?>

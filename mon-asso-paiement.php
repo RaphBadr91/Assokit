@@ -389,7 +389,7 @@ render_sidebar('mon-asso-paiement');
     <!-- Membres ou gestionnaires au-delà des limites de la formule choisie -->
     <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:14px; padding:28px; text-align:center;">
       <h2 style="margin:0 0 10px; font-size:19px; color:#991B1B;">La formule <?= htmlspecialchars($plan_label) ?> ne suffit pas pour votre structure</h2>
-      <p style="color:#7F1D1D; line-height:1.65; max-width:560px; margin:0 auto 18px; font-size:14.5px;"><?= htmlspecialchars(implode(' ', $usage_blockers)) ?> Choisissez une formule plus grande, ou réduisez-les d’abord.</p>
+      <p style="color:#7F1D1D; line-height:1.65; max-width:560px; margin:0 auto 18px; font-size:14.5px;"><?= htmlspecialchars(implode(' ', $usage_blockers)) ?> <?php if (($plan['slug'] ?? '') === 'ak-equipe'): ?>Au-delà des volumes d’Équipe, l’offre <a href="/contact?plan=sur-mesure" style="color:#7F1D1D;font-weight:600;">Sur-mesure</a> est établie sur devis ; vous pouvez aussi réduire d’abord le nombre de membres ou de gestionnaires.<?php else: ?>Choisissez une formule plus grande, ou réduisez-les d’abord.<?php endif; ?></p>
       <a href="/mon-asso-plan#formules" style="background:#0F172A; color:white; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px;">← Choisir une autre formule</a>
     </div>
 

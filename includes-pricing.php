@@ -68,15 +68,15 @@ if (!defined('AK_VAT_293B_NOTE')) define('AK_VAT_293B_NOTE', 'TVA non applicable
 
 if (!function_exists('ak_grid_reference')) {
     /**
-     * Valeurs de référence de la grille (spécification du 09/11/2026), par slug : prix HT en
-     * centimes et limites affichées. Servent de repli ; la base fait foi dès que la ligne porte
-     * grille_version >= AK_GRID_VERSION.
+     * Valeurs de référence de la grille (spécification du 09/11/2026, limites de membres revues
+     * ensuite : Essentiel 50, Équipe 3 000), par slug : prix HT en centimes et limites affichées.
+     * Servent de repli ; la base fait foi dès que la ligne porte grille_version >= AK_GRID_VERSION.
      */
     function ak_grid_reference(): array {
         return [
-            'ak-essentiel' => ['price' => 1999, 'adherents' => 100,  'managers' => 3,  'ai' => 30,  'emails' => 500,  'mail_ai' => 0],
+            'ak-essentiel' => ['price' => 1999, 'adherents' => 50,   'managers' => 3,  'ai' => 30,  'emails' => 500,  'mail_ai' => 0],
             'assokit'      => ['price' => 2999, 'adherents' => 500,  'managers' => 10, 'ai' => 300, 'emails' => 3000, 'mail_ai' => 0],
-            'ak-equipe'    => ['price' => 5999, 'adherents' => 2000, 'managers' => 25, 'ai' => 500, 'emails' => 8000, 'mail_ai' => 500],
+            'ak-equipe'    => ['price' => 5999, 'adherents' => 3000, 'managers' => 25, 'ai' => 500, 'emails' => 8000, 'mail_ai' => 500],
         ];
     }
 }
@@ -285,7 +285,7 @@ if (!function_exists('ak_offer_from_price')) {
 if (!function_exists('ak_grid_is_reference')) {
     /**
      * Vrai si les prix et les volumes lus sont exactement ceux de la grille de référence : les
-     * phrases calculées à la main (« environ 1 € HT par jour », « 4 fois plus de membres »…) ne
+     * phrases calculées à la main (« environ 1 € HT par jour », « 6 fois plus de membres »…) ne
      * s'affichent qu'à cette condition, pour ne jamais devenir fausses après un réglage dans Pilotage.
      */
     function ak_grid_is_reference(?PDO $pdo = null): bool {

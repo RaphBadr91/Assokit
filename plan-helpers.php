@@ -1096,7 +1096,7 @@ function ak_email_quota_block(PDO $pdo, int $org_id, int $n): ?string {
 // ---------- Affichage sans prix (appli, Mon abonnement) ----------
 
 /**
- * Phrases qui décrivent une formule, SANS prix : « Jusqu'à 2 000 membres (bureau compris) »,
+ * Phrases qui décrivent une formule, SANS prix : « Jusqu'à 3 000 membres (bureau compris) »,
  * « 25 gestionnaires », « 500 crédits IA par mois », « 8 000 e-mails par mois ».
  * Jamais « illimité » pour l'IA ni les e-mails (une limite vide n'est pas citée).
  */

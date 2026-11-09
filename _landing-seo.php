@@ -57,7 +57,7 @@ if (!function_exists('ak_landing_pricing')) {
       <div class="lp-card">
         <div class="lp-ic">💶</div>
         <h3><?= pub_h(ucfirst($from)) ?></h3>
-        <p><?= pub_h(implode(' · ', $list)) ?>. Sur-mesure sur devis pour les réseaux et les collectivités. Résiliable à tout moment. <?= pub_h(ak_vat_note()) ?></p>
+        <p><?= pub_h(implode(' · ', $list)) ?>. Sur-mesure sur devis pour les grandes fédérations, les têtes de réseau et les collectivités territoriales. Résiliable à tout moment. <?= pub_h(ak_vat_note()) ?></p>
       </div>
     </div>
     <div class="pub-text-center reveal" style="margin-top:24px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">

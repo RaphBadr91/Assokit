@@ -234,12 +234,12 @@ UPDATE asso_plans SET
   grille_version = 202611, updated_at = NOW()
 WHERE slug = 'fondateur' AND COALESCE(grille_version, 0) < 202611;
 
--- Essentiel : 19,99 € HT/mois, 100 membres (bureau compris), 3 gestionnaires,
+-- Essentiel : 19,99 € HT/mois, 50 membres (bureau compris), 3 gestionnaires,
 -- 30 crédits IA, 500 e-mails par mois.
 UPDATE asso_plans SET
   name = 'Essentiel', tagline = 'Petites associations et indépendants', price_cents = 1999, price_label = NULL,
   display_order = 1, is_visible = 1, is_trial = 0, is_custom_quote = 0, is_featured = 0,
-  limit_adherents = 100, limit_managers = 3, limit_users = NULL, limit_invoices_total = NULL,
+  limit_adherents = 50, limit_managers = 3, limit_users = NULL, limit_invoices_total = NULL,
   limit_quotes_total = NULL, limit_contacts = NULL, limit_ai_text_per_month = 30,
   limit_ai_image_per_month = 0, limit_emails_per_month = 500, limit_mail_ai_batches_per_month = 0,
   bonus_ai_first_week = 0,
@@ -252,12 +252,12 @@ UPDATE asso_plans SET
   grille_version = 202611, updated_at = NOW()
 WHERE slug = 'ak-essentiel' AND COALESCE(grille_version, 0) < 202611;
 
--- Équipe : 59,99 € HT/mois, 2 000 membres (bureau compris), 25 gestionnaires,
+-- Équipe : 59,99 € HT/mois, 3 000 membres (bureau compris), 25 gestionnaires,
 -- 500 crédits IA, 8 000 e-mails, 500 lots de tri IA de la boîte mail par mois.
 UPDATE asso_plans SET
-  name = 'Équipe', tagline = 'Structures avec une équipe', price_cents = 5999, price_label = NULL,
+  name = 'Équipe', tagline = 'Structures avec une équipe et petites fédérations', price_cents = 5999, price_label = NULL,
   display_order = 3, is_visible = 1, is_trial = 0, is_custom_quote = 0, is_featured = 0,
-  limit_adherents = 2000, limit_managers = 25, limit_users = NULL, limit_invoices_total = NULL,
+  limit_adherents = 3000, limit_managers = 25, limit_users = NULL, limit_invoices_total = NULL,
   limit_quotes_total = NULL, limit_contacts = NULL, limit_ai_text_per_month = 500,
   limit_ai_image_per_month = 0, limit_emails_per_month = 8000, limit_mail_ai_batches_per_month = 500,
   bonus_ai_first_week = 0,
@@ -273,7 +273,7 @@ WHERE slug = 'ak-equipe' AND COALESCE(grille_version, 0) < 202611;
 -- Sur-mesure : sur devis (prix masqué), sans prix Stripe (jamais vendue par carte),
 -- sans plafond de comptes ; volumes IA et e-mails par défaut, ajustés au devis.
 UPDATE asso_plans SET
-  name = 'Sur-mesure', tagline = 'Réseaux, fédérations, collectivités', price_cents = 0, price_label = 'Sur devis',
+  name = 'Sur-mesure', tagline = 'Fédérations, ligues, collectivités territoriales', price_cents = 0, price_label = 'Sur devis',
   display_order = 4, is_visible = 1, is_trial = 0, is_custom_quote = 1, is_featured = 0,
   stripe_price_id_monthly = NULL,
   limit_adherents = NULL, limit_managers = NULL, limit_users = NULL, limit_invoices_total = NULL,

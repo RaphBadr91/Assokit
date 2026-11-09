@@ -176,7 +176,7 @@ $demo_offer = ak_offer_price($pdo);
 $plan_display = [
     'essentiel' => ['label' => 'Essai Pro', 'price' => 'Gratuit 14 j', 'subtitle' => 'Sans carte bancaire', 'color' => '#94a3b8'],
     'association' => ['label' => 'PRO', 'price' => $demo_offer['per_month'], 'subtitle' => $demo_offer['has_vat'] ? $demo_offer['ttc_note'] . ' · sans engagement' : 'Sans engagement', 'color' => '#10b981'],
-    'organisation' => ['label' => 'SUR-MESURE', 'price' => 'Sur devis', 'subtitle' => 'Réseaux, fédérations, collectivités', 'color' => '#3b82f6'],
+    'organisation' => ['label' => 'SUR-MESURE', 'price' => 'Sur devis', 'subtitle' => 'Fédérations, ligues, collectivités territoriales', 'color' => '#3b82f6'],
 ];
 ?><!DOCTYPE html>
 <html lang="fr">
